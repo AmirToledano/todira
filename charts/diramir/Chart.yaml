@@ -1,0 +1,6 @@
+apiVersion: v2
+name: diramir
+description: Self-hosted apartment-search Telegram bot — Postgres, bot, and scraper CronJob
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

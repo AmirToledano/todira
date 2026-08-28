@@ -1,0 +1,36 @@
+# Secrets are deliberately NOT in this file — supply them at deploy time via `--set` or an
+# untracked `-f values-secret.yaml`, never committed:
+#   postgres.password        (required)
+#   telegramBotToken         (required)
+#   yad2CookieHeader         (optional — see scraper/YAD2_NOTES.md; escape any "$" as "$$")
+#   twocaptchaApiKey         (optional — see scraper/YAD2_NOTES.md)
+
+botImage:
+  repository: ghcr.io/CHANGE-ME/diramir-bot
+  tag: latest
+scraperImage:
+  repository: ghcr.io/CHANGE-ME/diramir-scraper
+  tag: latest
+
+replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates pollers on one token
+
+postgres:
+  image: postgres:16-alpine
+  dbname: dorin
+  user: dorin
+  storageSize: 2Gi
+
+scraper:
+  schedule: "*/10 * * * *" # every 10 minutes — tune down later if Yad2 tolerates it fine
+  cities: "tel-aviv,ramat-gan,givatayim"
+
+resources:
+  bot:
+    requests: { cpu: "50m", memory: "128Mi" }
+    limits: { cpu: "250m", memory: "256Mi" }
+  scraper:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits: { cpu: "500m", memory: "512Mi" }
+  postgres:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits: { cpu: "500m", memory: "512Mi" }

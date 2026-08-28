@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dorin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-locally}
+      POSTGRES_DB: ${POSTGRES_DB:-dorin}
+    volumes:
+      - dorin_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dorin}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  # one-shot: `docker compose run --rm migrate`. Uses the bot image (it already carries
+  # migrations/ + alembic, see bot/Dockerfile) with the command overridden.
+  migrate:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["alembic", "-c", "migrations/alembic.ini", "upgrade", "head"]
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # not started by `docker compose up` (see the `manual` profile) — the real periodic execution
+  # is the k8s CronJob (charts/diramir). Run it locally on demand:
+  # `docker compose run --rm scraper`
+  scraper:
+    build:
+      context: .
+      dockerfile: scraper/Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["manual"]
+
+volumes:
+  dorin_postgres_data:

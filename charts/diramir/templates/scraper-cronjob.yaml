@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-scraper
+  labels:
+    app: {{ .Release.Name }}-scraper
+spec:
+  schedule: {{ .Values.scraper.schedule | quote }}
+  concurrencyPolicy: Forbid # never overlap scrape runs
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-scraper
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: scraper
+              image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: database-url
+                - name: TELEGRAM_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: telegram-bot-token
+                - name: SCRAPE_CITIES
+                  value: {{ .Values.scraper.cities | quote }}
+                {{- if .Values.yad2CookieHeader }}
+                - name: YAD2_COOKIE_HEADER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: yad2-cookie-header
+                {{- end }}
+                {{- if .Values.twocaptchaApiKey }}
+                - name: TWOCAPTCHA_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: twocaptcha-api-key
+                {{- end }}
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.scraper.requests.cpu }}
+                  memory: {{ .Values.resources.scraper.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.scraper.limits.cpu }}
+                  memory: {{ .Values.resources.scraper.limits.memory }}

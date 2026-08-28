@@ -1,0 +1,12 @@
+sqlalchemy>=2.0,<3.0
+psycopg[binary]>=3.1,<4.0
+pydantic>=2.5,<3.0
+python-telegram-bot>=21,<22
+# patchright (not vanilla playwright): a maintained fork that patches CDP-level automation
+# leaks (Runtime.enable) at the driver level — see scraper/YAD2_NOTES.md for why plain
+# playwright + playwright-stealth were both tried and failed against Yad2's Radware challenge.
+patchright>=1.60,<2.0
+# solves the hCaptcha challenge patchright alone gets us to but can't pass on its own — see
+# YAD2_NOTES.md attempt #6. Import name is "twocaptcha", not "2captcha" (Python module names
+# can't start with a digit).
+2captcha-python>=1.2,<2.0

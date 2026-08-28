@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-bot
+  labels:
+    app: {{ .Release.Name }}-bot
+spec:
+  # MUST stay at 1 — Telegram's long-polling (getUpdates) rejects/conflicts when two pollers
+  # share one bot token, so this deliberately doesn't read a "replicas" value meant for scaling.
+  replicas: {{ .Values.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-bot
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-bot
+    spec:
+      containers:
+        - name: bot
+          image: "{{ .Values.botImage.repository }}:{{ .Values.botImage.tag | default "latest" }}"
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres-secret
+                  key: database-url
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: telegram-bot-token
+          resources:
+            requests:
+              cpu: {{ .Values.resources.bot.requests.cpu }}
+              memory: {{ .Values.resources.bot.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.bot.limits.cpu }}
+              memory: {{ .Values.resources.bot.limits.memory }}
