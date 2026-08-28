@@ -6,10 +6,21 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_OWNER: ${{ github.repository_owner }}
 
 jobs:
+  # Docker/GHCR repository names MUST be all-lowercase, but a GitHub username/org
+  # (github.repository_owner) can contain uppercase letters — computed once here and reused via
+  # job outputs, since GitHub Actions expressions have no built-in toLower().
+  vars:
+    runs-on: ubuntu-latest
+    outputs:
+      image_owner: ${{ steps.lower.outputs.owner }}
+    steps:
+      - id: lower
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
   build-and-push:
+    needs: vars
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,11 +43,11 @@ jobs:
           file: ${{ matrix.service }}/Dockerfile
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/diramir-${{ matrix.service }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/diramir-${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-${{ matrix.service }}:latest
 
   deploy:
-    needs: build-and-push
+    needs: [vars, build-and-push]
     runs-on: ubuntu-latest
     # This job will fail until the cluster/VPS exists and the three repo secrets below are set
     # (Settings > Secrets and variables > Actions) — expected at this stage of the project, not
@@ -57,9 +68,9 @@ jobs:
         run: |
           helm upgrade --install diramir charts/diramir \
             -f charts/diramir/values.yaml \
-            --set botImage.repository=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/diramir-bot \
+            --set botImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-bot \
             --set botImage.tag=${{ github.sha }} \
-            --set scraperImage.repository=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/diramir-scraper \
+            --set scraperImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-scraper \
             --set scraperImage.tag=${{ github.sha }} \
             --set postgres.password=${{ secrets.POSTGRES_PASSWORD }} \
             --set telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
