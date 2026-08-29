@@ -22,7 +22,7 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.0-flash"
+_MODEL = "gemini-3.6-flash"
 
 _client: genai.Client | None = None
 _client_checked = False
