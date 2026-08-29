@@ -14,10 +14,13 @@ message and stays in the same state rather than crashing or silently losing the 
 from __future__ import annotations
 
 import json
+import logging
 import os
 
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 _MODEL = "gemini-2.0-flash"
 
@@ -84,6 +87,7 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
         )
         result = json.loads(response.text)
     except Exception:
+        logger.exception("Gemini onboarding parse failed")
         return None
 
     result["cities"] = [c for c in (result.get("cities") or []) if c in known_cities]
