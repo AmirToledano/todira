@@ -61,6 +61,13 @@ attributes), not a separate JSON XHR as attempts 1-8 assumed — `yad2_client.py
 parse it directly. **Verified end-to-end**: 43 real listings for ramat-gan with realistic prices/
 rooms/floors. Full writeup in `scraper/YAD2_NOTES.md`'s "Attempt 9: SOLVED" section.
 
+**2026-08-29 late update**: `todira-website`'s Deployment was manually scaled to 0 replicas
+directly on the cluster (not in git) because its perpetually-failing ImagePullBackOff pods (GHCR
+package still private — see Phase 2 section below) were repeatedly causing "Insufficient memory"
+scheduling failures for the scraper CronJob on this resource-tiny node. This is self-correcting:
+the next `helm upgrade` (any future push) resets it to `replicas: 1` per the chart. If you see
+0/1 website replicas and wonder why, this is it — not a bug, a temporary safety valve.
+
 **Needs a new GitHub secret to actually deploy**: `ZENROWS_API_KEY` (Settings → Secrets and
 variables → Actions → New repository secret) — same free-tier key already used for local testing.
 Without it, the scraper CronJob just logs an error and finds 0 listings every run (fails soft, no
