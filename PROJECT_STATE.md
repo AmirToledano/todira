@@ -104,6 +104,24 @@ the most promising remaining direction, more so than either piece alone.
 - **Phase 3**: more scraping sources (Komo, Facebook Marketplace/Groups).
 - **WhatsApp bot**: explicitly wanted by the owner (multi-channel vision: website + WhatsApp +
   Telegram), not started — real WhatsApp Business API integration is a separate undertaking.
+  Deliberately NOT scaffolding placeholder webhook code yet — WhatsApp's actual webhook payload
+  shape can't be verified without a real account/test message, and shipping untested integration
+  code that *looks* done but was never exercised against the real API would be worse than not
+  starting. **What the account owner needs to do first** (cannot be done by an assistant — these
+  are Meta account/business actions):
+  1. Create a Meta for Developers account at developers.facebook.com (if not already have one).
+  2. Create a new App → add the "WhatsApp" product to it.
+  3. Meta gives a free test phone number + test access token immediately (no business verification
+     needed just to start developing/testing) — good enough to build against before going live.
+  4. Note the test number's Phone Number ID and a temporary access token from the app dashboard.
+  5. Once ready to go live with a real number: business verification with Meta (can take days),
+     then a permanent (non-expiring) access token via a System User in Meta Business Suite.
+  Once steps 1-4 are done (just the free test setup), give the assistant: the Phone Number ID,
+  the temporary access token, and a webhook verify token (any string you make up) — that's enough
+  to build and test a real integration end-to-end, reusing `gemini_client.parse_onboarding_message`
+  (already channel-agnostic) for the actual conversation logic. The webhook receiver would most
+  naturally live as new routes on the `website` FastAPI app (already deployed) rather than a
+  separate service.
 - `price_min` in the onboarding parser was added same day as `price_max` existed — check both are
   still there if touching `gemini_client.py`'s schema.
 
