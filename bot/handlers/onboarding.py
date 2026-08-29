@@ -111,7 +111,15 @@ async def _handle_deal_type(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def _handle_cities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text or ""
-    matched = _parse_cities(text) or gemini_client.parse_cities(text, cities.CITIES)
+    segments = [s for s in re.split(r"[,\n]", text) if s.strip()]
+    matched = _parse_cities(text)
+    if len(matched) < len(segments):
+        # at least one comma-separated segment didn't resolve via regex/aliases (e.g. "ראשל"צ",
+        # "רמת גם") — ask Gemini on the full text and merge in anything new it finds, rather than
+        # silently dropping the segments regex couldn't handle.
+        for city in gemini_client.parse_cities(text, cities.CITIES):
+            if city not in matched:
+                matched.append(city)
     if not matched:
         await update.message.reply_text(
             "לא זיהיתי אף עיר מהרשימה שלי 🤔 נסה/י שוב (למשל: תל אביב יפו, ירושלים):"
