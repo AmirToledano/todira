@@ -74,4 +74,5 @@ jobs:
             --set scraperImage.tag=${{ github.sha }} \
             --set postgres.password=${{ secrets.POSTGRES_PASSWORD }} \
             --set telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+            --set geminiApiKey=${{ secrets.GEMINI_API_KEY }} \
             --namespace diramir --create-namespace

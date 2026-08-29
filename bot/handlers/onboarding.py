@@ -1,10 +1,11 @@
 """Free-text onboarding for brand-new users — mirrors the reference bot's casual Q&A flow
-(deal type -> city -> rooms) using simple keyword/regex parsing instead of an LLM call. The
-expected answers here are narrow enough (a handful of known deal-type synonyms, a city from our
-bundled list, a room count) that pattern matching is exactly as reliable as an LLM for this,
-with no external API dependency, no per-user cost, and no failure mode if a third-party service
-is down. (We skip asking for the user's name, unlike the reference bot — Telegram already gives
-us `first_name`, which /start's own welcome message already uses.)
+(deal type -> city -> rooms). Tries simple keyword/regex parsing first (fast, free, no external
+dependency), and only falls back to a Gemini call (gemini_client.py) when that comes up empty —
+covers typos ("שגירות"), abbreviations ("ראשל\"צ"), and misspellings ("רמת גם") that plain
+substring matching can't, without paying for an API call on every message. If GEMINI_API_KEY
+isn't set, the fallback is a no-op and behavior is identical to the old regex-only version.
+(We skip asking for the user's name, unlike the reference bot — Telegram already gives us
+`first_name`, which /start's own welcome message already uses.)
 
 This does NOT replace the menu-driven `/filter` conversation (handlers/filter_conversation.py)
 — it's a friendlier on-ramp that saves a first, simple Filter row; /filter remains available
@@ -20,6 +21,7 @@ from __future__ import annotations
 import re
 
 import cities
+import gemini_client
 import keyboards as kb
 from dorin_common.cards import format_caption, listing_keyboard
 from dorin_common.db import get_session
@@ -92,7 +94,8 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def _handle_deal_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    deal_type = _parse_deal_type(update.message.text or "")
+    text = update.message.text or ""
+    deal_type = _parse_deal_type(text) or gemini_client.parse_deal_type(text)
     if deal_type is None:
         await update.message.reply_text(
             "לא הצלחתי להבין 😅 את/ה מחפש/ת שכירות, מכירה או סבלט?"
@@ -107,7 +110,8 @@ async def _handle_deal_type(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def _handle_cities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    matched = _parse_cities(update.message.text or "")
+    text = update.message.text or ""
+    matched = _parse_cities(text) or gemini_client.parse_cities(text, cities.CITIES)
     if not matched:
         await update.message.reply_text(
             "לא זיהיתי אף עיר מהרשימה שלי 🤔 נסה/י שוב (למשל: תל אביב יפו, ירושלים):"
@@ -122,7 +126,8 @@ async def _handle_cities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def _handle_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    rooms = _parse_rooms(update.message.text or "")
+    text = update.message.text or ""
+    rooms = _parse_rooms(text) or gemini_client.parse_rooms(text)
     if rooms is None:
         await update.message.reply_text("לא הצלחתי למצוא מספר 😅 כמה חדרים בערך? (למשל 3, או 2.5)")
         return AWAIT_ROOMS

@@ -6,3 +6,7 @@ venv/
 values-secret.yaml
 *.egg-info/
 .pytest_cache/
+*.code-workspace
+kubeconfig*
+*kubeconfig*
+k3s-b64.txt

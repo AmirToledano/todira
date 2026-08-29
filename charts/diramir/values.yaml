@@ -2,6 +2,8 @@
 # untracked `-f values-secret.yaml`, never committed:
 #   postgres.password        (required)
 #   telegramBotToken         (required)
+#   geminiApiKey             (optional — free-tier key from https://aistudio.google.com/apikey;
+#                             onboarding falls back to plain regex parsing if unset)
 #   yad2CookieHeader         (optional — see scraper/YAD2_NOTES.md; escape any "$" as "$$")
 #   twocaptchaApiKey         (optional — see scraper/YAD2_NOTES.md)
 

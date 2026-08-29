@@ -30,6 +30,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-bot-secret
                   key: telegram-bot-token
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: gemini-api-key
+                  optional: true
           resources:
             requests:
               cpu: {{ .Values.resources.bot.requests.cpu }}
