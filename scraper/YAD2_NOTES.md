@@ -320,3 +320,49 @@ less-protected sources (Phase 3) while parking this as a known, documented limit
 | posted_at | | |
 
 Once filled in, update the field mapping in `normalize.py`'s `_get()` calls to match reality.
+
+## 2026-08-29 — Attempt 9: SOLVED via patchright + ZenRows residential proxy
+
+After attempts 1-8 above (direct API, plain/stealth Playwright, patchright alone reaching an
+hCaptcha, manual cookie harvesting, 2Captcha solving — all ultimately still blocked), tried routing
+the existing patchright browser through **ZenRows** (a commercial "web unlocker" service —
+residential proxy network + managed fingerprint evasion, a different class of tool than anything
+DIY'd in attempts 1-8) instead of fixing this container's own datacenter IP reputation.
+
+**What worked:** launching Chromium with
+`proxy={"server": "http://proxy.zenrows.com:8001", "username": <ZENROWS_API_KEY>, "password": "js_render=true&premium_proxy=true"}`
+— note the params go in the **password** field, not appended to the username (an empty password
+field still gets a trailing `:` appended by Chromium's Basic Auth handshake, which corrupts a
+trailing param value if you put everything in `username` instead — cost some trial and error).
+Result: repeated clean page loads, **zero** Radware/hCaptcha challenges seen.
+
+**Correction to the long-standing assumption in attempts 1-8**: `FEED_URL_MARKER =
+"realestate-feed"` (a guessed internal-API substring, never actually verified against real
+traffic) was wrong to rely on — the real listing feed is NOT a separate JSON XHR call at all. It's
+rendered directly into the page's HTML as a list of cards, each identifiable by
+`data-testid="ad-card-price"/"street-name"/"item-info-line-1st"/"item-info-line-2nd"` spans inside
+an `<a data-nagish="feed-item-layout-link" href="...">`. `yad2_client.py` was rewritten to parse
+this HTML directly with regex instead of listening for a network response — simpler, and it
+actually works, unlike 8 attempts built on the unverified XHR assumption.
+
+**Also learned**: Yad2's `?city=` URL param takes a **numeric city ID**, not the human-readable
+slug used elsewhere in this project (`tel-aviv` the slug ≠ what the URL needs) — confirmed IDs:
+tel-aviv=5000, ramat-gan=8600, givatayim=6300 (see `CITY_SLUG_TO_ID` in `yad2_client.py`). A slug
+passed directly returned a valid-looking page with 0 cards, not an error — easy to misread as "no
+listings" instead of "wrong city id".
+
+**Verified end-to-end** (not just against a saved HTML fixture): `fetch_search_results("ramat-gan")`
+returned 43 real listings with realistic prices (8,000–20,500 ₪), rooms, floors, sizes, streets,
+neighborhoods — ready to flow through `normalize.py` and the rest of the pipeline unchanged.
+
+**Known remaining gaps, not yet handled**:
+- Sponsored "new project" cards (`/yad1/project/...` links, absolute URLs, prices in the millions
+  since they price a whole development) are filtered out in `_parse_cards` — correct behavior,
+  just noting it's an active filter, not an oversight if project ads seem to be "missing".
+- Pagination isn't implemented — only the first page's cards (~40-45) are captured per run.
+- `floor_total`, `description`, `image_urls`, `posted_at`, and most of the amenity booleans
+  (parking/elevator/balcony/etc.) aren't extracted from the card HTML yet — the feed cards don't
+  show all of this; the individual listing page (the `url` field) would need a second fetch per
+  listing to get it, not yet built.
+- ZenRows' free trial has a finite credit pool — watch for it running out; each `js_render=true` +
+  `premium_proxy=true` request costs 15-25 credits per their pricing.

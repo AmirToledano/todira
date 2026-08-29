@@ -32,20 +32,12 @@ spec:
                       key: telegram-bot-token
                 - name: SCRAPE_CITIES
                   value: {{ .Values.scraper.cities | quote }}
-                {{- if .Values.yad2CookieHeader }}
-                - name: YAD2_COOKIE_HEADER
+                - name: ZENROWS_API_KEY
                   valueFrom:
                     secretKeyRef:
                       name: {{ .Release.Name }}-bot-secret
-                      key: yad2-cookie-header
-                {{- end }}
-                {{- if .Values.twocaptchaApiKey }}
-                - name: TWOCAPTCHA_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: twocaptcha-api-key
-                {{- end }}
+                      key: zenrows-api-key
+                      optional: true
               resources:
                 requests:
                   cpu: {{ .Values.resources.scraper.requests.cpu }}
