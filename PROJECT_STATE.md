@@ -77,6 +77,17 @@ probabilistic; checking if a URL with real search params (specific city ID, not 
 machine (not committed, not yet wired into `scraper/yad2_client.py` — this was a standalone
 feasibility test only).
 
+**Also tried 2026-08-29**: routing the EXISTING patchright code (which already correctly listens
+for the `realestate-feed` network response — see `yad2_client.py`) through ZenRows' raw residential
+proxy gateway (`superproxy.zenrows.com`, ports 1337 and 8001 both tried) instead of ZenRows' own
+high-level JS-rendering API. Idea: keep our precise, already-correct interception logic, just fix
+the IP/fingerprint problem via their proxy network. Result: connection failures (`net::ERR_TIMED_OUT`)
+— almost certainly a proxy **authentication format** issue (ZenRows likely expects extra params
+encoded into the proxy username, e.g. `apikey&js_render=true`, not a bare API key), not proven
+impossible. Worth revisiting with ZenRows' actual proxy-mode docs open (not just guessing the
+format) — this combined approach (our exact interception code + their residential IPs) is probably
+the most promising remaining direction, more so than either piece alone.
+
 ## Branding decisions made today
 - Telegram bot renamed via @BotFather to "טודירה - דירות בזמן אמת", profile photo is a tight crop
   (crown+face+cape) of an AI-generated portrait of the owner's dog Tudy in royal regalia — a

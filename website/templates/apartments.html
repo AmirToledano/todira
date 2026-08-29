@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}דירות תואמות — ToDira{% endblock %}
+{% block content %}
+<h1>דירות תואמות</h1>
+<div class="notice">גישה זמנית לפי מזהה טלגרם (uid={{ uid }}) — לא מאובטח עדיין, שלב ביניים בלבד.</div>
+{% if not listings %}
+  <div class="empty">
+    <p>אין עדיין דירות תואמות להצגה.</p>
+    <p style="font-size:.85em;">(אם זה נראה לך משונה — סביר שזה כי שאיבת המודעות מ-Yad2 עדיין חסומה, לא בעיה בסינון שלך.)</p>
+  </div>
+{% endif %}
+{% for l in listings %}
+  <div class="card">
+    <span class="price">{{ "%d ₪"|format(l.price) if l.price else "מחיר לא צוין" }}</span>
+    · {{ l.rooms }} חדרים · {{ l.city }}{% if l.neighborhood %}, {{ l.neighborhood }}{% endif %}
+    {% if l.floor is not none %}· קומה {{ l.floor }}{% endif %}
+    <p>{{ (l.description or "")[:200] }}</p>
+    <span class="tag">{{ l.source }}</span>
+    <a href="{{ l.url }}" target="_blank">לצפייה במודעה המלאה ←</a>
+  </div>
+{% endfor %}
+{% endblock %}

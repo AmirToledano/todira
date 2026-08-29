@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-website
+  labels:
+    app: {{ .Release.Name }}-website
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-website
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-website
+    spec:
+      containers:
+        - name: website
+          image: "{{ .Values.websiteImage.repository }}:{{ .Values.websiteImage.tag | default "latest" }}"
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres-secret
+                  key: database-url
+          resources:
+            requests:
+              cpu: {{ .Values.resources.website.requests.cpu }}
+              memory: {{ .Values.resources.website.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.website.limits.cpu }}
+              memory: {{ .Values.resources.website.limits.memory }}

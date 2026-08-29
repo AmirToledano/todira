@@ -1,0 +1,17 @@
+# NodePort (not LoadBalancer/Ingress) — simplest way to get a browser-reachable URL without a
+# domain or TLS setup yet. Reachable at http://<node public IP>:{{ .Values.website.nodePort }}.
+# Revisit with a real Ingress + domain + TLS before any commercial launch.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-website
+  labels:
+    app: {{ .Release.Name }}-website
+spec:
+  type: NodePort
+  selector:
+    app: {{ .Release.Name }}-website
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: {{ .Values.website.nodePort }}

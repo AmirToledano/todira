@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}דירות שמורות — ToDira{% endblock %}
+{% block content %}
+<h1>❤️ דירות שמורות</h1>
+{% if not listings %}
+  <div class="empty"><p>עדיין לא שמרת דירות.</p></div>
+{% endif %}
+{% for l in listings %}
+  <div class="card">
+    <span class="price">{{ "%d ₪"|format(l.price) if l.price else "מחיר לא צוין" }}</span>
+    · {{ l.rooms }} חדרים · {{ l.city }}
+    <p>{{ (l.description or "")[:200] }}</p>
+    <a href="{{ l.url }}" target="_blank">לצפייה במודעה המלאה ←</a>
+  </div>
+{% endfor %}
+{% endblock %}

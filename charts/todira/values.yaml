@@ -13,6 +13,12 @@ botImage:
 scraperImage:
   repository: ghcr.io/CHANGE-ME/todira-scraper
   tag: latest
+websiteImage:
+  repository: ghcr.io/CHANGE-ME/todira-website
+  tag: latest
+
+website:
+  nodePort: 30080 # http://<node public IP>:30080 — no domain/TLS yet, see website-service.yaml
 
 replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates pollers on one token
 
@@ -36,3 +42,6 @@ resources:
   postgres:
     requests: { cpu: "100m", memory: "256Mi" }
     limits: { cpu: "500m", memory: "512Mi" }
+  website:
+    requests: { cpu: "50m", memory: "128Mi" }
+    limits: { cpu: "250m", memory: "256Mi" }

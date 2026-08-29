@@ -27,7 +27,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        service: [bot, scraper]
+        service: [bot, scraper, website]
     steps:
       - uses: actions/checkout@v4
 
@@ -72,6 +72,8 @@ jobs:
             --set botImage.tag=${{ github.sha }} \
             --set scraperImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-scraper \
             --set scraperImage.tag=${{ github.sha }} \
+            --set websiteImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-website \
+            --set websiteImage.tag=${{ github.sha }} \
             --set postgres.password=${{ secrets.POSTGRES_PASSWORD }} \
             --set telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
             --set geminiApiKey=${{ secrets.GEMINI_API_KEY }} \

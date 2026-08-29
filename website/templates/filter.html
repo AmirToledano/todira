@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}הסינון שלי — ToDira{% endblock %}
+{% block content %}
+<h1>🎛️ הסינון שלי</h1>
+<div class="notice">
+  עריכה בסיסית בלבד כאן (ערים/מחיר/חדרים). לעריכה מלאה של כל האפשרויות, השתמש ב-/filter בטלגרם.
+</div>
+<form method="post" action="/filter">
+  <input type="hidden" name="uid" value="{{ uid }}">
+  <label>ערים (מופרדות בפסיקים)</label>
+  <input type="text" name="cities" value="{{ f.cities|join(', ') }}">
+  <label>מחיר מינימלי</label>
+  <input type="number" name="price_min" value="{{ f.price_min or '' }}">
+  <label>מחיר מקסימלי</label>
+  <input type="number" name="price_max" value="{{ f.price_max or '' }}">
+  <label>חדרים מינימום</label>
+  <input type="number" step="0.5" name="rooms_min" value="{{ f.rooms_min or '' }}">
+  <label>חדרים מקסימום</label>
+  <input type="number" step="0.5" name="rooms_max" value="{{ f.rooms_max or '' }}">
+  <button type="submit">שמור</button>
+</form>
+{% endblock %}
