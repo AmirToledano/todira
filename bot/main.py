@@ -21,7 +21,7 @@ logger = logging.getLogger("bot.main")
 # bot (Telegram's own behavior, not something we control), matching what the reference bot's
 # menu looked like in the screenshots.
 BOT_COMMANDS = [
-    BotCommand("start", "👋 היי DirAmir"),
+    BotCommand("start", "👋 היי טודירה"),
     BotCommand("filter", "🎯 החיפוש שלי"),
     BotCommand("apartments", "👀 כל הדירות"),
     BotCommand("liked", "❤️ דירות ששמרתי"),

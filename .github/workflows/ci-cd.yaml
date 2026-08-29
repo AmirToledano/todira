@@ -43,8 +43,8 @@ jobs:
           file: ${{ matrix.service }}/Dockerfile
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-${{ matrix.service }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-${{ matrix.service }}:latest
 
   deploy:
     needs: [vars, build-and-push]
@@ -66,13 +66,13 @@ jobs:
 
       - name: Helm upgrade
         run: |
-          helm upgrade --install diramir charts/diramir \
-            -f charts/diramir/values.yaml \
-            --set botImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-bot \
+          helm upgrade --install todira charts/todira \
+            -f charts/todira/values.yaml \
+            --set botImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-bot \
             --set botImage.tag=${{ github.sha }} \
-            --set scraperImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/diramir-scraper \
+            --set scraperImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-scraper \
             --set scraperImage.tag=${{ github.sha }} \
             --set postgres.password=${{ secrets.POSTGRES_PASSWORD }} \
             --set telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
             --set geminiApiKey=${{ secrets.GEMINI_API_KEY }} \
-            --namespace diramir --create-namespace
+            --namespace todira --create-namespace

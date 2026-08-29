@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 
   # not started by `docker compose up` (see the `manual` profile) — the real periodic execution
-  # is the k8s CronJob (charts/diramir). Run it locally on demand:
+  # is the k8s CronJob (charts/todira). Run it locally on demand:
   # `docker compose run --rm scraper`
   scraper:
     build:

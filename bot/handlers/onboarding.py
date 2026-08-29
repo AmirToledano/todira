@@ -74,7 +74,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Gemini can take a few seconds (or, on a slow node, much longer) — an impatient real user
     # would otherwise stare at silence and assume the bot is broken/ignoring them.
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    await update.message.reply_text("🔍 רגע, DirAmir בודק את מה שכתבת...")
+    await update.message.reply_text("🔍 רגע, טודירה בודק את מה שכתבת...")
 
     state = context.user_data.setdefault("onboarding", dict(_EMPTY_STATE))
     result = gemini_client.parse_onboarding_message(update.message.text or "", state, cities.CITIES)

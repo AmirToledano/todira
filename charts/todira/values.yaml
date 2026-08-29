@@ -8,10 +8,10 @@
 #   twocaptchaApiKey         (optional — see scraper/YAD2_NOTES.md)
 
 botImage:
-  repository: ghcr.io/CHANGE-ME/diramir-bot
+  repository: ghcr.io/CHANGE-ME/todira-bot
   tag: latest
 scraperImage:
-  repository: ghcr.io/CHANGE-ME/diramir-scraper
+  repository: ghcr.io/CHANGE-ME/todira-scraper
   tag: latest
 
 replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates pollers on one token

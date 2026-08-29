@@ -8,7 +8,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 # dorin_common lives as a sibling directory to migrations/ both when run locally from the repo
-# root (diramir/common/dorin_common) and inside the bot container (/app/dorin_common,
+# root (todira/common/dorin_common) and inside the bot container (/app/dorin_common,
 # /app/migrations) — insert the parent dir so `import dorin_common` resolves in both cases.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common"))
 sys.path.insert(0, os.path.dirname(__file__) + "/..")

@@ -1,5 +1,5 @@
 """Entrypoint: run one scrape+match+notify cycle, then exit. Triggered periodically by the k8s
-CronJob (see charts/diramir), or manually via `docker compose run --rm scraper` locally.
+CronJob (see charts/todira), or manually via `docker compose run --rm scraper` locally.
 """
 from __future__ import annotations
 

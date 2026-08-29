@@ -1,4 +1,4 @@
-# DirAmir
+# ToDira
 
 A self-hosted Telegram bot that scrapes apartment listings (starting with Yad2) and notifies you
 when one matches your saved filter — a personal replacement for the paid "Dorin" bot (dorin.app).
@@ -17,7 +17,7 @@ scraping sources.)
   filters, send Telegram notifications for new matches. Run periodically via a k8s CronJob.
 - `bot/` — long-running Telegram bot (polling mode): `/start`, `/filter`, `/apartments`,
   `/liked`, `/profile`.
-- `charts/diramir/` — Helm chart deploying Postgres, the bot, and the scraper CronJob.
+- `charts/todira/` — Helm chart deploying Postgres, the bot, and the scraper CronJob.
 - `.github/workflows/` — CI/CD: build+push images to GHCR, `helm upgrade` to the cluster.
 
 ## Local development
