@@ -1,13 +1,15 @@
-"""Gemini-backed fallback parsing for onboarding free-text answers.
+"""Gemini-backed free-text onboarding parser.
 
-Only called when the cheap keyword/regex parse in onboarding.py already came up empty — this
-keeps API usage (and the free-tier rate limit) low while fixing exactly the failure mode found by
-manual testing: typos ("שגירות" instead of "שכירות"), abbreviations ("ראשל\"צ"), and misspellings
-("רמת גם" instead of "רמת גן") that plain substring matching can't catch.
+The user describes what they're looking for in their own words (one messy paragraph, or several
+back-and-forth turns) — mirrors the reference bot's WhatsApp onboarding rather than a rigid
+step-by-step Q&A. Each turn, `parse_onboarding_message` is handed the raw text plus whatever
+fields onboarding.py already collected in earlier turns, and returns the merged, updated state
+plus a natural-language reply (either a clarifying question for whatever's still missing, or a
+confirmation once deal_type + at least one city are known).
 
-Fails soft everywhere: if GEMINI_API_KEY isn't set, or the API call/parse fails for any reason,
-every function here returns None/[] so onboarding.py falls back to its existing "לא הצלחתי להבין"
-retry prompt instead of crashing.
+Fails soft: if GEMINI_API_KEY isn't set, or the API call/parse fails for any reason,
+`parse_onboarding_message` returns None — onboarding.py shows a "technical hiccup, try again"
+message and stays in the same state rather than crashing or silently losing the user's answer.
 """
 from __future__ import annotations
 
@@ -22,6 +24,21 @@ _MODEL = "gemini-2.0-flash"
 _client: genai.Client | None = None
 _client_checked = False
 
+_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "deal_type": {"type": "STRING", "enum": ["rent", "sale", "sublet", "unknown"]},
+        "cities": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "rooms_min": {"type": "NUMBER"},
+        "rooms_max": {"type": "NUMBER"},
+        "price_max": {"type": "NUMBER"},
+        "keywords": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "missing_required": {"type": "ARRAY", "items": {"type": "STRING", "enum": ["deal_type", "cities"]}},
+        "response_message": {"type": "STRING"},
+    },
+    "required": ["deal_type", "cities", "missing_required", "response_message"],
+}
+
 
 def _get_client() -> genai.Client | None:
     global _client, _client_checked
@@ -34,72 +51,42 @@ def _get_client() -> genai.Client | None:
     return _client
 
 
-def _generate_json(prompt: str, schema: dict) -> dict | None:
+def parse_onboarding_message(text: str, known_state: dict, known_cities: list[str]) -> dict | None:
     client = _get_client()
     if client is None:
         return None
+
+    prompt = (
+        "אתה עוזר בבוט טלגרם ישראלי שמוצא דירות למגורים. המשתמש מתאר בשפה חופשית מה הוא מחפש "
+        "(יכול לכלול שגיאות כתיב, קיצורים כמו 'ראשל\"צ'/'ב\"ש', וניסוח לא מסודר) — תפקידך לחלץ "
+        "מהטקסט שדות מובנים ולמזג אותם עם מה שכבר ידוע מתשובות קודמות של אותו משתמש.\n\n"
+        f"מה שכבר ידוע מתשובות קודמות (JSON): {json.dumps(known_state, ensure_ascii=False)}\n\n"
+        f"רשימת הערים התקפות היחידה שהמערכת מכירה: {known_cities}\n"
+        "cities חייב להכיל אך ורק ערים מהרשימה הזו, בכתיב המדויק שלהן. אל תמציא ערים שלא ברשימה.\n\n"
+        f"ההודעה החדשה מהמשתמש: {text!r}\n\n"
+        "החזר את המצב המלא והמעודכן (משלב את הידוע כבר עם מה שנלמד מההודעה החדשה — אל תאבד מידע "
+        "קודם אם ההודעה החדשה לא סתרה אותו). deal_type ו-cities (לפחות עיר אחת) הם שדות חובה; "
+        "rooms_min/rooms_max/price_max/keywords הם רשות (השאר ריק/None אם לא ידוע). "
+        "ב-missing_required פרט אילו מבין deal_type/cities עדיין לא ידועים.\n"
+        "ב-response_message כתוב תגובה טבעית וידידותית בעברית: אם עדיין חסר מידע חובה, שאל שאלה "
+        "ממוקדת רק על מה שחסר (אל תשאל שוב על מה שכבר ידוע); אם כל החובה ידוע, כתוב אישור קצר וחם "
+        "שמסכם את מה שהבנת."
+    )
+
     try:
         response = client.models.generate_content(
             model=_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=schema,
+                response_schema=_SCHEMA,
             ),
         )
-        return json.loads(response.text)
+        result = json.loads(response.text)
     except Exception:
         return None
 
-
-def parse_deal_type(text: str) -> str | None:
-    schema = {
-        "type": "OBJECT",
-        "properties": {"deal_type": {"type": "STRING", "enum": ["rent", "sale", "sublet", "unknown"]}},
-        "required": ["deal_type"],
-    }
-    prompt = (
-        "משתמש עונה בבוט טלגרם ישראלי לחיפוש דירות על השאלה 'מה את/ה מחפש/ת - שכירות, מכירה או "
-        "סבלט?'. גם אם יש שגיאת כתיב או ניסוח לא סטנדרטי, תבין את הכוונה ותחזיר rent (שכירות), "
-        "sale (מכירה) או sublet (סבלט). אם באמת לא ברור, תחזיר unknown.\n"
-        f"תשובת המשתמש: {text!r}"
-    )
-    result = _generate_json(prompt, schema)
-    value = (result or {}).get("deal_type")
-    return value if value in ("rent", "sale", "sublet") else None
-
-
-def parse_cities(text: str, known_cities: list[str]) -> list[str]:
-    schema = {
-        "type": "OBJECT",
-        "properties": {"cities": {"type": "ARRAY", "items": {"type": "STRING"}}},
-        "required": ["cities"],
-    }
-    prompt = (
-        "משתמש כתב שמות ערים/יישובים בישראל בבוט חיפוש דירות, יכול לכלול שגיאות כתיב, קיצורים "
-        "(כמו 'ראשל\"צ' או 'ב\"ש') או ניסוחים לא מדויקים. הרשימה הבאה היא רשימת הערים התקפות "
-        "היחידה שהמערכת מכירה - תחזיר אך ורק ערים מהרשימה הזו שמתאימות לכוונת המשתמש, בכתיב "
-        "המדויק שלהן כפי שמופיע ברשימה. אל תמציא ערים שלא נמצאות ברשימה.\n"
-        f"רשימת ערים תקפות: {known_cities}\n"
-        f"טקסט המשתמש: {text!r}"
-    )
-    result = _generate_json(prompt, schema)
-    matched = (result or {}).get("cities") or []
-    return [c for c in matched if c in known_cities]
-
-
-def parse_rooms(text: str) -> tuple[float, float] | None:
-    schema = {
-        "type": "OBJECT",
-        "properties": {"rooms_min": {"type": "NUMBER"}, "rooms_max": {"type": "NUMBER"}},
-        "required": ["rooms_min", "rooms_max"],
-    }
-    prompt = (
-        "משתמש עונה כמה חדרים הוא מחפש בדירה - יכול להיות מספר בודד, טווח, או ניסוח חופשי "
-        "(כולל חצאי חדרים כמו 2.5). תחזיר rooms_min ו-rooms_max; אם זה מספר בודד, שניהם שווים.\n"
-        f"תשובת המשתמש: {text!r}"
-    )
-    result = _generate_json(prompt, schema)
-    if not result or "rooms_min" not in result or "rooms_max" not in result:
-        return None
-    return float(result["rooms_min"]), float(result["rooms_max"])
+    result["cities"] = [c for c in (result.get("cities") or []) if c in known_cities]
+    if result.get("deal_type") not in ("rent", "sale", "sublet"):
+        result["deal_type"] = None
+    return result

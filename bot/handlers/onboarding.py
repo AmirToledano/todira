@@ -1,11 +1,12 @@
-"""Free-text onboarding for brand-new users — mirrors the reference bot's casual Q&A flow
-(deal type -> city -> rooms). Tries simple keyword/regex parsing first (fast, free, no external
-dependency), and only falls back to a Gemini call (gemini_client.py) when that comes up empty —
-covers typos ("שגירות"), abbreviations ("ראשל\"צ"), and misspellings ("רמת גם") that plain
-substring matching can't, without paying for an API call on every message. If GEMINI_API_KEY
-isn't set, the fallback is a no-op and behavior is identical to the old regex-only version.
-(We skip asking for the user's name, unlike the reference bot — Telegram already gives us
-`first_name`, which /start's own welcome message already uses.)
+"""Free-text onboarding for brand-new users — mirrors the reference bot's WhatsApp flow: the user
+describes what they're looking for in their own words (one messy paragraph, or a few back-and-
+forth turns), and Gemini (gemini_client.py) extracts structured filter fields each turn, merging
+with whatever was already collected, until the required minimum (deal_type + at least one city)
+is known. This replaced an earlier rigid step-by-step Q&A (deal type -> city -> rooms) that used
+plain regex/keyword parsing — real user testing showed typos ("שגירות"), abbreviations
+("ראשל\"צ"), and misspellings ("רמת גם") broke it too often, and patching each field's parser
+individually was turning into whack-a-mole. This needs GEMINI_API_KEY set; if it's missing or the
+API call fails, the user sees a "technical hiccup" message and can retry or fall back to /filter.
 
 This does NOT replace the menu-driven `/filter` conversation (handlers/filter_conversation.py)
 — it's a friendlier on-ramp that saves a first, simple Filter row; /filter remains available
@@ -13,16 +14,13 @@ afterwards for full control over every field.
 
 `/start` is owned entirely by this ConversationHandler (see build_onboarding_handler): its entry
 point calls handlers.start.start() to send the normal welcome and upsert/reactivate the user,
-then only continues into the Q&A states if the user doesn't have a filter yet — a returning user
-just gets the plain welcome and the conversation ends immediately.
+then only continues into the free-text state if the user doesn't have a filter yet — a returning
+user just gets the plain welcome and the conversation ends immediately.
 """
 from __future__ import annotations
 
-import re
-
 import cities
 import gemini_client
-import keyboards as kb
 from dorin_common.cards import format_caption, listing_keyboard
 from dorin_common.db import get_session
 from dorin_common.models import Filter
@@ -40,39 +38,16 @@ from telegram.ext import (
     filters as tg_filters,
 )
 
-AWAIT_DEAL_TYPE, AWAIT_CITIES, AWAIT_ROOMS = range(3)
+AWAIT_FREETEXT = 0
 
-DEAL_TYPE_KEYWORDS = (
-    ("sublet", ("סבלט", "סאבלט")),
-    ("sale", ("מכיר", "קני", "לקנות", "רכיש")),
-    ("rent", ("שכיר", "להשכיר", "שכר")),
-)
-
-
-def _parse_deal_type(text: str) -> str | None:
-    for value, keywords in DEAL_TYPE_KEYWORDS:
-        if any(kw in text for kw in keywords):
-            return value
-    return None
-
-
-def _parse_cities(text: str) -> list[str]:
-    matched: list[str] = []
-    for segment in re.split(r"[,\n]", text):
-        segment = segment.strip()
-        if not segment:
-            continue
-        found = cities.find_matches(segment, limit=1)
-        if found and found[0] not in matched:
-            matched.append(found[0])
-    return matched
-
-
-def _parse_rooms(text: str) -> tuple[float, float] | None:
-    numbers = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", text)]
-    if not numbers:
-        return None
-    return min(numbers), max(numbers)
+_EMPTY_STATE = {
+    "deal_type": None,
+    "cities": [],
+    "rooms_min": None,
+    "rooms_max": None,
+    "price_max": None,
+    "keywords": [],
+}
 
 
 async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -85,89 +60,51 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if has_filter:
         return ConversationHandler.END
 
-    context.user_data["onboarding"] = {}
+    context.user_data["onboarding"] = dict(_EMPTY_STATE)
     await update.message.reply_text(
-        "אני יכול לעזור לך למצוא דירה בכמה שאלות קצרות (או שאפשר לדלג ולהגדיר הכל ידנית "
-        "עם /filter בכל שלב) 🙂\n\nמה את/ה מחפש/ת — שכירות, מכירה או סבלט?"
+        "ספר/י לי בכמה מילים מה את/ה מחפש/ת — למשל עיר, שכירות/מכירה/סבלט, תקציב, כמה חדרים, "
+        "וכל דבר נוסף שחשוב לך. אפשר לכתוב חופשי, אני אבין 🙂\n"
+        "(או שאפשר לדלג ולהגדיר הכל ידנית עם /filter בכל שלב)"
     )
-    return AWAIT_DEAL_TYPE
+    return AWAIT_FREETEXT
 
 
-async def _handle_deal_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text or ""
-    deal_type = _parse_deal_type(text) or gemini_client.parse_deal_type(text)
-    if deal_type is None:
+async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    state = context.user_data.setdefault("onboarding", dict(_EMPTY_STATE))
+    result = gemini_client.parse_onboarding_message(update.message.text or "", state, cities.CITIES)
+
+    if result is None:
         await update.message.reply_text(
-            "לא הצלחתי להבין 😅 את/ה מחפש/ת שכירות, מכירה או סבלט?"
+            "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע, או תמיד אפשר להגדיר ידנית "
+            "עם /filter."
         )
-        return AWAIT_DEAL_TYPE
+        return AWAIT_FREETEXT
 
-    context.user_data["onboarding"]["deal_type"] = deal_type
-    await update.message.reply_text(
-        "מעולה! ואיזה עיר או אזור מעניינים אותך? (אפשר כמה, מופרדות בפסיקים)"
-    )
-    return AWAIT_CITIES
+    for key in _EMPTY_STATE:
+        if key in result:
+            state[key] = result[key]
 
+    await update.message.reply_text(result.get("response_message") or "רשמתי, תודה!")
 
-async def _handle_cities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text or ""
-    segments = [s for s in re.split(r"[,\n]", text) if s.strip()]
-    matched = _parse_cities(text)
-    if len(matched) < len(segments):
-        # at least one comma-separated segment didn't resolve via regex/aliases (e.g. "ראשל"צ",
-        # "רמת גם") — ask Gemini on the full text and merge in anything new it finds, rather than
-        # silently dropping the segments regex couldn't handle.
-        for city in gemini_client.parse_cities(text, cities.CITIES):
-            if city not in matched:
-                matched.append(city)
-    if not matched:
-        await update.message.reply_text(
-            "לא זיהיתי אף עיר מהרשימה שלי 🤔 נסה/י שוב (למשל: תל אביב יפו, ירושלים):"
-        )
-        return AWAIT_CITIES
-
-    context.user_data["onboarding"]["cities"] = matched
-    await update.message.reply_text(
-        f"נרשם: {', '.join(matched)} ✅\nוכמה חדרים בערך את/ה מחפש/ת?"
-    )
-    return AWAIT_ROOMS
-
-
-async def _handle_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text or ""
-    rooms = _parse_rooms(text) or gemini_client.parse_rooms(text)
-    if rooms is None:
-        await update.message.reply_text("לא הצלחתי למצוא מספר 😅 כמה חדרים בערך? (למשל 3, או 2.5)")
-        return AWAIT_ROOMS
-
-    data = context.user_data.pop("onboarding")
-    rooms_min, rooms_max = rooms
+    if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
+        return AWAIT_FREETEXT
 
     with get_session() as session:
         user = get_or_create_user(session, update.effective_user)
         filter_row = Filter(
             user_id=user.id,
-            deal_type=data["deal_type"],
-            cities=data["cities"],
-            rooms_min=rooms_min,
-            rooms_max=rooms_max,
+            deal_type=state["deal_type"],
+            cities=state["cities"],
+            rooms_min=state["rooms_min"],
+            rooms_max=state["rooms_max"],
+            price_max=int(state["price_max"]) if state["price_max"] is not None else None,
+            keywords=state["keywords"],
         )
         session.add(filter_row)
         session.commit()
         example = find_matching_listings(session, user.id, filter_row, limit=1)
 
-    rooms_line = (
-        f"🛏️ חדרים: {rooms_min:g}"
-        if rooms_min == rooms_max
-        else f"🛏️ חדרים: {rooms_min:g}–{rooms_max:g}"
-    )
-    summary = (
-        "✅ <b>הסינון החדש שלך:</b>\n"
-        f"🏷️ סוג עסקה: {kb.DEAL_TYPE_LABELS.get(data['deal_type'], data['deal_type'])}\n"
-        f"📍 ערים: {', '.join(data['cities'])}\n"
-        f"{rooms_line}"
-    )
-    await update.message.reply_text(summary, parse_mode=ParseMode.HTML)
+    context.user_data.pop("onboarding", None)
     await update.message.reply_text(
         "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter 🎛️"
     )
@@ -187,9 +124,7 @@ def build_onboarding_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CommandHandler("start", onboarding_entry)],
         states={
-            AWAIT_DEAL_TYPE: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, _handle_deal_type)],
-            AWAIT_CITIES: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, _handle_cities)],
-            AWAIT_ROOMS: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, _handle_rooms)],
+            AWAIT_FREETEXT: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, _handle_freetext)],
         },
         fallbacks=[CommandHandler("start", onboarding_entry)],
         name="onboarding_conversation",
