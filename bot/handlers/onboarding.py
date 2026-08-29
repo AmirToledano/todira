@@ -45,6 +45,7 @@ _EMPTY_STATE = {
     "cities": [],
     "rooms_min": None,
     "rooms_max": None,
+    "price_min": None,
     "price_max": None,
     "keywords": [],
 }
@@ -102,6 +103,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             cities=state["cities"],
             rooms_min=state["rooms_min"],
             rooms_max=state["rooms_max"],
+            price_min=int(state["price_min"]) if state["price_min"] is not None else None,
             price_max=int(state["price_max"]) if state["price_max"] is not None else None,
             keywords=state["keywords"],
         )

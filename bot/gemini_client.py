@@ -34,6 +34,7 @@ _SCHEMA = {
         "cities": {"type": "ARRAY", "items": {"type": "STRING"}},
         "rooms_min": {"type": "NUMBER"},
         "rooms_max": {"type": "NUMBER"},
+        "price_min": {"type": "NUMBER"},
         "price_max": {"type": "NUMBER"},
         "keywords": {"type": "ARRAY", "items": {"type": "STRING"}},
         "missing_required": {"type": "ARRAY", "items": {"type": "STRING", "enum": ["deal_type", "cities"]}},
@@ -69,7 +70,9 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
         f"ההודעה החדשה מהמשתמש: {text!r}\n\n"
         "החזר את המצב המלא והמעודכן (משלב את הידוע כבר עם מה שנלמד מההודעה החדשה — אל תאבד מידע "
         "קודם אם ההודעה החדשה לא סתרה אותו). deal_type ו-cities (לפחות עיר אחת) הם שדות חובה; "
-        "rooms_min/rooms_max/price_max/keywords הם רשות (השאר ריק/None אם לא ידוע). "
+        "rooms_min/rooms_max/price_min/price_max/keywords הם רשות (השאר ריק/None אם לא ידוע). "
+        "אם המשתמש נתן טווח מחירים (למשל 'בין 3200 ל-8700' או '3200-8700') — price_min הוא הערך "
+        "הנמוך ו-price_max הוא הגבוה. אם ניתן רק מספר אחד/תקרה (למשל 'עד 6000') — רק price_max. "
         "ב-missing_required פרט אילו מבין deal_type/cities עדיין לא ידועים.\n"
         "ב-response_message כתוב תגובה טבעית וידידותית בעברית: אם עדיין חסר מידע חובה, שאל שאלה "
         "ממוקדת רק על מה שחסר (אל תשאל שוב על מה שכבר ידוע); אם כל החובה ידוע, כתוב אישור קצר וחם "
