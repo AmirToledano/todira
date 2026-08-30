@@ -110,14 +110,52 @@ that tripped the owner up once already, worth remembering if guiding this again)
 correctly linkify in WhatsApp/Telegram now since it's a real hostname, not a bare IP.
 
 **Still open, lower urgency now that sharing works**: no HTTPS yet (Caddy/Traefik + Let's
-Encrypt, or Cloudflare in front of DuckDNS, either works), no Open Graph meta tags on
-`website/templates/base.html` yet for a rich preview card when shared, and the URL still needs
-the `:30080` in it (could front it with a reverse proxy on 80/443 to drop that). Also remember:
-DuckDNS points at a specific IP the owner has to update by hand — if the EC2 box's public IP
-changes again (stop/modify/start without an Elastic IP, as happened once already this same day),
+Encrypt, or Cloudflare in front of DuckDNS, either works), and the URL still needs the `:30080`
+in it (could front it with a reverse proxy on 80/443 to drop that). Also remember: DuckDNS points
+at a specific IP the owner has to update by hand — if the EC2 box's public IP changes again
+(stop/modify/start without an Elastic IP, as happened once already this same day),
 `todira.duckdns.org` will need its IP re-pointed too, on top of the `KUBECONFIG_B64` secret fix
 described above. Attaching a real Elastic IP would fix both of these recurring papercuts at once
 and is worth doing whenever there's a slightly longer window than "20 minutes before a flight."
+
+## Update 2026-08-30, autonomous continuation while owner was mid-flight
+Owner explicitly asked this assistant to keep working solo ("if there's things you can keep
+working on without me, run!") after two more rounds of visual feedback referencing Dorin's own
+landing page (dorin.app) as the bar — specifically: (1) it's dense with small info/stat boxes,
+not sparse; (2) the hero visual should feel like part of the page (full-bleed background), not a
+framed photo "sitting" on top in a bordered card. Pushed straight to `main` under the owner's
+standing "run fast, don't stop" approval for this session; each commit was CI/CD-verified green
+before moving to the next (see git log on `main`, commits `7861175` through `6b61b4c` for the
+exact diffs). In order:
+
+1. **Hero rebuilt as full-bleed background** (`.hero.hero-image` in style.css): the brand webp
+   is now the section's own `background-image` with a wine-to-dark gradient overlay for text
+   legibility, instead of a separate bordered/shadowed `<img>` card. The floating fact pills
+   became a 4-item `.hero-float-stats` row (scan cadence, AI, 24/7, free) that overlaps the
+   hero's bottom edge via negative margin, so the hero visually bleeds into the next section.
+2. **New "why todira" comparison section** (`.compare`/`.compare-grid`): two boxed columns
+   (without/with todira) — the information-dense box-grid style Dorin's page has plenty of,
+   written as honest behavioral claims, not fabricated stats (still no real user base to cite
+   numbers about — this constraint hasn't changed).
+3. **Open Graph + Twitter Card meta tags** added to `base.html` (og:title/description/image/url,
+   twitter:card=summary_large_image) so a shared link now gets a real preview card with the brand
+   image, using `request.base_url` so it resolves correctly regardless of host — FastAPI's
+   `TemplateResponse(request, ...)` call style (already used throughout `main.py`) auto-injects
+   `request` into every template's context, confirmed this works via a standalone Jinja2 render
+   pass with a stand-in request object before trusting it in production.
+4. **Real site footer** added (brand mark, nav links, Telegram link, one-line signature) — every
+   page used to just stop dead after the last section with nothing below it.
+
+Every step was validated the same way established earlier in this doc: a standalone Jinja2
+render pass (with a fake `request` object where needed) across every template, plus a CSS
+brace-balance check, before each push — and each CI/CD run was confirmed green via the GitHub
+API before starting the next change. Site is live and current at `http://todira.duckdns.org:30080/`.
+
+**Natural next steps if picking this up further** (not started, just visible candidates): the
+`/apartments`, `/liked`, `/filter` pages haven't been revisited with the same "dense info boxes"
+treatment the home page just got — they're still the earlier (already solid, but comparatively
+plainer) design from the first big redesign pass. HTTPS + dropping `:30080` (noted above) is the
+other standing item.
 
 ## Correction to a stale note below: `ZENROWS_API_KEY` IS set
 The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
