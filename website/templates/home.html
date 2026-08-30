@@ -3,7 +3,7 @@
 {% block content %}
 
 <section class="hero reveal">
-  <div class="crown-badge">👑</div>
+  <span class="eyebrow">👑 חינם לגמרי · דרך טלגרם</span>
   <h1>הדירה שלך מוצאת אותך</h1>
   <p class="lead">טודירה סורק את שוק הדירות בלי הפסקה, ומתריע לך תוך דקות ברגע שעולה דירה שמתאימה בדיוק למה שחיפשת — לפני שמישהו אחר יתפוס אותה.</p>
   <div class="cta-row">
@@ -12,10 +12,20 @@
   </div>
 </section>
 
-<section class="brand-showcase reveal" id="brand-showcase-section">
-  <img src="/static/todira-brand.webp" alt="טודי המלך — הבוט שסורק בשבילך את שוק הדירות" loading="lazy"
-       onerror="this.closest('section').style.display='none'">
+<section class="showcase reveal">
+  <div class="showcase-frame">
+    <img src="/static/todira-brand.webp" alt="טודי המלך — הבוט שסורק בשבילך את שוק הדירות" loading="lazy">
+    <div class="float-badge badge-top">⚡ <span>סריקה כל 10 דקות</span></div>
+    <div class="float-badge badge-bottom">🧠 <span>מבין עברית חופשית</span></div>
+  </div>
 </section>
+
+<div class="trust-strip reveal">
+  <div class="trust-item"><span class="num">10 דק׳</span><span class="label">תדירות סריקה</span></div>
+  <div class="trust-item"><span class="num">24/7</span><span class="label">הבוט תמיד ער</span></div>
+  <div class="trust-item"><span class="num">AI</span><span class="label">מבין שפה חופשית</span></div>
+  <div class="trust-item"><span class="num">0 ₪</span><span class="label">לגמרי בחינם</span></div>
+</div>
 
 <section class="feature-grid">
   <div class="feature-card reveal" style="transition-delay:0ms">
@@ -39,7 +49,7 @@
   <h2 class="section-title reveal">איך זה עובד</h2>
   <p class="section-sub reveal">שלוש דקות התחלה, ואז טודירה עובד בשבילך ברקע.</p>
   <div class="steps">
-    <div class="step reveal" style="transition-delay:0ms">
+    <div class="step reveal">
       <h3>מדברים עם הבוט</h3>
       <p>פותחים שיחה בטלגרם ומתארים במילים שלכם את הדירה שאתם מחפשים.</p>
     </div>
@@ -51,6 +61,28 @@
       <h3>מקבלים התראות</h3>
       <p>מרגע זה, כל דירה חדשה שמתאימה תשלח אליכם ישירות — וגם תופיע כאן באתר.</p>
     </div>
+  </div>
+</section>
+
+<section class="faq reveal">
+  <h2 class="section-title">שאלות נפוצות</h2>
+  <div class="faq-list">
+    <details class="faq-item">
+      <summary>איך הבינה המלאכותית מבינה מה אני מחפש? <span class="chevron">⌄</span></summary>
+      <p>אתם כותבים לבוט בשפה חופשית, בדיוק כמו שהייתם מתארים לחבר מה אתם מחפשים. מודל שפה מזהה מתוך המשפט עיר, טווח מחיר, מספר חדרים ופרטים נוספים, ובונה מזה פרופיל חיפוש — בלי טפסים ובלי תפריטים מסובכים.</p>
+    </details>
+    <details class="faq-item">
+      <summary>מאיפה מגיעות הדירות? <span class="chevron">⌄</span></summary>
+      <p>טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל 10 דקות ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.</p>
+    </details>
+    <details class="faq-item">
+      <summary>זה באמת בחינם? <span class="chevron">⌄</span></summary>
+      <p>כן, כרגע השירות חינמי לגמרי. </p>
+    </details>
+    <details class="faq-item">
+      <summary>אפשר לשנות את הסינון אחרי שהגדרתי אותו? <span class="chevron">⌄</span></summary>
+      <p>בהחלט — גם דרך הבוט בטלגרם וגם כאן באתר, בעמוד "הסינון שלי", בכל שלב שתרצו.</p>
+    </details>
   </div>
 </section>
 
