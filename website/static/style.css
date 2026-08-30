@@ -89,43 +89,55 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .btn.outline:hover { background: var(--wine-tint); }
 .btn.block { width: 100%; justify-content: center; }
 
-/* ---------- hero (home page) — full-bleed brand image, content overlaid ---------- */
+/* ---------- hero (home page) — full brand image, nothing cropped ----------
+   The portrait's own baked-in caption ("בוט חיפוש דירות טודירה" + the little
+   dog/key marks) lives at the bottom of the image and must stay fully
+   visible — so the hero is sized to the image's real aspect ratio (cover
+   with a matching container never crops) instead of forcing a short banner
+   crop. Our own headline sits in a glass card floating over the TOP of the
+   image (clean space, doesn't compete with the image's own bottom text). */
 .hero.hero-image {
   position: relative; overflow: hidden; isolation: isolate;
   border-radius: var(--radius-lg);
-  min-height: 460px; display: flex; align-items: flex-end;
+  aspect-ratio: 1184 / 2096;
+  display: flex; align-items: flex-start; justify-content: center;
   background-image: url('/static/todira-brand.webp');
   background-size: cover; background-position: top center;
   margin-bottom: 0;
 }
-.hero-overlay {
-  position: absolute; inset: 0; z-index: 0;
-  background: linear-gradient(180deg, rgba(122,31,43,.12) 0%, rgba(36,20,23,.5) 55%, rgba(30,15,18,.94) 100%);
+@media (min-width: 700px) {
+  .hero.hero-image {
+    aspect-ratio: auto; height: 520px;
+    background-size: contain; background-position: top center;
+    background-color: var(--bg);
+  }
 }
+.hero-overlay { display: none; }
 .hero-content {
-  position: relative; z-index: 1; width: 100%;
-  padding: 40px 24px 76px; text-align: center; color: #fff;
+  position: relative; z-index: 1;
+  background: rgba(255,255,255,.93); backdrop-filter: blur(10px);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  padding: 26px 24px; margin: 26px 18px 0; text-align: center;
+  max-width: 440px;
 }
-.hero-content h1 { color: #fff; font-size: clamp(2rem, 5.5vw, 3.2rem); margin-bottom: .3em; text-shadow: 0 2px 12px rgba(0,0,0,.25); }
-.hero-content .lead { font-size: 1.1rem; color: rgba(255,255,255,.88); max-width: 540px; margin: 0 auto 28px; }
-.hero-content .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.hero-content h1 { font-size: clamp(1.7rem, 6vw, 2.6rem); margin-bottom: .3em; }
+.hero-content .lead { font-size: 1rem; color: var(--text-muted); margin: 0 auto 22px; }
+.hero-content .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .hero-content .eyebrow {
   display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(6px);
-  border-radius: 999px; padding: 6px 16px; font-size: .82rem; font-weight: 700; color: #fff;
-  margin-bottom: 18px;
+  background: var(--wine-tint); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 16px; font-size: .8rem; font-weight: 700; color: var(--wine);
+  margin-bottom: 14px;
 }
-.btn.outline.light { color: #fff !important; border-color: rgba(255,255,255,.55); }
-.btn.outline.light:hover { background: rgba(255,255,255,.14); }
 
-/* ---------- floating stat cards, overlapping the hero's bottom edge ---------- */
+/* ---------- floating stat cards, right under the hero ---------- */
 .hero-float-stats {
-  position: relative; z-index: 2;
   display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
-  max-width: 720px; margin: -48px auto 60px; padding: 0 18px;
+  max-width: 720px; margin: 22px auto 60px; padding: 0 18px;
 }
 .float-stat {
-  background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+  background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
   padding: 14px 18px; display: flex; align-items: center; gap: 10px;
   flex: 1 1 140px; min-width: 140px;
 }
@@ -133,8 +145,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .float-stat b { display: block; font-family: 'Frank Ruhl Libre', serif; color: var(--wine); font-size: 1.05rem; line-height: 1.2; }
 .float-stat .label-sm { font-size: .72rem; color: var(--text-muted); }
 @media (max-width: 480px) {
-  .hero.hero-image { min-height: 400px; }
-  .hero-float-stats { margin-top: -36px; gap: 8px; }
+  .hero-float-stats { gap: 8px; }
   .float-stat { padding: 10px 12px; min-width: 42%; }
 }
 
