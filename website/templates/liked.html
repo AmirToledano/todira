@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active_page = "liked" %}
-{% block title %}דירות שמורות — ToDira{% endblock %}
+{% block title %}דירות שמורות — טודירה{% endblock %}
 {% block content %}
 {% from "_listing_card.html" import listing_card %}
 
@@ -17,7 +17,7 @@
   </div>
 {% else %}
   <div class="listing-grid">
-    {% for l in listings %}{{ listing_card(l) }}{% endfor %}
+    {% for l in listings %}{{ listing_card(l, (loop.index0 % 6) * 60) }}{% endfor %}
   </div>
 {% endif %}
 {% endblock %}

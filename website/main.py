@@ -22,7 +22,7 @@ from sqlalchemy import select
 
 BASE_DIR = Path(__file__).parent
 
-app = FastAPI(title="ToDira")
+app = FastAPI(title="טודירה")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
