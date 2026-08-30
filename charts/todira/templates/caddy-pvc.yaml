@@ -1,0 +1,14 @@
+# Persists Caddy's issued certificate across pod restarts so a routine redeploy doesn't force a
+# fresh Let's Encrypt issuance every time (rate-limited, and pointless churn for a single domain).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-caddy-pvc
+  labels:
+    app: {{ .Release.Name }}-caddy
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
