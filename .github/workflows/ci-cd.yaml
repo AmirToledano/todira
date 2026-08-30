@@ -97,11 +97,11 @@ jobs:
         if: always()
         run: |
           echo "--- pods ---"
-          kubectl get pods -n todira -o wide
+          kubectl get pods -n todira -o wide || true
           echo "--- recent events ---"
-          kubectl get events -n todira --sort-by=.lastTimestamp | tail -40
+          kubectl get events -n todira --sort-by=.lastTimestamp | tail -40 || true
           echo "--- bot describe ---"
-          kubectl describe pod -n todira -l app=todira-bot
+          kubectl describe pod -n todira -l app=todira-bot || true
           echo "--- bot logs (current container) ---"
           kubectl logs -n todira -l app=todira-bot --tail=150 || true
           echo "--- bot logs (previous container, if it restarted) ---"
