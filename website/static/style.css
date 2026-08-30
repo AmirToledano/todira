@@ -334,15 +334,32 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   margin-bottom: 6px; color: var(--text);
 }
 .field .field-icon { font-size: 1rem; }
-.field input {
+.field input:not([type="checkbox"]), .field select {
   width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
   font-size: .96rem; font-family: inherit; background: var(--bg);
   transition: border-color .15s;
 }
-.field input:focus { outline: none; border-color: var(--gold); background: #fff; }
+.field input:not([type="checkbox"]):focus, .field select:focus { outline: none; border-color: var(--gold); background: #fff; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
 .field-hint { font-size: .78rem; color: var(--text-muted); margin-top: 5px; }
+
+/* toggle-chip checkboxes (amenities, property types, etc) */
+.checkbox-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.check-chip {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none;
+  background: var(--bg); border: 1.5px solid var(--border); border-radius: 999px;
+  padding: 8px 14px; font-size: .88rem; transition: border-color .15s, background .15s, color .15s;
+}
+.check-chip input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--wine); margin: 0; }
+.check-chip:has(input:checked) {
+  background: var(--wine-tint); border-color: var(--wine); color: var(--wine); font-weight: 600;
+}
+.field-section-title {
+  font-weight: 700; font-size: .82rem; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: .04em; margin: 28px 0 14px; padding-top: 20px; border-top: 1px solid var(--border);
+}
+.field-section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
 
 /* ---------- scroll-reveal & tactile feedback ---------- */
 .reveal { opacity: 0; transform: translateY(26px); transition: opacity .65s cubic-bezier(.2,.7,.3,1), transform .65s cubic-bezier(.2,.7,.3,1); }
