@@ -92,3 +92,17 @@ jobs:
             --set geminiApiKey=${{ secrets.GEMINI_API_KEY }} \
             --set zenrowsApiKey=${{ secrets.ZENROWS_API_KEY }} \
             --namespace todira --create-namespace
+
+      - name: Diagnose bot pod (owner reported it's not responding)
+        if: always()
+        run: |
+          echo "--- pods ---"
+          kubectl get pods -n todira -o wide
+          echo "--- recent events ---"
+          kubectl get events -n todira --sort-by=.lastTimestamp | tail -40
+          echo "--- bot describe ---"
+          kubectl describe pod -n todira -l app=todira-bot
+          echo "--- bot logs (current container) ---"
+          kubectl logs -n todira -l app=todira-bot --tail=150 || true
+          echo "--- bot logs (previous container, if it restarted) ---"
+          kubectl logs -n todira -l app=todira-bot --tail=150 --previous || true
