@@ -157,6 +157,48 @@ treatment the home page just got — they're still the earlier (already solid, b
 plainer) design from the first big redesign pass. HTTPS + dropping `:30080` (noted above) is the
 other standing item.
 
+## Update 2026-08-30, continued autonomous work: apartments/liked/filter pages + test suite started
+Owner then sent the broadest instruction yet, while traveling and unreachable: keep working
+indefinitely, autonomously, on literally anything that helps the project — more site work, a
+WhatsApp template if possible without him doing anything, or getting more listing sources flowing
+(Facebook/Yad2/Komo/whatever). Continuing under the same "run fast, don't stop, push straight to
+main" standing approval.
+
+1. **Closed the "natural next step" from above**: added a shared `.page-banner` component
+   (gradient card + a stat box on the side — result count for apartments/liked, active-city count
+   for filter) to `apartments.html`, `liked.html`, `filter.html`, replacing their older plain
+   `.page-head`/`.result-count` pairing so every page now matches the home page's visual density.
+   Commit `d24c857`, CI/CD run #30 — confirmed green.
+2. **Investigated further options while network-independent**: confirmed via `find` that the repo
+   has **zero automated tests anywhere** (no `test_*.py`, `pytest.ini`, `conftest.py`,
+   `pyproject.toml`). `common/dorin_common/matching.py` is pure I/O-free business logic (matches
+   listings to user filters — directly affects product correctness) and its own docstring says
+   it's "fully unit-testable" — picked as the first real test target. Read `matching.py` and
+   `models.py` in full to get exact field names for fixtures. **Done**: added
+   `tests/test_matching.py` (63 cases — every hard filter, every mandatory-criteria boolean pair
+   incl. the NULL-handling asymmetry between amenities and `no_brokers`, `flexible_match`
+   tolerance, short-circuit behavior) and `tests/test_normalize.py` (19 cases — id/url fallbacks,
+   alternate key names, malformed-value degradation, the "never raises" contract including an
+   invalid `deal_type` triggering the pydantic-validation-error catch path). `tests/conftest.py`
+   puts `common/` and `scraper/` on `sys.path` to mirror the Docker images' flat `/app` layout (no
+   package installs needed). Added `requirements-test.txt` (pytest + pydantic only — these two
+   modules are deliberately dependency-light, no sqlalchemy/playwright needed to test them) and a
+   new `test` job in `ci-cd.yaml` that `build-and-push` now depends on, so a broken
+   matching/normalize change can no longer reach a deploy. All 82 tests verified passing locally
+   before pushing.
+3. **Explicitly NOT attempted, with reasons** (so nobody re-litigates these from scratch):
+   - **Komo scraping**: sandbox environment's outbound network is allowlisted (CDNs/package
+     registries only) — `curl` to `komo.co.il` fails with `connect_rejected`. Writing a scraper
+     against an unverified page structure would repeat Yad2's first 8 failed attempts. Needs an
+     environment with real internet access (e.g. the EC2 box itself) to inspect the real HTML/DOM
+     before writing a parser — don't guess at selectors.
+   - **Facebook Marketplace/Groups scraping**: requires the owner's personal Facebook login and
+     carries real account-ban/ToS risk. Will not start this without the owner's explicit, informed
+     confirmation of that specific risk — hasn't been given yet.
+   - **WhatsApp integration**: still fully blocked on the owner completing the Meta for Developers
+     account/app/test-number setup documented below in "Explicitly deferred" — cannot be advanced
+     by an assistant at all until those account-level steps exist.
+
 ## Correction to a stale note below: `ZENROWS_API_KEY` IS set
 The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
 needed the owner to do it via the UI. As of the CI runs checked 2026-08-30, the deploy step's
