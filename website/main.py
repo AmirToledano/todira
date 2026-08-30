@@ -19,12 +19,18 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 BASE_DIR = Path(__file__).parent
 
 app = FastAPI(title="טודירה")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, exc: StarletteHTTPException):
+    return templates.TemplateResponse(request, "404.html", {}, status_code=404)
 
 
 def _get_user_by_uid(session, uid: int) -> User | None:
