@@ -521,6 +521,35 @@ Whether the underlying difference was ever really perceptible almost doesn't mat
 the trust cost of another wrong guess exceeds the ~220KB saved. If load speed matters again later,
 that's a separate, explicit ask to revisit — not something to solve unilaterally mid-dispute.
 
+**Round 6, the actual actual final one — the real bug was never the image file at all**: even the
+exact-original-file restore (round 5) didn't satisfy the owner, tested via a genuinely fresh
+private/incognito tab (ruling out caching for real this time). He said "still big, doesn't look
+good" and sent both an old ("best") reference and a fresh ("now") screenshot set as proof, telling
+this assistant to just solve it. Rather than guess a 7th time, **measured both screenshot sets
+with pixel color analysis** (Python/PIL/numpy: found the header's bottom edge, then sampled a
+vertical color strip to find exactly where the photo's beige background starts and ends) instead
+of eyeballing. Result: the image occupied **~80% of a full phone screen height** in *both* the
+"before" and "now" screenshots — mathematically exactly what `width:100vw` on a 2096:1184-ratio
+image produces, confirming **the file/resolution/compression was never the issue at any point
+tonight** — the image has always rendered nearly full-screen on mobile, including in the version
+the owner called "the best." Nobody had scrutinized this specific characteristic before; once
+actually measured, it's an obviously-too-dominant hero image, which is a real, valid design
+complaint just misdiagnosed (by both sides) as an image-quality bug for five rounds.
+
+**Actual fix**: capped the mobile hero image to `max-height: 66vh` (auto width, centered,
+`background: var(--bg)` behind it) in `style.css` — same treatment desktop already had via its
+`height: 560px` cap, just extended to mobile instead of only kicking in at `min-width:700px`.
+Verified with a local Playwright render at a real iPhone viewport (393×852, 3x DPR) before shipping
+— now reads as a normal, proportioned hero image instead of one that eats the whole first screen.
+
+**The lesson that actually matters here**: when a visual complaint survives multiple correct
+technical fixes unchanged, stop assuming the fix is merely incomplete and question the premise —
+measure what's actually on screen (pixel analysis of provided screenshots, or a local Playwright
+render at the real device size) instead of continuing to iterate on the dimension everyone assumed
+was broken (image resolution/quality, in this case) when the real issue was in a completely
+different place (CSS layout sizing) that nobody had checked. Five rounds is a very expensive way to
+learn this — next time try a real measurement after round 2, not round 6.
+
 **Checked the rest of the site for the same class of bug**: only one local static image exists
 (`todira-brand.webp`, now fixed) — the listing-card photos (`_listing_card.html`) are external URLs
 from scraped sources rendered via CSS `background-image`, not `<img>`, so the size/lazy-loading
