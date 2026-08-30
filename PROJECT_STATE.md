@@ -210,9 +210,18 @@ main" standing approval.
      against an unverified page structure would repeat Yad2's first 8 failed attempts. Needs an
      environment with real internet access (e.g. the EC2 box itself) to inspect the real HTML/DOM
      before writing a parser — don't guess at selectors.
-   - **Facebook Marketplace/Groups scraping**: requires the owner's personal Facebook login and
-     carries real account-ban/ToS risk. Will not start this without the owner's explicit, informed
-     confirmation of that specific risk — hasn't been given yet.
+   - **Facebook Marketplace/Groups scraping**: requires a logged-in Facebook session (Marketplace
+     and Groups aren't viewable as a guest) and carries real account-ban/ToS risk. **Does NOT need
+     to be the owner's real personal account** — clarified 2026-08-30 after the owner asked; the
+     right approach is a dedicated throwaway account made just for this, so a ban costs nothing
+     real. Two things to know going in: (1) Facebook may demand phone/ID verification on a
+     brand-new "suspicious" account, so give it some history (profile photo, a few friends) before
+     scraping through it; (2) most real-estate Groups require admin approval to join, which a
+     completely bare account may get rejected from — join relevant groups manually first. Once the
+     account exists, log into it once in a normal browser and hand over the session **cookies**
+     (not the password) — same session-reuse approach as the ZenRows/Yad2 solution, not a
+     scripted username+password login (far more likely to trigger a 2FA/checkpoint challenge).
+     Owner is open to starting on this given the throwaway-account approach.
    - **WhatsApp integration**: still fully blocked on the owner completing the Meta for Developers
      account/app/test-number setup documented below in "Explicitly deferred" — cannot be advanced
      by an assistant at all until those account-level steps exist.
