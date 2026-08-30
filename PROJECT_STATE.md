@@ -1,7 +1,36 @@
 # ToDira — Project State Handoff
 
 Read this first in any new session (especially cloud sessions without access to this machine's
-local Claude memory). Written 2026-08-29 so work can continue seamlessly from another device.
+local Claude memory). Written 2026-08-29, updated 2026-08-30, so work can continue seamlessly
+from another device.
+
+## 🔴 CURRENT BLOCKER (found 2026-08-30): the k3s cluster is unreachable — deploys are failing
+The last two CI/CD runs both failed at the `helm upgrade` step, not at build:
+- Run for commit `2180bbf` (20:30–20:53 UTC on 8/29, 3 attempts): `TLS handshake timeout` /
+  `http2: client connection lost` talking to `https://13.60.13.78:6443`.
+- Run for commit `6d17499` (21:15–21:17 UTC on 8/29, the latest push): hard
+  `dial tcp 13.60.13.78:6443: i/o timeout` — not even a slow handshake anymore, the API server
+  isn't answering at all.
+The prior run (`c23777e`, 20:15–20:18 UTC) deployed successfully, so whatever happened, happened
+in the ~15-minute window right after that. Docker builds/pushes to GHCR are unaffected and still
+succeed every time — this is purely "GitHub Actions can't reach the EC2 box's k8s API port."
+Given the box is a memory-starved free-tier t2/t3.micro that's already known to be flaky under
+load (see infra notes below), the most likely causes are: the instance OOM'd/crashed, k3s itself
+died or is stuck, or (less likely) a security-group/networking change closed port 6443. **A cloud
+session cannot fix this** — there's no SSH key or public IP available here (see "Direct cluster
+access" below). **Needs the account owner to**: check the EC2 instance's state in the AWS
+console (running/stopped/impaired), and if it's running, SSH in (`diramir-key.pem`) and check
+`sudo systemctl status k3s` / `free -h` / `dmesg | tail` for an OOM kill. Until this is fixed,
+every `git push` to `main` will keep building images successfully but failing to actually deploy
+them — don't mistake a green build-and-push for a working deployment.
+
+## Correction to a stale note below: `ZENROWS_API_KEY` IS set
+The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
+needed the owner to do it via the UI. As of the CI runs checked 2026-08-30, the deploy step's
+`helm upgrade` command includes a populated `--set zenrowsApiKey=***` (GitHub only masks
+non-empty secret values) — **the owner has since added it**. That specific to-do is done; the
+scraper should actually find listings once the cluster blocker above is resolved and a deploy
+lands successfully.
 
 ## What this is
 Self-hosted Telegram bot (formerly "DirAmir", renamed "ToDira" 2026-08-29 — a Tudy+דירה pun,
