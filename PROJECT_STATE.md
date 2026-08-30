@@ -69,6 +69,52 @@ which doesn't carry prompt/UI characters the way a terminal copy does. If this h
 verify any pasted secret with `printf '%s' "$VALUE" | base64 -d > /dev/null; echo $?` (GNU
 base64, not Python) before assuming it's fine.
 
+## Update 2026-08-30, later: website fully redesigned + live, next step is a domain
+Picking up from the deploy-blocker fix above: once CI/CD was green again, did a full website
+redesign session (all pushed straight to `main`, owner approved once for the whole session —
+"run fast, don't stop"). In order:
+1. Replaced the bare Phase-2 skeleton templates with a real design system
+   (`website/static/style.css`: Frank Ruhl Libre + Rubik fonts, wine/gold palette matching the
+   bot's crown branding) — proper landing page, listing cards with images/amenity chips/price
+   badges (using schema fields the old templates ignored), filter-summary chip bar, styled empty
+   states, settings-style `/filter` page.
+2. Replaced "ToDira" with "טודירה" everywhere it showed in English (titles, header, FastAPI app
+   title) per explicit request — the product name reads in Hebrew everywhere now.
+3. Added lightweight scroll-reveal (IntersectionObserver, no JS framework) + tactile `:active`
+   press feedback on buttons/cards.
+4. Owner sent over the actual full brand image (Tudy the dog in crown+cape with the gold
+   "טודירה" wordmark baked in — previously only existed on the primary dev machine, never
+   committed) — now at `website/static/todira-brand.webp`, shown on the home page.
+5. Owner referenced **Dorin's own landing page** (dorin.app) as the bar to hit — not just
+   "pretty," specifically: layered elements, a hero visual with facts/stats floating over it,
+   sections that visually connect rather than just stack. Reworked home.html structurally:
+   the brand image now sits in a `.showcase-frame` with two floating `.float-badge` pills
+   overlapping its corners; added an honest `.trust-strip` stat row right under the hero (scan
+   frequency, uptime, "AI-powered", free — deliberately NO fabricated user counts/testimonials,
+   there's no real user base yet to make claims about); "how it works" is now a connected
+   vertical timeline (gradient line through the numbered steps, in `.steps`/`.steps::before` in
+   style.css) instead of three disconnected cards; added a real FAQ accordion (native
+   `<details>`, no JS lib) with honest product questions.
+
+All of this is live at `http://13.50.115.61:30080/` as of CI/CD run #21 (green). Every template
+was validated with a standalone Jinja2 render pass (mock listings incl. missing
+price/image/description/posted_at) before each push — see git log on `main` for the exact
+commits if continuing this work.
+
+**Immediate next step, blocked on the owner (mid-flight as of this note, will resume when back)**:
+sharing the site link doesn't work well — WhatsApp won't auto-linkify a bare
+`http://13.50.115.61:30080/` (no dot-com-shaped hostname, non-standard port), so it shows as
+plain text, no click, no preview card. Real fix is a proper domain (e.g. `todira.co.il` or
+similar) with an A record pointed at the EC2 box's public IP, ideally behind HTTPS (Caddy/Traefik
++ Let's Encrypt, or Cloudflare in front, either is fine) instead of raw `:30080` HTTP. Owner does
+not have a domain registered yet and hadn't decided on a registrar when this was interrupted —
+**pick this up as the very next thing, even off a trivial-looking message, per the owner's
+explicit request not to lose this thread.** Once a domain exists: point DNS at whatever the
+current EC2 public IP is (check the "instance resized" section above — it moves on
+stop/start unless an Elastic IP is attached, so consider attaching one as part of this same
+piece of work), set up TLS, and add Open Graph meta tags to `website/templates/base.html` (title/
+description/image using the brand webp) so shared links get a real preview card.
+
 ## Correction to a stale note below: `ZENROWS_API_KEY` IS set
 The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
 needed the owner to do it via the UI. As of the CI runs checked 2026-08-30, the deploy step's
