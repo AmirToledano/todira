@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}טודירה — חיפוש דירות בזמן אמת{% endblock %}
+{% block extra_head %}<link rel="preload" as="image" href="/static/todira-brand.webp">{% endblock %}
 {% block content %}
 
 <section class="hero reveal">
@@ -13,7 +14,7 @@
 </section>
 
 <div class="hero-image-full reveal">
-  <img src="/static/todira-brand.webp" alt="טודי המלך — בוט חיפוש דירות טודירה" loading="lazy">
+  <img src="/static/todira-brand.webp" alt="טודי המלך — בוט חיפוש דירות טודירה" width="678" height="1200" fetchpriority="high">
 </div>
 
 <div class="hero-float-stats reveal">
