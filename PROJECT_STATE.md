@@ -54,6 +54,21 @@ this): same fix — regenerate+re-encode kubeconfig with the new IP, update the 
 attaching an Elastic IP to stop this recurring, or note it's already a "fixed" one per the owner
 and it still moved on this stop/start, so double-check either way.
 
+**The actual last mile, worth remembering**: even after the IP fix, the deploy kept failing with
+`base64: invalid input` in the "Write kubeconfig" step. Root cause: copying the long base64
+blob out of a mobile browser terminal (AWS console's embedded terminal, then CloudShell) kept
+picking up a stray trailing `$` — the shell prompt character — attached to the copied text.
+GNU coreutils' `base64 -d` (what the CI runner actually uses) is strict and rejects any
+non-alphabet character including a lone `$` at the end. **Gotcha for whoever debugs this next**:
+Python's `base64.b64decode()` used to sanity-check the string on this end silently discarded
+that same stray `$` and reported the string as valid — a false negative that cost a couple of
+extra round-trips before the real culprit was found by testing GNU `base64 -d` directly (not
+Python) against the exact bytes. Fix that actually worked: write the value to a plain .txt file
+and have the owner open it in a real text viewer (not a terminal) and use "Select All" there,
+which doesn't carry prompt/UI characters the way a terminal copy does. If this happens again,
+verify any pasted secret with `printf '%s' "$VALUE" | base64 -d > /dev/null; echo $?` (GNU
+base64, not Python) before assuming it's fine.
+
 ## Correction to a stale note below: `ZENROWS_API_KEY` IS set
 The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
 needed the owner to do it via the UI. As of the CI runs checked 2026-08-30, the deploy step's
