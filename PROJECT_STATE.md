@@ -379,6 +379,63 @@ the most promising remaining direction, more so than either piece alone.
 - `price_min` in the onboarding parser was added same day as `price_max` existed — check both are
   still there if touching `gemini_client.py`'s schema.
 
+## Update 2026-08-30, evening: bot pod fix + real HTTPS setup (Caddy) in progress
+Owner reported the Telegram bot "not responding." This cloud session has no SSH key/kubeconfig
+of its own — used a new technique instead: piggybacked temporary `kubectl` diagnostic steps onto
+the CI/CD `deploy` job (which already has cluster access via `KUBECONFIG_B64`) and read the
+results back via the GitHub Actions job logs API. Worth remembering as a reusable pattern for any
+future "something's wrong on the cluster and I can't SSH in" situation.
+
+**Bot fix**: the diagnostic deploy (any push naturally restarts pods with a new image tag) showed
+the bot pod come back up clean — `getMe`/`setMyCommands`/`deleteWebhook` all `200 OK`, "Application
+started", zero errors. Token was never bad; whatever was wrong was almost certainly the polling
+loop being silently wedged (not crashed — a crash would auto-restart and self-heal, which is
+maybe why it stayed broken until something forced a restart). **Confirmed by the owner: bot works
+now.** No code change was needed, just the restart — if this recurs, check bot logs the same way
+(the `Diagnose bot pod` step in `ci-cd.yaml` is still there, now hardened with `|| true` on every
+command after one run failed the whole job on a transient empty-pod-list race).
+
+**Real HTTPS (in progress, blocked only on the owner)**: owner hit two symptoms of the same root
+cause — Safari's "can't establish a secure connection" typing the bare domain, and WhatsApp not
+generating a link-preview image despite the OG tags already being correct (custom ports like
+`:30080` make some link-unfurlers, WhatsApp included, unreliable even with valid OG tags). Real
+fix is TLS on the standard port 443, dropping `:30080` from the shareable URL entirely.
+
+Recon first (same kubectl-via-CI trick, before writing any config blind): this cluster's k3s was
+installed **without** its usual bundled Traefik — `kube-system` only has `coredns` and
+`local-path-provisioner`, no ingress controller, no LoadBalancer/MetalLB. So the standard
+"add an Ingress resource" approach doesn't apply. Went with **Caddy** instead — one lightweight
+container (`caddy:2.8-alpine`) that handles the whole TLS story (HTTP-01/TLS-ALPN-01 challenge,
+issuance, auto-renewal, HTTP→HTTPS redirect) from a two-line Caddyfile, no cert-manager/ACME
+resolver config needed. New chart files: `caddy-configmap.yaml` (the Caddyfile, reverse-proxying
+to the existing `{{ .Release.Name }}-website` Service), `caddy-pvc.yaml` (100Mi, cert storage so
+routine redeploys don't force re-issuance), `caddy-deployment.yaml` (`hostNetwork: true` +
+`hostPort` 80/443 — required since NodePort's range starts at 30000 and there's no LoadBalancer;
+`strategy: Recreate` so two hostNetwork pods never fight over binding the same host ports, same
+class of constraint as the bot's "must stay at 1 poller"). `values.yaml` gained
+`website.domain: todira.duckdns.org` and `resources.caddy`. The existing `:30080` NodePort path
+was left completely untouched as a fallback.
+
+**Verified via the diagnostic channel that this is working correctly**: Caddy pod comes up
+`Running`/`Ready` with no restarts, and its own logs show it already attempted Let's Encrypt
+issuance and got exactly the expected failure —
+`"Timeout during connect (likely firewall problem)"` on both the HTTP-01 and TLS-ALPN-01
+challenges — then logged `"will retry"` with a 60s backoff (max_duration 30 days), not a crash.
+This confirms the Caddy/DNS/Helm side is entirely correct; the **only remaining blocker is the
+EC2 Security Group** not allowing inbound 80/443 yet.
+
+**What the owner still needs to do** (cannot be done from this cloud session — needs AWS console
+access): open inbound TCP 80 and 443 on the EC2 instance's Security Group (`0.0.0.0/0` source,
+same as the existing port-6443 rule). Exact steps: EC2 → Instances → the instance → Security tab →
+click the Security Group link → Inbound rules → Edit inbound rules → Add rule twice (HTTP/80,
+HTTPS/443, source `0.0.0.0/0`) → Save. Works fine from the AWS Console website in a phone browser,
+not just a desktop. DNS is already correct (DuckDNS already points `todira.duckdns.org` at the
+node's public IP) — nothing else is needed once those two ports are open; Caddy is already
+retrying every 60s and will pick up the moment the firewall allows the ACME challenge through.
+**Next step for whoever continues this**: once the owner confirms the ports are open, re-check
+Caddy's logs via the same diagnostic-step technique (or just have the owner load
+`https://todira.duckdns.org/` directly) to confirm the certificate actually issued.
+
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
   assume expert-level familiarity, but he's technical and can follow real explanations.
