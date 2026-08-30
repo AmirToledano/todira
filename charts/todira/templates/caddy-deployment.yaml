@@ -1,0 +1,60 @@
+# Recon (2026-08-30) found this cluster's k3s was installed WITHOUT its usual bundled Traefik
+# (kube-system only has coredns + local-path-provisioner, no ingress controller, no
+# LoadBalancer/MetalLB) - so real HTTPS needs its own lightweight piece rather than an Ingress
+# resource riding on infrastructure that doesn't exist here. Caddy is a single small container
+# that handles the whole TLS story (HTTP-01 challenge, cert issuance, renewal, HTTP->HTTPS
+# redirect) from one Caddyfile line - see caddy-configmap.yaml.
+#
+# hostNetwork is required (not NodePort) to bind the real ports 80/443 - NodePort's allowed range
+# starts at 30000 and this single-node cluster has no LoadBalancer to front it otherwise. This
+# also means: MUST stay at 1 replica with a Recreate rollout strategy, the same "only one process
+# can own this" constraint the bot's Telegram polling has, just for host port ownership instead
+# of a Telegram token - two hostNetwork pods on the same node would fight over binding :80/:443.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-caddy
+  labels:
+    app: {{ .Release.Name }}-caddy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-caddy
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-caddy
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: caddy
+          image: caddy:2.8-alpine
+          args: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+          ports:
+            - containerPort: 80
+              hostPort: 80
+            - containerPort: 443
+              hostPort: 443
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: {{ .Values.resources.caddy.requests.cpu }}
+              memory: {{ .Values.resources.caddy.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.caddy.limits.cpu }}
+              memory: {{ .Values.resources.caddy.limits.memory }}
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: {{ .Release.Name }}-caddy-config
+        - name: caddy-data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-caddy-pvc

@@ -19,7 +19,11 @@ websiteImage:
   tag: latest
 
 website:
-  nodePort: 30080 # http://<node public IP>:30080 — no domain/TLS yet, see website-service.yaml
+  nodePort: 30080 # http://<node public IP>:30080 — kept as a direct fallback even with HTTPS below
+  # real HTTPS via Caddy (see caddy-deployment.yaml) — requires the EC2 security group to allow
+  # inbound 80+443, and this DNS name to already point at the node's public IP (it does, via
+  # DuckDNS)
+  domain: todira.duckdns.org
 
 replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates pollers on one token
 
@@ -46,3 +50,6 @@ resources:
   website:
     requests: { cpu: "50m", memory: "128Mi" }
     limits: { cpu: "250m", memory: "256Mi" }
+  caddy:
+    requests: { cpu: "25m", memory: "32Mi" }
+    limits: { cpu: "100m", memory: "96Mi" }

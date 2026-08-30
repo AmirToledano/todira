@@ -1,0 +1,13 @@
+# Caddy auto-provisions and renews a Let's Encrypt cert for any domain listed without an
+# "http://" prefix - no separate ACME/cert-manager config needed, this is the whole thing.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-caddy-config
+  labels:
+    app: {{ .Release.Name }}-caddy
+data:
+  Caddyfile: |
+    {{ .Values.website.domain }} {
+        reverse_proxy {{ .Release.Name }}-website:8000
+    }
