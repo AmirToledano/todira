@@ -199,6 +199,11 @@ main" standing approval.
    production dep of `bot/`, needed here only to import `gemini_client.py` at all). 98 tests
    total, all verified passing locally before pushing. Commit `5f64b41`, CI/CD run #33 —
    confirmed green (the `test` job ran all 98 in CI, not just locally).
+5. **Added a branded 404 page**: every unmatched route used to fall through to FastAPI's default
+   bare `{"detail":"Not Found"}` JSON — jarring on an otherwise fully branded site. Registered a
+   `@app.exception_handler(404)` in `website/main.py` that renders a new `404.html` (same
+   `.empty-state` pattern already used by `need_uid.html`/`no_filter.html`, with a link back
+   home). Verified via the same Jinja2 render-pass pattern used throughout this session.
 3. **Explicitly NOT attempted, with reasons** (so nobody re-litigates these from scratch):
    - **Komo scraping**: sandbox environment's outbound network is allowlisted (CDNs/package
      registries only) — `curl` to `komo.co.il` fails with `connect_rejected`. Writing a scraper
