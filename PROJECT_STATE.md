@@ -24,26 +24,35 @@ console (running/stopped/impaired), and if it's running, SSH in (`diramir-key.pe
 every `git push` to `main` will keep building images successfully but failing to actually deploy
 them — don't mistake a green build-and-push for a working deployment.
 
-## Update 2026-08-30: instance resized to t3.small, same IP — still not deploying
-Owner resized the EC2 box from t2/t3.micro to t3.small (more RAM, to stop the OOM-flakiness
-pattern below) and set the public IP as a fixed/static address — it happens to be the same
-`13.60.13.78` already baked into the `KUBECONFIG_B64` secret, so that secret does NOT need
-updating.
+## Update 2026-08-30 (RESOLVED): stale KUBECONFIG_B64 after an instance stop/modify/start
+Owner did stop → modify instance type (t2/t3.micro → t3.small, more RAM) → start on the *same*
+EC2 instance (same instance ID, same security groups — confirmed via the console: launch time
+just reflects the most recent start, not a fresh instance). That start assigned a **new public
+IP, `13.50.115.61`** — different from the `13.60.13.78` baked into the `KUBECONFIG_B64` secret,
+which is what every deploy since has actually been failing against. (The owner and this
+assistant both briefly assumed it was the same IP — it wasn't; only checking the EC2 console's
+instance summary settled it.)
 
-A cloud session can't SSH in, but raw connectivity was tested via `curl -k https://13.60.13.78:6443/version`
-through this environment's outbound proxy (confirmed via `$HTTPS_PROXY/__agentproxy/status`'s
-`recentRelayFailures`, which showed the proxy actually reached the host: 517 B sent, 39 B
-received, then the tunnel closed after ~6s). Result, consistent across 3 retries a few minutes
-apart: **TCP connects, TLS handshake starts, then the connection is reset** — not a plain
-timeout like the earlier failures. So: the network path/IP is fine now, but k3s itself on the
-box isn't completing TLS handshakes on 6443 (could be still starting after the resize, could be
-crash-looping, could be something else entirely — needs eyes on the box to know which).
+Verified from inside the box itself (owner connected via EC2 Instance Connect, then AWS
+CloudShell's `aws ssm start-session` once EC2 Instance Connect's browser-IP source rule got in
+the way — CloudShell has far better copy/paste than the raw in-console terminal, worth going
+straight there next time): `k3s.service` was `active (running)` the whole time, `ufw` was
+inactive, and `sudo ss -tlnp` showed `k3s-server` genuinely listening on `*:6443`. So the box was
+never actually broken — pure stale-secret problem. (This assistant's own earlier connectivity
+probes from its sandboxed environment, showing a TCP-connects-then-TLS-resets pattern on both
+the old and — apparently — the "new" IP, were a red herring; take an outbound test like that from
+a locked-down sandbox with a grain of salt next time, the box's own `ss`/`journalctl` output is
+the ground truth.)
 
-**Next step, needs the owner** (no PC access until tonight as of this update): SSH or AWS
-Console → EC2 → "Connect" → EC2 Instance Connect (works from a phone browser, no key needed) and
-run `sudo systemctl status k3s` and `sudo journalctl -u k3s -n 100 --no-pager` to see whether k3s
-is up, crash-looping, or still initializing. Until that's checked, treat every CI/CD deploy as
-still broken — don't be misled by a green build-and-push.
+**Fix applied**: regenerated kubeconfig on the box (`sudo cat /etc/rancher/k3s/k3s.yaml | sed
+'s/127.0.0.1/13.50.115.61/' | base64 -w0`), updated the `KUBECONFIG_B64` GitHub secret with it.
+This doc's own commit is the test push to confirm deploy is green again — see the latest CI/CD
+run for AmirToledano/todira on this commit to check.
+
+**If the IP changes again** (any future stop/modify/start without an Elastic IP attached will do
+this): same fix — regenerate+re-encode kubeconfig with the new IP, update the secret. Consider
+attaching an Elastic IP to stop this recurring, or note it's already a "fixed" one per the owner
+and it still moved on this stop/start, so double-check either way.
 
 ## Correction to a stale note below: `ZENROWS_API_KEY` IS set
 The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
