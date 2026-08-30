@@ -1,16 +1,23 @@
 {% extends "base.html" %}
+{% set active_page = "liked" %}
 {% block title %}דירות שמורות — ToDira{% endblock %}
 {% block content %}
-<h1>❤️ דירות שמורות</h1>
+{% from "_listing_card.html" import listing_card %}
+
+<div class="page-head">
+  <h1>❤️ דירות שמורות</h1>
+  <span class="result-count">{{ listings|length }} תוצאות</span>
+</div>
+
 {% if not listings %}
-  <div class="empty"><p>עדיין לא שמרת דירות.</p></div>
-{% endif %}
-{% for l in listings %}
-  <div class="card">
-    <span class="price">{{ "%d ₪"|format(l.price) if l.price else "מחיר לא צוין" }}</span>
-    · {{ l.rooms }} חדרים · {{ l.city }}
-    <p>{{ (l.description or "")[:200] }}</p>
-    <a href="{{ l.url }}" target="_blank">לצפייה במודעה המלאה ←</a>
+  <div class="empty-state">
+    <div class="glyph">💌</div>
+    <p>עדיין לא שמרת דירות.</p>
+    <p class="hint">כשתסמן דירה כ"אהבתי" בטלגרם, היא תופיע כאן.</p>
   </div>
-{% endfor %}
+{% else %}
+  <div class="listing-grid">
+    {% for l in listings %}{{ listing_card(l) }}{% endfor %}
+  </div>
+{% endif %}
 {% endblock %}
