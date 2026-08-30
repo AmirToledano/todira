@@ -19,8 +19,21 @@ jobs:
       - id: lower
         run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements-test.txt
+
+      - run: python -m pytest tests/ -v
+
   build-and-push:
-    needs: vars
+    needs: [vars, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
