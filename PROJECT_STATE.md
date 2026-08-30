@@ -456,15 +456,15 @@ run was *also* the `/filter` page deploy, so the website pod was mid-restart at 
 Not a lasting issue; the website Service/Deployment config (`targetPort: 8000` matching the
 Dockerfile's `--port 8000`) was double-checked and is correct.
 
-## Update 2026-08-30: switched to PR-based merges to main
-Previously this assistant pushed straight to `main` (owner's earlier blanket approval). Owner found
-the manual compare/create-PR/merge flow confusing, so switched process: this assistant now develops
-on a `claude/...` branch as usual, then **opens a PR itself** (`create_pull_request`) once work is
-ready — the owner's only remaining step is clicking "Merge pull request" on GitHub, no more manual
-branch-compare navigation. Do not auto-merge the PR itself; opening it and waiting for the owner's
-merge click is the point of this change. (First real instance: PR #1, opened for the HTTPS
-confirmation + hero image fix + Facebook-scraping-account clarification commits — owner merged it
-manually that time while this note was being written, confirming the flow works end to end.)
+## Update 2026-08-30: PRs to main — now fully automated, no owner action needed
+First tried: assistant opens the PR, owner clicks "Merge" on GitHub (PR #1, #2). Owner then said
+he doesn't understand git/PR/merge concepts at all and doesn't want to do this repeatedly ("קח על
+זה שליטה ותעשה בעצמך" — take control of this and just do it yourself). **Current process**: this
+assistant develops on a `claude/...` branch, opens a PR (`create_pull_request`) purely as an
+internal audit trail, then **immediately merges it itself** (`merge_pull_request`) — zero owner
+action, zero GitHub UI exposure. The owner should never be asked to click anything on GitHub going
+forward; if a PR ever needs the owner's actual judgment call (not just a routine merge), that's a
+signal to ask him directly in chat, not to point him at a PR page.
 
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
