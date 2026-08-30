@@ -24,6 +24,27 @@ console (running/stopped/impaired), and if it's running, SSH in (`diramir-key.pe
 every `git push` to `main` will keep building images successfully but failing to actually deploy
 them — don't mistake a green build-and-push for a working deployment.
 
+## Update 2026-08-30: instance resized to t3.small, same IP — still not deploying
+Owner resized the EC2 box from t2/t3.micro to t3.small (more RAM, to stop the OOM-flakiness
+pattern below) and set the public IP as a fixed/static address — it happens to be the same
+`13.60.13.78` already baked into the `KUBECONFIG_B64` secret, so that secret does NOT need
+updating.
+
+A cloud session can't SSH in, but raw connectivity was tested via `curl -k https://13.60.13.78:6443/version`
+through this environment's outbound proxy (confirmed via `$HTTPS_PROXY/__agentproxy/status`'s
+`recentRelayFailures`, which showed the proxy actually reached the host: 517 B sent, 39 B
+received, then the tunnel closed after ~6s). Result, consistent across 3 retries a few minutes
+apart: **TCP connects, TLS handshake starts, then the connection is reset** — not a plain
+timeout like the earlier failures. So: the network path/IP is fine now, but k3s itself on the
+box isn't completing TLS handshakes on 6443 (could be still starting after the resize, could be
+crash-looping, could be something else entirely — needs eyes on the box to know which).
+
+**Next step, needs the owner** (no PC access until tonight as of this update): SSH or AWS
+Console → EC2 → "Connect" → EC2 Instance Connect (works from a phone browser, no key needed) and
+run `sudo systemctl status k3s` and `sudo journalctl -u k3s -n 100 --no-pager` to see whether k3s
+is up, crash-looping, or still initializing. Until that's checked, treat every CI/CD deploy as
+still broken — don't be misled by a green build-and-push.
+
 ## Correction to a stale note below: `ZENROWS_API_KEY` IS set
 The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
 needed the owner to do it via the UI. As of the CI runs checked 2026-08-30, the deploy step's
