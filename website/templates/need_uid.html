@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block title %}ToDira{% endblock %}
 {% block content %}
-<div class="empty">
+<div class="empty-state">
+  <div class="glyph">🔑</div>
   <p>כדי לראות את ה{{ {"apartments": "דירות", "liked": "דירות השמורות", "filter": "סינון"}[target] }} שלך,
   צריך להיכנס עם קישור אישי מהבוט בטלגרם.</p>
-  <a class="btn" href="https://t.me/AmirDirotBot" target="_blank">פתח את הבוט</a>
+  <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">פתח את הבוט</a>
 </div>
 {% endblock %}

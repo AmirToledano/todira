@@ -1,11 +1,58 @@
 {% extends "base.html" %}
 {% block title %}ToDira — חיפוש דירות בזמן אמת{% endblock %}
 {% block content %}
-<h1>👑 ToDira</h1>
-<p>בוט חיפוש דירות אישי — סורק את שוק הדירות ומודיע לך כשמופיעה דירה שמתאימה לסינון שלך.</p>
-<p>כדי להתחיל, דבר עם הבוט בטלגרם:</p>
-<a class="btn" href="https://t.me/AmirDirotBot" target="_blank">פתח את הבוט בטלגרם ←</a>
-<p style="margin-top:40px;font-size:.85em;color:#888;">
-  כבר יש לך חשבון? היכנס לדף "הדירות שלי" בטלגרם עם /apartments לקבלת קישור ישיר.
-</p>
+
+<section class="hero">
+  <div class="crown-badge">👑</div>
+  <h1>הדירה שלך מוצאת אותך</h1>
+  <p class="lead">ToDira סורק את שוק הדירות בלי הפסקה, ומתריע לך תוך דקות ברגע שעולה דירה שמתאימה בדיוק למה שחיפשת — לפני שמישהו אחר יתפוס אותה.</p>
+  <div class="cta-row">
+    <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">🚀 פתח את הבוט בטלגרם</a>
+    <a class="btn outline" href="#how">איך זה עובד?</a>
+  </div>
+</section>
+
+<section class="feature-grid">
+  <div class="feature-card">
+    <div class="icon">🧠</div>
+    <h3>מבין אותך בשפה חופשית</h3>
+    <p>פשוט תכתוב מה אתה מחפש — "2-3 חדרים בתל אביב עד 6000 שקל" — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילך, בלי טפסים מסובכים.</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">⚡</div>
+    <h3>התראות בזמן אמת</h3>
+    <p>הסריקה רצה כל הזמן ברקע. ברגע שדירה חדשה תואמת עולה לרשת — אתה מקבל הודעה בטלגרם, לא צריך לרענן אתרים כל היום.</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">❤️</div>
+    <h3>שומר לך את הדירות שאהבת</h3>
+    <p>סמן דירות שמעניינות אותך ותחזור אליהן בקלות בכל שלב — כאן באתר או ישירות מתוך הבוט.</p>
+  </div>
+</section>
+
+<section id="how">
+  <h2 class="section-title">איך זה עובד</h2>
+  <p class="section-sub">שלוש דקות התחלה, ואז ToDira עובד בשבילך ברקע.</p>
+  <div class="steps">
+    <div class="step">
+      <h3>מדברים עם הבוט</h3>
+      <p>פותחים שיחה בטלגרם ומתארים במילים שלכם את הדירה שאתם מחפשים.</p>
+    </div>
+    <div class="step">
+      <h3>הסינון נבנה אוטומטית</h3>
+      <p>עיר, טווח מחיר, מספר חדרים ועוד — הכל נחלץ מהשיחה שלכם ונשמר כפרופיל חיפוש.</p>
+    </div>
+    <div class="step">
+      <h3>מקבלים התראות</h3>
+      <p>מרגע זה, כל דירה חדשה שמתאימה תשלח אליכם ישירות — וגם תופיע כאן באתר.</p>
+    </div>
+  </div>
+</section>
+
+<section class="footer-cta">
+  <h2>מוכנים למצוא את הדירה?</h2>
+  <p>זה לוקח פחות משתי דקות להתחיל, וההתראות הראשונות יכולות להגיע עוד היום.</p>
+  <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">פתח את הבוט בטלגרם ←</a>
+</section>
+
 {% endblock %}

@@ -1,22 +1,39 @@
 {% extends "base.html" %}
+{% set active_page = "filter" %}
 {% block title %}הסינון שלי — ToDira{% endblock %}
 {% block content %}
-<h1>🎛️ הסינון שלי</h1>
-<div class="notice">
-  עריכה בסיסית בלבד כאן (ערים/מחיר/חדרים). לעריכה מלאה של כל האפשרויות, השתמש ב-/filter בטלגרם.
+<h1 style="text-align:center;">🎛️ הסינון שלי</h1>
+<p class="section-sub">עריכה בסיסית כאן (ערים / מחיר / חדרים). לעריכה מלאה של כל האפשרויות — כמו סוג נכס, שכונות ומאפיינים מיוחדים — השתמשו ב-/filter בטלגרם.</p>
+
+<div class="settings-card">
+  <form method="post" action="/filter">
+    <input type="hidden" name="uid" value="{{ uid }}">
+    <div class="field">
+      <label><span class="field-icon">📍</span> ערים</label>
+      <input type="text" name="cities" value="{{ f.cities|join(', ') }}" placeholder="תל אביב, רמת גן, גבעתיים">
+      <div class="field-hint">מופרדות בפסיקים</div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label><span class="field-icon">💰</span> מחיר מינימלי</label>
+        <input type="number" name="price_min" value="{{ f.price_min or '' }}" placeholder="0">
+      </div>
+      <div class="field">
+        <label><span class="field-icon">💰</span> מחיר מקסימלי</label>
+        <input type="number" name="price_max" value="{{ f.price_max or '' }}" placeholder="ללא הגבלה">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label><span class="field-icon">🛏️</span> חדרים מינימום</label>
+        <input type="number" step="0.5" name="rooms_min" value="{{ f.rooms_min or '' }}">
+      </div>
+      <div class="field">
+        <label><span class="field-icon">🛏️</span> חדרים מקסימום</label>
+        <input type="number" step="0.5" name="rooms_max" value="{{ f.rooms_max or '' }}">
+      </div>
+    </div>
+    <button class="btn block" type="submit">💾 שמור שינויים</button>
+  </form>
 </div>
-<form method="post" action="/filter">
-  <input type="hidden" name="uid" value="{{ uid }}">
-  <label>ערים (מופרדות בפסיקים)</label>
-  <input type="text" name="cities" value="{{ f.cities|join(', ') }}">
-  <label>מחיר מינימלי</label>
-  <input type="number" name="price_min" value="{{ f.price_min or '' }}">
-  <label>מחיר מקסימלי</label>
-  <input type="number" name="price_max" value="{{ f.price_max or '' }}">
-  <label>חדרים מינימום</label>
-  <input type="number" step="0.5" name="rooms_min" value="{{ f.rooms_min or '' }}">
-  <label>חדרים מקסימום</label>
-  <input type="number" step="0.5" name="rooms_max" value="{{ f.rooms_max or '' }}">
-  <button type="submit">שמור</button>
-</form>
 {% endblock %}

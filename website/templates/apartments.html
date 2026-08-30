@@ -1,22 +1,39 @@
 {% extends "base.html" %}
+{% set active_page = "apartments" %}
 {% block title %}דירות תואמות — ToDira{% endblock %}
 {% block content %}
-<h1>דירות תואמות</h1>
-<div class="notice">גישה זמנית לפי מזהה טלגרם (uid={{ uid }}) — לא מאובטח עדיין, שלב ביניים בלבד.</div>
+{% from "_listing_card.html" import listing_card %}
+
+<div class="page-head">
+  <h1>🏠 דירות תואמות</h1>
+  <span class="result-count">{{ listings|length }} תוצאות</span>
+</div>
+
+<div class="notice">גישה זמנית לפי מזהה טלגרם — קישור אישי זה עדיין לא מאובטח לגמרי, שלב ביניים בלבד עד להשקה.</div>
+
+{% if user and user.filter %}
+<div class="filter-bar">
+  <span class="label">הסינון שלך:</span>
+  {% for c in user.filter.cities %}<span class="chip">📍 {{ c }}</span>{% endfor %}
+  {% if user.filter.rooms_min or user.filter.rooms_max %}
+    <span class="chip">🛏️ {{ user.filter.rooms_min or '?' }}–{{ user.filter.rooms_max or '?' }} חדרים</span>
+  {% endif %}
+  {% if user.filter.price_min or user.filter.price_max %}
+    <span class="chip">💰 {{ user.filter.price_min or 0 }}–{{ user.filter.price_max or '∞' }} ₪</span>
+  {% endif %}
+  <a class="btn outline" href="/filter?uid={{ uid }}">ערוך סינון</a>
+</div>
+{% endif %}
+
 {% if not listings %}
-  <div class="empty">
+  <div class="empty-state">
+    <div class="glyph">🔍</div>
     <p>אין עדיין דירות תואמות להצגה.</p>
-    <p style="font-size:.85em;">(אם זה נראה לך משונה — סביר שזה כי שאיבת המודעות מ-Yad2 עדיין חסומה, לא בעיה בסינון שלך.)</p>
+    <p class="hint">אם זה נראה משונה — סביר שזה כי שאיבת המודעות עדיין בבנייה, לא בעיה בסינון שלך. נסה שוב בקרוב.</p>
+  </div>
+{% else %}
+  <div class="listing-grid">
+    {% for l in listings %}{{ listing_card(l) }}{% endfor %}
   </div>
 {% endif %}
-{% for l in listings %}
-  <div class="card">
-    <span class="price">{{ "%d ₪"|format(l.price) if l.price else "מחיר לא צוין" }}</span>
-    · {{ l.rooms }} חדרים · {{ l.city }}{% if l.neighborhood %}, {{ l.neighborhood }}{% endif %}
-    {% if l.floor is not none %}· קומה {{ l.floor }}{% endif %}
-    <p>{{ (l.description or "")[:200] }}</p>
-    <span class="tag">{{ l.source }}</span>
-    <a href="{{ l.url }}" target="_blank">לצפייה במודעה המלאה ←</a>
-  </div>
-{% endfor %}
 {% endblock %}

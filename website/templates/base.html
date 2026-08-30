@@ -3,35 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}ToDira{% endblock %}</title>
-  <style>
-    :root { --gold: #b8860b; --wine: #7a1f2b; --bg: #faf6ee; }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: #2a2a2a; }
-    header { background: var(--wine); color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
-    header a { color: #fff; text-decoration: none; font-weight: 600; }
-    header nav a { margin-inline-start: 16px; opacity: .9; }
-    main { max-width: 900px; margin: 0 auto; padding: 24px; }
-    h1 { color: var(--wine); }
-    .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-    .price { color: var(--gold); font-weight: 700; font-size: 1.1em; }
-    .tag { display: inline-block; background: #f1e6d0; color: #7a1f2b; border-radius: 20px; padding: 2px 10px; font-size: .85em; margin-inline-end: 6px; }
-    .empty { text-align: center; padding: 60px 20px; color: #888; }
-    form label { display: block; margin-top: 12px; font-weight: 600; }
-    form input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-top: 4px; }
-    button { margin-top: 16px; background: var(--wine); color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 1em; }
-    .notice { background: #fff3cd; border: 1px solid #ffe69c; padding: 10px 14px; border-radius: 8px; font-size: .9em; margin-bottom: 16px; }
-    a.btn { display: inline-block; background: var(--wine); color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; margin-top: 12px; }
-  </style>
+  <title>{% block title %}ToDira — חיפוש דירות בזמן אמת{% endblock %}</title>
+  <meta name="description" content="בוט חיפוש דירות אישי שסורק את שוק הדירות ומתריע לך ברגע שמופיעה דירה שמתאימה בדיוק לסינון שלך.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;800&family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <a href="/">🏠 ToDira</a>
-    <nav>
-      <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}">דירות</a>
-      <a href="/liked{{ '?uid=' ~ uid if uid else '' }}">שמורות</a>
-      <a href="/filter{{ '?uid=' ~ uid if uid else '' }}">הסינון שלי</a>
-    </nav>
+  <header class="site">
+    <div class="header-inner">
+      <a class="brand" href="/"><span class="crown">👑</span> ToDira</a>
+      <nav class="site-nav">
+        <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">דירות</a>
+        <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">שמורות</a>
+        <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">הסינון שלי</a>
+      </nav>
+    </div>
   </header>
   <main>
     {% block content %}{% endblock %}
