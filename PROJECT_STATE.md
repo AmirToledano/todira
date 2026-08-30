@@ -101,19 +101,23 @@ was validated with a standalone Jinja2 render pass (mock listings incl. missing
 price/image/description/posted_at) before each push — see git log on `main` for the exact
 commits if continuing this work.
 
-**Immediate next step, blocked on the owner (mid-flight as of this note, will resume when back)**:
-sharing the site link doesn't work well — WhatsApp won't auto-linkify a bare
-`http://13.50.115.61:30080/` (no dot-com-shaped hostname, non-standard port), so it shows as
-plain text, no click, no preview card. Real fix is a proper domain (e.g. `todira.co.il` or
-similar) with an A record pointed at the EC2 box's public IP, ideally behind HTTPS (Caddy/Traefik
-+ Let's Encrypt, or Cloudflare in front, either is fine) instead of raw `:30080` HTTP. Owner does
-not have a domain registered yet and hadn't decided on a registrar when this was interrupted —
-**pick this up as the very next thing, even off a trivial-looking message, per the owner's
-explicit request not to lose this thread.** Once a domain exists: point DNS at whatever the
-current EC2 public IP is (check the "instance resized" section above — it moves on
-stop/start unless an Elastic IP is attached, so consider attaching one as part of this same
-piece of work), set up TLS, and add Open Graph meta tags to `website/templates/base.html` (title/
-description/image using the brand webp) so shared links get a real preview card.
+**RESOLVED same day**: owner had no registered domain and didn't want to pay, so went with
+**DuckDNS** (free dynamic-DNS service, duckdns.org) instead of a paid registrar — signed in with
+Google, created `todira.duckdns.org`, pointed it at the EC2 box's public IP (`13.50.115.61`).
+**Live URL is now `http://todira.duckdns.org:30080/`** — note it's `http://` (no TLS yet) and
+still needs the explicit `:30080` port (a literal colon before the port number, not a slash —
+that tripped the owner up once already, worth remembering if guiding this again). This does
+correctly linkify in WhatsApp/Telegram now since it's a real hostname, not a bare IP.
+
+**Still open, lower urgency now that sharing works**: no HTTPS yet (Caddy/Traefik + Let's
+Encrypt, or Cloudflare in front of DuckDNS, either works), no Open Graph meta tags on
+`website/templates/base.html` yet for a rich preview card when shared, and the URL still needs
+the `:30080` in it (could front it with a reverse proxy on 80/443 to drop that). Also remember:
+DuckDNS points at a specific IP the owner has to update by hand — if the EC2 box's public IP
+changes again (stop/modify/start without an Elastic IP, as happened once already this same day),
+`todira.duckdns.org` will need its IP re-pointed too, on top of the `KUBECONFIG_B64` secret fix
+described above. Attaching a real Elastic IP would fix both of these recurring papercuts at once
+and is worth doing whenever there's a slightly longer window than "20 minutes before a flight."
 
 ## Correction to a stale note below: `ZENROWS_API_KEY` IS set
 The "Yad2 scraping: SOLVED" section below says this assistant couldn't add `ZENROWS_API_KEY` and
