@@ -4,9 +4,12 @@
 {% block content %}
 {% from "_listing_card.html" import listing_card %}
 
-<div class="page-head">
-  <h1>🏠 דירות תואמות</h1>
-  <span class="result-count">{{ listings|length }} תוצאות</span>
+<div class="page-banner reveal">
+  <div class="pb-text">
+    <h1>🏠 דירות תואמות</h1>
+    <p>כל דירה שעברה את הסינון שלך, ממוינת מהחדשה ביותר</p>
+  </div>
+  <div class="pb-count"><b>{{ listings|length }}</b><span>תוצאות</span></div>
 </div>
 
 <div class="notice">גישה זמנית לפי מזהה טלגרם — קישור אישי זה עדיין לא מאובטח לגמרי, שלב ביניים בלבד עד להשקה.</div>

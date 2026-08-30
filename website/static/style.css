@@ -238,9 +238,22 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .filter-bar .btn.outline { padding: 8px 16px; font-size: .85rem; margin-inline-start: auto; }
 
 /* ---------- listing grid & cards ---------- */
-.page-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-.page-head h1 { margin: 0; }
-.result-count { color: var(--text-muted); font-size: .95rem; }
+/* ---------- page banner (apartments / liked / filter headers) ---------- */
+.page-banner {
+  background: radial-gradient(circle at 15% 20%, rgba(184,134,11,.14), transparent 45%),
+              radial-gradient(circle at 85% 0%, rgba(122,31,43,.10), transparent 40%);
+  border-radius: var(--radius-lg);
+  padding: 26px 24px; margin-bottom: 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+.page-banner .pb-text h1 { margin: 0 0 4px; font-size: clamp(1.4rem, 4vw, 1.9rem); }
+.page-banner .pb-text p { margin: 0; color: var(--text-muted); font-size: .92rem; }
+.page-banner .pb-count {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 10px 20px; text-align: center; box-shadow: var(--shadow-sm); min-width: 92px;
+}
+.page-banner .pb-count b { display: block; font-family: 'Frank Ruhl Libre', serif; font-size: 1.5rem; color: var(--wine); }
+.page-banner .pb-count span { font-size: .72rem; color: var(--text-muted); }
 
 .listing-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 22px;
