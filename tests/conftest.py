@@ -10,3 +10,4 @@ _ROOT = Path(__file__).resolve().parent.parent
 # does, without needing package installs.
 sys.path.insert(0, str(_ROOT / "common"))
 sys.path.insert(0, str(_ROOT / "scraper"))
+sys.path.insert(0, str(_ROOT / "bot"))

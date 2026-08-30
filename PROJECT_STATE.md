@@ -187,6 +187,17 @@ main" standing approval.
    matching/normalize change can no longer reach a deploy. All 82 tests verified passing locally
    before pushing. Commit `ff5eb8b`, CI/CD run #31 — confirmed green (the new `test` job ran and
    passed for the first time, gating the deploy exactly as intended).
+4. **Extended the same test suite** to two more pure, dependency-light modules with real
+   documented bug history: `bot/cities.py`'s `find_matches()` (9 cases — the exact `ב"ש`-style
+   alias bug a prior session found only via manual testing against the live bot, plus quote-style
+   agnosticism, limit capping) and `bot/gemini_client.py`'s `parse_onboarding_message()`
+   post-processing (7 cases — hallucinated-city filtering against the known-cities list, the
+   real bug class behind the "Fix Gemini city fallback" commit in git history; invalid
+   `deal_type` rejection; the fail-soft contract on API exceptions and malformed JSON — the
+   Gemini API call itself is mocked out, no network/API key needed). `tests/conftest.py` now
+   also puts `bot/` on `sys.path`. `requirements-test.txt` gained `google-genai` (already a
+   production dep of `bot/`, needed here only to import `gemini_client.py` at all). 98 tests
+   total, all verified passing locally before pushing.
 3. **Explicitly NOT attempted, with reasons** (so nobody re-litigates these from scratch):
    - **Komo scraping**: sandbox environment's outbound network is allowlisted (CDNs/package
      registries only) — `curl` to `komo.co.il` fails with `connect_rejected`. Writing a scraper

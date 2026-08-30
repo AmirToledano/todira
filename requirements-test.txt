@@ -1,4 +1,5 @@
 # Only what tests/ needs to import - not the full service requirements (no sqlalchemy, no
-# playwright/patchright, etc), since matching.py and normalize.py are deliberately dependency-light.
+# playwright/patchright, etc), since the modules under test are deliberately dependency-light.
 pytest>=8.0,<9.0
 pydantic>=2.5,<3.0
+google-genai>=0.3,<1.0
