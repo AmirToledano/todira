@@ -489,6 +489,25 @@ and many flagship Androids do too. Don't split the difference "for file size" on
 where sharpness is the whole point — verify visually on the actual target device (or at minimum at
 3x zoom) before shipping a resize, not just by eyeballing it in a tool's preview at 1x.
 
+**Round 4, the actual final one — this was never really about resolution**: after round 3 shipped
+(1184x2096, 187KB) the owner *still* reported it looked "smeared" on his phone. Turned out every
+prior round had correctly fixed the file on the server — the real bug was that
+`/static/todira-brand.webp` is the same URL across all three re-uploads (70KB → 128KB → 187KB) with
+no cache versioning, so his phone (browser cache and/or a carrier-level cache, common on mobile
+networks) kept serving an old cached copy no matter what the server actually had. **Fix**: added a
+`?v=2` query param everywhere the image is referenced (img src, preload link, og:image,
+twitter:image) — a different URL is a cache-miss by definition, forcing an immediate fresh fetch
+with no action needed from the owner. **Bump this version number in all four places whenever this
+image file changes again** — this is now the load-bearing mechanism preventing stale-cache
+confusion, not optional. General lesson: when a "we already fixed this" report keeps recurring
+identically after a real server-side fix, suspect caching (browser/CDN/mobile carrier) before
+re-diagnosing the original bug a fourth time — it wastes a round-trip that a cache-busted URL
+would have ruled out immediately. Also worth remembering: building and screenshotting the actual
+page locally (uvicorn + Playwright/Chromium, both already available in the sandbox — home page
+needs no live DATABASE_URL since it does no DB query) is a fast, real way to verify UI claims
+without waiting on the owner for a screenshot, though it can't catch a client-side caching issue
+like this one since the sandbox always fetches fresh.
+
 **Checked the rest of the site for the same class of bug**: only one local static image exists
 (`todira-brand.webp`, now fixed) — the listing-card photos (`_listing_card.html`) are external URLs
 from scraped sources rendered via CSS `background-image`, not `<img>`, so the size/lazy-loading
