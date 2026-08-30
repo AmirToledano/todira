@@ -1,5 +1,5 @@
-{% macro listing_card(l) %}
-<div class="listing-card">
+{% macro listing_card(l, delay=0) %}
+<div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover {{ '' if l.image_urls else 'no-image' }}"
        {% if l.image_urls %}style="background-image:url('{{ l.image_urls[0] }}')"{% endif %}>
     {% if not l.image_urls %}🏠{% endif %}
