@@ -467,15 +467,27 @@ forward; if a PR ever needs the owner's actual judgment call (not just a routine
 signal to ask him directly in chat, not to point him at a PR page.
 
 ## Update 2026-08-30, night: hero image sharpness fix + WhatsApp Meta setup started
-**Hero image, round 2**: the first size optimization (406KB→70KB, resized to 678x1200) fixed the
-slow-load complaint but overcorrected — owner reported it now looks "smeared"/blurry on his phone.
-Root cause: sized for *desktop's* capped display (`height:560px` → ~316px wide) but forgot mobile
-renders the image at `100vw` — on a 3x-DPR phone at ~390-430px CSS width that needs up to
-~1200-1300 real pixels, well above the 678px file. Re-encoded from the original source (kept in git
-history at commit `e121b86`) at 960x1699 (128KB) — still a third of the original size but sharp at
-mobile's actual display size. Lesson for next time: when sizing an image that renders at different
-CSS widths per breakpoint (here: 100vw mobile vs. a capped height on desktop), size for the
-*largest* real rendered width × device pixel ratio, not just the desktop breakpoint.
+**Hero image, rounds 2 and 3**: the first size optimization (406KB→70KB, resized to 678x1200)
+fixed the slow-load complaint but overcorrected — owner reported it now looks "smeared"/blurry on
+his phone. Round 2 diagnosed this as "sized for desktop's capped height, forgot mobile is 100vw"
+and shipped 960x1699 (128KB) — **still not enough**: owner reported it still looked soft. Round 3
+found the actual full root cause: **modern iPhones (14/15/16 and up, i.e. anything post-iPhone-X)
+render at 3x device pixel ratio**, not 2x. At up to ~430 CSS px display width (100vw on a big
+phone), that needs **~1290 real pixels**, not the ~860 that a 2x assumption gives — 960px still
+undershot it. The *original* 1184px width happens to be almost exactly right for this, which is
+why going back to it looked best to the owner. **Final fix**: kept the original resolution
+(1184x2096, matching the source in git history at commit `e121b86`) but re-encoded it at WebP
+quality 85 instead of whatever near-lossless setting the source export used — 406KB → 187KB (54%
+smaller), no visible quality loss at full resolution. Best of both: full sharpness on high-DPI
+phones, still much lighter than the original file.
+
+**Corrected lesson for next time** (round 2's note undersold the DPR factor — use this version):
+when sizing an image that renders at different CSS widths per breakpoint, the target pixel width
+is `(largest real CSS display width across all breakpoints) × (device pixel ratio)` — and assume
+**3x**, not 2x, for phones, since essentially every iPhone sold since ~2017 (X and later) uses 3x,
+and many flagship Androids do too. Don't split the difference "for file size" on a hero/brand image
+where sharpness is the whole point — verify visually on the actual target device (or at minimum at
+3x zoom) before shipping a resize, not just by eyeballing it in a tool's preview at 1x.
 
 **Checked the rest of the site for the same class of bug**: only one local static image exists
 (`todira-brand.webp`, now fixed) — the listing-card photos (`_listing_card.html`) are external URLs
