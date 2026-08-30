@@ -508,6 +508,19 @@ needs no live DATABASE_URL since it does no DB query) is a fast, real way to ver
 without waiting on the owner for a screenshot, though it can't catch a client-side caching issue
 like this one since the sandbox always fetches fresh.
 
+**Round 5, actual resolution**: even after the cache-bust fix, owner (now testing fresh via a
+private/incognito tab, ruling out caching for real) still said it "looks bad." At this point,
+stopped trying to out-guess it with more compression tuning — **restored the literal original file
+byte-for-byte** (406KB, md5-verified identical to the pre-session original in git history at
+`e121b86`), bumped cache-bust to `?v=3`. This directly honors what the owner asked for from the
+start ("bring back exactly 2096x1184, that looked best") instead of substituting this assistant's
+own judgment ("quality 85 looks the same to me") for his. **Lesson**: after 2-3 rounds of a
+subjective visual-quality disagreement where each "fix" gets rejected, stop iterating on
+alternatives the reporter didn't ask for — just give them literally what they described wanting.
+Whether the underlying difference was ever really perceptible almost doesn't matter at that point;
+the trust cost of another wrong guess exceeds the ~220KB saved. If load speed matters again later,
+that's a separate, explicit ask to revisit — not something to solve unilaterally mid-dispute.
+
 **Checked the rest of the site for the same class of bug**: only one local static image exists
 (`todira-brand.webp`, now fixed) — the listing-card photos (`_listing_card.html`) are external URLs
 from scraped sources rendered via CSS `background-image`, not `<img>`, so the size/lazy-loading
