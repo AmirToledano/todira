@@ -185,7 +185,8 @@ main" standing approval.
    modules are deliberately dependency-light, no sqlalchemy/playwright needed to test them) and a
    new `test` job in `ci-cd.yaml` that `build-and-push` now depends on, so a broken
    matching/normalize change can no longer reach a deploy. All 82 tests verified passing locally
-   before pushing.
+   before pushing. Commit `ff5eb8b`, CI/CD run #31 — confirmed green (the new `test` job ran and
+   passed for the first time, gating the deploy exactly as intended).
 3. **Explicitly NOT attempted, with reasons** (so nobody re-litigates these from scratch):
    - **Komo scraping**: sandbox environment's outbound network is allowlisted (CDNs/package
      registries only) — `curl` to `komo.co.il` fails with `connect_rejected`. Writing a scraper
