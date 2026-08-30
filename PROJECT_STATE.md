@@ -432,9 +432,20 @@ HTTPS/443, source `0.0.0.0/0`) → Save. Works fine from the AWS Console website
 not just a desktop. DNS is already correct (DuckDNS already points `todira.duckdns.org` at the
 node's public IP) — nothing else is needed once those two ports are open; Caddy is already
 retrying every 60s and will pick up the moment the firewall allows the ACME challenge through.
-**Next step for whoever continues this**: once the owner confirms the ports are open, re-check
-Caddy's logs via the same diagnostic-step technique (or just have the owner load
-`https://todira.duckdns.org/` directly) to confirm the certificate actually issued.
+**Update: HTTPS is live.** Owner opened both ports (80 + 443) on the EC2 Security Group. Re-checked
+Caddy's logs via the same diagnostic-step technique (CI run #42, job 99330416018) and confirmed:
+`"msg":"certificate obtained successfully","identifier":"todira.duckdns.org","issuer":"acme-v02.api.letsencrypt.org-directory"`.
+Real internet traffic (a security scanner and an actual Chrome browser) hit the site over HTTPS
+within seconds of issuance — proof it's reachable from the public internet, not just from inside
+the cluster. `https://todira.duckdns.org/` now works with a real, browser-trusted cert — no more
+`:30080`, no more Safari "can't establish a secure connection", and link-unfurlers (WhatsApp
+included) should now be able to fetch the OG image since it's a standard port with valid TLS.
+
+That same log window showed a handful of `502` responses (`dial tcp ...:8000: connect: connection
+refused`) in the ~12 seconds right after the cert was issued — a red herring, not a bug: that CI
+run was *also* the `/filter` page deploy, so the website pod was mid-restart at that exact moment.
+Not a lasting issue; the website Service/Deployment config (`targetPort: 8000` matching the
+Dockerfile's `--port 8000`) was double-checked and is correct.
 
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
