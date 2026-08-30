@@ -210,9 +210,18 @@ main" standing approval.
      against an unverified page structure would repeat Yad2's first 8 failed attempts. Needs an
      environment with real internet access (e.g. the EC2 box itself) to inspect the real HTML/DOM
      before writing a parser — don't guess at selectors.
-   - **Facebook Marketplace/Groups scraping**: requires the owner's personal Facebook login and
-     carries real account-ban/ToS risk. Will not start this without the owner's explicit, informed
-     confirmation of that specific risk — hasn't been given yet.
+   - **Facebook Marketplace/Groups scraping**: requires a logged-in Facebook session (Marketplace
+     and Groups aren't viewable as a guest) and carries real account-ban/ToS risk. **Does NOT need
+     to be the owner's real personal account** — clarified 2026-08-30 after the owner asked; the
+     right approach is a dedicated throwaway account made just for this, so a ban costs nothing
+     real. Two things to know going in: (1) Facebook may demand phone/ID verification on a
+     brand-new "suspicious" account, so give it some history (profile photo, a few friends) before
+     scraping through it; (2) most real-estate Groups require admin approval to join, which a
+     completely bare account may get rejected from — join relevant groups manually first. Once the
+     account exists, log into it once in a normal browser and hand over the session **cookies**
+     (not the password) — same session-reuse approach as the ZenRows/Yad2 solution, not a
+     scripted username+password login (far more likely to trigger a 2FA/checkpoint challenge).
+     Owner is open to starting on this given the throwaway-account approach.
    - **WhatsApp integration**: still fully blocked on the owner completing the Meta for Developers
      account/app/test-number setup documented below in "Explicitly deferred" — cannot be advanced
      by an assistant at all until those account-level steps exist.
@@ -432,9 +441,20 @@ HTTPS/443, source `0.0.0.0/0`) → Save. Works fine from the AWS Console website
 not just a desktop. DNS is already correct (DuckDNS already points `todira.duckdns.org` at the
 node's public IP) — nothing else is needed once those two ports are open; Caddy is already
 retrying every 60s and will pick up the moment the firewall allows the ACME challenge through.
-**Next step for whoever continues this**: once the owner confirms the ports are open, re-check
-Caddy's logs via the same diagnostic-step technique (or just have the owner load
-`https://todira.duckdns.org/` directly) to confirm the certificate actually issued.
+**Update: HTTPS is live.** Owner opened both ports (80 + 443) on the EC2 Security Group. Re-checked
+Caddy's logs via the same diagnostic-step technique (CI run #42, job 99330416018) and confirmed:
+`"msg":"certificate obtained successfully","identifier":"todira.duckdns.org","issuer":"acme-v02.api.letsencrypt.org-directory"`.
+Real internet traffic (a security scanner and an actual Chrome browser) hit the site over HTTPS
+within seconds of issuance — proof it's reachable from the public internet, not just from inside
+the cluster. `https://todira.duckdns.org/` now works with a real, browser-trusted cert — no more
+`:30080`, no more Safari "can't establish a secure connection", and link-unfurlers (WhatsApp
+included) should now be able to fetch the OG image since it's a standard port with valid TLS.
+
+That same log window showed a handful of `502` responses (`dial tcp ...:8000: connect: connection
+refused`) in the ~12 seconds right after the cert was issued — a red herring, not a bug: that CI
+run was *also* the `/filter` page deploy, so the website pod was mid-restart at that exact moment.
+Not a lasting issue; the website Service/Deployment config (`targetPort: 8000` matching the
+Dockerfile's `--port 8000`) was double-checked and is correct.
 
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
