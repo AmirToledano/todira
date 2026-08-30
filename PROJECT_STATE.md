@@ -466,10 +466,62 @@ action, zero GitHub UI exposure. The owner should never be asked to click anythi
 forward; if a PR ever needs the owner's actual judgment call (not just a routine merge), that's a
 signal to ask him directly in chat, not to point him at a PR page.
 
+## Update 2026-08-30, night: hero image sharpness fix + WhatsApp Meta setup started
+**Hero image, round 2**: the first size optimization (406KB→70KB, resized to 678x1200) fixed the
+slow-load complaint but overcorrected — owner reported it now looks "smeared"/blurry on his phone.
+Root cause: sized for *desktop's* capped display (`height:560px` → ~316px wide) but forgot mobile
+renders the image at `100vw` — on a 3x-DPR phone at ~390-430px CSS width that needs up to
+~1200-1300 real pixels, well above the 678px file. Re-encoded from the original source (kept in git
+history at commit `e121b86`) at 960x1699 (128KB) — still a third of the original size but sharp at
+mobile's actual display size. Lesson for next time: when sizing an image that renders at different
+CSS widths per breakpoint (here: 100vw mobile vs. a capped height on desktop), size for the
+*largest* real rendered width × device pixel ratio, not just the desktop breakpoint.
+
+**Checked the rest of the site for the same class of bug**: only one local static image exists
+(`todira-brand.webp`, now fixed) — the listing-card photos (`_listing_card.html`) are external URLs
+from scraped sources rendered via CSS `background-image`, not `<img>`, so the size/lazy-loading
+concern doesn't apply the same way. Worth revisiting later (real `<img loading="lazy">` there would
+also help accessibility/alt-text) but not urgent — not something anyone reported as slow.
+
+**WhatsApp Meta for Developers signup — in progress, owner mid-flow**: owner started the Meta for
+Developers registration to get the free WhatsApp test number (see the "Explicitly deferred" section
+above for the full step list this is part of). Hit two snags along the way, both resolved/being
+worked around:
+- Meta forced login via his real personal Facebook account with no way around it (cancel just kicks
+  you back to login) — clarified this is **fundamentally different from the Facebook-scraping risk
+  discussed elsewhere**: Meta for Developers is the official, sanctioned API, so there's no ban risk
+  and no need for a "seasoned" account. Owner created a **separate dedicated Facebook account** just
+  for this (not his personal profile) to keep it cleanly separate, which works fine for this purpose.
+- Owner is currently traveling abroad, which is complicating the mandatory phone-verification step:
+  slow SMS delivery, and after entering phone → confirming email → picking "Owner/founder" as role →
+  clicking "Complete Registration", it loops back to asking for phone verification again instead of
+  finishing. Likely an anti-fraud loop (IP-country vs. phone-country mismatch is a common trigger) or
+  a mobile-web flow bug, not something the owner is doing wrong. Advised: confirm the SMS code is
+  actually being entered (not just the number submitted), try clearing cookies/restarting the flow,
+  and — most likely to actually fix it — try again from a **desktop browser** instead of mobile
+  Safari, since multi-step KYC-style flows tend to be far more reliable there. **Owner will resume
+  from this exact stuck point** (the `.../async/registration/dialog/?src=default` page) next time he
+  picks this up — not started fresh.
+- Also flagged for whenever the account does get verified: add a recovery email in Settings once the
+  new dedicated account exists, since Facebook can re-trigger a phone challenge on a "suspicious"
+  login later (e.g. logging in from Israel after registering from abroad) and the Austrian number
+  used for initial verification won't be reachable once the owner is back home.
+
+**Workflow change (see the PR-automation update above for the full detail)**: after PR #1/#2 the
+owner said outright he doesn't understand git/PRs and never wants to click anything on GitHub —
+so from PR #3 onward this assistant merges its own PRs immediately, no owner action at all. Keep
+doing this going forward; do not revert to asking for a manual merge click.
+
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
   assume expert-level familiarity, but he's technical and can follow real explanations.
 - He wants to be an active participant, not have things done solo — involve him in decisions,
-  especially anything account-level (GitHub, AWS, BotFather) which he does himself.
+  especially anything account-level (GitHub, AWS, BotFather, Meta) which he does himself. That said,
+  **he does NOT want to touch GitHub's PR/merge UI himself** — this assistant merges its own PRs
+  (see the PR-automation update above). The "involve him in decisions" principle is about actual
+  judgment calls (design choices, account-level risk), not routine git mechanics.
 - He's building this as a real product to eventually sell — flag "fine for now, revisit before
   launch" on any shortcut rather than treating Phase 1 choices as permanent.
+- When resizing/optimizing an image, check how it's rendered at **every** CSS breakpoint (not just
+  one) before picking a target resolution — see the hero-image round 2 note above for what happens
+  when you don't.
