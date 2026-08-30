@@ -456,6 +456,16 @@ run was *also* the `/filter` page deploy, so the website pod was mid-restart at 
 Not a lasting issue; the website Service/Deployment config (`targetPort: 8000` matching the
 Dockerfile's `--port 8000`) was double-checked and is correct.
 
+## Update 2026-08-30: switched to PR-based merges to main
+Previously this assistant pushed straight to `main` (owner's earlier blanket approval). Owner found
+the manual compare/create-PR/merge flow confusing, so switched process: this assistant now develops
+on a `claude/...` branch as usual, then **opens a PR itself** (`create_pull_request`) once work is
+ready — the owner's only remaining step is clicking "Merge pull request" on GitHub, no more manual
+branch-compare navigation. Do not auto-merge the PR itself; opening it and waiting for the owner's
+merge click is the point of this change. (First real instance: PR #1, opened for the HTTPS
+confirmation + hero image fix + Facebook-scraping-account clarification commits — owner merged it
+manually that time while this note was being written, confirming the flow works end to end.)
+
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
   assume expert-level familiarity, but he's technical and can follow real explanations.
