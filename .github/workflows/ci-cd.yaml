@@ -107,22 +107,12 @@ jobs:
           echo "--- bot logs (previous container, if it restarted) ---"
           kubectl logs -n todira -l app=todira-bot --tail=150 --previous || true
 
-      - name: Recon Traefik (planning HTTPS so link previews + bare-domain access work)
+      - name: Diagnose Caddy (HTTPS rollout)
         if: always()
         run: |
-          echo "--- kube-system pods ---"
-          kubectl get pods -n kube-system -o wide
-          echo "--- traefik deployment/daemonset ---"
-          kubectl get deploy,daemonset -n kube-system -l app.kubernetes.io/name=traefik -o wide || true
-          echo "--- traefik service (check for hostPort/LoadBalancer 80/443) ---"
-          kubectl get svc -n kube-system -l app.kubernetes.io/name=traefik -o yaml || true
-          echo "--- traefik image/version ---"
-          kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik -o jsonpath='{.items[*].spec.containers[*].image}' || true
-          echo ""
-          echo "--- existing HelmChartConfig resources ---"
-          kubectl get helmchartconfig -A -o yaml || true
-          echo "--- existing Ingress/IngressRoute resources ---"
-          kubectl get ingress -A || true
-          kubectl get ingressroute -A || true
-          echo "--- node public-facing ports currently listening (host-level, via a debug pod) ---"
-          kubectl get svc -A -o wide | grep -E 'LoadBalancer|NodePort' || true
+          echo "--- caddy pod ---"
+          kubectl get pods -n todira -l app=todira-caddy -o wide
+          echo "--- caddy describe ---"
+          kubectl describe pod -n todira -l app=todira-caddy
+          echo "--- caddy logs ---"
+          kubectl logs -n todira -l app=todira-caddy --tail=150 || true
