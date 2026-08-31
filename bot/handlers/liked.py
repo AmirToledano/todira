@@ -5,6 +5,8 @@ originally sent the card.
 """
 from __future__ import annotations
 
+import asyncio
+
 from sqlalchemy import select
 from telegram import Update
 from telegram.constants import ParseMode
@@ -18,9 +20,9 @@ from dorin_common.users import get_or_create_user
 LIKED_LIMIT = 10
 
 
-async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _load_liked_sync(tg_user) -> list[Listing]:
     with get_session() as session:
-        user = get_or_create_user(session, update.effective_user)
+        user = get_or_create_user(session, tg_user)
         stmt = (
             select(Listing)
             .join(UserListingAction, UserListingAction.listing_id == Listing.id)
@@ -30,7 +32,14 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             .order_by(UserListingAction.created_at.desc())
             .limit(LIKED_LIMIT)
         )
-        results = list(session.scalars(stmt))
+        return list(session.scalars(stmt))
+
+
+async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
+    # call directly on the event loop would freeze every other user's bot interaction too, not
+    # just this one, since PTB processes updates one at a time by default.
+    results = await asyncio.to_thread(_load_liked_sync, update.effective_user)
 
     if not results:
         await update.message.reply_text(
@@ -46,19 +55,15 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    action, _, raw_id = query.data.partition(":")
-    listing_id = int(raw_id)
-
+def _apply_reaction_sync(tg_user, action: str, listing_id: int) -> str:
+    """Returns the toast text to show via query.answer()."""
     with get_session() as session:
-        user = get_or_create_user(session, update.effective_user)
+        user = get_or_create_user(session, tg_user)
 
         if action == "found":
             user.is_active = False
             session.commit()
-            await query.answer("מזל טוב! השהיתי את החיפוש עבורך. שלח/י /start כדי לחזור.")
-            return
+            return "מזל טוב! השהיתי את החיפוש עבורך. שלח/י /start כדי לחזור."
 
         db_action = "liked" if action == "like" else "hidden"
         exists = session.scalar(
@@ -72,7 +77,19 @@ async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             session.add(UserListingAction(user_id=user.id, listing_id=listing_id, action=db_action))
             session.commit()
 
-    await query.answer("נשמר ❤️" if action == "like" else "הוסתר 🙈")
+    return "נשמר ❤️" if action == "like" else "הוסתר 🙈"
+
+
+async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    action, _, raw_id = query.data.partition(":")
+    listing_id = int(raw_id)
+
+    # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
+    # call directly on the event loop would freeze every other user's bot interaction too, not
+    # just this one, since PTB processes updates one at a time by default.
+    toast = await asyncio.to_thread(_apply_reaction_sync, update.effective_user, action, listing_id)
+    await query.answer(toast)
 
 
 def build_reaction_handler() -> CallbackQueryHandler:
