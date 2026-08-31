@@ -119,6 +119,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "צור קשר", "en": "Contact us", "ru": "Связаться с нами",
         "fr": "Nous contacter", "ar": "تواصل معنا",
     },
+    "auth.you": {
+        "he": "מחובר/ת", "en": "Logged in", "ru": "Вы вошли", "fr": "Connecté(e)", "ar": "تم تسجيل الدخول",
+    },
+    "auth.logout": {
+        "he": "התנתקות", "en": "Log out", "ru": "Выйти", "fr": "Se déconnecter", "ar": "تسجيل الخروج",
+    },
+    "auth.error_body": {
+        "he": "לא הצלחנו לאמת את ההתחברות דרך טלגרם. אפשר לנסות שוב.",
+        "en": "We couldn't verify the Telegram login. Please try again.",
+        "ru": "Не удалось подтвердить вход через Telegram. Попробуйте снова.",
+        "fr": "Impossible de vérifier la connexion Telegram. Veuillez réessayer.",
+        "ar": "تعذّر التحقق من تسجيل الدخول عبر تيليجرام. يرجى المحاولة مرة أخرى.",
+    },
+    "auth.error_cta": {
+        "he": "חזרה לדף הבית", "en": "Back to home", "ru": "На главную",
+        "fr": "Retour à l'accueil", "ar": "العودة للصفحة الرئيسية",
+    },
     "a11y.skip_to_content": {
         "he": "דלג לתוכן הראשי",
         "en": "Skip to main content",
@@ -731,6 +748,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "need_uid.cta": {
         "he": "פתח את הבוט", "en": "Open the bot", "ru": "Открыть бота", "fr": "Ouvrir le bot", "ar": "افتح البوت",
+    },
+    "need_uid.or_login": {
+        "he": "או התחבר/י ישירות עם טלגרם:",
+        "en": "Or log in directly with Telegram:",
+        "ru": "Или войдите напрямую через Telegram:",
+        "fr": "Ou connectez-vous directement avec Telegram :",
+        "ar": "أو سجّل الدخول مباشرة عبر تيليجرام:",
     },
     "404.body": {
         "he": "הדף שחיפשת לא קיים, או שהקישור אליו שגוי.",

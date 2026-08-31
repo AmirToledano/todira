@@ -38,6 +38,18 @@
           <a href="{{ request.url.include_query_params(lang=code) }}" class="{{ 'active' if code == lang else '' }}" lang="{{ code }}" {{ 'aria-current="page"' if code == lang else '' }}>{{ lang_labels[code] }}</a>
           {% endfor %}
         </nav>
+        <div class="auth-box">
+          {% if current_user %}
+          <span class="auth-name">{{ current_user.first_name or (current_user.telegram_username and ('@' ~ current_user.telegram_username)) or t('auth.you') }}</span>
+          <a class="auth-logout" href="/auth/logout">{{ t('auth.logout') }}</a>
+          {% else %}
+          <script async src="https://telegram.org/js/telegram-widget.js?22"
+                  data-telegram-login="AmirDirotBot"
+                  data-size="medium"
+                  data-auth-url="https://todira.duckdns.org/auth/telegram/callback"
+                  data-radius="8"></script>
+          {% endif %}
+        </div>
       </div>
     </div>
   </header>

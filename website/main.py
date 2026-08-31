@@ -1,17 +1,27 @@
 """ToDira public website (Phase 2) — FastAPI, server-rendered Jinja2 templates, reuses
 common/dorin_common (same models/matching/db as the bot and scraper).
 
-AUTH IS A TEMPORARY SHIM: pages take the user's Telegram numeric ID as a plain `?uid=` query
-param — there is no real login yet. This is deliberately NOT secure (anyone who knows/guesses a
-uid can view that user's filter/liked listings) and must be replaced before any real launch with
-something like Dorin's signed/encrypted deep-link token (see PROJECT_STATE.md). Good enough for a
-first browser-reachable milestone, not for production.
+AUTH: two ways in, and both resolve to the same signed session cookie in the end.
+  1. Real login — the Telegram Login Widget (see /auth/telegram/callback below). The session
+     cookie stores only the internal `users.id` PK, deliberately NOT "telegram_user_id" or
+     anything Telegram-specific — a future WhatsApp bot's own login route just needs to resolve
+     its own user identity to the same `users.id` and populate the same session key
+     (`request.session["user_id"]`), no changes needed here. This is the important bit: the
+     product plan includes a WhatsApp bot later, and everything is meant to sit on/talk to this
+     one website, so the session layer can't be hard-wired to "Telegram is the only login".
+  2. Legacy `?uid=` query param (the bot's deep links, e.g. from a "check your matches" message) —
+     kept working unchanged so existing links never break. Not secure on its own (anyone who
+     knows/guesses a uid can view that user's filter/liked listings via a raw link), but the real
+     session cookie above is what protects a page once you've actually logged in.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import logging
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -24,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 
 from i18n import (
@@ -42,7 +53,14 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
 
+# Falls back to an insecure dev-only value so `uvicorn website.main:app` and the test suite work
+# without extra setup; production always sets this via the SESSION_SECRET_KEY Kubernetes secret
+# (see charts/todira/templates/bot-secret.yaml) — a login session signed with the fallback would
+# be forgeable, so this must never actually be used outside local dev/tests.
+SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "dev-only-insecure-session-key")
+
 app = FastAPI(title="טודירה")
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
@@ -88,12 +106,36 @@ def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: in
         return False
 
 
+def _current_user_summary(request: Request) -> dict | None:
+    """For the header's login/logout UI, shown on every page — a light column-only lookup (no
+    relationships touched) so the returned dict is safe to read from after the DB session closes.
+    Returns None both when logged out and when a stale session references a deleted user."""
+    user_id = request.session.get("user_id")
+    if user_id is None:
+        return None
+    with get_session() as session:
+        row = session.execute(
+            select(User.telegram_user_id, User.first_name, User.telegram_username).where(
+                User.id == user_id
+            )
+        ).first()
+    if row is None:
+        return None
+    return {
+        "telegram_user_id": row.telegram_user_id,
+        "first_name": row.first_name,
+        "telegram_username": row.telegram_username,
+    }
+
+
 def _render(request: Request, template_name: str, context: dict, status_code: int = 200) -> Response:
     """Every page goes through this: resolves the viewer's language (?lang= > cookie > Hebrew),
     injects lang/dir/t/lang switcher data into the template context, and — only when the request
     explicitly asked for a language via ?lang= — persists it to a cookie so it survives to the
     next page without every internal link needing to carry ?lang= itself (uid already has to be
     threaded through links for auth, but lang is a site-wide preference, a cookie fits better).
+    Also injects `current_user` (or None) so the header's login/logout UI is correct on every page,
+    not just the ones that already resolve a full user for their own content.
     """
     lang = get_lang(request)
     response = templates.TemplateResponse(
@@ -106,6 +148,7 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "t": make_translator(lang),
             "supported_langs": SUPPORTED_LANGS,
             "lang_labels": LANG_LABELS,
+            "current_user": _current_user_summary(request),
         },
         status_code=status_code,
     )
@@ -128,6 +171,41 @@ def _get_user_by_uid(session, uid: int) -> User | None:
     return session.scalar(select(User).where(User.telegram_user_id == uid))
 
 
+def _resolve_user(request: Request, session, uid: int | None) -> User | None:
+    """Prefer the signed session cookie (real login) over the legacy ?uid= query param — the
+    query param stays supported unchanged so existing bot deep links keep working."""
+    session_user_id = request.session.get("user_id")
+    if session_user_id is not None:
+        user = session.get(User, session_user_id)
+        if user is not None:
+            return user
+    if uid is not None:
+        return _get_user_by_uid(session, uid)
+    return None
+
+
+def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
+    """Validates the Telegram Login Widget callback per Telegram's own algorithm:
+    https://core.telegram.org/widgets/login#checking-authorization
+    HMAC-SHA256 over the sorted `key=value` fields (excluding `hash`), keyed by SHA256(bot_token).
+    Also rejects a callback whose auth_date is more than a day old, so an old, leaked/cached
+    callback URL can't be replayed to establish a fresh session."""
+    received_hash = params.get("hash")
+    if not received_hash:
+        return False
+    check_fields = {k: v for k, v in params.items() if k != "hash"}
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(check_fields.items()))
+    secret_key = hashlib.sha256(bot_token.encode()).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(computed_hash, received_hash):
+        return False
+    try:
+        auth_date = int(params.get("auth_date", "0"))
+    except ValueError:
+        return False
+    return time.time() - auth_date <= 60 * 60 * 24
+
+
 @app.get("/")
 def home(request: Request):
     return _render(request, "home.html", {})
@@ -141,6 +219,38 @@ def terms(request: Request):
 @app.get("/privacy")
 def privacy(request: Request):
     return _render(request, "privacy.html", {})
+
+
+def _safe_next(next: str) -> str:
+    return next if next.startswith("/") and not next.startswith("//") else "/apartments"
+
+
+@app.get("/auth/telegram/callback")
+def auth_telegram_callback(request: Request, next: str = "/apartments"):
+    params = dict(request.query_params)
+    params.pop("next", None)
+    if not TELEGRAM_BOT_TOKEN or not _verify_telegram_auth(params, TELEGRAM_BOT_TOKEN):
+        logger.warning("Rejected Telegram login callback: missing token or invalid signature")
+        return _render(request, "auth_error.html", {}, status_code=400)
+
+    telegram_user_id = int(params["id"])
+    with get_session() as session:
+        user = _get_user_by_uid(session, telegram_user_id)
+        user_pk = user.id if user is not None else None
+
+    if user_pk is None:
+        # Verified as a real Telegram account, but one that's never started the bot — there's no
+        # filter/account for the website to show yet, so send them to onboard there first.
+        return RedirectResponse("https://t.me/AmirDirotBot", status_code=303)
+
+    request.session["user_id"] = user_pk
+    return RedirectResponse(_safe_next(next), status_code=303)
+
+
+@app.get("/auth/logout")
+def auth_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/contact")
@@ -191,13 +301,12 @@ async def contact_submit(
 
 @app.get("/apartments")
 def apartments(request: Request, uid: int | None = None):
-    if uid is None:
-        return _render(request, "need_uid.html", {"target": "apartments"})
-
     with get_session() as session:
-        user = _get_user_by_uid(session, uid)
-        if user is None or user.filter is None:
-            return _render(request, "no_filter.html", {"uid": uid})
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "apartments"})
+        if user.filter is None:
+            return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
 
         listings = session.scalars(
             select(Listing)
@@ -207,18 +316,17 @@ def apartments(request: Request, uid: int | None = None):
         ).all()
         matches = [listing for listing in listings if evaluate(user.filter, listing).matched]
 
-    return _render(request, "apartments.html", {"listings": matches, "uid": uid, "user": user})
+    return _render(
+        request, "apartments.html", {"listings": matches, "uid": user.telegram_user_id, "user": user}
+    )
 
 
 @app.get("/liked")
 def liked(request: Request, uid: int | None = None):
-    if uid is None:
-        return _render(request, "need_uid.html", {"target": "liked"})
-
     with get_session() as session:
-        user = _get_user_by_uid(session, uid)
+        user = _resolve_user(request, session, uid)
         if user is None:
-            return _render(request, "no_filter.html", {"uid": uid})
+            return _render(request, "need_uid.html", {"target": "liked"})
 
         liked_listing_ids = session.scalars(
             select(UserListingAction.listing_id).where(
@@ -231,26 +339,27 @@ def liked(request: Request, uid: int | None = None):
             else []
         )
 
-    return _render(request, "liked.html", {"listings": listings, "uid": uid, "user": user})
+    return _render(
+        request, "liked.html", {"listings": listings, "uid": user.telegram_user_id, "user": user}
+    )
 
 
 @app.get("/filter")
 def filter_view(request: Request, uid: int | None = None):
-    if uid is None:
-        return _render(request, "need_uid.html", {"target": "filter"})
-
     lang = get_lang(request)
     with get_session() as session:
-        user = _get_user_by_uid(session, uid)
-        if user is None or user.filter is None:
-            return _render(request, "no_filter.html", {"uid": uid})
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "filter"})
+        if user.filter is None:
+            return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
         filter_row = user.filter
         return _render(
             request,
             "filter.html",
             {
                 "f": filter_row,
-                "uid": uid,
+                "uid": user.telegram_user_id,
                 "user": user,
                 "property_type_labels": PROPERTY_TYPE_LABELS.get(lang, PROPERTY_TYPE_LABELS[DEFAULT_LANG]),
                 "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
