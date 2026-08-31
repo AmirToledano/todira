@@ -1544,3 +1544,42 @@ Secrets and variables → Actions):
 Then, in the app dashboard's WhatsApp > Configuration (webhooks) screen: Callback URL
 `https://todira.duckdns.org/webhook/whatsapp`, Verify token = the same string used above, and
 subscribe to the `messages` webhook field.
+
+## Update 2026-09-01: multi-city diagnostic results — neither format works; upgraded to Build plan
+Owner upgraded to ZenRows' **Build plan, $19/mo billed monthly, 45,000 credits/mo** (chose monthly
+over the $16/mo annual-billed option to try it first without a bigger commitment). The moment the
+subscription activated, dispatched the prepared `diagnose-multi-city` workflow (see the update
+above) — real results, run `33451231696`:
+
+1. **CONTROL (ramat-gan alone)**: `html_length=1,765,899 cards_parsed=43
+   distinct_cities_seen=['רמת גן']` — confirms `_CARD_RE` still correctly parses real Yad2 markup
+   (unchanged since the 2026-08-29 "SOLVED" writeup) and the scraper pipeline itself is fully
+   healthy. This is also the first genuine re-confirmation since that date, since every run in
+   between was actually hitting ZenRows' AUTH004 quota-exceeded page, never real HTML.
+2. **TEST A, comma-separated (`city=5000,6300`)**: `html_length=1,094,162 cards_parsed=0
+   distinct_cities_seen=[]` — a real, substantial page (not a tiny error response), but zero
+   listing cards. Yad2 doesn't handle this format as "either city" — it returns a page with no
+   matching results at all.
+3. **TEST B, repeated param (`city=5000&city=6300`)**: `html_length=1,452,340 cards_parsed=43
+   distinct_cities_seen=['גבעתיים']` — 43 real cards, but only from **one** city (givatayim, the
+   second/last `city=` param) — Yad2 silently used only the last value and ignored the first,
+   same effective behavior as a normal single-city query.
+4. **TEST C, extract=auto**: request timed out after 90s (`"The read operation timed out"`) —
+   inconclusive, neither confirms nor debunks the ZenRows support bot's claim. Not worth chasing
+   further tonight; if revisited later, retry with a longer timeout (extract-mode processing may
+   just be genuinely slower than a plain Fetch call).
+
+**Conclusion: Yad2 does not support multi-city search in a single request**, via either common
+URL pattern tested. There's no way to cut ZenRows cost-per-city; the only real lever is which paid
+tier to be on (see the cost/latency table in the update above). Cleaned up the temporary
+diagnostic (`scraper/_diagnose_multi_city.py`, `.github/workflows/diagnose-multi-city.yaml`,
+the `httpx` dependency in `scraper/requirements.txt` that only that script needed) now that the
+question is answered — nothing left depending on them.
+
+**Scraper reconfigured for the new Build budget**: `charts/todira/values.yaml`'s
+`scraper.citiesPerRun` changed from `6` back to `0` (disables rotation — every city, every run),
+schedule stays daily at 03:00 UTC. 42 cities × ~30 days ≈ 1,260 requests/month ≈ 31,500 credits —
+comfortably under the new 45,000/month budget with real headroom, and **every city now refreshes
+daily** instead of cycling through a subset once a week. A second daily run would need ~63,000
+credits/month, over budget — daily-for-everyone is the ceiling on this tier; Growth ($166/mo, per
+the earlier table) would be the next real step up if closer-to-real-time coverage is wanted later.
