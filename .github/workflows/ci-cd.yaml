@@ -138,3 +138,17 @@ jobs:
           kubectl describe pod -n todira -l app=todira-caddy
           echo "--- caddy logs ---"
           kubectl logs -n todira -l app=todira-caddy --tail=150 || true
+
+      - name: Diagnose website Service nodePort 30080 conflict
+        # Temporary — Helm upgrade is failing with "nodePort 30080 already allocated" on
+        # object "default/todira-website" even though we always pass --namespace todira,
+        # which shouldn't be possible unless something already holds that port under a
+        # different namespace/release. All read-only, no secrets. Remove once resolved.
+        if: always()
+        run: |
+          echo "--- helm releases, all namespaces ---"
+          helm list -A || true
+          echo "--- services named todira-website, all namespaces ---"
+          kubectl get svc -A | grep todira-website || true
+          echo "--- every service holding nodePort 30080, all namespaces ---"
+          kubectl get svc -A -o json | jq -r '.items[] | select(.spec.ports[]?.nodePort==30080) | "\(.metadata.namespace)/\(.metadata.name)"' || true
