@@ -4,6 +4,8 @@ example match right after a filter is saved (mirrors the reference bot's "👀 �
 prompt)."""
 from __future__ import annotations
 
+import asyncio
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from telegram import Update
@@ -48,18 +50,27 @@ def find_matching_listings(session: Session, user_id: int, filter_row: Filter, l
     return matches
 
 
-async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    tg_user = update.effective_user
+def _load_matches_sync(tg_user) -> list[Listing] | None:
+    """Returns None to signal "no saved filter yet" (vs. an empty list = a real filter with 0
+    current matches) — the caller needs to tell the two apart to show a different message."""
     with get_session() as session:
         user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
         filter_row = (
             session.scalar(select(Filter).where(Filter.user_id == user.id)) if user else None
         )
         if user is None or filter_row is None:
-            await update.message.reply_text("עדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.")
-            return
+            return None
+        return find_matching_listings(session, user.id, filter_row, RESULT_LIMIT)
 
-        matches = find_matching_listings(session, user.id, filter_row, RESULT_LIMIT)
+
+async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: PTB processes
+    # updates one at a time by default, so a blocking DB call on the event loop freezes every
+    # other user's interaction with the bot too, not just this one.
+    matches = await asyncio.to_thread(_load_matches_sync, update.effective_user)
+    if matches is None:
+        await update.message.reply_text("עדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.")
+        return
 
     if not matches:
         await update.message.reply_text(

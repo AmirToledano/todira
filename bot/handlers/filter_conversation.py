@@ -16,6 +16,7 @@ following the exact same add/remove pattern as `loc` (cities) whenever that's wa
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 
@@ -172,6 +173,13 @@ def _parse_optional_date(raw: str) -> tuple[bool, dt.date | None]:
         return False, None
 
 
+def _load_draft_from_db_sync(tg_user) -> dict:
+    with get_session() as session:
+        user = get_or_create_user(session, tg_user)
+        existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        return _draft_from_filter(existing)
+
+
 async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info("/filter invoked by telegram_user_id=%s", update.effective_user.id)
     # Resume an in-progress draft if one exists (e.g. the user left the chat mid-edit with the
@@ -182,10 +190,10 @@ async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     # Save/Cancel/allow_reentry's own reset already cleared it).
     draft = context.user_data.get("draft")
     if draft is None:
-        with get_session() as session:
-            user = get_or_create_user(session, update.effective_user)
-            existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
-            draft = _draft_from_filter(existing)
+        # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
+        # call directly on the event loop would freeze every other user's bot interaction too,
+        # not just this one, since PTB processes updates one at a time by default.
+        draft = await asyncio.to_thread(_load_draft_from_db_sync, update.effective_user)
         context.user_data["draft"] = draft
     context.user_data.pop("awaiting", None)
     await update.message.reply_text(
@@ -210,6 +218,24 @@ def _describe_validation_error(exc: ValidationError) -> str:
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
+def _save_and_match_sync(tg_user, values: dict) -> list:
+    with get_session() as session:
+        user = get_or_create_user(session, tg_user)
+        existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        if existing is None:
+            existing = Filter(user_id=user.id, **values)
+            session.add(existing)
+        else:
+            for field, value in values.items():
+                setattr(existing, field, value)
+        session.commit()
+
+        # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
+        # brand-new user especially shouldn't have to wait for the next scrape to see anything.
+        # mirrors the reference bot's "👀 הראי לי דוגמה" prompt for the single inline example.
+        return find_matching_listings(session, user.id, existing, limit=RESULT_LIMIT)
+
+
 async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dict) -> int:
     query = update.callback_query
     try:
@@ -224,23 +250,11 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
         await query.edit_message_text(text, reply_markup=kb.root_keyboard(), parse_mode=ParseMode.HTML)
         return MENU
 
-    with get_session() as session:
-        user = get_or_create_user(session, update.effective_user)
-        existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
-        values = validated.model_dump()
-        if existing is None:
-            existing = Filter(user_id=user.id, **values)
-            session.add(existing)
-        else:
-            for field, value in values.items():
-                setattr(existing, field, value)
-        session.commit()
-
-        # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
-        # brand-new user especially shouldn't have to wait for the next scrape to see anything.
-        # mirrors the reference bot's "👀 הראי לי דוגמה" prompt for the single inline example.
-        matches = find_matching_listings(session, user.id, existing, limit=RESULT_LIMIT)
-        example = matches[:1]
+    # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
+    # call directly on the event loop would freeze every other user's bot interaction too, not
+    # just this one, since PTB processes updates one at a time by default.
+    matches = await asyncio.to_thread(_save_and_match_sync, update.effective_user, validated.model_dump())
+    example = matches[:1]
 
     context.user_data.pop("draft", None)
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
