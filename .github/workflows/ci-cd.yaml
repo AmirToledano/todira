@@ -77,6 +77,21 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
 
+      - name: One-time fix - clear stale rollingUpdate on bot Deployment
+        # The bot Deployment already existed with an implicit RollingUpdate strategy before
+        # switching it to Recreate (see PROJECT_STATE.md) - Kubernetes had already persisted
+        # spec.strategy.rollingUpdate server-side, and the API rejects an object with both that
+        # field present and type:Recreate. Setting `rollingUpdate: null` in the Helm template
+        # did NOT fix this (same error, twice) - Helm appears to drop explicit YAML nulls before
+        # building its patch, so the field was never actually cleared that way. A direct JSON
+        # patch `remove` on the live object sidesteps that ambiguity entirely. Safe to run every
+        # deploy indefinitely: `|| true` makes it a no-op once the field is already gone (which
+        # it will be after this runs once) - remove this step in a follow-up once confirmed fixed
+        # if it's worth the tidiness, but leaving it is harmless.
+        run: |
+          kubectl patch deployment todira-bot -n todira --type=json \
+            -p='[{"op":"remove","path":"/spec/strategy/rollingUpdate"}]' || true
+
       - name: Helm upgrade
         run: |
           helm upgrade --install todira charts/todira \
