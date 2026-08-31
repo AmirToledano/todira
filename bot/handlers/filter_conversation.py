@@ -440,4 +440,17 @@ def build_filter_conversation_handler() -> ConversationHandler:
         fallbacks=[CommandHandler("cancel", _cancel_command)],
         name="filter_conversation",
         persistent=True,
+        # Without this, a user who ever abandons a /filter session mid-way (closes the chat with
+        # the inline menu still open, never taps Save/Cancel) gets stuck in that state FOREVER —
+        # python-telegram-bot's ConversationHandler.check_update only tries entry_points when
+        # `state is None or allow_reentry` (see conversationhandler.py), so with the default
+        # allow_reentry=False, every future /filter they send matches nothing at all (MENU's own
+        # handler only accepts inline-button callback queries, not a text command; the only
+        # fallback is /cancel, which they'd have no reason to know about) — total silence, not
+        # even an error, since filter_start() itself is never invoked. This is the actual root
+        # cause behind "/filter just doesn't respond" reports investigated 2026-08-31 (see
+        # PROJECT_STATE.md) — allow_reentry=True makes a fresh /filter always work by re-entering
+        # the conversation (which resets context.user_data["draft"] to a clean state anyway),
+        # self-healing anyone already stuck the moment they try /filter again after this deploys.
+        allow_reentry=True,
     )

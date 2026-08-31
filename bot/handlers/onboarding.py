@@ -147,4 +147,9 @@ def build_onboarding_handler() -> ConversationHandler:
         fallbacks=[CommandHandler("start", onboarding_entry)],
         name="onboarding_conversation",
         persistent=True,
+        # /start is already both an entry point and a fallback here, so it was never actually
+        # stuck-proof-dependent the way filter_conversation.py was (see the allow_reentry comment
+        # there for the real bug this class of gap causes) - set for consistency/defense-in-depth
+        # anyway, since it's a free, standard safeguard for any command-entry conversation.
+        allow_reentry=True,
     )
