@@ -35,7 +35,14 @@ postgres:
 
 scraper:
   schedule: "*/10 * * * *" # every 10 minutes — tune down later if Yad2 tolerates it fine
-  cities: "tel-aviv,ramat-gan,givatayim"
+  # scraper/yad2_client.py's CITY_SLUG_TO_ID now has real Yad2 IDs for 24 cities (was 3) — see
+  # that file's comment for the full list and how they were verified. Deliberately only added
+  # jerusalem/haifa/beer-sheva here (3 -> 6 cities, 2x) rather than enabling all 24 at once: each
+  # additional city here is a recurring ZenRows request-credit cost every 10 minutes, not a
+  # one-time thing, and this assistant doesn't know the account's ZenRows plan/credit budget.
+  # Adding more is just appending a slug from CITY_SLUG_TO_ID below (comma-separated, no spaces)
+  # once you've checked https://app.zenrows.com's dashboard has room for it.
+  cities: "tel-aviv,ramat-gan,givatayim,jerusalem,haifa,beer-sheva"
 
 resources:
   bot:
