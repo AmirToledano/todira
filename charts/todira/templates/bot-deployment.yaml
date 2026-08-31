@@ -11,8 +11,17 @@ spec:
   # Recreate (not the default RollingUpdate): the bot-pvc below is ReadWriteOnce, so a new pod
   # can't mount it while the old one still holds it during a rolling update - same class of
   # constraint as Caddy's hostPort binding, different resource.
+  # rollingUpdate: null is required here (not just omitting the key) because this Deployment
+  # already existed with an implicit RollingUpdate strategy before this change - Kubernetes had
+  # already persisted spec.strategy.rollingUpdate server-side, and the API rejects an object with
+  # both that field present and type: Recreate. An explicit null in a strategic-merge-patch/SSA
+  # apply is what actually clears a field the live object already has; omitting the key here would
+  # just leave the old value in place and fail the same way (this is exactly what happened on the
+  # first attempt - Caddy's own Recreate strategy never hit this because it had no prior
+  # RollingUpdate state to conflict with, having been created with Recreate from the start).
   strategy:
     type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels:
       app: {{ .Release.Name }}-bot
