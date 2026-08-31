@@ -12,10 +12,17 @@ from handlers.liked import build_liked_handler, build_reaction_handler
 from handlers.onboarding import build_onboarding_handler
 from handlers.profile import build_profile_handlers
 from telegram import BotCommand
-from telegram.ext import Application
+from telegram.ext import Application, PicklePersistence
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("bot.main")
+
+# Persists user_data/chat_data and ConversationHandler state (see build_onboarding_handler and
+# build_filter_conversation_handler, both persistent=True) across pod restarts - mounted on a PVC
+# (see charts/todira/templates/bot-pvc.yaml), not the container's ephemeral filesystem, since a
+# redeploy replaces the container entirely. Without this, every restart silently forgets which
+# step of /start or /filter a user was on, and they get no response until they /start over.
+PERSISTENCE_PATH = os.environ.get("BOT_PERSISTENCE_PATH", "/data/bot_persistence.pickle")
 
 # Shown in Telegram's "Menu" button — only appears once a user has started a session with the
 # bot (Telegram's own behavior, not something we control), matching what the reference bot's
@@ -38,7 +45,10 @@ def main() -> None:
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
 
-    application = Application.builder().token(token).post_init(_post_init).build()
+    persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
+    application = (
+        Application.builder().token(token).persistence(persistence).post_init(_post_init).build()
+    )
 
     application.add_handler(build_onboarding_handler())
     application.add_handler(build_filter_conversation_handler())
