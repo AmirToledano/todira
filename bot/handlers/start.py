@@ -1,12 +1,16 @@
 """/start — register a new user, or reactivate + refresh a returning one."""
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from dorin_common.db import get_session
 from dorin_common.models import User
+
+logger = logging.getLogger(__name__)
 
 WELCOME = (
     "✨ 🏠 היי {name}! אני בוט חיפוש דירות אישי — סורק את שוק הדירות ומודיע לך כשמופיעה דירה "
@@ -21,6 +25,7 @@ WELCOME = (
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tg_user = update.effective_user
+    logger.info("/start invoked by telegram_user_id=%s", tg_user.id)
     with get_session() as session:
         user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
         if user is None:
