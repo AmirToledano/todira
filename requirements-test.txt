@@ -1,9 +1,14 @@
-# Only what tests/ needs to import - not the full service requirements (no sqlalchemy, no
-# playwright/patchright, etc), since the modules under test are deliberately dependency-light.
+# Only what tests/ needs to import - kept as light as each test module allows (no playwright/
+# patchright - those get stubbed into sys.modules instead, see test_yad2_*.py), but not literally
+# dependency-free: test_filter_conversation_reentry.py imports handlers.filter_conversation,
+# which transitively imports dorin_common.models (for the Filter/User ORM classes), which needs
+# sqlalchemy even though no test here actually opens a DB connection.
 pytest>=8.0,<9.0
 pydantic>=2.5,<3.0
 google-genai>=0.3,<1.0
-# Needed by tests/test_filter_conversation_reentry.py, which drives real ConversationHandler
-# objects directly (no network) to regression-test the allow_reentry fix - matches
-# bot/requirements.txt's pin so test behavior matches production.
+# python-telegram-bot: needed by tests/test_filter_conversation_reentry.py, which drives real
+# ConversationHandler objects directly (no network) to regression-test the allow_reentry fix -
+# pinned to match bot/requirements.txt so test behavior matches production.
 python-telegram-bot>=21,<22
+# sqlalchemy: see the file-level comment above - pinned to match bot/website/scraper's own pin.
+sqlalchemy>=2.0,<3.0
