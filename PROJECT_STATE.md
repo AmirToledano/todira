@@ -1192,3 +1192,76 @@ rejected, unknown Telegram id redirects to the bot, known user gets a session + 
 manual check that the header renders correctly both logged-in (including when Telegram gave no
 first_name) and logged-out, and the full i18n regression re-run (5 languages × 7 routes, zero
 template artifacts). Full suite: 145 passed, up from 131.
+
+## Update 2026-08-31, evening: deploy pipeline broken — root cause found, fix NOT yet applied
+
+**Status: site is fine, fully live, unaffected.** This only blocks *future* deploys via CI/CD —
+`git push` to `main` no longer successfully rolls out new code. Do not treat as urgent; the owner
+explicitly deferred the actual fix to next time they're at a real computer ("אעשה כל מה שצריך
+כשאני במחשב") rather than doing it from a phone. **When the owner says they're on a computer,
+pick this up — see "The fix" below.**
+
+**Symptom**: every `helm upgrade --install todira charts/todira ... --namespace todira
+--create-namespace` in the deploy job fails identically:
+```
+Release "todira" does not exist. Installing it now.
+Error: failed to create resource: server-side apply failed for object default/todira-website
+/v1, Kind=Service: Service "todira-website" is invalid: spec.ports[0].nodePort: Invalid value:
+30080: provided port is already allocated
+```
+i.e. Helm's own existence-check for release `todira` in namespace `todira` claims not-found
+(even though `helm list -A` correctly shows it: `todira  todira  73+  deployed`), falls back to a
+fresh install, and that fresh install creates the website Service in namespace **`default`**
+instead of `todira` — colliding on NodePort 30080 with the real, still-running Service.
+
+**Ruled out, in order, each with direct evidence** (don't re-try these):
+1. **Stale leftover state** — deleting the phantom `default`-namespace release's Helm secrets
+   (`kubectl delete secret -n default -l owner=helm,name=todira`, done live via SSM) does nothing;
+   the very next deploy recreates the identical broken state from scratch. Confirmed twice.
+2. **Helm client version** — `azure/setup-helm@v4` was resolving `"latest"` to Helm **v4.2.4**
+   (a real, apparently new major version as of this project's timeline). Pinned to `v3.16.4`
+   instead (a completely different major version) — **identical failure, byte-for-byte same
+   error message**, so it is not a Helm-version bug. Chart's `azure/setup-helm@v4` step is
+   currently left pinned to `version: "v3.16.4"` in `.github/workflows/ci-cd.yaml` (harmless
+   either way now that this is ruled out — fine to leave pinned or revert to "latest").
+
+**Current leading hypothesis, not yet applied**: dumped the node's own local kubeconfig live via
+SSM (`sudo kubectl config view` — safe, auto-redacts cert/key data) and found:
+```yaml
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+```
+**There is no `namespace:` field under `context:` at all.** The `KUBECONFIG_B64` GitHub Actions
+secret (what CI actually uses — a separate, manually-modified copy of this local file with
+`server: https://127.0.0.1:6443` swapped to the node's public IP for external reachability) was
+never confirmed to have one either, and can't be inspected (GitHub secrets are write-only). Theory:
+some internal Helm codepath (specifically triggered by the `--create-namespace` flag combined with
+a release Helm's existence-check can't confirm) falls back to the **client config's default
+namespace** rather than strictly honoring the `--namespace` CLI flag for at least the Service
+object's identity — and with no explicit `namespace:` in the context, that fallback is `default`.
+
+**The fix (not yet done)**: regenerate `KUBECONFIG_B64` with an explicit `namespace: todira` added
+to the context, and push that to GitHub Actions secrets. Concretely, on the node via SSM:
+```bash
+sudo cat /etc/rancher/k3s/k3s.yaml | sed -e 's#server: https://127.0.0.1:6443#server: https://13.50.115.61:6443#' -e 's#    cluster: default#    cluster: default\n    namespace: todira#' | base64 -w0
+```
+This prints the new base64-encoded kubeconfig (**sensitive — full cluster-admin creds, never paste
+it into chat with Claude**) to copy directly from the SSM terminal into GitHub → repo Settings →
+Secrets and variables → Actions → `KUBECONFIG_B64` → Update. Deliberately not done over a flaky
+mobile SSM copy/paste (repeated friction earlier tonight — see chat history) given a corrupted
+paste here would be worse than the current state (could break cluster access entirely, not just
+deploys). Do this from a real computer: SSH or a proper terminal into the EC2 instance (or a more
+reliable SSM path) makes the copy/paste trivial and safe. After updating the secret, trigger a
+deploy (push anything, or rerun the last failed workflow run) and confirm the "Helm upgrade" step
+succeeds cleanly with no `default`-namespace Service ever appearing (`helm list -A` should show
+only ever one `todira` release, in namespace `todira`).
+
+**If this doesn't fix it**: next diagnostic would be running the exact same `helm upgrade
+--install ... --namespace todira` command *directly on the node* (once `helm` is installed there —
+currently only `kubectl` is present, confirmed via `which helm` → not found) using the node's own
+local kubeconfig, to isolate whether the bug is specific to the `KUBECONFIG_B64` secret's content
+vs. something about the cluster/API server itself that would reproduce even locally.
