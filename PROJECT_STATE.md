@@ -1400,3 +1400,64 @@ faster refresh cadence is wanted later — not fetched here since this session's
 blocked from reaching external pricing pages, and stale/guessed numbers would be worse than no
 number. Once on a paid plan (or once real usage patterns are known), `citiesPerRun` and `schedule`
 in `values.yaml` are the two knobs to turn back up — no other code changes needed to go faster.
+
+## Update 2026-08-31, near 2am: owner pushed back hard on the daily/6-city rotation — rightly
+Owner's reaction to the rotation fix above, verbatim in spirit: reducing to once/day + 6 cities is
+not acceptable — the whole point of the product is near-instant notification when a new listing
+appears (compared directly to the paid competitor, Dorin, and another one, Yaeli, both of which
+notify within minutes/seconds). **This was a mistake on this assistant's part**: throttling
+scan frequency is exactly the kind of judgment call that changes the product's core value
+proposition, and should have been brought to the owner as a decision, not made unilaterally and
+presented as already-done. Correcting course here.
+
+**Reality check, important**: none of this — old settings or new — actually matters *today*,
+because the ZenRows account is at 0/5,000 credits until Sep 29 regardless of what schedule/
+citiesPerRun scraper/main.py uses. Nothing will scrape successfully until either that reset or a
+paid upgrade.
+
+**Honest answer on "is there a free way to do this like Dorin/Yaeli do"**: no, not to this
+assistant's knowledge. Every service capable of reliably defeating Yad2's enterprise-grade
+Radware Bot Manager protection at real volume (Bright Data, Oxylabs, ScraperAPI, Zyte, Smartproxy,
+ZenRows itself) is a paid business, because real residential-IP bandwidth costs the provider real
+money — a free-forever high-volume version of that service would contradict its own business
+model. Dorin/Yaeli almost certainly either pay for exactly this, or have an official data
+relationship with Yad2 that isn't available to an early, unofficial project like this one.
+
+**Real tradeoff table worked out with the owner** (ZenRows dashboard, checked live: ~25 credits
+per premium_proxy+js_render request), for scanning all 42 cities on a fixed interval:
+| Plan | $/mo (billed annually) | Credits/mo | Full-city-scan interval |
+|---|---|---|---|
+| Free | $0 | 5,000 | ~once/month (unusable at full scope) |
+| Build | $16 | 45,000 | ~once/day |
+| Launch | $58 | 250,000 | ~every 3 hours |
+| Growth | $166 | 1,200,000 | ~every 38 minutes |
+| Scale | $458 | 5,000,000 | ~every 9-10 minutes (matches the ORIGINAL `*/10 * * * *` design) |
+
+Owner's direction: investigate whether the per-request cost itself can be cut before committing to
+a specific paid tier — specifically, whether Yad2's search URL accepts **multiple city IDs in one
+request** (`?city=5000,6300` or repeated `?city=` params). If it does, the same ZenRows budget
+could cover many more cities per request, which could shift the whole table above dramatically in
+Todira's favor (e.g. Build's $16/mo might support near-real-time coverage instead of daily, if one
+request can cover several cities at once instead of exactly one).
+
+**Prepared, not yet run** (blocked on the account having ANY available credits — owner is
+deciding whether to upgrade, at minimum to Build $16/mo, partly *specifically* to unblock this
+test): `scraper/_diagnose_multi_city.py` — a one-off diagnostic (not part of the production scraper
+flow, not imported by main.py) that runs 3 real ZenRows-proxied fetches (~75 credits total): a
+single-city control (ramat-gan — also incidentally the first live re-confirmation since 2026-08-29
+that `_CARD_RE` still matches real Yad2 markup, since every run since then was actually hitting
+ZenRows' AUTH004 error page, never real HTML), then a comma-separated multi-city URL, then a
+repeated-param multi-city URL — logging the distinct `city` values found in parsed cards for each,
+so it's directly visible whether Yad2 honored the multi-city request or silently fell back to one
+city. Wired to a new, **manual-only** workflow, `.github/workflows/diagnose-multi-city.yaml`
+(`workflow_dispatch`, deliberately NOT triggered by push — this must never run automatically and
+spend credits on its own) that runs the already-built, already-public `todira-scraper:latest`
+image with the diagnostic script as its command.
+
+**Next steps once the owner has upgraded and confirmed**: dispatch the `diagnose-multi-city`
+workflow via the GitHub API, read its job logs, and act on the result — either wire real multi-city
+support into `yad2_client.py`/`scraper/main.py` (would let `citiesPerRun`-style rotation cover far
+more ground per request), or confirm it's not supported and help the owner pick the tier from the
+table above that fits the desired latency/cost tradeoff. Either way, delete
+`scraper/_diagnose_multi_city.py` and `.github/workflows/diagnose-multi-city.yaml` once done — they
+are explicitly temporary.
