@@ -96,6 +96,10 @@ jobs:
           echo "--- live strategy after patch ---"
           kubectl get deployment todira-bot -n todira -o jsonpath='{.spec.strategy}' || true
           echo ""
+      - name: One-time fix - remove phantom "todira" release from the default namespace
+        run: |
+          helm uninstall todira --namespace default || true
+
 
       - name: Helm upgrade
         run: |
