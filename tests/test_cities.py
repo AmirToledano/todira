@@ -1,9 +1,9 @@
-"""Unit tests for bot/cities.py's find_matches() - fuzzy city-name suggestion used in the
+"""Unit tests for dorin_common/cities.py's find_matches() - fuzzy city-name suggestion used in the
 /filter conversation. Pure, dependency-free string matching, but with real documented bug
 history (the "ב"ש" alias was found missing only via manual testing against the live bot) - worth
 locking down so a future edit to the alias/quote-stripping logic doesn't silently regress it.
 """
-from cities import find_matches
+from dorin_common.cities import find_matches
 
 
 def test_empty_query_returns_no_matches():

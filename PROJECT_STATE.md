@@ -1461,3 +1461,86 @@ more ground per request), or confirm it's not supported and help the owner pick 
 table above that fits the desired latency/cost tradeoff. Either way, delete
 `scraper/_diagnose_multi_city.py` and `.github/workflows/diagnose-multi-city.yaml` once done — they
 are explicitly temporary.
+
+## Update 2026-09-01, early morning: WhatsApp Business API integration — inbound webhook shipped
+Owner completed the Meta for Developers account/app setup end-to-end (App "Todira", Business
+Portfolio "Todira" unverified/not needed for a test number, WhatsApp use case added, test number
+claimed) and handed over the credentials — enough to build and ship the real integration promised
+in the "Explicitly deferred" section above, not just scaffold it blind.
+
+**What shipped**: a real inbound WhatsApp webhook reusing the exact same onboarding experience the
+Telegram bot has — describe what you're looking for in free text, Gemini extracts fields, multi-
+turn until deal_type + a city are known, then a Filter row is created. Concretely:
+
+1. **Shared two modules that were Telegram-only before, now channel-agnostic**: `gemini_client.py`
+   and `cities.py` both moved from `bot/` into `common/dorin_common/` (imported identically by the
+   bot, the website, and — for `cities.py` — already cross-checked by `scraper/`'s own tests). The
+   bot's own imports (`bot/handlers/onboarding.py`, `bot/handlers/filter_conversation.py`) updated
+   to `from dorin_common import ...`; zero behavior change for Telegram, purely a location move.
+   `website/requirements.txt` gained `google-genai` (needed now that `dorin_common.gemini_client`
+   is reachable from the website process too).
+2. **Schema**: migration `0003_whatsapp_users` — `users.telegram_user_id` is now nullable (a
+   WhatsApp-only user has none), added `whatsapp_phone_number` (unique, nullable) and
+   `pending_onboarding_state` (JSONB, nullable). The JSONB column exists because the webhook is
+   stateless between HTTP requests (no long-lived process + PicklePersistence like the bot has) —
+   a multi-turn onboarding conversation's collected-so-far fields have to be persisted somewhere
+   between messages, so they live on the User row instead of in memory. `dorin_common/users.py`
+   gained `get_or_create_whatsapp_user`, mirroring the existing Telegram helper.
+3. **`website/whatsapp_client.py`**: thin `httpx` wrapper around the Cloud API's `POST
+   /{phone_number_id}/messages` for free-form text replies. Fails soft (returns False, logs) —
+   same contract as `gemini_client.parse_onboarding_message`.
+4. **`website/whatsapp_webhook.py`**, mounted on `website/main.py` at `/webhook/whatsapp`:
+   - `GET` — Meta's one-time verification handshake (`hub.mode`/`hub.verify_token`/
+     `hub.challenge`), checked against `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
+   - `POST` — verifies `X-Hub-Signature-256` (HMAC-SHA256 against `WHATSAPP_APP_SECRET`)
+     **fail-closed**: if the app secret isn't configured, every POST is rejected rather than
+     silently accepted unverified — this is a public internet-facing endpoint, "not configured
+     yet" must never mean "accept anything." Parses the webhook payload (skips delivery/read
+     status updates, only acts on real incoming messages), replies "text only for now" to non-text
+     message types, and otherwise runs the same state machine `bot/handlers/onboarding.py` uses:
+     existing-Filter users get a "already registered" reply; new/in-progress users go through
+     `gemini_client.parse_onboarding_message` against `pending_onboarding_state`, replying with
+     Gemini's own follow-up question until deal_type + a city are known, then creates the `Filter`
+     row and clears the pending state.
+5. **`dorin_common/cards.py`** gained `format_caption_whatsapp` (WhatsApp's own `*bold*` markdown,
+   no HTML — the Cloud API doesn't render Telegram-style HTML tags) alongside the existing
+   Telegram `format_caption`, for future use.
+6. **Chart/CI wiring**: `charts/todira/templates/bot-secret.yaml` gained 4 new optional secret
+   keys (`whatsapp-access-token`, `whatsapp-phone-number-id`, `whatsapp-webhook-verify-token`,
+   `whatsapp-app-secret`); `website-deployment.yaml` wires them as env vars (all `optional: true`
+   so a deploy before they're set doesn't break — the webhook's fail-closed signature check is
+   what actually keeps that safe, not the optionality) plus `GEMINI_API_KEY` (website never needed
+   it before this). `ci-cd.yaml`'s Helm upgrade step passes all 4 through from new GitHub Actions
+   secrets. `values.yaml`'s header comment documents where to get each one.
+7. **Tests**: `tests/test_whatsapp_webhook.py` (13 cases — GET handshake success/failure, POST
+   signature fail-closed/accept, and the full onboarding state machine: existing-filter shortcut,
+   Gemini-failure hiccup message, incomplete-state persistence, complete-state Filter creation)
+   and `tests/test_whatsapp_client.py` (3 cases — the fail-soft contract). 171 tests total, all
+   passing.
+
+**Explicitly NOT built yet, on purpose**: proactive "a new listing matches your filter" pushes for
+WhatsApp users. WhatsApp only allows free-form replies within 24 hours of the user's last message
+(the "customer service window") — fine for this webhook's own replies (always responding to
+something just received), but a scraper-triggered push outside that window needs a **pre-approved
+message template**, a separate Meta review process (Step 3 "Business verification" in the app
+dashboard's guided setup, plus template submission/approval) that hasn't been started.
+`scraper/notifier.py` still only sends via Telegram — a WhatsApp user who completes onboarding
+will get the registration confirmation, but won't yet get notified when a new listing actually
+matches. This is the natural next step once business verification is done, not a bug in what
+shipped tonight. Also not built: sending "here are your current matches right now" at the moment
+of registration (the Telegram bot does this) — deferred for scope, not because of the 24h-window
+constraint (a same-turn reply would be fine); needs a `find_matching_listings`-equivalent reachable
+from the website process (currently lives in `bot/handlers/apartments.py`, Telegram-specific).
+
+**Owner action needed to finish deploying this**: add 4 new GitHub Actions secrets (Settings →
+Secrets and variables → Actions):
+- `WHATSAPP_ACCESS_TOKEN` — the temporary (24h) token from the app dashboard's WhatsApp > API
+  Setup page; expires and needs regenerating there until a permanent System User token is set up
+  (a Business-verification-gated step, later).
+- `WHATSAPP_PHONE_NUMBER_ID` — same page.
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN` — any string; must match exactly what's entered in the app
+  dashboard's webhook configuration screen when setting the callback URL.
+- `WHATSAPP_APP_SECRET` — App settings > Basic > App Secret > Show, in the Meta app dashboard.
+Then, in the app dashboard's WhatsApp > Configuration (webhooks) screen: Callback URL
+`https://todira.duckdns.org/webhook/whatsapp`, Verify token = the same string used above, and
+subscribe to the `messages` webhook field.

@@ -1,4 +1,4 @@
-"""Unit tests for bot/gemini_client.py's parse_onboarding_message() post-processing.
+"""Unit tests for dorin_common/gemini_client.py's parse_onboarding_message() post-processing.
 
 The Gemini call itself is mocked out (no network, no real API key) - what's under test is the
 module's own defensive logic around that call: filtering out cities the model hallucinates
@@ -8,7 +8,7 @@ never raises" contract on API errors or malformed responses.
 """
 import json
 
-import gemini_client
+from dorin_common import gemini_client
 
 
 class _FakeResponse:

@@ -20,6 +20,19 @@
 #                             it, the website falls back to a well-known insecure dev value, which
 #                             means anyone could forge a login session — fine for a first deploy of
 #                             this feature, not for real use.)
+#   whatsappAccessToken      (required for the WhatsApp webhook to send replies — from the Meta
+#                             app dashboard's WhatsApp > API Setup page. The free "temporary" token
+#                             there expires after 24h; a permanent one needs a System User token,
+#                             see PROJECT_STATE.md.)
+#   whatsappPhoneNumberId    (required — same API Setup page, "Phone Number ID".)
+#   whatsappWebhookVerifyToken (required — any string you make up yourself; must match exactly
+#                             what's entered in the Meta app dashboard's webhook config screen.
+#                             Generate with e.g. `python -c "import secrets;
+#                             print(secrets.token_hex(16))"`.)
+#   whatsappAppSecret        (required for the webhook to accept any POST at all — it fails CLOSED
+#                             without this, rejecting every incoming message, rather than accepting
+#                             unverified requests. From the Meta app dashboard: App settings >
+#                             Basic > App Secret > Show.)
 
 botImage:
   repository: ghcr.io/CHANGE-ME/todira-bot

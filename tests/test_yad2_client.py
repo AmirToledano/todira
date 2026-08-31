@@ -17,7 +17,7 @@ if "patchright" not in sys.modules:
     sys.modules["patchright"] = patchright_stub
     sys.modules["patchright.sync_api"] = sync_api_stub
 
-from cities import CITIES
+from dorin_common.cities import CITIES
 from yad2_client import CITY_SLUG_TO_HEBREW_NAME, CITY_SLUG_TO_ID
 
 
@@ -27,9 +27,11 @@ def test_every_slug_has_a_hebrew_name():
 
 def test_every_mapped_hebrew_name_is_a_real_bot_city():
     # Catches a typo'd Hebrew name that would otherwise silently never match anything in
-    # bot/cities.py's CITIES list (the strings a user actually picks in /filter).
+    # dorin_common/cities.py's CITIES list (the strings a user actually picks in /filter).
     for slug, hebrew_name in CITY_SLUG_TO_HEBREW_NAME.items():
-        assert hebrew_name in CITIES, f"{slug!r} -> {hebrew_name!r} is not in bot/cities.py CITIES"
+        assert (
+            hebrew_name in CITIES
+        ), f"{slug!r} -> {hebrew_name!r} is not in dorin_common/cities.py CITIES"
 
 
 def test_city_ids_are_unique():
