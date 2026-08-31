@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}הדף לא נמצא — טודירה{% endblock %}
+{% block title %}{{ t('meta.title_404') }}{% endblock %}
 {% block content %}
 <div class="empty-state">
-  <div class="glyph">🧭</div>
-  <p>הדף שחיפשת לא קיים, או שהקישור אליו שגוי.</p>
-  <p class="hint">אולי הדירה כבר עברה דירה משלה. אפשר לחזור לדף הבית ולהמשיך משם.</p>
-  <a class="btn gold" href="/">חזרה לדף הבית</a>
+  <div class="glyph" aria-hidden="true">🧭</div>
+  <p>{{ t('404.body') }}</p>
+  <p class="hint">{{ t('404.hint') }}</p>
+  <a class="btn gold" href="/">{{ t('404.cta') }}</a>
 </div>
 {% endblock %}

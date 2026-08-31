@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% set active_page = "filter" %}
-{% block title %}הסינון שלי — טודירה{% endblock %}
+{% block title %}{{ t('meta.title_filter') }}{% endblock %}
 {% block content %}
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>🎛️ הסינון שלי</h1>
-    <p>עריכה מלאה כאן. לעריכה של שכונות/רחובות ספציפיים ותאריכי כניסה — ב-/filter בטלגרם</p>
+    <h1>{{ t('filter.title') }}</h1>
+    <p>{{ t('filter.subtitle') }}</p>
   </div>
-  <div class="pb-count"><b>{{ f.cities|length }}</b><span>ערים בסינון</span></div>
+  <div class="pb-count"><b>{{ f.cities|length }}</b><span>{{ t('filter.cities_count_label') }}</span></div>
 </div>
 
 <div class="settings-card reveal">
@@ -15,32 +15,32 @@
     <input type="hidden" name="uid" value="{{ uid }}">
 
     <div class="field">
-      <label><span class="field-icon">📍</span> ערים</label>
-      <input type="text" name="cities" value="{{ f.cities|join(', ') }}" placeholder="תל אביב, רמת גן, גבעתיים">
-      <div class="field-hint">מופרדות בפסיקים</div>
+      <label for="f-cities"><span class="field-icon" aria-hidden="true">📍</span> {{ t('filter.cities_label') }}</label>
+      <input id="f-cities" type="text" name="cities" value="{{ f.cities|join(', ') }}" placeholder="{{ t('filter.cities_placeholder') }}">
+      <div class="field-hint">{{ t('filter.cities_hint') }}</div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label><span class="field-icon">💰</span> מחיר מינימלי</label>
-        <input type="number" name="price_min" value="{{ f.price_min or '' }}" placeholder="0">
+        <label for="f-price-min"><span class="field-icon" aria-hidden="true">💰</span> {{ t('filter.price_min_label') }}</label>
+        <input id="f-price-min" type="number" name="price_min" value="{{ f.price_min or '' }}" placeholder="0">
       </div>
       <div class="field">
-        <label><span class="field-icon">💰</span> מחיר מקסימלי</label>
-        <input type="number" name="price_max" value="{{ f.price_max or '' }}" placeholder="ללא הגבלה">
+        <label for="f-price-max"><span class="field-icon" aria-hidden="true">💰</span> {{ t('filter.price_max_label') }}</label>
+        <input id="f-price-max" type="number" name="price_max" value="{{ f.price_max or '' }}" placeholder="{{ t('filter.price_max_placeholder') }}">
       </div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label><span class="field-icon">🛏️</span> חדרים מינימום</label>
-        <input type="number" step="0.5" name="rooms_min" value="{{ f.rooms_min or '' }}">
+        <label for="f-rooms-min"><span class="field-icon" aria-hidden="true">🛏️</span> {{ t('filter.rooms_min_label') }}</label>
+        <input id="f-rooms-min" type="number" step="0.5" name="rooms_min" value="{{ f.rooms_min or '' }}">
       </div>
       <div class="field">
-        <label><span class="field-icon">🛏️</span> חדרים מקסימום</label>
-        <input type="number" step="0.5" name="rooms_max" value="{{ f.rooms_max or '' }}">
+        <label for="f-rooms-max"><span class="field-icon" aria-hidden="true">🛏️</span> {{ t('filter.rooms_max_label') }}</label>
+        <input id="f-rooms-max" type="number" step="0.5" name="rooms_max" value="{{ f.rooms_max or '' }}">
       </div>
     </div>
 
-    <div class="field-section-title">סוג נכס</div>
+    <div class="field-section-title">{{ t('filter.property_type_section') }}</div>
     <div class="field">
       <div class="checkbox-grid">
         {% for value, label in property_type_labels.items() %}
@@ -50,53 +50,53 @@
         </label>
         {% endfor %}
       </div>
-      <div class="field-hint">לא מסומן כלום = כל סוגי הנכס</div>
+      <div class="field-hint">{{ t('filter.property_type_hint') }}</div>
     </div>
 
-    <div class="field-section-title">קומה</div>
+    <div class="field-section-title">{{ t('filter.floor_section') }}</div>
     <div class="field-row">
       <div class="field">
-        <label><span class="field-icon">🏢</span> קומה מינימום</label>
-        <input type="number" name="floor_min" value="{{ f.floor_min if f.floor_min is not none else '' }}">
+        <label for="f-floor-min"><span class="field-icon" aria-hidden="true">🏢</span> {{ t('filter.floor_min_label') }}</label>
+        <input id="f-floor-min" type="number" name="floor_min" value="{{ f.floor_min if f.floor_min is not none else '' }}">
       </div>
       <div class="field">
-        <label><span class="field-icon">🏢</span> קומה מקסימום</label>
-        <input type="number" name="floor_max" value="{{ f.floor_max if f.floor_max is not none else '' }}">
+        <label for="f-floor-max"><span class="field-icon" aria-hidden="true">🏢</span> {{ t('filter.floor_max_label') }}</label>
+        <input id="f-floor-max" type="number" name="floor_max" value="{{ f.floor_max if f.floor_max is not none else '' }}">
       </div>
     </div>
     <div class="field">
       <label class="check-chip">
         <input type="checkbox" name="ground_floor_only" {{ 'checked' if f.ground_floor_only }}>
-        קומת קרקע בלבד
+        {{ t('filter.ground_floor_only') }}
       </label>
     </div>
 
-    <div class="field-section-title">מאפיינים</div>
+    <div class="field-section-title">{{ t('filter.amenities_section') }}</div>
     <div class="field">
       <div class="checkbox-grid">
-        <label class="check-chip"><input type="checkbox" name="require_parking" {{ 'checked' if f.require_parking }}> 🚗 חניה</label>
-        <label class="check-chip"><input type="checkbox" name="require_elevator" {{ 'checked' if f.require_elevator }}> 🛗 מעלית</label>
-        <label class="check-chip"><input type="checkbox" name="require_balcony" {{ 'checked' if f.require_balcony }}> 🌇 מרפסת</label>
-        <label class="check-chip"><input type="checkbox" name="require_pets_allowed" {{ 'checked' if f.require_pets_allowed }}> 🐾 חיות מחמד מותרות</label>
-        <label class="check-chip"><input type="checkbox" name="require_renovated" {{ 'checked' if f.require_renovated }}> ✨ משופצת</label>
-        <label class="check-chip"><input type="checkbox" name="require_roommate_friendly" {{ 'checked' if f.require_roommate_friendly }}> 🧑‍🤝‍🧑 מתאימה לשותפים</label>
-        <label class="check-chip"><input type="checkbox" name="require_has_photos" {{ 'checked' if f.require_has_photos }}> 🖼️ עם תמונות בלבד</label>
-        <label class="check-chip"><input type="checkbox" name="no_brokers" {{ 'checked' if f.no_brokers }}> 🚫 בלי תיווך</label>
+        <label class="check-chip"><input type="checkbox" name="require_parking" {{ 'checked' if f.require_parking }}> {{ t('filter.amenity_parking') }}</label>
+        <label class="check-chip"><input type="checkbox" name="require_elevator" {{ 'checked' if f.require_elevator }}> {{ t('filter.amenity_elevator') }}</label>
+        <label class="check-chip"><input type="checkbox" name="require_balcony" {{ 'checked' if f.require_balcony }}> {{ t('filter.amenity_balcony') }}</label>
+        <label class="check-chip"><input type="checkbox" name="require_pets_allowed" {{ 'checked' if f.require_pets_allowed }}> {{ t('filter.amenity_pets') }}</label>
+        <label class="check-chip"><input type="checkbox" name="require_renovated" {{ 'checked' if f.require_renovated }}> {{ t('filter.amenity_renovated') }}</label>
+        <label class="check-chip"><input type="checkbox" name="require_roommate_friendly" {{ 'checked' if f.require_roommate_friendly }}> {{ t('filter.amenity_roommates') }}</label>
+        <label class="check-chip"><input type="checkbox" name="require_has_photos" {{ 'checked' if f.require_has_photos }}> {{ t('filter.amenity_photos') }}</label>
+        <label class="check-chip"><input type="checkbox" name="no_brokers" {{ 'checked' if f.no_brokers }}> {{ t('filter.amenity_no_brokers') }}</label>
       </div>
     </div>
 
     <div class="field-row">
       <div class="field">
-        <label><span class="field-icon">🛡️</span> ממ״ד</label>
-        <select name="safe_room_pref">
+        <label for="f-safe-room"><span class="field-icon" aria-hidden="true">🛡️</span> {{ t('filter.safe_room_label') }}</label>
+        <select id="f-safe-room" name="safe_room_pref">
           {% for value, label in safe_room_labels.items() %}
           <option value="{{ value }}" {{ 'selected' if f.safe_room_pref == value }}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="field">
-        <label><span class="field-icon">🛋️</span> ריהוט</label>
-        <select name="furniture_pref">
+        <label for="f-furniture"><span class="field-icon" aria-hidden="true">🛋️</span> {{ t('filter.furniture_label') }}</label>
+        <select id="f-furniture" name="furniture_pref">
           {% for value, label in furniture_labels.items() %}
           <option value="{{ value }}" {{ 'selected' if f.furniture_pref == value }}>{{ label }}</option>
           {% endfor %}
@@ -105,24 +105,24 @@
     </div>
 
     <div class="field">
-      <label><span class="field-icon">📐</span> שטח מינימלי (מ״ר)</label>
-      <input type="number" name="min_area_sqm" value="{{ f.min_area_sqm if f.min_area_sqm is not none else '' }}">
+      <label for="f-min-area"><span class="field-icon" aria-hidden="true">📐</span> {{ t('filter.min_area_label') }}</label>
+      <input id="f-min-area" type="number" name="min_area_sqm" value="{{ f.min_area_sqm if f.min_area_sqm is not none else '' }}">
     </div>
 
     <div class="field">
-      <label><span class="field-icon">🔑</span> מילות מפתח</label>
-      <input type="text" name="keywords" value="{{ f.keywords|join(', ') }}" placeholder="משופצת, נוף לים">
-      <div class="field-hint">מופרדות בפסיקים — דירה תואמת אם התיאור שלה מכיל לפחות אחת מהן</div>
+      <label for="f-keywords"><span class="field-icon" aria-hidden="true">🔑</span> {{ t('filter.keywords_label') }}</label>
+      <input id="f-keywords" type="text" name="keywords" value="{{ f.keywords|join(', ') }}" placeholder="{{ t('filter.keywords_placeholder') }}">
+      <div class="field-hint">{{ t('filter.keywords_hint') }}</div>
     </div>
 
     <div class="field">
       <label class="check-chip">
         <input type="checkbox" name="flexible_match" {{ 'checked' if f.flexible_match }}>
-        התאמה גמישה — הצג גם דירות שמפספסות מאפיין אחד בלבד
+        {{ t('filter.flexible_match_label') }}
       </label>
     </div>
 
-    <button class="btn block" type="submit">💾 שמור שינויים</button>
+    <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
   </form>
 </div>
 {% endblock %}
