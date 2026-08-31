@@ -125,26 +125,30 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return AWAIT_FREETEXT
 
     matches = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
-    example = matches[:1]
 
     context.user_data.pop("onboarding", None)
-    apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
-    match_count_text = (
-        f"יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות! "
-        if matches
-        else "עדיין אין דירות תואמות כרגע — "
-    )
     await update.message.reply_text(
-        "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter 🎛️\n\n"
-        f"{match_count_text}לכל הדירות שמתאימות: {apartments_url}"
+        "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter 🎛️"
     )
 
-    if example:
-        await update.message.reply_text("👀 הנה דוגמה לדירה שתואמת:")
+    # Sends every current match as a real card, not just a count/link (mirrors the reference
+    # bot's behavior on both its guided-form and free-text paths, per the owner's screenshots
+    # 2026-08-31) — a brand-new user especially shouldn't have to click through anywhere to see
+    # what already matches right now.
+    if matches:
         await update.message.reply_text(
-            format_caption(example[0]),
-            reply_markup=listing_keyboard(example[0].id),
-            parse_mode=ParseMode.HTML,
+            f"👀 יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות:"
+        )
+        for listing in matches:
+            await update.message.reply_text(
+                format_caption(listing),
+                reply_markup=listing_keyboard(listing.id),
+                parse_mode=ParseMode.HTML,
+            )
+    else:
+        apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
+        await update.message.reply_text(
+            f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"
         )
 
     return ConversationHandler.END
