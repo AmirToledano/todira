@@ -7,6 +7,3 @@ python-telegram-bot>=21,<22
 # proxy (see yad2_client.py) this is what finally got past Yad2's Radware Bot Manager wall — see
 # scraper/YAD2_NOTES.md for the full attempt history.
 patchright>=1.60,<2.0
-# Only for scraper/_diagnose_multi_city.py's extract=auto test (ZenRows' Fetch REST API, not the
-# proxy gateway patchright uses) — not a production dependency of main.py/yad2_client.py.
-httpx>=0.27,<1.0
