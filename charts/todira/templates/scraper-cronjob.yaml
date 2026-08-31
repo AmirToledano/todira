@@ -32,6 +32,8 @@ spec:
                       key: telegram-bot-token
                 - name: SCRAPE_CITIES
                   value: {{ .Values.scraper.cities | quote }}
+                - name: SCRAPE_CITIES_PER_RUN
+                  value: {{ .Values.scraper.citiesPerRun | quote }}
                 - name: ZENROWS_API_KEY
                   valueFrom:
                     secretKeyRef:

@@ -4,6 +4,7 @@ CronJob (see charts/todira), or manually via `docker compose run --rm scraper` l
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import os
 import sys
@@ -22,6 +23,26 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("scraper.main")
 
 
+def _select_cities_for_run(all_cities: list[str], batch_size: int) -> list[str]:
+    """Picks a `batch_size`-sized, deterministically-rotating slice of `all_cities` for this run.
+
+    Every ZenRows request costs real, limited credits (see PROJECT_STATE.md, 2026-08-31 — the
+    free tier's entire monthly 5,000-credit budget was burned in ~2 days scraping all 42 cities
+    every 10 minutes). Scraping only a rotating slice per run, keyed off the calendar day so it's
+    stable across every run within the same day and advances the next day with no stored state
+    needed, keeps every city in eventual rotation (nobody's chosen city is structurally
+    unreachable) while bounding total monthly requests. `batch_size <= 0` or `>= len(all_cities)`
+    disables rotation entirely (every city, every run) — useful for local/manual testing."""
+    if batch_size <= 0 or batch_size >= len(all_cities):
+        return all_cities
+    day_index = datetime.date.today().toordinal()
+    start = (day_index * batch_size) % len(all_cities)
+    end = start + batch_size
+    if end <= len(all_cities):
+        return all_cities[start:end]
+    return all_cities[start:] + all_cities[: end - len(all_cities)]
+
+
 def _scrape_cities() -> list[str]:
     raw = os.environ.get("SCRAPE_CITIES", "")
     cities = [c.strip() for c in raw.split(",") if c.strip()]
@@ -29,7 +50,8 @@ def _scrape_cities() -> list[str]:
         raise RuntimeError(
             "SCRAPE_CITIES environment variable is not set (comma-separated list of cities)"
         )
-    return cities
+    batch_size = int(os.environ.get("SCRAPE_CITIES_PER_RUN", "0") or "0")
+    return _select_cities_for_run(cities, batch_size)
 
 
 def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[int, int]]]:
@@ -106,6 +128,7 @@ def _mark_delisted(session, seen_external_ids: set[str]) -> int:
 
 def run_once() -> dict[str, int]:
     cities = _scrape_cities()
+    logger.info("Scraping %d cities this run: %s", len(cities), ", ".join(cities))
     fetched = 0
     normalized_items = []
     errors = 0
