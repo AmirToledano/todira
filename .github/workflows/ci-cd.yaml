@@ -91,6 +91,16 @@ jobs:
         run: |
           kubectl patch deployment todira-bot -n todira --type=json \
             -p='[{"op":"remove","path":"/spec/strategy/rollingUpdate"}]' || true
+          echo "--- live strategy after patch ---"
+          kubectl get deployment todira-bot -n todira -o jsonpath='{.spec.strategy}' || true
+          echo ""
+          echo "--- last-applied-configuration annotation (if any) ---"
+          kubectl get deployment todira-bot -n todira -o jsonpath='{.metadata.annotations.kubectl\.kubernetes\.io/last-applied-configuration}' || true
+          echo ""
+          echo "--- managedFields owners ---"
+          kubectl get deployment todira-bot -n todira -o jsonpath='{range .metadata.managedFields[*]}{.manager}{" "}{.operation}{"\n"}{end}' || true
+          echo "--- helm release history ---"
+          helm history todira -n todira || true
 
       - name: Helm upgrade
         run: |
