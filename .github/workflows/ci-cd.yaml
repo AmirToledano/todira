@@ -70,7 +70,15 @@ jobs:
 
       - uses: azure/setup-helm@v4
         with:
-          version: "latest"
+          # Pinned, NOT "latest". Every deploy since PR #40 failed identically: "helm upgrade
+          # --install" claims release "todira" doesn't exist in namespace todira (even though
+          # `helm list -A` finds it fine, deployed, revision 73+) and then creates the website
+          # Service in namespace "default" instead of "todira", colliding with the real one's
+          # NodePort 30080. Same command, same kubeconfig, same cluster state right after a
+          # manual cleanup - only plausible remaining variable is the Helm client binary itself
+          # (setup-helm re-resolves "latest" on every run). Pinning to a known-good Helm 3.x
+          # release to rule this out; bump deliberately if this turns out not to be the cause.
+          version: "v3.16.4"
 
       - name: Write kubeconfig
         run: |
