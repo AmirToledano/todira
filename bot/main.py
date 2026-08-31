@@ -11,8 +11,8 @@ from handlers.filter_conversation import build_filter_conversation_handler
 from handlers.liked import build_liked_handler, build_reaction_handler
 from handlers.onboarding import build_onboarding_handler
 from handlers.profile import build_profile_handlers
-from telegram import BotCommand
-from telegram.ext import Application, PicklePersistence
+from telegram import BotCommand, Update
+from telegram.ext import Application, ContextTypes, PicklePersistence
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("bot.main")
@@ -40,6 +40,25 @@ async def _post_init(application: Application) -> None:
     await application.bot.set_my_commands(BOT_COMMANDS)
 
 
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Without this, python-telegram-bot's default behavior on an uncaught handler exception is
+    to log it and otherwise do nothing — the user just sees silence with no indication anything
+    went wrong, and nothing points at *which* command/user hit it unless every single handler
+    remembers to log for itself (none currently do, e.g. filter_conversation.py has zero logger
+    calls). Registered as a catch-all so any future bug fails loud, in logs and to the user,
+    instead of failing silently like this one apparently did."""
+    logger.error(
+        "Unhandled exception while processing update %s", update, exc_info=context.error
+    )
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "😅 קרתה תקלה טכנית אצלנו. נסה/י שוב בעוד רגע — ואם זה נמשך, אפשר גם /start מחדש."
+            )
+        except Exception:
+            logger.exception("Failed to notify the user about the error above")
+
+
 def main() -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -57,6 +76,7 @@ def main() -> None:
     application.add_handler(build_reaction_handler())
     for handler in build_profile_handlers():
         application.add_handler(handler)
+    application.add_error_handler(_error_handler)
 
     logger.info("Starting bot polling...")
     application.run_polling(allowed_updates=["message", "callback_query"])
