@@ -384,10 +384,52 @@ nav.site-nav a:active { transform: scale(.95); }
 .footer-nav a { text-decoration: none; color: var(--text-muted); font-size: .88rem; }
 .footer-nav a:hover { color: var(--wine); }
 .footer-note { font-size: .78rem; color: var(--text-muted); margin: 0; }
+.footer-legal { max-width: 480px; }
+
+/* ---------- accessibility: skip link + visible focus ---------- */
+.skip-link {
+  position: absolute; inset-inline-start: 12px; top: -60px;
+  background: var(--wine); color: #fff !important; text-decoration: none;
+  padding: 10px 18px; border-radius: var(--radius-sm); font-weight: 600; font-size: .9rem;
+  z-index: 100; transition: top .15s ease;
+}
+.skip-link:focus { top: 12px; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+summary:focus-visible {
+  outline: 2.5px solid var(--gold); outline-offset: 2px;
+}
+.field input:not([type="checkbox"]):focus, .field select:focus {
+  box-shadow: 0 0 0 3px rgba(184, 134, 11, .25);
+}
+
+/* ---------- language switcher, next to the main nav ---------- */
+.nav-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+nav.lang-switcher { display: flex; gap: 2px; border-inline-start: 1px solid rgba(255,255,255,.25); padding-inline-start: 12px; }
+nav.lang-switcher a {
+  text-decoration: none; color: rgba(255,255,255,.75);
+  padding: 6px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600;
+  transition: background .15s, color .15s;
+}
+nav.lang-switcher a:hover, nav.lang-switcher a.active { background: rgba(255,255,255,.14); color: #fff; }
+
+/* ---------- legal pages (terms / privacy) ---------- */
+.legal-page { max-width: 720px; margin: 0 auto; }
+.legal-page h1 { margin-bottom: .2em; }
+.legal-page .legal-updated { color: var(--text-muted); font-size: .85rem; margin-bottom: 28px; }
+.legal-page h2 { font-size: 1.15rem; margin-top: 30px; }
+.legal-page p, .legal-page li { color: var(--text); line-height: 1.7; }
+.legal-page ul { padding-inline-start: 22px; }
+
+/* ---------- Arabic script fallback (Rubik/Frank Ruhl Libre don't cover Arabic glyphs) ---------- */
+:lang(ar) { font-family: 'Noto Sans Arabic', Tahoma, Arial, sans-serif; }
+:lang(ar) h1, :lang(ar) h2, :lang(ar) h3, :lang(ar) .display {
+  font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', Georgia, serif;
+}
 
 @media (max-width: 620px) {
   .header-inner { padding: 12px 16px; }
   .brand { font-size: 1.15rem; }
   nav.site-nav a { padding: 7px 10px; font-size: .84rem; }
+  nav.lang-switcher a { padding: 5px 7px; font-size: .74rem; }
   main { padding: 24px 14px 60px; }
 }

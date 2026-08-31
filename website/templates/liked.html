@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% set active_page = "liked" %}
-{% block title %}דירות שמורות — טודירה{% endblock %}
+{% block title %}{{ t('meta.title_liked') }}{% endblock %}
 {% block content %}
-{% from "_listing_card.html" import listing_card %}
+{% from "_listing_card.html" import listing_card with context %}
 
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>❤️ דירות שמורות</h1>
-    <p>דירות שסימנת כמעניינות — כאן ובבוט בטלגרם</p>
+    <h1>{{ t('liked.title') }}</h1>
+    <p>{{ t('liked.subtitle') }}</p>
   </div>
-  <div class="pb-count"><b>{{ listings|length }}</b><span>תוצאות</span></div>
+  <div class="pb-count"><b>{{ listings|length }}</b><span>{{ t('apartments.results_label') }}</span></div>
 </div>
 
 {% if not listings %}
   <div class="empty-state">
-    <div class="glyph">💌</div>
-    <p>עדיין לא שמרת דירות.</p>
-    <p class="hint">כשתסמן דירה כ"אהבתי" בטלגרם, היא תופיע כאן.</p>
+    <div class="glyph" aria-hidden="true">💌</div>
+    <p>{{ t('liked.empty_title') }}</p>
+    <p class="hint">{{ t('liked.empty_hint') }}</p>
   </div>
 {% else %}
   <div class="listing-grid">

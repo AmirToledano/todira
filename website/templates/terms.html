@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ t('meta.title_terms') }}{% endblock %}
+{% block content %}
+<div class="legal-page reveal">
+{% if lang == 'he' %}
+  <h1>תנאי שימוש</h1>
+  <p class="legal-updated">עודכן לאחרונה: אוגוסט 2026</p>
+
+  <h2>1. מה זה טודירה</h2>
+  <p>טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (כגון יד2), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. השירות מוצע כרגע בחינם.</p>
+
+  <h2>2. אין אחריות על תוכן המודעות</h2>
+  <p>כל המודעות המוצגות בטודירה נאספות ממקורות חיצוניים שאינם בשליטת טודירה. טודירה אינו מפרסם, יוצר, מאמת או ערב לדיוק, לעדכניות או לזמינות של אף מודעה — מחיר, תמונות, זמינות, תיאור הנכס וכל פרט אחר עשויים להיות שגויים, מיושנים או שהנכס כבר הושכר/נמכר. יש לבדוק כל מודעה מול המקור המקורי ומול המפרסם לפני כל החלטה.</p>
+
+  <h2>3. טודירה אינו צד לעסקה</h2>
+  <p>טודירה אינו מתווך, משכיר, בעל נכס או צד לכל עסקת שכירות/מכירה. כל תקשורת, משא ומתן והתקשרות מול מפרסם, בעל נכס או מתווך נעשית באחריותו הבלעדית של המשתמש, וטודירה אינו אחראי לתוצאותיה.</p>
+
+  <h2>4. שימוש בבינה מלאכותית</h2>
+  <p>השירות משתמש במודל שפה (Gemini מבית Google) כדי לפרש הודעות טקסט חופשי ולבנות מהן פרופיל חיפוש. הפירוש עלול לפעמים להיות שגוי — ניתן תמיד לתקן את הסינון ידנית דרך הבוט (/filter) או דרך האתר.</p>
+
+  <h2>5. הגבלת אחריות</h2>
+  <p>השירות ניתן "כמות שהוא" (AS IS), ללא כל התחייבות לזמינות רציפה, נכונות המידע או התאמה למטרה מסוימת. ככל שמותר על פי דין, טודירה ומפעיליו לא יישאו באחריות לכל נזק — ישיר או עקיף — שייגרם משימוש בשירות, מהסתמכות על מידע בו, מתקלה טכנית או מהפסקת השירות.</p>
+
+  <h2>6. שינויים בשירות</h2>
+  <p>טודירה רשאי לשנות, להשעות או להפסיק את השירות (כולו או חלקו), בכל עת וללא הודעה מוקדמת.</p>
+
+  <h2>7. קניין רוחני</h2>
+  <p>עיצוב האתר, המיתוג והקוד של טודירה הם קניינו של מפעיל השירות. תוכן המודעות עצמו שייך למקורות המקוריים שממנו נאסף.</p>
+
+  <h2>8. דין וסמכות שיפוט</h2>
+  <p>תנאים אלה כפופים לדיני מדינת ישראל, וכל מחלוקת תידון בבתי המשפט המוסמכים בישראל בלבד.</p>
+
+  <h2>9. יצירת קשר</h2>
+  <p>לשאלות בנוגע לתנאים אלה — ניתן לפנות דרך הבוט בטלגרם.</p>
+{% else %}
+  {% if lang != 'en' %}<div class="notice">{{ t('legal.non_native_notice') }}</div>{% endif %}
+  <h1>Terms of Use</h1>
+  <p class="legal-updated">Last updated: August 2026</p>
+
+  <h2>1. What Todira is</h2>
+  <p>Todira is a personal service (a Telegram bot and companion website) that automatically scans apartment listings from external sources on the web (such as Yad2) and alerts you when a listing matching your filter is published. The service is currently offered free of charge.</p>
+
+  <h2>2. No warranty on listing content</h2>
+  <p>Every listing shown in Todira is collected from external sources not controlled by Todira. Todira does not publish, create, verify, or guarantee the accuracy, timeliness, or availability of any listing — price, photos, availability, description, and any other detail may be incorrect, outdated, or the property may already be rented or sold. Always verify a listing against its original source and the advertiser before making any decision.</p>
+
+  <h2>3. Todira is not a party to any transaction</h2>
+  <p>Todira is not a broker, landlord, property owner, or a party to any rental or sale transaction. All communication, negotiation, and dealings with an advertiser, property owner, or broker are the user's sole responsibility, and Todira bears no responsibility for their outcome.</p>
+
+  <h2>4. Use of AI</h2>
+  <p>The service uses a language model (Google's Gemini) to parse free-text messages and build a search profile from them. That interpretation can occasionally be wrong — you can always correct your filter manually via the bot (/filter) or the website.</p>
+
+  <h2>5. Limitation of liability</h2>
+  <p>The service is provided "AS IS," with no commitment to continuous availability, accuracy of information, or fitness for a particular purpose. To the extent permitted by law, Todira and its operator shall not be liable for any damage — direct or indirect — arising from use of the service, reliance on information in it, technical failure, or discontinuation of the service.</p>
+
+  <h2>6. Changes to the service</h2>
+  <p>Todira may change, suspend, or discontinue the service (in whole or in part) at any time, without prior notice.</p>
+
+  <h2>7. Intellectual property</h2>
+  <p>The website's design, branding, and code belong to the service's operator. Listing content itself belongs to the original sources it was collected from.</p>
+
+  <h2>8. Governing law and jurisdiction</h2>
+  <p>These terms are governed by the laws of the State of Israel, and any dispute shall be resolved exclusively in the competent courts of Israel.</p>
+
+  <h2>9. Contact</h2>
+  <p>For questions about these terms, please reach out via the Telegram bot.</p>
+{% endif %}
+</div>
+{% endblock %}

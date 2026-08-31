@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}טודירה{% endblock %}
+{% block title %}{{ t('meta.title_generic') }}{% endblock %}
 {% block content %}
 <div class="empty-state">
-  <div class="glyph">👑</div>
-  <p>לא מצאנו חשבון או סינון פעיל. צריך להגדיר סינון קודם דרך הבוט בטלגרם.</p>
-  <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">פתח את הבוט</a>
+  <div class="glyph" aria-hidden="true">👑</div>
+  <p>{{ t('no_filter.body') }}</p>
+  <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">{{ t('no_filter.cta') }}</a>
 </div>
 {% endblock %}

@@ -20,6 +20,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+
+from i18n import (
+    DEFAULT_LANG,
+    FURNITURE_LABELS,
+    LANG_LABELS,
+    PROPERTY_TYPE_LABELS,
+    RTL_LANGS,
+    SAFE_ROOM_LABELS,
+    SUPPORTED_LANGS,
+    get_lang,
+    make_translator,
+)
 
 BASE_DIR = Path(__file__).parent
 
@@ -27,32 +40,43 @@ app = FastAPI(title="טודירה")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
-# /filter form labels — kept here (not in enums.py) since these are Hebrew UI copy, not part of
-# the shared schema the bot/scraper also depend on.
-PROPERTY_TYPE_LABELS = {
-    "apartment": "דירה",
-    "garden_apartment": "דירת גן",
-    "penthouse": "פנטהאוז",
-    "studio": "סטודיו",
-    "housing_unit": "יחידת דיור",
-    "private_house": "בית פרטי",
-    "shared_room": "חדר בדירת שותפים",
-}
-SAFE_ROOM_LABELS = {
-    "any": "לא משנה",
-    "safe_room_only": "רק ממ״ד",
-    "safe_room_or_shelter": "ממ״ד או מקלט בבניין",
-}
-FURNITURE_LABELS = {
-    "any": "לא משנה",
-    "furnished": "מרוהטת",
-    "unfurnished": "לא מרוהטת",
-}
+LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year — a site-wide preference, not per-session
+
+
+def _render(request: Request, template_name: str, context: dict, status_code: int = 200) -> Response:
+    """Every page goes through this: resolves the viewer's language (?lang= > cookie > Hebrew),
+    injects lang/dir/t/lang switcher data into the template context, and — only when the request
+    explicitly asked for a language via ?lang= — persists it to a cookie so it survives to the
+    next page without every internal link needing to carry ?lang= itself (uid already has to be
+    threaded through links for auth, but lang is a site-wide preference, a cookie fits better).
+    """
+    lang = get_lang(request)
+    response = templates.TemplateResponse(
+        request,
+        template_name,
+        {
+            **context,
+            "lang": lang,
+            "dir": "rtl" if lang in RTL_LANGS else "ltr",
+            "t": make_translator(lang),
+            "supported_langs": SUPPORTED_LANGS,
+            "lang_labels": LANG_LABELS,
+        },
+        status_code=status_code,
+    )
+    requested_lang = request.query_params.get("lang")
+    if requested_lang in SUPPORTED_LANGS:
+        response.set_cookie("lang", requested_lang, max_age=LANG_COOKIE_MAX_AGE, samesite="lax")
+    return response
+
+
+# /filter form option labels now live in i18n.py (PROPERTY_TYPE_LABELS etc.), keyed by language —
+# moved out of this file once the site stopped being Hebrew-only.
 
 
 @app.exception_handler(404)
 async def not_found(request: Request, exc: StarletteHTTPException):
-    return templates.TemplateResponse(request, "404.html", {}, status_code=404)
+    return _render(request, "404.html", {}, status_code=404)
 
 
 def _get_user_by_uid(session, uid: int) -> User | None:
@@ -61,20 +85,28 @@ def _get_user_by_uid(session, uid: int) -> User | None:
 
 @app.get("/")
 def home(request: Request):
-    return templates.TemplateResponse(request, "home.html", {})
+    return _render(request, "home.html", {})
+
+
+@app.get("/terms")
+def terms(request: Request):
+    return _render(request, "terms.html", {})
+
+
+@app.get("/privacy")
+def privacy(request: Request):
+    return _render(request, "privacy.html", {})
 
 
 @app.get("/apartments")
 def apartments(request: Request, uid: int | None = None):
     if uid is None:
-        return templates.TemplateResponse(request, "need_uid.html", {"target": "apartments"})
+        return _render(request, "need_uid.html", {"target": "apartments"})
 
     with get_session() as session:
         user = _get_user_by_uid(session, uid)
         if user is None or user.filter is None:
-            return templates.TemplateResponse(
-                request, "no_filter.html", {"uid": uid}
-            )
+            return _render(request, "no_filter.html", {"uid": uid})
 
         listings = session.scalars(
             select(Listing)
@@ -84,22 +116,18 @@ def apartments(request: Request, uid: int | None = None):
         ).all()
         matches = [listing for listing in listings if evaluate(user.filter, listing).matched]
 
-    return templates.TemplateResponse(
-        request,
-        "apartments.html",
-        {"listings": matches, "uid": uid, "user": user},
-    )
+    return _render(request, "apartments.html", {"listings": matches, "uid": uid, "user": user})
 
 
 @app.get("/liked")
 def liked(request: Request, uid: int | None = None):
     if uid is None:
-        return templates.TemplateResponse(request, "need_uid.html", {"target": "liked"})
+        return _render(request, "need_uid.html", {"target": "liked"})
 
     with get_session() as session:
         user = _get_user_by_uid(session, uid)
         if user is None:
-            return templates.TemplateResponse(request, "no_filter.html", {"uid": uid})
+            return _render(request, "no_filter.html", {"uid": uid})
 
         liked_listing_ids = session.scalars(
             select(UserListingAction.listing_id).where(
@@ -112,31 +140,30 @@ def liked(request: Request, uid: int | None = None):
             else []
         )
 
-    return templates.TemplateResponse(
-        request, "liked.html", {"listings": listings, "uid": uid, "user": user}
-    )
+    return _render(request, "liked.html", {"listings": listings, "uid": uid, "user": user})
 
 
 @app.get("/filter")
 def filter_view(request: Request, uid: int | None = None):
     if uid is None:
-        return templates.TemplateResponse(request, "need_uid.html", {"target": "filter"})
+        return _render(request, "need_uid.html", {"target": "filter"})
 
+    lang = get_lang(request)
     with get_session() as session:
         user = _get_user_by_uid(session, uid)
         if user is None or user.filter is None:
-            return templates.TemplateResponse(request, "no_filter.html", {"uid": uid})
+            return _render(request, "no_filter.html", {"uid": uid})
         filter_row = user.filter
-        return templates.TemplateResponse(
+        return _render(
             request,
             "filter.html",
             {
                 "f": filter_row,
                 "uid": uid,
                 "user": user,
-                "property_type_labels": PROPERTY_TYPE_LABELS,
-                "safe_room_labels": SAFE_ROOM_LABELS,
-                "furniture_labels": FURNITURE_LABELS,
+                "property_type_labels": PROPERTY_TYPE_LABELS.get(lang, PROPERTY_TYPE_LABELS[DEFAULT_LANG]),
+                "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
+                "furniture_labels": FURNITURE_LABELS.get(lang, FURNITURE_LABELS[DEFAULT_LANG]),
             },
         )
 
@@ -178,7 +205,7 @@ def filter_update(
         f.price_max = int(price_max) if price_max.strip() else None
         f.rooms_min = float(rooms_min) if rooms_min.strip() else None
         f.rooms_max = float(rooms_max) if rooms_max.strip() else None
-        f.property_types = [p for p in property_types if p in PROPERTY_TYPE_LABELS]
+        f.property_types = [p for p in property_types if p in PROPERTY_TYPE_LABELS[DEFAULT_LANG]]
         f.floor_min = int(floor_min) if floor_min.strip() else None
         f.floor_max = int(floor_max) if floor_max.strip() else None
         f.ground_floor_only = ground_floor_only is not None
@@ -190,8 +217,8 @@ def filter_update(
         f.require_roommate_friendly = require_roommate_friendly is not None
         f.require_has_photos = require_has_photos is not None
         f.no_brokers = no_brokers is not None
-        f.safe_room_pref = safe_room_pref if safe_room_pref in SAFE_ROOM_LABELS else "any"
-        f.furniture_pref = furniture_pref if furniture_pref in FURNITURE_LABELS else "any"
+        f.safe_room_pref = safe_room_pref if safe_room_pref in SAFE_ROOM_LABELS[DEFAULT_LANG] else "any"
+        f.furniture_pref = furniture_pref if furniture_pref in FURNITURE_LABELS[DEFAULT_LANG] else "any"
         f.min_area_sqm = int(min_area_sqm) if min_area_sqm.strip() else None
         f.keywords = [k.strip() for k in keywords.split(",") if k.strip()]
         f.flexible_match = flexible_match is not None
