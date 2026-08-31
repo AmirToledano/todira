@@ -38,18 +38,18 @@ logger = logging.getLogger(__name__)
 SEARCH_PAGE_URL = "https://www.yad2.co.il/realestate/rent"
 
 # Yad2's own numeric city IDs — NOT the human-readable slugs used elsewhere in this project.
-# Extended 2026-08-31: bot/cities.py offers 41 Hebrew cities for /filter, but until this update
-# only 3 had a Yad2 ID here — a user could pick any of the other 38 and the scraper would
-# structurally never be able to find matches for them (see PROJECT_STATE.md for the full writeup).
-# Each ID below was cross-checked against at least two independent yad2.co.il/realestate/rent
-# search-result URLs containing that city's Hebrew name (via web search, since this environment
-# can't browse Yad2 directly) — not guessed. Not exhaustive: covers 24 of bot/cities.py's 41
-# cities (the largest/highest-demand ones); add more the same way (search
-# "yad2.co.il/realestate/rent city= <Hebrew name>") if a specific city matters later.
+# Extended 2026-08-31, twice: first pass covered 24 of bot/cities.py's cities (the largest ones),
+# deliberately holding back the rest over ZenRows request-credit cost (each scraped city is a
+# recurring cost every 10-minute run, not one-time). Owner explicitly overrode that caution the
+# same day ("תוסיף כל מקום וחוק בארץ... אנחנו רוצים להיות זמינים לכל בן אדם") — this second pass
+# adds the remaining 18 and makes CITY_SLUG_TO_ID/CITY_SLUG_TO_HEBREW_NAME exhaustive: every city
+# bot/cities.py's CITIES list offers in /filter now has a real Yad2 ID, so no selectable city is
+# structurally unmatchable anymore. Each ID (both passes) was cross-checked against at least two
+# independent yad2.co.il/realestate/rent search-result URLs containing that city's Hebrew name
+# (via web search, since this environment can't browse Yad2 directly) — not guessed.
 # NOTE: only the cities actually listed in SCRAPE_CITIES (values.yaml / .env.example) get scraped
-# — adding an ID here alone does nothing until that env var also includes the slug. Kept separate
-# on purpose: each additional scraped city is a recurring ZenRows request-credit cost every
-# scraper run (every 10 min), not just a one-time code change — see the values.yaml comment.
+# — adding an ID here alone does nothing until that env var also includes the slug. See
+# values.yaml's own comment: it now lists every city here, per the owner's explicit request.
 CITY_SLUG_TO_ID = {
     "tel-aviv": "5000",
     "ramat-gan": "8600",
@@ -75,6 +75,24 @@ CITY_SLUG_TO_ID = {
     "eilat": "2600",
     "modiin": "1200",
     "ramat-hasharon": "2650",
+    "ramla": "8500",
+    "nazareth": "7300",
+    "lod": "7000",
+    "hod-hasharon": "9700",
+    "kiryat-ata": "6800",
+    "kiryat-gat": "2630",
+    "kiryat-motzkin": "8200",
+    "kiryat-bialik": "9500",
+    "kiryat-ono": "2620",
+    "yavne": "2660",
+    "or-yehuda": "2400",
+    "tzfat": "8000",
+    "afula": "7700",
+    "tiberias": "6700",
+    "dimona": "2200",
+    "mevaseret-zion": "1015",
+    "har-gilo": "3603",
+    "karmiel": "1139",
 }
 
 # Maps each CITY_SLUG_TO_ID slug to the exact Hebrew string bot/cities.py's CITIES list uses for
@@ -108,6 +126,24 @@ CITY_SLUG_TO_HEBREW_NAME = {
     "eilat": "אילת",
     "modiin": "מודיעין מכבים רעות",
     "ramat-hasharon": "רמת השרון",
+    "ramla": "רמלה",
+    "nazareth": "נצרת",
+    "lod": "לוד",
+    "hod-hasharon": "הוד השרון",
+    "kiryat-ata": "קריית אתא",
+    "kiryat-gat": "קריית גת",
+    "kiryat-motzkin": "קריית מוצקין",
+    "kiryat-bialik": "קריית ביאליק",
+    "kiryat-ono": "קריית אונו",
+    "yavne": "יבנה",
+    "or-yehuda": "אור יהודה",
+    "tzfat": "צפת",
+    "afula": "עפולה",
+    "tiberias": "טבריה",
+    "dimona": "דימונה",
+    "mevaseret-zion": "מבשרת ציון",
+    "har-gilo": "הר גילה",
+    "karmiel": "כרמיאל",
 }
 
 ZENROWS_API_KEY_ENV_VAR = "ZENROWS_API_KEY"
