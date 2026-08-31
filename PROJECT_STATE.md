@@ -1368,3 +1368,35 @@ trial. Once real quota is available again, the very next scraper run (≤10 min 
 plan takes effect) should start finding real listings — no further code changes needed on this
 side; the parser (`_CARD_RE`) was correct all along per the 2026-08-29 "SOLVED" writeup and never
 needed to change.
+
+## Update 2026-08-31, later still: ZenRows quota fully diagnosed + city-rotation fix shipped
+Owner checked the ZenRows dashboard as asked above and confirmed the exact numbers: **217
+requests consumed 5,285 of the 5,000 monthly free-tier credits in under 2 days** (billing cycle
+Aug 29 – Sep 29, 2026) — `yad2.co.il` alone accounted for 5,085 of those credits, ~24-25 credits
+per request (the `premium_proxy=true&js_render=true` combo is expensive). At 42 cities × every 10
+minutes, that's ~1,050 credits per single scrape cycle — the entire monthly budget was gone after
+roughly 5 cycles (~50 minutes), not a fluke. `values.yaml` had already predicted this outcome in a
+comment ("If ZenRows credits run out, trim this list back down") from when the owner deliberately
+opted into scraping every selectable city on 2026-08-31 ("תוסיף כל מקום וחוק בארץ... אנחנו רוצים
+להיות זמינים לכל בן אדם").
+
+**Fix shipped, without trimming any city out of rotation** (honors the "available to everyone"
+intent instead of walking it back): `scraper/main.py` gained `_select_cities_for_run`, which picks
+a deterministically-rotating slice of the configured city list per run — keyed off the calendar
+day (`datetime.date.today().toordinal()`), so it's stable across every run within the same day and
+advances automatically the next day with no stored cursor/state needed. `charts/todira/values.yaml`
+gained `scraper.citiesPerRun: 6` and the schedule dropped from `*/10 * * * *` to `"0 3 * * *"`
+(once daily, 03:00 UTC) — 6 cities/day × ~30 days ≈ 180 requests/month ≈ 4,500 credits, safely
+under the 5,000 budget with room to spare for manual/dev testing, and every one of the 42 cities
+cycles back into rotation within about a week (`ceil(42/6) = 7` days). `batch_size <= 0` or
+`>= len(cities)` disables rotation entirely (every city, every run) — kept as an escape hatch for
+local/manual testing via `docker compose run --rm scraper`, where the credit-cost pressure doesn't
+apply the same way. Added `tests/test_scraper_city_rotation.py` (8 cases: batch-size edge cases,
+same-day determinism, cross-day variation, wrap-around at the end of the list, full-cycle coverage
+via a frozen `datetime.date` monkeypatch) — 155 tests total, all passing.
+
+**Owner action still open**: check the ZenRows **Plans** page for current paid-tier pricing if a
+faster refresh cadence is wanted later — not fetched here since this session's network egress is
+blocked from reaching external pricing pages, and stale/guessed numbers would be worse than no
+number. Once on a paid plan (or once real usage patterns are known), `citiesPerRun` and `schedule`
+in `values.yaml` are the two knobs to turn back up — no other code changes needed to go faster.
