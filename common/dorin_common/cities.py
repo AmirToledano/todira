@@ -1,5 +1,9 @@
-"""A small bundled list of major Israeli cities, used only for fuzzy-match suggestions when a
-user types a city name in the /filter conversation — NOT validated against Yad2's live data.
+"""A small bundled list of major Israeli cities — used for fuzzy-match suggestions when a user
+types a city name in the Telegram bot's /filter conversation, and shared with the WhatsApp
+onboarding webhook (website/whatsapp_webhook.py) as the known-cities list passed to Gemini. Moved
+here from bot/cities.py 2026-09-01 when WhatsApp support was added, so both channels (and
+scraper/yad2_client.py's own tests, which cross-check CITY_SLUG_TO_ID against this list) use the
+exact same names — NOT validated against Yad2's live data.
 
 IMPORTANT caveat (see scraper/YAD2_NOTES.md): the matcher compares `filters.cities` values
 against `listings.city` verbatim (array-overlap). Whatever string a user picks here must match

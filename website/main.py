@@ -48,6 +48,7 @@ from i18n import (
     get_lang,
     make_translator,
 )
+from whatsapp_webhook import router as whatsapp_router
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "dev-only-insecure-ses
 app = FastAPI(title="טודירה")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+app.include_router(whatsapp_router)
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year — a site-wide preference, not per-session

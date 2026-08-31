@@ -1,15 +1,18 @@
-"""Gemini-backed free-text onboarding parser.
+"""Gemini-backed free-text onboarding parser — channel-agnostic, shared by the Telegram bot
+(bot/handlers/onboarding.py) and the WhatsApp webhook (website/whatsapp_webhook.py). Lives in
+dorin_common (not bot/) precisely so both can import it identically; moved here 2026-09-01 when
+the WhatsApp integration was added — was bot/gemini_client.py before that, Telegram-only.
 
 The user describes what they're looking for in their own words (one messy paragraph, or several
 back-and-forth turns) — mirrors the reference bot's WhatsApp onboarding rather than a rigid
 step-by-step Q&A. Each turn, `parse_onboarding_message` is handed the raw text plus whatever
-fields onboarding.py already collected in earlier turns, and returns the merged, updated state
+fields the caller already collected in earlier turns, and returns the merged, updated state
 plus a natural-language reply (either a clarifying question for whatever's still missing, or a
 confirmation once deal_type + at least one city are known).
 
 Fails soft: if GEMINI_API_KEY isn't set, or the API call/parse fails for any reason,
-`parse_onboarding_message` returns None — onboarding.py shows a "technical hiccup, try again"
-message and stays in the same state rather than crashing or silently losing the user's answer.
+`parse_onboarding_message` returns None — callers show a "technical hiccup, try again" message
+and stay in the same state rather than crashing or silently losing the user's answer.
 """
 from __future__ import annotations
 
@@ -61,7 +64,7 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
         return None
 
     prompt = (
-        "אתה עוזר בבוט טלגרם ישראלי שמוצא דירות למגורים. המשתמש מתאר בשפה חופשית מה הוא מחפש "
+        "אתה עוזר בצ'אט ישראלי שמוצא דירות למגורים. המשתמש מתאר בשפה חופשית מה הוא מחפש "
         "(יכול לכלול שגיאות כתיב, קיצורים כמו 'ראשל\"צ'/'ב\"ש', וניסוח לא מסודר) — תפקידך לחלץ "
         "מהטקסט שדות מובנים ולמזג אותם עם מה שכבר ידוע מתשובות קודמות של אותו משתמש.\n\n"
         f"מה שכבר ידוע מתשובות קודמות (JSON): {json.dumps(known_state, ensure_ascii=False)}\n\n"

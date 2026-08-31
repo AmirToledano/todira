@@ -21,9 +21,8 @@ from __future__ import annotations
 
 import asyncio
 
-import cities
-import gemini_client
 from config import WEBSITE_URL
+from dorin_common import cities, gemini_client
 from dorin_common.cards import format_caption, listing_keyboard
 from dorin_common.db import get_session
 from dorin_common.models import Filter

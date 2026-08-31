@@ -49,6 +49,40 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: session-secret-key
                   optional: true
+            # WhatsApp Cloud API webhook (website/whatsapp_webhook.py) — all optional/unset by
+            # default so a deploy before these secrets exist doesn't break; the webhook's own
+            # signature check fails CLOSED (rejects every POST) when whatsapp-app-secret is
+            # missing, so an unset value here is safe, not silently insecure.
+            - name: WHATSAPP_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: whatsapp-access-token
+                  optional: true
+            - name: WHATSAPP_PHONE_NUMBER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: whatsapp-phone-number-id
+                  optional: true
+            - name: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: whatsapp-webhook-verify-token
+                  optional: true
+            - name: WHATSAPP_APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: whatsapp-app-secret
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: gemini-api-key
+                  optional: true
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}

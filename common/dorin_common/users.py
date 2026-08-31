@@ -20,3 +20,17 @@ def get_or_create_user(session: Session, tg_user) -> User:
         session.add(user)
         session.commit()
     return user
+
+
+def get_or_create_whatsapp_user(
+    session: Session, phone_number: str, first_name: str | None = None
+) -> User:
+    """`phone_number` is WhatsApp's own `wa_id` (E.164 digits, no leading '+') from the webhook
+    payload's `messages[].from` field — stable per WhatsApp account, used the same way
+    telegram_user_id identifies a Telegram user."""
+    user = session.scalar(select(User).where(User.whatsapp_phone_number == phone_number))
+    if user is None:
+        user = User(whatsapp_phone_number=phone_number, first_name=first_name)
+        session.add(user)
+        session.commit()
+    return user

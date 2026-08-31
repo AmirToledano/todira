@@ -32,9 +32,10 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    telegram_user_id: Mapped[int] = mapped_column(
-        BigInteger, unique=True, nullable=False, index=True
-    )
+    # Both nullable — a user has exactly one of the two, never both, never neither
+    # (dorin_common/users.py's two get_or_create_*_user helpers each set only their own).
+    telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True)
+    whatsapp_phone_number: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(Text)
     first_name: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(
@@ -45,6 +46,9 @@ class User(Base):
     notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
+    # In-progress WhatsApp onboarding state across stateless webhook calls — see migration
+    # 0003_whatsapp_users. None once no onboarding is in progress (not started, or completed).
+    pending_onboarding_state: Mapped[dict | None] = mapped_column(JSONB)
 
     filter: Mapped["Filter | None"] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"
