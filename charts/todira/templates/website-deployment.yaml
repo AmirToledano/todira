@@ -39,6 +39,16 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: owner-telegram-user-id
                   optional: true
+            # Signs the real-login session cookie set by /auth/telegram/callback (website/main.py).
+            # Optional/falls back to an insecure dev value when unset (see main.py's own comment) so
+            # a deploy before the owner sets this secret doesn't break — but a forgeable session
+            # cookie is a real security gap, so this should be set for real as soon as possible.
+            - name: SESSION_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: session-secret-key
+                  optional: true
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}

@@ -112,6 +112,7 @@ jobs:
             --set geminiApiKey=${{ secrets.GEMINI_API_KEY }} \
             --set zenrowsApiKey=${{ secrets.ZENROWS_API_KEY }} \
             --set ownerTelegramUserId=${{ secrets.OWNER_TELEGRAM_USER_ID }} \
+            --set sessionSecretKey=${{ secrets.SESSION_SECRET_KEY }} \
             --namespace todira --create-namespace
 
       - name: Diagnose bot pod (owner reported it's not responding)
