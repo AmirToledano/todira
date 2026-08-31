@@ -1308,3 +1308,63 @@ currently broken** (see the update above this one) — any fix needs a working d
    whatever the new HTML looks like.
 4. Remove the temporary debug logging once the real cause is found and fixed — don't leave verbose
    HTML dumps in production logs long-term.
+
+## Update 2026-08-31, night: deploy pipeline confirmed fixed + real root cause of 0 listings found
+
+**Deploy pipeline: confirmed resolved.** Both root causes documented above are fixed and verified
+live:
+1. The k3s kubeconfig's context was missing an explicit `namespace: todira` field, which made
+   Helm's own release-existence check unreliable and caused a phantom re-install into the
+   `default` namespace (colliding with the real website Service's NodePort 30080). Fixed by
+   regenerating `KUBECONFIG_B64` with `namespace: todira` added to the context block.
+2. Even after that, deploys kept reporting failure (`line 16: --namespace: command not found`,
+   exit 127) despite Helm itself having already fully succeeded — a GitHub Actions secret's
+   stored value carrying a trailing newline becomes a literal embedded newline once
+   `${{ secrets.X }}` is substituted into an unquoted multi-line `run: |` script, splitting one
+   logical line into two. Regenerating the secret cleanly did **not** reliably fix this (a mobile
+   copy/paste kept reintroducing the newline); the actual permanent fix was double-quoting every
+   `--set key="value"` argument in the Helm command, since a newline inside an open double-quoted
+   string is literal string content, not a statement terminator — robust regardless of how any
+   secret's value is set. Commit `b3991ee`, merged via PR #46. **Confirmed via the GitHub Actions
+   API**: run #89 (`33445914913`) — `"conclusion":"success"`, full green including the Helm
+   upgrade step succeeding cleanly (not just a diagnostic step masking a real failure).
+
+Cleaned up `.github/workflows/ci-cd.yaml` now that both are resolved: removed the "One-time fix -
+remove phantom todira release from the default namespace" step (`helm uninstall todira --namespace
+default`, proven empirically ineffective — the phantom kept recreating identically even right
+after deletion, since the real cause was the missing kubeconfig namespace, not stale cluster
+state) and the temporary read-only "Diagnose website Service nodePort 30080 conflict" step (was
+only ever meant to gather evidence toward the kubeconfig root cause).
+
+**Found why there had NEVER been a single real listing, since the very start of the project**:
+it was never a parser/markup bug at all. Shipped a temporary diagnostic in `yad2_client.py`
+(commit `6b0f825`, PR #45) that logged a snippet of the raw HTML whenever `_parse_cards` found 0
+cards. Once the deploy pipeline above was fixed and that diagnostic build actually reached
+production, the very first real log line explained everything — every single city was returning
+this exact 416-byte body via the ZenRows proxy:
+```json
+{"code":"AUTH004","detail":"This account has reached its usage limit. Purchase a new subscription to continue using the service.","instance":"/v1","status":402,"title":"Usage exceeded (AUTH004)","type":"https://docs.zenrows.com/api-error-codes#AUTH004"}
+```
+**ZenRows itself was rejecting every request with a 402 "usage exceeded" error** — the scraper
+never actually reached Yad2's real page even once. The regex/markup was never wrong; there was
+simply never any real Yad2 HTML to parse in the first place. This explains every prior "0
+listings" observation from day one, including the owner's report that he'd never seen a single
+apartment surface anywhere (bot, `/apartments`, the website) since the project began.
+
+**Permanent fix shipped** (replacing the temporary diagnostic logging, which has been removed):
+`fetch_search_results` in `yad2_client.py` now detects a ZenRows API error body directly (`"code"`
++ `"title"` fields via `_ZENROWS_ERROR_CODE_RE`/`_ZENROWS_ERROR_TITLE_RE`, gated on the response
+being suspiciously short — under 1000 chars, real Yad2 pages are far larger) and raises
+`Yad2FetchError` with the specific ZenRows code/title in the message, instead of silently falling
+through to "0 cards parsed, must be no results." This makes any future ZenRows account/quota/auth
+problem show up as a real, counted error in the scraper's run summary (`errors` field) — loud and
+immediate — rather than silently looking like an empty market for weeks. All 147 tests still pass.
+
+**Owner action needed next** (account-level, cannot be done from a session): log into the ZenRows
+dashboard (app.zenrows.com) and check Billing/Usage on the key currently set as `ZENROWS_API_KEY`
+— most likely it's still on a low-quota Trial plan and 42 cities × every-10-minutes exhausted it
+almost immediately. Either upgrade to a paid plan, or confirm the quota reset schedule if it's a
+trial. Once real quota is available again, the very next scraper run (≤10 min after a fresh key/
+plan takes effect) should start finding real listings — no further code changes needed on this
+side; the parser (`_CARD_RE`) was correct all along per the 2026-08-29 "SOLVED" writeup and never
+needed to change.
