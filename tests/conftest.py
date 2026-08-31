@@ -11,3 +11,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT / "common"))
 sys.path.insert(0, str(_ROOT / "scraper"))
 sys.path.insert(0, str(_ROOT / "bot"))
+# website/ deliberately NOT added here: both scraper/main.py and website/main.py are named
+# main.py, so a bare `import main` would be ambiguous once both directories are on sys.path (last
+# one inserted wins). test_website_contact.py loads website/main.py directly via importlib
+# instead, under an unambiguous name — see that file's own comment.

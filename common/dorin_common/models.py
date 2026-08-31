@@ -234,3 +234,24 @@ class UserListingAction(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class ContactMessage(Base):
+    """Backs the website's /contact form (website/main.py). No relationship/FK to User on
+    purpose: most visitors filling this out are anonymous (found the site organically, no
+    ?uid= yet) — telegram_user_id is best-effort, only populated when the form was submitted
+    from a page that already had ?uid= in the URL. Always persisted here regardless of whether
+    the best-effort Telegram notification to the owner succeeds, so no message is ever silently
+    lost to a transient network/API failure."""
+
+    __tablename__ = "contact_messages"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str | None] = mapped_column(Text)
+    email: Mapped[str | None] = mapped_column(Text)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    telegram_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    notified_owner: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
