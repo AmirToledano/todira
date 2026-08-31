@@ -681,3 +681,25 @@ size is real content or just captured dead space before deciding cropping is nec
   one) before picking a target resolution — see the hero-image round 2 note above for what happens
   when you don't. And before cropping an oversized image at all, check whether the excess is real
   content or just dead space that can be trimmed from the source instead — see the final round.
+
+## Bot welcome message for new/unknown chats (resolved via BotFather, no code change)
+The owner asked for a friendly auto-message to greet anyone landing in the bot chat (organic, ad,
+link) before they know to type `/start`. Telegram's Bot API has no "user opened the chat" event —
+a bot can't proactively message someone who hasn't sent anything yet, so a true instant auto-reply
+isn't achievable in bot code. The correct mechanism Telegram actually provides for this exact case
+is the bot's **Description** field, set via `@BotFather` → `/setdescription` — it's shown as
+welcome text in a brand-new empty chat, before Start is even tapped. This is account-level
+(only the owner can set it, same category as AWS/Meta account actions), so it was handed to him as
+instructions rather than a code change. He set it himself and confirmed via screenshot (after
+deleting his local chat thread to see the "first contact" view again) that it renders correctly:
+the description text shows in a "What can this bot do?" block above the Start button. Text used:
+```
+👑 היי, הגעתם לטודירה!
+הבוט שסורק דירות בשבילכם 24/7 ומתריע ברגע שעולה דירה מתאימה.
+
+לתחילת חיפוש: כתבו /start
+או לחצו על Menu ⌄ ואז על 👋 היי טודירה
+```
+Note for anyone re-testing this: Telegram only shows the description in a chat that has **no**
+prior history from that account — deleting the local chat thread (`Delete Chat`, client-side only,
+doesn't touch server-side profile/filters/likes) is required to re-see it, not a bug.
