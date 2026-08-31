@@ -254,27 +254,27 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
     matches = await asyncio.to_thread(_save_and_match_sync, update.effective_user, validated.model_dump())
-    example = matches[:1]
 
     context.user_data.pop("draft", None)
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
-    match_count_text = (
-        f"יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות! "
-        if matches
-        else "עדיין אין דירות תואמות כרגע — "
-    )
-    await query.edit_message_text(
-        "✅ הסינון נשמר! תתחיל/י לקבל התראות על דירות מתאימות.\n\n"
-        f"{match_count_text}לכל הדירות שמתאימות: {apartments_url}"
-    )
-    if example:
+    await query.edit_message_text("✅ הסינון נשמר! תתחיל/י לקבל התראות על דירות מתאימות.")
+    # Sends every current match as a real card, not just a count/link (mirrors the reference
+    # bot's behavior on both its guided-form and free-text paths, per the owner's screenshots
+    # 2026-08-31) — a brand-new user especially shouldn't have to click through anywhere to see
+    # what already matches right now.
+    if matches:
         await query.message.reply_text(
-            "👀 הנה דוגמה לדירה שתואמת את הסינון שלך:",
+            f"👀 יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות:"
         )
+        for listing in matches:
+            await query.message.reply_text(
+                format_caption(listing),
+                reply_markup=listing_keyboard(listing.id),
+                parse_mode=ParseMode.HTML,
+            )
+    else:
         await query.message.reply_text(
-            format_caption(example[0]),
-            reply_markup=listing_keyboard(example[0].id),
-            parse_mode=ParseMode.HTML,
+            f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"
         )
     return ConversationHandler.END
 
