@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ t('meta.title_generic') }}{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <div class="glyph" aria-hidden="true">⚠️</div>
+  <p>{{ t('auth.error_body') }}</p>
+  <a class="btn gold" href="/">{{ t('auth.error_cta') }}</a>
+</div>
+{% endblock %}

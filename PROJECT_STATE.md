@@ -1133,3 +1133,62 @@ redirects + notifies, empty message is rejected without saving, uid capture, and
 `_notify_owner_sync` cases — unconfigured/success/network-error-never-raises) plus a full-site
 i18n regression re-run (all 5 languages × 10 routes including the new `/contact`, zero stray
 untranslated keys) and the full suite (131 passed, up from 124).
+
+## Update 2026-08-31, later still: real login (Telegram Login Widget), replacing the `?uid=` shim
+
+Owner noticed the actual UX problem with the old `?uid=`-only auth: the *only* way onto the
+website with your own data was the deep link buried somewhere in your Telegram chat with the bot
+— open the site any other way (bookmark, typed URL, a fresh browser) and you hit a dead end that
+just points you back at the bot. Owner also explicitly flagged, unprompted, that a WhatsApp bot is
+coming later and "everything sits on the website in the end" — i.e. don't build the login layer as
+if Telegram is the only identity provider this product will ever have.
+
+**Design point worth remembering**: the session cookie set on login stores only the internal
+`users.id` primary key (`request.session["user_id"]`) — nothing Telegram-specific. `/auth/telegram/
+callback` is *one* way to populate that session; a future `/auth/whatsapp/callback` (or whatever
+WhatsApp's own verification flow looks like) just needs to resolve its own identity to the same
+`users.id` and set the same session key, no changes needed anywhere else. The login *method* and
+the *session* are deliberately two separate layers.
+
+**What shipped**:
+- `website/main.py` gets `starlette.middleware.sessions.SessionMiddleware` (signed, `itsdangerous`-
+  backed cookie — new dependency, `itsdangerous>=2.1,<3.0`), keyed by a new `SESSION_SECRET_KEY`
+  (falls back to a well-known insecure dev value when unset, same graceful-degradation pattern as
+  `OWNER_TELEGRAM_USER_ID` — safe to deploy before the owner sets the real secret, just not secure
+  until they do; flagged clearly both in the values.yaml comment and to the owner directly).
+- `/auth/telegram/callback` — verifies the Telegram Login Widget's payload using Telegram's own
+  documented algorithm (HMAC-SHA256 over the sorted `key=value` fields, keyed by `SHA256(bot
+  token)`; https://core.telegram.org/widgets/login#checking-authorization), plus rejects a stale
+  `auth_date` (>24h) so an old/leaked callback URL can't replay into a fresh session. Looks the
+  Telegram id up against the existing `users` table (created by the *bot*, not the website — this
+  product's account creation has always happened through the Telegram conversation, and stays that
+  way); an unrecognized-but-validly-signed Telegram account gets redirected straight to the bot to
+  onboard first, rather than a confusing half-broken page.
+- `/auth/logout` clears the session.
+- `_resolve_user(request, session, uid)` — every page that needs "the current user"
+  (`/apartments`, `/liked`, `/filter`) now tries the session cookie first, and only falls back to
+  the legacy `?uid=` query param if there's no session. **Nothing about the old `?uid=` links
+  broke** — the bot's existing deep-link messages keep working exactly as before; the cookie is
+  strictly additive.
+- Header (`base.html`) now shows the Telegram Login widget button when logged out, or the user's
+  name + a logout link when logged in — on every page, via a small `_current_user_summary()`
+  lookup that `_render()` now always injects as `current_user`, so this doesn't need threading
+  through every route by hand.
+- `need_uid.html` (the "you're not logged in" empty state) also gets the widget directly, as a
+  faster alternative right next to the existing "open the bot" link — this is the concrete fix for
+  the UX problem that started this: a returning visitor without a fresh deep link can now log in
+  in one click instead of digging through their Telegram chat history.
+- New `charts/todira/values.yaml` key `sessionSecretKey`, wired the same way as
+  `ownerTelegramUserId` (optional Secret key, `optional: true` in the Deployment env, new
+  `--set sessionSecretKey=${{ secrets.SESSION_SECRET_KEY }}` in `ci-cd.yaml`'s Helm upgrade step —
+  **owner needs to add a `SESSION_SECRET_KEY` GitHub Actions secret** for real security here;
+  `python -c "import secrets; print(secrets.token_hex(32))"` generates a good value).
+
+**Verified**: 14 new tests in `tests/test_website_auth.py` (HMAC verification — valid, tampered
+field, wrong bot token, stale auth_date, missing hash; the callback route — invalid signature
+rejected, unknown Telegram id redirects to the bot, known user gets a session + redirect,
+`next=` is honored, an open-redirect `next=` value is rejected back to a safe default; logout;
+`_resolve_user`'s session-over-uid precedence and its uid-only/neither-present fallbacks) plus a
+manual check that the header renders correctly both logged-in (including when Telegram gave no
+first_name) and logged-out, and the full i18n regression re-run (5 languages × 7 routes, zero
+template artifacts). Full suite: 145 passed, up from 131.
