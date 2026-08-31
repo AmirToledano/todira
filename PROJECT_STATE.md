@@ -1265,3 +1265,46 @@ only ever one `todira` release, in namespace `todira`).
 currently only `kubectl` is present, confirmed via `which helm` → not found) using the node's own
 local kubeconfig, to isolate whether the bug is specific to the `KUBECONFIG_B64` secret's content
 vs. something about the cluster/API server itself that would reproduce even locally.
+
+## Update 2026-08-31, later still: found why there have NEVER been any real listings
+
+The owner has never once seen a real listing since this project started, despite the 42-city
+expansion + fresh ZenRows key from earlier today. Checked live via SSM (`kubectl logs -n todira -l
+app=todira-scraper --tail=200`):
+- The scraper CronJob **is running correctly** on schedule (every 10 min, `kubectl get cronjob`
+  confirms), and recent runs **complete successfully** (`kubectl get jobs` shows `Complete 1/1`,
+  not crashing/erroring).
+- But for **every single city, every single run**, the log shows: `WARNING yad2_client: Parsed 0
+  listing cards for city=X`. Each city fetch takes ~13s (a real ZenRows proxy round-trip, not an
+  instant failure) — so the scraper IS successfully reaching Yad2 through the proxy and getting
+  HTML back. It just finds zero matches for the `_CARD_RE` regex in `scraper/yad2_client.py` (the
+  pattern expects `<a class="...itemLink..." data-nagish="feed-item-layout-link" href="...">`
+  containing `data-testid="price"/"street-name"/"item-info-line-1st"/"item-info-line-2nd"` spans).
+
+**This is not "no listings match the filter" — it's the parser finding zero listing cards on the
+page at all**, for 42/42 cities simultaneously, which cannot be genuine (Yad2 has thousands of
+live rental listings across these cities at any time). yad2_client.py's own module docstring says
+this exact regex was "SOLVED" and verified working on 2026-08-29 (2 days before this discovery) —
+so either Yad2 changed its markup in the interim, or the verified-working version never actually
+matched what got deployed, or ZenRows is now returning a challenge/interstitial page instead of
+real rendered HTML (the just-rotated ZENROWS_API_KEY could behave differently from the old one —
+different proxy pool, different plan tier, etc.).
+
+**Could not verify further from this session**: this environment's own network egress blocks
+`yad2.co.il` directly (`WebFetch` → `EGRESS_BLOCKED`), so there's no way to independently inspect
+current real Yad2 markup from here. Also could not ship a diagnostic code change (e.g. logging the
+first N characters of the raw HTML when 0 cards are found) because **the deploy pipeline is
+currently broken** (see the update above this one) — any fix needs a working deploy to ship.
+
+**Next steps, once at a computer** (do this together with the kubeconfig fix above, same session):
+1. Add a temporary debug line to `yad2_client.py`'s `fetch_search_results`: when `_parse_cards`
+   returns zero items, log the first ~2000 characters of `html` (or better, save it somewhere
+   retrievable — even just `logger.warning` with a truncated snippet is enough to see if it's a
+   CAPTCHA page, an empty shell, or genuinely-different real markup).
+2. Deploy that (once CI/CD works again), wait for the next scraper run (≤10 min), and read the
+   logs — this will show directly what Yad2/ZenRows is actually returning.
+3. From there: either update `_CARD_RE` to match new real markup, or investigate the ZenRows key/
+   plan if it looks like a bot-detection page, or check YAD2_NOTES.md's "Attempt 9" section against
+   whatever the new HTML looks like.
+4. Remove the temporary debug logging once the real cause is found and fixed — don't leave verbose
+   HTML dumps in production logs long-term.
