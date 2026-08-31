@@ -20,9 +20,9 @@ import asyncio
 import datetime as dt
 import logging
 
-import cities
 import keyboards as kb
 from config import WEBSITE_URL
+from dorin_common import cities
 from dorin_common.cards import format_caption, listing_keyboard
 from dorin_common.db import get_session
 from dorin_common.models import Filter, User

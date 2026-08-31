@@ -126,6 +126,10 @@ jobs:
             --set zenrowsApiKey="${{ secrets.ZENROWS_API_KEY }}" \
             --set ownerTelegramUserId="${{ secrets.OWNER_TELEGRAM_USER_ID }}" \
             --set sessionSecretKey="${{ secrets.SESSION_SECRET_KEY }}" \
+            --set whatsappAccessToken="${{ secrets.WHATSAPP_ACCESS_TOKEN }}" \
+            --set whatsappPhoneNumberId="${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" \
+            --set whatsappWebhookVerifyToken="${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}" \
+            --set whatsappAppSecret="${{ secrets.WHATSAPP_APP_SECRET }}" \
             --namespace todira --create-namespace
 
       - name: Diagnose bot pod (owner reported it's not responding)

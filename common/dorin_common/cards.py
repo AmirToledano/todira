@@ -62,6 +62,55 @@ def format_caption(listing: Listing, *, price_drop_from: int | None = None) -> s
     return (header + body + footer)[:CAPTION_LIMIT]
 
 
+WHATSAPP_MESSAGE_LIMIT = 4096
+
+
+def format_caption_whatsapp(listing: Listing, *, price_drop_from: int | None = None) -> str:
+    """Same content as format_caption, but WhatsApp's own markdown (*bold*, no HTML tags — the
+    Cloud API's text messages don't render HTML) and no inline keyboard equivalent; the listing
+    URL at the end is the only action available (WhatsApp's like/hide/found buttons would need
+    interactive "reply button" messages, a separate message type — not built yet, plain text
+    with a link is the MVP)."""
+    amenities = " ".join(
+        emoji for attr, emoji in _AMENITY_EMOJI if getattr(listing, attr) is True
+    )
+    if listing.safe_room_type in ("safe_room", "building_shelter"):
+        amenities = f"{amenities} 🛡️".strip()
+
+    floor_line = ""
+    if listing.floor is not None:
+        floor_line = f" · קומה {listing.floor}"
+        if listing.floor_total is not None:
+            floor_line += f" מתוך {listing.floor_total}"
+
+    size_part = f" · {listing.size_sqm} מ\"ר" if listing.size_sqm else ""
+    lines = [f"🏠 *{listing.rooms or '?'} חדרים*{size_part}{floor_line}"]
+
+    if listing.price is not None:
+        lines.append(f"💰 {listing.price:,} ₪")
+    if listing.move_in_date is not None:
+        lines.append(f"📅 כניסה: {listing.move_in_date.isoformat()}")
+    if amenities:
+        lines.append(amenities)
+    location = ", ".join(p for p in (listing.neighborhood, listing.city) if p)
+    if location:
+        lines.append(f"📍 {location}")
+
+    body = "\n".join(lines)
+    header = ""
+    if price_drop_from is not None:
+        header = f"📉 *ירידת מחיר!* (היה {price_drop_from:,} ₪)\n\n"
+    footer = f"\n\n🔗 {listing.url}\n🏷️ {listing.source}"
+    remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
+    description = (listing.description or "").strip()
+    if description and remaining > 20:
+        if len(description) > remaining:
+            description = description[: remaining - 1] + "…"
+        body += f"\n\n{description}"
+
+    return (header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
+
+
 def listing_keyboard(listing_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
