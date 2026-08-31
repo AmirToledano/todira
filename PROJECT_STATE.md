@@ -703,3 +703,61 @@ the description text shows in a "What can this bot do?" block above the Start bu
 Note for anyone re-testing this: Telegram only shows the description in a chat that has **no**
 prior history from that account — deleting the local chat thread (`Delete Chat`, client-side only,
 doesn't touch server-side profile/filters/likes) is required to re-see it, not a bug.
+
+## Update 2026-08-31, later: fully autonomous pass — real bug found and fixed (city-matching gap)
+Owner gave a standing, maximally broad mandate: "go through the chat history and figure out what
+can be improved, 100% free hand, no approval needed for anything, worst case we can revert." Used
+it to do a fresh codebase survey (via an Explore subagent) specifically looking for real
+correctness gaps rather than more visual polish. Found one worth fixing immediately:
+
+**The bug**: `bot/cities.py`'s `CITIES` list offers 41 Hebrew cities for `/filter` fuzzy-match
+suggestions, but `scraper/yad2_client.py`'s `CITY_SLUG_TO_ID` (which maps a city to Yad2's numeric
+city ID for the search URL) only had 3 entries (tel-aviv, ramat-gan, givatayim) — copied over from
+whatever was verified during the original "Attempt 9: SOLVED" scraping breakthrough and never
+revisited since. A user picking any of the other 38 cities (חיפה, ירושלים, באר שבע, ראשון לציון,
+etc.) in `/filter` could save a filter the scraper could structurally never find a match for —
+silently, no error anywhere, they'd just never get notified.
+
+**Fix (PR #24)**: verified 21 more real Yad2 city IDs via `WebSearch` (this environment can't
+browse Yad2 directly, so each ID was cross-checked against at least two independent real
+`yad2.co.il/realestate/rent?...city=NNNN...` search-result URLs surfaced by search results — not
+guessed; a wrong ID silently returns 0 results per the existing docstring warning, so guessing
+would have been worse than leaving it unmapped). `CITY_SLUG_TO_ID` now has 24 cities. Also added a
+`CITY_SLUG_TO_HEBREW_NAME` table pairing each slug to the exact Hebrew string `bot/cities.py` uses,
+so wiring up more cities later doesn't require re-deriving the pairing by hand.
+
+**Deliberately did NOT enable all 24 in the live `SCRAPE_CITIES`** (`values.yaml`/`.env.example`):
+each additional city is scraped every 10 minutes via a ZenRows-proxied request, a real recurring
+credit cost (15-25 credits/request per the existing "Known remaining gaps" note above) — going
+3→24 cities would be an 8x jump in ZenRows usage with no visibility into the account's plan/credit
+budget from this session. Went 3→6 instead (added jerusalem, haifa, beer-sheva — the next-3
+biggest cities), a bounded 2x increase, with the other 18 mapped cities ready to enable any time by
+just appending a slug to `SCRAPE_CITIES` — no code change needed. **Owner: check
+https://app.zenrows.com's dashboard for remaining credits/plan before deciding whether to enable
+more of the 24 — this is a real cost lever, worth an explicit decision rather than defaulting to
+"more is better."**
+
+Also added two test files while in there, since `scraper/yad2_client.py` had zero test coverage
+before today despite being the single most fragile part of the whole project (Yad2 can change its
+card markup any time, with zero warning):
+- `tests/test_yad2_client.py` (PR #24, 5 tests) — the two city tables stay in sync, every mapped
+  Hebrew name is real, IDs are unique/numeric, the original 3 production IDs are unchanged.
+- `tests/test_yad2_parsing.py` (PR #25, 13 tests) — `_parse_cards` and its sub-parsers
+  (`_parse_price`, `_parse_info_line_2`, `_parse_location`, `_clean`) against synthetic HTML built
+  from the exact structure already documented in this file's own docstring/`YAD2_NOTES.md` — price/
+  currency parsing, the "קומה קרקע" → floor 0 special case, neighborhood/city breadcrumb splitting
+  with and without a middle segment, sponsored-project-card filtering, multi-card extraction.
+  Neither test file needed `patchright` installed — `yad2_client.py` imports it at module level, so
+  both stub it into `sys.modules` before importing, keeping `requirements-test.txt` unchanged.
+
+**Other things looked at and deliberately left alone this pass** (for whoever picks this up next):
+- `website/templates/_listing_card.html` renders images via CSS `background-image` with no `<img
+  loading="lazy">`/alt text — flagged as "worth revisiting" in an earlier update. Didn't touch it:
+  `l.image_urls` is currently *always* empty for every real listing (the scraper's card parser
+  doesn't extract it — see "Known remaining gaps" above), so every card renders the 🏠 fallback
+  regardless of this markup choice. Fixing the template now would have zero visible effect until
+  image extraction is also built, which itself needs a second fetch per listing (real added
+  ZenRows cost, same class of tradeoff as the city-count decision above) — not attempted
+  unprompted for the same reason.
+- Yad2 pagination (only ~40-45 first-page cards captured per run) — same ZenRows-cost-tradeoff
+  category, left for an explicit decision rather than silently multiplying request volume.
