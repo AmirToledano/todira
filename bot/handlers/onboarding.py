@@ -19,6 +19,8 @@ user just gets the plain welcome and the conversation ends immediately.
 """
 from __future__ import annotations
 
+import asyncio
+
 import cities
 import gemini_client
 from config import WEBSITE_URL
@@ -52,12 +54,18 @@ _EMPTY_STATE = {
 }
 
 
+def _has_filter_sync(tg_user) -> bool:
+    with get_session() as session:
+        user = get_or_create_user(session, tg_user)
+        return session.scalar(select(Filter.id).where(Filter.user_id == user.id)) is not None
+
+
 async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await start(update, context)  # normal welcome + create/reactivate the user row
 
-    with get_session() as session:
-        user = get_or_create_user(session, update.effective_user)
-        has_filter = session.scalar(select(Filter.id).where(Filter.user_id == user.id)) is not None
+    # asyncio.to_thread — see start.py's _upsert_user_sync comment for why: a synchronous DB call
+    # made directly on the event loop blocks every other user's interaction with the bot too.
+    has_filter = await asyncio.to_thread(_has_filter_sync, update.effective_user)
 
     if has_filter:
         return ConversationHandler.END
@@ -69,6 +77,26 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "(או שאפשר לדלג ולהגדיר הכל ידנית עם /filter בכל שלב)"
     )
     return AWAIT_FREETEXT
+
+
+def _save_filter_sync(tg_user, state: dict) -> list:
+    with get_session() as session:
+        user = get_or_create_user(session, tg_user)
+        filter_row = Filter(
+            user_id=user.id,
+            deal_type=state["deal_type"],
+            cities=state["cities"],
+            rooms_min=state["rooms_min"],
+            rooms_max=state["rooms_max"],
+            price_min=int(state["price_min"]) if state["price_min"] is not None else None,
+            price_max=int(state["price_max"]) if state["price_max"] is not None else None,
+            keywords=state["keywords"],
+        )
+        session.add(filter_row)
+        session.commit()
+        # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
+        # brand-new user especially shouldn't have to wait for the next scrape to see anything.
+        return find_matching_listings(session, user.id, filter_row, limit=RESULT_LIMIT)
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -96,24 +124,8 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
         return AWAIT_FREETEXT
 
-    with get_session() as session:
-        user = get_or_create_user(session, update.effective_user)
-        filter_row = Filter(
-            user_id=user.id,
-            deal_type=state["deal_type"],
-            cities=state["cities"],
-            rooms_min=state["rooms_min"],
-            rooms_max=state["rooms_max"],
-            price_min=int(state["price_min"]) if state["price_min"] is not None else None,
-            price_max=int(state["price_max"]) if state["price_max"] is not None else None,
-            keywords=state["keywords"],
-        )
-        session.add(filter_row)
-        session.commit()
-        # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
-        # brand-new user especially shouldn't have to wait for the next scrape to see anything.
-        matches = find_matching_listings(session, user.id, filter_row, limit=RESULT_LIMIT)
-        example = matches[:1]
+    matches = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
+    example = matches[:1]
 
     context.user_data.pop("onboarding", None)
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
