@@ -171,6 +171,7 @@ def _parse_optional_date(raw: str) -> tuple[bool, dt.date | None]:
 
 
 async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    logger.info("/filter invoked by telegram_user_id=%s", update.effective_user.id)
     with get_session() as session:
         user = get_or_create_user(session, update.effective_user)
         existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
