@@ -585,6 +585,62 @@ owner said outright he doesn't understand git/PRs and never wants to click anyth
 so from PR #3 onward this assistant merges its own PRs immediately, no owner action at all. Keep
 doing this going forward; do not revert to asking for a manual merge click.
 
+## Update 2026-08-31: bot conversation persistence shipped, after a 6-round Kubernetes debugging saga
+Owner reported: leave a `/filter` or `/start` conversation mid-flow, come back hours later, next
+message gets no response — has to `/start` from scratch. Root cause: `python-telegram-bot`'s
+`ConversationHandler` state is in-memory only by default, wiped on every bot pod restart, and
+there were many restarts overnight from routine redeploys. Fixed with `PicklePersistence`
+(`bot/main.py`) + `persistent=True` on both `ConversationHandler`s (`filter_conversation.py`,
+`onboarding.py` — both already had `name=` set, which persistence requires), backed by a new PVC
+(`bot-pvc.yaml`, 50Mi) mounted at `/data` — not the container's own ephemeral filesystem, since a
+redeploy replaces the container entirely.
+
+**That PVC being ReadWriteOnce required `strategy: Recreate`** on the bot Deployment (a RollingUpdate
+would try, and fail, to mount it into a new pod before the old one releases it) — and *that* turned
+into its own multi-round debugging saga, worth recording in full since it's a real, subtle
+Kubernetes gotcha that will recur if any other Deployment ever needs its strategy changed after
+the fact:
+
+1. **`strategy: {type: Recreate}` alone** (PR #14) → `helm upgrade` failed: `spec.strategy.rollingUpdate:
+   Forbidden: may not be specified when strategy type is 'Recreate'`. The bot Deployment already
+   existed with an implicit RollingUpdate strategy (nobody had ever set `strategy` before this
+   session), and Kubernetes had already persisted `spec.strategy.rollingUpdate` server-side.
+2. **Added `rollingUpdate: null` to the template** (PR #16) → identical error, byte for byte. Helm
+   appears to drop explicit YAML nulls before building its patch, so the field was never actually
+   cleared that way.
+3. **One-time `kubectl patch --type=json` remove, run in CI before `helm upgrade`** (PR #17) →
+   identical error a third time. Tried `helm upgrade --force` next (Helm's own documented mechanism
+   for exactly this class of error - delete+recreate instead of merge-patch) but the auto-mode
+   classifier flagged it as elevated-risk for a production pipeline change made without the owner
+   present, and it couldn't even be validated under that block - backed it out rather than push an
+   unreviewed force-apply change while unsupervised.
+4. **Added real diagnostics instead of a fourth guess** (PR #18): dumped the live
+   `spec.strategy`, the `last-applied-configuration` annotation, `managedFields` owners, and
+   `helm history` right after the patch step. This revealed the actual mechanism: **the live
+   object's `type` was still `RollingUpdate`** (had never once actually flipped to `Recreate` -
+   every prior attempt failed validation before any change could land), and **as long as `type`
+   stays `RollingUpdate`, the Kubernetes API server auto-defaults `rollingUpdate:
+   {maxSurge:25%,maxUnavailable:25%}` back onto the object on every read/mutation**. The separate
+   "just remove rollingUpdate" patch was losing a race against this defaulting every single time -
+   by the time Helm's own apply ran moments later, defaulting had already re-populated the field.
+5. **Real fix (PR #19)**: change `type` to `Recreate` AND remove `rollingUpdate` in **one atomic
+   JSON Patch** (`kubectl patch --type=json -p='[{"op":"replace","path":"/spec/strategy/type",
+   "value":"Recreate"},{"op":"remove","path":"/spec/strategy/rollingUpdate"}]'`), so there's no
+   intermediate RollingUpdate-typed state for the defaulter to act on. **Confirmed working**: the
+   live object now shows `{"type":"Recreate"}` with no `rollingUpdate` key, and `helm upgrade`
+   succeeded for the first time since PR #14. The bot pod was `Pending` (PVC still provisioning)
+   at the exact diagnostic snapshot moment - normal timing, not a bug; check the next deploy's
+   bot-pod logs to confirm it reaches Running/Ready with no PicklePersistence/`/data`
+   permission errors.
+
+**Lesson for next time a Deployment's strategy needs to change after the fact**: don't try to
+clear a stale field with a separate patch step before the main apply - if the object's `type` is
+still the OLD value at that moment, the API server's own defaulting will just put the field back
+before your next request lands. Change type and clear the incompatible field **atomically, in the
+same request**. And when a fix that looks obviously correct fails identically twice in a row,
+stop trying variations on the same idea and get real diagnostic data (live object state,
+managedFields, history) instead of a third guess - that's what actually cracked this one.
+
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
   assume expert-level familiarity, but he's technical and can follow real explanations.
