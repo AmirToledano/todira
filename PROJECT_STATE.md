@@ -831,3 +831,53 @@ card markup any time, with zero warning):
   unprompted for the same reason.
 - Yad2 pagination (only ~40-45 first-page cards captured per run) — same ZenRows-cost-tradeoff
   category, left for an explicit decision rather than silently multiplying request volume.
+
+## Update 2026-08-31, later: /filter now resumes drafts + bot-wide blocking-DB-call fix
+Two more rounds directly off the allow_reentry fix above, both from real owner feedback:
+
+**Round 1 — /filter should continue from where you left off, not restart.** Owner's point,
+verbatim reasoning: nothing "closes" a Telegram chat, and the /filter menu with the Save button is
+probably the last message a user ever sees in that chat, so returning and sending /filter again
+should continue from there, not discard it. He was right — `filter_start` always reloaded the
+draft fresh from the DB on every call, discarding any unsaved in-progress selections, a pre-
+existing behavior that just became newly visible once allow_reentry made /filter respond again at
+all. **Fix**: `filter_start` now resumes `context.user_data["draft"]` when one already exists,
+only loading from the DB when there's genuinely no draft in progress (first /filter ever, or right
+after Save/Cancel cleared it). Since `user_data` is already persisted (PicklePersistence), this
+also means an in-progress edit now survives a bot restart, not just a "left and came back"
+scenario. 2 new tests in `tests/test_filter_conversation_reentry.py` prove: resuming a draft never
+touches the DB (monkeypatch `get_session`/`get_or_create_user` to raise if called), and the
+no-draft path still loads correctly.
+
+**Round 2 — a real bot-wide architecture bug, found while checking "does every button respond
+fast."** Owner reported the Cancel button "just thinking" for what felt like a long time (two
+screenshots ~1 minute apart, identical state) and asked for a full audit of every single button in
+/filter to make sure nothing gets stuck under rapid taps. Rather than manually click through each
+button (which wouldn't have found this — every button's *logic* was correct), investigated
+systemically and found: **every DB-touching handler in the entire bot** (`start.py`,
+`onboarding.py`, `apartments.py`, `filter_conversation.py`, `liked.py`, `profile.py` — 10 call
+sites) did `with get_session() as session: ...` **directly inside an `async def` handler**, using
+SQLAlchemy's synchronous engine. Confirmed against the installed `python-telegram-bot==21.11.1`
+source that `Application` defaults to `max_concurrent_updates=1` (never overridden in
+`bot/main.py`) — updates are processed **one at a time** on a single asyncio event loop. A blocking
+synchronous call made directly on that loop freezes the **entire bot** — every other user's button
+press, every other command — for that call's whole duration, not just the interaction that
+triggered it. On this project's small, already-documented-as-flaky-under-load EC2 box, any DB
+latency at all would manifest exactly as reported: a button that "just thinks," with everything
+else queued behind it also stuck.
+
+**Fix**: every one of the 10 call sites now wraps its DB logic in a plain sync function, called via
+`await asyncio.to_thread(...)` instead of inline — the query/commit runs in a worker thread,
+keeping the event loop free to keep processing other updates while it's in flight. Same queries,
+same commits, same return values — purely an execution-model change, no behavior change.
+**Verified, not just reasoned about**: `tests/test_bot_async_db_calls.py` monkeypatches a DB-load
+function to a real, blocking `time.sleep(0.3)` (a fast in-memory mock wouldn't expose blocking at
+all) and checks a concurrent, independently-scheduled 0.03s task finishes *before* it, not after —
+manually confirmed this exact test fails (order comes back reversed) against the old inline-call
+pattern before writing the fix, so it's a real regression test, not just decoration.
+
+**Lesson for whoever adds the next DB-touching bot handler**: never call `get_session()`/any
+synchronous DB operation directly inside an `async def` PTB handler — always wrap the DB logic in
+a plain sync function and call it via `await asyncio.to_thread(fn, *args)`. This is now the
+established pattern across every handler in `bot/handlers/` — follow it, don't reintroduce the
+blocking-call bug in a new file.
