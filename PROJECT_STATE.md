@@ -641,6 +641,32 @@ same request**. And when a fix that looks obviously correct fails identically tw
 stop trying variations on the same idea and get real diagnostic data (live object state,
 managedFields, history) instead of a third guess - that's what actually cracked this one.
 
+## Update 2026-08-31: hero image saga, actual final round — trim dead space, don't crop content
+One more round after everything above: owner reported the full-bleed+`object-fit:cover`+capped-
+height fix (which fixed "too big") lost the bottom of the image — the "בוט חיפוש דירות טודירה"
+logo text and the small dog/key icons — because a capped height at full device width can only
+show a partial vertical slice of a 2096px-tall source, and the crop was anchored to the top.
+
+**The actual right fix, found by measuring instead of guessing a 7th CSS tweak**: most of the
+"extra" height was never real content — it was dead space. Row-wise pixel variance analysis (numpy
+std-dev per row) found two clean, safe-to-remove zones: ~140px of flat background padding above
+the crown, and a ~65px gap of flat background between the paws and the logo text. Removed both
+by literally re-slicing the source image (keep crown-through-paws, skip the gap, keep the logo
+text) and re-pasting into a shorter file — verified the seam is invisible before shipping.
+`1184x2096` → `1184x1895`. With the source now already correctly proportioned, `.hero-image-full`
+went back to the simplest possible CSS (`width:100%; height:auto`, no `object-fit`, no height cap)
+— nothing needs to crop anything anymore, and the whole image (crown to logo, both icons) now
+fits in one natural view at full width.
+
+**The real lesson from the whole multi-round saga (rounds 1-4 fixed real bugs; this round fixed a
+self-inflicted one)**: rounds 1-4 (resolution too low, then browser caching, then the CSS-sizing
+bug) were all genuinely separate real problems, each confirmed by actual measurement before
+shipping a fix — that discipline was right. This final round was different: once "too tall" was
+correctly diagnosed and the instinct was "cap the height," reaching for `object-fit:cover` to
+force it to fit was choosing to crop real content rather than asking whether the height could
+legitimately be reduced without losing anything. It could — always check whether an image's excess
+size is real content or just captured dead space before deciding cropping is necessary at all.
+
 ## Working style notes for whoever picks this up
 - The owner is a DevOps learner (Python/Linux/k8s/CI-CD/Docker) — explain infra concepts, don't
   assume expert-level familiarity, but he's technical and can follow real explanations.
@@ -653,4 +679,5 @@ managedFields, history) instead of a third guess - that's what actually cracked 
   launch" on any shortcut rather than treating Phase 1 choices as permanent.
 - When resizing/optimizing an image, check how it's rendered at **every** CSS breakpoint (not just
   one) before picking a target resolution — see the hero-image round 2 note above for what happens
-  when you don't.
+  when you don't. And before cropping an oversized image at all, check whether the excess is real
+  content or just dead space that can be trimmed from the source instead — see the final round.
