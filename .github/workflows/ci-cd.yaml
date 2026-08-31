@@ -70,14 +70,10 @@ jobs:
 
       - uses: azure/setup-helm@v4
         with:
-          # Pinned, NOT "latest". Every deploy since PR #40 failed identically: "helm upgrade
-          # --install" claims release "todira" doesn't exist in namespace todira (even though
-          # `helm list -A` finds it fine, deployed, revision 73+) and then creates the website
-          # Service in namespace "default" instead of "todira", colliding with the real one's
-          # NodePort 30080. Same command, same kubeconfig, same cluster state right after a
-          # manual cleanup - only plausible remaining variable is the Helm client binary itself
-          # (setup-helm re-resolves "latest" on every run). Pinning to a known-good Helm 3.x
-          # release to rule this out; bump deliberately if this turns out not to be the cause.
+          # Pinned, NOT "latest" — was a hypothesis while root-causing the PR #40 deploy outage
+          # (see PROJECT_STATE.md, "deploy pipeline broken" 2026-08-31). Turned out not to be the
+          # actual cause (a missing `namespace:` in the kubeconfig context was), but left pinned
+          # since pinning a CI tool version is good practice regardless — bump deliberately.
           version: "v3.16.4"
 
       - name: Write kubeconfig
@@ -104,11 +100,6 @@ jobs:
           echo "--- live strategy after patch ---"
           kubectl get deployment todira-bot -n todira -o jsonpath='{.spec.strategy}' || true
           echo ""
-      - name: One-time fix - remove phantom "todira" release from the default namespace
-        run: |
-          helm uninstall todira --namespace default || true
-
-
       - name: Helm upgrade
         # Every --set value is double-quoted, deliberately. Deploys #88 kept reporting failure
         # (exit 127, "--namespace: command not found") even though Helm itself had *already*
@@ -161,16 +152,3 @@ jobs:
           echo "--- caddy logs ---"
           kubectl logs -n todira -l app=todira-caddy --tail=150 || true
 
-      - name: Diagnose website Service nodePort 30080 conflict
-        # Temporary — Helm upgrade is failing with "nodePort 30080 already allocated" on
-        # object "default/todira-website" even though we always pass --namespace todira,
-        # which shouldn't be possible unless something already holds that port under a
-        # different namespace/release. All read-only, no secrets. Remove once resolved.
-        if: always()
-        run: |
-          echo "--- helm releases, all namespaces ---"
-          helm list -A || true
-          echo "--- services named todira-website, all namespaces ---"
-          kubectl get svc -A | grep todira-website || true
-          echo "--- every service holding nodePort 30080, all namespaces ---"
-          kubectl get svc -A -o json | jq -r '.items[] | select(.spec.ports[]?.nodePort==30080) | "\(.metadata.namespace)/\(.metadata.name)"' || true

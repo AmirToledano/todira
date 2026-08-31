@@ -165,6 +165,15 @@ _CARD_RE = re.compile(
 )
 _DIRECTION_MARKS_RE = re.compile(r"[‎‏]")  # LTR/RTL marks Yad2 wraps numbers in
 
+# Matches ZenRows' own JSON error body (e.g. `{"code":"AUTH004","title":"Usage exceeded
+# (AUTH004)",...}`), which patchright still hands back as "page content" wrapped in a minimal
+# <html><body><pre>...</pre></body></html> shell — a 200-ish response, not a network failure, so
+# it would otherwise look exactly like a real page with zero matching cards on it. Matches "code"
+# and "title" independently (not a single ordered pattern) since RFC-7807-style problem+json
+# doesn't guarantee key order.
+_ZENROWS_ERROR_CODE_RE = re.compile(r'"code":"(?P<code>[A-Z0-9]+)"')
+_ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
+
 
 class Yad2FetchError(RuntimeError):
     """The page never loaded through the proxy, or ZenRows itself errored — see the wrapped
@@ -282,22 +291,21 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
         finally:
             browser.close()
 
-    items = list(_parse_cards(html))
-    if not items:
-        # Temporary diagnostic (2026-08-31) — every city is returning 0 cards, which can't be
-        # genuine (Yad2 always has live listings across 42 cities). Logging a snippet + an
-        # explicit challenge-page check so the next scraper run's logs show directly what's
-        # actually coming back, instead of guessing blind. Remove once the real cause is found
-        # and fixed — see PROJECT_STATE.md's "found why there have NEVER been any real listings".
-        challenge_markers = ("Radware", "hcaptcha", "px-captcha", "Are you a robot", "Access Denied")
-        looks_like_challenge = any(marker in html for marker in challenge_markers)
-        logger.warning(
-            "Parsed 0 listing cards for city=%s — either genuinely no results, or Yad2 changed "
-            "its card markup (data-testid attributes) since this was written. "
-            "looks_like_challenge_page=%s html_length=%d html_snippet=%r",
-            city,
-            looks_like_challenge,
-            len(html),
-            html[:2000],
+    # ZenRows returning its own JSON error (quota exhausted, auth issue, etc.) instead of the
+    # actual page shows up as a tiny, fixed-shape HTML shell wrapping a `<pre>{"code":"AUTH...
+    # This was diagnosed 2026-08-31: every city was silently parsing 0 cards, root-caused via
+    # live logs to `"code":"AUTH004","title":"Usage exceeded (AUTH004)"` — ZenRows account had
+    # hit its usage limit, so the scraper never actually reached Yad2 at all, ever, and the 0
+    # cards were mistaken for "genuinely no listings" run after run. Raise instead of silently
+    # yielding nothing, so this surfaces as a real error (counted in the run summary) rather than
+    # a quietly-empty result — check the ZenRows dashboard for plan/usage if this fires again.
+    if len(html) < 1000 and (code_match := _ZENROWS_ERROR_CODE_RE.search(html)) is not None:
+        title_match = _ZENROWS_ERROR_TITLE_RE.search(html)
+        raise Yad2FetchError(
+            f"ZenRows returned an API error instead of the Yad2 page for city={city!r}: "
+            f"code={code_match.group('code')!r} "
+            f"title={title_match.group('title') if title_match else '?'!r} — check the ZenRows "
+            "dashboard for usage/plan/auth issues."
         )
-    yield from items
+
+    yield from _parse_cards(html)
