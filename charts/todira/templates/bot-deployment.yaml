@@ -48,6 +48,8 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: gemini-api-key
                   optional: true
+            - name: WEBSITE_URL
+              value: "https://{{ .Values.website.domain }}"
           volumeMounts:
             - name: bot-data
               mountPath: /data

@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import cities
 import gemini_client
+from config import WEBSITE_URL
 from dorin_common.cards import format_caption, listing_keyboard
 from dorin_common.db import get_session
 from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
-from handlers.apartments import find_matching_listings
+from handlers.apartments import RESULT_LIMIT, find_matching_listings
 from handlers.start import start
 from sqlalchemy import select
 from telegram import Update
@@ -109,11 +110,21 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         session.add(filter_row)
         session.commit()
-        example = find_matching_listings(session, user.id, filter_row, limit=1)
+        # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
+        # brand-new user especially shouldn't have to wait for the next scrape to see anything.
+        matches = find_matching_listings(session, user.id, filter_row, limit=RESULT_LIMIT)
+        example = matches[:1]
 
     context.user_data.pop("onboarding", None)
+    apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
+    match_count_text = (
+        f"יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות! "
+        if matches
+        else "עדיין אין דירות תואמות כרגע — "
+    )
     await update.message.reply_text(
-        "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter 🎛️"
+        "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter 🎛️\n\n"
+        f"{match_count_text}לכל הדירות שמתאימות: {apartments_url}"
     )
 
     if example:
