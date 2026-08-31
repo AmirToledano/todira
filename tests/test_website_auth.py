@@ -66,6 +66,13 @@ class _FakeSession:
             return user
         return None
 
+    def scalars(self, stmt):
+        class _Scalars:
+            def all(self):
+                return []
+
+        return _Scalars()
+
     def execute(self, stmt):
         class _Result:
             def first(self):
@@ -217,3 +224,50 @@ def test_resolve_user_returns_none_when_nothing_matches():
 
     fake_session = _FakeSession()
     assert website_main._resolve_user(_FakeRequest(), fake_session, None) is None
+
+
+class _FakeFilter:
+    pass
+
+
+def test_apartments_hides_insecure_notice_when_reached_via_real_session(client):
+    """Regression test for a real bug caught manually: after a genuine Telegram Login, /apartments
+    was still showing the "temporary, not fully secure" banner meant for the legacy ?uid= link,
+    because the notice wasn't conditioned on how the user actually got authenticated."""
+    user = _FakeUser(id=7, telegram_user_id=123456)
+    user.filter = _FakeFilter()
+    fake_session = _FakeSession(users_by_telegram_id={123456: user}, users_by_pk={7: user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session), patch.object(
+        website_main, "evaluate", return_value=type("Result", (), {"matched": False})()
+    ):
+        callback_params = _signed_params(id="123456")
+        login_resp = client.get("/auth/telegram/callback", params=callback_params)
+        assert login_resp.status_code == 303  # real login succeeded, session cookie now set
+
+        resp = client.get("/apartments")
+
+    assert resp.status_code == 200
+    assert "לא מאובטח" not in resp.text
+
+
+def test_apartments_shows_insecure_notice_for_uid_only_access(client):
+    user = _FakeUser(id=7, telegram_user_id=123456)
+    user.filter = _FakeFilter()
+    fake_session = _FakeSession(users_by_telegram_id={123456: user}, users_by_pk={})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session), patch.object(
+        website_main, "evaluate", return_value=type("Result", (), {"matched": False})()
+    ):
+        resp = client.get("/apartments", params={"uid": 123456})
+
+    assert resp.status_code == 200
+    assert "לא מאובטח" in resp.text
