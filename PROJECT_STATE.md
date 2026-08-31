@@ -881,3 +881,37 @@ synchronous DB operation directly inside an `async def` PTB handler — always w
 a plain sync function and call it via `await asyncio.to_thread(fn, *args)`. This is now the
 established pattern across every handler in `bot/handlers/` — follow it, don't reintroduce the
 blocking-call bug in a new file.
+
+## Update 2026-08-31, later still: flood every current match as a real card (both save paths)
+Owner sent screenshots of the reference bot (Dorin)'s own Telegram bot: after saving/updating a
+filter — either through Dorin's guided form (its equivalent of `/filter`) or through free-text —
+it immediately floods the chat with every currently-matching listing as a full card, not just a
+count or a link to go check. He connected this directly to something discussed earlier in a prior
+session: a user should get "history of what could suit them, and of course still
+available/relevant" right when they finish setting up a filter, not just future notifications.
+
+Initially proposed splitting the behavior (flood only on the free-text `/start` onboarding path,
+keep count+link on the `/filter` guided-form path), based on an early screenshot that looked like
+Dorin's guided form opened a separate results page instead. Owner corrected this after sending
+more screenshots: on Dorin's Telegram bot specifically, **both** paths flood matches directly into
+the chat — the guided form (its side-browser filter editor) and free-text alike. Implemented the
+corrected, unified behavior for both.
+
+**Fix**: both save paths — `_handle_save` in `bot/handlers/filter_conversation.py` (reached via
+the `/filter` guided form's Save button) and `_handle_freetext`'s completion branch in
+`bot/handlers/onboarding.py` (reached once free-text onboarding has enough required fields) — now,
+after saving the filter and computing `find_matching_listings(...)`, send a
+"👀 יש כרגע N דירות שמתאימות:" header followed by every matching listing as its own
+`format_caption(listing)` card with its normal like/hide/found keyboard, exactly like a live
+scrape notification would. The previous "no matches yet" fallback message (with the `/apartments`
+website link) is kept as-is for the empty case — only the non-empty case changed, from a bare
+count to full cards. No new DB calls: reuses the `matches` list already being computed via
+`asyncio.to_thread` for the prior count/link behavior, so this doesn't reintroduce the blocking-
+call class of bug from the round above — sending Telegram messages in a loop is I/O the bot was
+already doing elsewhere (e.g. `/apartments`, `/liked`) and stays outside the sync DB thread.
+
+Full test suite (124 tests) still green after the change — no new tests added since this is a
+straightforward extension of an already-tested `matches` list into an already-tested per-listing
+send loop (`format_caption`/`listing_keyboard` are exercised elsewhere, e.g. `/apartments`,
+`/liked`, notification sending). Deployed via PR #34, merge commit `e01de2b5`, CI/CD run #76 —
+confirmed `status: completed`, `conclusion: success`.
