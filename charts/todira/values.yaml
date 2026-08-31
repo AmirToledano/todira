@@ -35,14 +35,15 @@ postgres:
 
 scraper:
   schedule: "*/10 * * * *" # every 10 minutes — tune down later if Yad2 tolerates it fine
-  # scraper/yad2_client.py's CITY_SLUG_TO_ID now has real Yad2 IDs for 24 cities (was 3) — see
-  # that file's comment for the full list and how they were verified. Deliberately only added
-  # jerusalem/haifa/beer-sheva here (3 -> 6 cities, 2x) rather than enabling all 24 at once: each
-  # additional city here is a recurring ZenRows request-credit cost every 10 minutes, not a
-  # one-time thing, and this assistant doesn't know the account's ZenRows plan/credit budget.
-  # Adding more is just appending a slug from CITY_SLUG_TO_ID below (comma-separated, no spaces)
-  # once you've checked https://app.zenrows.com's dashboard has room for it.
-  cities: "tel-aviv,ramat-gan,givatayim,jerusalem,haifa,beer-sheva"
+  # scraper/yad2_client.py's CITY_SLUG_TO_ID now has real Yad2 IDs for all 42 cities
+  # bot/cities.py's /filter picker offers (was 3, then 24, held back from all 42 deliberately over
+  # ZenRows request-credit cost — each scraped city is recurring, every 10-minute run, not a
+  # one-time cost). Owner explicitly overrode that caution 2026-08-31 ("תוסיף כל מקום וחוק בארץ...
+  # אנחנו רוצים להיות זמינים לכל בן אדם" — add every place, we want to be available to everyone) —
+  # every selectable city is now scraped, so no city a user can pick in /filter is structurally
+  # unmatchable. If ZenRows credits run out, trim this list back down; every slug here must also
+  # exist in scraper/yad2_client.py's CITY_SLUG_TO_ID or it silently scrapes nothing for that city.
+  cities: "tel-aviv,ramat-gan,givatayim,jerusalem,haifa,beer-sheva,rishon-lezion,petah-tikva,ashdod,netanya,bnei-brak,holon,ashkelon,rehovot,bat-yam,beit-shemesh,kfar-saba,herzliya,hadera,raanana,nahariya,eilat,modiin,ramat-hasharon,ramla,nazareth,lod,hod-hasharon,kiryat-ata,kiryat-gat,kiryat-motzkin,kiryat-bialik,kiryat-ono,yavne,or-yehuda,tzfat,afula,tiberias,dimona,mevaseret-zion,har-gilo,karmiel"
 
 resources:
   bot:

@@ -1014,3 +1014,66 @@ create; (2) grepped every one of those 46 rendered HTML responses for any litera
 found, so every `t()` call in every template resolved to a real, non-fallback string in every
 language; (3) `python -m pytest tests/ -q` — 124 passed, unaffected (no existing tests touch the
 website). `python3 -m py_compile` on both changed Python files as a last syntax gate.
+
+## Update 2026-08-31, same day: ZenRows key fixed + full 42-city Yad2 coverage
+Two related fixes from the owner directly testing the live product and finding zero real listings.
+
+**Root cause of "no real apartments ever"**: `ZENROWS_API_KEY` (the GitHub Actions secret that
+becomes the cluster's Kubernetes Secret via `helm upgrade`) was missing or stale — per
+`scraper/yad2_client.py`'s own module docstring and `charts/todira/values.yaml`'s comment, without
+it the scraper CronJob logs an error and finds 0 listings on every single run, silently, with no
+visible symptom other than "no apartments ever show up." Owner pasted a real ZenRows key into the
+GitHub secret. **Important mechanic worth remembering**: a GitHub Actions secret update does NOT
+by itself reach the cluster — only the next `helm upgrade` (i.e. the next CI/CD deploy run)
+actually pushes the current secret value into the cluster's Kubernetes Secret object, since
+`ci-cd.yaml`'s deploy step does `--set zenrowsApiKey=${{ secrets.ZENROWS_API_KEY }}`. This session
+has no way to edit `.github/workflows/ci-cd.yaml` right now (see the CI-diagnostic-step blocker
+noted earlier this same day — the auto-mode classifier denies any edit to that specific file,
+apparently treating cluster-credential-bearing CI files as inherently sensitive; asked the owner
+to either grant a Bash permission rule for that path or check things manually, neither happened
+yet, so this remains open) — but re-running an *existing* completed workflow run doesn't require
+editing anything, and GitHub Actions secrets are read fresh at the moment a step actually executes
+(not cached into the run), so `mcp__github__actions_run_trigger` `rerun_workflow_run` was used
+twice (once right after the key was pasted, once more after confirming the exact save timing, to
+guarantee a deploy step executed strictly *after* the save landed) to get the fresh key into the
+cluster without any code change. This is now a reusable pattern for "a secret changed and needs to
+reach the cluster right now" — no PR needed, just rerun the latest CI/CD run.
+
+**Full city coverage**: owner, seeing 0 results, asked pointedly why the scraper isn't covering
+every city — explicit, emphatic instruction to add full coverage regardless of the earlier
+cost-conscious 6-of-24 decision ("תוסיף כל מקום וחוק בארץ... אנחנו רוצים להיות זמינים לכל בן אדם" —
+add every place, we want to be available to everyone). Treated as a deliberate override of the
+earlier caution, not a misunderstanding to push back on. Researched (WebSearch against real
+yad2.co.il search-result URLs, same verification method as the original 24) and added the
+remaining 18 of bot/cities.py's 42 selectable cities to `scraper/yad2_client.py`'s
+`CITY_SLUG_TO_ID`/`CITY_SLUG_TO_HEBREW_NAME`: ramla=8500, nazareth=7300, lod=7000,
+hod-hasharon=9700, kiryat-ata=6800, kiryat-gat=2630, kiryat-motzkin=8200, kiryat-bialik=9500,
+kiryat-ono=2620, yavne=2660, or-yehuda=2400, tzfat=8000, afula=7700, tiberias=6700, dimona=2200,
+mevaseret-zion=1015, har-gilo=3603, karmiel=1139. Verified programmatically: all 42 IDs unique,
+all 42 Hebrew names unique, and the Hebrew-name set is an exact 1:1 match against `bot/cities.py`'s
+`CITIES` list (no city missing either direction) — every city a user can select in `/filter` now
+has a real, verified Yad2 ID; no selectable city is structurally unmatchable anymore. Updated
+`charts/todira/values.yaml`'s `scraper.cities` and `.env.example`'s `SCRAPE_CITIES` from the 6-city
+list to all 42 slugs, comma-separated.
+
+**Two real operational tradeoffs, flagged honestly rather than silently accepted**:
+1. **ZenRows request volume jumps ~7x** (6 cities → 42, every 10 minutes) — roughly 6,048
+   requests/day instead of ~864. If the account's ZenRows plan has a request/credit cap (likely,
+   on a free tier), this could exhaust it within hours rather than the weeks the 6-city setup
+   would have taken. If scraping mysteriously stops finding anything again, check
+   https://app.zenrows.com's dashboard for quota/rate-limit exhaustion before assuming the key
+   itself broke again.
+2. **A single scraper run may now take longer than the 10-minute schedule interval.**
+   `scraper/main.py` fetches all configured cities **sequentially**, and each city fetch has up to
+   `PAGE_LOAD_TIMEOUT_MS` = 75 seconds of budget (`yad2_client.py`) — 42 cities in the worst case
+   is 42 × 75s ≈ 52 minutes, though real-world runs will be far faster than worst-case since most
+   fetches succeed quickly. The CronJob's `concurrencyPolicy: Forbid` means this degrades
+   gracefully either way (a still-running job just makes the next scheduled trigger a no-op rather
+   than stacking runs) — not a bug, just: real scan frequency may end up being "as fast as the
+   previous run finishes" rather than a strict 10 minutes if runs regularly overrun. Not optimized
+   for (e.g. parallelizing city fetches) since the owner's ask was coverage, not latency — revisit
+   if 10-minute freshness turns out to matter in practice.
+
+Verified: `python -m pytest tests/ -q` — 124 passed (existing `tests/test_yad2_client.py`
+consistency/uniqueness checks pass unmodified against the expanded dict, since they don't hardcode
+a city count).
