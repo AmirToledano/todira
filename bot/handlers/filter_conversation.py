@@ -2,10 +2,12 @@
 over a strict linear ConversationHandler for ~20 fields.
 
 The in-progress filter lives in `context.user_data["draft"]` (a plain dict) and is only written
-to the database when the user taps "Save" — a mid-edit /start or bot restart just discards the
-draft, it never leaves partial garbage in the `filters` table. Conversation/user_data state is
-in-memory (the PTB default) for Phase 1 — a bot restart mid-edit loses progress, a documented
-limitation, not a bug (see plan Section 5).
+to the database when the user taps "Save" — it never leaves partial garbage in the `filters`
+table. `user_data` is persisted (PicklePersistence, see bot/main.py), so a mid-edit draft survives
+a bot restart AND a user re-sending /filter later — `filter_start` resumes an existing draft
+rather than reloading from the DB and discarding it, specifically so leaving the chat with the
+menu still open and coming back later (or after a redeploy) continues from the same point instead
+of silently losing whatever wasn't saved yet.
 
 Scope note: neighborhoods_include/exclude and streets_include/exclude exist in the DB schema
 (dorin_common.models.Filter) but don't have a menu screen here yet — they weren't included in
@@ -172,11 +174,19 @@ def _parse_optional_date(raw: str) -> tuple[bool, dt.date | None]:
 
 async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info("/filter invoked by telegram_user_id=%s", update.effective_user.id)
-    with get_session() as session:
-        user = get_or_create_user(session, update.effective_user)
-        existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
-        draft = _draft_from_filter(existing)
-    context.user_data["draft"] = draft
+    # Resume an in-progress draft if one exists (e.g. the user left the chat mid-edit with the
+    # menu still open and is now sending /filter again, whether because they forgot to scroll
+    # back to the old message or because allow_reentry is what got them unstuck) rather than
+    # reloading from the DB and silently discarding whatever they hadn't saved yet. Only load
+    # fresh from the DB when there's truly no draft in progress (first /filter ever, or after
+    # Save/Cancel/allow_reentry's own reset already cleared it).
+    draft = context.user_data.get("draft")
+    if draft is None:
+        with get_session() as session:
+            user = get_or_create_user(session, update.effective_user)
+            existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
+            draft = _draft_from_filter(existing)
+        context.user_data["draft"] = draft
     context.user_data.pop("awaiting", None)
     await update.message.reply_text(
         kb.render_root_summary(draft), reply_markup=kb.root_keyboard(), parse_mode=ParseMode.HTML
