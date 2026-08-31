@@ -704,6 +704,76 @@ Note for anyone re-testing this: Telegram only shows the description in a chat t
 prior history from that account — deleting the local chat thread (`Delete Chat`, client-side only,
 doesn't touch server-side profile/filters/likes) is required to re-see it, not a bug.
 
+## Update 2026-08-31: real /filter bug found and fixed — allow_reentry, plus two real usability wins
+Owner reported `/filter` works on his own phone but not his girlfriend's — no response at all, no
+error, nothing. Investigation, in order:
+
+1. **First guess (wrong-ish but valuable anyway)**: suspected missing error handling was hiding
+   the real cause. True as far as it went — the bot had **zero** error handling (an uncaught
+   exception in any handler was silently swallowed by python-telegram-bot's default behavior,
+   logged internally and shown to the user as nothing at all) and **zero** logger calls in
+   `filter_conversation.py`/`start.py`, so there was no way to tell from logs whether a command
+   even reached the bot. Added `application.add_error_handler` (logs the traceback, tells the
+   user "😅 קרתה תקלה טכנית" instead of silence) and one INFO log line at `/start`/`/filter`'s
+   entry points. Good permanent fix regardless, but investigating with it live revealed this
+   wasn't the actual root cause — no exception was ever thrown at all.
+2. **Real root cause, confirmed against installed `python-telegram-bot==21.11.1`'s own source**:
+   the owner sent a screenshot of himself (not just his girlfriend) sending `/filter` repeatedly
+   with zero response, right after `/start` worked fine — ruling out a device/account fluke.
+   `ConversationHandler.check_update` (see
+   `telegram/ext/_handlers/conversationhandler.py:766`) only tries `entry_points` when
+   `state is None or self.allow_reentry` — `allow_reentry` defaults to `False`. `filter_conversation`'s
+   `MENU` state only accepts inline-button callback queries (not a text command), and its only
+   `fallback` is `/cancel`. So **anyone who ever closed the chat mid-`/filter` session (inline menu
+   still open, never tapped Save/Cancel) got permanently stuck** — every future `/filter` matched
+   nothing in any handler at all, forever, with no way out except knowing to type `/cancel`. This
+   is almost certainly a long-standing latent bug (predates this session), not something introduced
+   today — it just needed someone to actually abandon a session mid-way once to trigger it, which
+   apparently both the owner and his girlfriend had done at some point.
+   **Fix**: `allow_reentry=True` on `filter_conversation`'s `ConversationHandler` — a fresh
+   `/filter` now always re-enters via its entry point regardless of stale state, self-healing
+   anyone already stuck the instant they try `/filter` again. Same flag added to
+   `onboarding_conversation` for defense-in-depth (not actually exposed to this exact gap, since
+   `/start` was already both an entry point and a fallback there).
+   **Verified, not just reasoned about**: `tests/test_filter_conversation_reentry.py` constructs
+   real `telegram.Update`/`ConversationHandler` objects (no network/DB needed — `check_update` only
+   decides routing) and directly reproduces the original bug (`allow_reentry=False` → stuck in
+   `MENU` → `/filter` matches nothing) alongside proving the fix (`allow_reentry=True` → matches).
+   Required adding `python-telegram-bot` to `requirements-test.txt` for the first time.
+3. **Lesson on diagnostic hygiene**: while investigating, triggered a `rerun_workflow_run` on an
+   already-completed run specifically because re-running the *same commit* should be a no-op for
+   the live pod (same image tag → Helm shouldn't restart anything) — a deliberately non-destructive
+   way to read fresh `kubectl logs` without disturbing evidence. That assumption held on its own,
+   but a **second, genuinely new deploy** (a different PR merging around the same few minutes)
+   raced ahead and recreated the bot pod anyway, wiping out the historical logs from whenever the
+   girlfriend's original attempt happened, before they could be read. **Net lesson**: when actively
+   trying to preserve live evidence, treat *any* concurrent deploy — including your own unrelated
+   work queued right after — as a real risk to that evidence, not just the specific action being
+   evaluated for safety. Ended up not mattering here (the root cause was found by reasoning from
+   PTB's source once given a strong enough clue — reproducing live on the owner's *own* phone —
+   rather than from the lost logs), but got lucky, not skillful, on that point.
+
+**Also shipped in the same session, both real usability wins independent of the bug above**:
+- After saving a filter (either via `/filter`'s menu or the free-text `/start` onboarding), the
+  bot now reports how many listings match *right now* and links straight to
+  `{WEBSITE_URL}/apartments?uid=<telegram_user_id>` — the existing website page already scans
+  recent listings against the user's real saved filter, it just was never surfaced at the moment
+  it matters most. Previously the save confirmation said only "you'll get notified of future
+  matches," which is exactly what the owner flagged as missing — a new user especially shouldn't
+  have to wait for the next scrape cycle to see anything already in the DB. New `bot/config.py`
+  holds `WEBSITE_URL` (env var, defaults to the production domain, wired from `values.yaml`'s
+  existing `website.domain` via `bot-deployment.yaml` — one source of truth for the domain).
+- Separately (unprompted, from a full autonomous pass): `scraper/yad2_client.py`'s
+  `CITY_SLUG_TO_ID` only had real Yad2 numeric city IDs for 3 of `bot/cities.py`'s 41 offered
+  cities — a user picking any of the other 38 could save a filter the scraper could structurally
+  never find a match for, silently. Verified 21 more real IDs via web search (cross-checked against
+  real Yad2 URLs, not guessed) — 24 mapped now, 6 actively scraped (deliberately not all 24 at
+  once: each additional scraped city is a recurring ZenRows credit cost, and this session has no
+  visibility into the account's plan/budget — flagged for the owner to expand further himself once
+  checked). Also added `tests/test_yad2_client.py` and `tests/test_yad2_parsing.py` (18 tests) —
+  `scraper/yad2_client.py` had zero test coverage before this despite being the most fragile part
+  of the whole project.
+
 ## Update 2026-08-31, later: fully autonomous pass — real bug found and fixed (city-matching gap)
 Owner gave a standing, maximally broad mandate: "go through the chat history and figure out what
 can be improved, 100% free hand, no approval needed for anything, worst case we can revert." Used
