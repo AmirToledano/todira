@@ -38,12 +38,76 @@ logger = logging.getLogger(__name__)
 SEARCH_PAGE_URL = "https://www.yad2.co.il/realestate/rent"
 
 # Yad2's own numeric city IDs — NOT the human-readable slugs used elsewhere in this project.
-# Verified 2026-08-29 for exactly these three (matches SCRAPE_CITIES' current default in
-# values.yaml); look up and add more here before scraping a new city.
+# Extended 2026-08-31: bot/cities.py offers 41 Hebrew cities for /filter, but until this update
+# only 3 had a Yad2 ID here — a user could pick any of the other 38 and the scraper would
+# structurally never be able to find matches for them (see PROJECT_STATE.md for the full writeup).
+# Each ID below was cross-checked against at least two independent yad2.co.il/realestate/rent
+# search-result URLs containing that city's Hebrew name (via web search, since this environment
+# can't browse Yad2 directly) — not guessed. Not exhaustive: covers 24 of bot/cities.py's 41
+# cities (the largest/highest-demand ones); add more the same way (search
+# "yad2.co.il/realestate/rent city= <Hebrew name>") if a specific city matters later.
+# NOTE: only the cities actually listed in SCRAPE_CITIES (values.yaml / .env.example) get scraped
+# — adding an ID here alone does nothing until that env var also includes the slug. Kept separate
+# on purpose: each additional scraped city is a recurring ZenRows request-credit cost every
+# scraper run (every 10 min), not just a one-time code change — see the values.yaml comment.
 CITY_SLUG_TO_ID = {
     "tel-aviv": "5000",
     "ramat-gan": "8600",
     "givatayim": "6300",
+    "jerusalem": "3000",
+    "haifa": "4000",
+    "beer-sheva": "9000",
+    "rishon-lezion": "8300",
+    "petah-tikva": "7900",
+    "ashdod": "0070",
+    "netanya": "7400",
+    "bnei-brak": "6100",
+    "holon": "6600",
+    "ashkelon": "7100",
+    "rehovot": "8400",
+    "bat-yam": "6200",
+    "beit-shemesh": "2610",
+    "kfar-saba": "6900",
+    "herzliya": "6400",
+    "hadera": "6500",
+    "raanana": "8700",
+    "nahariya": "9100",
+    "eilat": "2600",
+    "modiin": "1200",
+    "ramat-hasharon": "2650",
+}
+
+# Maps each CITY_SLUG_TO_ID slug to the exact Hebrew string bot/cities.py's CITIES list uses for
+# it, i.e. the string a user actually selects in /filter and that ends up in filters.cities.
+# matching.py compares this verbatim against listings.city (Yad2's own text) — see bot/cities.py's
+# module docstring for that caveat, unrelated to and not fixed by this table. This is purely a
+# convenience map from this file's English slugs to bot/cities.py's Hebrew names, for anyone
+# wiring up more SCRAPE_CITIES entries without re-deriving the pairing by hand.
+CITY_SLUG_TO_HEBREW_NAME = {
+    "tel-aviv": "תל אביב יפו",
+    "ramat-gan": "רמת גן",
+    "givatayim": "גבעתיים",
+    "jerusalem": "ירושלים",
+    "haifa": "חיפה",
+    "beer-sheva": "באר שבע",
+    "rishon-lezion": "ראשון לציון",
+    "petah-tikva": "פתח תקווה",
+    "ashdod": "אשדוד",
+    "netanya": "נתניה",
+    "bnei-brak": "בני ברק",
+    "holon": "חולון",
+    "ashkelon": "אשקלון",
+    "rehovot": "רחובות",
+    "bat-yam": "בת ים",
+    "beit-shemesh": "בית שמש",
+    "kfar-saba": "כפר סבא",
+    "herzliya": "הרצליה",
+    "hadera": "חדרה",
+    "raanana": "רעננה",
+    "nahariya": "נהריה",
+    "eilat": "אילת",
+    "modiin": "מודיעין מכבים רעות",
+    "ramat-hasharon": "רמת השרון",
 }
 
 ZENROWS_API_KEY_ENV_VAR = "ZENROWS_API_KEY"
