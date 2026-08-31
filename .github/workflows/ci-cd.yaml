@@ -110,21 +110,31 @@ jobs:
 
 
       - name: Helm upgrade
+        # Every --set value is double-quoted, deliberately. Deploys #88 kept reporting failure
+        # (exit 127, "--namespace: command not found") even though Helm itself had *already*
+        # succeeded ("Release todira has been upgraded", correct revision, STATUS: deployed) -
+        # a secret value with a trailing newline (however it got there - a copy/paste artifact
+        # from setting the secret) turns into a literal embedded newline once GitHub Actions
+        # substitutes ${{ }} into this script, which splits the line the same way pressing Enter
+        # mid-command would, stranding "--namespace ..." as its own bogus command on the next
+        # line. A double-quoted value keeps an embedded newline as literal string content instead
+        # of a script line break, so this can't happen again regardless of how a secret's value
+        # was set - this isn't about getting any one paste "clean" anymore.
         run: |
           helm upgrade --install todira charts/todira \
             -f charts/todira/values.yaml \
-            --set botImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-bot \
-            --set botImage.tag=${{ github.sha }} \
-            --set scraperImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-scraper \
-            --set scraperImage.tag=${{ github.sha }} \
-            --set websiteImage.repository=${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-website \
-            --set websiteImage.tag=${{ github.sha }} \
-            --set postgres.password=${{ secrets.POSTGRES_PASSWORD }} \
-            --set telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
-            --set geminiApiKey=${{ secrets.GEMINI_API_KEY }} \
-            --set zenrowsApiKey=${{ secrets.ZENROWS_API_KEY }} \
-            --set ownerTelegramUserId=${{ secrets.OWNER_TELEGRAM_USER_ID }} \
-            --set sessionSecretKey=${{ secrets.SESSION_SECRET_KEY }} \
+            --set botImage.repository="${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-bot" \
+            --set botImage.tag="${{ github.sha }}" \
+            --set scraperImage.repository="${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-scraper" \
+            --set scraperImage.tag="${{ github.sha }}" \
+            --set websiteImage.repository="${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-website" \
+            --set websiteImage.tag="${{ github.sha }}" \
+            --set postgres.password="${{ secrets.POSTGRES_PASSWORD }}" \
+            --set telegramBotToken="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            --set geminiApiKey="${{ secrets.GEMINI_API_KEY }}" \
+            --set zenrowsApiKey="${{ secrets.ZENROWS_API_KEY }}" \
+            --set ownerTelegramUserId="${{ secrets.OWNER_TELEGRAM_USER_ID }}" \
+            --set sessionSecretKey="${{ secrets.SESSION_SECRET_KEY }}" \
             --namespace todira --create-namespace
 
       - name: Diagnose bot pod (owner reported it's not responding)
