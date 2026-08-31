@@ -43,7 +43,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "A personal apartment-search bot that scans the market non-stop and alerts you the moment a listing matches your exact filter.",
         "ru": "Персональный бот для поиска квартир, который непрерывно сканирует рынок и уведомляет вас, как только появляется подходящее объявление.",
         "fr": "Un bot de recherche d'appartements personnel qui scanne le marché en continu et vous alerte dès qu'une annonce correspond exactement à vos critères.",
-        "ar": "בוט بحث شقق شخصي يفحص السوق باستمرار وينبهك فور ظهور إعلان يطابق بالضبط الفلتر الخاص بك.",
+        "ar": "بوت بحث شقق شخصي يفحص السوق باستمرار وينبهك فور ظهور إعلان يطابق بالضبط الفلتر الخاص بك.",
     },
     "meta.title_apartments": {
         "he": "דירות תואמות — טודירה",
@@ -94,6 +94,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Politique de confidentialité — Todira",
         "ar": "سياسة الخصوصية — טודירה",
     },
+    "meta.title_contact": {
+        "he": "צור קשר — טודירה",
+        "en": "Contact us — Todira",
+        "ru": "Связаться с нами — Todira",
+        "fr": "Nous contacter — Todira",
+        "ar": "تواصل معنا — טודירה",
+    },
     # ---------- header / nav ----------
     "nav.apartments": {
         "he": "דירות", "en": "Apartments", "ru": "Квартиры", "fr": "Appartements", "ar": "الشقق",
@@ -106,7 +113,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "nav.bot": {
         "he": "הבוט בטלגרם", "en": "The Telegram bot", "ru": "Бот в Telegram",
-        "fr": "Le bot Telegram", "ar": "בוט טלגرام",
+        "fr": "Le bot Telegram", "ar": "بوت تيليجرام",
+    },
+    "nav.contact": {
+        "he": "צור קשר", "en": "Contact us", "ru": "Связаться с нами",
+        "fr": "Nous contacter", "ar": "تواصل معنا",
     },
     "a11y.skip_to_content": {
         "he": "דלג לתוכן הראשי",
@@ -129,7 +140,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Built with love by Amir Toledano",
         "ru": "Создано с любовью Амиром Толедано",
         "fr": "Conçu avec amour par Amir Toledano",
-        "ar": "בُني بحب من قبل أمير توليدانو",
+        "ar": "بُني بحب من قبل أمير توليدانو",
     },
     "footer.gender_note": {
         "he": "הטקסט באתר כתוב בלשון זכר מטעמי נוחות בלבד, ופונה לכל המגדרים.",
@@ -738,6 +749,72 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "404.cta": {
         "he": "חזרה לדף הבית", "en": "Back to homepage", "ru": "На главную",
         "fr": "Retour à l'accueil", "ar": "العودة إلى الصفحة الرئيسية",
+    },
+    # ---------- contact page ----------
+    "contact.title": {
+        "he": "📬 צור קשר", "en": "📬 Contact us", "ru": "📬 Связаться с нами",
+        "fr": "📬 Nous contacter", "ar": "📬 تواصل معنا",
+    },
+    "contact.subtitle": {
+        "he": "יש לך שאלה, בעיה או רעיון? נשמח לשמוע — נחזור אליך בהקדם.",
+        "en": "Have a question, a problem, or an idea? We'd love to hear from you — we'll get back to you soon.",
+        "ru": "Есть вопрос, проблема или идея? Будем рады услышать вас — скоро ответим.",
+        "fr": "Une question, un problème ou une idée ? N'hésitez pas à nous écrire — nous vous répondrons rapidement.",
+        "ar": "هل لديك سؤال أو مشكلة أو فكرة؟ يسعدنا أن نسمع منك — سنرد عليك قريبًا.",
+    },
+    "contact.name_label": {
+        "he": "שם (לא חובה)", "en": "Name (optional)", "ru": "Имя (необязательно)",
+        "fr": "Nom (facultatif)", "ar": "الاسم (اختياري)",
+    },
+    "contact.email_label": {
+        "he": "אימייל (לא חובה)", "en": "Email (optional)", "ru": "Эл. почта (необязательно)",
+        "fr": "E-mail (facultatif)", "ar": "البريد الإلكتروني (اختياري)",
+    },
+    "contact.message_label": {
+        "he": "ההודעה שלך", "en": "Your message", "ru": "Ваше сообщение",
+        "fr": "Votre message", "ar": "رسالتك",
+    },
+    "contact.message_placeholder": {
+        "he": "כתוב/י כאן את מה שתרצה/י להעביר לנו...",
+        "en": "Write what you'd like to tell us here...",
+        "ru": "Напишите здесь то, что хотите нам сообщить...",
+        "fr": "Écrivez ici ce que vous souhaitez nous dire...",
+        "ar": "اكتب هنا ما تود إخبارنا به...",
+    },
+    "contact.submit_btn": {
+        "he": "📨 שלח הודעה", "en": "📨 Send message", "ru": "📨 Отправить сообщение",
+        "fr": "📨 Envoyer le message", "ar": "📨 إرسال الرسالة",
+    },
+    "contact.error_empty": {
+        "he": "⚠️ ההודעה לא יכולה להיות ריקה.",
+        "en": "⚠️ The message can't be empty.",
+        "ru": "⚠️ Сообщение не может быть пустым.",
+        "fr": "⚠️ Le message ne peut pas être vide.",
+        "ar": "⚠️ لا يمكن أن تكون الرسالة فارغة.",
+    },
+    "contact.success_title": {
+        "he": "✅ ההודעה נשלחה!",
+        "en": "✅ Message sent!",
+        "ru": "✅ Сообщение отправлено!",
+        "fr": "✅ Message envoyé !",
+        "ar": "✅ تم إرسال الرسالة!",
+    },
+    "contact.success_body": {
+        "he": "תודה שפנית אלינו — נחזור אליך בהקדם האפשרי.",
+        "en": "Thanks for reaching out — we'll get back to you as soon as possible.",
+        "ru": "Спасибо, что обратились к нам — мы ответим вам как можно скорее.",
+        "fr": "Merci de nous avoir contactés — nous vous répondrons dès que possible.",
+        "ar": "شكرًا لتواصلك معنا — سنرد عليك في أقرب وقت ممكن.",
+    },
+    "contact.other_ways_title": {
+        "he": "דרכים נוספות ליצור קשר", "en": "Other ways to reach us",
+        "ru": "Другие способы связи", "fr": "Autres moyens de nous contacter",
+        "ar": "طرق أخرى للتواصل",
+    },
+    "contact.telegram_way": {
+        "he": "טלגרם — כתוב/י ישירות לבוט", "en": "Telegram — message the bot directly",
+        "ru": "Telegram — напишите боту напрямую", "fr": "Telegram — écrivez directement au bot",
+        "ar": "تيليجرام — راسل البوت مباشرة",
     },
     # ---------- legal pages ----------
     # Terms/Privacy only have full He+En copy (see terms.html/privacy.html) — legal text is exactly

@@ -31,6 +31,7 @@
           <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }}</a>
           <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }}</a>
           <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }}</a>
+          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
         </nav>
         <nav class="lang-switcher" aria-label="{{ t('a11y.lang_switcher_label') }}">
           {% for code in supported_langs %}
@@ -50,6 +51,7 @@
         <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.apartments') }}</a>
         <a href="/liked{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.liked') }}</a>
         <a href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.filter') }}</a>
+        <a href="/contact{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.contact') }}</a>
         <a href="https://t.me/AmirDirotBot" target="_blank">{{ t('nav.bot') }}</a>
         <a href="/terms">{{ t('footer.terms') }}</a>
         <a href="/privacy">{{ t('footer.privacy') }}</a>

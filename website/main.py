@@ -9,11 +9,15 @@ first browser-reachable milestone, not for production.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
+import os
 from pathlib import Path
 
+import httpx
 from dorin_common.db import get_session
 from dorin_common.matching import evaluate
-from dorin_common.models import Filter, Listing, User, UserListingAction
+from dorin_common.models import ContactMessage, Filter, Listing, User, UserListingAction
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +38,8 @@ from i18n import (
     make_translator,
 )
 
+logger = logging.getLogger(__name__)
+
 BASE_DIR = Path(__file__).parent
 
 app = FastAPI(title="טודירה")
@@ -41,6 +47,45 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year — a site-wide preference, not per-session
+
+# /contact form notification — reuses the bot's own TELEGRAM_BOT_TOKEN (no extra secret needed) to
+# push a message straight to the owner's Telegram chat, since that's already the one channel this
+# whole product treats as "always checked." OWNER_TELEGRAM_USER_ID is optional and unset by
+# default: without it, messages are still safely stored in the DB (see /contact below), just not
+# proactively pushed — find your own numeric Telegram ID via a bot like @userinfobot, then set it.
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
+
+
+def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: int | None) -> bool:
+    """Best-effort — returns whether the Telegram push succeeded. Never raises: a broken/missing
+    token or chat id must never lose the contact message itself (already committed to the DB by
+    the caller before this runs)."""
+    if not TELEGRAM_BOT_TOKEN or not OWNER_TELEGRAM_USER_ID:
+        return False
+    lines = ["📬 <b>הודעה חדשה מהאתר (טודירה)</b>"]
+    if name:
+        lines.append(f"שם: {name}")
+    if email:
+        lines.append(f"אימייל: {email}")
+    if telegram_user_id:
+        lines.append(f"Telegram user ID: {telegram_user_id}")
+    lines.append("")
+    lines.append(message)
+    try:
+        resp = httpx.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": OWNER_TELEGRAM_USER_ID,
+                "text": "\n".join(lines),
+                "parse_mode": "HTML",
+            },
+            timeout=10.0,
+        )
+        return resp.status_code == 200
+    except httpx.HTTPError:
+        logger.exception("Failed to push /contact submission to Telegram")
+        return False
 
 
 def _render(request: Request, template_name: str, context: dict, status_code: int = 200) -> Response:
@@ -96,6 +141,52 @@ def terms(request: Request):
 @app.get("/privacy")
 def privacy(request: Request):
     return _render(request, "privacy.html", {})
+
+
+@app.get("/contact")
+def contact(request: Request, uid: int | None = None, sent: bool = False):
+    return _render(request, "contact.html", {"uid": uid, "sent": sent})
+
+
+@app.post("/contact")
+async def contact_submit(
+    request: Request,
+    name: str = Form(""),
+    email: str = Form(""),
+    message: str = Form(""),
+    uid: str = Form(""),
+):
+    lang = get_lang(request)
+    message = message.strip()
+    if not message:
+        return _render(
+            request, "contact.html", {"uid": uid or None, "sent": False, "error": True}
+        )
+
+    telegram_user_id = int(uid) if uid.strip().isdigit() else None
+
+    def _save_sync() -> None:
+        with get_session() as session:
+            session.add(
+                ContactMessage(
+                    name=name.strip() or None,
+                    email=email.strip() or None,
+                    message=message,
+                    telegram_user_id=telegram_user_id,
+                )
+            )
+            session.commit()
+
+    await asyncio.to_thread(_save_sync)
+    # Best-effort push to the owner — fire-and-forget-ish, but awaited so a slow/failed Telegram
+    # call can't leave the request hanging forever; the message is already safely in the DB above
+    # regardless of whether this succeeds.
+    await asyncio.to_thread(
+        _notify_owner_sync, name.strip(), email.strip(), message, telegram_user_id
+    )
+
+    redirect_url = f"/contact?sent=1{f'&uid={uid}' if uid else ''}{f'&lang={lang}' if lang != DEFAULT_LANG else ''}"
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @app.get("/apartments")

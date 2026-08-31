@@ -1077,3 +1077,59 @@ list to all 42 slugs, comma-separated.
 Verified: `python -m pytest tests/ -q` — 124 passed (existing `tests/test_yad2_client.py`
 consistency/uniqueness checks pass unmodified against the expanded dict, since they don't hardcode
 a city count).
+
+## Update 2026-08-31, later still: /contact form (pushes straight to owner's Telegram)
+Owner, after seeing Dorin's own contact page/form ("צור קשר עם דורין"), asked how people would
+reach out if they had something to say, and whether to add something similar.
+
+**New**: `website/templates/contact.html` (name/email optional, message required) at `/contact`,
+linked from the nav and footer in every language. On submit, the message is:
+1. **Always** persisted to a new `contact_messages` table (new `ContactMessage` model in
+   `common/dorin_common/models.py`, migration `0002_add_contact_messages.py`) — durable no matter
+   what happens next, so a message is never silently lost to a transient failure.
+2. **Best-effort** pushed straight into the owner's own Telegram chat via a plain `httpx.post` to
+   `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage` — reuses the *same* bot token
+   the Telegram bot itself already uses (no new secret needed for that half), so no separate email
+   service/SMTP setup was built for what's currently a low-volume, single-owner product. Needs one
+   new optional value, `ownerTelegramUserId` (`OWNER_TELEGRAM_USER_ID` env var, stored in the same
+   `{{ .Release.Name }}-bot-secret` Kubernetes Secret as the other optional keys) — the owner's own
+   numeric Telegram user ID, findable via e.g. @userinfobot. Unset by default: without it,
+   `_notify_owner_sync` just returns `False` and does nothing further — messages still land safely
+   in the DB, just without the proactive push, so this is safe to deploy before the owner has set
+   it. **Added `--set ownerTelegramUserId=${{ secrets.OWNER_TELEGRAM_USER_ID }}` to `ci-cd.yaml`'s
+   Helm upgrade step** — the owner needs to add a `OWNER_TELEGRAM_USER_ID` GitHub Actions secret
+   (Settings → Secrets and variables → Actions) for the push to actually activate; until then it's
+   silently a no-op push-wise (DB storage still works).
+
+**If uid is present** (form loaded from a page that already had `?uid=` in the URL — i.e. the
+visitor arrived via a bot deep link) it's captured as `contact_messages.telegram_user_id`, purely
+informational (no FK to `users`, since most visitors filling this out have no `uid` at all — found
+the site organically) — lets the owner know who to reply to on Telegram without asking for contact
+info explicitly.
+
+**Found and fixed a real pre-existing bug while touching `i18n.py` for this**: two Arabic
+translation strings (`nav.bot` and `footer.built_by`) had a mixed-script typo — a Hebrew "ב"/"בוט"
+where an Arabic "ب"/"بوت" belonged (looks nearly identical at a glance in a proportional font, easy
+to miss when writing many translations quickly) — a genuine visible bug for Arabic-language
+visitors, now fixed. Worth a periodic `grep` for Hebrew-range characters inside `"ar":` values if
+more Arabic strings get added later — see the one-liner used to catch these two.
+
+**New dependency**: `httpx>=0.27,<1.0` added to `website/requirements.txt` (and
+`requirements-test.txt`, alongside `fastapi`/`jinja2`/`python-multipart` now needed there too,
+since `tests/test_website_contact.py` drives the FastAPI app directly via `TestClient`) — chosen
+over `requests` since it's the more actively maintained modern choice and nothing else in this
+project already pulled in `requests` to reuse instead.
+
+**Test-authoring gotcha worth remembering**: `scraper/main.py` and `website/main.py` are both
+named `main.py` — `tests/conftest.py` deliberately does NOT add `website/` to `sys.path` (only
+`common/`, `scraper/`, `bot/`), so a bare `import main` in any future website test would be
+ambiguous/wrong once both directories are importable. `test_website_contact.py` instead loads
+`website/main.py` via `importlib.util.spec_from_file_location(...)` under the explicit name
+`"website_main"`, sidestepping the clash entirely — follow that pattern for any future website
+test file.
+
+Verified: 7 new tests in `tests/test_website_contact.py` (form renders, valid submission saves +
+redirects + notifies, empty message is rejected without saving, uid capture, and three
+`_notify_owner_sync` cases — unconfigured/success/network-error-never-raises) plus a full-site
+i18n regression re-run (all 5 languages × 10 routes including the new `/contact`, zero stray
+untranslated keys) and the full suite (131 passed, up from 124).
