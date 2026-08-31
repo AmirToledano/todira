@@ -7,6 +7,12 @@
 #   zenrowsApiKey            (required for real Yad2 scraping — free-tier key from
 #                             https://zenrows.com; without it the scraper CronJob just logs an
 #                             error and finds 0 listings every run, see scraper/YAD2_NOTES.md)
+#   ownerTelegramUserId      (optional — the owner's own numeric Telegram user ID, e.g. from
+#                             @userinfobot; when set, the website's /contact form pushes each
+#                             submission straight to this Telegram chat via the existing bot
+#                             token, no separate email/notification service needed. Without it,
+#                             /contact submissions are still safely stored in the DB
+#                             (contact_messages table) — just not proactively pushed anywhere.)
 
 botImage:
   repository: ghcr.io/CHANGE-ME/todira-bot

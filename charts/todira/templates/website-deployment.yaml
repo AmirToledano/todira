@@ -25,6 +25,20 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-postgres-secret
                   key: database-url
+            # /contact form's push to the owner's Telegram chat — see website/main.py's
+            # _notify_owner_sync. Reuses the bot's own token (no extra secret needed); the owner's
+            # numeric user id is optional and unset by default, see values.yaml's comment.
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: telegram-bot-token
+            - name: OWNER_TELEGRAM_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: owner-telegram-user-id
+                  optional: true
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}
