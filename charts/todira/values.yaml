@@ -60,18 +60,27 @@ postgres:
   storageSize: 2Gi
 
 scraper:
-  # Rotation, not "trim the list" — chosen 2026-08-31 after the owner explicitly wanted every
-  # selectable city scraped ("תוסיף כל מקום וחוק בארץ... אנחנו רוצים להיות זמינים לכל בן אדם"),
-  # but "*/10 * * * *" x 42 cities burned the ENTIRE monthly ZenRows free-tier credit pool (5,000
-  # credits, ~25 credits/request with premium_proxy+js_render) in about 2 days (5,285 credits /
-  # 217 requests, confirmed via the ZenRows dashboard). Every city stays scraped — just not every
-  # run. scraper/main.py picks a `citiesPerRun`-sized slice of `cities`, rotating deterministically
-  # by calendar day, so every city gets refreshed roughly once per `ceil(len(cities)/citiesPerRun)`
-  # days. At 6/day, daily: 6 requests/day x ~30 days ≈ 180 requests/month ≈ 4,500 credits — safely
-  # under the 5,000 budget with room for manual/dev use — and every city cycles back within a week.
-  # Tune `citiesPerRun` up (and/or `schedule` more frequent) once on a paid ZenRows plan.
+  # History: "*/10 * * * *" x 42 cities burned the ENTIRE monthly ZenRows free-tier credit pool
+  # (5,000 credits, ~25 credits/request with premium_proxy+js_render) in about 2 days (5,285
+  # credits / 217 requests, confirmed via the ZenRows dashboard) — see PROJECT_STATE.md,
+  # 2026-08-31. Introduced per-run city rotation (citiesPerRun) to fit the free tier, but the
+  # owner rightly pushed back on trading away daily-for-everyone coverage without being asked —
+  # also see PROJECT_STATE.md. Investigated whether a single ZenRows request could cover multiple
+  # cities at once (would have let rotation cover far more ground per request) — tested both
+  # `city=A,B` and repeated `city=A&city=B` against real Yad2 live, 2026-09-01: NEITHER works,
+  # Yad2 silently falls back to a single city either way (0 cards for the comma form, 43 cards but
+  # only the second city for the repeated-param form) — see PROJECT_STATE.md for the full test
+  # output. So there's no way to cut cost-per-city; the only lever is which paid tier to be on.
+  #
+  # Owner upgraded to ZenRows' Build plan ($19/mo monthly billing, 45,000 credits/mo) specifically
+  # to restore full coverage. citiesPerRun is now 0 (disabled — every city, every run) since the
+  # new budget comfortably covers it: 42 cities/day × ~30 days ≈ 1,260 requests/month ≈ 31,500
+  # credits — safely under 45,000 with real headroom left for manual/dev use, and every city now
+  # refreshes daily instead of once a week. A second run per day would exceed the monthly budget
+  # (~63,000 credits needed) — daily is the ceiling on this tier. Tune `citiesPerRun` back down (or
+  # `schedule` more/less frequent) if the plan or usage pattern changes.
   schedule: "0 3 * * *" # once daily, 03:00 UTC (low-traffic hour)
-  citiesPerRun: 6
+  citiesPerRun: 0
   # scraper/yad2_client.py's CITY_SLUG_TO_ID must have a real Yad2 ID for every slug listed here,
   # or that city silently scrapes nothing when its turn in the rotation comes up.
   cities: "tel-aviv,ramat-gan,givatayim,jerusalem,haifa,beer-sheva,rishon-lezion,petah-tikva,ashdod,netanya,bnei-brak,holon,ashkelon,rehovot,bat-yam,beit-shemesh,kfar-saba,herzliya,hadera,raanana,nahariya,eilat,modiin,ramat-hasharon,ramla,nazareth,lod,hod-hasharon,kiryat-ata,kiryat-gat,kiryat-motzkin,kiryat-bialik,kiryat-ono,yavne,or-yehuda,tzfat,afula,tiberias,dimona,mevaseret-zion,har-gilo,karmiel"
