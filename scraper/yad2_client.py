@@ -284,10 +284,20 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
 
     items = list(_parse_cards(html))
     if not items:
+        # Temporary diagnostic (2026-08-31) — every city is returning 0 cards, which can't be
+        # genuine (Yad2 always has live listings across 42 cities). Logging a snippet + an
+        # explicit challenge-page check so the next scraper run's logs show directly what's
+        # actually coming back, instead of guessing blind. Remove once the real cause is found
+        # and fixed — see PROJECT_STATE.md's "found why there have NEVER been any real listings".
+        challenge_markers = ("Radware", "hcaptcha", "px-captcha", "Are you a robot", "Access Denied")
+        looks_like_challenge = any(marker in html for marker in challenge_markers)
         logger.warning(
             "Parsed 0 listing cards for city=%s — either genuinely no results, or Yad2 changed "
-            "its card markup (data-testid attributes) since this was written. Check a saved "
-            "copy of the HTML before assuming the proxy stopped working.",
+            "its card markup (data-testid attributes) since this was written. "
+            "looks_like_challenge_page=%s html_length=%d html_snippet=%r",
             city,
+            looks_like_challenge,
+            len(html),
+            html[:2000],
         )
     yield from items
