@@ -12,7 +12,9 @@
   <div class="pb-count"><b>{{ listings|length }}</b><span>{{ t('apartments.results_label') }}</span></div>
 </div>
 
+{% if not via_session %}
 <div class="notice">{{ t('apartments.notice') }}</div>
+{% endif %}
 
 {% if user and user.filter %}
 <div class="filter-bar">
