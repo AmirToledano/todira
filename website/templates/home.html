@@ -1,117 +1,117 @@
 {% extends "base.html" %}
-{% block title %}טודירה — חיפוש דירות בזמן אמת{% endblock %}
+{% block title %}{{ t('meta.title_home') }}{% endblock %}
 {% block extra_head %}<link rel="preload" as="image" href="/static/todira-brand.webp?v=4">{% endblock %}
 {% block content %}
 
 <section class="hero reveal">
-  <span class="eyebrow">👑 חינם לגמרי · דרך טלגרם</span>
-  <h1>הדירה שלך מוצאת אותך</h1>
-  <p class="lead">טודירה סורק את שוק הדירות בלי הפסקה, ומתריע לך תוך דקות ברגע שעולה דירה שמתאימה בדיוק למה שחיפשת — לפני שמישהו אחר יתפוס אותה.</p>
+  <span class="eyebrow">{{ t('home.eyebrow') }}</span>
+  <h1>{{ t('home.h1') }}</h1>
+  <p class="lead">{{ t('home.lead') }}</p>
   <div class="cta-row">
-    <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">🚀 פתח את הבוט בטלגרם</a>
-    <a class="btn outline" href="#how">איך זה עובד?</a>
+    <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">{{ t('home.cta_open_bot') }}</a>
+    <a class="btn outline" href="#how">{{ t('home.cta_how') }}</a>
   </div>
 </section>
 
 <div class="hero-image-full reveal">
-  <img src="/static/todira-brand.webp?v=4" alt="טודי המלך — בוט חיפוש דירות טודירה" width="1184" height="1895" fetchpriority="high">
+  <img src="/static/todira-brand.webp?v=4" alt="{{ t('home.hero_img_alt') }}" width="1184" height="1895" fetchpriority="high">
 </div>
 
 <div class="hero-float-stats reveal">
-  <div class="float-stat"><span class="fs-icon">⚡</span><div><b>10 דק׳</b><span class="label-sm">תדירות סריקה</span></div></div>
-  <div class="float-stat"><span class="fs-icon">🧠</span><div><b>AI</b><span class="label-sm">מבין עברית חופשית</span></div></div>
-  <div class="float-stat"><span class="fs-icon">🕒</span><div><b>24/7</b><span class="label-sm">הבוט תמיד ער</span></div></div>
-  <div class="float-stat"><span class="fs-icon">💸</span><div><b>0 ₪</b><span class="label-sm">לגמרי בחינם</span></div></div>
+  <div class="float-stat"><span class="fs-icon" aria-hidden="true">⚡</span><div><b>{{ t('home.stat_scan_freq_value') }}</b><span class="label-sm">{{ t('home.stat_scan_freq_label') }}</span></div></div>
+  <div class="float-stat"><span class="fs-icon" aria-hidden="true">🧠</span><div><b>{{ t('home.stat_ai_value') }}</b><span class="label-sm">{{ t('home.stat_ai_label') }}</span></div></div>
+  <div class="float-stat"><span class="fs-icon" aria-hidden="true">🕒</span><div><b>{{ t('home.stat_uptime_value') }}</b><span class="label-sm">{{ t('home.stat_uptime_label') }}</span></div></div>
+  <div class="float-stat"><span class="fs-icon" aria-hidden="true">💸</span><div><b>{{ t('home.stat_free_value') }}</b><span class="label-sm">{{ t('home.stat_free_label') }}</span></div></div>
 </div>
 
 <section class="feature-grid">
   <div class="feature-card reveal" style="transition-delay:0ms">
-    <div class="icon">🧠</div>
-    <h3>מבין אותך בשפה חופשית</h3>
-    <p>פשוט תכתוב מה אתה מחפש — "2-3 חדרים בתל אביב עד 6000 שקל" — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילך, בלי טפסים מסובכים.</p>
+    <div class="icon" aria-hidden="true">🧠</div>
+    <h3>{{ t('home.feature1_title') }}</h3>
+    <p>{{ t('home.feature1_body') }}</p>
   </div>
   <div class="feature-card reveal" style="transition-delay:90ms">
-    <div class="icon">⚡</div>
-    <h3>התראות בזמן אמת</h3>
-    <p>הסריקה רצה כל הזמן ברקע. ברגע שדירה חדשה תואמת עולה לרשת — אתה מקבל הודעה בטלגרם, לא צריך לרענן אתרים כל היום.</p>
+    <div class="icon" aria-hidden="true">⚡</div>
+    <h3>{{ t('home.feature2_title') }}</h3>
+    <p>{{ t('home.feature2_body') }}</p>
   </div>
   <div class="feature-card reveal" style="transition-delay:180ms">
-    <div class="icon">❤️</div>
-    <h3>שומר לך את הדירות שאהבת</h3>
-    <p>סמן דירות שמעניינות אותך ותחזור אליהן בקלות בכל שלב — כאן באתר או ישירות מתוך הבוט.</p>
+    <div class="icon" aria-hidden="true">❤️</div>
+    <h3>{{ t('home.feature3_title') }}</h3>
+    <p>{{ t('home.feature3_body') }}</p>
   </div>
 </section>
 
 <section class="compare reveal">
-  <h2 class="section-title">למה לא פשוט לגלול לבד?</h2>
-  <p class="section-sub">כי אתה עסוק, ודירות טובות נעלמות תוך שעות.</p>
+  <h2 class="section-title">{{ t('home.compare_title') }}</h2>
+  <p class="section-sub">{{ t('home.compare_sub') }}</p>
   <div class="compare-grid">
     <div class="compare-col without">
-      <h3>😩 בלי טודירה</h3>
+      <h3>{{ t('home.compare_without_title') }}</h3>
       <ul>
-        <li>מרעננים כמה אתרים כל כמה שעות</li>
-        <li>מפספסים דירות טובות שנתפסות עוד לפני שראיתם אותן</li>
-        <li>עוברים ידנית על עשרות מודעות לא רלוונטיות</li>
-        <li>שוכחים דירה ששמרתם בלשונית שנסגרה</li>
+        <li>{{ t('home.compare_without_1') }}</li>
+        <li>{{ t('home.compare_without_2') }}</li>
+        <li>{{ t('home.compare_without_3') }}</li>
+        <li>{{ t('home.compare_without_4') }}</li>
       </ul>
     </div>
     <div class="compare-col with">
-      <h3>👑 עם טודירה</h3>
+      <h3>{{ t('home.compare_with_title') }}</h3>
       <ul>
-        <li>סריקה אוטומטית כל 10 דקות, ברקע</li>
-        <li>התראה מיידית בטלגרם ברגע שיש התאמה</li>
-        <li>רואים רק דירות שבאמת עומדות בסינון שלכם</li>
-        <li>כל דירה ששמרתם מחכה לכם כאן וגם בבוט</li>
+        <li>{{ t('home.compare_with_1') }}</li>
+        <li>{{ t('home.compare_with_2') }}</li>
+        <li>{{ t('home.compare_with_3') }}</li>
+        <li>{{ t('home.compare_with_4') }}</li>
       </ul>
     </div>
   </div>
 </section>
 
 <section id="how">
-  <h2 class="section-title reveal">איך זה עובד</h2>
-  <p class="section-sub reveal">שלוש דקות התחלה, ואז טודירה עובד בשבילך ברקע.</p>
+  <h2 class="section-title reveal">{{ t('home.how_title') }}</h2>
+  <p class="section-sub reveal">{{ t('home.how_sub') }}</p>
   <div class="steps">
     <div class="step reveal">
-      <h3>מדברים עם הבוט</h3>
-      <p>פותחים שיחה בטלגרם ומתארים במילים שלכם את הדירה שאתם מחפשים.</p>
+      <h3>{{ t('home.step1_title') }}</h3>
+      <p>{{ t('home.step1_body') }}</p>
     </div>
     <div class="step reveal" style="transition-delay:90ms">
-      <h3>הסינון נבנה אוטומטית</h3>
-      <p>עיר, טווח מחיר, מספר חדרים ועוד — הכל נחלץ מהשיחה שלכם ונשמר כפרופיל חיפוש.</p>
+      <h3>{{ t('home.step2_title') }}</h3>
+      <p>{{ t('home.step2_body') }}</p>
     </div>
     <div class="step reveal" style="transition-delay:180ms">
-      <h3>מקבלים התראות</h3>
-      <p>מרגע זה, כל דירה חדשה שמתאימה תשלח אליכם ישירות — וגם תופיע כאן באתר.</p>
+      <h3>{{ t('home.step3_title') }}</h3>
+      <p>{{ t('home.step3_body') }}</p>
     </div>
   </div>
 </section>
 
 <section class="faq reveal">
-  <h2 class="section-title">שאלות נפוצות</h2>
+  <h2 class="section-title">{{ t('home.faq_title') }}</h2>
   <div class="faq-list">
     <details class="faq-item">
-      <summary>איך הבינה המלאכותית מבינה מה אני מחפש? <span class="chevron">⌄</span></summary>
-      <p>אתם כותבים לבוט בשפה חופשית, בדיוק כמו שהייתם מתארים לחבר מה אתם מחפשים. מודל שפה מזהה מתוך המשפט עיר, טווח מחיר, מספר חדרים ופרטים נוספים, ובונה מזה פרופיל חיפוש — בלי טפסים ובלי תפריטים מסובכים.</p>
+      <summary>{{ t('home.faq1_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
+      <p>{{ t('home.faq1_a') }}</p>
     </details>
     <details class="faq-item">
-      <summary>מאיפה מגיעות הדירות? <span class="chevron">⌄</span></summary>
-      <p>טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל 10 דקות ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.</p>
+      <summary>{{ t('home.faq2_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
+      <p>{{ t('home.faq2_a') }}</p>
     </details>
     <details class="faq-item">
-      <summary>זה באמת בחינם? <span class="chevron">⌄</span></summary>
-      <p>כן, כרגע השירות חינמי לגמרי.</p>
+      <summary>{{ t('home.faq3_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
+      <p>{{ t('home.faq3_a') }}</p>
     </details>
     <details class="faq-item">
-      <summary>אפשר לשנות את הסינון אחרי שהגדרתי אותו? <span class="chevron">⌄</span></summary>
-      <p>בהחלט — גם דרך הבוט בטלגרם וגם כאן באתר, בעמוד "הסינון שלי", בכל שלב שתרצו.</p>
+      <summary>{{ t('home.faq4_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
+      <p>{{ t('home.faq4_a') }}</p>
     </details>
   </div>
 </section>
 
 <section class="footer-cta reveal">
-  <h2>מוכנים למצוא את הדירה?</h2>
-  <p>זה לוקח פחות משתי דקות להתחיל, וההתראות הראשונות יכולות להגיע עוד היום.</p>
-  <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">פתח את הבוט בטלגרם ←</a>
+  <h2>{{ t('home.footer_cta_title') }}</h2>
+  <p>{{ t('home.footer_cta_body') }}</p>
+  <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">{{ t('home.footer_cta_btn') }}</a>
 </section>
 
 {% endblock %}

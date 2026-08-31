@@ -915,3 +915,102 @@ straightforward extension of an already-tested `matches` list into an already-te
 send loop (`format_caption`/`listing_keyboard` are exercised elsewhere, e.g. `/apartments`,
 `/liked`, notification sending). Deployed via PR #34, merge commit `e01de2b5`, CI/CD run #76 —
 confirmed `status: completed`, `conclusion: success`.
+
+## Update 2026-08-31, later still: website i18n (5 languages), legal pages, accessibility pass
+Owner relayed a list of things his girlfriend flagged after trying the site: disability
+accessibility, a language switcher (English/Russian/French/Arabic), a footer note that the
+Hebrew text defaults to masculine phrasing but addresses everyone, swapping the footer credit
+from "טודי המלך" to his own name, and making the site legally sound (rights-reserved notice,
+something to keep lawyers away).
+
+**Scope decision, made without asking**: this only touches the **website** — not the Telegram
+bot. The bot's onboarding free-text parsing is hard-wired to a Hebrew Gemini prompt
+(`bot/handlers/onboarding.py`), and translating a live conversational flow across 5 languages
+safely is a materially different, larger, riskier project than translating ~150 static UI
+strings across 9 already-small templates (445 lines total). Scoping the bot out kept this
+round shippable in one piece without half-finishing either side. If bot-side language support
+is wanted later, it's a separate round.
+
+**i18n architecture** (`website/i18n.py`, new file): a small hand-rolled `key -> {lang: text}`
+dict — no gettext/babel, the site is far too small to need a translation framework. Supported:
+`he` (default — also matches what the bot itself understands), `en`, `ru`, `fr`, `ar`. Hebrew
+and Arabic are RTL, the other three LTR; `RTL_LANGS` drives `dir` on `<html>`. Language
+resolution: `?lang=` on the current request wins, falling back to a `lang` cookie, falling back
+to Hebrew — mirrors how `?uid=` already threads through this site's links, except `lang` is a
+site-wide preference so a cookie (set by `website/main.py`'s new `_render()` helper, only when
+`?lang=` was explicitly present on the request) fits better than requiring every internal link
+to carry `?lang=` forever. `PROPERTY_TYPE_LABELS`/`SAFE_ROOM_LABELS`/`FURNITURE_LABELS` (the
+/filter form's option labels) moved from `website/main.py` into `i18n.py`, now nested one level
+deeper (by language) — validation logic in `main.py`'s POST handler that used to check
+`value in PROPERTY_TYPE_LABELS` now checks `PROPERTY_TYPE_LABELS[DEFAULT_LANG]` instead, since
+the *set* of valid values is language-independent, only the labels shown to the user differ.
+
+**Translation coverage**: every hardcoded Hebrew string across all 9 templates now goes through
+`t('some.key')`. Two things deliberately stayed Hebrew-only regardless of site language: (1) the
+brand name "טודירה" itself (kept as the actual product name, not transliterated) and (2) real
+scraped listing data (city names, descriptions) shown in listing cards — that's raw Yad2 content
+in Hebrew, not UI copy, and translating someone else's classified-ad text would be both wrong
+(mistranslation risk on a legal listing) and pointless (the underlying property is still only
+findable/rentable in Hebrew-speaking Israel). Only the *labels around* that data (e.g. "rooms",
+"floor", "posted") are translated. The "AI understands free-form Hebrew" home-page stat
+deliberately was NOT translated into a claim like "understands English" in the English version —
+it stays an honest description of the bot's actual (Hebrew-only) capability regardless of what
+language the marketing page itself is being read in.
+
+**Translation quality honesty**: these translations were produced by this assistant, not
+reviewed by a native speaker of Russian/French/Arabic. Good enough to ship and be useful, but if
+a native speaker ever flags a phrasing as unnatural, trust them over this file — noted directly
+in `i18n.py`'s own docstring so a future reader sees the caveat where the text lives.
+
+**Legal pages** (`website/templates/terms.html`, `privacy.html`, new; wired to `/terms` and
+`/privacy` in `main.py`, linked from the footer): full Hebrew + English content — Terms of Use
+covers what Todira is, an explicit no-warranty-on-listing-accuracy clause (listings are scraped
+from third parties like Yad2, may be stale/wrong/already gone), that Todira is not a party to
+any rental/sale transaction, AI-parsing-can-be-wrong disclosure, liability limitation, right to
+change/discontinue the service, IP ownership, and Israeli law/jurisdiction. Privacy Policy
+covers what's collected (Telegram ID, filter, free-text messages, liked/hidden actions), how
+it's used, the three external processors data passes through (Telegram, Google Gemini, ZenRows),
+the one functional cookie (language preference — explicitly *not* tracking/advertising), deletion
+rights, and a reference to Israel's Protection of Privacy Law 5741-1981. **Deliberately did NOT
+machine-translate the legal text into Russian/French/Arabic** — unlike UI copy, an unreviewed
+mistranslation of a legal document is a real liability risk, not just an awkward phrasing; a
+Russian/French/Arabic viewer instead sees the English version with an honest translated banner
+("this document is currently only available in Hebrew/English"). This is a solid baseline for a
+free hobby-scale product, not a substitute for actual legal review before any monetization or
+scale-up — worth flagging to the owner in chat rather than silently overclaiming "100% legal" on
+the page itself. Also deliberately did **not** add a personal contact email to either page (the
+owner's own email is available to this assistant, but publishing it to the public internet
+without being asked first is a one-way door); both pages point to the Telegram bot as the
+contact channel instead, which was already public.
+
+**Accessibility pass** (real, incremental improvements — not a claim of full compliance, which
+would itself be a legal/liability statement not worth making without an actual audit): a
+skip-to-content link (`.skip-link` in `style.css`, visually hidden until focused); every
+`<label>`/`<input>` pair in `filter.html` that was previously just visually-adjacent siblings
+(no programmatic association — a real pre-existing screen-reader bug) now has matching
+`id`/`for` attributes (checkbox `<label>` wrapping its `<input>` was already fine, untouched);
+decorative emoji icons got `aria-hidden="true"`; the language switcher and main nav both got
+`aria-label`; stronger `:focus-visible` outlines site-wide plus a focus box-shadow on form
+inputs (the old rule fully removed the browser's default outline on focus with only a border-
+color change as replacement — a weak indicator for keyboard users); an `:lang(ar)` CSS rule adds
+Noto Sans/Naskh Arabic as font fallbacks since neither Rubik nor Frank Ruhl Libre (the site's two
+existing fonts) cover Arabic glyphs, which would otherwise render as tofu/blank for Arabic
+viewers.
+
+**Footer changes** (the two concrete, literal asks): "נבנה באהבה על ידי טודי המלך 🐾" →
+"נבנה באהבה על ידי אמיר טולדנו 🐾" (translated per-language too, e.g. "Built with love by Amir
+Toledano"); added a gender-note line under it in every language; added a "© 2026 Todira. All
+rights reserved."-style line; added Terms/Privacy links.
+
+**Verification**: no live browser test (this cloud session has no reachable dev server for the
+public site — see the earlier egress-block note). Instead: (1) a throwaway script drove every
+route (`/`, `/terms`, `/privacy`, `/apartments`, `/liked`, `/filter`, both with and without a
+valid `uid`, plus a 404) through FastAPI's `TestClient` in all 5 languages — 46 requests, all
+either 200 or the expected 404, DB calls monkeypatched to fake in-memory `User`/`Filter`/
+`Listing` objects since `dorin_common.models` uses Postgres-only `ARRAY` columns SQLite can't
+create; (2) grepped every one of those 46 rendered HTML responses for any literal
+`namespace.key`-shaped leftover text (would mean a `t()` call referenced a key with no entry in
+`TRANSLATIONS`, since the fallback silently prints the raw key instead of crashing) — zero
+found, so every `t()` call in every template resolved to a real, non-fallback string in every
+language; (3) `python -m pytest tests/ -q` — 124 passed, unaffected (no existing tests touch the
+website). `python3 -m py_compile` on both changed Python files as a last syntax gate.

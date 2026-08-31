@@ -2,32 +2,32 @@
 <div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover {{ '' if l.image_urls else 'no-image' }}"
        {% if l.image_urls %}style="background-image:url('{{ l.image_urls[0] }}')"{% endif %}>
-    {% if not l.image_urls %}🏠{% endif %}
+    {% if not l.image_urls %}<span aria-hidden="true">🏠</span>{% endif %}
     <span class="source-badge">{{ l.source }}</span>
-    <span class="price-badge">{{ "%d ₪"|format(l.price) if l.price else "מחיר לא צוין" }}</span>
+    <span class="price-badge">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</span>
   </div>
   <div class="listing-body">
     <div class="listing-loc">
-      {{ l.city or "עיר לא צוינה" }}{% if l.neighborhood %}<span class="muted">, {{ l.neighborhood }}</span>{% endif %}
+      {{ l.city or t('card.no_city') }}{% if l.neighborhood %}<span class="muted">, {{ l.neighborhood }}</span>{% endif %}
     </div>
     <div class="meta-row">
-      {% if l.rooms %}<span>🛏️ {{ l.rooms }} חדרים</span>{% endif %}
-      {% if l.floor is not none %}<span>🏢 קומה {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %}</span>{% endif %}
-      {% if l.size_sqm %}<span>📐 {{ l.size_sqm }} מ"ר</span>{% endif %}
+      {% if l.rooms %}<span>🛏️ {{ l.rooms }} {{ t('card.rooms') }}</span>{% endif %}
+      {% if l.floor is not none %}<span>🏢 {{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %}</span>{% endif %}
+      {% if l.size_sqm %}<span>📐 {{ l.size_sqm }} {{ t('card.sqm') }}</span>{% endif %}
     </div>
     {% if l.has_parking or l.has_elevator or l.has_balcony or l.pets_allowed or l.is_renovated %}
     <div class="amenity-row">
-      {% if l.has_parking %}<span class="amenity">🚗 חניה</span>{% endif %}
-      {% if l.has_elevator %}<span class="amenity">🛗 מעלית</span>{% endif %}
-      {% if l.has_balcony %}<span class="amenity">🌿 מרפסת</span>{% endif %}
-      {% if l.pets_allowed %}<span class="amenity">🐾 חיות מחמד</span>{% endif %}
-      {% if l.is_renovated %}<span class="amenity">✨ משופצת</span>{% endif %}
+      {% if l.has_parking %}<span class="amenity">🚗 {{ t('card.amenity_parking') }}</span>{% endif %}
+      {% if l.has_elevator %}<span class="amenity">🛗 {{ t('card.amenity_elevator') }}</span>{% endif %}
+      {% if l.has_balcony %}<span class="amenity">🌿 {{ t('card.amenity_balcony') }}</span>{% endif %}
+      {% if l.pets_allowed %}<span class="amenity">🐾 {{ t('card.amenity_pets') }}</span>{% endif %}
+      {% if l.is_renovated %}<span class="amenity">✨ {{ t('card.amenity_renovated') }}</span>{% endif %}
     </div>
     {% endif %}
     {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
     <div class="listing-footer">
-      {% if l.posted_at %}<span class="posted">פורסם {{ l.posted_at.strftime('%d/%m') }}</span>{% else %}<span></span>{% endif %}
-      <a class="view-btn" href="{{ l.url }}" target="_blank" rel="noopener">לצפייה במודעה ←</a>
+      {% if l.posted_at %}<span class="posted">{{ t('card.posted_prefix') }} {{ l.posted_at.strftime('%d/%m') }}</span>{% else %}<span></span>{% endif %}
+      <a class="view-btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.view_btn') }}</a>
     </div>
   </div>
 </div>
