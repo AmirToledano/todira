@@ -8,6 +8,11 @@ spec:
   # MUST stay at 1 — Telegram's long-polling (getUpdates) rejects/conflicts when two pollers
   # share one bot token, so this deliberately doesn't read a "replicas" value meant for scaling.
   replicas: {{ .Values.replicas | default 1 }}
+  # Recreate (not the default RollingUpdate): the bot-pvc below is ReadWriteOnce, so a new pod
+  # can't mount it while the old one still holds it during a rolling update - same class of
+  # constraint as Caddy's hostPort binding, different resource.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: {{ .Release.Name }}-bot
@@ -36,6 +41,9 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: gemini-api-key
                   optional: true
+          volumeMounts:
+            - name: bot-data
+              mountPath: /data
           resources:
             requests:
               cpu: {{ .Values.resources.bot.requests.cpu }}
@@ -43,3 +51,7 @@ spec:
             limits:
               cpu: {{ .Values.resources.bot.limits.cpu }}
               memory: {{ .Values.resources.bot.limits.memory }}
+      volumes:
+        - name: bot-data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-bot-pvc

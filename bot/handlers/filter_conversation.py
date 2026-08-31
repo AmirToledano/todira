@@ -426,4 +426,5 @@ def build_filter_conversation_handler() -> ConversationHandler:
         },
         fallbacks=[CommandHandler("cancel", _cancel_command)],
         name="filter_conversation",
+        persistent=True,
     )

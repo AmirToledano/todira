@@ -1,0 +1,16 @@
+# Persists Telegram conversation state (python-telegram-bot's PicklePersistence) across pod
+# restarts. Without this, every redeploy/crash wipes ConversationHandler state in memory - a user
+# mid /filter or /start conversation gets no response to their next message until they /start over,
+# since the bot has forgotten what step they were on.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-bot-pvc
+  labels:
+    app: {{ .Release.Name }}-bot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Mi

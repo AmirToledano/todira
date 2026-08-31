@@ -135,4 +135,5 @@ def build_onboarding_handler() -> ConversationHandler:
         },
         fallbacks=[CommandHandler("start", onboarding_entry)],
         name="onboarding_conversation",
+        persistent=True,
     )
