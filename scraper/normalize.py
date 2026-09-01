@@ -12,6 +12,7 @@ import datetime as dt
 import logging
 from typing import Any
 
+from dorin_common import cities
 from dorin_common.enums import DealType
 from dorin_common.schemas import NormalizedListing
 
@@ -87,7 +88,13 @@ def normalize(raw_item: dict[str, Any], *, deal_type: str = DealType.RENT) -> No
             floor=_to_int(_get(raw_item, "floor")),
             floor_total=_to_int(_get(raw_item, "floorTotal", "buildingFloors")),
             size_sqm=_to_int(_get(raw_item, "square_meters", "squareMeter")),
-            city=_get(raw_item, "city", "cityText"),
+            # canonicalize_city: Yad2's own page text sometimes spells a city differently from
+            # this project's bundled cities.py list (confirmed for Kiryat Motzkin, see that
+            # module's docstring) — remap it here, once, so listings.city always agrees with
+            # whatever spelling a saved filter's cities array uses, instead of every comparison
+            # site (matching.py, notifier.py's SQL pre-filter) needing to know about spelling
+            # variants.
+            city=cities.canonicalize_city(_get(raw_item, "city", "cityText")),
             neighborhood=_get(raw_item, "neighborhood", "neighborhoodText"),
             street=_get(raw_item, "street", "streetText"),
             has_parking=_to_bool(_get(raw_item, "parking")),

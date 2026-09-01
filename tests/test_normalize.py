@@ -80,6 +80,14 @@ def test_location_fields_and_alternate_keys():
     assert result.street == "הרכבת"
 
 
+def test_city_spelling_is_canonicalized():
+    # confirmed live 2026-09-02: Yad2's own page text for Kiryat Motzkin is "קרית מוצקין" (1 yud),
+    # not cities.py's bundled "קריית מוצקין" (2 yuds) - normalize() must fix this up so a saved
+    # filter (which only ever stores the bundled spelling) can actually match the listing.
+    result = normalize({"id": "1", "city": "קרית מוצקין"})
+    assert result.city == "קריית מוצקין"
+
+
 def test_boolean_fields_pass_through_real_booleans():
     result = normalize({"id": "1", "parking": True, "elevator": False})
     assert result.has_parking is True
