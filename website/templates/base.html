@@ -46,11 +46,7 @@
           <span class="auth-name">{{ current_user.first_name or (current_user.telegram_username and ('@' ~ current_user.telegram_username)) or t('auth.you') }}</span>
           <a class="auth-logout" href="/auth/logout">{{ t('auth.logout') }}</a>
           {% else %}
-          <script async src="https://telegram.org/js/telegram-widget.js?22"
-                  data-telegram-login="AmirDirotBot"
-                  data-size="medium"
-                  data-auth-url="https://todira.duckdns.org/auth/telegram/callback"
-                  data-radius="8"></script>
+          <a class="auth-login" href="https://t.me/AmirDirotBot" target="_blank">{{ t('auth.login') }}</a>
           {% endif %}
         </div>
       </div>

@@ -2,17 +2,26 @@
 common/dorin_common (same models/matching/db as the bot and scraper).
 
 AUTH: two ways in, and both resolve to the same signed session cookie in the end.
-  1. Real login — the Telegram Login Widget (see /auth/telegram/callback below). The session
-     cookie stores only the internal `users.id` PK, deliberately NOT "telegram_user_id" or
-     anything Telegram-specific — a future WhatsApp bot's own login route just needs to resolve
-     its own user identity to the same `users.id` and populate the same session key
-     (`request.session["user_id"]`), no changes needed here. This is the important bit: the
-     product plan includes a WhatsApp bot later, and everything is meant to sit on/talk to this
-     one website, so the session layer can't be hard-wired to "Telegram is the only login".
-  2. Legacy `?uid=` query param (the bot's deep links, e.g. from a "check your matches" message) —
-     kept working unchanged so existing links never break. Not secure on its own (anyone who
-     knows/guesses a uid can view that user's filter/liked listings via a raw link), but the real
-     session cookie above is what protects a page once you've actually logged in.
+  1. Real login — /auth/telegram/callback, which verifies a Telegram Login Widget-shaped HMAC
+     callback and sets the session cookie to the internal `users.id` PK (deliberately NOT
+     "telegram_user_id" or anything Telegram-specific, so a future login provider's own route just
+     needs to resolve its own user identity to the same `users.id` and populate the same session
+     key — `request.session["user_id"]` — no changes needed here).
+     As of 2026-09-02 nothing in the UI links to this route anymore — the header/`need_uid.html`
+     widget embed was removed (real complaint: on iOS Safari's in-app floating browser, Telegram's
+     own oauth.telegram.org handshake behind the widget re-asked for phone verification on nearly
+     every visit instead of staying logged in — a problem in Telegram's redirect flow itself, not
+     in this route's session handling). The route/`_verify_telegram_auth` are kept as-is (untouched,
+     still fully tested) since Google Sign-In is coming next as the real replacement UI for
+     establishing this same session cookie; only the trigger changes. In the gap, /admin/messages
+     (which deliberately requires this real session, not just `?uid=`) has no way to be reached —
+     expected to be short-lived until Google Sign-In lands.
+  2. `?uid=` query param, via a direct `https://t.me/AmirDirotBot` deep link (bot onboarding/filter
+     flows already send these) — the ONLY way in from Telegram now, matching how the reference
+     product (dorin.app) treats "Continue with Telegram": open the bot directly, no OAuth handshake
+     at all. Not secure on its own (anyone who knows/guesses a uid can view that user's
+     filter/liked listings via a raw link), but the real session cookie above is what protects a
+     page once you've actually logged in via #1.
 """
 from __future__ import annotations
 
