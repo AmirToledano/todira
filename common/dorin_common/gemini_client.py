@@ -42,8 +42,9 @@ _SCHEMA = {
         "keywords": {"type": "ARRAY", "items": {"type": "STRING"}},
         "missing_required": {"type": "ARRAY", "items": {"type": "STRING", "enum": ["deal_type", "cities"]}},
         "response_message": {"type": "STRING"},
+        "needs_human_help": {"type": "BOOLEAN"},
     },
-    "required": ["deal_type", "cities", "missing_required", "response_message"],
+    "required": ["deal_type", "cities", "missing_required", "response_message", "needs_human_help"],
 }
 
 
@@ -79,7 +80,11 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
         "ב-missing_required פרט אילו מבין deal_type/cities עדיין לא ידועים.\n"
         "ב-response_message כתוב תגובה טבעית וידידותית בעברית: אם עדיין חסר מידע חובה, שאל שאלה "
         "ממוקדת רק על מה שחסר (אל תשאל שוב על מה שכבר ידוע); אם כל החובה ידוע, כתוב אישור קצר וחם "
-        "שמסכם את מה שהבנת."
+        "שמסכם את מה שהבנת.\n\n"
+        "needs_human_help: החזר true אם ההודעה החדשה עצמה לא מתארת קריטריון חיפוש דירה כלשהו — "
+        "למשל שאלה כללית שלא קשורה לחיפוש, תלונה, בקשה לדבר עם בן אדם/נציג/תמיכה, בלבול, או כל "
+        "דבר אחר שלא נועד לענות על מה שביקשת. אם ההודעה כן מכילה מידע רלוונטי (גם אם חלקי, וגם אם "
+        "יש בה גם שאלה נוספת בצד) — false."
     )
 
     try:
