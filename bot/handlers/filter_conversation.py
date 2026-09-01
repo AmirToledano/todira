@@ -29,7 +29,7 @@ from dorin_common.models import Filter, User
 from dorin_common.schemas import FilterData
 from dorin_common.users import get_or_create_user
 from handlers.apartments import RESULT_LIMIT, find_matching_listings
-from handlers.support import escalate_to_owner, looks_like_help_request
+from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
 from telegram import Update
@@ -385,6 +385,26 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return MENU
 
 
+async def _reply_parse_failure_or_escalate(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, raw: str, awaiting: str, retry_message: str
+) -> int:
+    """Shared tail for every field that failed to parse `raw` as the value it asked for. There's
+    no Gemini call here to ask semantically (unlike onboarding.py) — a genuine typo at a number/
+    date/city prompt is almost always one token, so more than one word is treated as a real
+    message worth forwarding, not a bad value worth just re-prompting for (see
+    handlers/support.py's looks_like_a_sentence docstring)."""
+    if looks_like_a_sentence(raw):
+        await escalate_to_owner(update, context, raw)
+        await update.message.reply_text(
+            "🙋 זה לא נראה כמו הערך שביקשתי, אז ליתר ביטחון העברתי את מה שכתבת לצוות — "
+            "אם זו הייתה שאלה, תקבל/י מענה בהקדם.\n\n" + retry_message
+        )
+    else:
+        await update.message.reply_text(retry_message)
+    context.user_data["awaiting"] = awaiting
+    return AWAIT_TEXT
+
+
 async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     draft = context.user_data.setdefault("draft", _default_draft())
     awaiting = context.user_data.pop("awaiting", None)
@@ -411,9 +431,9 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if awaiting == "city":
         matches = cities.find_matches(raw)
         if not matches:
-            await update.message.reply_text("לא נמצאה עיר תואמת, נסה/י שוב:")
-            context.user_data["awaiting"] = "city"
-            return AWAIT_TEXT
+            return await _reply_parse_failure_or_escalate(
+                update, context, raw, "city", "לא נמצאה עיר תואמת, נסה/י שוב:"
+            )
         chosen = matches[0]
         if chosen not in draft["cities"]:
             draft["cities"].append(chosen)
@@ -429,9 +449,9 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if awaiting in NUMERIC_INT_FIELDS:
         ok, value = _parse_optional_int(raw)
         if not ok:
-            await update.message.reply_text("לא הצלחתי לפרש מספר, נסה/י שוב (או '-'):")
-            context.user_data["awaiting"] = awaiting
-            return AWAIT_TEXT
+            return await _reply_parse_failure_or_escalate(
+                update, context, raw, awaiting, "לא הצלחתי לפרש מספר, נסה/י שוב (או '-'):"
+            )
         draft[awaiting] = value
         await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting])
         return MENU
@@ -439,9 +459,9 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if awaiting in NUMERIC_FLOAT_FIELDS:
         ok, value = _parse_optional_float(raw)
         if not ok:
-            await update.message.reply_text("לא הצלחתי לפרש מספר, נסה/י שוב (או '-'):")
-            context.user_data["awaiting"] = awaiting
-            return AWAIT_TEXT
+            return await _reply_parse_failure_or_escalate(
+                update, context, raw, awaiting, "לא הצלחתי לפרש מספר, נסה/י שוב (או '-'):"
+            )
         draft[awaiting] = value
         await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting])
         return MENU
@@ -449,9 +469,9 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if awaiting in DATE_FIELDS:
         ok, value = _parse_optional_date(raw)
         if not ok:
-            await update.message.reply_text("פורמט תאריך לא תקין, נסה/י YYYY-MM-DD (או '-'):")
-            context.user_data["awaiting"] = awaiting
-            return AWAIT_TEXT
+            return await _reply_parse_failure_or_escalate(
+                update, context, raw, awaiting, "פורמט תאריך לא תקין, נסה/י YYYY-MM-DD (או '-'):"
+            )
         draft[awaiting] = value
         await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting])
         return MENU

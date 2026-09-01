@@ -37,6 +37,15 @@ def looks_like_help_request(text: str) -> bool:
     return bool(_HELP_PATTERN.search(text or ""))
 
 
+def looks_like_a_sentence(text: str) -> bool:
+    """True when text reads like a real message rather than a single failed attempt at the value
+    a menu prompt asked for. Used where there's no keyword-based signal to go on (see
+    filter_conversation.py's numeric/date/city prompts, which don't call Gemini) — a genuine typo
+    at a number/date field is almost always one token ("500rf", "3.5.2"), while an actual question
+    is almost always more than one word."""
+    return len((text or "").split()) >= 2
+
+
 def _save_sync(name: str | None, telegram_user_id: int, message: str) -> int:
     with get_session() as session:
         row = ContactMessage(
