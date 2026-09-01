@@ -241,12 +241,19 @@ class UserListingAction(Base):
 
 
 class ContactMessage(Base):
-    """Backs the website's /contact form (website/main.py). No relationship/FK to User on
-    purpose: most visitors filling this out are anonymous (found the site organically, no
-    ?uid= yet) — telegram_user_id is best-effort, only populated when the form was submitted
-    from a page that already had ?uid= in the URL. Always persisted here regardless of whether
-    the best-effort Telegram notification to the owner succeeds, so no message is ever silently
-    lost to a transient network/API failure."""
+    """Backs two channels that both funnel into this one table: the website's /contact form
+    (website/main.py) and the Telegram bot's free-text fallback (bot/handlers/contact_fallback.py,
+    added 2026-09-01). No relationship/FK to User on purpose: most website visitors filling this
+    out are anonymous (found the site organically, no ?uid= yet) — telegram_user_id is best-effort
+    there, only populated when the form was submitted from a page that already had ?uid= in the
+    URL (the bot fallback always has a real Telegram user, so always sets it). Always persisted
+    here regardless of whether the best-effort Telegram notification to the owner succeeds, so no
+    message is ever silently lost to a transient network/API failure.
+
+    `source` distinguishes the two channels for the admin inbox (website/templates/
+    admin_messages.html) — added instead of trying to infer it from which other fields happen to
+    be set, since both channels can legitimately have a name and a telegram_user_id, making that
+    ambiguous rather than a reliable signal."""
 
     __tablename__ = "contact_messages"
 
@@ -256,6 +263,10 @@ class ContactMessage(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger)
     notified_owner: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # "website" or "telegram_bot" — nullable only because rows written before this column existed
+    # have no value; every new row sets it explicitly (see website/main.py's contact_submit and
+    # bot/handlers/contact_fallback.py's _save_contact_message_sync).
+    source: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
