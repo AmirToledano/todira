@@ -1,0 +1,26 @@
+name: Read logs from the successful 1-city test pod (read-only, no new Job)
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — 2026-09-01/09-02. The second manual
+# test run (todira-scraper-manual-test-1788283055) succeeded (Exit Code 0, Completed, 81s) but the
+# triggering workflow's own log-tail started too early (before the container left
+# ContainerCreating) and captured nothing useful. This just reads the existing, already-finished
+# pod's logs directly — no new Job, no new ZenRows requests, zero additional cost. Delete once read.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  read-logs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Logs from the successful test pod
+        run: |
+          kubectl logs -n todira todira-scraper-manual-test-1788283055-qz8kx --timestamps || echo "(pod/logs gone)"
