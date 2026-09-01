@@ -26,8 +26,11 @@ on:
 
 env:
   # comma-separated city slugs (see scraper/yad2_client.py's CITY_SLUG_TO_ID for the full list of
-  # valid slugs) — edit this before dispatching if a different set of cities is needed.
-  cities: "tel-aviv,ramat-gan,jerusalem,rishon-lezion"
+  # valid slugs) — edit this before dispatching if a different set of cities is needed. Scaled
+  # back to one city (2026-09-02, on request) while chasing the "still 0 matches after the first
+  # backfill" report — no reason to re-spend ZenRows credits on 4 cities per test iteration while
+  # the actual bug (property_type, see matching.py) was still unconfirmed.
+  cities: "jerusalem"
 
 jobs:
   backfill:
