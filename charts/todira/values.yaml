@@ -72,15 +72,20 @@ scraper:
   # only the second city for the repeated-param form) — see PROJECT_STATE.md for the full test
   # output. So there's no way to cut cost-per-city; the only lever is which paid tier to be on.
   #
-  # Owner upgraded to ZenRows' Build plan ($19/mo monthly billing, 45,000 credits/mo) specifically
-  # to restore full coverage. citiesPerRun is now 0 (disabled — every city, every run) since the
-  # new budget comfortably covers it: 42 cities/day × ~30 days ≈ 1,260 requests/month ≈ 31,500
-  # credits — safely under 45,000 with real headroom left for manual/dev use, and every city now
-  # refreshes daily instead of once a week. A second run per day would exceed the monthly budget
-  # (~63,000 credits needed) — daily is the ceiling on this tier. Tune `citiesPerRun` back down (or
-  # `schedule` more/less frequent) if the plan or usage pattern changes.
+  # Owner upgraded to ZenRows' Build plan ($19/mo monthly billing, 45,000 credits/mo) to restore
+  # full coverage — but the Build plan's entire 45,000 credits got burned within hours (see
+  # PROJECT_STATE.md, 2026-09-01/09-02): yad2_client.py's Playwright browser had `proxy` set at
+  # the BROWSER level, so every sub-resource a rendered Yad2 page loaded (every listing photo,
+  # not just the page itself) was a separate billed ZenRows request — confirmed with ZenRows
+  # support, real cost per city was several times the "~1 request ≈ 25 credits" this 42-cities-
+  # daily budget math assumed. Fixed in yad2_client.py (image/media/font resource types now
+  # blocked before they ever leave the browser), but that fix has NOT yet been validated against
+  # real traffic. citiesPerRun set back down to 6 (was 0 = all 42) as a deliberately small,
+  # bounded first real-world test after buying a small top-up — see PROJECT_STATE.md for the
+  # exact plan. Only go back to 0 (all 42 cities/day) once a few real runs at this size confirm
+  # the actual post-fix cost per city, not before.
   schedule: "0 3 * * *" # once daily, 03:00 UTC (low-traffic hour)
-  citiesPerRun: 0
+  citiesPerRun: 6
   # scraper/yad2_client.py's CITY_SLUG_TO_ID must have a real Yad2 ID for every slug listed here,
   # or that city silently scrapes nothing when its turn in the rotation comes up.
   cities: "tel-aviv,ramat-gan,givatayim,jerusalem,haifa,beer-sheva,rishon-lezion,petah-tikva,ashdod,netanya,bnei-brak,holon,ashkelon,rehovot,bat-yam,beit-shemesh,kfar-saba,herzliya,hadera,raanana,nahariya,eilat,modiin,ramat-hasharon,ramla,nazareth,lod,hod-hasharon,kiryat-ata,kiryat-gat,kiryat-motzkin,kiryat-bialik,kiryat-ono,yavne,or-yehuda,tzfat,afula,tiberias,dimona,mevaseret-zion,har-gilo,karmiel"
