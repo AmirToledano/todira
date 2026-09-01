@@ -109,3 +109,59 @@ def test_every_city_eventually_appears_across_a_full_rotation_cycle(monkeypatch)
         _freeze_today(monkeypatch, base + datetime.timedelta(days=offset))
         covered.update(_select_cities_for_run(CITIES, batch_size))
     assert covered == set(CITIES)
+
+
+# --- _mark_delisted: regression test for a real production bug (2026-09-02) ---
+#
+# _mark_delisted used to run globally across every city, not just the ones scraped this run.
+# Once SCRAPE_CITIES_PER_RUN started rotating a 1-city subset per run, that meant EVERY run
+# delisted every listing from every OTHER city (their external_ids are never in a city-scoped
+# run's seen_external_ids) - found live via a production query showing literally every
+# non-delisted listing in the whole table belonged to the one city just scraped. No live DB is
+# available in CI (see this suite's other tests / module docstrings for the same constraint), so
+# this doesn't execute against a real database - it inspects the *compiled SQL* of both UPDATE
+# statements _mark_delisted builds, via a fake session that just records what it's asked to
+# execute, and asserts each one's `city IN (...)` parameter is exactly the scraped-cities set -
+# never empty, never "everything".
+
+_mark_delisted = scraper_main._mark_delisted
+
+
+class _FakeUpdateResult:
+    def fetchall(self):
+        return []
+
+
+class _RecordingSession:
+    """Records every statement passed to execute() without touching a real database - just
+    enough of SQLAlchemy's Session interface for _mark_delisted to run against."""
+
+    def __init__(self):
+        self.executed = []
+
+    def execute(self, stmt):
+        self.executed.append(stmt)
+        return _FakeUpdateResult()
+
+    def commit(self):
+        pass
+
+
+def test_mark_delisted_scopes_both_updates_to_the_scraped_cities_only():
+    session = _RecordingSession()
+    _mark_delisted(session, {"ext-1"}, {"קריית מוצקין"})
+
+    assert len(session.executed) == 2  # delist pass + un-delist pass
+    for stmt in session.executed:
+        params = stmt.compile().params
+        assert params["city_1"] == ["קריית מוצקין"]
+
+
+def test_mark_delisted_never_scopes_to_a_different_city_than_asked():
+    session = _RecordingSession()
+    _mark_delisted(session, {"ext-1"}, {"תל אביב יפו", "רמת גן"})
+
+    for stmt in session.executed:
+        params = stmt.compile().params
+        assert set(params["city_1"]) == {"תל אביב יפו", "רמת גן"}
+        assert "קריית מוצקין" not in params["city_1"]
