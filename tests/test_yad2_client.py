@@ -18,7 +18,12 @@ if "patchright" not in sys.modules:
     sys.modules["patchright.sync_api"] = sync_api_stub
 
 from dorin_common.cities import CITIES
-from yad2_client import CITY_SLUG_TO_HEBREW_NAME, CITY_SLUG_TO_ID
+from yad2_client import (
+    _MAX_PROXIED_REQUESTS_PER_CITY,
+    CITY_SLUG_TO_HEBREW_NAME,
+    CITY_SLUG_TO_ID,
+    _should_allow_proxied_request,
+)
 
 
 def test_every_slug_has_a_hebrew_name():
@@ -50,3 +55,27 @@ def test_original_three_ids_unchanged():
     assert CITY_SLUG_TO_ID["tel-aviv"] == "5000"
     assert CITY_SLUG_TO_ID["ramat-gan"] == "8600"
     assert CITY_SLUG_TO_ID["givatayim"] == "6300"
+
+
+def test_image_media_font_always_blocked_regardless_of_count():
+    assert _should_allow_proxied_request("image", 0) is False
+    assert _should_allow_proxied_request("media", 0) is False
+    assert _should_allow_proxied_request("font", 0) is False
+
+
+def test_other_resource_types_allowed_until_the_cap():
+    for resource_type in ("document", "script", "stylesheet", "xhr", "fetch", "other"):
+        assert _should_allow_proxied_request(resource_type, 0) is True
+        assert _should_allow_proxied_request(resource_type, _MAX_PROXIED_REQUESTS_PER_CITY - 1) is True
+
+
+def test_cap_is_a_hard_ceiling_not_just_a_default():
+    assert _should_allow_proxied_request("script", _MAX_PROXIED_REQUESTS_PER_CITY) is False
+    assert _should_allow_proxied_request("xhr", _MAX_PROXIED_REQUESTS_PER_CITY + 1000) is False
+
+
+def test_worst_case_credits_per_city_is_bounded():
+    # The whole point: a deterministic ceiling regardless of what a future Yad2 page redesign
+    # throws at it, not a hope that today's known-safe resource types stay safe forever.
+    max_billed_requests_per_city = _MAX_PROXIED_REQUESTS_PER_CITY
+    assert max_billed_requests_per_city == 30
