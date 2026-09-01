@@ -10,19 +10,22 @@ name: Diagnose why Kiryat Motzkin listings don't match an existing filter
 # instead of our bundled "קריית מוצקין" (2 yuds), matching.py's exact-string city check
 # (`listing_row.city not in filter_row.cities`) would silently fail forever, since nothing except
 # this project's own bundled CITIES list uses the 2-yud spelling as a comparison key. Only reads
-# data (no writes) — runs one-off read-only pods (postgres:16-alpine) wired to the same
-# `todira-postgres-secret` the scraper itself uses, to run a couple of SELECT-only queries
-# directly against production. Delete this workflow once resolved.
+# data (no writes) — runs one read-only pod (postgres:16-alpine) wired to the same
+# `todira-postgres-secret` the scraper itself uses, to run two SELECT-only queries directly
+# against production, in one pod (not two, to keep this to a single dispatch). Delete this
+# workflow once resolved.
 #
-# Uses a plain Pod manifest applied via `kubectl apply -f -` (not `kubectl run --overrides=...`)
-# specifically because a first attempt (run 33558802090) using `--overrides` + `envFrom:
-# secretRef` failed: `envFrom` imports the secret's key verbatim as the env var name
-# ("database-url", lowercase-with-hyphens — not a name `$DATABASE_URL` in the query would even
-# reference), so psql fell back to a local Unix socket that doesn't exist in the container and
-# errored immediately. This version explicitly maps the secret's `database-url` key to an env var
-# actually named `DATABASE_URL` via `secretKeyRef` (mirroring exactly how the scraper Deployment
-# itself wires the same secret), and passes it to psql explicitly as `psql "$DATABASE_URL" -c
-# "..."` inside a `sh -c` command instead of relying on psql's implicit-connection defaults.
+# History: attempt 1 (run 33558802090, `kubectl run --overrides=<JSON>` + `envFrom: secretRef`)
+# failed immediately — `envFrom` imports the secret's key verbatim as the env var name
+# ("database-url", lowercase-with-hyphens, not a name a query could reference), so psql fell back
+# to a nonexistent local Unix socket. Attempt 2 (run 33559461055, a plain Pod manifest +
+# `secretKeyRef` mapping to an env var literally named `DATABASE_URL`) hit the EXACT SAME "socket
+# ... failed" error again despite that fix — meaning `$DATABASE_URL` was still empty at psql-call
+# time for a reason attempt 2's own diagnosis didn't explain. This version prints
+# `${#DATABASE_URL}` (the string's LENGTH ONLY, never the value — avoids leaking any credential
+# fragment into CI logs) immediately before the real queries, so whichever of "secret key is
+# actually named something else" / "RBAC silently returns an empty value" / something else is
+# happening, the next run's own output settles it definitively instead of guessing a third time.
 on:
   workflow_dispatch: {}
 
@@ -39,18 +42,18 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
 
-      - name: Actual city spelling(s) stored for Kiryat Motzkin listings
+      - name: DATABASE_URL length check + city-spelling queries (one pod, one dispatch)
         run: |
-          kubectl delete pod diag-city-spelling -n todira --ignore-not-found --wait=true
+          kubectl delete pod diag-city-db -n todira --ignore-not-found --wait=true
           cat <<'PODYAML' | kubectl apply -n todira -f -
           apiVersion: v1
           kind: Pod
           metadata:
-            name: diag-city-spelling
+            name: diag-city-db
           spec:
             restartPolicy: Never
             containers:
-              - name: diag-city-spelling
+              - name: diag-city-db
                 image: postgres:16-alpine
                 env:
                   - name: DATABASE_URL
@@ -58,45 +61,16 @@ jobs:
                       secretKeyRef:
                         name: todira-postgres-secret
                         key: database-url
-                command: ["sh", "-c", "psql \"$DATABASE_URL\" -c \"SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '%מוצקין%' ORDER BY scraped_at DESC LIMIT 20;\""]
+                command: ["sh", "-c", "echo DATABASE_URL_LENGTH=${#DATABASE_URL}; psql \"$DATABASE_URL\" -c \"SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '%מוצקין%' ORDER BY scraped_at DESC LIMIT 20;\" -c \"SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;\""]
           PODYAML
           for i in $(seq 1 30); do
-            PHASE=$(kubectl get pod diag-city-spelling -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            PHASE=$(kubectl get pod diag-city-db -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
             echo "poll $i: phase=$PHASE"
             if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
             sleep 2
           done
           echo "--- query output ---"
-          kubectl logs -n todira diag-city-spelling || true
-          kubectl delete pod diag-city-spelling -n todira --ignore-not-found
-
-      - name: Distinct city spellings across ALL listings (sanity check for other silent mismatches)
-        run: |
-          kubectl delete pod diag-all-cities -n todira --ignore-not-found --wait=true
-          cat <<'PODYAML' | kubectl apply -n todira -f -
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: diag-all-cities
-          spec:
-            restartPolicy: Never
-            containers:
-              - name: diag-all-cities
-                image: postgres:16-alpine
-                env:
-                  - name: DATABASE_URL
-                    valueFrom:
-                      secretKeyRef:
-                        name: todira-postgres-secret
-                        key: database-url
-                command: ["sh", "-c", "psql \"$DATABASE_URL\" -c \"SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;\""]
-          PODYAML
-          for i in $(seq 1 30); do
-            PHASE=$(kubectl get pod diag-all-cities -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-            echo "poll $i: phase=$PHASE"
-            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
-            sleep 2
-          done
-          echo "--- query output ---"
-          kubectl logs -n todira diag-all-cities || true
-          kubectl delete pod diag-all-cities -n todira --ignore-not-found
+          kubectl logs -n todira diag-city-db || true
+          echo "--- pod describe (in case it never even started) ---"
+          kubectl describe pod diag-city-db -n todira || true
+          kubectl delete pod diag-city-db -n todira --ignore-not-found
