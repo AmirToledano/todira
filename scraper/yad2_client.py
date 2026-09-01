@@ -175,6 +175,31 @@ _ZENROWS_ERROR_CODE_RE = re.compile(r'"code":"(?P<code>[A-Z0-9]+)"')
 _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 
 
+# Hard ceiling on proxied requests per city, regardless of resource type — see
+# `_should_allow_proxied_request`'s docstring for why this exists alongside (not instead of) the
+# image/media/font block below. Deliberately conservative: real card-parsing only ever needed a
+# handful of requests in testing (document + the app's own JS/CSS bundles); raise this only if a
+# real run's logs show it getting hit AND still parsing 0 cards — that would mean something
+# rendering-critical is being cut off, not just third-party noise.
+_MAX_PROXIED_REQUESTS_PER_CITY = 30
+
+
+def _should_allow_proxied_request(resource_type: str, requests_made_so_far: int) -> bool:
+    """Pure decision, unit-testable without a real browser — every request through ZenRows' proxy
+    is billed individually regardless of type or size (confirmed with ZenRows support 2026-09-02,
+    after an incident where blocked image/media/font types alone weren't the full story). This is
+    a deterministic worst-case ceiling on cost per city, not a guess about which resource types
+    happen to be safe today — it protects against a FUTURE Yad2 page redesign adding new ad/
+    tracking calls just as well as it protects against anything already known, because it doesn't
+    care what the extra requests are, only how many there've been.
+
+    image/media/font are always blocked outright regardless of the cap — pure visual polish,
+    `_parse_cards` only ever reads text out of the HTML, never those bytes."""
+    if resource_type in ("image", "media", "font"):
+        return False
+    return requests_made_so_far < _MAX_PROXIED_REQUESTS_PER_CITY
+
+
 class Yad2FetchError(RuntimeError):
     """The page never loaded through the proxy, or ZenRows itself errored — see the wrapped
     exception. A single failed city shouldn't be common; if it becomes so, check ZenRows'
@@ -278,16 +303,23 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
             # diagnostic run alone produced 1,172+ billed requests to img.yad2.co.il: a real Yad2
             # search page renders dozens of listing-card photos, and each one was a full ~25-credit
             # proxy request despite us never using the image bytes — _parse_cards only reads text
-            # out of the HTML). Blocking image/media/font before they ever leave the browser cuts
-            # the real per-city cost by whatever multiple those sub-resources represented, with zero
-            # effect on what gets parsed (script/stylesheet/XHR stay unblocked — script in particular
-            # is why js_render=true is used at all, for the client-side-rendered card markup).
-            page.route(
-                "**/*",
-                lambda route: route.abort()
-                if route.request.resource_type in ("image", "media", "font")
-                else route.continue_(),
-            )
+            # out of the HTML). See `_should_allow_proxied_request`'s docstring for why this is a
+            # hard request-count ceiling, not just a resource-type blocklist — script/stylesheet/
+            # XHR stay allowed (script in particular is why js_render=true is used at all, for the
+            # client-side-rendered card markup) but only up to that cap per city.
+            proxied_request_count = 0
+
+            def _route(route):
+                nonlocal proxied_request_count
+                if _should_allow_proxied_request(
+                    route.request.resource_type, proxied_request_count
+                ):
+                    proxied_request_count += 1
+                    route.continue_()
+                else:
+                    route.abort()
+
+            page.route("**/*", _route)
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
             except PlaywrightTimeoutError as exc:
