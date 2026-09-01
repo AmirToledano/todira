@@ -1,9 +1,12 @@
 """Unit tests for dorin_common/cities.py's find_matches() - fuzzy city-name suggestion used in the
-/filter conversation. Pure, dependency-free string matching, but with real documented bug
-history (the "ב"ש" alias was found missing only via manual testing against the live bot) - worth
-locking down so a future edit to the alias/quote-stripping logic doesn't silently regress it.
+/filter conversation - and canonicalize_city() - the scraper-side spelling fixup applied to every
+listing's raw city text. Pure, dependency-free string matching, but with real documented bug
+history (the "ב"ש" alias was found missing only via manual testing against the live bot; Yad2's
+own "קרית מוצקין" spelling vs. this list's "קריית מוצקין" was found missing via a live DB query
+2026-09-02) - worth locking down so a future edit to the alias/spelling-normalization logic
+doesn't silently regress either.
 """
-from dorin_common.cities import find_matches
+from dorin_common.cities import CITIES, canonicalize_city, find_matches
 
 
 def test_empty_query_returns_no_matches():
@@ -75,3 +78,36 @@ def test_defective_vav_spelling_matches_full_spelling_city():
 def test_full_canonical_spelling_still_matches_itself():
     # normalization must not break the already-working exact-spelling case
     assert "קריית אתא" in find_matches("קריית אתא")
+
+
+def test_canonicalize_city_fixes_confirmed_yad2_spelling():
+    # confirmed live 2026-09-02 via a real production DB query: every one of 81 real Kiryat
+    # Motzkin listings used Yad2's own "קרית מוצקין" (1 yud) - this is the exact case
+    # canonicalize_city exists to fix, not a hypothetical.
+    assert canonicalize_city("קרית מוצקין") == "קריית מוצקין"
+
+
+def test_canonicalize_city_leaves_already_canonical_spelling_unchanged():
+    assert canonicalize_city("קריית מוצקין") == "קריית מוצקין"
+
+
+def test_canonicalize_city_leaves_unrecognized_city_unchanged():
+    # a real city not in the bundled list must never be mapped to something else
+    assert canonicalize_city("כפר יונה") == "כפר יונה"
+
+
+def test_canonicalize_city_passes_through_none():
+    assert canonicalize_city(None) is None
+
+
+def test_canonicalize_city_passes_through_empty_string():
+    assert canonicalize_city("") == ""
+
+
+def test_canonicalize_city_never_returns_a_name_outside_its_input_or_the_bundled_list():
+    # every bundled city, defective-spelling-typo'd, must resolve back to exactly that same
+    # bundled city - never to some other entry
+    for city in CITIES:
+        typo = city.replace("יי", "י").replace("וו", "ו")
+        if typo != city:
+            assert canonicalize_city(typo) == city
