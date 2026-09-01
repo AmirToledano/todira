@@ -1762,3 +1762,29 @@ that ever set it — until step 2 ships, there's no way to reach it. Expected to
 Step 2 (not started, next up): add real Google Sign-In as the persistent-session login, replacing
 the old widget's role — requires the user to create a Google Cloud OAuth Client (client_id/secret)
 first.
+
+## Update 2026-09-02, later still: the same "unpopulated field = hard zero" bug, found in 8 more places
+Before spending the one approved Jerusalem backfill run, audited every field `matching.py` checks
+against what `scraper/normalize.py`/`yad2_client.py` actually populate (not just re-running and
+hoping) — property_type turned out not to be the only field the scraper never fills in.
+`yad2_client.py`'s `_parse_cards` only reads what's on Yad2's *search-results* cards (price, rooms,
+floor, size, street, neighborhood, city) — amenity data (parking/elevator/balcony/pets/
+renovated/roommate-friendly), photos, safe-room type, and furniture only exist on a listing's own
+*detail* page, a separate, costlier scrape not built yet. So all of `has_parking`, `has_elevator`,
+`has_balcony`, `pets_allowed`, `is_renovated`, `is_roommate_friendly`, `safe_room_type`,
+`furniture`, and `image_urls` are `None`/`[]` for every real listing — and `matching.py`'s
+mandatory-criteria checks were still treating unknown as a hard failure ("conservative", by
+original design), meaning any filter with even one of `require_parking`/`require_elevator`/
+`require_balcony`/`require_pets_allowed`/`require_renovated`/`require_roommate_friendly`/
+`require_has_photos` turned on, or a non-"any" `safe_room_pref`/`furniture_pref`, matched **zero**
+listings — the exact same symptom as the property_type bug, just gated behind different filter
+toggles (all off/"any" by default, so it wasn't hit by every filter, but very plausibly was hit by
+this user's own). Fixed in `common/dorin_common/matching.py`: all of these now give an unknown
+listing value the benefit of the doubt (same treatment property_type/is_broker_listing already
+had), except `require_has_photos` — `image_urls` is always `[]`, indistinguishable from "genuinely
+no photos", so that toggle is left completely inert (never rejects) until real photo scraping
+exists. 8 tests updated/added in `tests/test_matching.py`, full suite (221 tests) still green.
+Traded strict correctness (don't claim a match on an unconfirmed amenity) for showing listings at
+all — the same call made for property_type, now applied consistently. Revisit once a per-listing
+detail-page scrape (parking/elevator/balcony/pets/renovated/roommates/photos/safe room/furniture,
+and property_type's own real value) actually exists; a real, sizeable follow-up, not started.
