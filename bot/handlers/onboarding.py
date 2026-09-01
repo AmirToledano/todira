@@ -134,6 +134,20 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if key in result:
             state[key] = result[key]
 
+    # The keyword pre-check above only catches obvious explicit phrasings ("support"/"נציג") — this
+    # catches everything else, since Gemini already reads the full message semantically as part of
+    # the same call above (zero extra cost/latency, unlike adding a dedicated classification call).
+    # Skips the normal response_message (which would just re-ask for whatever's still missing —
+    # wrong reply to someone who wasn't answering that question).
+    if result.get("needs_human_help"):
+        await escalate_to_owner(update, context, text)
+        await update.message.reply_text(
+            "🙋 קיבלתי, זה נשמע כמו משהו שכדאי שבן אדם אמיתי יענה עליו — העברתי את ההודעה שלך "
+            "לצוות ותקבל/י מענה בהקדם.\n\n"
+            "אם תרצה/י להמשיך לחפש דירה בינתיים, אפשר לכתוב לי עוד פרטים 🙂"
+        )
+        return AWAIT_FREETEXT
+
     await update.message.reply_text(result.get("response_message") or "רשמתי, תודה!")
 
     if result.get("missing_required") or not state["deal_type"] or not state["cities"]:

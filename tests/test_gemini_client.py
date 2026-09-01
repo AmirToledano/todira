@@ -97,6 +97,23 @@ def test_valid_deal_type_passes_through_unchanged(monkeypatch):
     assert result["deal_type"] == "sublet"
 
 
+def test_needs_human_help_passes_through(monkeypatch):
+    payload = json.dumps(
+        {
+            "deal_type": None,
+            "cities": [],
+            "missing_required": ["deal_type", "cities"],
+            "response_message": "מעביר את זה לצוות",
+            "needs_human_help": True,
+        }
+    )
+    _install_fake_client(monkeypatch, response_text=payload)
+    result = gemini_client.parse_onboarding_message(
+        "אני רוצה לדבר עם מישהו על תלונה שיש לי", {}, ["תל אביב"]
+    )
+    assert result["needs_human_help"] is True
+
+
 def test_api_exception_fails_soft_returns_none(monkeypatch):
     _install_fake_client(monkeypatch, raise_exc=RuntimeError("network exploded"))
     result = gemini_client.parse_onboarding_message("משהו", {}, ["תל אביב"])

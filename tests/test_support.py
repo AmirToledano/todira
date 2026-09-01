@@ -10,7 +10,7 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
-from handlers.support import looks_like_help_request
+from handlers.support import looks_like_a_sentence, looks_like_help_request
 
 
 def test_recognizes_hebrew_help_phrases():
@@ -33,3 +33,15 @@ def test_does_not_flag_ordinary_apartment_criteria():
 def test_empty_text_is_not_a_help_request():
     assert not looks_like_help_request("")
     assert not looks_like_help_request(None)
+
+
+def test_single_token_typo_is_not_a_sentence():
+    assert not looks_like_a_sentence("500rf")
+    assert not looks_like_a_sentence("3.5.2")
+    assert not looks_like_a_sentence("")
+    assert not looks_like_a_sentence(None)
+
+
+def test_multi_word_text_is_a_sentence():
+    assert looks_like_a_sentence("כמה זמן זה לוקח בדרך כלל")
+    assert looks_like_a_sentence("why is this taking so long")
