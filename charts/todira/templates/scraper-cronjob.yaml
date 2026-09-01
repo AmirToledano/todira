@@ -9,7 +9,14 @@ spec:
   concurrencyPolicy: Forbid # never overlap scrape runs
   jobTemplate:
     spec:
-      backoffLimit: 2
+      # 0, deliberately — see values.yaml's citiesPerRun comment for the incident this guards
+      # against. With backoffLimit>0, a pod crash (OOM, a transient DB hiccup, anything outside
+      # the per-city try/except in main.py's run_once — a single failed CITY is already caught
+      # and skipped there, this is about the whole pod dying) makes Kubernetes silently re-run
+      # the ENTIRE city batch from scratch, re-billing every ZenRows request already paid for in
+      # the failed attempt. A real run either succeeds outright or fails visibly (kubectl get jobs
+      # shows Failed) — no silent, unbounded repeated spend.
+      backoffLimit: 0
       template:
         metadata:
           labels:
