@@ -74,11 +74,10 @@ jobs:
                     esac
                     CONN="postgresql://${DATABASE_URL#*://}"
                     psql "$CONN" \
-                      -c "SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '%מוצקין%' ORDER BY scraped_at DESC LIMIT 20;" \
-                      -c "SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;" \
-                      -c "SELECT count(*) AS total_non_delisted FROM listings WHERE is_delisted = false;" \
-                      -c "SELECT rn, city, price, rooms, scraped_at FROM (SELECT row_number() OVER (ORDER BY scraped_at DESC) AS rn, city, price, rooms, scraped_at FROM listings WHERE is_delisted = false) t WHERE city LIKE '%מוצקין%' ORDER BY rn;" \
-                      -c "SELECT deal_type, cities, price_min, price_max, rooms_min, rooms_max, require_price, flexible_match, property_types, safe_room_pref, furniture_pref, no_brokers FROM filters WHERE 'קריית מוצקין' = ANY(cities);"
+                      -c "SELECT city, count(*) FROM listings WHERE is_delisted = false GROUP BY city ORDER BY count(*) DESC;" \
+                      -c "SELECT deal_type, cities, price_min, price_max, rooms_min, rooms_max, require_price, flexible_match, require_parking, require_elevator, require_balcony, require_pets_allowed, require_renovated, require_has_photos, require_roommate_friendly, safe_room_pref, furniture_pref, no_brokers FROM filters WHERE 'קריית מוצקין' = ANY(cities);" \
+                      -c "WITH top200 AS (SELECT * FROM listings WHERE is_delisted = false ORDER BY scraped_at DESC LIMIT 200) SELECT city, count(*) FROM top200 GROUP BY city ORDER BY count(*) DESC;" \
+                      -c "WITH top200 AS (SELECT * FROM listings WHERE is_delisted = false ORDER BY scraped_at DESC LIMIT 200) SELECT city, deal_type, price, rooms, has_parking, has_elevator, has_balcony, pets_allowed, is_renovated, image_urls, is_roommate_friendly FROM top200 WHERE deal_type = 'rent' AND city = ANY(ARRAY['רמת גן','ראשון לציון','קריית מוצקין','תל אביב יפו','ירושלים','הוד השרון']) AND (price IS NULL OR price BETWEEN 1000 AND 8700) AND (rooms IS NULL OR rooms BETWEEN 0.5 AND 5.0) ORDER BY scraped_at DESC LIMIT 20;"
           PODYAML
           for i in $(seq 1 30); do
             PHASE=$(kubectl get pod diag-city-db -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
