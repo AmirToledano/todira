@@ -156,6 +156,8 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
     not just the ones that already resolve a full user for their own content.
     """
     lang = get_lang(request)
+    current_user = _current_user_summary(request)
+    is_owner = current_user is not None and _is_owner_id(current_user["telegram_user_id"])
     response = templates.TemplateResponse(
         request,
         template_name,
@@ -166,7 +168,8 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "t": make_translator(lang),
             "supported_langs": SUPPORTED_LANGS,
             "lang_labels": LANG_LABELS,
-            "current_user": _current_user_summary(request),
+            "current_user": current_user,
+            "is_owner": is_owner,
         },
         status_code=status_code,
     )
@@ -300,6 +303,7 @@ async def contact_submit(
                 email=email.strip() or None,
                 message=message,
                 telegram_user_id=telegram_user_id,
+                source="website",
             )
             session.add(row)
             session.commit()
@@ -377,6 +381,37 @@ def liked(request: Request, uid: int | None = None):
     return _render(
         request, "liked.html", {"listings": listings, "uid": user.telegram_user_id, "user": user}
     )
+
+
+def _is_owner_id(telegram_user_id: int | None) -> bool:
+    """Gate for /admin/messages — deliberately keyed off the SAME OWNER_TELEGRAM_USER_ID secret
+    that both the /contact form and the bot's contact-fallback handler already forward to, rather
+    than a separate admin token/password: "who receives contact notifications" and "who can view
+    the inbox on the website" should never be able to drift apart into two different people.
+    String comparison (not int()) since OWNER_TELEGRAM_USER_ID is a raw secret string that could
+    in principle contain non-numeric noise — this way a malformed secret just never matches
+    instead of throwing."""
+    return bool(OWNER_TELEGRAM_USER_ID) and str(telegram_user_id) == str(OWNER_TELEGRAM_USER_ID)
+
+
+@app.get("/admin/messages")
+def admin_messages(request: Request):
+    """Owner-only inbox for every message from BOTH contact channels — the website's /contact
+    form and the bot's free-text fallback (bot/handlers/contact_fallback.py) — since both write
+    to the same contact_messages table. Requires the real signed session (Telegram Login), not
+    just ?uid=, so a guessed/leaked uid link can't reach this. Renders 404 (not 403) for anyone
+    else, including a logged-in non-owner, so the route's existence isn't revealed either."""
+    session_user_id = request.session.get("user_id")
+    with get_session() as session:
+        user = session.get(User, session_user_id) if session_user_id is not None else None
+        if user is None or not _is_owner_id(user.telegram_user_id):
+            return _render(request, "404.html", {}, status_code=404)
+
+        messages = session.scalars(
+            select(ContactMessage).order_by(ContactMessage.created_at.desc()).limit(200)
+        ).all()
+
+    return _render(request, "admin_messages.html", {"messages": messages})
 
 
 @app.get("/filter")

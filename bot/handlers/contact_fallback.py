@@ -34,7 +34,12 @@ OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
 def _save_contact_message_sync(name: str | None, telegram_user_id: int, message: str) -> int:
     with get_session() as session:
-        row = ContactMessage(name=name, message=message, telegram_user_id=telegram_user_id)
+        row = ContactMessage(
+            name=name,
+            message=message,
+            telegram_user_id=telegram_user_id,
+            source="telegram_bot",
+        )
         session.add(row)
         session.commit()
         return row.id
