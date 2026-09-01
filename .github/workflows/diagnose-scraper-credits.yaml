@@ -1,0 +1,52 @@
+name: Diagnose scraper credit burn + suspend CronJob
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — added 2026-09-01 to find out why the
+# ZenRows Build plan (45,000 credits/mo) was fully exhausted within ~8 hours of activating, when
+# the expected daily-all-cities usage was calculated at ~1,050 credits/run, ~31,500/month. Reads
+# the LIVE CronJob spec (not just "the Helm apply succeeded" — this project has hit cases before
+# where that wasn't the same thing, see PROJECT_STATE.md's RollingUpdate/namespace sagas) and the
+# actual Job run history, then suspends the CronJob as a safety measure while the real cause is
+# investigated — delete this workflow once resolved.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Live CronJob spec (schedule, env, image)
+        run: |
+          echo "--- full CronJob spec ---"
+          kubectl get cronjob todira-scraper -n todira -o yaml
+          echo "--- schedule + suspend fields only ---"
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.schedule} suspend={.spec.suspend}{"\n"}'
+
+      - name: Job run history (last 24h)
+        run: |
+          echo "--- all scraper Jobs, oldest first ---"
+          kubectl get jobs -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o custom-columns='NAME:.metadata.name,CREATED:.metadata.creationTimestamp,COMPLETIONS:.status.succeeded,START:.status.startTime,COMPLETE:.status.completionTime'
+          echo "--- count of scraper Jobs created ---"
+          kubectl get jobs -n todira -l app=todira-scraper -o json | jq '.items | length'
+
+      - name: Recent scraper pod logs (last completed job)
+        run: |
+          kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o custom-columns='NAME:.metadata.name,CREATED:.metadata.creationTimestamp,PHASE:.status.phase' | tail -20
+          echo "--- logs from the most recently created scraper pod ---"
+          LATEST_POD=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+          echo "pod=$LATEST_POD"
+          kubectl logs -n todira "$LATEST_POD" --tail=100 || true
+
+      - name: SUSPEND the CronJob (safety measure while investigating)
+        run: |
+          kubectl patch cronjob todira-scraper -n todira -p '{"spec":{"suspend":true}}'
+          echo "--- confirming suspend took effect ---"
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}{"\n"}'
