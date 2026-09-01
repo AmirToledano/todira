@@ -596,15 +596,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "ערים", "en": "Cities", "ru": "Города", "fr": "Villes", "ar": "المدن",
     },
     "filter.cities_placeholder": {
-        "he": "תל אביב, רמת גן, גבעתיים",
-        "en": "Tel Aviv, Ramat Gan, Givatayim",
-        "ru": "Тель-Авив, Рамат-Ган, Гиватаим",
-        "fr": "Tel-Aviv, Ramat Gan, Givatayim",
-        "ar": "تل أبيب، رمات جان، جفعاتايم",
+        "he": "חפש/י עיר...", "en": "Search for a city...", "ru": "Поиск города...",
+        "fr": "Rechercher une ville...", "ar": "ابحث عن مدينة...",
     },
     "filter.cities_hint": {
-        "he": "מופרדות בפסיקים", "en": "Comma-separated", "ru": "Через запятую",
-        "fr": "Séparées par des virgules", "ar": "مفصولة بفواصل",
+        "he": "לא מסומן כלום = כל הערים",
+        "en": "Nothing checked = all cities",
+        "ru": "Ничего не выбрано = все города",
+        "fr": "Rien de coché = toutes les villes",
+        "ar": "لا شيء محدد = كل المدن",
     },
     "filter.price_min_label": {
         "he": "מחיר מינימלי", "en": "Minimum price", "ru": "Минимальная цена",

@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 
 import httpx
+from dorin_common.cities import CITIES
 from dorin_common.db import get_session
 from dorin_common.matching import evaluate
 from dorin_common.models import ContactMessage, Filter, Listing, User, UserListingAction
@@ -431,6 +432,7 @@ def filter_view(request: Request, uid: int | None = None):
                 "f": filter_row,
                 "uid": user.telegram_user_id,
                 "user": user,
+                "cities_list": CITIES,
                 "property_type_labels": PROPERTY_TYPE_LABELS.get(lang, PROPERTY_TYPE_LABELS[DEFAULT_LANG]),
                 "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
                 "furniture_labels": FURNITURE_LABELS.get(lang, FURNITURE_LABELS[DEFAULT_LANG]),
@@ -441,7 +443,7 @@ def filter_view(request: Request, uid: int | None = None):
 @app.post("/filter")
 def filter_update(
     uid: int = Form(...),
-    cities: str = Form(""),
+    cities: list[str] = Form([]),
     price_min: str = Form(""),
     price_max: str = Form(""),
     rooms_min: str = Form(""),
@@ -470,7 +472,7 @@ def filter_update(
             return RedirectResponse(f"/filter?uid={uid}", status_code=303)
 
         f: Filter = user.filter
-        f.cities = [c.strip() for c in cities.split(",") if c.strip()]
+        f.cities = [c for c in cities if c in CITIES]
         f.price_min = int(price_min) if price_min.strip() else None
         f.price_max = int(price_max) if price_max.strip() else None
         f.rooms_min = float(rooms_min) if rooms_min.strip() else None
