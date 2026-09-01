@@ -15,10 +15,26 @@
     <input type="hidden" name="uid" value="{{ uid }}">
 
     <div class="field">
-      <label for="f-cities"><span class="field-icon" aria-hidden="true">📍</span> {{ t('filter.cities_label') }}</label>
-      <input id="f-cities" type="text" name="cities" value="{{ f.cities|join(', ') }}" placeholder="{{ t('filter.cities_placeholder') }}">
+      <label for="f-cities-search"><span class="field-icon" aria-hidden="true">📍</span> {{ t('filter.cities_label') }}</label>
+      <input id="f-cities-search" type="text" placeholder="{{ t('filter.cities_placeholder') }}" oninput="filterCityChips(this.value)">
+      <div class="checkbox-grid checkbox-grid-scroll" id="f-cities-grid">
+        {% for city in cities_list %}
+        <label class="check-chip" data-city-name="{{ city }}">
+          <input type="checkbox" name="cities" value="{{ city }}" {{ 'checked' if city in f.cities }}>
+          {{ city }}
+        </label>
+        {% endfor %}
+      </div>
       <div class="field-hint">{{ t('filter.cities_hint') }}</div>
     </div>
+    <script>
+      function filterCityChips(query) {
+        var q = query.trim();
+        document.querySelectorAll('#f-cities-grid .check-chip').forEach(function (chip) {
+          chip.hidden = q.length > 0 && chip.dataset.cityName.indexOf(q) === -1;
+        });
+      }
+    </script>
     <div class="field-row">
       <div class="field">
         <label for="f-price-min"><span class="field-icon" aria-hidden="true">💰</span> {{ t('filter.price_min_label') }}</label>
