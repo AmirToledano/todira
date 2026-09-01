@@ -7,6 +7,7 @@
     <span class="price-badge">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</span>
   </div>
   <div class="listing-body">
+    <div class="listing-price">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</div>
     <div class="listing-loc">
       {{ l.city or t('card.no_city') }}{% if l.neighborhood %}<span class="muted">, {{ l.neighborhood }}</span>{% endif %}
     </div>
