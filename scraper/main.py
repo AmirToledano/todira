@@ -17,7 +17,7 @@ from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
 from normalize import normalize
 from notifier import run_notifications
-from yad2_client import Yad2FetchError, fetch_search_results
+from yad2_client import CITY_SLUG_TO_HEBREW_NAME, Yad2FetchError, fetch_search_results
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("scraper.main")
@@ -93,21 +93,36 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
     return new_ids, price_drop_events
 
 
-def _mark_delisted(session, seen_external_ids: set[str]) -> int:
+def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
     """Mark previously-active listings that weren't seen in this (complete) run as delisted, and
-    un-delist any that reappeared. Scoped globally across ALL scraped cities in one pass, rather
-    than per-city, because `listings.city` comes from Yad2's own (UNVERIFIED — see
-    scraper/YAD2_NOTES.md) field shape and isn't guaranteed to match the city slug used in the
-    search query; scoping per-city on a possibly-mismatched string risked wrongly delisting an
-    entire city's worth of listings. Only called when every configured city was scraped
-    successfully this run (see run_once) — a partial fetch failure must never be mistaken for
-    "everything disappeared"."""
+    un-delist any that reappeared. Scoped to `scraped_city_names` (the canonical Hebrew names —
+    see cities.canonicalize_city — of the cities actually scraped THIS run), NOT globally across
+    every city ever scraped.
+
+    This used to run globally, on the reasoning that `listings.city` might not reliably match the
+    city slug used in the search query, so scoping per-city on a possibly-mismatched string risked
+    wrongly delisting an entire city's worth of listings. That reasoning predates
+    canonicalize_city() (2026-09-02, see cities.py's docstring) — `listings.city` is now
+    normalized to exactly the Hebrew name CITY_SLUG_TO_HEBREW_NAME maps the scraped slug to, so
+    matching against it here is reliable.
+
+    Running this globally turned out to be a much worse bug than the one it was written to avoid:
+    once SCRAPE_CITIES_PER_RUN started rotating through a 1-city subset per run (added later, for
+    ZenRows cost control — see _select_cities_for_run), a global pass meant EVERY run delisted
+    every listing from every city NOT scraped that specific run, since their external_ids are
+    never in that run's (necessarily city-scoped) seen_external_ids. In practice this meant only
+    whichever single city was scraped most recently ever had any non-delisted listings at all —
+    found live 2026-09-02 via a production query showing literally every non-delisted listing in
+    the entire table belonged to the one city just scraped. Still only called when every city
+    ATTEMPTED this run succeeded (see run_once) — a partial fetch failure within that scoped set
+    must never be mistaken for "everything in these cities disappeared"."""
     table = Listing.__table__
     newly_delisted = session.execute(
         table.update()
         .where(
             table.c.source == Source.YAD2,
             table.c.is_delisted.is_(False),
+            table.c.city.in_(scraped_city_names),
             table.c.external_id.notin_(seen_external_ids),
         )
         .values(is_delisted=True, delisted_at=func.now())
@@ -118,6 +133,7 @@ def _mark_delisted(session, seen_external_ids: set[str]) -> int:
         .where(
             table.c.source == Source.YAD2,
             table.c.is_delisted.is_(True),
+            table.c.city.in_(scraped_city_names),
             table.c.external_id.in_(seen_external_ids),
         )
         .values(is_delisted=False, delisted_at=None)
@@ -158,7 +174,8 @@ def run_once() -> dict[str, int]:
 
         delisted_count = 0
         if all_cities_succeeded and seen_external_ids:
-            delisted_count = _mark_delisted(session, seen_external_ids)
+            scraped_city_names = {CITY_SLUG_TO_HEBREW_NAME[slug] for slug in cities}
+            delisted_count = _mark_delisted(session, seen_external_ids, scraped_city_names)
         elif not all_cities_succeeded:
             logger.warning(
                 "Skipping delisting check this run — at least one city failed to fetch, so the "
