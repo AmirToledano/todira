@@ -1708,3 +1708,57 @@ get it right before crediting anything, pending our reply and their engineering 
 resolved as of this writing. The scraper CronJob remains suspended (`diagnose-scraper-credits.yaml`)
 until that's settled — the fix above matters regardless of the dispute's outcome, since it would
 have kept happening on every future daily run otherwise.
+
+## Update 2026-09-02: the "0 apartments ever match" cascade — four layered root causes, all fixed
+User reported city "קריית מוצקין" (Kiryat Motzkin) never matching a saved filter, and more broadly
+that no apartments were ever showing up in the bot or website. Each fix uncovered the next symptom
+underneath it — none alone explained "0 results," diagnosed by reading code/DB state only, no
+speculative scraper runs, per explicit instruction mid-session.
+1. **Spelling mismatch**: the scraper stored Yad2's raw city text, which sometimes used a
+   different כתיב מלא/חסר (full/defective) spelling than `dorin_common/cities.CITIES`'s canonical
+   list, so `city not in filter.cities` never matched even for a correct filter. Fixed with
+   `cities.canonicalize_city()` (normalizes then maps back to the canonical spelling) called from
+   `scraper/normalize.py` at ingest time, plus the bot's `/filter` "type a city" flow no longer
+   escalates a normal spelling typo to human support.
+2. **Bot/website `/filter` city UX**: free-typed city names replaced with a button/checkbox picker
+   (bot: `bot/keyboards.py` `city_picker_keyboard`/`city_search_results_keyboard`; website:
+   `filter.html`'s checkbox grid) — avoids the typo class of bug entirely going forward.
+3. **Global delisting bug** (`scraper/main.py::_mark_delisted`): the scraper's "anything not seen
+   this run is delisted" UPDATE wasn't scoped to the cities actually scraped that run, so scraping
+   city X would silently delist every listing in every OTHER city too (since `SCRAPE_CITIES_PER_RUN`
+   rotates ~1 city/day, this meant ~39/40 cities' worth of listings sat wrongly delisted at any
+   given time). Fixed by scoping both UPDATE queries to `city IN (scraped_city_names)`.
+   `.github/workflows/backfill-specific-cities.yaml` re-scrapes specific cities in one Job to
+   un-delist them faster than waiting for the full rotation; scoped to `jerusalem` only per request.
+4. **`property_type` matching bug** (`common/dorin_common/matching.py`), the actual final root
+   cause: the scraper never populates `NormalizedListing.property_type` (always `None`), but
+   `_check_hard_filters` still did `listing_row.property_type not in filter_row.property_types`
+   whenever a filter had any property types checked — `None not in [...]` is always `True`, so
+   *every* listing failed *every* filter that had property types set (i.e. most real filters),
+   regardless of city/price/rooms. Fixed to give an unknown property type the benefit of the doubt,
+   same treatment other missing-data fields already get. This was the actual fix that made
+   listings start appearing again.
+
+Also fixed in passing: a GitHub Actions credential-leak footgun in
+`.github/workflows/set-whatsapp-secret.yaml` (raw secret values were briefly echoed unmasked in
+the run log before an explicit `::add-mask::` step was added — caught same-day, token was rotated).
+
+## Update 2026-09-02, later: login redesign step 1 — Telegram deep-link instead of the OAuth widget
+User's real complaint: on iOS Safari's in-app floating browser, tapping "Log in with Telegram"
+(the `telegram-widget.js` embed, driving an oauth.telegram.org handshake) asked to re-verify by
+phone almost every single visit — it never stayed logged in. Studied dorin.app's actual reference
+flow via screenshots: it splits auth into two independent mechanisms — real Google OAuth for a
+persistent browser session, and plain `t.me/<bot>` deep links for Telegram/WhatsApp (no OAuth
+handshake at all, just "go open the bot").
+
+Step 1 (shipped): replaced the widget embed in `base.html`'s header and `need_uid.html` with a
+plain link to `https://t.me/AmirDirotBot` — matches dorin.app's actual behavior for the
+Telegram/WhatsApp buttons. `/auth/telegram/callback` and `_verify_telegram_auth`
+(`website/main.py`) are left completely untouched (still fully tested) since nothing about the
+route itself was broken — only its trigger was. **Known gap in the meantime**: `/admin/messages`
+deliberately requires the real signed session (not `?uid=`), and the widget was the only UI path
+that ever set it — until step 2 ships, there's no way to reach it. Expected to be short-lived.
+
+Step 2 (not started, next up): add real Google Sign-In as the persistent-session login, replacing
+the old widget's role — requires the user to create a Google Cloud OAuth Client (client_id/secret)
+first.
