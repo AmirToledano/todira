@@ -89,6 +89,8 @@ def _category_view(draft: dict, category: str):
         )
     if category == "loc":
         return kb.CATEGORY_TITLES["loc"], kb.location_keyboard(draft)
+    if category == "locpick":
+        return kb.CATEGORY_TITLES["locpick"], kb.city_picker_keyboard(draft)
     if category == "price":
         return kb.CATEGORY_TITLES["price"], kb.price_keyboard(draft)
     if category == "rooms":
@@ -145,6 +147,18 @@ def _apply_toggle(draft: dict, ns: str, value: str) -> None:
             lst.append(value)
     elif ns in ("req", "adv"):
         draft[value] = not draft[value]
+
+
+def _toggle_city(draft: dict, idx: int) -> None:
+    """`idx` indexes dorin_common.cities.CITIES (the full bundled list), not draft["cities"]
+    (the user's own selection) — see kb.city_picker_keyboard / kb.city_search_results_keyboard,
+    both of which build their callback_data from CITIES positions for a short, stable
+    callback_data payload rather than encoding the (longer, Hebrew) city string directly."""
+    city = cities.CITIES[idx]
+    if city in draft["cities"]:
+        draft["cities"].remove(city)
+    else:
+        draft["cities"].append(city)
 
 
 def _parse_optional_int(raw: str) -> tuple[bool, int | None]:
@@ -309,6 +323,11 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             context.user_data["awaiting"] = "city"
             await query.edit_message_text("הקלד/י שם עיר לחיפוש:")
             return AWAIT_TEXT
+        if sub == "full":
+            return await _show_category(query, draft, "locpick")
+        if sub == "togc":
+            _toggle_city(draft, int(parts[3]))
+            return await _show_category(query, draft, "locpick")
         if sub == "rmc":
             idx = int(parts[3])
             if 0 <= idx < len(draft["cities"]):
@@ -449,11 +468,13 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 "לא נמצאה עיר תואמת, נסה/י שוב:",
                 escalate_on_sentence=False,
             )
-        chosen = matches[0]
-        if chosen not in draft["cities"]:
-            draft["cities"].append(chosen)
-        await update.message.reply_text(f"✅ נוספה עיר: {chosen}")
-        await _send_category(update.message, draft, "loc")
+        # Show every candidate as a tappable button instead of silently adding matches[0] — a
+        # search is a hint, not a pick; the user chooses explicitly which city they meant, same
+        # as tapping a box in kb.city_picker_keyboard (2026-09-02: this used to auto-add the
+        # first match, which is exactly the "ניחוש אוטומטי" a real user asked to remove).
+        await update.message.reply_text(
+            "בחר/י את העיר המבוקשת:", reply_markup=kb.city_search_results_keyboard(matches)
+        )
         return MENU
 
     if awaiting == "keywords":

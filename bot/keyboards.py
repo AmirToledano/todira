@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from dorin_common import cities
 from dorin_common.enums import DealType, FurniturePref, PropertyType, SafeRoomPref
 
 DEAL_TYPE_LABELS = {DealType.RENT: "להשכרה", DealType.SALE: "למכירה", DealType.SUBLET: "סאבלט"}
@@ -43,6 +44,7 @@ CATEGORY_TITLES = {
     "dt": "🏷️ סוג עסקה",
     "pt": "🏠 סוג נכס",
     "loc": "📍 מיקום",
+    "locpick": "📍 בחר/י ערים מהרשימה",
     "price": "💰 מחיר",
     "rooms": "🛏️ חדרים",
     "floor": "🏢 קומה",
@@ -163,10 +165,45 @@ def requirements_keyboard(draft: dict) -> InlineKeyboardMarkup:
 
 
 def location_keyboard(draft: dict) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton("➕ הוסף עיר", callback_data="f:loc:addcity")]]
+    rows = [
+        [InlineKeyboardButton("📋 הוסף עיר מרשימה", callback_data="f:loc:full")],
+        [InlineKeyboardButton("🔍 חיפוש עיר לפי הקלדה", callback_data="f:loc:addcity")],
+    ]
     for idx, city in enumerate(draft["cities"]):
         rows.append([InlineKeyboardButton(f"🗑️ {city}", callback_data=f"f:loc:rmc:{idx}")])
     rows.append([BACK_BUTTON])
+    return InlineKeyboardMarkup(rows)
+
+
+def city_picker_keyboard(draft: dict) -> InlineKeyboardMarkup:
+    """Full list of every bundled city as a toggleable button (mirrors multi_select_keyboard's
+    ☑️/⬜ pattern, same as "סוג נכס") — the primary way to add a city now; typed search (below)
+    is a convenience for anyone who'd rather not scroll ~40 buttons, not the only path anymore."""
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for idx, city in enumerate(cities.CITIES):
+        mark = "☑️" if city in draft["cities"] else "⬜"
+        row.append(InlineKeyboardButton(f"{mark} {city}", callback_data=f"f:loc:togc:{idx}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("🔍 חיפוש לפי הקלדה", callback_data="f:loc:addcity")])
+    rows.append([InlineKeyboardButton("⬅️ חזרה", callback_data="f:cat:loc")])
+    return InlineKeyboardMarkup(rows)
+
+
+def city_search_results_keyboard(matches: list[str]) -> InlineKeyboardMarkup:
+    """Renders typed-search candidates (from cities.find_matches) as tappable buttons instead of
+    silently picking the first match — a user chooses explicitly which city they meant, same as
+    tapping a box in city_picker_keyboard. `matches` are always members of cities.CITIES, so
+    `.index()` never raises."""
+    rows = [
+        [InlineKeyboardButton(f"➕ {city}", callback_data=f"f:loc:togc:{cities.CITIES.index(city)}")]
+        for city in matches
+    ]
+    rows.append([InlineKeyboardButton("⬅️ חזרה", callback_data="f:cat:loc")])
     return InlineKeyboardMarkup(rows)
 
 
