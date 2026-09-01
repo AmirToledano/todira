@@ -7,6 +7,7 @@ import logging
 import os
 
 from handlers.apartments import build_apartments_handler
+from handlers.contact_fallback import build_contact_fallback_handler
 from handlers.filter_conversation import build_filter_conversation_handler
 from handlers.liked import build_liked_handler, build_reaction_handler
 from handlers.onboarding import build_onboarding_handler
@@ -76,6 +77,9 @@ def main() -> None:
     application.add_handler(build_reaction_handler())
     for handler in build_profile_handlers():
         application.add_handler(handler)
+    # Registered LAST (same default group) so it only fires once every ConversationHandler and
+    # CommandHandler above has already declined the update — see contact_fallback.py's docstring.
+    application.add_handler(build_contact_fallback_handler())
     application.add_error_handler(_error_handler)
 
     logger.info("Starting bot polling...")

@@ -1583,3 +1583,36 @@ comfortably under the new 45,000/month budget with real headroom, and **every ci
 daily** instead of cycling through a subset once a week. A second daily run would need ~63,000
 credits/month, over budget — daily-for-everyone is the ceiling on this tier; Growth ($166/mo, per
 the earlier table) would be the next real step up if closer-to-real-time coverage is wanted later.
+
+## Update 2026-09-01: found and fixed a real gap — the bot had no way to actually reach the owner
+Owner tried the website's own "טלגרם — כתוב/י ישירות לבוט" contact link (`/contact` page) himself
+and got total silence back from the bot after sending a free-text question. Root cause: neither
+`onboarding.py`'s nor `filter_conversation.py`'s `ConversationHandler` was in an active state for
+that chat, no `CommandHandler` matched free text, and **no other handler existed to catch it** —
+`bot/main.py` registered zero fallback for "text that doesn't match anything," so the message was
+silently dropped with no reply at all. Also surfaced in the same conversation: the website's own
+`/contact` form (a separate, working code path) doesn't push to Telegram until the owner sets
+`OWNER_TELEGRAM_USER_ID` (a pre-existing, correctly-optional secret that was simply never set —
+messages are still safely saved to the `contact_messages` table regardless, by design).
+
+**Fixed**: new `bot/handlers/contact_fallback.py` — a catch-all `MessageHandler` registered LAST
+in `bot/main.py`'s handler list (same default group; python-telegram-bot tries handlers within a
+group in registration order and stops at the first match, so this only fires once every
+`ConversationHandler`/`CommandHandler` above it has already declined the update). On any stray
+free text: saves a `ContactMessage` row (same table the website's `/contact` form uses — a lead is
+never lost even if the Telegram push fails), best-effort forwards it to
+`OWNER_TELEGRAM_USER_ID` via `context.bot.send_message` directly (no extra HTTP client needed,
+already inside the bot's own `Application`), and replies to the user with a friendly
+acknowledgment either way. Now "כתוב/י ישירות לבוט" is actually true.
+
+**Also fixed while touching this code**: the website's `/contact` route had a dead `notified_owner`
+column — `ContactMessage.notified_owner` existed on the model/migration but `contact_submit` never
+actually set it, discarding `_notify_owner_sync`'s own return value. Now both the website route and
+the new bot fallback set it correctly, so it's a meaningful signal (not silently always-False) if
+this ever needs auditing later. 3 new tests for `contact_fallback.py`, 2 existing
+`test_website_contact.py` tests extended to cover `notified_owner` — 174 tests total, all passing.
+
+**Owner action still needed** (from the earlier update, still applies): set `OWNER_TELEGRAM_USER_ID`
+as a GitHub secret (find your numeric ID via @userinfobot on Telegram) so both this new bot
+fallback AND the website's `/contact` form can actually push to your Telegram chat — without it,
+messages are still safely stored in the DB either way, just not proactively pushed anywhere yet.
