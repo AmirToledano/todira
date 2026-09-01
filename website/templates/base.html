@@ -32,6 +32,9 @@
           <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }}</a>
           <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }}</a>
           <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
+          {% if is_owner %}
+          <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}">📬</a>
+          {% endif %}
         </nav>
         <nav class="lang-switcher" aria-label="{{ t('a11y.lang_switcher_label') }}">
           {% for code in supported_langs %}
