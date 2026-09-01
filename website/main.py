@@ -277,25 +277,36 @@ async def contact_submit(
 
     telegram_user_id = int(uid) if uid.strip().isdigit() else None
 
-    def _save_sync() -> None:
+    def _save_sync() -> int:
         with get_session() as session:
-            session.add(
-                ContactMessage(
-                    name=name.strip() or None,
-                    email=email.strip() or None,
-                    message=message,
-                    telegram_user_id=telegram_user_id,
-                )
+            row = ContactMessage(
+                name=name.strip() or None,
+                email=email.strip() or None,
+                message=message,
+                telegram_user_id=telegram_user_id,
             )
+            session.add(row)
             session.commit()
+            return row.id
 
-    await asyncio.to_thread(_save_sync)
+    def _mark_notified_sync(contact_message_id: int) -> None:
+        with get_session() as session:
+            row = session.get(ContactMessage, contact_message_id)
+            if row is not None:
+                row.notified_owner = True
+                session.commit()
+
+    contact_message_id = await asyncio.to_thread(_save_sync)
     # Best-effort push to the owner — fire-and-forget-ish, but awaited so a slow/failed Telegram
     # call can't leave the request hanging forever; the message is already safely in the DB above
-    # regardless of whether this succeeds.
-    await asyncio.to_thread(
+    # regardless of whether this succeeds. notified_owner previously existed on the model but was
+    # never actually set here — fixed 2026-09-01 alongside adding the bot's own contact fallback
+    # (bot/handlers/contact_fallback.py), which sets the same field for its own messages.
+    notified = await asyncio.to_thread(
         _notify_owner_sync, name.strip(), email.strip(), message, telegram_user_id
     )
+    if notified:
+        await asyncio.to_thread(_mark_notified_sync, contact_message_id)
 
     redirect_url = f"/contact?sent=1{f'&uid={uid}' if uid else ''}{f'&lang={lang}' if lang != DEFAULT_LANG else ''}"
     return RedirectResponse(redirect_url, status_code=303)

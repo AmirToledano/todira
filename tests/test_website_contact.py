@@ -41,6 +41,7 @@ class _FakeSession:
     def __init__(self):
         self.added: list = []
         self.committed = False
+        self._next_id = 1
 
     def scalar(self, stmt):
         return None
@@ -49,10 +50,18 @@ class _FakeSession:
         return _FakeScalars([])
 
     def add(self, obj):
+        obj.id = self._next_id
+        self._next_id += 1
         self.added.append(obj)
 
     def commit(self):
         self.committed = True
+
+    def get(self, model_cls, obj_id):
+        for obj in self.added:
+            if getattr(obj, "id", None) == obj_id:
+                return obj
+        return None
 
 
 @pytest.fixture
@@ -92,6 +101,7 @@ def test_contact_post_saves_message_and_redirects(client, fake_session):
     assert saved.email == "amir@example.com"
     assert saved.message == "יש לי שאלה"
     assert saved.telegram_user_id == 123456
+    assert saved.notified_owner is True
     notify.assert_called_once()
 
 
@@ -108,6 +118,7 @@ def test_contact_post_without_uid_stores_no_telegram_user_id(client, fake_sessio
         client.post("/contact", data={"message": "hello"})
 
     assert fake_session.added[0].telegram_user_id is None
+    assert not fake_session.added[0].notified_owner
 
 
 def test_notify_owner_sync_returns_false_when_unconfigured():
