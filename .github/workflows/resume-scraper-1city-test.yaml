@@ -1,12 +1,17 @@
 name: Resume scraper (unsuspend) + trigger one manual 1-city test run
 
-# ONE-OFF, manual-only (workflow_dispatch, never on push) — 2026-09-01/09-02. Un-suspends
-# todira-scraper (suspended since the ZenRows credit-burn incident, see PROJECT_STATE.md) and
-# immediately creates one manual Job from its current template, rather than waiting for the next
-# 03:00 UTC schedule — this is the first real-world test of the image/media/font block + the
-# hard per-city request-count cap (yad2_client.py) + citiesPerRun=1 (values.yaml), all just
-# deployed. Reads back the live Job status/logs so the real credit cost can be checked against
-# the ZenRows dashboard afterward. Delete this workflow once the test run is confirmed complete.
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — 2026-09-01/09-02. First attempt
+# (run 33535579017) created a manual Job but the container crashed almost immediately and, with
+# backoffLimit=0, the Job controller killed+deleted the pod within ~2 minutes — the original
+# `kubectl wait --for=condition=complete` (with a `--for=condition=failed` OR fallback) waited the
+# full 480s regardless, because it waits for "complete" specifically first and only falls through
+# to checking "failed" after ITS OWN timeout expires — so by the time logs were read, the pod was
+# long gone. This version tails the pod's logs to a file in the BACKGROUND as soon as the pod
+# exists, so output is captured even if the pod is deleted moments later, and polls job status
+# directly for either terminal condition instead of waiting on the wrong one first. The CronJob is
+# already unsuspended from the first attempt; this re-applies that (idempotent) and creates a
+# fresh manual Job. Delete this workflow once a real result (success or a real captured crash
+# reason) is in hand.
 on:
   workflow_dispatch: {}
 
@@ -23,27 +28,53 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
 
-      - name: Un-suspend the CronJob
+      - name: Un-suspend the CronJob (idempotent)
         run: |
           kubectl patch cronjob todira-scraper -n todira -p '{"spec":{"suspend":false}}'
-          echo "--- confirming ---"
-          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.schedule} suspend={.spec.suspend} citiesPerRun-env={.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=="SCRAPE_CITIES_PER_RUN")].value} backoffLimit={.spec.jobTemplate.spec.backoffLimit} image={.spec.jobTemplate.spec.template.spec.containers[0].image}{"\n"}'
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.schedule} suspend={.spec.suspend}{"\n"}'
 
       - name: Create one manual Job from the current CronJob template, right now
         run: |
           JOB_NAME="todira-scraper-manual-test-$(date +%s)"
-          echo "job_name=$JOB_NAME" >> "$GITHUB_ENV"
+          echo "JOB_NAME=$JOB_NAME" >> "$GITHUB_ENV"
           kubectl create job --from=cronjob/todira-scraper -n todira "$JOB_NAME"
 
-      - name: Wait for the manual Job to finish (up to 8 minutes — one city, well bounded)
+      - name: Wait for the pod to exist, then tail its logs to a file in the background
         run: |
-          kubectl wait --for=condition=complete --timeout=480s -n todira "job/$job_name" || \
-          kubectl wait --for=condition=failed --timeout=10s -n todira "job/$job_name" || true
-          echo "--- final job status ---"
-          kubectl get job -n todira "$job_name" -o wide
-
-      - name: Pod logs from the manual test run
-        run: |
-          POD=$(kubectl get pods -n todira -l job-name="$job_name" -o jsonpath='{.items[0].metadata.name}')
+          for i in $(seq 1 30); do
+            POD=$(kubectl get pods -n todira -l job-name="$JOB_NAME" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            [ -n "$POD" ] && break
+            sleep 1
+          done
+          echo "POD=$POD" >> "$GITHUB_ENV"
           echo "pod=$POD"
-          kubectl logs -n todira "$POD" --timestamps || true
+          if [ -n "$POD" ]; then
+            nohup kubectl logs -n todira "$POD" --timestamps -f > /tmp/pod.log 2>&1 &
+            echo "log_tail_pid=$!" >> "$GITHUB_ENV"
+          fi
+
+      - name: Poll the Job's own status until it reaches a real terminal condition (max 5 min)
+        run: |
+          for i in $(seq 1 60); do
+            STATUS=$(kubectl get job "$JOB_NAME" -n todira -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null || echo "")
+            echo "poll $i: conditions=[$STATUS]"
+            if echo "$STATUS" | grep -qE "Complete|Failed"; then
+              echo "Reached terminal condition: $STATUS"
+              break
+            fi
+            sleep 5
+          done
+          sleep 3
+          echo "--- final job status ---"
+          kubectl get job "$JOB_NAME" -n todira -o wide
+          echo "--- full job describe (events) ---"
+          kubectl describe job "$JOB_NAME" -n todira
+
+      - name: Captured pod logs (from the background tail, survives pod deletion)
+        run: |
+          echo "--- captured logs ---"
+          cat /tmp/pod.log 2>/dev/null || echo "(no logs captured — pod never existed or tail never started)"
+
+      - name: Pod describe, if it still exists (exit code / reason / OOM)
+        run: |
+          kubectl describe pod -n todira "$POD" 2>&1 || echo "(pod already gone)"
