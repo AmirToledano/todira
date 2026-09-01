@@ -125,6 +125,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "auth.logout": {
         "he": "התנתקות", "en": "Log out", "ru": "Выйти", "fr": "Se déconnecter", "ar": "تسجيل الخروج",
     },
+    "auth.login": {
+        "he": "התחברות עם טלגרם", "en": "Log in with Telegram", "ru": "Войти через Telegram",
+        "fr": "Se connecter avec Telegram", "ar": "تسجيل الدخول عبر تيليجرام",
+    },
     "auth.error_body": {
         "he": "לא הצלחנו לאמת את ההתחברות דרך טלגרם. אפשר לנסות שוב.",
         "en": "We couldn't verify the Telegram login. Please try again.",
@@ -748,13 +752,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "need_uid.cta": {
         "he": "פתח את הבוט", "en": "Open the bot", "ru": "Открыть бота", "fr": "Ouvrir le bot", "ar": "افتح البوت",
-    },
-    "need_uid.or_login": {
-        "he": "או התחבר/י ישירות עם טלגרם:",
-        "en": "Or log in directly with Telegram:",
-        "ru": "Или войдите напрямую через Telegram:",
-        "fr": "Ou connectez-vous directement avec Telegram :",
-        "ar": "أو سجّل الدخول مباشرة عبر تيليجرام:",
     },
     "404.body": {
         "he": "הדף שחיפשת לא קיים, או שהקישור אליו שגוי.",

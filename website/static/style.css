@@ -317,7 +317,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .empty-state .glyph { font-size: 2.6rem; margin-bottom: 14px; opacity: .7; }
 .empty-state p { max-width: 420px; margin: 0 auto 22px; }
 .empty-state .hint { font-size: .82rem; opacity: .75; }
-.empty-state-or { font-size: .82rem; opacity: .7; margin: 18px 0 10px; }
 
 .notice {
   background: #fff3cd; border: 1px solid #ffe69c; color: #6b5200;
@@ -421,6 +420,12 @@ summary:focus-visible {
   text-underline-offset: 2px;
 }
 .auth-box .auth-logout:hover { color: #fff; }
+.auth-box .auth-login {
+  color: var(--wine-dark); background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  font-size: .78rem; font-weight: 700; text-decoration: none;
+  padding: 6px 14px; border-radius: 999px;
+}
+.auth-box .auth-login:hover { filter: brightness(1.06); }
 nav.lang-switcher { display: flex; gap: 2px; border-inline-start: 1px solid rgba(255,255,255,.25); padding-inline-start: 12px; }
 nav.lang-switcher a {
   text-decoration: none; color: rgba(255,255,255,.75);
