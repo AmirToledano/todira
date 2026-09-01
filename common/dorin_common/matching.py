@@ -37,7 +37,15 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
     if filter_row.deal_type != listing_row.deal_type:
         failed.append("deal_type")
 
-    if filter_row.property_types:
+    # listing_row.property_type is never actually populated by the scraper today (see
+    # scraper/normalize.py - nothing sets NormalizedListing.property_type, so it's always None) -
+    # an unknown property type gets the benefit of the doubt here rather than failing every
+    # single listing outright, the same treatment safe_room_type/is_broker_listing already get
+    # elsewhere in this file for the same reason (missing data isn't "doesn't match"). Found live
+    # 2026-09-02: a real filter with all 7 property types checked (so filter_row.property_types
+    # was non-empty, entering this branch) silently zeroed out every match, city/price/rooms
+    # notwithstanding, since `None not in [...]` is always true.
+    if filter_row.property_types and listing_row.property_type is not None:
         if listing_row.property_type not in filter_row.property_types:
             failed.append("property_type")
 
