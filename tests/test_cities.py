@@ -57,3 +57,21 @@ def test_default_limit_is_six():
     # "ק" (Kiryat-*) matches several cities in the bundled list - confirms the default cap
     results = find_matches("ק")
     assert len(results) <= 6
+
+
+def test_defective_yud_spelling_matches_full_spelling_city():
+    # "קרית" (1 yud, כתיב חסר) is a very common alternate spelling of the bundled list's "קריית
+    # מוצקין" (2 yuds, כתיב מלא) - a real user's typo this exact way returned zero matches before
+    # find_matches normalized doubled letters (2026-09-02).
+    assert "קריית מוצקין" in find_matches("קרית מוצקין")
+
+
+def test_defective_vav_spelling_matches_full_spelling_city():
+    # same doubled-letter normalization, for vav: "תקוה" (1 vav) vs the bundled list's "תקווה"
+    # (2 vavs) in "פתח תקווה".
+    assert "פתח תקווה" in find_matches("פתח תקוה")
+
+
+def test_full_canonical_spelling_still_matches_itself():
+    # normalization must not break the already-working exact-spelling case
+    assert "קריית אתא" in find_matches("קריית אתא")

@@ -386,14 +386,24 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def _reply_parse_failure_or_escalate(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, raw: str, awaiting: str, retry_message: str
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    raw: str,
+    awaiting: str,
+    retry_message: str,
+    escalate_on_sentence: bool = True,
 ) -> int:
     """Shared tail for every field that failed to parse `raw` as the value it asked for. There's
     no Gemini call here to ask semantically (unlike onboarding.py) — a genuine typo at a number/
-    date/city prompt is almost always one token, so more than one word is treated as a real
-    message worth forwarding, not a bad value worth just re-prompting for (see
-    handlers/support.py's looks_like_a_sentence docstring)."""
-    if looks_like_a_sentence(raw):
+    date prompt is almost always one token, so more than one word is treated as a real message
+    worth forwarding, not a bad value worth just re-prompting for (see handlers/support.py's
+    looks_like_a_sentence docstring). `escalate_on_sentence=False` (used for the city prompt) opts
+    out of that heuristic: a real Israeli city name is routinely 2-3 words on its own (קריית
+    מוצקין, תל אביב יפו, מודיעין מכבים רעות), so "≥2 words" is not a sentence signal there — it's
+    the norm, and applying it anyway escalated ordinary city typos ("קרית מוצקין" — a spelling
+    variant, not gibberish) to the owner as support requests (found 2026-09-02 via a real user's
+    report)."""
+    if escalate_on_sentence and looks_like_a_sentence(raw):
         await escalate_to_owner(update, context, raw)
         await update.message.reply_text(
             "🙋 זה לא נראה כמו הערך שביקשתי, אז ליתר ביטחון העברתי את מה שכתבת לצוות — "
@@ -432,7 +442,12 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         matches = cities.find_matches(raw)
         if not matches:
             return await _reply_parse_failure_or_escalate(
-                update, context, raw, "city", "לא נמצאה עיר תואמת, נסה/י שוב:"
+                update,
+                context,
+                raw,
+                "city",
+                "לא נמצאה עיר תואמת, נסה/י שוב:",
+                escalate_on_sentence=False,
             )
         chosen = matches[0]
         if chosen not in draft["cities"]:

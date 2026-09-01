@@ -45,6 +45,15 @@ def _strip_quotes(text: str) -> str:
     return text
 
 
+def _normalize_spelling(text: str) -> str:
+    # Collapses the two most common Hebrew "full" (כתיב מלא) doubled letters down to their
+    # "defective" (כתיב חסר) single form, so e.g. a user typing "קרית מוצקין" (1 yud) still finds
+    # "קריית מוצקין" (2 yuds, our canonical spelling), and "פתח תקוה" (1 vav) still finds
+    # "פתח תקווה" (2 vavs) — found missing 2026-09-02 when a real user's "קרית מוצקין" typo (a
+    # spelling many Israelis use interchangeably, not a "real" typo) returned zero matches.
+    return text.replace("יי", "י").replace("וו", "ו")
+
+
 def find_matches(query: str, limit: int = 6) -> list[str]:
     query = _strip_quotes(query.strip())
     if not query:
@@ -53,4 +62,5 @@ def find_matches(query: str, limit: int = 6) -> list[str]:
         canonical = _ALIASES[query]
         rest = [c for c in CITIES if query in c and c != canonical]
         return [canonical, *rest][:limit]
-    return [c for c in CITIES if query in c][:limit]
+    normalized_query = _normalize_spelling(query)
+    return [c for c in CITIES if normalized_query in _normalize_spelling(c)][:limit]
