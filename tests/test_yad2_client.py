@@ -1,28 +1,20 @@
 """Unit tests for scraper/yad2_client.py's city-ID mapping tables (CITY_SLUG_TO_ID /
 CITY_SLUG_TO_HEBREW_NAME) — added 2026-08-31 alongside extending that table from 3 to 24 cities.
-Doesn't test fetch_search_results/_parse_cards (those need patchright + real network access, out
-of scope for this dependency-light suite, same reasoning as normalize.py/matching.py's tests)."""
-import sys
-import types
-
-# yad2_client.py imports patchright at module level (a real browser-automation dependency,
-# deliberately NOT in requirements-test.txt — see that file's comment). Stub it out so the
-# module-level import succeeds; nothing in these tests touches the stubbed names.
-if "patchright" not in sys.modules:
-    patchright_stub = types.ModuleType("patchright")
-    sync_api_stub = types.ModuleType("patchright.sync_api")
-    sync_api_stub.TimeoutError = TimeoutError
-    sync_api_stub.sync_playwright = None
-    patchright_stub.sync_api = sync_api_stub
-    sys.modules["patchright"] = patchright_stub
-    sys.modules["patchright.sync_api"] = sync_api_stub
+Doesn't test fetch_search_results/_parse_cards (those need real network access, out of scope for
+this dependency-light suite, same reasoning as normalize.py/matching.py's tests). No longer needs
+a patchright stub — yad2_client.py switched to ZenRows' Fetch API (plain httpx) 2026-09-02, see
+its module docstring."""
+import httpx
+import pytest
 
 from dorin_common.cities import CITIES
 from yad2_client import (
-    _MAX_PROXIED_REQUESTS_PER_CITY,
+    BLOCKED_RESOURCE_TYPES,
     CITY_SLUG_TO_HEBREW_NAME,
     CITY_SLUG_TO_ID,
-    _should_allow_proxied_request,
+    ZENROWS_API_KEY_ENV_VAR,
+    Yad2FetchError,
+    fetch_search_results,
 )
 
 
@@ -57,25 +49,91 @@ def test_original_three_ids_unchanged():
     assert CITY_SLUG_TO_ID["givatayim"] == "6300"
 
 
-def test_image_media_font_always_blocked_regardless_of_count():
-    assert _should_allow_proxied_request("image", 0) is False
-    assert _should_allow_proxied_request("media", 0) is False
-    assert _should_allow_proxied_request("font", 0) is False
+# --- fetch_search_results (attempt 10: ZenRows Fetch API via httpx, not a real browser) ---
+# Mocks httpx.get directly rather than hitting the network — no real ZenRows credits spent by
+# running this suite, unlike an actual scraper run.
+
+_CARD_HTML = (
+    '<a class="itemLink" data-nagish="feed-item-layout-link" href="/item/abcd1234">'
+    '<span data-testid="price">8,500 ₪</span>'
+    '<span data-testid="street-name">ביאליק 10</span>'
+    '<span data-testid="item-info-line-1st">דירה, מרכז העיר, רמת גן</span>'
+    '<span data-testid="item-info-line-2nd">3 חדרים • קומה 2 • 75 מ"ר</span>'
+    "</a>"
+)
 
 
-def test_other_resource_types_allowed_until_the_cap():
-    for resource_type in ("document", "script", "stylesheet", "xhr", "fetch", "other"):
-        assert _should_allow_proxied_request(resource_type, 0) is True
-        assert _should_allow_proxied_request(resource_type, _MAX_PROXIED_REQUESTS_PER_CITY - 1) is True
+def test_missing_api_key_raises_without_any_http_call(monkeypatch):
+    monkeypatch.delenv(ZENROWS_API_KEY_ENV_VAR, raising=False)
+    with pytest.raises(Yad2FetchError, match=ZENROWS_API_KEY_ENV_VAR):
+        list(fetch_search_results("tel-aviv"))
 
 
-def test_cap_is_a_hard_ceiling_not_just_a_default():
-    assert _should_allow_proxied_request("script", _MAX_PROXIED_REQUESTS_PER_CITY) is False
-    assert _should_allow_proxied_request("xhr", _MAX_PROXIED_REQUESTS_PER_CITY + 1000) is False
+def test_unknown_city_slug_raises_without_any_http_call(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    with pytest.raises(Yad2FetchError, match="No Yad2 numeric city ID"):
+        list(fetch_search_results("nonexistent-city"))
 
 
-def test_worst_case_credits_per_city_is_bounded():
-    # The whole point: a deterministic ceiling regardless of what a future Yad2 page redesign
-    # throws at it, not a hope that today's known-safe resource types stay safe forever.
-    max_billed_requests_per_city = _MAX_PROXIED_REQUESTS_PER_CITY
-    assert max_billed_requests_per_city == 30
+def test_successful_fetch_sends_the_right_params_and_parses_cards(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured = {}
+
+    def fake_get(url, params, timeout):
+        captured["url"] = url
+        captured["params"] = params
+        captured["timeout"] = timeout
+        return httpx.Response(200, text=_CARD_HTML, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_search_results("tel-aviv"))
+
+    assert len(items) == 1
+    assert items[0]["id"] == "abcd1234"
+    assert captured["url"] == "https://api.zenrows.com/v1/"
+    assert captured["params"]["apikey"] == "fake-key"
+    assert captured["params"]["url"] == "https://www.yad2.co.il/realestate/rent?city=5000"
+    assert captured["params"]["js_render"] == "true"
+    assert captured["params"]["premium_proxy"] == "true"
+    assert captured["params"]["block_resources"] == BLOCKED_RESOURCE_TYPES
+
+
+def test_zenrows_auth_error_body_raises_with_code_and_title(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    error_body = (
+        '{"code":"AUTH004","detail":"This account has reached its usage limit.",'
+        '"title":"Usage exceeded (AUTH004)"}'
+    )
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text=error_body, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(Yad2FetchError, match="AUTH004"):
+        list(fetch_search_results("tel-aviv"))
+
+
+def test_non_200_status_raises_yad2_fetch_error(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(500, text="internal error", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(Yad2FetchError, match="http_status=500"):
+        list(fetch_search_results("tel-aviv"))
+
+
+def test_network_failure_fails_soft_as_yad2_fetch_error(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+
+    def fake_get(url, params, timeout):
+        raise httpx.ConnectTimeout("timed out")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(Yad2FetchError):
+        list(fetch_search_results("tel-aviv"))
