@@ -73,7 +73,12 @@ jobs:
                       *) echo "DATABASE_URL_SCHEME=does_NOT_start_with_postgres(ql)://" ;;
                     esac
                     CONN="postgresql://${DATABASE_URL#*://}"
-                    psql "$CONN" -c "SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '%מוצקין%' ORDER BY scraped_at DESC LIMIT 20;" -c "SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;"
+                    psql "$CONN" \
+                      -c "SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '%מוצקין%' ORDER BY scraped_at DESC LIMIT 20;" \
+                      -c "SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;" \
+                      -c "SELECT count(*) AS total_non_delisted FROM listings WHERE is_delisted = false;" \
+                      -c "SELECT rn, city, price, rooms, scraped_at FROM (SELECT row_number() OVER (ORDER BY scraped_at DESC) AS rn, city, price, rooms, scraped_at FROM listings WHERE is_delisted = false) t WHERE city LIKE '%מוצקין%' ORDER BY rn;" \
+                      -c "SELECT deal_type, cities, price_min, price_max, rooms_min, rooms_max, require_price, flexible_match, property_types, safe_room_pref, furniture_pref, no_brokers FROM filters WHERE 'קריית מוצקין' = ANY(cities);"
           PODYAML
           for i in $(seq 1 30); do
             PHASE=$(kubectl get pod diag-city-db -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
