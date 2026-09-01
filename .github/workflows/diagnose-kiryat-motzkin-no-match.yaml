@@ -13,21 +13,21 @@ name: Diagnose why Kiryat Motzkin listings don't match an existing filter
 # data (no writes) — runs one read-only pod (postgres:16-alpine) wired to the same
 # `todira-postgres-secret` the scraper itself uses. Delete this workflow once resolved.
 #
-# History (why this is version 4): attempt 1 (`kubectl run --overrides=<JSON>` + `envFrom:
+# History (why this is version 5): attempt 1 (`kubectl run --overrides=<JSON>` + `envFrom:
 # secretRef`) failed immediately — `envFrom` imports the secret's key verbatim as the env var
 # name ("database-url", not a name a query could reference). Attempt 2 (secretKeyRef mapping to
 # an env var actually named DATABASE_URL) hit the EXACT SAME "local socket" error again. Attempt
 # 3 added `echo ${#DATABASE_URL}` right before the query and proved the var WAS populated
-# (length=64) — so the env wiring was fine all along; psql was still falling back to a local
-# socket despite a non-empty value, which only happens when psql doesn't recognize its first
-# argument as a URI/conninfo at all (e.g. no "postgres(ql)://" scheme prefix — psql then reads it
-# as a literal *dbname* instead and uses default/local connection settings for everything else).
-# This version (a) prints whether the value's prefix looks like a URI, WITHOUT ever printing the
-# value itself (no credential leakage), to settle that theory for good, and (b) switches from a
-# hand-escaped `command: ["sh","-c","<one-line JSON string>"]` (increasingly fragile with nested
-# double quotes, a SQL LIKE pattern, and Hebrew all in one JSON string) to a plain YAML `|`
-# literal-block script under `args`, which needs no escaping at all for any of that — much less
-# error-prone, and how the rest of this repo's own scripts are written.
+# (length=64) — so the env wiring was fine all along. Attempt 4 added a scheme-prefix check (never
+# printing the value itself) and got DATABASE_URL_SCHEME=does_NOT_start_with_postgres(ql)://ׁ — the
+# scraper's own earlier crash logs mentioned `psycopg.errors.UndefinedFunction`, so this is almost
+# certainly a SQLAlchemy-style `postgresql+psycopg://...` URL: a real, valid connection string,
+# just with a `+driver` suffix psql's naive `postgres(ql)://` prefix match doesn't recognize (so
+# psql fell back to treating the whole string as a literal dbname). This version reconstructs a
+# psql-recognizable URI via `postgresql://${DATABASE_URL#*://}` — strips everything up to and
+# including the first "://" (whatever the original scheme was) and prepends a bare "postgresql://"
+# — verified locally with a synthetic `postgresql+psycopg://user:pass@host:5432/db` value before
+# pushing. Keeps the length/scheme-of-original checks too, both still printed for the record.
 on:
   workflow_dispatch: {}
 
@@ -72,7 +72,8 @@ jobs:
                       postgres://*|postgresql://*) echo "DATABASE_URL_SCHEME=looks_like_a_uri" ;;
                       *) echo "DATABASE_URL_SCHEME=does_NOT_start_with_postgres(ql)://" ;;
                     esac
-                    psql "$DATABASE_URL" -c "SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '%מוצקין%' ORDER BY scraped_at DESC LIMIT 20;" -c "SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;"
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -c "SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '%מוצקין%' ORDER BY scraped_at DESC LIMIT 20;" -c "SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;"
           PODYAML
           for i in $(seq 1 30); do
             PHASE=$(kubectl get pod diag-city-db -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
