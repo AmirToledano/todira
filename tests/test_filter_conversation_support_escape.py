@@ -52,3 +52,21 @@ def test_single_token_typo_at_a_numeric_prompt_does_not_escalate():
     mock_escalate.assert_not_called()
     assert result == filter_conversation.AWAIT_TEXT
     assert context.user_data["awaiting"] == "price_min"
+
+
+def test_multiword_unmatched_city_does_not_escalate():
+    # Real Israeli city names are routinely 2-3 words on their own (קריית מוצקין, תל אביב יפו) -
+    # unlike a numeric/date prompt, ">= 2 words" is not a "this looks like a real message, not a
+    # value attempt" signal at the city prompt. A real user's failed city guess ("קרית מוצקין",
+    # since fixed by cities.py's spelling normalization - this test uses a name not in the bundled
+    # list at all, so it still fails to match) must not get forwarded to the owner as a support
+    # request (found 2026-09-02).
+    update = _make_update("עיר לא קיימת בכלל")
+    context = _make_context("city")
+
+    with patch.object(filter_conversation, "escalate_to_owner", AsyncMock(return_value=True)) as mock_escalate:
+        result = asyncio.run(filter_conversation.text_input(update, context))
+
+    mock_escalate.assert_not_called()
+    assert result == filter_conversation.AWAIT_TEXT
+    assert context.user_data["awaiting"] == "city"
