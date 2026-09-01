@@ -1,0 +1,46 @@
+name: Diagnose bot onboarding hang (no reply after 3rd freetext message)
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — added 2026-09-01. A real user (testing
+# via a second Telegram account) got stuck in the onboarding free-text state (AWAIT_FREETEXT,
+# handlers/onboarding.py): the bot's "🔍 רגע, טודירה בודק את מה שכתבת..." placeholder appeared for
+# her 3rd message ("I want to talk to the customer service", ~13:19-13:20 Israel time / ~10:19-
+# 10:20 UTC on 2026-09-01) but no follow-up reply ever arrived, and a 4th message got no response
+# at all. Reads live bot pod logs around that window to find the actual exception/timeout, rather
+# than guessing. Read-only — delete once the root cause is found and fixed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Bot pods
+        run: |
+          kubectl get pods -n todira -l app=todira-bot -o custom-columns='NAME:.metadata.name,CREATED:.metadata.creationTimestamp,PHASE:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount'
+
+      - name: Bot logs around the incident window (last 500 lines, current pod)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+          echo "pod=$POD"
+          echo "--- last 500 lines ---"
+          kubectl logs -n todira "$POD" --tail=500 --timestamps || true
+
+      - name: Bot logs from previous container instance, if it restarted (covers a crash/OOM case)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+          echo "--- previous instance logs (if any) ---"
+          kubectl logs -n todira "$POD" --previous --tail=300 --timestamps || echo "(no previous instance / not restarted)"
+
+      - name: Grep for errors/exceptions/timeouts anywhere in current logs
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+          kubectl logs -n todira "$POD" --tail=5000 --timestamps | grep -iE "error|exception|traceback|timeout|timed out" || echo "(no matches)"
