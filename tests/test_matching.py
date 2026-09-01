@@ -108,6 +108,18 @@ def test_property_type_in_allowed_list_passes():
     assert result.matched is True
 
 
+def test_unknown_property_type_gets_benefit_of_the_doubt():
+    # Regression test for a real production bug (2026-09-02): scraper/normalize.py never
+    # actually populates NormalizedListing.property_type, so every real listing has
+    # property_type=None. A filter with any property_types checked (even, as in the real report,
+    # all seven - not an unusual "select everything" UI action) used to fail EVERY listing
+    # outright, since `None not in [...]` is always true - city/price/rooms notwithstanding.
+    f = make_filter(property_types=["apartment", "studio"])
+    result = evaluate(f, make_listing(property_type=None))
+    assert "property_type" not in result.failed_hard_filters
+    assert result.matched is True
+
+
 def test_city_not_in_filter_fails():
     f = make_filter(cities=["חיפה", "ירושלים"])
     result = evaluate(f, make_listing(city="תל אביב"))
