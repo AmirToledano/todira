@@ -1616,3 +1616,32 @@ this ever needs auditing later. 3 new tests for `contact_fallback.py`, 2 existin
 as a GitHub secret (find your numeric ID via @userinfobot on Telegram) so both this new bot
 fallback AND the website's `/contact` form can actually push to your Telegram chat — without it,
 messages are still safely stored in the DB either way, just not proactively pushed anywhere yet.
+
+## Update 2026-09-01: real bug found — OWNER_TELEGRAM_USER_ID was never wired into the bot pod
+Owner set the `OWNER_TELEGRAM_USER_ID` secret and tested both the website's `/contact` form and
+the bot's new contact-fallback handler (see the earlier update above) — nothing arrived on
+Telegram either way. Live diagnostic (`kubectl get deployment todira-bot -n todira -o jsonpath=...`)
+found the actual cause: `charts/todira/templates/bot-deployment.yaml` never had an
+`OWNER_TELEGRAM_USER_ID` env var at all — only `website-deployment.yaml` did. The secret itself
+was correctly saved (confirmed the `owner-telegram-user-id` key exists on the `todira-bot-secret`
+Secret object) and correctly wired into the website, but `bot/handlers/contact_fallback.py`'s own
+`os.environ.get("OWNER_TELEGRAM_USER_ID")` was always `None` inside the bot pod — a genuine gap
+from when that handler was added, not a deploy timing issue or a wrong ID value.
+
+**Fixed**: added the same `OWNER_TELEGRAM_USER_ID` env block (secretKeyRef to
+`owner-telegram-user-id`, `optional: true`) to `bot-deployment.yaml` that `website-deployment.yaml`
+already had. Also improved diagnosability for next time: `website/main.py` never called
+`logging.basicConfig()` (unlike `bot/main.py`, which does) — meaning INFO-level logs, including
+httpx's own automatic request logging, were invisible in the website pod's logs by default (root
+logger stays at WARNING with no handler configured), and `_notify_owner_sync` only logged on a
+genuine network exception, silently swallowing a non-200 Telegram API response (e.g. "chat not
+found" for a bad ID) with zero trace. Both fixed: `logging.basicConfig(level=logging.INFO, ...)`
+added to `website/main.py` (matching the bot's own convention), and `_notify_owner_sync` now logs
+a warning with the exact status/body whenever Telegram rejects the push, not just on a network
+failure. Whether the website side was *also* silently failing (e.g. a subtly wrong ID) couldn't be
+fully confirmed from the logs available at diagnosis time — this fix means the next test attempt
+will show clearly either way, instead of failing silently again.
+
+Deleted the temporary `diagnose-contact-notify.yaml` workflow now that the cause is found and
+fixed. `diagnose-scraper-credits.yaml` (from the ZenRows credit-burn incident, see above) is
+intentionally still present — the scraper CronJob remains suspended pending that decision.
