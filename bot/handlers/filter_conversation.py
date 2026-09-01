@@ -29,6 +29,7 @@ from dorin_common.models import Filter, User
 from dorin_common.schemas import FilterData
 from dorin_common.users import get_or_create_user
 from handlers.apartments import RESULT_LIMIT, find_matching_listings
+from handlers.support import escalate_to_owner, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
 from telegram import Update
@@ -392,6 +393,20 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if awaiting is None:
         await update.message.reply_text("שלח/י /filter כדי להתחיל לערוך את הסינון.")
         return ConversationHandler.END
+
+    # A user who asks for a human/support instead of answering the specific value the menu just
+    # prompted for (e.g. "הקלד/י מחיר מינימלי") would otherwise get "לא הצלחתי לפרש מספר, נסה/י
+    # שוב" — the numeric/date parsers below have no concept of a support request. Restores
+    # `awaiting` so she isn't kicked out of what she was doing; see handlers/support.py's
+    # docstring for the real report this fixes (2026-09-01).
+    if looks_like_help_request(raw):
+        await escalate_to_owner(update, context, raw)
+        context.user_data["awaiting"] = awaiting
+        await update.message.reply_text(
+            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n"
+            "אפשר להמשיך מאיפה שהפסקנו — שלח/י את הערך שהתבקשת להקליד."
+        )
+        return AWAIT_TEXT
 
     if awaiting == "city":
         matches = cities.find_matches(raw)
