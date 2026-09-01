@@ -272,6 +272,22 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
         try:
             context = browser.new_context(locale="he-IL", ignore_https_errors=True)
             page = context.new_page()
+            # `proxy` is set at the BROWSER level above, so every sub-resource this page loads —
+            # not just the main document — is a separate request through ZenRows' proxy, billed
+            # individually (confirmed with ZenRows support 2026-09-02, after an incident where one
+            # diagnostic run alone produced 1,172+ billed requests to img.yad2.co.il: a real Yad2
+            # search page renders dozens of listing-card photos, and each one was a full ~25-credit
+            # proxy request despite us never using the image bytes — _parse_cards only reads text
+            # out of the HTML). Blocking image/media/font before they ever leave the browser cuts
+            # the real per-city cost by whatever multiple those sub-resources represented, with zero
+            # effect on what gets parsed (script/stylesheet/XHR stay unblocked — script in particular
+            # is why js_render=true is used at all, for the client-side-rendered card markup).
+            page.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in ("image", "media", "font")
+                else route.continue_(),
+            )
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
             except PlaywrightTimeoutError as exc:
