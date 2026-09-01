@@ -29,6 +29,7 @@ from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
 from handlers.apartments import RESULT_LIMIT, find_matching_listings
 from handlers.start import start
+from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
 from telegram import Update
 from telegram.constants import ParseMode
@@ -99,13 +100,28 @@ def _save_filter_sync(tg_user, state: dict) -> list:
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text or ""
+
+    # A user mid-onboarding who asks for a human/support instead of answering "which city, rent
+    # or buy?" would otherwise get that same question re-asked forever, since everything typed
+    # here normally goes straight to Gemini as apartment-search criteria — see handlers/support.py's
+    # docstring for the real report this fixes (2026-09-01). Doesn't end the conversation: she can
+    # still keep describing what she's looking for right after this.
+    if looks_like_help_request(text):
+        await escalate_to_owner(update, context, text)
+        await update.message.reply_text(
+            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n"
+            "בינתיים, אם תרצה/י להמשיך לחפש דירה — ספר/י לי מה מחפשים (עיר, שכירות/מכירה/סבלט וכו')."
+        )
+        return AWAIT_FREETEXT
+
     # Gemini can take a few seconds (or, on a slow node, much longer) — an impatient real user
     # would otherwise stare at silence and assume the bot is broken/ignoring them.
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     await update.message.reply_text("🔍 רגע, טודירה בודק את מה שכתבת...")
 
     state = context.user_data.setdefault("onboarding", dict(_EMPTY_STATE))
-    result = gemini_client.parse_onboarding_message(update.message.text or "", state, cities.CITIES)
+    result = gemini_client.parse_onboarding_message(text, state, cities.CITIES)
 
     if result is None:
         await update.message.reply_text(
