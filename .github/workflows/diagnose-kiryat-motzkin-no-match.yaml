@@ -1,0 +1,41 @@
+name: Diagnose why Kiryat Motzkin listings don't match an existing filter
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-02. A real
+# user added "קריית מוצקין" (our bundled cities.py spelling, 2 yuds) to their filter right after a
+# manual 1-city test run scraped 11 new Kiryat Motzkin listings, but got "no current matches" both
+# from the bot's own immediate post-save check and from the website's /apartments page. Suspected
+# cause: yad2_client.py's _parse_location() reads `listing.city` verbatim from Yad2's own page
+# text per listing (NOT from CITY_SLUG_TO_HEBREW_NAME, which is only used to pick which numeric
+# city ID to query) — if Yad2's real breadcrumb text uses the "קרית מוצקין" (1 yud) spelling
+# instead of our bundled "קריית מוצקין" (2 yuds), matching.py's exact-string city check
+# (`listing_row.city not in filter_row.cities`) would silently fail forever, since nothing except
+# this project's own bundled CITIES list uses the 2-yud spelling as a comparison key. Only reads
+# data (no writes) — runs one-off `kubectl run` pods with the `postgres:16-alpine` image, wired to
+# the same `todira-postgres-secret` the scraper itself uses, to run a couple of read-only SQL
+# queries directly against production. Delete this workflow once resolved.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Actual city spelling(s) stored for Kiryat Motzkin listings
+        run: |
+          kubectl run diag-city-spelling -n todira --restart=Never --image=postgres:16-alpine \
+            --overrides='{"spec":{"containers":[{"name":"diag-city-spelling","image":"postgres:16-alpine","envFrom":[{"secretRef":{"name":"todira-postgres-secret"}}],"env":[{"name":"PGCONNECT_TIMEOUT","value":"10"}],"command":["psql","-c","SELECT city, deal_type, price, rooms, is_delisted, scraped_at FROM listings WHERE city LIKE '\''%מוצקין%'\'' ORDER BY scraped_at DESC LIMIT 20;"]}]}}' \
+            --attach --rm --restart=Never
+      - name: Distinct city spellings across ALL listings (sanity check for other silent mismatches)
+        run: |
+          kubectl run diag-all-cities -n todira --restart=Never --image=postgres:16-alpine \
+            --overrides='{"spec":{"containers":[{"name":"diag-all-cities","image":"postgres:16-alpine","envFrom":[{"secretRef":{"name":"todira-postgres-secret"}}],"env":[{"name":"PGCONNECT_TIMEOUT","value":"10"}],"command":["psql","-c","SELECT city, count(*) FROM listings GROUP BY city ORDER BY count(*) DESC LIMIT 40;"]}]}}' \
+            --attach --rm --restart=Never
