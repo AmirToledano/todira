@@ -1,0 +1,49 @@
+name: Resume scraper (unsuspend) + trigger one manual 1-city test run
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — 2026-09-01/09-02. Un-suspends
+# todira-scraper (suspended since the ZenRows credit-burn incident, see PROJECT_STATE.md) and
+# immediately creates one manual Job from its current template, rather than waiting for the next
+# 03:00 UTC schedule — this is the first real-world test of the image/media/font block + the
+# hard per-city request-count cap (yad2_client.py) + citiesPerRun=1 (values.yaml), all just
+# deployed. Reads back the live Job status/logs so the real credit cost can be checked against
+# the ZenRows dashboard afterward. Delete this workflow once the test run is confirmed complete.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  resume-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Un-suspend the CronJob
+        run: |
+          kubectl patch cronjob todira-scraper -n todira -p '{"spec":{"suspend":false}}'
+          echo "--- confirming ---"
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.schedule} suspend={.spec.suspend} citiesPerRun-env={.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=="SCRAPE_CITIES_PER_RUN")].value} backoffLimit={.spec.jobTemplate.spec.backoffLimit} image={.spec.jobTemplate.spec.template.spec.containers[0].image}{"\n"}'
+
+      - name: Create one manual Job from the current CronJob template, right now
+        run: |
+          JOB_NAME="todira-scraper-manual-test-$(date +%s)"
+          echo "job_name=$JOB_NAME" >> "$GITHUB_ENV"
+          kubectl create job --from=cronjob/todira-scraper -n todira "$JOB_NAME"
+
+      - name: Wait for the manual Job to finish (up to 8 minutes — one city, well bounded)
+        run: |
+          kubectl wait --for=condition=complete --timeout=480s -n todira "job/$job_name" || \
+          kubectl wait --for=condition=failed --timeout=10s -n todira "job/$job_name" || true
+          echo "--- final job status ---"
+          kubectl get job -n todira "$job_name" -o wide
+
+      - name: Pod logs from the manual test run
+        run: |
+          POD=$(kubectl get pods -n todira -l job-name="$job_name" -o jsonpath='{.items[0].metadata.name}')
+          echo "pod=$POD"
+          kubectl logs -n todira "$POD" --timestamps || true
