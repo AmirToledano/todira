@@ -1,26 +1,14 @@
 """Unit tests for the pure HTML-parsing helpers in scraper/yad2_client.py (_parse_cards and its
 sub-parsers). These are the most fragile part of the scraper — Yad2 can change its markup at any
 time with no warning — and had zero test coverage before this. Deliberately does NOT test
-fetch_search_results (needs patchright + a real network+proxy round-trip, out of scope for this
-dependency-light suite, same reasoning as the other tests/ modules).
+fetch_search_results (needs a real network round-trip, out of scope for this dependency-light
+suite, same reasoning as the other tests/ modules).
 
 The sample HTML fragments below mirror the exact structure documented in yad2_client.py's module
 docstring and scraper/YAD2_NOTES.md's "Attempt 9: SOLVED" section (data-testid spans inside an
 <a data-nagish="feed-item-layout-link" href="..."> with an "itemLink" class) — not arbitrary
 guesses at real Yad2 HTML.
 """
-import sys
-import types
-
-if "patchright" not in sys.modules:
-    patchright_stub = types.ModuleType("patchright")
-    sync_api_stub = types.ModuleType("patchright.sync_api")
-    sync_api_stub.TimeoutError = TimeoutError
-    sync_api_stub.sync_playwright = None
-    patchright_stub.sync_api = sync_api_stub
-    sys.modules["patchright"] = patchright_stub
-    sys.modules["patchright.sync_api"] = sync_api_stub
-
 from yad2_client import _clean, _parse_cards, _parse_info_line_2, _parse_location, _parse_price
 
 

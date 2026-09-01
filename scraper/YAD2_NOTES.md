@@ -366,3 +366,35 @@ neighborhoods — ready to flow through `normalize.py` and the rest of the pipel
   listing to get it, not yet built.
 - ZenRows' free trial has a finite credit pool — watch for it running out; each `js_render=true` +
   `premium_proxy=true` request costs 15-25 credits per their pricing.
+
+## 2026-09-02 — Attempt 10: switched from the residential proxy GATEWAY to ZenRows' Fetch API
+
+Attempt 9 worked functionally but had a cost bug never caught until real traffic: `proxy` was set
+at the Playwright **browser** level, so every sub-resource a rendered page loaded — every listing
+photo, and every one of Yad2's Next.js JS chunk files (`_next/static/chunks/*.js`, often dozens
+per page, each billed the same ~25 credits as a full page) — was a separate request through
+ZenRows' proxy, each billed individually. Real cost per city was several times the "~1 request ≈
+25 credits" the whole project's budget math had assumed since attempt 9 shipped, and burned two
+ZenRows plans' worth of credits across incidents on 2026-09-01/09-02 (see PROJECT_STATE.md for
+the full incident history — the image billing was found and fixed first, then the JS-chunk
+billing was found the same way, via the owner reading ZenRows' own Activity Log directly).
+
+**The fix**: stop running our own browser entirely. ZenRows' **Fetch API**
+(`https://api.zenrows.com/v1/`, a plain HTTP GET with `apikey`/`url`/`js_render=true`/
+`premium_proxy=true` as query params) renders the page on ZenRows' OWN infrastructure and returns
+the final HTML in one HTTP response — billed as one flat request regardless of how many
+images/scripts/chunks that page loaded internally on their end. Confirmed via ZenRows' own
+product pages ("Fetch: One API call per URL... Extract adds no cost beyond the Fetch request it
+uses; Batch bills at the same per-request rate as Fetch") — sub-resources simply aren't a
+separate line item under this product, unlike the raw proxy gateway attempt 9 used.
+
+`block_resources=image,stylesheet,font,media` (a real Fetch API param) is still passed — but now
+it's a **speed** optimization (ZenRows' own renderer skips bytes we never use), not a cost one,
+since the flat per-request billing means what the page loads internally no longer changes what we
+pay. patchright/Playwright are gone entirely — no local browser, no browser-level proxy config,
+no per-request-count safety cap (that mechanism, added as a stopgap between finding the image
+problem and finding the JS-chunk problem, is no longer needed and was removed along with it).
+
+**Not yet verified against real traffic** as of this note — the architecture is right per
+ZenRows' own documented billing model, but hasn't been confirmed with a real, explicitly-approved
+test run yet. Update this note once it has been.

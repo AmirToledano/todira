@@ -11,20 +11,9 @@ from __future__ import annotations
 import datetime
 import importlib.util
 import os
-import sys
-import types
 from pathlib import Path
 
 import pytest
-
-if "patchright" not in sys.modules:
-    patchright_stub = types.ModuleType("patchright")
-    sync_api_stub = types.ModuleType("patchright.sync_api")
-    sync_api_stub.TimeoutError = TimeoutError
-    sync_api_stub.sync_playwright = None
-    patchright_stub.sync_api = sync_api_stub
-    sys.modules["patchright"] = patchright_stub
-    sys.modules["patchright.sync_api"] = sync_api_stub
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
