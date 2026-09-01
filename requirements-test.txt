@@ -1,5 +1,4 @@
-# Only what tests/ needs to import - kept as light as each test module allows (no playwright/
-# patchright - those get stubbed into sys.modules instead, see test_yad2_*.py), but not literally
+# Only what tests/ needs to import - kept as light as each test module allows, but not literally
 # dependency-free: test_filter_conversation_reentry.py imports handlers.filter_conversation,
 # which transitively imports dorin_common.models (for the Filter/User ORM classes), which needs
 # sqlalchemy even though no test here actually opens a DB connection.

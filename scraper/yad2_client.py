@@ -2,20 +2,36 @@
 
 STATUS 2026-08-29: **SOLVED** after 9 attempts (see YAD2_NOTES.md for the full trail through
 attempts 1-8 — direct API, plain/stealth Playwright, patchright alone, manual cookies, 2Captcha).
-Attempt 9 combines two pieces: patchright (still needed — its CDP-leak patches are what stop an
-opaque silent fingerprint block) routed through **ZenRows' residential proxy gateway**
-(`proxy.zenrows.com:8001`, `premium_proxy=true&js_render=true` passed via the proxy password
-field) instead of this container's own datacenter IP. Zero Radware/hCaptcha challenges seen across
-repeated real requests once IP reputation stopped being the blocker — the earlier attempts'
-fingerprint/session work was necessary but not sufficient; the datacenter IP itself was always
-going to get flagged eventually.
+Attempt 9 combined patchright routed through ZenRows' residential proxy GATEWAY
+(`proxy.zenrows.com:8001`) — this correctly got past Yad2's Radware Bot Manager wall, but turned
+out to have a serious cost problem never caught until real traffic: with `proxy` set at the
+Playwright BROWSER level, every sub-resource the rendered page loaded — not just the main
+document, but every listing photo AND every one of Yad2's Next.js JS chunk files
+(`_next/static/chunks/*.js`, often dozens per page) — was a SEPARATE request through the proxy,
+each billed the full ~25 credits regardless of size (confirmed with ZenRows support 2026-09-02).
+A single real page load could cost 750+ credits instead of the ~25 the whole project's budget
+math assumed, and burned two ZenRows plans' worth of credits in incidents on 2026-09-01/09-02 —
+see PROJECT_STATE.md for the full incident history.
+
+Attempt 10 (this version, 2026-09-02) switches to ZenRows' **Fetch API**
+(`api.zenrows.com/v1/`) instead of the raw proxy gateway: we no longer run our own browser at
+all — ZenRows renders the page on THEIR OWN infrastructure (still with `js_render=true` +
+`premium_proxy=true`, same underlying tech) and returns the final HTML in ONE HTTP response,
+billed as ONE flat request regardless of how many images/scripts/chunks that page internally
+loaded on their end (confirmed via ZenRows' own docs/product pages — "Fetch: One API call per
+URL" — the Extract/Batch products explicitly bill at the same per-request rate as Fetch, with no
+separate line item for sub-resources). This is a straight HTTP GET + `block_resources` to skip
+images/fonts/media/stylesheets ZenRows' own renderer would otherwise waste time on (a speed
+optimization now, not a cost one — the flat per-request billing means blocking sub-resources no
+longer changes what we pay) — no local browser, no patchright, no per-request-count safety cap
+needed (removed, see git history if that logic is ever needed again for a different product).
 
 The real feed items turned out to be plain server/client-rendered HTML (each a
 `<li data-testid="platinum-item">...<a data-nagish="feed-item-layout-link" href="...">` block with
 `data-testid="price"/"street-name"/"item-info-line-1st"/"item-info-line-2nd"` spans inside) — NOT
-a separate JSON XHR matching a `realestate-feed` URL substring as attempts 1-8 assumed. That
-assumption was never actually verified (see the old FEED_URL_MARKER approach, removed here) and
-turned out to be wrong; parsing the rendered HTML directly is simpler anyway.
+a separate JSON XHR matching a `realestate-feed` URL substring as attempts 1-8 assumed. Parsing is
+unchanged from attempt 9 — `_parse_cards` just reads text out of whatever HTML we get back,
+whether that HTML arrived via a local browser or ZenRows' own Fetch API.
 
 Requires `ZENROWS_API_KEY` (free tier works — see PROJECT_STATE.md). Yad2 uses numeric city IDs in
 its URL, not the slugs configured in `SCRAPE_CITIES` — `CITY_SLUG_TO_ID` below maps the ones this
@@ -30,8 +46,7 @@ import re
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
-from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
-from patchright.sync_api import sync_playwright
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -147,11 +162,15 @@ CITY_SLUG_TO_HEBREW_NAME = {
 }
 
 ZENROWS_API_KEY_ENV_VAR = "ZENROWS_API_KEY"
-ZENROWS_PROXY_SERVER = "http://proxy.zenrows.com:8001"
-ZENROWS_PROXY_PARAMS = "js_render=true&premium_proxy=true"
+ZENROWS_FETCH_API_URL = "https://api.zenrows.com/v1/"
 
-PAGE_LOAD_TIMEOUT_MS = 75_000  # ZenRows' own render+proxy round-trip is slow; give it real room
-POST_LOAD_WAIT_MS = 9_000  # extra settle time for client-side rendering after domcontentloaded
+# `block_resources` is a Fetch API param telling ZenRows' OWN renderer to skip these types — a
+# speed optimization (their renderer wastes no time on bytes we never use), NOT a cost one: Fetch
+# bills one flat rate per call regardless of what the page loaded internally, unlike attempt 9's
+# proxy-gateway approach where every sub-resource was individually billed (see module docstring).
+BLOCKED_RESOURCE_TYPES = "image,stylesheet,font,media"
+
+PAGE_LOAD_TIMEOUT_S = 90  # ZenRows' own render round-trip is slow; give it real room
 
 # One card = one <a data-nagish="feed-item-layout-link" href="..."> block containing these four
 # data-testid spans, in this order, somewhere inside it (non-greedy match up to the next one).
@@ -166,45 +185,18 @@ _CARD_RE = re.compile(
 _DIRECTION_MARKS_RE = re.compile(r"[‎‏]")  # LTR/RTL marks Yad2 wraps numbers in
 
 # Matches ZenRows' own JSON error body (e.g. `{"code":"AUTH004","title":"Usage exceeded
-# (AUTH004)",...}`), which patchright still hands back as "page content" wrapped in a minimal
-# <html><body><pre>...</pre></body></html> shell — a 200-ish response, not a network failure, so
-# it would otherwise look exactly like a real page with zero matching cards on it. Matches "code"
-# and "title" independently (not a single ordered pattern) since RFC-7807-style problem+json
-# doesn't guarantee key order.
+# (AUTH004)",...}`), returned as the HTTP response body directly (not wrapped in an HTML shell —
+# that wrapping was specific to attempt 9's browser-based fetch, patchright's own "page content"
+# framing). Matches "code" and "title" independently (not a single ordered pattern) since
+# RFC-7807-style problem+json doesn't guarantee key order.
 _ZENROWS_ERROR_CODE_RE = re.compile(r'"code":"(?P<code>[A-Z0-9]+)"')
 _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 
 
-# Hard ceiling on proxied requests per city, regardless of resource type — see
-# `_should_allow_proxied_request`'s docstring for why this exists alongside (not instead of) the
-# image/media/font block below. Deliberately conservative: real card-parsing only ever needed a
-# handful of requests in testing (document + the app's own JS/CSS bundles); raise this only if a
-# real run's logs show it getting hit AND still parsing 0 cards — that would mean something
-# rendering-critical is being cut off, not just third-party noise.
-_MAX_PROXIED_REQUESTS_PER_CITY = 30
-
-
-def _should_allow_proxied_request(resource_type: str, requests_made_so_far: int) -> bool:
-    """Pure decision, unit-testable without a real browser — every request through ZenRows' proxy
-    is billed individually regardless of type or size (confirmed with ZenRows support 2026-09-02,
-    after an incident where blocked image/media/font types alone weren't the full story). This is
-    a deterministic worst-case ceiling on cost per city, not a guess about which resource types
-    happen to be safe today — it protects against a FUTURE Yad2 page redesign adding new ad/
-    tracking calls just as well as it protects against anything already known, because it doesn't
-    care what the extra requests are, only how many there've been.
-
-    image/media/font are always blocked outright regardless of the cap — pure visual polish,
-    `_parse_cards` only ever reads text out of the HTML, never those bytes."""
-    if resource_type in ("image", "media", "font"):
-        return False
-    return requests_made_so_far < _MAX_PROXIED_REQUESTS_PER_CITY
-
-
 class Yad2FetchError(RuntimeError):
-    """The page never loaded through the proxy, or ZenRows itself errored — see the wrapped
+    """The Fetch API call failed, timed out, or ZenRows itself errored — see the wrapped
     exception. A single failed city shouldn't be common; if it becomes so, check ZenRows'
-    dashboard for trial-credit exhaustion or an account issue before assuming Yad2 changed
-    something."""
+    dashboard for credit exhaustion or an account issue before assuming Yad2 changed something."""
 
 
 def _clean(text: str) -> str:
@@ -287,71 +279,41 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
 
     url = f"{SEARCH_PAGE_URL}?city={city_id}"
 
-    with sync_playwright() as p:
-        proxy = {
-            "server": ZENROWS_PROXY_SERVER,
-            "username": api_key,
-            "password": ZENROWS_PROXY_PARAMS,
-        }
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox"], proxy=proxy)
-        try:
-            context = browser.new_context(locale="he-IL", ignore_https_errors=True)
-            page = context.new_page()
-            # `proxy` is set at the BROWSER level above, so every sub-resource this page loads —
-            # not just the main document — is a separate request through ZenRows' proxy, billed
-            # individually (confirmed with ZenRows support 2026-09-02, after an incident where one
-            # diagnostic run alone produced 1,172+ billed requests to img.yad2.co.il: a real Yad2
-            # search page renders dozens of listing-card photos, and each one was a full ~25-credit
-            # proxy request despite us never using the image bytes — _parse_cards only reads text
-            # out of the HTML). See `_should_allow_proxied_request`'s docstring for why this is a
-            # hard request-count ceiling, not just a resource-type blocklist — script/stylesheet/
-            # XHR stay allowed (script in particular is why js_render=true is used at all, for the
-            # client-side-rendered card markup) but only up to that cap per city.
-            proxied_request_count = 0
+    try:
+        response = httpx.get(
+            ZENROWS_FETCH_API_URL,
+            params={
+                "apikey": api_key,
+                "url": url,
+                "js_render": "true",
+                "premium_proxy": "true",
+                "block_resources": BLOCKED_RESOURCE_TYPES,
+            },
+            timeout=PAGE_LOAD_TIMEOUT_S,
+        )
+    except httpx.HTTPError as exc:
+        raise Yad2FetchError(
+            f"ZenRows Fetch API request failed for city={city!r}: {exc}"
+        ) from exc
 
-            def _route(route):
-                nonlocal proxied_request_count
-                if _should_allow_proxied_request(
-                    route.request.resource_type, proxied_request_count
-                ):
-                    proxied_request_count += 1
-                    route.continue_()
-                else:
-                    route.abort()
-
-            page.route("**/*", _route)
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
-            except PlaywrightTimeoutError as exc:
-                raise Yad2FetchError(
-                    f"Page never loaded for city={city!r} within {PAGE_LOAD_TIMEOUT_MS}ms via "
-                    "the ZenRows proxy — check ZenRows dashboard for credit/quota issues; this "
-                    "combo has otherwise been reliable in testing."
-                ) from exc
-
-            page.wait_for_timeout(POST_LOAD_WAIT_MS)
-            try:
-                page.wait_for_load_state("networkidle", timeout=20_000)
-            except PlaywrightTimeoutError:
-                pass  # best-effort — the fixed wait above already gives rendering time
-
-            html = page.content()
-        finally:
-            browser.close()
+    html = response.text
 
     # ZenRows returning its own JSON error (quota exhausted, auth issue, etc.) instead of the
-    # actual page shows up as a tiny, fixed-shape HTML shell wrapping a `<pre>{"code":"AUTH...
-    # This was diagnosed 2026-08-31: every city was silently parsing 0 cards, root-caused via
-    # live logs to `"code":"AUTH004","title":"Usage exceeded (AUTH004)"` — ZenRows account had
-    # hit its usage limit, so the scraper never actually reached Yad2 at all, ever, and the 0
-    # cards were mistaken for "genuinely no listings" run after run. Raise instead of silently
-    # yielding nothing, so this surfaces as a real error (counted in the run summary) rather than
-    # a quietly-empty result — check the ZenRows dashboard for plan/usage if this fires again.
-    if len(html) < 1000 and (code_match := _ZENROWS_ERROR_CODE_RE.search(html)) is not None:
+    # actual page — a non-200 status normally, but checked by body shape too since a quota error
+    # has been seen wrapped oddly before (see PROJECT_STATE.md, 2026-08-31: every city was
+    # silently parsing 0 cards, root-caused via live logs to `"code":"AUTH004","title":"Usage
+    # exceeded (AUTH004)"` — ZenRows account had hit its usage limit, so the scraper never
+    # actually reached Yad2 at all, and the 0 cards were mistaken for "genuinely no listings" run
+    # after run). Raise instead of silently yielding nothing, so this surfaces as a real error
+    # (counted in the run summary) rather than a quietly-empty result.
+    looks_like_zenrows_error = len(html) < 1000 and _ZENROWS_ERROR_CODE_RE.search(html) is not None
+    if response.status_code != 200 or looks_like_zenrows_error:
+        code_match = _ZENROWS_ERROR_CODE_RE.search(html)
         title_match = _ZENROWS_ERROR_TITLE_RE.search(html)
         raise Yad2FetchError(
-            f"ZenRows returned an API error instead of the Yad2 page for city={city!r}: "
-            f"code={code_match.group('code')!r} "
+            f"ZenRows returned an error instead of the Yad2 page for city={city!r}: "
+            f"http_status={response.status_code} "
+            f"code={code_match.group('code') if code_match else '?'!r} "
             f"title={title_match.group('title') if title_match else '?'!r} — check the ZenRows "
             "dashboard for usage/plan/auth issues."
         )
