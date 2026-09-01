@@ -44,8 +44,16 @@ def _candidate_filters(session: Session, listing: Listing) -> list[Filter]:
         .where(Filter.deal_type == listing.deal_type)
     )
     if listing.city:
+        # `::text[]` cast is required — `filters.cities` is `text[]`, and Postgres' `&&` array
+        # overlap operator does NOT implicitly cast `text[]` against the driver's default
+        # `varchar[]` inference for a bare string bind param inside ARRAY[...] (confirmed against
+        # a real Postgres 2026-09-02: `bindparam(..., type_=Text)` alone does NOT fix this —
+        # verified live, not guessed — only an explicit cast on the array literal does). This was
+        # a latent bug never triggered before: it only runs when a fetched listing actually has a
+        # matching active filter, which never happened until the ZenRows Fetch API migration
+        # (see yad2_client.py) produced the first real successful fetch.
         city_clause = text(
-            "(filters.cities = '{}' OR filters.cities && ARRAY[:city])"
+            "(filters.cities = '{}' OR filters.cities && ARRAY[:city]::text[])"
         ).bindparams(bindparam("city", value=listing.city))
     else:
         city_clause = text("filters.cities = '{}'")
