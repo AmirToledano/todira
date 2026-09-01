@@ -50,6 +50,15 @@ spec:
                   optional: true
             - name: WEBSITE_URL
               value: "https://{{ .Values.website.domain }}"
+            # bot/handlers/contact_fallback.py's forward-to-owner path — was missing here entirely
+            # until 2026-09-01 (the website Deployment had it, the bot Deployment never did), so
+            # the fallback silently never sent anything even once the secret existed.
+            - name: OWNER_TELEGRAM_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: owner-telegram-user-id
+                  optional: true
           volumeMounts:
             - name: bot-data
               mountPath: /data

@@ -50,6 +50,11 @@ from i18n import (
 )
 from whatsapp_webhook import router as whatsapp_router
 
+# Matches bot/main.py's own logging.basicConfig — without this, INFO-level messages (including
+# httpx's own automatic request logging) are invisible in pod logs by default (root logger stays
+# at WARNING), which made a real bug (a Telegram push silently not firing) much harder to diagnose
+# than it needed to be. Found and fixed 2026-09-01 alongside the OWNER_TELEGRAM_USER_ID bug below.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
@@ -102,6 +107,17 @@ def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: in
             },
             timeout=10.0,
         )
+        if resp.status_code != 200:
+            # Telegram rejecting the call (e.g. "chat not found" for a wrong/never-messaged-the-
+            # bot OWNER_TELEGRAM_USER_ID) is a normal HTTP response, not an httpx exception - was
+            # previously swallowed here with no log line at all, making a bad ID silently
+            # indistinguishable from "working fine." Logged (not raised) since this stays best-
+            # effort: the contact message itself is already safely in the DB by the time this runs.
+            logger.warning(
+                "Telegram rejected the /contact owner-notify push: status=%d body=%s",
+                resp.status_code,
+                resp.text[:500],
+            )
         return resp.status_code == 200
     except httpx.HTTPError:
         logger.exception("Failed to push /contact submission to Telegram")
