@@ -6,12 +6,17 @@ name: Resume scraper (unsuspend) + trigger one manual 1-city test run
 # `kubectl wait --for=condition=complete` (with a `--for=condition=failed` OR fallback) waited the
 # full 480s regardless, because it waits for "complete" specifically first and only falls through
 # to checking "failed" after ITS OWN timeout expires — so by the time logs were read, the pod was
-# long gone. This version tails the pod's logs to a file in the BACKGROUND as soon as the pod
-# exists, so output is captured even if the pod is deleted moments later, and polls job status
-# directly for either terminal condition instead of waiting on the wrong one first. The CronJob is
-# already unsuspended from the first attempt; this re-applies that (idempotent) and creates a
-# fresh manual Job. Delete this workflow once a real result (success or a real captured crash
-# reason) is in hand.
+# long gone. Second attempt (run 33541733115, new Fetch API architecture) fixed that, but hit a
+# NEW race: `kubectl logs -f` was started the instant the pod NAME existed, before the container
+# had actually left ContainerCreating — `kubectl logs -f` doesn't wait/retry on that error, it
+# just prints it and exits immediately, so the real output was still missed. This version retries
+# starting the follow-tail in a loop (every 1s) until it actually succeeds, instead of a single
+# blind attempt or a fixed sleep (a fixed sleep would just be guessing how long is enough) — so
+# it's captured however early or late the container actually starts. Polls job status directly
+# for either terminal condition instead of waiting on the wrong one first. The CronJob is already
+# unsuspended from earlier attempts; this re-applies that (idempotent) and creates a fresh manual
+# Job. Delete this workflow once a real result (success or a real captured crash reason) is in
+# hand.
 on:
   workflow_dispatch: {}
 
@@ -39,7 +44,7 @@ jobs:
           echo "JOB_NAME=$JOB_NAME" >> "$GITHUB_ENV"
           kubectl create job --from=cronjob/todira-scraper -n todira "$JOB_NAME"
 
-      - name: Wait for the pod to exist, then tail its logs to a file in the background
+      - name: Wait for the pod to exist, then retry-tail its logs in the background until it works
         run: |
           for i in $(seq 1 30); do
             POD=$(kubectl get pods -n todira -l job-name="$JOB_NAME" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
@@ -49,7 +54,16 @@ jobs:
           echo "POD=$POD" >> "$GITHUB_ENV"
           echo "pod=$POD"
           if [ -n "$POD" ]; then
-            nohup kubectl logs -n todira "$POD" --timestamps -f > /tmp/pod.log 2>&1 &
+            # kubectl logs -f errors immediately (doesn't wait/retry) if the container is still
+            # ContainerCreating — retry starting the tail every 1s for up to 60s, instead of one
+            # blind attempt or a fixed sleep guessing how long is enough. >> (append) so an early
+            # failed attempt's one-line error and the real captured output both survive.
+            nohup bash -c '
+              for i in $(seq 1 60); do
+                kubectl logs -n todira "'"$POD"'" --timestamps -f >> /tmp/pod.log 2>&1 && break
+                sleep 1
+              done
+            ' > /tmp/tail_wrapper.log 2>&1 &
             echo "log_tail_pid=$!" >> "$GITHUB_ENV"
           fi
 
