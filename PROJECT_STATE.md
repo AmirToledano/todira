@@ -1645,3 +1645,66 @@ will show clearly either way, instead of failing silently again.
 Deleted the temporary `diagnose-contact-notify.yaml` workflow now that the cause is found and
 fixed. `diagnose-scraper-credits.yaml` (from the ZenRows credit-burn incident, see above) is
 intentionally still present — the scraper CronJob remains suspended pending that decision.
+
+## Update 2026-09-01: admin dashboard + mid-conversation support escape hatch
+Two more real gaps found and fixed the same day:
+
+**`/admin/messages`** (owner-only, gated on `OWNER_TELEGRAM_USER_ID` matching the logged-in
+user's `telegram_user_id`) — merges `ContactMessage` rows from both the website `/contact` form
+and the bot's `contact_fallback.py`, tagged by a new `source` column (`website`/`telegram_bot`),
+so there's one place to read every inbound message regardless of channel, not just a best-effort
+Telegram push. Migration `0004_contact_message_source.py`.
+
+**Mid-conversation support escape hatch**: a real tester got stuck inside `/filter`/onboarding
+asking for human help and just got the same "which city?" prompt forever —
+`contact_fallback.py`'s catch-all never sees these, since PTB tries the active
+`ConversationHandler` first. New shared `bot/handlers/support.py` (`escalate_to_owner` +
+`looks_like_help_request` keyword check) wired into both. Then upgraded past pure keywords:
+`onboarding.py` already sends every message through Gemini to extract search criteria, so a new
+`needs_human_help` field on that same call lets Gemini classify intent semantically at zero extra
+cost; `filter_conversation.py` has no Gemini call at all, so it instead escalates on **parse
+failure + the input looking like a real sentence** (`looks_like_a_sentence`: 2+ words — a genuine
+number/date typo is almost always one token) rather than adding a paid call per keystroke. 188
+tests passing.
+
+## Update 2026-09-02: ZenRows support (Tamer) corrected the credit-burn diagnosis — real fix shipped
+ZenRows support followed up on the incident above with raw request-log detail that corrected the
+earlier working theory:
+- The `city=8600` (ramat-gan) request wasn't one call but several near-simultaneous ones within
+  ~90s, two billed separately.
+- The image burst was bigger than first estimated: **1,172 successful `img.yad2.co.il` requests**,
+  **3,000+ total** in the window — not ~1,000.
+- **`extract=auto` does not auto-fetch a page's images** — that theory (this doc's own prior
+  update) was wrong; ZenRows found no such mechanism firing.
+- Every `yad2.co.il` request, images included, bills at their top rate (25 credits) due to how
+  that domain is configured on their end for anti-bot handling — not something this project did
+  wrong, but relevant to the real per-request cost.
+- Asked whether a script/job on our side started or resumed around Build-plan activation
+  (23:33 UTC) to explain "steady volume for hours before, then this burst."
+
+**Verified independently, not just taken on faith**: GitHub Actions run history confirms exactly
+**one** `diagnose-multi-city` workflow run, `23:34:13`–`23:40:14 UTC` — a single dispatch, not a
+retry or duplicate. `scraper/main.py` has no per-city retry loop (`except Yad2FetchError: ...
+skipping this city`, moves on) and the schedule was once-daily — nothing on our side explains
+"hours of steady volume before" the reported request; said so honestly rather than guessing.
+
+**Root cause of the burst, found by reading `yad2_client.py`, not assumed**: `fetch_search_results`
+sets Playwright's `proxy` at the **browser** level, so *every* sub-resource a rendered Yad2 page
+loads — not just the main HTML document — is a separate request through ZenRows' proxy, billed
+individually. A real Yad2 search-results page renders dozens of listing-card photos per city;
+`_parse_cards` only ever reads text out of the HTML, never image bytes. This was true of the
+one-off diagnostic script that produced the incident, but **it was equally true of the unchanged
+production scraper on every normal run** — meaning the real cost-per-city has always been several
+times higher than the "~1 request ≈ 25 credits/city" math this project's `schedule`/`citiesPerRun`
+budget planning (see the Build-plan update above) was based on.
+
+**Fixed**: `page.route("**/*", ...)` in `fetch_search_results` now aborts `image`/`media`/`font`
+resource types before they ever leave the browser — they never reach the proxy, never get billed.
+`script`/`stylesheet`/XHR stay unblocked (`script` is why `js_render=true` is used at all). 188
+tests still pass.
+
+**Still open**: whether ZenRows credits back any of the burned amount — they've said they want to
+get it right before crediting anything, pending our reply and their engineering team; not
+resolved as of this writing. The scraper CronJob remains suspended (`diagnose-scraper-credits.yaml`)
+until that's settled — the fix above matters regardless of the dispute's outcome, since it would
+have kept happening on every future daily run otherwise.
