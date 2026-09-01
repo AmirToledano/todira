@@ -1,0 +1,138 @@
+name: Backfill specific cities (manual, one Job, real ZenRows cost)
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — added 2026-09-02. Companion to the
+# _mark_delisted fix (see scraper/main.py's docstring): that fix stops FUTURE wrongful delisting,
+# but doesn't retroactively un-delist listings from cities the old global-delisting bug already
+# marked as delisted — those only come back once a city is actually re-scraped again, and at
+# SCRAPE_CITIES_PER_RUN=1 (1 city/day) that's up to ~40 days for the full rotation. This workflow
+# re-scrapes a small, EXPLICIT set of cities in ONE Job (not the CronJob's date-rotated single
+# city), so a user's own filter cities come back live right away instead of waiting.
+#
+# Unlike resume-scraper-1city-test.yaml (which does `kubectl create job --from=cronjob/...` and
+# so inherits the CronJob's SCRAPE_CITIES/SCRAPE_CITIES_PER_RUN verbatim — no override possible),
+# this builds its own Job manifest with SCRAPE_CITIES set to exactly `cities` below and
+# SCRAPE_CITIES_PER_RUN=0 (disables rotation entirely — see _select_cities_for_run's own
+# docstring), using whatever image the CronJob is CURRENTLY pointed at (read live, not
+# hardcoded, so this always matches what's actually deployed).
+#
+# REAL COST: each city scraped is one ZenRows Fetch API request (see yad2_client.py's module
+# docstring on why that's a flat per-request cost, not per-sub-resource) — cheap for a handful of
+# cities, but this is a genuine spend, not free like the read-only diagnostic workflows. Edit the
+# `cities` env value below before dispatching if a different set is needed. Delete this workflow
+# once the specific cities that needed backfilling are caught up (or keep it — it's reusable for
+# the same situation later, just edit `cities` each time).
+on:
+  workflow_dispatch: {}
+
+env:
+  # comma-separated city slugs (see scraper/yad2_client.py's CITY_SLUG_TO_ID for the full list of
+  # valid slugs) — edit this before dispatching if a different set of cities is needed.
+  cities: "tel-aviv,ramat-gan,jerusalem,rishon-lezion"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read the CronJob's currently-deployed image (stay in sync, don't hardcode)
+        run: |
+          IMAGE=$(kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].image}')
+          echo "image=$IMAGE" >> "$GITHUB_ENV"
+          echo "Using image: $IMAGE"
+
+      - name: Create a one-off Job scraping exactly the requested cities (no rotation)
+        run: |
+          JOB_NAME="todira-scraper-backfill-$(date +%s)"
+          echo "JOB_NAME=$JOB_NAME" >> "$GITHUB_ENV"
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: $JOB_NAME
+          spec:
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: scraper
+                    image: $image
+                    resources:
+                      limits:
+                        cpu: 500m
+                        memory: 512Mi
+                      requests:
+                        cpu: 100m
+                        memory: 256Mi
+                    env:
+                      - name: DATABASE_URL
+                        valueFrom:
+                          secretKeyRef:
+                            name: todira-postgres-secret
+                            key: database-url
+                      - name: TELEGRAM_BOT_TOKEN
+                        valueFrom:
+                          secretKeyRef:
+                            name: todira-bot-secret
+                            key: telegram-bot-token
+                      - name: ZENROWS_API_KEY
+                        valueFrom:
+                          secretKeyRef:
+                            name: todira-bot-secret
+                            key: zenrows-api-key
+                            optional: true
+                      - name: SCRAPE_CITIES
+                        value: "$cities"
+                      - name: SCRAPE_CITIES_PER_RUN
+                        value: "0"
+          PODYAML
+
+      - name: Wait for the pod, tail its logs (retry until the container actually starts)
+        run: |
+          for i in $(seq 1 30); do
+            POD=$(kubectl get pods -n todira -l job-name="$JOB_NAME" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            [ -n "$POD" ] && break
+            sleep 1
+          done
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          echo "pod=$POD"
+          if [ -n "$POD" ]; then
+            nohup bash -c '
+              for i in $(seq 1 60); do
+                kubectl logs -n todira "'"$POD"'" --timestamps -f >> /tmp/pod.log 2>&1 && break
+                sleep 1
+              done
+            ' > /tmp/tail_wrapper.log 2>&1 &
+          fi
+
+      - name: Poll the Job until it reaches a real terminal condition (max ~7 min, several cities)
+        run: |
+          for i in $(seq 1 80); do
+            STATUS=$(kubectl get job "$JOB_NAME" -n todira -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null || echo "")
+            echo "poll $i: conditions=[$STATUS]"
+            if echo "$STATUS" | grep -qE "Complete|Failed"; then
+              echo "Reached terminal condition: $STATUS"
+              break
+            fi
+            sleep 5
+          done
+          sleep 3
+          echo "--- final job status ---"
+          kubectl get job "$JOB_NAME" -n todira -o wide
+
+      - name: Captured pod logs
+        run: |
+          echo "--- captured logs ---"
+          cat /tmp/pod.log 2>/dev/null || echo "(no logs captured)"
+
+      - name: Clean up the Job (the pod already ran to completion; nothing left to do)
+        if: always()
+        run: kubectl delete job "$JOB_NAME" -n todira --ignore-not-found
