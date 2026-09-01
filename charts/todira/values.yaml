@@ -79,13 +79,15 @@ scraper:
   # not just the page itself) was a separate billed ZenRows request — confirmed with ZenRows
   # support, real cost per city was several times the "~1 request ≈ 25 credits" this 42-cities-
   # daily budget math assumed. Fixed in yad2_client.py (image/media/font resource types now
-  # blocked before they ever leave the browser), but that fix has NOT yet been validated against
-  # real traffic. citiesPerRun set back down to 6 (was 0 = all 42) as a deliberately small,
-  # bounded first real-world test after buying a small top-up — see PROJECT_STATE.md for the
-  # exact plan. Only go back to 0 (all 42 cities/day) once a few real runs at this size confirm
-  # the actual post-fix cost per city, not before.
+  # blocked before they ever leave the browser) and hardened further with a hard per-city
+  # request-count cap (_MAX_PROXIED_REQUESTS_PER_CITY in yad2_client.py — a deterministic ceiling
+  # on cost per city regardless of resource type, not just a guess about which types are safe),
+  # but neither fix has been validated against real traffic yet. citiesPerRun set to 1 (was 0 =
+  # all 42) for the smallest possible first real-world test after buying a small top-up — see
+  # PROJECT_STATE.md for the exact plan. Scale up gradually (1 → a few → 0) only as real runs at
+  # each size confirm the actual post-fix cost per city, never back to 0 on a guess.
   schedule: "0 3 * * *" # once daily, 03:00 UTC (low-traffic hour)
-  citiesPerRun: 6
+  citiesPerRun: 1
   # scraper/yad2_client.py's CITY_SLUG_TO_ID must have a real Yad2 ID for every slug listed here,
   # or that city silently scrapes nothing when its turn in the rotation comes up.
   cities: "tel-aviv,ramat-gan,givatayim,jerusalem,haifa,beer-sheva,rishon-lezion,petah-tikva,ashdod,netanya,bnei-brak,holon,ashkelon,rehovot,bat-yam,beit-shemesh,kfar-saba,herzliya,hadera,raanana,nahariya,eilat,modiin,ramat-hasharon,ramla,nazareth,lod,hod-hasharon,kiryat-ata,kiryat-gat,kiryat-motzkin,kiryat-bialik,kiryat-ono,yavne,or-yehuda,tzfat,afula,tiberias,dimona,mevaseret-zion,har-gilo,karmiel"
