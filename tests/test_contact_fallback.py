@@ -2,6 +2,11 @@
 handler claimed (see that module's own docstring for why this exists: a user following the
 website's "כתוב/י ישירות לבוט" link got total silence before this, found 2026-09-01).
 
+The actual save+notify logic lives in handlers/support.py (shared with onboarding.py and
+filter_conversation.py, see that module's docstring) — contact_fallback.py just calls it and
+replies, so these tests patch handlers.support's OWNER_TELEGRAM_USER_ID/get_session, not
+contact_fallback's own (it no longer has copies of either).
+
 Uses lightweight SimpleNamespace/AsyncMock stand-ins for the Update/Context objects rather than
 full real python-telegram-bot objects — handle_stray_message only touches a handful of attributes
 (update.effective_user, update.message.text/.reply_text, context.bot.send_message), all easy to
@@ -18,6 +23,7 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
 import handlers.contact_fallback as contact_fallback
+import handlers.support as support
 from telegram.error import TelegramError
 
 
@@ -60,7 +66,7 @@ def _run(coro):
 
 
 def test_saves_message_and_replies_even_without_owner_id_configured(monkeypatch):
-    monkeypatch.setattr(contact_fallback, "OWNER_TELEGRAM_USER_ID", None)
+    monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", None)
     session = _FakeSession()
 
     @contextmanager
@@ -70,7 +76,7 @@ def test_saves_message_and_replies_even_without_owner_id_configured(monkeypatch)
     update = _make_update("היי איך אפשר לפנות לבעלים")
     context = _make_context()
 
-    with patch.object(contact_fallback, "get_session", fake_get_session):
+    with patch.object(support, "get_session", fake_get_session):
         _run(contact_fallback.handle_stray_message(update, context))
 
     assert len(session.added) == 1
@@ -83,7 +89,7 @@ def test_saves_message_and_replies_even_without_owner_id_configured(monkeypatch)
 
 
 def test_notifies_owner_and_marks_notified_when_configured(monkeypatch):
-    monkeypatch.setattr(contact_fallback, "OWNER_TELEGRAM_USER_ID", "999")
+    monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", "999")
     session = _FakeSession()
 
     @contextmanager
@@ -93,7 +99,7 @@ def test_notifies_owner_and_marks_notified_when_configured(monkeypatch):
     update = _make_update("שאלה על המחירים")
     context = _make_context()
 
-    with patch.object(contact_fallback, "get_session", fake_get_session):
+    with patch.object(support, "get_session", fake_get_session):
         _run(contact_fallback.handle_stray_message(update, context))
 
     context.bot.send_message.assert_called_once()
@@ -105,7 +111,7 @@ def test_notifies_owner_and_marks_notified_when_configured(monkeypatch):
 
 
 def test_send_failure_does_not_crash_or_mark_notified(monkeypatch):
-    monkeypatch.setattr(contact_fallback, "OWNER_TELEGRAM_USER_ID", "999")
+    monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", "999")
     session = _FakeSession()
 
     @contextmanager
@@ -116,7 +122,7 @@ def test_send_failure_does_not_crash_or_mark_notified(monkeypatch):
     context = _make_context()
     context.bot.send_message.side_effect = TelegramError("boom")
 
-    with patch.object(contact_fallback, "get_session", fake_get_session):
+    with patch.object(support, "get_session", fake_get_session):
         _run(contact_fallback.handle_stray_message(update, context))
 
     assert not session.added[0].notified_owner
