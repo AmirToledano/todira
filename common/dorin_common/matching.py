@@ -10,6 +10,14 @@ one may fail.
 "Miss at most one requirement" (not "exactly one") is a deliberate reading of the reference
 bot's slightly ambiguous "flexible filter" description — the more user-friendly interpretation.
 Revisit if it doesn't feel right once weighed against real dorin.app behavior.
+
+Every mandatory-criteria field except no_brokers now gives an unknown (None/missing) listing value
+the benefit of the doubt, i.e. never fails on it — see `_check_mandatory_criteria`'s own comment.
+Not the original design (missing data used to count as a failure, "can't confirm the requirement
+is met"), but the scraper doesn't populate any of this data at all yet (amenities live on a
+listing's own detail page, not the search-results cards this project actually scrapes), so the
+stricter behavior meant every filter using one of these toggles matched zero listings, always.
+Revisit once per-listing detail scraping exists and these fields carry real data again.
 """
 from __future__ import annotations
 
@@ -120,8 +128,18 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
 def _check_mandatory_criteria(filter_row, listing_row) -> list[str]:
     failed: list[str] = []
 
-    # (filter attr, listing attr, human label) — NULL/unknown on the listing side counts as a
-    # failure to be conservative: we can't confirm the requirement is met
+    # (filter attr, listing attr, human label) — an unknown (None) value on the listing side gets
+    # the benefit of the doubt, same as property_type/is_broker_listing below. This USED to be
+    # enforced conservatively (NULL counted as a failure, "we can't confirm the requirement is
+    # met") — that was a deliberate, tested design choice, but turned into the exact same class of
+    # bug property_type was: found live 2026-09-02 that scraper/yad2_client.py's card parser never
+    # extracts ANY of has_parking/has_elevator/has_balcony/pets_allowed/is_renovated/
+    # is_roommate_friendly at all (that data only exists on a listing's own detail page, not the
+    # search-results cards this project scrapes — a real, separate, costlier scraping feature, not
+    # yet built). So every one of these fields is None for every real listing, meaning any filter
+    # with even one of these require_* toggles on got zero matches, always, regardless of
+    # flexible_match. Until per-listing amenity scraping exists, "we don't know" has to mean "don't
+    # reject on this" rather than "assume no."
     boolean_pairs = (
         ("require_parking", "has_parking", "parking"),
         ("require_elevator", "has_elevator", "elevator"),
@@ -131,21 +149,27 @@ def _check_mandatory_criteria(filter_row, listing_row) -> list[str]:
         ("require_roommate_friendly", "is_roommate_friendly", "roommate_friendly"),
     )
     for filter_attr, listing_attr, label in boolean_pairs:
-        if getattr(filter_row, filter_attr) and getattr(listing_row, listing_attr) is not True:
+        listing_value = getattr(listing_row, listing_attr)
+        if getattr(filter_row, filter_attr) and listing_value is not None and listing_value is not True:
             failed.append(label)
 
-    if filter_row.require_has_photos and not listing_row.image_urls:
-        failed.append("has_photos")
+    # image_urls is likewise always [] today (never populated — see the boolean_pairs comment
+    # above, same root cause) with no way to tell "no photos" apart from "never scraped photos" —
+    # an empty list is not evidence either way, so this can't be enforced without also rejecting
+    # every listing; left inert until real photo scraping exists rather than doing that.
 
     if filter_row.safe_room_pref == "safe_room_only":
-        if listing_row.safe_room_type != "safe_room":
+        if listing_row.safe_room_type is not None and listing_row.safe_room_type != "safe_room":
             failed.append("safe_room_only")
     elif filter_row.safe_room_pref == "safe_room_or_shelter":
-        if listing_row.safe_room_type not in ("safe_room", "building_shelter"):
+        if listing_row.safe_room_type is not None and listing_row.safe_room_type not in (
+            "safe_room",
+            "building_shelter",
+        ):
             failed.append("safe_room_or_shelter")
 
     if filter_row.furniture_pref in ("furnished", "unfurnished"):
-        if listing_row.furniture != filter_row.furniture_pref:
+        if listing_row.furniture is not None and listing_row.furniture != filter_row.furniture_pref:
             failed.append("furniture_pref")
 
     # unknown broker status (None) gets the benefit of the doubt — only an explicit True fails

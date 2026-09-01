@@ -347,22 +347,27 @@ def test_boolean_amenity_required_and_false_fails(filter_attr, listing_attr, lab
         ("require_roommate_friendly", "is_roommate_friendly", "roommate_friendly"),
     ],
 )
-def test_boolean_amenity_required_and_unknown_fails_conservatively(
+def test_boolean_amenity_required_and_unknown_gets_benefit_of_the_doubt(
     filter_attr, listing_attr, label
 ):
-    # NULL/unknown on the listing side must count as a failure - we can't confirm the
-    # requirement is met, so benefit-of-the-doubt does NOT apply here (unlike no_brokers below)
+    # Regression test for a real production bug (2026-09-02, same shape as property_type):
+    # scraper/yad2_client.py's card parser never extracts any amenity data at all (it only lives
+    # on a listing's own detail page), so these fields are None for every real listing - a filter
+    # with any of these require_* toggles on used to fail every single listing, always.
     f = make_filter(**{filter_attr: True})
     l = make_listing(**{listing_attr: None})
     result = evaluate(f, l)
-    assert result.matched is False
-    assert label in result.failed_mandatory_criteria
+    assert result.matched is True
+    assert label not in result.failed_mandatory_criteria
 
 
-def test_require_has_photos_fails_when_no_images():
+def test_require_has_photos_never_enforced_since_photos_are_never_scraped():
+    # image_urls is always [] for every real listing today (see matching.py's own comment) - an
+    # empty list can't be told apart from "genuinely no photos", so this can't reject on it.
     f = make_filter(require_has_photos=True)
     result = evaluate(f, make_listing(image_urls=[]))
-    assert "has_photos" in result.failed_mandatory_criteria
+    assert result.matched is True
+    assert "has_photos" not in result.failed_mandatory_criteria
 
 
 def test_require_has_photos_passes_when_images_present():
@@ -389,10 +394,13 @@ def test_safe_room_or_shelter_accepts_either():
     assert evaluate(f, make_listing(safe_room_type="building_shelter")).matched is True
 
 
-def test_safe_room_or_shelter_rejects_neither():
+def test_safe_room_or_shelter_unknown_gets_benefit_of_the_doubt():
+    # safe_room_type is never scraped today (same root cause as the amenity fields above) - an
+    # unknown value must not zero out every listing for any filter that sets safe_room_pref.
     f = make_filter(safe_room_pref="safe_room_or_shelter")
     result = evaluate(f, make_listing(safe_room_type=None))
-    assert "safe_room_or_shelter" in result.failed_mandatory_criteria
+    assert result.matched is True
+    assert "safe_room_or_shelter" not in result.failed_mandatory_criteria
 
 
 def test_furniture_pref_mismatch_fails():
@@ -405,6 +413,14 @@ def test_furniture_pref_match_passes():
     f = make_filter(furniture_pref="furnished")
     result = evaluate(f, make_listing(furniture="furnished"))
     assert result.matched is True
+
+
+def test_furniture_pref_unknown_gets_benefit_of_the_doubt():
+    # furniture is never scraped today (same root cause as the amenity fields above).
+    f = make_filter(furniture_pref="furnished")
+    result = evaluate(f, make_listing(furniture=None))
+    assert result.matched is True
+    assert "furniture_pref" not in result.failed_mandatory_criteria
 
 
 def test_furniture_pref_any_ignores_listing_value():
