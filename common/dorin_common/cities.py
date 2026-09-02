@@ -35,16 +35,31 @@ CITIES: list[str] = [
 
 # Common Hebrew abbreviations/nicknames that AREN'T literal substrings of the full city name
 # (e.g. "ב"ש" for "באר שבע" — different letters entirely, not a typo), so the plain containment
-# check below can't catch them on its own. Deliberately a short, non-exhaustive list of the most
-# common ones — found missing by the user manually testing "ב"ש" against the real bot. Keys are
-# stored WITHOUT quote characters (see _strip_quotes) since people type these with a mix of
-# ASCII "/' and Hebrew geresh/gershayim (׳/״) depending on their keyboard, and the exact
-# punctuation shouldn't matter.
+# check below can't catch them on its own. Keys are stored WITHOUT quote characters (see
+# _strip_quotes) since people type these with a mix of ASCII "/' and Hebrew geresh/gershayim
+# (׳/״) depending on their keyboard, and the exact punctuation shouldn't matter — _strip_quotes
+# already strips both the query AND these keys are written bare, so "ראשל\"צ", "ראשל׳צ" and
+# "ראשלצ" all resolve the same way with no extra work per alias.
+#
+# Expanded 2026-09-02 from the original 4 (בש/תא/פת/רג) after an explicit ask to cover "every
+# combination that exists on the internet" for a city name, not just the ones a bug report
+# happened to surface — every one of these is a genuinely common, unambiguous Israeli usage;
+# deliberately left OUT any that are ambiguous in real usage (e.g. no alias for בית שמש, since
+# "ב"ש" colloquially means באר שבע almost everywhere and a second mapping would just overwrite
+# the first) rather than guess and risk pointing someone at the wrong city.
 _ALIASES: dict[str, str] = {
     "בש": "באר שבע",
     "תא": "תל אביב יפו",
     "פת": "פתח תקווה",
     "רג": "רמת גן",
+    "ראשלצ": "ראשון לציון",
+    "כס": "כפר סבא",
+    "קא": "קריית אתא",
+    "קג": "קריית גת",
+    "קמ": "קריית מוצקין",
+    "קב": "קריית ביאליק",
+    "רמהש": "רמת השרון",
+    "בב": "בני ברק",
 }
 
 _QUOTE_CHARS = ('"', "'", "׳", "״")  # ASCII quote/apostrophe, Hebrew geresh/gershayim

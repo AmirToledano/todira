@@ -165,6 +165,26 @@ def test_street_exclude_rejects_matching_street():
     assert "street_exclude" in result.failed_hard_filters
 
 
+def test_street_include_tolerates_defective_vs_full_yud_spelling():
+    # Same כתיב מלא/חסר doubling normalization cities.find_matches already applies (2026-09-02),
+    # generalized here to street matching per an explicit follow-up ask ("לכל י' 1 או דאבל י' ...
+    # עיר רחוב או כל דבר אחר") - not reachable from any UI yet (streets_include/exclude have no
+    # menu screen, see filter_conversation.py's module docstring) but future-proofed regardless.
+    f = make_filter(streets_include=["רוטשילד"])  # 1 yud
+    result = evaluate(f, make_listing(street="רוטשילד"))
+    assert result.matched is True
+
+    f = make_filter(streets_include=["קריית ספר"])  # 2 yuds, as typed by the filter
+    result = evaluate(f, make_listing(street="קרית ספר"))  # 1 yud, as the listing itself has it
+    assert result.matched is True
+
+
+def test_neighborhood_include_tolerates_defective_vs_full_yud_spelling():
+    f = make_filter(neighborhoods_include=["חיפה:נווה שאנן"])
+    result = evaluate(f, make_listing(city="חיפה", neighborhood="נוה שאנן"))  # 1 vav vs 2
+    assert result.matched is True
+
+
 def test_missing_price_passes_when_price_not_required():
     f = make_filter(require_price=False, price_min=1000, price_max=2000)
     result = evaluate(f, make_listing(price=None))

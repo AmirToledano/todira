@@ -2080,3 +2080,26 @@ Two follow-up requests after the user saw the deployed dachshund feature live on
    dead code. No new tests needed (same file names/palette count/selection logic as before, only
    the PNG bytes changed) — the existing `test_dachshund_photo_pick_is_deterministic_per_listing_id`
    test already asserts each palette file exists on disk. 291 tests still passing.
+
+## Update 2026-09-02, later: generalized the spelling/abbreviation fix beyond one city
+Explicit follow-up ask after confirming the קרית/קריית מוצקין fix: make the same doubled-letter
+(כתיב מלא/חסר) tolerance and common-abbreviation coverage apply everywhere a Hebrew place name is
+matched — "עיר רחוב או כל דבר אחר" — not just the one city a bug report happened to surface.
+
+- `common/dorin_common/cities.py`'s `_ALIASES` expanded from 4 entries (בש/תא/פת/רג) to 12: added
+  `ראשלצ`->ראשון לציון (explicitly named), `כס`->כפר סבא, `קא`->קריית אתא, `קג`->קריית גת,
+  `קמ`->קריית מוצקין, `קב`->קריית ביאליק, `רמהש`->רמת השרון, `בב`->בני ברק. Deliberately did NOT
+  add an alias for בית שמש ("ב"ש" collides with the existing, far more common, באר שבע mapping —
+  a second entry would just overwrite the first) or guess at anything not confidently a standard,
+  unambiguous usage. With/without gershayim ("ראשל\"צ" vs "ראשלצ") already worked for free via the
+  existing `_strip_quotes` — every new alias gets it automatically, nothing extra needed there.
+- `common/dorin_common/matching.py`: `normalize_spelling()` (previously only used by
+  `cities.find_matches`/`canonicalize_city`) is now also applied to the neighborhood and street
+  hard-filter comparisons. Neither is reachable from any UI today (no menu screen for them yet —
+  see `filter_conversation.py`'s module docstring), so this is future-proofing rather than a live
+  bug fix, but it's a one-line cost per comparison and directly matches what was asked rather than
+  waiting to rediscover the same class of bug per field later.
+- 3 new tests (`test_cities.py`'s `test_newly_added_aliases_resolve`, `test_matching.py`'s
+  `test_street_include_tolerates_defective_vs_full_yud_spelling` and
+  `test_neighborhood_include_tolerates_defective_vs_full_yud_spelling`). 294 tests total, all
+  passing.
