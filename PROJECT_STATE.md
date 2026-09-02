@@ -2103,3 +2103,32 @@ matched — "עיר רחוב או כל דבר אחר" — not just the one city 
   `test_street_include_tolerates_defective_vs_full_yud_spelling` and
   `test_neighborhood_include_tolerates_defective_vs_full_yud_spelling`). 294 tests total, all
   passing.
+
+## Update 2026-09-02, later still: dropped the media-group gallery + fixed price-line RTL bug
+Two real issues spotted from a live screenshot (a burst of real matches arriving), compared
+directly against dorin.app's own cleaner card style:
+
+1. **The "⬆️ הדירה למעלה" follow-up message is gone.** It only existed because Telegram's
+   `sendMediaGroup` can't carry an inline keyboard, so showing 2+ photos meant a second, separate
+   message just to carry the ❤️/🙈/🎉 buttons. With several listings landing in a burst (each
+   send spaced out by Telegram's own per-chat rate limit — see the `SEND_DELAY_SECONDS`/retry
+   history above), that follow-up message no longer read as obviously "the listing right above"
+   by the time it arrived. `send_listing_card` (`dorin_common/cards.py`) now sends exactly ONE
+   `send_photo` per listing — the first real photo (or the dachshund fallback) with the caption
+   and keyboard together, same as the reference bot's own single-message-per-listing style. The
+   listing's other photos aren't lost — the caption's existing "🔗 לצפייה במודעה המלאה" link
+   already opens the full Yad2 listing where all of them are visible. `MAX_MEDIA_GROUP_PHOTOS`,
+   `InputMediaPhoto`, and the whole `send_media_group` branch removed as dead code.
+
+2. **The price line (and the amenity-emoji row) rendered flush LEFT instead of right, next to
+   everything else.** Root cause: "💰 16,000 ₪" has no strong-direction character at all — an
+   emoji, digits, and the ₪ sign are all bidi-neutral/weak, so Telegram's bidi algorithm fell back
+   to LTR for that one line while every other line (which starts with real Hebrew text) sat
+   correctly on the right. Fixed with a leading U+200F (Right-to-Left Mark — invisible, zero
+   display width) on the price line and the amenity-emoji row, in both `format_caption` (Telegram
+   HTML) and `format_caption_whatsapp`; harmless on lines that were already RTL. This is a classic
+   bidi-text bug, not a Todira-specific one — worth remembering if any other emoji/number/symbol-
+   only line gets added later.
+
+2 tests rewritten (the media-group test replaced with a "still sends just the first photo" test),
+2 new tests for the RLM fix. 296 tests total, all passing.
