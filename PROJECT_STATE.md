@@ -1902,3 +1902,61 @@ a working WhatsApp bot for someone without a registered business — adding a re
 number to the WhatsApp Business Account allows messaging up to 250 unique recipients/24h with no
 verification at all (only the free *test* number is capped at 5 manually-added recipients).
 Whether a permanent System User token specifically requires verification remains unconfirmed.
+
+## Update 2026-09-02, later still: /filter city search — two real bugs, both live user reports
+Right after shipping the website's /filter city checkbox grid (see the earlier "checkbox grid on
+the website's /filter" update), the owner reported it live: typing into the city search box did
+nothing visible, and pressing Enter/the keyboard's search key reloaded the whole page.
+
+**Filtering bug** — `.check-chip` in `style.css` sets `display: inline-flex` unconditionally. That
+author-stylesheet rule always overrides the browser's own default `[hidden] { display: none }`
+UA rule, regardless of selector specificity (author styles beat user-agent styles by CSS cascade
+origin, not by specificity). `filterCityChips()`'s `chip.hidden = true` was firing correctly the
+entire time — it just never had any visible effect. Fixed with
+`.check-chip[hidden] { display: none !important; }`.
+
+**Reload bug** — the search `<input>` lives inside the filter `<form>`; pressing Enter in any
+text input inside a form triggers native submission unless prevented. Fixed with an `onkeydown`
+guard on that one field (`event.preventDefault()` on Enter), leaving the real Save button intact.
+
+Also sorted `cities_list` alphabetically for display only (`sorted(CITIES)` at the render call
+site in `website/main.py`) — a separate, smaller complaint from the same report; `CITIES` itself
+(read by matching.py and the bot's own city picker) keeps its original order.
+
+Two new tests in `tests/test_website_filter_cities.py` (alphabetical render order; the `onkeydown`
+guard is present). 273 tests total, all passing. Shipped and merged independently of the (still
+separately-tracked) real-photos work, since it was a live bug worth fixing immediately.
+
+## Where this session leaves off (2026-09-02, end of day)
+Full arc, in order, for anyone picking this up cold:
+1. Kiryat Motzkin spelling mismatch -> `cities.canonicalize_city()` + bot/website city pickers.
+2. Global delisting bug -> `_mark_delisted` scoped to scraped cities only.
+3. `property_type` matching bug -> unknown property type gets benefit of the doubt (the actual
+   fix that first made listings visible again).
+4. Same bug class found in 8 more fields (amenities/safe-room/furniture) -> same fix pattern.
+5. Login redesign step 1: Telegram Login Widget -> direct `t.me/AmirDirotBot` deep link (step 2,
+   Google Sign-In, not started - gated on the owner setting up a Google Cloud OAuth Client).
+6. Listing card price made a prominent headline, not just a small badge (website).
+7. Real photos/amenities/description request -> diagnosed the per-listing detail-page fetch
+   first (~25 ZenRows credits/listing, correctly rejected as too costly by the owner) -> found
+   and shipped a FREE alternative instead: the search page's own embedded feed data. See the
+   "real photos for free" update above for the full technical detail. PR for this
+   (`claude/project-state-update-9qzsco` -> main) is the one still open as of this writing.
+8. /filter city search bugfixes (this update) - shipped and merged independently.
+9. WhatsApp Business Verification research (not this session's main thread, a tangent): the
+   owner has no registered business and doesn't want to register one just for this. Confirmed
+   Business Verification is NOT required for a working bot - adding a real (non-test) phone
+   number to the WhatsApp Business Account allows up to 250 unique recipients/24h with zero
+   verification (only the free *test* number is capped at 5 manually-added recipients). Whether
+   a *permanent* System User token specifically needs verification is still unconfirmed. Not
+   acted on yet - the owner has this written up in a separate reference file, not yet decided
+   whether to pursue adding a real phone number.
+
+**Not yet done, explicitly still open:**
+- Google Sign-In (login redesign step 2) - needs the owner's own Google Cloud OAuth Client setup.
+- WhatsApp: decide whether to add a real (non-test) phone number to unlock the 250/24h tier.
+- `fetch_listing_detail`/`enrich_from_detail` (yad2_client.py/normalize.py) exist, tested, but are
+  deliberately NOT called automatically - a real ~25-credit-per-listing cost if ever wanted for
+  free-text descriptions specifically.
+- Komo (קומו) and Facebook Marketplace/Groups scraping sources - long-standing backlog items,
+  untouched this session.
