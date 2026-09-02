@@ -2132,3 +2132,46 @@ directly against dorin.app's own cleaner card style:
 
 2 tests rewritten (the media-group test replaced with a "still sends just the first photo" test),
 2 new tests for the RLM fix. 296 tests total, all passing.
+
+## Update 2026-09-02, later still: the CC0 illustration is out — real Todi photos are in
+Final step of the dachshund-placeholder story: the user offered to send real photos of their own
+dog (טודי — Todi) instead of using any stock/illustrated art at all, and sent 50 over chat (a
+GitHub web-upload attempt failed repeatedly on mobile Safari with no error, worked once switched
+to desktop — 10 photos got in that way before the user gave up on it and just sent the rest, 40
+more, directly in chat in batches of 5).
+
+- Built a contact-sheet (PIL grid montage with index numbers) of all 50 to review them at a glance
+  instead of opening each individually, then curated 17: dog clearly the main subject and filling
+  a good part of the frame, no visible human faces (a hand/arm touching Todi is fine, judged case
+  by case), reasonably sharp/lit, decent variety of poses and settings (indoor/outdoor, puppy/
+  adult, sitting/lying/standing). Explicitly excluded photos with people's faces prominent, even
+  very cute ones — this is a site-wide placeholder shown on random listings, not a personal photo
+  album.
+- `scripts/prepare_todi_photos.py` (replaces the deleted `fetch_dachshund_art.py` — the CC0
+  illustration + its 6 recolored palettes are gone entirely, not kept as a fallback): fixes phone-
+  camera EXIF rotation (`ImageOps.exif_transpose` — caught a real bug here, one curated photo came
+  out sideways without this despite looking correctly upright in Telegram/Photos previews, which
+  already honor EXIF), resizes to a 1200px max dimension, and saves as JPEG (quality 82) — real
+  photos, unlike the flat-color illustration, compress far better as JPEG than PNG.
+- Deliberately NO cropping. `.no-image-dachshund img` scales by width (max 200px) with
+  `height:auto`, not `background-size:cover` — so a portrait phone photo shows in full rather than
+  risking cropping Todi out of frame from a guessed crop box across 17 different photos. Telegram
+  handles the varying aspect ratios itself the same way it already does for real Yad2 photos.
+  Found and fixed a real layout bug this surfaced: a tall photo at 200px width could still be much
+  taller than the card's fixed 4:3 cover box, pushing the caption text below it out of view
+  (clipped by the card's own overflow) — added `max-height: 125px; object-fit: contain` so the
+  image itself is bounded on both axes and the caption always stays visible. Confirmed with a
+  Playwright screenshot before AND after this fix (the "after" is what actually shipped).
+- Selection is `todi_01.jpg` .. `todi_17.jpg`, still picked deterministically from `listing.id %
+  17` (not random) exactly like the palette selection before it — same mechanism, different pool.
+- Personalized the caption too, in `common/dorin_common/cards.py` and all 5 of `website/i18n.py`'s
+  `card.no_image_caption` languages: "אבל הנה נקניקיה חמודה בשבילכם" (a cute sausage dog) →
+  "אבל הנה טודי בשבילכם" (Todi, by name) — it's literally him now, not a generic stock dog.
+- The `todi-photos-raw` branch (the temporary GitHub-upload staging branch, holding the original
+  10 unprocessed uploads) is left as-is for now, not deleted — the user said deleting it is fine
+  whenever, not urgent.
+
+2 tests updated (renamed + adjusted for `.jpg`/"טודי" instead of `.png`/"נקניקיה"), no new tests
+needed (same deterministic-selection mechanism, just a different pool size). 296 tests total, all
+passing. Verified visually with a Playwright screenshot of the actual rendered card (three
+different listings showing three different real Todi photos) before shipping.
