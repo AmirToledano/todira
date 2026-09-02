@@ -1,10 +1,18 @@
 {% macro listing_card(l, delay=0) %}
 <div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
-  <div class="listing-cover {{ '' if l.image_urls else 'no-image' }}"
-       {% if l.image_urls %}style="background-image:url('{{ l.image_urls[0] }}')"{% endif %}>
-    {% if not l.image_urls %}<span aria-hidden="true">🏠</span>{% endif %}
+  <div class="listing-cover-wrap">
+    <div class="listing-cover {{ '' if l.image_urls else 'no-image' }}">
+      {% if l.image_urls %}
+        {% for img in l.image_urls[:8] %}
+        <div class="cover-slide" style="background-image:url('{{ img }}')"></div>
+        {% endfor %}
+      {% else %}
+        <span aria-hidden="true">🏠</span>
+      {% endif %}
+    </div>
     <span class="source-badge">{{ l.source }}</span>
     <span class="price-badge">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</span>
+    {% if l.image_urls|length > 1 %}<span class="photo-count-badge">📷 {{ l.image_urls|length }}</span>{% endif %}
   </div>
   <div class="listing-body">
     <div class="listing-price">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</div>
@@ -16,13 +24,15 @@
       {% if l.floor is not none %}<span>🏢 {{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %}</span>{% endif %}
       {% if l.size_sqm %}<span>📐 {{ l.size_sqm }} {{ t('card.sqm') }}</span>{% endif %}
     </div>
-    {% if l.has_parking or l.has_elevator or l.has_balcony or l.pets_allowed or l.is_renovated %}
+    {% if l.has_parking or l.has_elevator or l.has_balcony or l.pets_allowed or l.is_renovated or l.safe_room_type in ('safe_room', 'building_shelter') or l.furniture == 'furnished' %}
     <div class="amenity-row">
       {% if l.has_parking %}<span class="amenity">🚗 {{ t('card.amenity_parking') }}</span>{% endif %}
       {% if l.has_elevator %}<span class="amenity">🛗 {{ t('card.amenity_elevator') }}</span>{% endif %}
       {% if l.has_balcony %}<span class="amenity">🌿 {{ t('card.amenity_balcony') }}</span>{% endif %}
       {% if l.pets_allowed %}<span class="amenity">🐾 {{ t('card.amenity_pets') }}</span>{% endif %}
       {% if l.is_renovated %}<span class="amenity">✨ {{ t('card.amenity_renovated') }}</span>{% endif %}
+      {% if l.safe_room_type in ('safe_room', 'building_shelter') %}<span class="amenity">🛡️ {{ t('card.amenity_safe_room') }}</span>{% endif %}
+      {% if l.furniture == 'furnished' %}<span class="amenity">🛋️ {{ t('card.amenity_furnished') }}</span>{% endif %}
     </div>
     {% endif %}
     {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}

@@ -1788,3 +1788,61 @@ Traded strict correctness (don't claim a match on an unconfirmed amenity) for sh
 all — the same call made for property_type, now applied consistently. Revisit once a per-listing
 detail-page scrape (parking/elevator/balcony/pets/renovated/roommates/photos/safe room/furniture,
 and property_type's own real value) actually exists; a real, sizeable follow-up, not started.
+
+## Update 2026-09-02, later still: real photos + amenities + description, end to end
+User ask, after finally seeing apartments show up: add real apartment photos (not just Telegram's
+own link-preview thumbnail), "מה יש בנכס" (amenities), and "על הנכס" (description) to both the bot
+and the website — referencing the reference bot's own message format (a "פיצ'רים:" line) as the
+model.
+
+**Diagnosed first, not guessed** (`.github/workflows/diagnose-listing-detail-page.yaml`, one
+approved ZenRows request against a real current Jerusalem listing): Yad2's own listing DETAIL page
+(not the search-results page this project has always scraped) is server-rendered by Next.js and
+embeds the full ad record as clean JSON in a `<script id="__NEXT_DATA__">` blob — price, rooms,
+floor, size, property type, 6 amenity booleans (parking/elevator/balcony/AC/boiler/security room/
+accessible), a free-text description, the real multi-photo image URLs (img.yad2.co.il CDN), an
+entrance date, and broker/agency info. Far more reliable than scraping visible HTML/icons.
+
+**Shipped**:
+1. `scraper/yad2_client.py`: `fetch_listing_detail(url)` — one ZenRows Fetch API call (same params
+   as a search page) against a single listing's own page, extracts and returns the `__NEXT_DATA__`
+   ad record as a plain dict, or `None` on any failure (missing key, network error, no/unparseable
+   blob) — never raises.
+2. `scraper/normalize.py`: `enrich_from_detail(item, detail)` — fills property_type (only the
+   confirmed `"penthouse"` mapping so far — extend `_PROPERTY_TYPE_MAP` as more values are
+   observed live, never guessed), has_parking/has_elevator/has_balcony, safe_room_type (from
+   includeSecurityRoom), floor_total, move_in_date (entranceDate), description, real image_urls,
+   and is_broker_listing (only ever set True, on a confirmed agencyName — its absence is not
+   evidence of "private", same benefit-of-the-doubt policy as elsewhere).
+3. `scraper/main.py`: `_upsert_listings` calls the above **only for a listing genuinely NEW to the
+   DB this run** (the insert branch), never on update — each call is a real, separate ZenRows
+   request, so re-running it for an already-known listing would multiply cost for zero benefit.
+   **Cost model**: bounded by "new listings per run," not "every listing every run" — scales with
+   the existing SCRAPE_CITIES_PER_RUN rotation already in place, not on top of it.
+4. `dorin_common/cards.py`: both caption formatters gained a de-emphasized (italic) "🔑 פיצ'רים:"
+   line built from whatever amenity/safe-room/furniture fields are actually known — additive to
+   the existing emoji row, not a replacement (the user's own "גם... בקטן" wording). New
+   `send_listing_card(bot, chat_id, listing, caption)` is now the ONE place a listing is ever put
+   on a Telegram screen (scraper's notifier + all 4 bot call sites — apartments/liked/onboarding/
+   filter_conversation — now route through it instead of each reinventing send_photo/send_message):
+   a media group (real photos) for 2+ images, `send_photo` for exactly 1, `send_message` for 0.
+   Telegram's `sendMediaGroup` can't carry an inline keyboard at all — a real API limitation — so
+   for 2+ photos the ❤️/🙈/🎉 buttons go out as a short separate follow-up message instead of
+   silently disappearing.
+5. Website (`_listing_card.html`, `style.css`): the cover is now a horizontally scrollable,
+   scroll-snap gallery of up to 8 photos (CSS-only, no JS) with a photo-count badge, instead of a
+   single fixed background image. The amenity row gained safe-room and furnished chips (parking/
+   elevator/balcony/pets/renovated already existed).
+
+**Not done, on purpose**: air conditioning/boiler/accessibility have no columns in this project's
+schema at all yet, even though Yad2's detail JSON now carries them — a real follow-up if wanted,
+not squeezed in here. `is_renovated`/`pets_allowed`/`is_roommate_friendly`/`furniture` still have
+no confirmed source in the detail JSON (not present in the one real sample fetched) — left exactly
+as they were (matching.py's existing benefit-of-the-doubt handling), not guessed at.
+
+**Retroactive scope**: only NEW listings from here on get this enrichment — every listing already
+in the DB before this shipped keeps showing the placeholder cover/no features until it's naturally
+re-scraped as "new" again (which, per _mark_delisted, doesn't happen for a listing still actively
+seen — this only benefits genuinely new postings going forward). Backfilling existing listings
+would mean deliberately re-fetching their detail pages, a separate, explicit cost decision not
+made here.

@@ -23,7 +23,7 @@ import asyncio
 
 from config import WEBSITE_URL
 from dorin_common import cities, gemini_client
-from dorin_common.cards import format_caption, listing_keyboard
+from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
@@ -32,7 +32,6 @@ from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
 from telegram import Update
-from telegram.constants import ParseMode
 from telegram.ext import (
     CommandHandler,
     ContextTypes,
@@ -169,10 +168,8 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"👀 יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות:"
         )
         for listing in matches:
-            await update.message.reply_text(
-                format_caption(listing),
-                reply_markup=listing_keyboard(listing.id),
-                parse_mode=ParseMode.HTML,
+            await send_listing_card(
+                context.bot, update.effective_chat.id, listing, format_caption(listing)
             )
     else:
         apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"

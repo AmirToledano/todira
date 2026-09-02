@@ -112,3 +112,82 @@ def normalize(raw_item: dict[str, Any], *, deal_type: str = DealType.RENT) -> No
     except Exception:
         logger.exception("Failed to normalize Yad2 item, skipping: %r", raw_item)
         return None
+
+
+# Yad2's own `property.textEng` -> this project's PropertyType literal (schemas.py). Only values
+# actually confirmed against a real fetched listing (see fetch_listing_detail's module comment in
+# yad2_client.py) are mapped — an unmapped/never-seen value deliberately falls through to None
+# (matching.py already gives that the benefit of the doubt) rather than guessing at a mapping this
+# project hasn't verified. Extend as more values are confirmed live.
+_PROPERTY_TYPE_MAP = {
+    "penthouse": "penthouse",
+}
+
+
+def enrich_from_detail(item: NormalizedListing, detail: dict[str, Any]) -> NormalizedListing:
+    """Fills in fields Yad2's search-results cards never carry at all — property type, amenity
+    booleans, safe-room presence, a real description, real multi-photo image URLs, floor_total,
+    move-in date, and broker status — from one listing's own detail-page data (see
+    yad2_client.fetch_listing_detail). Purely additive and defensive: `detail`'s exact shape was
+    confirmed against exactly one real listing (2026-09-02), so every read here is a `.get()` with
+    a type check, never a blind index — a field this can't confidently read is simply left at
+    whatever `item` already had (usually None) rather than guessed. Only ever called for a listing
+    genuinely new to the DB this run (see scraper/main.py) — never re-fetched for one already
+    known, since each call is a real, separate ZenRows request."""
+    updates: dict[str, Any] = {}
+
+    additional = detail.get("additionalDetails")
+    additional = additional if isinstance(additional, dict) else {}
+    in_property = detail.get("inProperty")
+    in_property = in_property if isinstance(in_property, dict) else {}
+    meta = detail.get("metaData")
+    meta = meta if isinstance(meta, dict) else {}
+    customer = detail.get("customer")
+    customer = customer if isinstance(customer, dict) else {}
+
+    property_field = additional.get("property")
+    property_type_eng = (
+        (property_field.get("textEng") or "").strip() if isinstance(property_field, dict) else ""
+    )
+    if property_type_eng in _PROPERTY_TYPE_MAP:
+        updates["property_type"] = _PROPERTY_TYPE_MAP[property_type_eng]
+
+    if isinstance(in_property.get("includeParking"), bool):
+        updates["has_parking"] = in_property["includeParking"]
+    if isinstance(in_property.get("includeElevator"), bool):
+        updates["has_elevator"] = in_property["includeElevator"]
+    if isinstance(in_property.get("includeBalcony"), bool):
+        updates["has_balcony"] = in_property["includeBalcony"]
+    if isinstance(in_property.get("includeSecurityRoom"), bool):
+        updates["safe_room_type"] = (
+            "safe_room" if in_property["includeSecurityRoom"] else "none"
+        )
+
+    floor_total = additional.get("buildingTopFloor")
+    if isinstance(floor_total, int):
+        updates["floor_total"] = floor_total
+
+    entrance_date = _parse_datetime(additional.get("entranceDate"))
+    if entrance_date is not None:
+        updates["move_in_date"] = entrance_date.date()
+
+    description = meta.get("description")
+    if isinstance(description, str) and description.strip():
+        updates["description"] = description.strip()
+
+    images = meta.get("images")
+    if isinstance(images, list):
+        real_images = [u for u in images if isinstance(u, str) and u.strip()]
+        if real_images:
+            updates["image_urls"] = real_images
+
+    # An agency NAME is a confident positive signal ("definitely a broker listing"); its absence
+    # is NOT confident evidence of the opposite (a private listing might still carry some customer
+    # record) — so this only ever sets True, matching the benefit-of-the-doubt policy the rest of
+    # this field already gets in matching.py (an unset/None value stays untouched here).
+    if customer.get("agencyName"):
+        updates["is_broker_listing"] = True
+
+    if not updates:
+        return item
+    return item.model_copy(update=updates)

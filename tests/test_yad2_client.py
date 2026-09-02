@@ -14,6 +14,7 @@ from yad2_client import (
     CITY_SLUG_TO_ID,
     ZENROWS_API_KEY_ENV_VAR,
     Yad2FetchError,
+    fetch_listing_detail,
     fetch_search_results,
 )
 
@@ -137,3 +138,128 @@ def test_network_failure_fails_soft_as_yad2_fetch_error(monkeypatch):
 
     with pytest.raises(Yad2FetchError):
         list(fetch_search_results("tel-aviv"))
+
+
+# --- fetch_listing_detail (2026-09-02) — reads the __NEXT_DATA__ blob embedded in a listing's
+# own detail page. Shape below is trimmed from a real fetched listing (see
+# .github/workflows/diagnose-listing-detail-page.yaml's confirmed output), not invented.
+
+_NEXT_DATA_HTML = """<html><body><script id="__NEXT_DATA__" type="application/json">{
+"props": {"pageProps": {"dehydratedState": {"queries": [{"state": {"data": {
+  "token": "i8mec1k9",
+  "price": 16000,
+  "adType": "commercial",
+  "additionalDetails": {
+    "entranceDate": "2026-08-11T00:00:00",
+    "roomsCount": 4,
+    "property": {"id": 6, "text": "גג/ פנטהאוז", "textEng": "penthouse"},
+    "propertyCondition": {"id": 3, "text": "במצב שמור"},
+    "buildingTopFloor": 3
+  },
+  "inProperty": {
+    "includeAirconditioner": true, "includeBalcony": true, "includeBoiler": true,
+    "includeElevator": true, "includeParking": true, "includeSecurityRoom": false,
+    "isHandicapped": true
+  },
+  "customer": {"name": "רונן אלדר", "agencyName": "promise"},
+  "metaData": {
+    "coverImage": "https://img.yad2.co.il/Pic/1.jpeg",
+    "images": ["https://img.yad2.co.il/Pic/1.jpeg", "https://img.yad2.co.il/Pic/2.jpeg"],
+    "description": "פנטהאוז ייחודי להשכרה בניות נווה המוזיאון 160 מ\\"ר"
+  }
+}}}]}}}}
+</script></body></html>"""
+
+
+def test_fetch_listing_detail_missing_api_key_returns_none_without_http_call(monkeypatch):
+    monkeypatch.delenv(ZENROWS_API_KEY_ENV_VAR, raising=False)
+
+    def fake_get(*args, **kwargs):
+        raise AssertionError("should not make an HTTP call without an API key")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None
+
+
+def test_fetch_listing_detail_parses_the_real_confirmed_shape(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured = {}
+
+    def fake_get(url, params, timeout):
+        captured["url"] = url
+        captured["params"] = params
+        return httpx.Response(200, text=_NEXT_DATA_HTML, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    data = fetch_listing_detail("https://www.yad2.co.il/realestate/item/i8mec1k9")
+
+    assert data is not None
+    assert data["token"] == "i8mec1k9"
+    assert data["price"] == 16000
+    assert data["inProperty"]["includeElevator"] is True
+    assert data["metaData"]["images"] == [
+        "https://img.yad2.co.il/Pic/1.jpeg",
+        "https://img.yad2.co.il/Pic/2.jpeg",
+    ]
+    assert captured["params"]["apikey"] == "fake-key"
+    assert captured["params"]["url"] == "https://www.yad2.co.il/realestate/item/i8mec1k9"
+
+
+def test_fetch_listing_detail_non_200_returns_none(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(500, text="internal error", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None
+
+
+def test_fetch_listing_detail_network_failure_returns_none_not_raise(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+
+    def fake_get(url, params, timeout):
+        raise httpx.ConnectTimeout("timed out")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None
+
+
+def test_fetch_listing_detail_missing_next_data_returns_none(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(
+            200, text="<html><body>no next data here</body></html>",
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None
+
+
+def test_fetch_listing_detail_malformed_json_returns_none_not_raise(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    bad_html = '<html><body><script id="__NEXT_DATA__" type="application/json">{not valid json</script></body></html>'
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text=bad_html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None
+
+
+def test_fetch_listing_detail_no_query_carries_a_token_returns_none(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    html = (
+        '<html><body><script id="__NEXT_DATA__" type="application/json">'
+        '{"props": {"pageProps": {"dehydratedState": {"queries": [{"state": {"data": {"no_token_here": true}}}]}}}}'
+        "</script></body></html>"
+    )
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text=html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None

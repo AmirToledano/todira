@@ -145,3 +145,124 @@ def test_invalid_deal_type_fails_validation_and_returns_none_not_exception():
     # up into the scraper's main loop and aborting the whole run.
     result = normalize({"id": "1"}, deal_type="not_a_real_deal_type")
     assert result is None
+
+
+# --- enrich_from_detail (2026-09-02) — fills fields only a listing's own detail page carries.
+# Shape below is trimmed from a real fetched listing (see
+# .github/workflows/diagnose-listing-detail-page.yaml's confirmed output), not invented.
+from normalize import enrich_from_detail  # noqa: E402
+
+_REAL_DETAIL = {
+    "token": "i8mec1k9",
+    "price": 16000,
+    "adType": "commercial",
+    "additionalDetails": {
+        "entranceDate": "2026-08-11T00:00:00",
+        "roomsCount": 4,
+        "property": {"id": 6, "text": "גג/ פנטהאוז", "textEng": "penthouse"},
+        "propertyCondition": {"id": 3, "text": "במצב שמור"},
+        "buildingTopFloor": 3,
+    },
+    "inProperty": {
+        "includeAirconditioner": True,
+        "includeBalcony": True,
+        "includeBoiler": True,
+        "includeElevator": True,
+        "includeParking": True,
+        "includeSecurityRoom": False,
+        "isHandicapped": True,
+    },
+    "customer": {"name": "רונן אלדר", "agencyName": "promise"},
+    "metaData": {
+        "coverImage": "https://img.yad2.co.il/Pic/1.jpeg",
+        "images": ["https://img.yad2.co.il/Pic/1.jpeg", "https://img.yad2.co.il/Pic/2.jpeg"],
+        "description": 'פנטהאוז ייחודי להשכרה בניות נווה המוזיאון 160 מ"ר',
+    },
+}
+
+
+def _base_item():
+    return normalize({"id": "1", "price": 16000})
+
+
+def test_enrich_fills_property_type_from_confirmed_mapping():
+    result = enrich_from_detail(_base_item(), _REAL_DETAIL)
+    assert result.property_type == "penthouse"
+
+
+def test_enrich_fills_amenity_booleans():
+    result = enrich_from_detail(_base_item(), _REAL_DETAIL)
+    assert result.has_parking is True
+    assert result.has_elevator is True
+    assert result.has_balcony is True
+
+
+def test_enrich_maps_security_room_to_safe_room_type():
+    result = enrich_from_detail(_base_item(), _REAL_DETAIL)
+    assert result.safe_room_type == "none"  # includeSecurityRoom was False in this sample
+
+    with_shelter = dict(_REAL_DETAIL)
+    with_shelter["inProperty"] = {**_REAL_DETAIL["inProperty"], "includeSecurityRoom": True}
+    result2 = enrich_from_detail(_base_item(), with_shelter)
+    assert result2.safe_room_type == "safe_room"
+
+
+def test_enrich_fills_floor_total_and_move_in_date():
+    result = enrich_from_detail(_base_item(), _REAL_DETAIL)
+    assert result.floor_total == 3
+    assert result.move_in_date is not None
+    assert result.move_in_date.isoformat() == "2026-08-11"
+
+
+def test_enrich_fills_description_and_real_images():
+    result = enrich_from_detail(_base_item(), _REAL_DETAIL)
+    assert result.description.startswith("פנטהאוז ייחודי")
+    assert result.image_urls == [
+        "https://img.yad2.co.il/Pic/1.jpeg",
+        "https://img.yad2.co.il/Pic/2.jpeg",
+    ]
+
+
+def test_enrich_marks_broker_listing_when_agency_name_present():
+    result = enrich_from_detail(_base_item(), _REAL_DETAIL)
+    assert result.is_broker_listing is True
+
+
+def test_enrich_does_not_guess_broker_status_when_agency_name_absent():
+    # absence of an agency name is NOT confident evidence of "private listing" - must stay
+    # untouched (None), same benefit-of-the-doubt policy as everywhere else
+    no_agency = dict(_REAL_DETAIL)
+    no_agency["customer"] = {"name": "פרטי כלשהו"}
+    result = enrich_from_detail(_base_item(), no_agency)
+    assert result.is_broker_listing is None
+
+
+def test_enrich_unmapped_property_type_stays_none_not_guessed():
+    unmapped = dict(_REAL_DETAIL)
+    unmapped["additionalDetails"] = {
+        **_REAL_DETAIL["additionalDetails"],
+        "property": {"id": 99, "text": "משהו חדש", "textEng": "some_never_seen_value"},
+    }
+    result = enrich_from_detail(_base_item(), unmapped)
+    assert result.property_type is None
+
+
+def test_enrich_does_not_touch_fields_already_set_from_the_search_card():
+    item = normalize({"id": "1", "price": 5000, "rooms": 2, "city": "תל אביב"})
+    result = enrich_from_detail(item, _REAL_DETAIL)
+    # price/rooms/city come from the search card and are left alone by enrichment
+    assert result.price == 5000
+    assert result.rooms == 2
+    assert result.city == "תל אביב"
+
+
+def test_enrich_missing_or_malformed_sections_degrade_gracefully_not_raise():
+    result = enrich_from_detail(_base_item(), {})
+    assert result.property_type is None
+    assert result.has_parking is None
+    assert result.image_urls == []
+
+    weird = {"additionalDetails": "not a dict", "inProperty": None, "metaData": [1, 2], "customer": 5}
+    result2 = enrich_from_detail(_base_item(), weird)
+    assert result2.property_type is None
+    assert result2.image_urls == []

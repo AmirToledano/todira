@@ -40,6 +40,7 @@ project currently scrapes; extend it (search "yad2 city id <name>") before addin
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -319,3 +320,73 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
         )
 
     yield from _parse_cards(html)
+
+
+# Yad2's own listing DETAIL page (one specific apartment, not the search-results list) is a
+# Next.js page whose server-rendered data is embedded verbatim as a `<script id="__NEXT_DATA__"
+# type="application/json">` blob in the HTML — confirmed live 2026-09-02 (see
+# .github/workflows/diagnose-listing-detail-page.yaml, one real Jerusalem listing) to hold a
+# clean, complete JSON record: price/rooms/floor/size (redundant with the search card, but also
+# property type, amenity booleans, a free-text description, the REAL multi-photo image URLs, an
+# entrance date, and broker/agency info — none of which the search-results cards this project has
+# always scraped ever carry. Reading this embedded JSON is far more reliable than scraping visible
+# HTML/icons (which change with every front-end redesign and require guessing at icon meaning).
+_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
+
+
+def fetch_listing_detail(url: str) -> dict[str, Any] | None:
+    """Fetches ONE listing's own detail page and returns its `__NEXT_DATA__` ad record as a plain
+    dict (the same shape confirmed live — see this function's module-level comment above), or
+    None on ANY failure (missing API key, network error, non-200, no/unparseable __NEXT_DATA__).
+    Never raises: this is an enrichment on top of a listing already known from its search card —
+    a failed enrichment must never lose or block ingesting that already-known data.
+
+    Costs one ZenRows Fetch API request, same as one search-results page — see this module's
+    caller (scraper/main.py) for the cost-bounding rule: only ever called for a listing genuinely
+    new to the DB this run, never re-fetched for a listing already known."""
+    api_key = os.environ.get(ZENROWS_API_KEY_ENV_VAR, "").strip()
+    if not api_key:
+        return None
+
+    try:
+        response = httpx.get(
+            ZENROWS_FETCH_API_URL,
+            params={
+                "apikey": api_key,
+                "url": url,
+                "js_render": "true",
+                "premium_proxy": "true",
+                "block_resources": BLOCKED_RESOURCE_TYPES,
+            },
+            timeout=PAGE_LOAD_TIMEOUT_S,
+        )
+    except httpx.HTTPError:
+        logger.exception("Failed to fetch Yad2 listing detail page: %s", url)
+        return None
+
+    if response.status_code != 200:
+        logger.warning(
+            "Non-200 fetching Yad2 listing detail page %s: status=%d", url, response.status_code
+        )
+        return None
+
+    match = _NEXT_DATA_RE.search(response.text)
+    if match is None:
+        logger.warning("No __NEXT_DATA__ found on Yad2 listing detail page: %s", url)
+        return None
+
+    try:
+        next_data = json.loads(match.group(1))
+        queries = next_data["props"]["pageProps"]["dehydratedState"]["queries"]
+        for query in queries:
+            data = query.get("state", {}).get("data")
+            # "token" is the ad's own id field (confirmed live) — picking the query that actually
+            # carries it, rather than blindly trusting queries[0], in case a future page ever
+            # embeds more than one query.
+            if isinstance(data, dict) and "token" in data:
+                return data
+        logger.warning("__NEXT_DATA__ had no ad-data query on Yad2 listing detail page: %s", url)
+        return None
+    except (KeyError, TypeError, IndexError, json.JSONDecodeError):
+        logger.exception("Failed to parse __NEXT_DATA__ on Yad2 listing detail page: %s", url)
+        return None
