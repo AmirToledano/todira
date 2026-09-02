@@ -28,7 +28,16 @@ from dorin_common.models import Filter, Listing, SentNotification, User
 
 logger = logging.getLogger(__name__)
 
-SEND_DELAY_SECONDS = 0.05  # stays well under Telegram's ~30 msgs/sec global cap
+# Telegram's ~30 msgs/sec is a GLOBAL cap across different chats, not the same-chat limit that
+# actually matters here: one user matching several listings in a row (routine — a burst of new
+# listings, or exactly this backfill workflow's own real 2026-09-02 run, which matched 17 listings
+# to one chat) sends repeatedly to the SAME chat_id, and Telegram enforces roughly 1 message/sec
+# per chat there — tighter still for a real-photo send, which is 2 API calls (the media group, then
+# the follow-up keyboard message), not 1. 0.05s was tuned for the old text/single-photo-only
+# sending pattern and started hitting Telegram's flood control (429/RetryAfter) once real photo
+# sending shipped — found live via that same backfill run (4 of 17 real match notifications
+# silently dropped; see send_listing_card's own RetryAfter-retry, added alongside this).
+SEND_DELAY_SECONDS = 1.1
 
 
 def _candidate_filters(session: Session, listing: Listing) -> list[Filter]:
