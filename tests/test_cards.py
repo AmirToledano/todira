@@ -16,6 +16,8 @@ def make_listing(**overrides):
         id=1,
         url="https://www.yad2.co.il/item/abc123",
         source="yad2",
+        deal_type="rent",
+        is_broker_listing=False,
         rooms=4,
         floor=2,
         floor_total=3,
@@ -30,6 +32,7 @@ def make_listing(**overrides):
         is_roommate_friendly=None,
         safe_room_type=None,
         furniture=None,
+        street=None,
         neighborhood="ניות",
         city="ירושלים",
         description=None,
@@ -39,12 +42,36 @@ def make_listing(**overrides):
 
 
 def test_basic_caption_includes_core_fields():
+    # Real field order/layout a user asked for directly (2026-09-02): location before price,
+    # every field its own labeled line, ש"ח (not ₪) as the currency.
     caption = format_caption(make_listing())
-    assert "4 חדרים" in caption
-    assert "160 מ" in caption
-    assert "16,000 ₪" in caption
-    assert "ניות, ירושלים" in caption
+    assert "🛏️ חדרים: 4" in caption
+    assert '📐 שטח: 160 מ"ר' in caption
+    assert '💰 מחיר: 16,000 ש"ח' in caption
+    assert "📍 מיקום: ירושלים, ניות" in caption
     assert "yad2" in caption
+    # location must come before price in the actual rendered order, not just be present somewhere
+    assert caption.index("📍 מיקום") < caption.index("💰 מחיר")
+
+
+def test_deal_type_and_broker_tag_line():
+    caption = format_caption(make_listing(deal_type="rent", is_broker_listing=False))
+    assert "🏠 שכירות" in caption
+    assert "תיווך" not in caption
+
+    caption = format_caption(make_listing(deal_type="sale", is_broker_listing=True))
+    assert "🏠 מכירה" in caption
+    assert "תיווך" in caption
+
+
+def test_location_includes_street_when_known():
+    caption = format_caption(make_listing(street="דיזנגוף"))
+    assert "📍 מיקום: ירושלים, ניות, דיזנגוף" in caption
+
+
+def test_floor_line_includes_total_when_known():
+    caption = format_caption(make_listing(floor=4, floor_total=6))
+    assert "🏢 קומה: 4 מתוך 6" in caption
 
 
 def test_no_features_line_when_nothing_is_known():
@@ -52,13 +79,14 @@ def test_no_features_line_when_nothing_is_known():
     assert "פיצ'רים" not in caption
 
 
-def test_features_line_lists_known_true_amenities():
+def test_features_line_lists_known_true_amenities_pipe_separated():
     listing = make_listing(has_parking=True, has_elevator=True, is_renovated=True)
     caption = format_caption(listing)
     assert "🔑 פיצ'רים:" in caption
     assert "חניה" in caption
     assert "מעלית" in caption
     assert "משופצת" in caption
+    assert "חניה | מעלית | משופצת" in caption
 
 
 def test_features_line_excludes_false_and_unknown_amenities():
@@ -84,30 +112,32 @@ def test_features_line_is_italicized_in_telegram_html():
 
 
 def test_price_drop_header_prepended():
-    caption = format_caption(make_listing(), price_drop_from=18000)
+    caption = format_caption(make_listing(price=16000), price_change_from=18000)
+    assert caption.startswith("📉")
     assert "ירידת מחיר" in caption
     assert "18,000" in caption
 
 
-def test_price_line_is_forced_rtl_to_avoid_left_alignment():
-    # Real bug found live 2026-09-02: "💰 16,000 ₪" has no Hebrew letters at all (just an emoji,
-    # digits, and the ₪ sign - none of them a strong-direction character), so Telegram's bidi
-    # algorithm fell back to LTR for that one line and rendered it flush LEFT while every other
-    # line (which starts with real Hebrew text) sat correctly on the right. A leading RLM
-    # (U+200F) forces RTL without changing anything visible.
-    from dorin_common.cards import _RLM
+def test_price_increase_header_prepended():
+    caption = format_caption(make_listing(price=18000), price_change_from=16000)
+    assert caption.startswith("📈")
+    assert "עליית מחיר" in caption
+    assert "16,000" in caption
 
+
+def test_no_price_change_header_for_a_new_listing():
+    # An explicit real request: a brand-new listing must NOT get any price-change banner.
     caption = format_caption(make_listing())
-    assert f"{_RLM}💰 16,000 ₪" in caption
+    assert "📉" not in caption
+    assert "📈" not in caption
+    assert "ירידת מחיר" not in caption
+    assert "עליית מחיר" not in caption
 
 
-def test_amenity_emoji_row_is_forced_rtl_to_avoid_left_alignment():
-    # Same bug, same fix - the amenity row is emoji-only (🅿️🛗🌳🐾), also with no strong-direction
-    # character.
-    from dorin_common.cards import _RLM
-
-    caption = format_caption(make_listing(has_parking=True))
-    assert f"{_RLM}🅿️" in caption
+def test_no_price_change_header_when_old_and_new_price_are_equal():
+    caption = format_caption(make_listing(price=16000), price_change_from=16000)
+    assert "ירידת מחיר" not in caption
+    assert "עליית מחיר" not in caption
 
 
 def test_whatsapp_caption_uses_markdown_not_html():
@@ -115,8 +145,13 @@ def test_whatsapp_caption_uses_markdown_not_html():
     caption = format_caption_whatsapp(listing)
     assert "<b>" not in caption
     assert "<i>" not in caption
-    assert "*4 חדרים*" in caption
+    assert "🛏️ חדרים: 4" in caption
     assert "_🔑 פיצ'רים: חניה_" in caption
+
+
+def test_whatsapp_price_change_header_is_bold_with_asterisks():
+    caption = format_caption_whatsapp(make_listing(price=16000), price_change_from=18000)
+    assert "*ירידת מחיר!*" in caption
 
 
 def test_whatsapp_caption_includes_the_raw_url_not_an_html_link():

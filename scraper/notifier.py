@@ -1,15 +1,19 @@
 """Matches listings against active user filters and sends Telegram notifications. Two cases:
 
-1. A brand-new listing (or an existing listing whose price just dropped into someone's budget)
+1. A brand-new listing (or an existing listing whose price just changed into someone's budget)
    gets the normal "new match" notification, once per user, ever (reason='new').
-2. An existing listing whose price dropped, for users who were ALREADY sent a 'new' notification
-   about it, gets a distinct "📉 price drop" notification (reason='price_drop') — this is what
-   the user showed me from the reference bot: the same listing re-appearing with "ירידת מחיר!"
-   and the old price. Kept separate from case 1 so someone who's never heard of a listing isn't
-   confusingly told its price "dropped."
+2. An existing listing whose price changed, for users who were ALREADY sent a 'new' notification
+   about it, gets a distinct "📉 price drop" / "📈 price increase" notification
+   (reason='price_drop'/'price_increase') — this is what the user showed me from the reference
+   bot: the same listing re-appearing with "ירידת מחיר!" and the old price. Kept separate from
+   case 1 so someone who's never heard of a listing isn't confusingly told its price "changed."
+   Drop and increase are tracked as distinct reasons (not "one price-change re-notification per
+   listing" — a listing whose price both drops and later rises again should be able to notify for
+   each, symmetric to how drop always worked).
 
 See plan Section 4 for the base matching/rate-limiting design; the price-drop path was added
-after the user pointed out this feature wasn't in the original design.
+after the user pointed out this feature wasn't in the original design, then generalized to also
+cover increases 2026-09-02 per an explicit request that both directions get a re-notification.
 """
 from __future__ import annotations
 
@@ -110,11 +114,20 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
     return matched, sent
 
 
-async def _notify_price_drop(bot: Bot, session: Session, listing: Listing, old_price: int) -> int:
+async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old_price: int) -> int:
     """Re-notify users who already received a 'new' notification for this exact listing that its
-    price just dropped. One price-drop notification per user per listing in v1 — if the price
-    drops again later, that's a documented simplification, not a bug (revisit if it matters)."""
+    price just changed — 📉 drop or 📈 increase, whichever `old_price` vs. `listing.price` says
+    (see format_caption's _price_change_header). Drop and increase are separate
+    NotificationReasons, so a listing that drops and later rises again can still notify for the
+    increase even though its drop notification already went out — and vice versa. One
+    notification per user per listing PER DIRECTION in v1 — if the same listing drops twice in a
+    row, that's a documented simplification, not a bug (revisit if it matters)."""
     sent = 0
+    reason = (
+        NotificationReason.PRICE_DROP
+        if old_price > listing.price
+        else NotificationReason.PRICE_INCREASE
+    )
     previously_notified_user_ids = list(
         session.scalars(
             select(SentNotification.user_id).where(
@@ -124,7 +137,7 @@ async def _notify_price_drop(bot: Bot, session: Session, listing: Listing, old_p
         )
     )
     for user_id in previously_notified_user_ids:
-        if _already_notified(session, user_id, listing.id, NotificationReason.PRICE_DROP):
+        if _already_notified(session, user_id, listing.id, reason):
             continue
         user = session.get(User, user_id)
         if user is None or not user.is_active or not user.notifications_enabled:
@@ -133,14 +146,10 @@ async def _notify_price_drop(bot: Bot, session: Session, listing: Listing, old_p
         if filter_row is None or not evaluate(filter_row, listing).matched:
             continue
 
-        caption = format_caption(listing, price_drop_from=old_price)
+        caption = format_caption(listing, price_change_from=old_price)
         if await send_listing_card(bot, user.telegram_user_id, listing, caption):
             session.add(
-                SentNotification(
-                    user_id=user_id,
-                    listing_id=listing.id,
-                    reason=NotificationReason.PRICE_DROP,
-                )
+                SentNotification(user_id=user_id, listing_id=listing.id, reason=reason)
             )
             session.commit()
             sent += 1
@@ -151,33 +160,33 @@ async def _notify_price_drop(bot: Bot, session: Session, listing: Listing, old_p
 async def run_notifications(
     session: Session,
     new_listings: list[Listing],
-    price_drop_events: list[tuple[Listing, int]],
+    price_change_events: list[tuple[Listing, int]],
 ) -> dict[str, int]:
-    """`new_listings`: rows inserted for the first time this run. `price_drop_events`:
-    (listing, old_price) pairs for existing listings whose price just went down. Returns a
-    summary dict for main.py's run-summary log line."""
+    """`new_listings`: rows inserted for the first time this run. `price_change_events`:
+    (listing, old_price) pairs for existing listings whose price just changed (either direction).
+    Returns a summary dict for main.py's run-summary log line."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
 
     matched_count = 0
     new_sent_count = 0
-    price_drop_sent_count = 0
+    price_change_sent_count = 0
 
     async with Bot(token=token) as bot:
         for listing in new_listings:
             m, s = await _notify_new_matches(bot, session, listing)
             matched_count += m
             new_sent_count += s
-        for listing, old_price in price_drop_events:
-            # a price drop can also newly qualify filters that were previously priced out
+        for listing, old_price in price_change_events:
+            # a price change can also newly qualify filters that were previously priced out
             m, s = await _notify_new_matches(bot, session, listing)
             matched_count += m
             new_sent_count += s
-            price_drop_sent_count += await _notify_price_drop(bot, session, listing, old_price)
+            price_change_sent_count += await _notify_price_change(bot, session, listing, old_price)
 
     return {
         "matched": matched_count,
         "notifications_sent": new_sent_count,
-        "price_drop_notifications_sent": price_drop_sent_count,
+        "price_change_notifications_sent": price_change_sent_count,
     }

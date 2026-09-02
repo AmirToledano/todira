@@ -2175,3 +2175,53 @@ more, directly in chat in batches of 5).
 needed (same deterministic-selection mechanism, just a different pool size). 296 tests total, all
 passing. Verified visually with a Playwright screenshot of the actual rendered card (three
 different listings showing three different real Todi photos) before shipping.
+
+## Update 2026-09-02, later still: full Telegram/WhatsApp caption redesign + price-increase alerts
+A real user screenshot (comparing against the reference bot dorin.app) drove a full redo of
+`format_caption`/`format_caption_whatsapp` (`common/dorin_common/cards.py`), not just a tweak:
+
+- **Field order changed completely**, per an explicit spec: deal type first (🏠 שכירות/מכירה/
+  סאבלט, plus "· תיווך" when `is_broker_listing`), then **location** ("אני חושב שהמיקום צריך
+  להיות ראשון" — city, neighborhood, street, whatever `listing.street` actually has; Yad2's own
+  search-card text doesn't always include a house number, so "רחוב עם מספר" only shows a number
+  when Yad2's own data already carried one — not a formatting bug, a data-completeness limit),
+  then price, rooms, size, floor, move-in date — each its own labeled line ("💰 מחיר:", "🛏️
+  חדרים:", "📐 שטח:", "🏢 קומה:", "📅 כניסה:") instead of one combined "X חדרים · Y מ"ר · קומה Z"
+  line. Rooms/floor/size now use the SAME emoji the website's own card meta-row already uses
+  (🛏️/🏢/📐 — see `_listing_card.html`) so the two surfaces read consistently, matching the
+  explicit ask to reach "בדיוק ויותר" (exactly and beyond) dorin.app's own polish.
+- **Currency changed from ₪ to ש"ח** (written form), per an explicit request.
+- **The separate emoji-only amenity row is gone** — folded into the one "🔑 פיצ'רים:" line, now
+  "|"-separated instead of ", "-separated, per the literal template given.
+- **The old RLM (U+200F) bidi workaround is gone too** — not because the bug came back, but
+  because it's provably unnecessary now: every line starts with a real Hebrew label word, so
+  Telegram's own bidi algorithm resolves RTL correctly on its own (the bug only ever happened on
+  lines with zero strong-direction characters, like the old bare "💰 7,800 ₪"). Re-verified with
+  a synthetic `dir="auto"` per-line Playwright screenshot (the same technique originally used to
+  diagnose the bug) before removing the workaround, not just by argument.
+- **Price-change alerts now cover increases too, not just drops** ("אם יש ירידת מחיר/עליית מחיר
+  אז התראה בתחילת ההודעה, אם זה מודעה חדשה אין צורך") — a real backend generalization, not just a
+  caption tweak:
+  - `scraper/main.py`'s `_upsert_listings`: the price-drop-only `item.price < old_price` check
+    became `item.price != old_price`, returning `price_change_events` (renamed from
+    `price_drop_events`) for either direction.
+  - `dorin_common/enums.py`: new `NotificationReason.PRICE_INCREASE` alongside the existing
+    `PRICE_DROP` — tracked as fully separate reasons (not one combined "price changed" reason) so
+    a listing that drops and later rises again can still notify for the increase even though its
+    drop notification already went out, symmetric to how `PRICE_DROP` already worked relative to
+    `NEW`. No DB migration needed — `sent_notifications.reason` is plain `Text` with no CHECK
+    constraint, just a `(user_id, listing_id, reason)` uniqueness constraint.
+  - `scraper/notifier.py`: `_notify_price_drop` → `_notify_price_change`, picks
+    `PRICE_DROP`/`PRICE_INCREASE` by comparing `old_price` vs. `listing.price`, calls
+    `format_caption(listing, price_change_from=old_price)` (renamed from `price_drop_from` — the
+    header itself now decides 📉 vs. 📈 from the same two numbers, so one param covers both
+    directions).
+  - `format_caption`/`format_caption_whatsapp`: the price-change header logic factored into a
+    small shared `_price_change_header()` helper (was duplicated near-identically in both
+    functions before; now both call the same one, styled via a `bold` callback) — shows nothing
+    at all when `price_change_from` is `None` (new listings) or equals the current price.
+- 12 new/rewritten tests in `test_cards.py` (full field-order/label coverage, deal-type/broker
+  tag, street-in-location, floor-with-total, pipe-separated features, drop AND increase headers,
+  no-header-for-new-listings, no-header-when-prices-equal, WhatsApp bold-asterisks) + 1 new test
+  in `test_scraper_upsert.py` (`test_price_increase_on_existing_listing_is_reported`). 302 tests
+  total, all passing.
