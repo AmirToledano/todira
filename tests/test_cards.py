@@ -192,7 +192,7 @@ def test_send_listing_card_no_images_sends_a_todi_photo():
     assert kwargs["reply_markup"] is not None
     assert "caption" in kwargs["caption"]
     assert "טודי" in kwargs["caption"]
-    assert kwargs["photo"].name.endswith(".png")
+    assert kwargs["photo"].name.endswith(".jpg")
 
 
 def test_send_listing_card_one_image_uses_send_photo_with_keyboard():

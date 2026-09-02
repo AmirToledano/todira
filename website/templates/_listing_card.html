@@ -12,7 +12,7 @@
            instead of a bare house icon, picked deterministically per-listing (l.id) so it
            doesn't reshuffle on every reload. #}
         <div class="no-image-dachshund">
-          <img src="/static/dachshunds/todi_{{ '%02d'|format((l.id % todi_photo_count) + 1) }}.png"
+          <img src="/static/dachshunds/todi_{{ '%02d'|format((l.id % todi_photo_count) + 1) }}.jpg"
                alt="{{ t('card.no_image_caption') }}" loading="lazy">
           <p>{{ t('card.no_image_caption') }}</p>
         </div>
