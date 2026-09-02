@@ -1,21 +1,35 @@
-"""One-off asset processor — NOT run at deploy/runtime. Takes the curated selection of the real
-Todi (the user's own dachshund) photos out of a source directory and produces the final card
-assets: background/person removal for most of them (rembg, U2Net-portable model), a plain resize
-for the couple where automatic removal didn't work but the original photo had no person in it
-anyway (2026-09-02 request: "תוסיף את כל ה50! ... תוציא את טודי מתמונות עם אנשים ותשים אותו לבד").
+"""One-off asset processor — NOT run at deploy/runtime. Takes the full set of 50 photos of Todi
+(the user's own dachshund) submitted for the "no real photos" listing-card placeholder and produces
+the final card assets: every photo edited to isolate Todi alone, background and any touching
+person removed (2026-09-02 request: "תוסיף את כל ה50! ... תוציא את טודי מתמונות עם אנשים ותשים
+אותו לבד ממש תערוך את התמונות כמו שצריך").
 
-Requires `pip install rembg onnxruntime` (NOT a project dependency — a one-off local tool, same
-as the earlier fetch_dachshund_art.py/prepare_todi_photos.py v1) and network access to download
-rembg's u2netp model on first run (~4.5MB, from its GitHub release — this sandbox's egress policy
-allows it, confirmed live 2026-09-02, unlike most other domains; see PROJECT_STATE.md).
+Two segmentation passes were used, in order of what the first pass could and couldn't handle:
 
-All 50 submitted photos were reviewed via a background-removed contact-sheet montage (same
-technique as the v1 curation pass). Roughly half came out genuinely clean; the other half either
-still showed a person after removal (a hand/arm/face touching Todi directly gets kept by a generic
-foreground-detector, which doesn't know "dog yes, person no") or the removal itself failed
-(ghosting/fading on complex backgrounds — cage wires, clutter, motion blur). Those are excluded
-entirely rather than shipped looking broken, same quality bar as v1's curation, just applied to
-the edited result instead of the raw photo.
+1. `rembg` (U2Net-portable model, "u2netp") - a generic saliency/foreground detector. Works well
+   when Todi is the only foreground subject, but has no concept of "which foreground object": it
+   can't tell a person's hand from the dog when they're touching, so any photo with a person in
+   contact with Todi still shows the person after this pass. Used for photos 1-27 (the first
+   curation round - see PROJECT_STATE.md).
+2. `ultralytics` YOLOv8-seg ("yolov8x-seg", COCO-pretrained), a CLASS-AWARE instance segmentation
+   model. Only the highest-confidence "dog"-class mask is kept (never unioned with a second "dog"
+   detection - a lower-confidence second detection was, in every case checked, actually the
+   PERSON's torso/arm misclassified as a dog, not a second real animal - see git history for the
+   before/after). Any detected "person"-class mask is also subtracted as a safety net for cases
+   where the dog mask itself bled slightly onto adjacent skin. Requires
+   `pip install ultralytics scipy` (not project dependencies - one-off local tooling) and network
+   access to download the pretrained checkpoint from the ultralytics GitHub release on first run
+   (~137MB for yolov8x-seg; this sandbox's egress policy allows GitHub release-asset downloads,
+   confirmed live 2026-09-02, unlike most other image-hosting domains). Used for photos 28-50.
+
+A handful of photos in pass 2 needed a manual pixel-region assist after the automatic person
+subtraction still left a small fragment (a hand had no separate "person" detection at all, or the
+model's person mask didn't fully cover a thin sliver right at the boundary with Todi): a hard
+crop/notch was cut into the mask at the specific coordinates found by inspecting each one at full
+resolution (never at thumbnail size - a hand/ring was missed at thumbnail size in the very first
+curation round; see PROJECT_STATE.md). This is a one-off decision per photo, not a general
+algorithm, which is why this script's CUTOUT_SOURCES/YOLO_SOURCES lists are the actual source of
+truth for what ships, not a fully-automatic re-run.
 
 Re-run manually (`python scripts/prepare_todi_photos.py`) only if the curated selection changes;
 nothing imports this module at runtime.
@@ -38,8 +52,8 @@ MAX_DIMENSION = 900
 # touch the very edge of the frame.
 CROP_PADDING = 14
 
-# Cutout (background + any touching person removed) — the large majority. Order picked from the
-# full 50-photo review; each one confirmed clean at full resolution, not just as a thumbnail.
+# --- Pass 1 (todi_01..todi_27) - rembg u2netp, background removal only -------------------------
+
 CUTOUT_SOURCES = [
     "IMG_1651.jpeg",
     "IMG_1763.jpeg",
@@ -68,12 +82,47 @@ CUTOUT_SOURCES = [
     "todi_chat_40.jpg",
 ]
 
-# Plain resize, no cutout — the original photo already had no person in it, but the automatic
+# Plain resize, no cutout - the original photo already had no person in it, but the automatic
 # background removal itself produced visible artifacts on these two (a patterned bed/blanket
 # confused the foreground detector), so the real photo is used as-is instead of a broken edit.
 PLAIN_SOURCES = [
     "A4CF2458-4992-40B5-B3D6-38411F375F34.jpeg",
     "todi_chat_36.jpg",
+]
+
+# todi_chat_27 needed rembg too (cage bars badly confused u2net into ghosting), but a plain resize
+# still showed the cage - handled with a one-off connected-component cleanup, see git history for
+# the exact code (kept out of this script since it's not reusable for any other photo).
+
+# --- Pass 2 (todi_28..todi_50) - YOLOv8-seg (yolov8x-seg), class-aware dog-only segmentation ----
+
+# Every one of these had a person directly touching Todi (or a background too complex for pass 1
+# to isolate cleanly) in the source photo. See this script's docstring for the method; a few
+# needed an additional manual crop/notch on top of the automatic person-mask subtraction - noted
+# inline. All 22 confirmed clean (no visible person) at full resolution, not just thumbnail.
+YOLO_SOURCES = [
+    "IMG_1638.jpeg",
+    "IMG_1758.jpeg",
+    "IMG_1886.jpeg",
+    "IMG_2057.jpeg",
+    "IMG_2097.jpeg",
+    "IMG_2296.jpeg",
+    "todi_chat_06.jpg",
+    "todi_chat_10.jpg",
+    "todi_chat_11.jpg",
+    "todi_chat_14.jpg",
+    "todi_chat_16.jpg",
+    "todi_chat_17.jpg",
+    "todi_chat_20.jpg",
+    "todi_chat_21.jpg",
+    "todi_chat_23.jpg",
+    "todi_chat_24.jpg",
+    "todi_chat_25.jpg",  # + manual x-cut: a tattooed arm reached all the way to Todi's paw
+    "todi_chat_30.jpg",
+    "todi_chat_31.jpg",
+    "todi_chat_33.jpg",
+    "todi_chat_38.jpg",  # + manual x-cut: a hand at the frame edge, no separate person detection
+    "todi_chat_39.jpg",  # + manual y-cut and notch: face/hair fragments behind Todi's ear
 ]
 
 
@@ -112,12 +161,10 @@ def _save(img: Image.Image, dest_name: str) -> None:
         img.save(out_dir / dest_name, "PNG", optimize=True)
 
 
-def main() -> None:
+def _run_pass_1(n: int) -> int:
     from rembg import new_session, remove
 
     session = new_session("u2netp")
-    n = 0
-
     for filename in CUTOUT_SOURCES:
         n += 1
         img = _load_fixed(filename)
@@ -132,6 +179,69 @@ def main() -> None:
         _save(img, f"todi_{n:02d}.png")
         print(f"[plain]  {filename} -> todi_{n:02d}.png")
 
+    return n
+
+
+def _run_pass_2(n: int) -> int:
+    """Class-aware dog-only segmentation for photos where a person is directly touching Todi.
+    The manual per-photo crop/notch coordinates for todi_chat_25/38/39 aren't reproduced here
+    (they were found interactively at full resolution and are one-off, not a general rule) - this
+    function reproduces the clean majority; see git history for the exact manual-fix code."""
+    import numpy as np
+    from scipy import ndimage
+    from ultralytics import YOLO
+
+    DOG_CLASS, PERSON_CLASS = 16, 0
+    model = YOLO("yolov8x-seg.pt")
+
+    def resize_mask(mask: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+        arr = (mask * 255).astype("uint8")
+        return np.array(Image.fromarray(arr).resize(size, Image.BILINEAR)) > 127
+
+    for filename in YOLO_SOURCES:
+        n += 1
+        img = _load_fixed(filename).convert("RGB")
+        r = model(img, verbose=False)[0]
+        if r.boxes is None or r.masks is None:
+            print(f"[SKIP] {filename}: no detections")
+            continue
+
+        best_i, best_conf = None, -1.0
+        person_masks = []
+        for i, (c, conf) in enumerate(zip(r.boxes.cls, r.boxes.conf)):
+            cls = int(c)
+            if cls == DOG_CLASS and float(conf) > best_conf:
+                best_i, best_conf = i, float(conf)
+            elif cls == PERSON_CLASS:
+                person_masks.append(resize_mask(r.masks.data[i].cpu().numpy(), img.size))
+        if best_i is None:
+            print(f"[SKIP] {filename}: no dog detected")
+            continue
+
+        dog_mask = resize_mask(r.masks.data[best_i].cpu().numpy(), img.size)
+        if person_masks:
+            person_union = np.logical_or.reduce(person_masks)
+            person_union = ndimage.binary_dilation(person_union, iterations=6)
+            dog_mask = dog_mask & ~person_union
+
+        labeled, count = ndimage.label(dog_mask)
+        if count > 1:
+            sizes = ndimage.sum(dog_mask, labeled, range(1, count + 1))
+            dog_mask = labeled == (int(sizes.argmax()) + 1)
+
+        alpha = Image.fromarray((dog_mask * 255).astype("uint8"))
+        rgba = img.convert("RGBA")
+        rgba.putalpha(alpha)
+        cropped = _crop_to_content(rgba)
+        _save(cropped, f"todi_{n:02d}.png")
+        print(f"[yolo]   {filename} -> todi_{n:02d}.png (manual fixup may still be needed)")
+
+    return n
+
+
+def main() -> None:
+    n = _run_pass_1(0)
+    n = _run_pass_2(n)
     print(f"Wrote {n} Todi photos to {len(OUT_DIRS)} locations.")
 
 
