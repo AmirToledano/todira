@@ -609,11 +609,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Voir l'annonce →", "ar": "عرض الإعلان ←",
     },
     "card.no_image_caption": {
-        "he": "🐾 טודי אומר: גם בלי תמונה, שווה להציץ בפרטים!",
-        "en": "🐾 Todi says: even without a photo, it's worth a look!",
-        "ru": "🐾 Тоди говорит: даже без фото стоит заглянуть в детали!",
-        "fr": "🐾 Todi dit : même sans photo, ça vaut le coup d'œil !",
-        "ar": "🐾 تودي يقول: حتى بدون صورة، يستحق نظرة!",
+        "he": "🕵️ דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!",
+        "en": "🕵️ This listing has no photos yet — it's worth contacting the lister to ask for some!",
+        "ru": "🕵️ У этого объявления пока нет фото — стоит написать автору и попросить!",
+        "fr": "🕵️ Cette annonce n'a pas encore de photos — ça vaut le coup de demander au contact !",
+        "ar": "🕵️ لا توجد صور لهذا العرض بعد — يستحق التواصل مع المعلن لطلبها!",
     },
     # ---------- filter page ----------
     "filter.title": {
