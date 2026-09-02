@@ -441,7 +441,9 @@ def filter_view(request: Request, uid: int | None = None):
                 "f": filter_row,
                 "uid": user.telegram_user_id,
                 "user": user,
-                "cities_list": CITIES,
+                # sorted for display only — CITIES itself stays in its original order since other
+                # code (matching, the bot's own city picker) reads it as-is.
+                "cities_list": sorted(CITIES),
                 "property_type_labels": PROPERTY_TYPE_LABELS.get(lang, PROPERTY_TYPE_LABELS[DEFAULT_LANG]),
                 "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
                 "furniture_labels": FURNITURE_LABELS.get(lang, FURNITURE_LABELS[DEFAULT_LANG]),

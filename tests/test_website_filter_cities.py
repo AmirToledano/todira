@@ -133,3 +133,22 @@ def test_filter_page_renders_every_bundled_city_as_a_checkbox(client, fake_user)
     assert resp.status_code == 200
     for city in CITIES:
         assert f'value="{city}"' in resp.text
+
+
+def test_filter_page_renders_cities_in_alphabetical_order(client, fake_user):
+    # Real user feedback (2026-09-02): the raw CITIES list isn't alphabetized, making the
+    # checkbox grid hard to scan - display order should be sorted even though CITIES itself
+    # (used by matching/the bot's own picker) stays in its original order.
+    from dorin_common.cities import CITIES
+
+    resp = client.get(f"/filter?uid={fake_user.telegram_user_id}")
+    positions = [resp.text.index(f'value="{city}"') for city in sorted(CITIES)]
+    assert positions == sorted(positions)
+
+
+def test_filter_page_city_search_box_does_not_submit_the_form_on_enter(client, fake_user):
+    # Real bug (2026-09-02): pressing Enter/search in the city-search text box submitted the
+    # whole filter form (a full page reload) instead of just filtering the checkbox list.
+    resp = client.get(f"/filter?uid={fake_user.telegram_user_id}")
+    assert "onkeydown" in resp.text
+    assert "f-cities-search" in resp.text
