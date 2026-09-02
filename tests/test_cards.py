@@ -256,7 +256,7 @@ def test_dachshund_photo_pick_is_deterministic_per_listing_id():
     assert _dachshund_photo_path(1) == _dachshund_photo_path(1)
     # different ids can land on different photos (including wrapping around past the pool size),
     # but always a real file on disk
-    for listing_id in range(35):
+    for listing_id in range(60):
         path = _dachshund_photo_path(listing_id)
         assert path.exists(), f"missing todi asset: {path}"
 

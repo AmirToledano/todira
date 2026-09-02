@@ -2269,3 +2269,60 @@ excluding every one with a person in it.
   determinism test. 302 tests total, all passing. Verified visually with a 4-listing Playwright
   screenshot of the real rendered cards — transparent cutouts blend into the card's own gradient
   exactly like the CC0 illustration used to, the 2 plain-photo fallbacks render as normal thumbnails.
+
+## 2026-09-02 (later same day): all 50 Todi photos used — class-aware segmentation for the 23 that still showed a person
+
+Direct follow-up request after seeing the 27-photo result live: "לגבי התמונות, תוסיף את כל ה50!
+פשוט תעבוד על הרקע תוציא את טודי מתמונות עם אנשים ותשים אותו לבד ממש תערוך את התמונות כמו שצריך" —
+use ALL 50 submitted photos, not just the 27 rembg could cleanly handle.
+
+- Diffed the 50 submitted filenames against the 27 already shipped: 23 missing. Reviewed them as a
+  contact sheet — 9 had no person at all (rembg had just failed on cluttered/patterned backgrounds:
+  a wire cage, grass, a bathroom floor tile), 14 had a person directly touching or holding Todi
+  (a hand, an arm, a torso, a face) — the exact case rembg's generic saliency detector can't solve,
+  since it has no concept of "which foreground blob is the dog."
+- Switched to `ultralytics` YOLOv8-seg (`yolov8x-seg`, COCO-pretrained) for these 23 — a
+  CLASS-AWARE instance segmentation model, so instead of "remove the background" it can directly
+  ask for "only the dog-class pixels," ignoring a person's pixels even while they're touching.
+  `pip install ultralytics scipy`; the model checkpoint (~137MB) downloads from the ultralytics
+  GitHub release on first use, confirmed reachable through this sandbox's egress policy the same
+  way the earlier rembg model was.
+- Real bug found and fixed: a naive "union every 'dog'-class detection" approach made things WORSE
+  than doing nothing — checked instance-by-instance (saved each detected mask separately and
+  reviewed them), a second, lower-confidence "dog" detection was, in every case, actually the
+  PERSON's torso or arm being misclassified as a dog by the model, not a second real animal. Fixed
+  by keeping only the single highest-confidence dog mask, then subtracting any detected
+  person-class mask (dilated a few px) as a safety net for cases where the dog mask itself bled
+  slightly onto adjacent skin (e.g. `IMG_2296`, where the top-1 mask alone had picked up part of a
+  hand). Verified against the one legitimate two-dogs-in-one-frame photo (`IMG_1886`) to make sure
+  "top-1 only" didn't lose a real second animal — it didn't, since the top-1 mask already covered
+  both touching puppies as one blob.
+- Switched from `yolov8s-seg` to the larger `yolov8x-seg` mid-pipeline after finding the smaller
+  model's masks measurably less precise on close-contact photos (a side-by-side comparison on the
+  hardest case, `todi_chat_25`, showed the small model still bleeding onto the person's face while
+  the large model didn't) — worth the extra download/compute for a one-off batch of 22 images.
+- 3 of the 22 automatic results still had a small leftover fragment after automatic person-mask
+  subtraction (checked at full resolution, not thumbnail — the same lesson from the first curation
+  round): `todi_chat_25` (a tattooed forearm reached all the way to Todi's paw, wider contact than
+  the dilated person mask covered), `todi_chat_38` (a hand at the very edge of frame with no
+  separate "person" detection returned by the model at all), `todi_chat_39` (thin fragments of a
+  face and a lock of hair right at the boundary with Todi's ear). Fixed each with a manual
+  pixel-region crop/notch found by inspecting that one photo — not a general algorithm, so these
+  are one-off fixes, documented inline in `scripts/prepare_todi_photos.py` rather than encoded as
+  reusable logic.
+- One 2026-09-02-morning photo (`todi_chat_27`, upside-down through wire cage bars) still needed
+  the OLDER rembg + connected-component approach from the first pass — YOLO couldn't detect a dog
+  in it at all (confidence too low even on the large model), but rembg's ghosting problem on that
+  same photo was fixed by keeping only the largest high-confidence connected alpha region instead
+  of the raw soft alpha, cropping to just the cleanly-segmented head+neck (the body was too
+  occluded by cage bars to recover).
+- Net result: 27 → **50** photos (all 50 submitted photos now used). `_TODI_PHOTO_COUNT` /
+  `todi_photo_count` bumped 27 → 50 in `dorin_common/cards.py` and `_listing_card.html`.
+  `scripts/prepare_todi_photos.py` rewritten to document both segmentation passes (rembg for
+  photos 1–27, YOLOv8-seg for 28–50) and why each was chosen where it was, plus which of the
+  YOLO-pass photos needed a manual fixup and why — the manual-fixup coordinates themselves aren't
+  reproduced as general code since they're one-off, not algorithmic.
+- Determinism test's listing-id range widened to `range(60)` to keep covering wraparound past the
+  new pool size. 302 tests total, all passing. Verified visually by rendering all 50 as actual
+  listing cards (same CSS/markup as production, real image files, not a synthetic mockup) via
+  Playwright and reviewing every one at production display size.
