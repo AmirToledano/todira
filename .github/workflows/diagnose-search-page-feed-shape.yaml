@@ -1,0 +1,92 @@
+name: Diagnose the search page's embedded per-listing feed record shape
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-02, approved
+# by the owner. Follow-up to diagnose-search-page-cheap-fetch.yaml, which confirmed a Jerusalem
+# search page's __NEXT_DATA__ blob contains ~93 occurrences of "images"/"coverImage" across its 45
+# listed cards - strong evidence the search page embeds full per-listing detail (the same shape
+# diagnose-listing-detail-page.yaml confirmed on a single listing's own detail page) for EVERY
+# listing on the page, not just one. If true, real photos/amenities/description come from the
+# SAME request this project already pays for on every routine scrape - no per-listing detail fetch
+# needed at all (that approach, ~25 ZenRows credits per NEW listing, was explicitly rejected as too
+# costly - see PR #93, not merged/deployed).
+#
+# This finds the SPECIFIC query in __NEXT_DATA__.props.pageProps.dehydratedState.queries whose
+# `state.data` is a LIST of dicts each carrying a "token" field (the same per-ad identifier
+# confirmed on the detail page) and prints one full record from it, to confirm the field shape
+# matches (additionalDetails/inProperty/metaData/customer) before any parser is written against it.
+#
+# One ZenRows request — same cost class as a normal daily scrape (js_render=true + premium_proxy
+# are both required for this domain, confirmed live; there's no cheaper way to fetch it). Read-only.
+on:
+  workflow_dispatch: {}
+
+env:
+  CITY_ID: "3000"  # Jerusalem — CITY_SLUG_TO_ID["jerusalem"] in scraper/yad2_client.py
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the Jerusalem search page (js_render + premium_proxy, both required)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.yad2.co.il/realestate/rent?city=$CITY_ID" \
+            --data-urlencode "js_render=true" \
+            --data-urlencode "premium_proxy=true" \
+            --data-urlencode "block_resources=image,stylesheet,font,media" \
+            -o /tmp/search.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+
+      - name: Find the feed query and print one full listing record's shape
+        run: |
+          python3 - << 'PYEOF'
+          import re, json
+
+          with open('/tmp/search.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f"html_length={len(html)}")
+
+          m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+          if not m:
+              print("No __NEXT_DATA__ found at all — unexpected, stopping.")
+              raise SystemExit(0)
+
+          data = json.loads(m.group(1))
+          queries = data["props"]["pageProps"]["dehydratedState"]["queries"]
+          print(f"total queries in dehydratedState: {len(queries)}")
+
+          found_any = False
+          for i, q in enumerate(queries):
+              state_data = q.get("state", {}).get("data")
+              query_key = q.get("queryKey")
+
+              # Looking for a LIST of dicts each carrying "token" - the per-ad identifier
+              # confirmed on the single-listing detail page (diagnose-listing-detail-page.yaml).
+              if isinstance(state_data, list) and state_data and isinstance(state_data[0], dict) and "token" in state_data[0]:
+                  found_any = True
+                  print(f"\n=== FEED QUERY FOUND at index {i} ===")
+                  print(f"queryKey: {query_key}")
+                  print(f"list length (listings on this page): {len(state_data)}")
+                  record = state_data[0]
+                  print(f"first record top-level keys: {list(record.keys())}")
+                  print("--- first record, first 3000 chars ---")
+                  print(json.dumps(record, ensure_ascii=False)[:3000])
+                  # Count how many of the listed records actually carry real image data
+                  with_images = sum(
+                      1 for r in state_data
+                      if isinstance(r, dict) and isinstance(r.get("metaData"), dict) and r["metaData"].get("images")
+                  )
+                  print(f"\nrecords with non-empty metaData.images: {with_images} / {len(state_data)}")
+
+          if not found_any:
+              print("\nNo query matched the 'list of dicts with token' shape. Listing all queryKeys found:")
+              for i, q in enumerate(queries):
+                  sd = q.get("state", {}).get("data")
+                  shape = type(sd).__name__
+                  length = len(sd) if isinstance(sd, (list, dict)) else "n/a"
+                  print(f"  [{i}] queryKey={q.get('queryKey')} data_type={shape} length={length}")
+          PYEOF
