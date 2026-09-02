@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Callable
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -17,14 +18,6 @@ from dorin_common.models import Listing
 logger = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
-
-# A line made up ONLY of digits/currency/emoji (no Hebrew letters) has no strong-direction
-# character at all, so bidi-aware renderers (confirmed live in Telegram, 2026-09-02) fall back to
-# LTR for that one line and left-align it — "💰 7,800 ₪" and a bare amenity-emoji row rendered on
-# the LEFT edge while every other line (which starts with real Hebrew text) sat correctly on the
-# right. A leading U+200F (Right-to-Left Mark, invisible, zero display width) forces RTL for that
-# line without changing anything visible; harmless to add to a line that was already RTL.
-_RLM = "\u200f"
 
 # A listing with zero real photos gets a real photo of Todi — the user's own dachshund — instead
 # (2026-09-02 request; briefly a CC0 cartoon illustration before that, see PROJECT_STATE.md for
@@ -41,18 +34,16 @@ def _dachshund_photo_path(listing_id: int) -> Path:
     n = (listing_id % _TODI_PHOTO_COUNT) + 1
     return _DACHSHUND_DIR / f"todi_{n:02d}.jpg"
 
-_AMENITY_EMOJI = (
-    ("has_parking", "🅿️"),
-    ("has_elevator", "🛗"),
-    ("has_balcony", "🌳"),
-    ("pets_allowed", "🐾"),
-)
 
-# A compact, readable "מה יש בנכס" line — the emoji row above is a quick glance, this is the
-# itemized list the user asked for (2026-09-02), modeled after the reference bot's own "פיצ'רים:"
-# line. Limited to fields this project actually models today (see dorin_common/models.py) — no
-# air conditioning/boiler/accessibility columns exist yet, even though Yad2's detail-page data now
-# carries them (see scraper/normalize.py's enrich_from_detail) - a real follow-up, not done here.
+_DEAL_TYPE_LABELS = {"rent": "שכירות", "sale": "מכירה", "sublet": "סאבלט"}
+
+# A compact, readable "מה יש בנכס" list — modeled after the reference bot's own "פיצ'רים:" line
+# (2026-09-02), then folded into a single "|"-separated line as the sole amenity display (a
+# separate emoji-only row used to sit above this one; dropped 2026-09-02 as redundant once every
+# field here already carries its own label — see format_caption's docstring). Limited to fields
+# this project actually models today (see dorin_common/models.py) — no air conditioning/boiler/
+# accessibility columns exist yet, even though Yad2's detail-page data now carries them (see
+# scraper/normalize.py's enrich_from_detail) - a real follow-up, not done here.
 _FEATURE_LABELS = (
     ("has_parking", "חניה"),
     ("has_elevator", "מעלית"),
@@ -72,43 +63,75 @@ def _feature_list(listing: Listing) -> list[str]:
     return labels
 
 
-def format_caption(listing: Listing, *, price_drop_from: int | None = None) -> str:
-    """`price_drop_from`: when set, prepends a "📉 ירידת מחיר!" header showing the previous
-    price — used for the price-drop re-notification path (see notifier.py), left unset for a
-    normal new-match card."""
-    amenities = " ".join(
-        emoji for attr, emoji in _AMENITY_EMOJI if getattr(listing, attr) is True
-    )
-    if listing.safe_room_type in ("safe_room", "building_shelter"):
-        amenities = f"{amenities} 🛡️".strip()
+def _build_body_lines(listing: Listing) -> list[str]:
+    """The field order/labels a real user asked for directly (2026-09-02, comparing screenshots
+    against the reference bot dorin.app): deal type (+ "תיווך" when broker-listed) first, then
+    location before anything else ("אני חושב שהמיקום צריך להיות ראשון"), then price/rooms/size/
+    floor/move-in — each its own labeled line instead of the old single combined "X חדרים · Y מ"ר
+    · קומה Z" line, deliberately using the SAME emoji the website's own card meta-row already uses
+    for rooms/floor/size (🛏️/🏢/📐 — see website/templates/_listing_card.html) so the two surfaces
+    read consistently. Currency is "ש"ח" (written form), not the ₪ sign, per the same request.
 
-    floor_line = ""
-    if listing.floor is not None:
-        floor_line = f" · קומה {listing.floor}"
-        if listing.floor_total is not None:
-            floor_line += f" מתוך {listing.floor_total}"
+    Every line here now starts with a real Hebrew label word, which — as a side effect — also
+    fully resolves the RTL-alignment bidi bug the old bare "💰 7,800 ₪"/emoji-only amenity row
+    used to hit (a line with no strong-direction character fell back to LTR and rendered flush
+    left in Telegram; see PROJECT_STATE.md). The explicit U+200F RLM workaround that used to guard
+    against that is gone — no longer needed now that every line carries Hebrew text of its own."""
+    lines = []
 
-    size_part = f" · {listing.size_sqm} מ\"ר" if listing.size_sqm else ""
-    lines = [f"🏠 <b>{listing.rooms or '?'} חדרים</b>{size_part}{floor_line}"]
+    deal_label = _DEAL_TYPE_LABELS.get(listing.deal_type, listing.deal_type)
+    deal_line = f"🏠 {deal_label}"
+    if listing.is_broker_listing:
+        deal_line += " · תיווך"
+    lines.append(deal_line)
+
+    location = ", ".join(p for p in (listing.city, listing.neighborhood, listing.street) if p)
+    if location:
+        lines.append(f"📍 מיקום: {location}")
 
     if listing.price is not None:
-        lines.append(f"{_RLM}💰 {listing.price:,} ₪")
+        lines.append(f'💰 מחיר: {listing.price:,} ש"ח')
+
+    lines.append(f"🛏️ חדרים: {listing.rooms or '?'}")
+
+    if listing.size_sqm:
+        lines.append(f'📐 שטח: {listing.size_sqm} מ"ר')
+
+    if listing.floor is not None:
+        floor_line = f"🏢 קומה: {listing.floor}"
+        if listing.floor_total is not None:
+            floor_line += f" מתוך {listing.floor_total}"
+        lines.append(floor_line)
+
     if listing.move_in_date is not None:
         lines.append(f"📅 כניסה: {listing.move_in_date.isoformat()}")
-    if amenities:
-        lines.append(f"{_RLM}{amenities}")
-    location = ", ".join(p for p in (listing.neighborhood, listing.city) if p)
-    if location:
-        lines.append(f"📍 {location}")
 
+    return lines
+
+
+def _price_change_header(price_change_from: int | None, current_price: int | None, *, bold: Callable[[str], str]) -> str:
+    """`price_change_from`: the previous price, when this card is a re-notification because the
+    price changed (either direction — a drop gets 📉, an increase gets 📈; see
+    scraper/notifier.py). None (the normal case) means no header at all, matching a real request
+    that a brand-new listing not get any price-change banner."""
+    if price_change_from is None or current_price is None or price_change_from == current_price:
+        return ""
+    if price_change_from > current_price:
+        emoji, label = "📉", "ירידת מחיר!"
+    else:
+        emoji, label = "📈", "עליית מחיר!"
+    return f'{emoji} {bold(label)} (היה {price_change_from:,} ש"ח)\n\n'
+
+
+def format_caption(listing: Listing, *, price_change_from: int | None = None) -> str:
+    """`price_change_from`: see _price_change_header. Left unset for a normal new-match card."""
+    lines = _build_body_lines(listing)
     features = _feature_list(listing)
     if features:
-        lines.append(f"<i>🔑 פיצ'רים: {', '.join(features)}</i>")
+        lines.append(f"<i>🔑 פיצ'רים: {' | '.join(features)}</i>")
 
     body = "\n".join(lines)
-    header = ""
-    if price_drop_from is not None:
-        header = f"📉 <b>ירידת מחיר!</b> (היה {price_drop_from:,} ₪)\n\n"
+    header = _price_change_header(price_change_from, listing.price, bold=lambda s: f"<b>{s}</b>")
     footer = f'\n\n🔗 <a href="{listing.url}">לצפייה במודעה המלאה</a>\n🏷️ {listing.source}'
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
@@ -123,45 +146,19 @@ def format_caption(listing: Listing, *, price_drop_from: int | None = None) -> s
 WHATSAPP_MESSAGE_LIMIT = 4096
 
 
-def format_caption_whatsapp(listing: Listing, *, price_drop_from: int | None = None) -> str:
+def format_caption_whatsapp(listing: Listing, *, price_change_from: int | None = None) -> str:
     """Same content as format_caption, but WhatsApp's own markdown (*bold*, no HTML tags — the
     Cloud API's text messages don't render HTML) and no inline keyboard equivalent; the listing
     URL at the end is the only action available (WhatsApp's like/hide/found buttons would need
     interactive "reply button" messages, a separate message type — not built yet, plain text
     with a link is the MVP)."""
-    amenities = " ".join(
-        emoji for attr, emoji in _AMENITY_EMOJI if getattr(listing, attr) is True
-    )
-    if listing.safe_room_type in ("safe_room", "building_shelter"):
-        amenities = f"{amenities} 🛡️".strip()
-
-    floor_line = ""
-    if listing.floor is not None:
-        floor_line = f" · קומה {listing.floor}"
-        if listing.floor_total is not None:
-            floor_line += f" מתוך {listing.floor_total}"
-
-    size_part = f" · {listing.size_sqm} מ\"ר" if listing.size_sqm else ""
-    lines = [f"🏠 *{listing.rooms or '?'} חדרים*{size_part}{floor_line}"]
-
-    if listing.price is not None:
-        lines.append(f"{_RLM}💰 {listing.price:,} ₪")
-    if listing.move_in_date is not None:
-        lines.append(f"📅 כניסה: {listing.move_in_date.isoformat()}")
-    if amenities:
-        lines.append(f"{_RLM}{amenities}")
-    location = ", ".join(p for p in (listing.neighborhood, listing.city) if p)
-    if location:
-        lines.append(f"📍 {location}")
-
+    lines = _build_body_lines(listing)
     features = _feature_list(listing)
     if features:
-        lines.append(f"_🔑 פיצ'רים: {', '.join(features)}_")
+        lines.append(f"_🔑 פיצ'רים: {' | '.join(features)}_")
 
     body = "\n".join(lines)
-    header = ""
-    if price_drop_from is not None:
-        header = f"📉 *ירידת מחיר!* (היה {price_drop_from:,} ₪)\n\n"
+    header = _price_change_header(price_change_from, listing.price, bold=lambda s: f"*{s}*")
     footer = f"\n\n🔗 {listing.url}\n🏷️ {listing.source}"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
@@ -179,7 +176,7 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     so real photos (added 2026-09-02 — see scraper/normalize.py's enrich_from_detail) render
     identically everywhere instead of each call site reinventing send_photo/send_message.
 
-    ONE message per listing: the first real photo (or the dachshund fallback — see
+    ONE message per listing: the first real photo (or the Todi fallback — see
     _dachshund_photo_path above) with the caption and the ❤️/🙈/🎉 keyboard all on it via a plain
     send_photo. Deliberately NOT a multi-photo sendMediaGroup gallery anymore (2026-09-02, real
     user report + a direct ask to match the reference bot dorin.app's own cleaner single-message

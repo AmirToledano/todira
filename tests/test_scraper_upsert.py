@@ -1,5 +1,6 @@
 """Tests for _upsert_listings (scraper/main.py) — plain insert-if-new / update-if-existing,
-with price-drop detection on the update path.
+with price-change detection (either direction — see scraper/notifier.py for how drop vs. increase
+is decided from the reported (id, old_price) pair) on the update path.
 
 Real photo/amenity/broker enrichment used to be fetched here per-new-listing via a separate,
 costly (~25 ZenRows credits each) detail-page request — rejected once that recurring cost was
@@ -70,9 +71,9 @@ def test_new_listing_is_inserted_and_returns_its_new_id():
         ]
     )
 
-    new_ids, price_drops = _upsert_listings(session, [new_item])
+    new_ids, price_changes = _upsert_listings(session, [new_item])
     assert new_ids == [5001]
-    assert price_drops == []
+    assert price_changes == []
 
 
 def test_existing_listing_is_updated_not_inserted():
@@ -84,9 +85,9 @@ def test_existing_listing_is_updated_not_inserted():
         ]
     )
 
-    new_ids, price_drops = _upsert_listings(session, [existing_item])
+    new_ids, price_changes = _upsert_listings(session, [existing_item])
     assert new_ids == []
-    assert price_drops == []
+    assert price_changes == []
 
 
 def test_price_drop_on_existing_listing_is_reported():
@@ -98,9 +99,23 @@ def test_price_drop_on_existing_listing_is_reported():
         ]
     )
 
-    new_ids, price_drops = _upsert_listings(session, [existing_item])
+    new_ids, price_changes = _upsert_listings(session, [existing_item])
     assert new_ids == []
-    assert price_drops == [(42, 5000)]
+    assert price_changes == [(42, 5000)]
+
+
+def test_price_increase_on_existing_listing_is_reported():
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=6000)
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, price rose 5000 -> 6000
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
+
+    new_ids, price_changes = _upsert_listings(session, [existing_item])
+    assert new_ids == []
+    assert price_changes == [(42, 5000)]
 
 
 def test_mixed_new_and_existing_items_in_one_call():
@@ -116,6 +131,6 @@ def test_mixed_new_and_existing_items_in_one_call():
         ]
     )
 
-    new_ids, price_drops = _upsert_listings(session, [new_item, existing_item])
+    new_ids, price_changes = _upsert_listings(session, [new_item, existing_item])
     assert new_ids == [5001]
-    assert price_drops == [(42, 5000)]
+    assert price_changes == [(42, 5000)]

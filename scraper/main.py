@@ -56,15 +56,18 @@ def _scrape_cities() -> list[str]:
 
 def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[int, int]]]:
     """For each normalized item: insert if the (source, external_id) pair is new, otherwise
-    update the existing row and check whether its price just dropped.
+    update the existing row and check whether its price just changed.
 
-    Returns (new_ids, price_drop_events) where price_drop_events is a list of
-    (listing_id, old_price) for existing listings whose price went down this run. This is a
+    Returns (new_ids, price_change_events) where price_change_events is a list of
+    (listing_id, old_price) for existing listings whose price is different this run — either
+    direction; the caller (notifier.py) compares old vs. new to decide 📉 drop vs. 📈 increase.
+    Originally drop-only (added after the user pointed out the reference bot's "📉 ירידת מחיר!"
+    re-notification, which the original DO-NOTHING design missed); generalized to increases too
+    2026-09-02 per an explicit request that both directions get a re-notification. This is a
     per-item SELECT-then-INSERT/UPDATE rather than a single bulk `INSERT ... ON CONFLICT DO
-    NOTHING` — less efficient at scale, but DO NOTHING can't see what the previous value was,
-    and seeing it is exactly what price-drop detection needs (added after the user pointed out
-    the reference bot's "📉 ירידת מחיר!" re-notification, which the original DO-NOTHING design
-    missed). Fine at this project's scale — a personal deployment, not high-throughput.
+    NOTHING` — less efficient at scale, but DO NOTHING can't see what the previous value was, and
+    seeing it is exactly what price-change detection needs. Fine at this project's scale — a
+    personal deployment, not high-throughput.
 
     Real photos/amenity tags/broker status are already merged into `item` by `normalize()` itself
     (see its own `_enrich_from_feed_record` call) before this function ever sees it — a free
@@ -74,7 +77,7 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
     see PROJECT_STATE.md, 2026-09-02."""
     table = Listing.__table__
     new_ids: list[int] = []
-    price_drop_events: list[tuple[int, int]] = []
+    price_change_events: list[tuple[int, int]] = []
 
     for item in normalized_items:
         existing = session.execute(
@@ -91,13 +94,13 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
             continue
 
         existing_id, old_price = existing
-        if item.price is not None and old_price is not None and item.price < old_price:
-            price_drop_events.append((existing_id, old_price))
+        if item.price is not None and old_price is not None and item.price != old_price:
+            price_change_events.append((existing_id, old_price))
 
         session.execute(table.update().where(table.c.id == existing_id).values(**item.model_dump()))
 
     session.commit()
-    return new_ids, price_drop_events
+    return new_ids, price_change_events
 
 
 def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
@@ -177,7 +180,7 @@ def run_once() -> dict[str, int]:
             all_cities_succeeded = False
 
     with get_session() as session:
-        new_ids, price_drop_pairs = _upsert_listings(session, normalized_items)
+        new_ids, price_change_pairs = _upsert_listings(session, normalized_items)
 
         delisted_count = 0
         if all_cities_succeeded and seen_external_ids:
@@ -194,35 +197,35 @@ def run_once() -> dict[str, int]:
             if new_ids
             else []
         )
-        price_drop_ids = [listing_id for listing_id, _old_price in price_drop_pairs]
+        price_change_ids = [listing_id for listing_id, _old_price in price_change_pairs]
         listings_by_id = {
             listing.id: listing
             for listing in (
-                session.scalars(select(Listing).where(Listing.id.in_(price_drop_ids)))
-                if price_drop_ids
+                session.scalars(select(Listing).where(Listing.id.in_(price_change_ids)))
+                if price_change_ids
                 else []
             )
         }
-        price_drop_events = [
+        price_change_events = [
             (listings_by_id[listing_id], old_price)
-            for listing_id, old_price in price_drop_pairs
+            for listing_id, old_price in price_change_pairs
             if listing_id in listings_by_id
         ]
 
         summary = {
             "fetched": fetched,
             "new": len(new_listings),
-            "price_drops": len(price_drop_events),
+            "price_changes": len(price_change_events),
             "delisted": delisted_count,
             "errors": errors,
         }
-        if new_listings or price_drop_events:
+        if new_listings or price_change_events:
             summary.update(
-                asyncio.run(run_notifications(session, new_listings, price_drop_events))
+                asyncio.run(run_notifications(session, new_listings, price_change_events))
             )
         else:
             summary.update(
-                {"matched": 0, "notifications_sent": 0, "price_drop_notifications_sent": 0}
+                {"matched": 0, "notifications_sent": 0, "price_change_notifications_sent": 0}
             )
 
     return summary

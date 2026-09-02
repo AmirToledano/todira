@@ -77,12 +77,13 @@ class Source:
 class NotificationReason:
     """Why a given `sent_notifications` row exists — lets the same (user, listing) pair be
     notified more than once for genuinely different reasons (a brand-new match, then later a
-    price drop on that same listing)."""
+    price change on that same listing)."""
 
     NEW = "new"
     PRICE_DROP = "price_drop"
+    PRICE_INCREASE = "price_increase"
 
-    ALL = (NEW, PRICE_DROP)
+    ALL = (NEW, PRICE_DROP, PRICE_INCREASE)
 
 
 class ListingAction:
