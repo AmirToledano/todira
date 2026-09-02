@@ -27,7 +27,7 @@ from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
-from handlers.apartments import RESULT_LIMIT, find_matching_listings
+from handlers.apartments import RESULT_LIMIT, find_new_matches_to_show
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
@@ -78,7 +78,7 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return AWAIT_FREETEXT
 
 
-def _save_filter_sync(tg_user, state: dict) -> list:
+def _save_filter_sync(tg_user, state: dict) -> tuple[int, list]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
         filter_row = Filter(
@@ -95,7 +95,13 @@ def _save_filter_sync(tg_user, state: dict) -> list:
         session.commit()
         # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
         # brand-new user especially shouldn't have to wait for the next scrape to see anything.
-        return find_matching_listings(session, user.id, filter_row, limit=RESULT_LIMIT)
+        # Always a fresh Filter here (onboarding only runs for a user with none yet), so in
+        # practice every current match is "new" — find_new_matches_to_show is still used (not
+        # find_matching_listings directly) so these get recorded as SentNotification rows, keeping
+        # a later /filter re-save (filter_conversation.py) from resending the same ones again.
+        total, new_to_show = find_new_matches_to_show(session, user.id, filter_row, limit=RESULT_LIMIT)
+        session.commit()
+        return total, new_to_show
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -152,7 +158,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
         return AWAIT_FREETEXT
 
-    matches = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
+    total, new_matches = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
 
     context.user_data.pop("onboarding", None)
     await update.message.reply_text(
@@ -162,12 +168,13 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Sends every current match as a real card, not just a count/link (mirrors the reference
     # bot's behavior on both its guided-form and free-text paths, per the owner's screenshots
     # 2026-08-31) — a brand-new user especially shouldn't have to click through anywhere to see
-    # what already matches right now.
-    if matches:
+    # what already matches right now. Always effectively "every" match here (a fresh filter has
+    # nothing recorded as already-shown yet) — see find_new_matches_to_show's own docstring.
+    if new_matches:
         await update.message.reply_text(
-            f"👀 יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות:"
+            f"👀 יש כרגע {total}{'+' if total >= RESULT_LIMIT else ''} דירות שמתאימות:"
         )
-        for listing in matches:
+        for listing in new_matches:
             await send_listing_card(
                 context.bot, update.effective_chat.id, listing, format_caption(listing)
             )
