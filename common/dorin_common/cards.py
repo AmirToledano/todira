@@ -26,19 +26,20 @@ CAPTION_LIMIT = 1024
 # line without changing anything visible; harmless to add to a line that was already RTL.
 _RLM = "\u200f"
 
-# A listing with zero real photos gets a cute cartoon dachshund instead (2026-09-02 request) — see
-# scripts/fetch_dachshund_art.py for where this art comes from (a real, public-domain internet
-# illustration, recolored into 6 palettes — not hand-drawn here), and website/templates/
-# _listing_card.html for the same treatment on the website. Picked deterministically from the
-# listing id (not random) so a given listing shows the same dog everywhere/every time.
+# A listing with zero real photos gets a real photo of Todi — the user's own dachshund — instead
+# (2026-09-02 request; briefly a CC0 cartoon illustration before that, see PROJECT_STATE.md for
+# that history). 17 real photos curated from 50 submitted (see scripts/prepare_todi_photos.py),
+# picked deterministically from the listing id (not random) so a given listing shows the same
+# photo everywhere/every time. Same treatment on the website — see website/templates/
+# _listing_card.html.
 _DACHSHUND_DIR = Path(__file__).resolve().parent / "assets" / "dachshunds"
-_DACHSHUND_PALETTES = ("chocolate", "golden", "cream", "black_tan", "reddish", "silver")
-_NO_PHOTOS_SUFFIX_HE = "\n\n🐶 <i>דירה זו עלתה ללא תמונות, אבל הנה נקניקיה חמודה בשבילכם</i>"
+_TODI_PHOTO_COUNT = 17
+_NO_PHOTOS_SUFFIX_HE = "\n\n🐶 <i>דירה זו עלתה ללא תמונות, אבל הנה טודי בשבילכם</i>"
 
 
 def _dachshund_photo_path(listing_id: int) -> Path:
-    name = _DACHSHUND_PALETTES[listing_id % len(_DACHSHUND_PALETTES)]
-    return _DACHSHUND_DIR / f"{name}.png"
+    n = (listing_id % _TODI_PHOTO_COUNT) + 1
+    return _DACHSHUND_DIR / f"todi_{n:02d}.jpg"
 
 _AMENITY_EMOJI = (
     ("has_parking", "🅿️"),
