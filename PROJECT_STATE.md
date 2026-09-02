@@ -2372,3 +2372,38 @@ where an actual human FACE is visible, cover it with a big friendly emoji.
 - 302 tests passing. Verified visually the same way as the prior pass — all 50 rendered as real
   listing cards via Playwright at production display size, all 5 face photos individually
   double-checked for full coverage (no eye/nose/mouth peeking past the sticker) before shipping.
+
+## 2026-09-02 (final pass on this feature): scrapped the emoji approach — AI-generated staged photos, random pick, full-bleed card
+
+User rejected the emoji version outright right after it shipped: "תעצור את זה, זה לא טוב.. אי אפשר
+לעשות את האמוג׳ים האלה, אני אשלח לך פשוט תמונות מוכנות אחרי שעשיתי בnano banana של ג׳מיני" — then
+sent two collage images (18+1 staged photos of Todi, generated with Gemini's "nano banana" image
+editing) with: "תפצל מהם תמונות ותעשה תמונות יחידות... אני רוצה שזה יהיה על כל הרקע של המודעה
+ותגדיל את הכתב של דירה זו עלתה ללא תמונות... תיקח את התמונה ותפצל אותה לכמה תמונות כדי שבכל דירה
+שעולה ללא תמונה תהיה תמונה כזו משלו, ושיהיה אקראי לחלוטין. תחליף את מה שעשינו עד עכשיו."
+
+- Split both collages programmatically: detected the white/off-white gutter rows and columns
+  between cells (row/column mean-brightness thresholding, since one collage was a clean uniform
+  3×4 grid and the other had 3 differently-sized rows needing per-row column detection) and
+  cropped each cell with a small inward pad. 19 cells total; 1 dropped (a failed generation
+  showing only potted plants, no dog) — 18 final photos, reviewed as a contact sheet before use.
+- This is a full replacement, not a refinement: every prior approach for this feature (CC0
+  illustration, rembg/YOLO segmentation, emoji-over-face) is gone. `scripts/prepare_todi_photos.py`
+  no longer processes anything — it's now just a doc comment recording where the 18 current photos
+  came from, since there's no reusable pipeline (the source collages aren't part of the repo).
+- Selection switched from deterministic-per-listing-id to genuinely random on every render/send —
+  explicit request ("שיהיה אקראי לחלוטין"), a deliberate reversal of the design used in every
+  earlier version of this feature. `_dachshund_photo_path()` (Telegram/WhatsApp) now takes no
+  `listing_id` argument and calls `random.randint`; the website template picks with Jinja's
+  `random` filter over `range(1, todi_photo_count+1)` on each render. The old determinism test
+  was replaced with one asserting every pick resolves to a real file and, over 60 draws, more than
+  one distinct photo comes up.
+- Website card redesign, the other explicit ask: the placeholder photo now fills the ENTIRE cover
+  area like a real listing photo does (reused the exact same `.cover-slide` background-image
+  technique real Yad2 photos use, dropped the old small centered box), with the caption text
+  overlaid as a pill at the bottom — enlarged from `.78rem` to `1.05rem` and made bold
+  (`.no-image-caption` in style.css) per "תגדיל את הכתב". Removed the now-dead `.no-image`/
+  `.no-image-dachshund` CSS rules the old boxed layout used.
+- File format stayed `.jpg`; `_TODI_PHOTO_COUNT`/`todi_photo_count` dropped 50 → 18.
+- 302 tests passing. Verified visually via Playwright — full 4-column grid of all 18 photos
+  rendered as real listing cards with the redesigned full-bleed cover and enlarged caption.
