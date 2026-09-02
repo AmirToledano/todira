@@ -181,7 +181,10 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
                 InputMediaPhoto(url) for url in images[1:]
             ]
             await bot.send_media_group(chat_id=chat_id, media=media)
-            await bot.send_message(chat_id=chat_id, text="⬆️", reply_markup=keyboard)
+            # Telegram renders a message containing ONLY 1-3 emoji as one giant "jumbo" emoji with
+            # no normal bubble background - real words alongside it avoid that (found live
+            # 2026-09-02: a bare "⬆️" was taking over the whole screen).
+            await bot.send_message(chat_id=chat_id, text="⬆️ הדירה למעלה", reply_markup=keyboard)
         elif len(images) == 1:
             await bot.send_photo(
                 chat_id=chat_id,

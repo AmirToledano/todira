@@ -13,8 +13,9 @@ from telegram.ext import CommandHandler, ContextTypes
 
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
+from dorin_common.enums import NotificationReason
 from dorin_common.matching import evaluate
-from dorin_common.models import Filter, Listing, User, UserListingAction
+from dorin_common.models import Filter, Listing, SentNotification, User, UserListingAction
 
 RECENT_LISTINGS_SCANNED = 200  # how far back to look before filtering/matching
 RESULT_LIMIT = 10
@@ -47,6 +48,36 @@ def find_matching_listings(session: Session, user_id: int, filter_row: Filter, l
         if len(matches) >= limit:
             break
     return matches
+
+
+def find_new_matches_to_show(
+    session: Session, user_id: int, filter_row: Filter, limit: int
+) -> tuple[int, list[Listing]]:
+    """Returns (total_current_matches, matches_not_yet_shown_to_this_user) — for the "here's what
+    matches right now" summary shown right after saving a filter (filter_conversation.py,
+    onboarding.py), NOT for /apartments (which should always show everything on demand, see
+    find_matching_listings above).
+
+    Records each newly-shown listing as a SentNotification (reason=NEW) — the SAME bookkeeping
+    the scraper's own notifier uses (scraper/notifier.py) — so a listing shown here is never
+    repeated, whether the same user re-saves/tweaks their filter and gets shown matches again, or
+    a later scrape run would otherwise push it as a "new match". Found live 2026-09-02: saving a
+    filter always resent every single current match in full, every time — a real user tweaking
+    their filter a few times in a row got the same cards over and over, flooding their chat.
+    Caller is responsible for committing afterward (matches the existing session-per-call-site
+    pattern in filter_conversation.py/onboarding.py, no session.commit() here)."""
+    matches = find_matching_listings(session, user_id, filter_row, limit)
+    already_shown_ids = set(
+        session.scalars(
+            select(SentNotification.listing_id).where(SentNotification.user_id == user_id)
+        )
+    )
+    new_to_show = [m for m in matches if m.id not in already_shown_ids]
+    for listing in new_to_show:
+        session.add(
+            SentNotification(user_id=user_id, listing_id=listing.id, reason=NotificationReason.NEW)
+        )
+    return len(matches), new_to_show
 
 
 def _load_matches_sync(tg_user) -> list[Listing] | None:
