@@ -21,12 +21,12 @@ CAPTION_LIMIT = 1024
 
 # A listing with zero real photos gets a real photo of Todi — the user's own dachshund — instead
 # (2026-09-02 request; briefly a CC0 cartoon illustration before that, see PROJECT_STATE.md for
-# that history). 27 real photos, background (and any touching person) automatically removed —
-# see scripts/prepare_todi_photos.py — curated from 50 submitted, picked deterministically from
+# that history). All 50 submitted photos are used, background (and any touching person) removed
+# via class-aware segmentation — see scripts/prepare_todi_photos.py — picked deterministically from
 # the listing id (not random) so a given listing shows the same photo everywhere/every time. Same
 # treatment on the website — see website/templates/_listing_card.html.
 _DACHSHUND_DIR = Path(__file__).resolve().parent / "assets" / "dachshunds"
-_TODI_PHOTO_COUNT = 27
+_TODI_PHOTO_COUNT = 50
 _NO_PHOTOS_SUFFIX_HE = "\n\n🐶 <i>דירה זו עלתה ללא תמונות, אבל הנה טודי בשבילכם</i>"
 
 
