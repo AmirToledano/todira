@@ -16,7 +16,7 @@
 
     <div class="field">
       <label for="f-cities-search"><span class="field-icon" aria-hidden="true">📍</span> {{ t('filter.cities_label') }}</label>
-      <input id="f-cities-search" type="text" placeholder="{{ t('filter.cities_placeholder') }}" oninput="filterCityChips(this.value)">
+      <input id="f-cities-search" type="text" placeholder="{{ t('filter.cities_placeholder') }}" oninput="filterCityChips(this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">
       <div class="checkbox-grid checkbox-grid-scroll" id="f-cities-grid">
         {% for city in cities_list %}
         <label class="check-chip" data-city-name="{{ city }}">

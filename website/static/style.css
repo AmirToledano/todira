@@ -361,6 +361,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .check-chip:has(input:checked) {
   background: var(--wine-tint); border-color: var(--wine); color: var(--wine); font-weight: 600;
 }
+/* `.check-chip`'s own `display: inline-flex` above overrides the browser's default
+   `[hidden] { display: none }` rule (author styles always beat user-agent styles) - without this,
+   setting an element's `.hidden` property from JS (the city search filter below) has no visible
+   effect at all. Found live 2026-09-02: the filter ran correctly, nothing ever actually hid. */
+.check-chip[hidden] { display: none !important; }
 /* the cities grid (~40 options) gets its own scrollable box so the page doesn't get huge;
    the shorter amenity/property-type grids stay unbounded */
 .checkbox-grid-scroll {
