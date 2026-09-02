@@ -1788,3 +1788,175 @@ Traded strict correctness (don't claim a match on an unconfirmed amenity) for sh
 all — the same call made for property_type, now applied consistently. Revisit once a per-listing
 detail-page scrape (parking/elevator/balcony/pets/renovated/roommates/photos/safe room/furniture,
 and property_type's own real value) actually exists; a real, sizeable follow-up, not started.
+
+## Update 2026-09-02, later still: real photos + amenities + description, end to end
+User ask, after finally seeing apartments show up: add real apartment photos (not just Telegram's
+own link-preview thumbnail), "מה יש בנכס" (amenities), and "על הנכס" (description) to both the bot
+and the website — referencing the reference bot's own message format (a "פיצ'רים:" line) as the
+model.
+
+**Diagnosed first, not guessed** (`.github/workflows/diagnose-listing-detail-page.yaml`, one
+approved ZenRows request against a real current Jerusalem listing): Yad2's own listing DETAIL page
+(not the search-results page this project has always scraped) is server-rendered by Next.js and
+embeds the full ad record as clean JSON in a `<script id="__NEXT_DATA__">` blob — price, rooms,
+floor, size, property type, 6 amenity booleans (parking/elevator/balcony/AC/boiler/security room/
+accessible), a free-text description, the real multi-photo image URLs (img.yad2.co.il CDN), an
+entrance date, and broker/agency info. Far more reliable than scraping visible HTML/icons.
+
+**Shipped**:
+1. `scraper/yad2_client.py`: `fetch_listing_detail(url)` — one ZenRows Fetch API call (same params
+   as a search page) against a single listing's own page, extracts and returns the `__NEXT_DATA__`
+   ad record as a plain dict, or `None` on any failure (missing key, network error, no/unparseable
+   blob) — never raises.
+2. `scraper/normalize.py`: `enrich_from_detail(item, detail)` — fills property_type (only the
+   confirmed `"penthouse"` mapping so far — extend `_PROPERTY_TYPE_MAP` as more values are
+   observed live, never guessed), has_parking/has_elevator/has_balcony, safe_room_type (from
+   includeSecurityRoom), floor_total, move_in_date (entranceDate), description, real image_urls,
+   and is_broker_listing (only ever set True, on a confirmed agencyName — its absence is not
+   evidence of "private", same benefit-of-the-doubt policy as elsewhere).
+3. `scraper/main.py`: `_upsert_listings` calls the above **only for a listing genuinely NEW to the
+   DB this run** (the insert branch), never on update — each call is a real, separate ZenRows
+   request, so re-running it for an already-known listing would multiply cost for zero benefit.
+   **Cost model**: bounded by "new listings per run," not "every listing every run" — scales with
+   the existing SCRAPE_CITIES_PER_RUN rotation already in place, not on top of it.
+4. `dorin_common/cards.py`: both caption formatters gained a de-emphasized (italic) "🔑 פיצ'רים:"
+   line built from whatever amenity/safe-room/furniture fields are actually known — additive to
+   the existing emoji row, not a replacement (the user's own "גם... בקטן" wording). New
+   `send_listing_card(bot, chat_id, listing, caption)` is now the ONE place a listing is ever put
+   on a Telegram screen (scraper's notifier + all 4 bot call sites — apartments/liked/onboarding/
+   filter_conversation — now route through it instead of each reinventing send_photo/send_message):
+   a media group (real photos) for 2+ images, `send_photo` for exactly 1, `send_message` for 0.
+   Telegram's `sendMediaGroup` can't carry an inline keyboard at all — a real API limitation — so
+   for 2+ photos the ❤️/🙈/🎉 buttons go out as a short separate follow-up message instead of
+   silently disappearing.
+5. Website (`_listing_card.html`, `style.css`): the cover is now a horizontally scrollable,
+   scroll-snap gallery of up to 8 photos (CSS-only, no JS) with a photo-count badge, instead of a
+   single fixed background image. The amenity row gained safe-room and furnished chips (parking/
+   elevator/balcony/pets/renovated already existed).
+
+**Not done, on purpose**: air conditioning/boiler/accessibility have no columns in this project's
+schema at all yet, even though Yad2's detail JSON now carries them — a real follow-up if wanted,
+not squeezed in here. `is_renovated`/`pets_allowed`/`is_roommate_friendly`/`furniture` still have
+no confirmed source in the detail JSON (not present in the one real sample fetched) — left exactly
+as they were (matching.py's existing benefit-of-the-doubt handling), not guessed at.
+
+**Retroactive scope**: only NEW listings from here on get this enrichment — every listing already
+in the DB before this shipped keeps showing the placeholder cover/no features until it's naturally
+re-scraped as "new" again (which, per _mark_delisted, doesn't happen for a listing still actively
+seen — this only benefits genuinely new postings going forward). Backfilling existing listings
+would mean deliberately re-fetching their detail pages, a separate, explicit cost decision not
+made here.
+
+## Update 2026-09-02, later still: real photos for FREE — the expensive per-listing plan reversed
+User pushed back hard on the ~25-ZenRows-credit-per-new-listing detail-page fetch (see the update
+above, PR #93 as originally written) — real, correct concern: at any meaningful listing volume
+that's a serious recurring cost, not a one-off. Went looking for a free alternative instead of
+accepting it.
+
+**Diagnosed, not guessed** (two more approved ZenRows diagnostics against the same real Jerusalem
+search page): `.github/workflows/diagnose-search-page-cheap-fetch.yaml` confirmed `js_render=true`
+is mandatory for Yad2 (dropping it gets an immediate `REQS002` rejection from ZenRows itself — no
+cheaper fetch mode exists), but also found strong evidence the search page's own `__NEXT_DATA__`
+blob carries far more than the visible cards. `diagnose-search-page-feed-shape.yaml` (a follow-up,
+after the first pass's top-level-only check found nothing — the data turned out nested one level
+deeper) confirmed it directly: `queries[...].state.data` (queryKey `realestate-rent-feed`) is a
+dict of `private`/`agency`/`platinum`/`booster` arrays (`yad1` = sponsored project marketing,
+already excluded), each entry keyed by the same `token` used as the listing's external id, and
+nearly every entry (19/20, 3/3, 1/1 in the real sample) carries real `metaData.images` photo URLs,
+a `tags` array of feature badges (e.g. "חניה"/'ממ"ד'/"2 מרפסות"), and — critically — the category
+itself (`private` vs `agency`/`platinum`/`booster`) is a **confirmed, both-directions** broker/
+private signal, better than anything the per-listing detail page alone gave.
+
+**This is the SAME request the project already pays for on every routine city scrape.** So: real
+photos, amenity tags, and broker status now come for free, every time, for every listing — not
+gated behind "new" listings, not costing anything beyond what already happens daily.
+
+**Reversed**: `scraper/main.py::_upsert_listings` no longer calls a per-listing detail fetch at
+all (removed entirely from the insert path). `scraper/yad2_client.py` gained
+`_extract_feed_records` (parses the search page's own `__NEXT_DATA__` once per fetch, maps
+`token -> record`) wired into `_parse_cards`, which now attaches a `_feed_record` key to any card
+it has a match for. `scraper/normalize.py` gained `_enrich_from_feed_record`, called automatically
+inside `normalize()` itself whenever `_feed_record` is present — real image_urls, a Hebrew-text
+property-type mapping (`_HEBREW_PROPERTY_TYPE_MAP`, only confirmed values: דירה/דירת גן/גג
+פנטהאוז/בית בודד), and a confirmed tag-to-amenity mapping (`_FEED_TAG_TO_FIELD`, only "חניה"→
+parking and 'ממ"ד'→safe_room_type confirmed so far; balcony matched by the Hebrew root "מרפס" —
+not "מרפסת", since the plural "מרפסות" doesn't contain that as a substring, caught live by this
+file's own test).
+
+**What's given up, honestly**: the search page's feed records do NOT carry a free-text
+description (only the single-listing detail page does — `metaData` here has `coverImage`/
+`images`/`squareMeterBuild` but no description key), nor the detail page's full `inProperty`
+amenity set (elevator, A/C, boiler, accessibility — only what a `tags` badge happens to confirm).
+`fetch_listing_detail`/`enrich_from_detail` (yad2_client.py / normalize.py) are kept as-is,
+fully tested, but deliberately not called by anything in the normal scrape path anymore — a real,
+separate ~25-credit cost, available if ever explicitly wanted (e.g. a future opt-in "get the full
+description for listing X" feature), not run automatically.
+
+`tests/test_scraper_upsert.py` rewritten (no longer asserts a detail fetch happens for new
+listings — asserts the opposite, that `_upsert_listings` stays a plain insert/update). New tests
+in `test_yad2_client.py`/`test_normalize.py` for the feed-record path, built from the real
+confirmed diagnostic output, not invented. 271 tests total, all passing.
+
+Also researched (WhatsApp side, separate from this): Business Verification is NOT the only path to
+a working WhatsApp bot for someone without a registered business — adding a real (non-test) phone
+number to the WhatsApp Business Account allows messaging up to 250 unique recipients/24h with no
+verification at all (only the free *test* number is capped at 5 manually-added recipients).
+Whether a permanent System User token specifically requires verification remains unconfirmed.
+
+## Update 2026-09-02, later still: /filter city search — two real bugs, both live user reports
+Right after shipping the website's /filter city checkbox grid (see the earlier "checkbox grid on
+the website's /filter" update), the owner reported it live: typing into the city search box did
+nothing visible, and pressing Enter/the keyboard's search key reloaded the whole page.
+
+**Filtering bug** — `.check-chip` in `style.css` sets `display: inline-flex` unconditionally. That
+author-stylesheet rule always overrides the browser's own default `[hidden] { display: none }`
+UA rule, regardless of selector specificity (author styles beat user-agent styles by CSS cascade
+origin, not by specificity). `filterCityChips()`'s `chip.hidden = true` was firing correctly the
+entire time — it just never had any visible effect. Fixed with
+`.check-chip[hidden] { display: none !important; }`.
+
+**Reload bug** — the search `<input>` lives inside the filter `<form>`; pressing Enter in any
+text input inside a form triggers native submission unless prevented. Fixed with an `onkeydown`
+guard on that one field (`event.preventDefault()` on Enter), leaving the real Save button intact.
+
+Also sorted `cities_list` alphabetically for display only (`sorted(CITIES)` at the render call
+site in `website/main.py`) — a separate, smaller complaint from the same report; `CITIES` itself
+(read by matching.py and the bot's own city picker) keeps its original order.
+
+Two new tests in `tests/test_website_filter_cities.py` (alphabetical render order; the `onkeydown`
+guard is present). 273 tests total, all passing. Shipped and merged independently of the (still
+separately-tracked) real-photos work, since it was a live bug worth fixing immediately.
+
+## Where this session leaves off (2026-09-02, end of day)
+Full arc, in order, for anyone picking this up cold:
+1. Kiryat Motzkin spelling mismatch -> `cities.canonicalize_city()` + bot/website city pickers.
+2. Global delisting bug -> `_mark_delisted` scoped to scraped cities only.
+3. `property_type` matching bug -> unknown property type gets benefit of the doubt (the actual
+   fix that first made listings visible again).
+4. Same bug class found in 8 more fields (amenities/safe-room/furniture) -> same fix pattern.
+5. Login redesign step 1: Telegram Login Widget -> direct `t.me/AmirDirotBot` deep link (step 2,
+   Google Sign-In, not started - gated on the owner setting up a Google Cloud OAuth Client).
+6. Listing card price made a prominent headline, not just a small badge (website).
+7. Real photos/amenities/description request -> diagnosed the per-listing detail-page fetch
+   first (~25 ZenRows credits/listing, correctly rejected as too costly by the owner) -> found
+   and shipped a FREE alternative instead: the search page's own embedded feed data. See the
+   "real photos for free" update above for the full technical detail. PR for this
+   (`claude/project-state-update-9qzsco` -> main) is the one still open as of this writing.
+8. /filter city search bugfixes (this update) - shipped and merged independently.
+9. WhatsApp Business Verification research (not this session's main thread, a tangent): the
+   owner has no registered business and doesn't want to register one just for this. Confirmed
+   Business Verification is NOT required for a working bot - adding a real (non-test) phone
+   number to the WhatsApp Business Account allows up to 250 unique recipients/24h with zero
+   verification (only the free *test* number is capped at 5 manually-added recipients). Whether
+   a *permanent* System User token specifically needs verification is still unconfirmed. Not
+   acted on yet - the owner has this written up in a separate reference file, not yet decided
+   whether to pursue adding a real phone number.
+
+**Not yet done, explicitly still open:**
+- Google Sign-In (login redesign step 2) - needs the owner's own Google Cloud OAuth Client setup.
+- WhatsApp: decide whether to add a real (non-test) phone number to unlock the 250/24h tier.
+- `fetch_listing_detail`/`enrich_from_detail` (yad2_client.py/normalize.py) exist, tested, but are
+  deliberately NOT called automatically - a real ~25-credit-per-listing cost if ever wanted for
+  free-text descriptions specifically.
+- Komo (קומו) and Facebook Marketplace/Groups scraping sources - long-standing backlog items,
+  untouched this session.

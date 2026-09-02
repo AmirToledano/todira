@@ -20,10 +20,8 @@ import os
 from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
-from telegram.constants import ParseMode
-from telegram.error import TelegramError
 
-from dorin_common.cards import format_caption, listing_keyboard
+from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.enums import NotificationReason
 from dorin_common.matching import evaluate
 from dorin_common.models import Filter, Listing, SentNotification, User
@@ -73,34 +71,6 @@ def _already_notified(session: Session, user_id: int, listing_id: int, reason: s
     )
 
 
-async def _send_one(bot: Bot, telegram_user_id: int, listing: Listing, caption: str) -> bool:
-    keyboard = listing_keyboard(listing.id)
-    try:
-        if listing.image_urls:
-            await bot.send_photo(
-                chat_id=telegram_user_id,
-                photo=listing.image_urls[0],
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=keyboard,
-            )
-        else:
-            await bot.send_message(
-                chat_id=telegram_user_id,
-                text=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=keyboard,
-            )
-        return True
-    except TelegramError:
-        logger.exception(
-            "Failed to send Telegram notification to user %s for listing %s",
-            telegram_user_id,
-            listing.id,
-        )
-        return False
-
-
 async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> tuple[int, int]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
@@ -117,7 +87,7 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
         user = session.get(User, filter_row.user_id)
         if user is None:
             continue
-        if await _send_one(bot, user.telegram_user_id, listing, format_caption(listing)):
+        if await send_listing_card(bot, user.telegram_user_id, listing, format_caption(listing)):
             session.add(
                 SentNotification(
                     user_id=filter_row.user_id,
@@ -155,7 +125,7 @@ async def _notify_price_drop(bot: Bot, session: Session, listing: Listing, old_p
             continue
 
         caption = format_caption(listing, price_drop_from=old_price)
-        if await _send_one(bot, user.telegram_user_id, listing, caption):
+        if await send_listing_card(bot, user.telegram_user_id, listing, caption):
             session.add(
                 SentNotification(
                     user_id=user_id,

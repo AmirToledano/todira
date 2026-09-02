@@ -9,10 +9,9 @@ import asyncio
 
 from sqlalchemy import select
 from telegram import Update
-from telegram.constants import ParseMode
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
-from dorin_common.cards import format_caption, listing_keyboard
+from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Listing, UserListingAction
 from dorin_common.users import get_or_create_user
@@ -48,10 +47,8 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     for listing in results:
-        await update.message.reply_text(
-            format_caption(listing),
-            reply_markup=listing_keyboard(listing.id),
-            parse_mode=ParseMode.HTML,
+        await send_listing_card(
+            context.bot, update.effective_chat.id, listing, format_caption(listing)
         )
 
 

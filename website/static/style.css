@@ -266,23 +266,35 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 }
 .listing-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
 
+.listing-cover-wrap { position: relative; }
 .listing-cover {
-  position: relative; aspect-ratio: 4 / 3; background-size: cover; background-position: center;
+  display: flex; aspect-ratio: 4 / 3; overflow-x: auto; scroll-snap-type: x mandatory;
   background: linear-gradient(135deg, #f1e2c8, #e7c9a8);
-  display: flex; align-items: center; justify-content: center;
+  scrollbar-width: none; /* Firefox */
 }
-.listing-cover.no-image { color: rgba(122,31,43,.28); font-size: 2.6rem; }
-.listing-cover .price-badge {
+.listing-cover::-webkit-scrollbar { display: none; }
+.listing-cover.no-image { align-items: center; justify-content: center; }
+.listing-cover.no-image span { color: rgba(122,31,43,.28); font-size: 2.6rem; }
+.cover-slide {
+  flex: 0 0 100%; scroll-snap-align: start; background-size: cover; background-position: center;
+}
+.listing-cover-wrap .price-badge {
   position: absolute; top: 12px; inset-inline-end: 12px;
   background: rgba(36, 20, 23, .82); color: #fff; backdrop-filter: blur(3px);
   padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: .95rem;
   font-family: 'Frank Ruhl Libre', serif;
 }
-.listing-cover .price-badge .gold-text { color: var(--gold-light); }
-.listing-cover .source-badge {
+.listing-cover-wrap .price-badge .gold-text { color: var(--gold-light); }
+.listing-cover-wrap .source-badge {
   position: absolute; top: 12px; inset-inline-start: 12px;
   background: rgba(255,255,255,.9); color: var(--wine); font-size: .72rem; font-weight: 700;
   padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em;
+}
+.listing-cover-wrap .photo-count-badge {
+  position: absolute; bottom: 10px; inset-inline-end: 12px;
+  background: rgba(36, 20, 23, .72); color: #fff; backdrop-filter: blur(3px);
+  padding: 3px 10px; border-radius: 999px; font-size: .74rem; font-weight: 600;
+  pointer-events: none;
 }
 
 .listing-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
