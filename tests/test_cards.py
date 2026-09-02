@@ -192,7 +192,7 @@ def test_send_listing_card_no_images_sends_a_todi_photo():
     assert kwargs["reply_markup"] is not None
     assert "caption" in kwargs["caption"]
     assert "טודי" in kwargs["caption"]
-    assert kwargs["photo"].name.endswith(".jpg")
+    assert kwargs["photo"].name.endswith(".png")
 
 
 def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
@@ -254,8 +254,9 @@ def test_dachshund_photo_pick_is_deterministic_per_listing_id():
     from dorin_common.cards import _dachshund_photo_path
 
     assert _dachshund_photo_path(1) == _dachshund_photo_path(1)
-    # different ids can land on different photos, but always a real file on disk
-    for listing_id in range(25):
+    # different ids can land on different photos (including wrapping around past the pool size),
+    # but always a real file on disk
+    for listing_id in range(35):
         path = _dachshund_photo_path(listing_id)
         assert path.exists(), f"missing todi asset: {path}"
 
