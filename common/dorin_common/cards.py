@@ -8,7 +8,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TelegramError
 
@@ -17,6 +17,14 @@ from dorin_common.models import Listing
 logger = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
+
+# A line made up ONLY of digits/currency/emoji (no Hebrew letters) has no strong-direction
+# character at all, so bidi-aware renderers (confirmed live in Telegram, 2026-09-02) fall back to
+# LTR for that one line and left-align it — "💰 7,800 ₪" and a bare amenity-emoji row rendered on
+# the LEFT edge while every other line (which starts with real Hebrew text) sat correctly on the
+# right. A leading U+200F (Right-to-Left Mark, invisible, zero display width) forces RTL for that
+# line without changing anything visible; harmless to add to a line that was already RTL.
+_RLM = "\u200f"
 
 # A listing with zero real photos gets a cute cartoon dachshund instead (2026-09-02 request) — see
 # scripts/fetch_dachshund_art.py for where this art comes from (a real, public-domain internet
@@ -83,11 +91,11 @@ def format_caption(listing: Listing, *, price_drop_from: int | None = None) -> s
     lines = [f"🏠 <b>{listing.rooms or '?'} חדרים</b>{size_part}{floor_line}"]
 
     if listing.price is not None:
-        lines.append(f"💰 {listing.price:,} ₪")
+        lines.append(f"{_RLM}💰 {listing.price:,} ₪")
     if listing.move_in_date is not None:
         lines.append(f"📅 כניסה: {listing.move_in_date.isoformat()}")
     if amenities:
-        lines.append(amenities)
+        lines.append(f"{_RLM}{amenities}")
     location = ", ".join(p for p in (listing.neighborhood, listing.city) if p)
     if location:
         lines.append(f"📍 {location}")
@@ -136,11 +144,11 @@ def format_caption_whatsapp(listing: Listing, *, price_drop_from: int | None = N
     lines = [f"🏠 *{listing.rooms or '?'} חדרים*{size_part}{floor_line}"]
 
     if listing.price is not None:
-        lines.append(f"💰 {listing.price:,} ₪")
+        lines.append(f"{_RLM}💰 {listing.price:,} ₪")
     if listing.move_in_date is not None:
         lines.append(f"📅 כניסה: {listing.move_in_date.isoformat()}")
     if amenities:
-        lines.append(amenities)
+        lines.append(f"{_RLM}{amenities}")
     location = ", ".join(p for p in (listing.neighborhood, listing.city) if p)
     if location:
         lines.append(f"📍 {location}")
@@ -164,47 +172,37 @@ def format_caption_whatsapp(listing: Listing, *, price_drop_from: int | None = N
     return (header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
 
 
-# Telegram's own sendMediaGroup limit — irrelevant in practice (Yad2 listings rarely carry this
-# many photos), but the API call itself rejects a longer list outright.
-MAX_MEDIA_GROUP_PHOTOS = 10
-
-
 async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: str) -> bool:
     """Sends one listing to one Telegram chat — the ONE place this project actually puts a
     listing on screen, used by the scraper's notifier and every bot handler that shows a listing,
     so real photos (added 2026-09-02 — see scraper/normalize.py's enrich_from_detail) render
     identically everywhere instead of each call site reinventing send_photo/send_message.
 
-    Real photos when the listing has them (a media group for 2+, a single photo for exactly 1);
-    when it has none, a cute cartoon dachshund photo instead of a bare text message (2026-09-02
-    request — see _dachshund_photo_path above). Telegram's sendMediaGroup can't carry an inline
-    keyboard at all (a real API limitation, not a bug here), so for 2+ photos the ❤️/🙈/🎉 action
-    buttons go out as a short separate follow-up message instead of silently disappearing.
+    ONE message per listing: the first real photo (or the dachshund fallback — see
+    _dachshund_photo_path above) with the caption and the ❤️/🙈/🎉 keyboard all on it via a plain
+    send_photo. Deliberately NOT a multi-photo sendMediaGroup gallery anymore (2026-09-02, real
+    user report + a direct ask to match the reference bot dorin.app's own cleaner single-message
+    style): sendMediaGroup can't carry an inline keyboard at all, so showing 2+ photos meant a
+    second, separate "⬆️ הדירה למעלה" message just to carry the buttons — confusing once several
+    listings arrive in a burst (Telegram's own per-chat rate limit spaces the sends out, so by the
+    time the keyboard message lands it's no longer obviously "the one right above"). The listing's
+    other photos aren't lost — the caption's own "🔗 לצפייה במודעה המלאה" link already goes to the
+    full Yad2 listing, where all of them are visible.
 
     Retries ONCE on Telegram's own flood-control response (RetryAfter) — found live 2026-09-02: a
-    real backfill run matched 17 listings to one user in a burst, and media-group sends (2 Telegram
-    API calls each — the group itself, then the follow-up keyboard message) hit Telegram's per-chat
-    rate limit after a handful of sends, silently dropping 4 of the 17 real match notifications
-    with no retry at all. A single wait-and-retry (honoring Telegram's own `retry_after` seconds)
-    is enough for a burst that size; still gives up and returns False if the second attempt also
-    fails, exactly like any other permanent failure (blocked bot, dead chat, bad photo URL)."""
+    real backfill run matched 17 listings to one user in a burst and hit Telegram's per-chat rate
+    limit partway through, silently dropping several real match notifications with no retry at
+    all. A single wait-and-retry (honoring Telegram's own `retry_after` seconds) is enough for a
+    burst that size; still gives up and returns False if the second attempt also fails, exactly
+    like any other permanent failure (blocked bot, dead chat, bad photo URL)."""
     keyboard = listing_keyboard(listing.id)
-    images = listing.image_urls[:MAX_MEDIA_GROUP_PHOTOS] if listing.image_urls else []
+    image_url = listing.image_urls[0] if listing.image_urls else None
 
     async def _do_send() -> None:
-        if len(images) >= 2:
-            media = [InputMediaPhoto(images[0], caption=caption, parse_mode=ParseMode.HTML)] + [
-                InputMediaPhoto(url) for url in images[1:]
-            ]
-            await bot.send_media_group(chat_id=chat_id, media=media)
-            # Telegram renders a message containing ONLY 1-3 emoji as one giant "jumbo" emoji with
-            # no normal bubble background - real words alongside it avoid that (found live
-            # 2026-09-02: a bare "⬆️" was taking over the whole screen).
-            await bot.send_message(chat_id=chat_id, text="⬆️ הדירה למעלה", reply_markup=keyboard)
-        elif len(images) == 1:
+        if image_url is not None:
             await bot.send_photo(
                 chat_id=chat_id,
-                photo=images[0],
+                photo=image_url,
                 caption=caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=keyboard,
