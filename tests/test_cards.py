@@ -168,3 +168,29 @@ def test_send_listing_card_returns_false_on_telegram_error():
     listing = make_listing(image_urls=[])
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
     assert ok is False
+
+
+def test_send_listing_card_retries_once_on_flood_control_then_succeeds():
+    from telegram.error import RetryAfter
+
+    bot = _make_bot()
+    bot.send_message.side_effect = [RetryAfter(retry_after=0), None]
+    listing = make_listing(image_urls=[])
+
+    ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
+
+    assert ok is True
+    assert bot.send_message.await_count == 2
+
+
+def test_send_listing_card_gives_up_after_second_flood_control_hit():
+    from telegram.error import RetryAfter
+
+    bot = _make_bot()
+    bot.send_message.side_effect = [RetryAfter(retry_after=0), RetryAfter(retry_after=0)]
+    listing = make_listing(image_urls=[])
+
+    ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
+
+    assert ok is False
+    assert bot.send_message.await_count == 2
