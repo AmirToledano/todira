@@ -192,7 +192,7 @@ def test_send_listing_card_no_images_sends_a_todi_photo():
     assert kwargs["reply_markup"] is not None
     assert "caption" in kwargs["caption"]
     assert "טודי" in kwargs["caption"]
-    assert kwargs["photo"].name.endswith(".jpg")
+    assert kwargs["photo"].name.endswith(".png")
 
 
 def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
@@ -250,15 +250,14 @@ def test_send_listing_card_retries_once_on_flood_control_then_succeeds():
     assert bot.send_photo.await_count == 2
 
 
-def test_dachshund_photo_pick_is_random_and_always_a_real_file():
-    # Picked fully at random per call (2026-09-02 request), not per-listing - so repeated calls
-    # should land on more than one photo (over enough draws) and always resolve to a real file.
+def test_dachshund_photo_path_resolves_to_the_mascot_asset():
+    # A single branded illustration now (2026-09-02), not a rotating photo pool - every call
+    # resolves to the same real file.
     from dorin_common.cards import _dachshund_photo_path
 
-    paths = [_dachshund_photo_path() for _ in range(60)]
-    for path in paths:
-        assert path.exists(), f"missing todi asset: {path}"
-    assert len(set(paths)) > 1
+    path = _dachshund_photo_path()
+    assert path.exists(), f"missing todi mascot asset: {path}"
+    assert path.name == "todi_mascot.png"
 
 
 def test_send_listing_card_no_images_caption_stays_within_telegram_limit():
