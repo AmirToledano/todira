@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 CAPTION_LIMIT = 1024
 
 # A listing with zero real photos gets a cute cartoon dachshund instead (2026-09-02 request) — see
-# scripts/generate_dachshund_art.py for how these were drawn, and website/templates/
+# scripts/fetch_dachshund_art.py for where this art comes from (a real, public-domain internet
+# illustration, recolored into 6 palettes — not hand-drawn here), and website/templates/
 # _listing_card.html for the same treatment on the website. Picked deterministically from the
 # listing id (not random) so a given listing shows the same dog everywhere/every time.
 _DACHSHUND_DIR = Path(__file__).resolve().parent / "assets" / "dachshunds"
