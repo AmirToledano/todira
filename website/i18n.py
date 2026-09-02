@@ -13,6 +13,8 @@ over this file.
 """
 from __future__ import annotations
 
+import datetime as dt
+
 from starlette.requests import Request
 
 SUPPORTED_LANGS = ["he", "en", "ru", "fr", "ar"]
@@ -580,8 +582,27 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "card.amenity_furnished": {
         "he": "מרוהטת", "en": "furnished", "ru": "меблирована", "fr": "meublé", "ar": "مفروشة",
     },
-    "card.posted_prefix": {
-        "he": "פורסם", "en": "Posted", "ru": "Опубликовано", "fr": "Publié", "ar": "نُشر",
+    # ---------- listing card: relative "posted X ago" (replaces the old fixed dd/mm date,
+    # 2026-09-02 request — see relative_time_label below) ----------
+    "card.posted_ago_seconds": {
+        "he": "עלתה לפני {n} שניות", "en": "Posted {n} seconds ago",
+        "ru": "Опубликовано {n} секунд назад", "fr": "Publié il y a {n} secondes",
+        "ar": "نُشر قبل {n} ثوانٍ",
+    },
+    "card.posted_ago_minutes": {
+        "he": "עלתה לפני {n} דקות", "en": "Posted {n} minutes ago",
+        "ru": "Опубликовано {n} минут назад", "fr": "Publié il y a {n} minutes",
+        "ar": "نُشر قبل {n} دقائق",
+    },
+    "card.posted_ago_hours": {
+        "he": "עלתה לפני {n} שעות", "en": "Posted {n} hours ago",
+        "ru": "Опубликовано {n} часов назад", "fr": "Publié il y a {n} heures",
+        "ar": "نُشر قبل {n} ساعات",
+    },
+    "card.posted_ago_days": {
+        "he": "עלתה לפני {n} ימים", "en": "Posted {n} days ago",
+        "ru": "Опубликовано {n} дней назад", "fr": "Publié il y a {n} jours",
+        "ar": "نُشر قبل {n} أيام",
     },
     "card.view_btn": {
         "he": "לצפייה במודעה ←", "en": "View listing →", "ru": "Смотреть объявление →",
@@ -925,3 +946,25 @@ def make_translator(lang: str):
         return text.format(**kwargs) if kwargs else text
 
     return t
+
+
+def relative_time_label(posted_at: dt.datetime | None, lang: str) -> str:
+    """"עלתה לפני X שניות/דקות/שעות/ימים" (2026-09-02 request) — replaces the old fixed dd/mm
+    date on a listing card with how long ago it was posted, in the largest whole unit that fits
+    (seconds under a minute, minutes under an hour, hours under a day, otherwise days)."""
+    if posted_at is None:
+        return ""
+    if posted_at.tzinfo is None:
+        posted_at = posted_at.replace(tzinfo=dt.timezone.utc)
+    seconds = max(0, int((dt.datetime.now(dt.timezone.utc) - posted_at).total_seconds()))
+
+    if seconds < 60:
+        key, n = "card.posted_ago_seconds", seconds
+    elif seconds < 3600:
+        key, n = "card.posted_ago_minutes", seconds // 60
+    elif seconds < 86400:
+        key, n = "card.posted_ago_hours", seconds // 3600
+    else:
+        key, n = "card.posted_ago_days", seconds // 86400
+
+    return make_translator(lang)(key, n=n)
