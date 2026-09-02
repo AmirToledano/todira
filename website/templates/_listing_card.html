@@ -1,3 +1,4 @@
+{% set dachshund_palettes = ['chocolate', 'golden', 'cream', 'black_tan', 'reddish', 'silver'] %}
 {% macro listing_card(l, delay=0) %}
 <div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover-wrap">
@@ -7,7 +8,13 @@
         <div class="cover-slide" style="background-image:url('{{ img }}')"></div>
         {% endfor %}
       {% else %}
-        <span aria-hidden="true">🏠</span>
+        {# No real photos for this listing — a cute cartoon dachshund instead of a bare house icon,
+           picked deterministically per-listing (l.id) so it doesn't reshuffle on every reload. #}
+        <div class="no-image-dachshund">
+          <img src="/static/dachshunds/{{ dachshund_palettes[l.id % dachshund_palettes|length] }}.png"
+               alt="{{ t('card.no_image_caption') }}" loading="lazy">
+          <p>{{ t('card.no_image_caption') }}</p>
+        </div>
       {% endif %}
     </div>
     <span class="source-badge">{{ l.source }}</span>

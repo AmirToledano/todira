@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
@@ -16,6 +17,19 @@ from dorin_common.models import Listing
 logger = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
+
+# A listing with zero real photos gets a cute cartoon dachshund instead (2026-09-02 request) — see
+# scripts/generate_dachshund_art.py for how these were drawn, and website/templates/
+# _listing_card.html for the same treatment on the website. Picked deterministically from the
+# listing id (not random) so a given listing shows the same dog everywhere/every time.
+_DACHSHUND_DIR = Path(__file__).resolve().parent / "assets" / "dachshunds"
+_DACHSHUND_PALETTES = ("chocolate", "golden", "cream", "black_tan", "reddish", "silver")
+_NO_PHOTOS_SUFFIX_HE = "\n\n🐶 <i>דירה זו עלתה ללא תמונות, אבל הנה נקניקיה חמודה בשבילכם</i>"
+
+
+def _dachshund_photo_path(listing_id: int) -> Path:
+    name = _DACHSHUND_PALETTES[listing_id % len(_DACHSHUND_PALETTES)]
+    return _DACHSHUND_DIR / f"{name}.png"
 
 _AMENITY_EMOJI = (
     ("has_parking", "🅿️"),
@@ -160,8 +174,9 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     so real photos (added 2026-09-02 — see scraper/normalize.py's enrich_from_detail) render
     identically everywhere instead of each call site reinventing send_photo/send_message.
 
-    Real photos when the listing has them (a media group for 2+, a single photo for exactly 1),
-    a plain text message when it has none. Telegram's sendMediaGroup can't carry an inline
+    Real photos when the listing has them (a media group for 2+, a single photo for exactly 1);
+    when it has none, a cute cartoon dachshund photo instead of a bare text message (2026-09-02
+    request — see _dachshund_photo_path above). Telegram's sendMediaGroup can't carry an inline
     keyboard at all (a real API limitation, not a bug here), so for 2+ photos the ❤️/🙈/🎉 action
     buttons go out as a short separate follow-up message instead of silently disappearing.
 
@@ -194,9 +209,11 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
                 reply_markup=keyboard,
             )
         else:
-            await bot.send_message(
+            no_photo_caption = (caption + _NO_PHOTOS_SUFFIX_HE)[:CAPTION_LIMIT]
+            await bot.send_photo(
                 chat_id=chat_id,
-                text=caption,
+                photo=_dachshund_photo_path(listing.id),
+                caption=no_photo_caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=keyboard,
             )

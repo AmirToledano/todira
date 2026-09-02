@@ -122,15 +122,21 @@ def _make_bot():
     )
 
 
-def test_send_listing_card_no_images_sends_plain_text_message():
+def test_send_listing_card_no_images_sends_a_dachshund_photo():
+    # No real photos -> a cute cartoon dachshund photo instead of a bare text message
+    # (2026-09-02 request) — see dorin_common/cards.py's _dachshund_photo_path.
     bot = _make_bot()
     listing = make_listing(image_urls=[])
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
     assert ok is True
-    bot.send_message.assert_awaited_once()
-    bot.send_photo.assert_not_awaited()
+    bot.send_photo.assert_awaited_once()
+    bot.send_message.assert_not_awaited()
     bot.send_media_group.assert_not_awaited()
-    assert bot.send_message.await_args.kwargs["reply_markup"] is not None
+    kwargs = bot.send_photo.await_args.kwargs
+    assert kwargs["reply_markup"] is not None
+    assert "caption" in kwargs["caption"]
+    assert "נקניקיה" in kwargs["caption"]
+    assert kwargs["photo"].name.endswith(".png")
 
 
 def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
@@ -164,7 +170,7 @@ def test_send_listing_card_returns_false_on_telegram_error():
     from telegram.error import TelegramError
 
     bot = _make_bot()
-    bot.send_message.side_effect = TelegramError("blocked")
+    bot.send_photo.side_effect = TelegramError("blocked")
     listing = make_listing(image_urls=[])
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
     assert ok is False
@@ -174,23 +180,43 @@ def test_send_listing_card_retries_once_on_flood_control_then_succeeds():
     from telegram.error import RetryAfter
 
     bot = _make_bot()
-    bot.send_message.side_effect = [RetryAfter(retry_after=0), None]
+    bot.send_photo.side_effect = [RetryAfter(retry_after=0), None]
     listing = make_listing(image_urls=[])
 
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
 
     assert ok is True
-    assert bot.send_message.await_count == 2
+    assert bot.send_photo.await_count == 2
+
+
+def test_dachshund_photo_pick_is_deterministic_per_listing_id():
+    from dorin_common.cards import _dachshund_photo_path
+
+    assert _dachshund_photo_path(1) == _dachshund_photo_path(1)
+    # different ids can land on different palettes, but always a real file on disk
+    for listing_id in range(12):
+        path = _dachshund_photo_path(listing_id)
+        assert path.exists(), f"missing dachshund asset: {path}"
+
+
+def test_send_listing_card_no_images_caption_stays_within_telegram_limit():
+    from dorin_common.cards import CAPTION_LIMIT
+
+    bot = _make_bot()
+    listing = make_listing(image_urls=[])
+    long_caption = "א" * CAPTION_LIMIT  # already at the limit before the dachshund suffix
+    asyncio.run(send_listing_card(bot, 555, listing, long_caption))
+    assert len(bot.send_photo.await_args.kwargs["caption"]) <= CAPTION_LIMIT
 
 
 def test_send_listing_card_gives_up_after_second_flood_control_hit():
     from telegram.error import RetryAfter
 
     bot = _make_bot()
-    bot.send_message.side_effect = [RetryAfter(retry_after=0), RetryAfter(retry_after=0)]
+    bot.send_photo.side_effect = [RetryAfter(retry_after=0), RetryAfter(retry_after=0)]
     listing = make_listing(image_urls=[])
 
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
 
     assert ok is False
-    assert bot.send_message.await_count == 2
+    assert bot.send_photo.await_count == 2
