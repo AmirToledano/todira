@@ -179,8 +179,8 @@ def _make_bot():
 
 
 def test_send_listing_card_no_images_sends_a_todi_photo():
-    # No real photos -> a real photo of Todi (the user's own dachshund) instead of a bare text
-    # message (2026-09-02 request) — see dorin_common/cards.py's _dachshund_photo_path.
+    # No real photos -> the branded Todi-the-detective illustration instead of a bare text message
+    # (2026-09-02 request) — see dorin_common/cards.py's _dachshund_photo_path.
     bot = _make_bot()
     listing = make_listing(image_urls=[])
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
@@ -191,8 +191,8 @@ def test_send_listing_card_no_images_sends_a_todi_photo():
     kwargs = bot.send_photo.await_args.kwargs
     assert kwargs["reply_markup"] is not None
     assert "caption" in kwargs["caption"]
-    assert "טודי" in kwargs["caption"]
-    assert kwargs["photo"].name.endswith(".png")
+    assert "למפרסם" in kwargs["caption"]
+    assert kwargs["photo"].name.endswith(".jpg")
 
 
 def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
@@ -251,13 +251,13 @@ def test_send_listing_card_retries_once_on_flood_control_then_succeeds():
 
 
 def test_dachshund_photo_path_resolves_to_the_mascot_asset():
-    # A single branded illustration now (2026-09-02), not a rotating photo pool - every call
+    # A single branded illustration (2026-09-02), not a rotating photo pool - every call
     # resolves to the same real file.
     from dorin_common.cards import _dachshund_photo_path
 
     path = _dachshund_photo_path()
-    assert path.exists(), f"missing todi mascot asset: {path}"
-    assert path.name == "todi_mascot.png"
+    assert path.exists(), f"missing todi illustration asset: {path}"
+    assert path.name == "todi_detective.jpg"
 
 
 def test_send_listing_card_no_images_caption_stays_within_telegram_limit():
