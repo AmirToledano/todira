@@ -609,11 +609,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Voir l'annonce →", "ar": "عرض الإعلان ←",
     },
     "card.no_image_caption": {
-        "he": "דירה זו עלתה ללא תמונות, אבל הנה נקניקיה חמודה בשבילכם",
-        "en": "This listing went up without photos, but here's a cute sausage dog for you",
-        "ru": "Это объявление опубликовано без фото, но вот вам милая такса",
-        "fr": "Cette annonce a été publiée sans photos, mais voici un adorable teckel pour vous",
-        "ar": "نُشر هذا العرض بدون صور، لكن إليكم كلب دشهند لطيف",
+        "he": "דירה זו עלתה ללא תמונות, אבל הנה טודי בשבילכם",
+        "en": "This listing went up without photos, but here's Todi for you",
+        "ru": "Это объявление опубликовано без фото, но вот вам Тоди",
+        "fr": "Cette annonce a été publiée sans photos, mais voici Todi pour vous",
+        "ar": "نُشر هذا العرض بدون صور، لكن إليكم تودي",
     },
     # ---------- filter page ----------
     "filter.title": {

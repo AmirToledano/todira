@@ -143,9 +143,9 @@ def _make_bot():
     )
 
 
-def test_send_listing_card_no_images_sends_a_dachshund_photo():
-    # No real photos -> a cute cartoon dachshund photo instead of a bare text message
-    # (2026-09-02 request) — see dorin_common/cards.py's _dachshund_photo_path.
+def test_send_listing_card_no_images_sends_a_todi_photo():
+    # No real photos -> a real photo of Todi (the user's own dachshund) instead of a bare text
+    # message (2026-09-02 request) — see dorin_common/cards.py's _dachshund_photo_path.
     bot = _make_bot()
     listing = make_listing(image_urls=[])
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
@@ -156,8 +156,8 @@ def test_send_listing_card_no_images_sends_a_dachshund_photo():
     kwargs = bot.send_photo.await_args.kwargs
     assert kwargs["reply_markup"] is not None
     assert "caption" in kwargs["caption"]
-    assert "נקניקיה" in kwargs["caption"]
-    assert kwargs["photo"].name.endswith(".png")
+    assert "טודי" in kwargs["caption"]
+    assert kwargs["photo"].name.endswith(".jpg")
 
 
 def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
@@ -219,10 +219,10 @@ def test_dachshund_photo_pick_is_deterministic_per_listing_id():
     from dorin_common.cards import _dachshund_photo_path
 
     assert _dachshund_photo_path(1) == _dachshund_photo_path(1)
-    # different ids can land on different palettes, but always a real file on disk
-    for listing_id in range(12):
+    # different ids can land on different photos, but always a real file on disk
+    for listing_id in range(25):
         path = _dachshund_photo_path(listing_id)
-        assert path.exists(), f"missing dachshund asset: {path}"
+        assert path.exists(), f"missing todi asset: {path}"
 
 
 def test_send_listing_card_no_images_caption_stays_within_telegram_limit():
