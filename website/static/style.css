@@ -273,16 +273,14 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   scrollbar-width: none; /* Firefox */
 }
 .listing-cover::-webkit-scrollbar { display: none; }
-.listing-cover.no-image { align-items: center; justify-content: center; }
-.listing-cover.no-image span { color: rgba(122,31,43,.28); font-size: 2.6rem; }
-.no-image-dachshund {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px; padding: 10px 16px; text-align: center; width: 100%;
-}
-.no-image-dachshund img { width: 70%; max-width: 200px; height: auto; max-height: 125px; object-fit: contain; }
-.no-image-dachshund p { margin: 0; font-size: .78rem; color: var(--text-muted); line-height: 1.3; }
 .cover-slide {
   flex: 0 0 100%; scroll-snap-align: start; background-size: cover; background-position: center;
+}
+.no-image-caption {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  background: rgba(36, 20, 23, .78); color: #fff; backdrop-filter: blur(3px);
+  padding: 8px 16px; border-radius: 999px; font-size: 1.05rem; font-weight: 700;
+  text-align: center; max-width: 92%; line-height: 1.3;
 }
 .listing-cover-wrap .price-badge {
   position: absolute; top: 12px; inset-inline-end: 12px;

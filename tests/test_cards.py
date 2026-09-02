@@ -250,15 +250,15 @@ def test_send_listing_card_retries_once_on_flood_control_then_succeeds():
     assert bot.send_photo.await_count == 2
 
 
-def test_dachshund_photo_pick_is_deterministic_per_listing_id():
+def test_dachshund_photo_pick_is_random_and_always_a_real_file():
+    # Picked fully at random per call (2026-09-02 request), not per-listing - so repeated calls
+    # should land on more than one photo (over enough draws) and always resolve to a real file.
     from dorin_common.cards import _dachshund_photo_path
 
-    assert _dachshund_photo_path(1) == _dachshund_photo_path(1)
-    # different ids can land on different photos (including wrapping around past the pool size),
-    # but always a real file on disk
-    for listing_id in range(60):
-        path = _dachshund_photo_path(listing_id)
+    paths = [_dachshund_photo_path() for _ in range(60)]
+    for path in paths:
         assert path.exists(), f"missing todi asset: {path}"
+    assert len(set(paths)) > 1
 
 
 def test_send_listing_card_no_images_caption_stays_within_telegram_limit():

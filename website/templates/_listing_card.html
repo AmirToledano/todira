@@ -1,21 +1,18 @@
-{% set todi_photo_count = 50 %}
+{% set todi_photo_count = 18 %}
 {% macro listing_card(l, delay=0) %}
 <div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover-wrap">
-    <div class="listing-cover {{ '' if l.image_urls else 'no-image' }}">
+    <div class="listing-cover">
       {% if l.image_urls %}
         {% for img in l.image_urls[:8] %}
         <div class="cover-slide" style="background-image:url('{{ img }}')"></div>
         {% endfor %}
       {% else %}
-        {# No real photos for this listing — a real photo of Todi (the user's own dachshund)
-           instead of a bare house icon, picked deterministically per-listing (l.id) so it
-           doesn't reshuffle on every reload. #}
-        <div class="no-image-dachshund">
-          <img src="/static/dachshunds/todi_{{ '%02d'|format((l.id % todi_photo_count) + 1) }}.jpg"
-               alt="{{ t('card.no_image_caption') }}" loading="lazy">
-          <p>{{ t('card.no_image_caption') }}</p>
-        </div>
+        {# No real photos for this listing — a staged photo of Todi (the user's own dachshund)
+           instead of a bare house icon, filling the whole cover like a real listing photo would.
+           Picked fully at random on every render (2026-09-02 request), not per-listing. #}
+        <div class="cover-slide" style="background-image:url('/static/dachshunds/todi_{{ '%02d'|format(range(1, todi_photo_count + 1) | list | random) }}.jpg')"></div>
+        <div class="no-image-caption">{{ t('card.no_image_caption') }}</div>
       {% endif %}
     </div>
     <span class="source-badge">{{ l.source }}</span>
