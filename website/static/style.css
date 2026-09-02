@@ -275,6 +275,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .listing-cover::-webkit-scrollbar { display: none; }
 .listing-cover.no-image { align-items: center; justify-content: center; }
 .listing-cover.no-image span { color: rgba(122,31,43,.28); font-size: 2.6rem; }
+.no-image-dachshund {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 10px 16px; text-align: center; width: 100%;
+}
+.no-image-dachshund img { width: 70%; max-width: 200px; height: auto; }
+.no-image-dachshund p { margin: 0; font-size: .78rem; color: var(--text-muted); line-height: 1.3; }
 .cover-slide {
   flex: 0 0 100%; scroll-snap-align: start; background-size: cover; background-position: center;
 }
