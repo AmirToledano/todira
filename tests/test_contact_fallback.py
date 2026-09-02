@@ -2,6 +2,11 @@
 handler claimed (see that module's own docstring for why this exists: a user following the
 website's "כתוב/י ישירות לבוט" link got total silence before this, found 2026-09-01).
 
+Only messages that actually look like a help/support request (handlers/support.py's
+looks_like_help_request) get escalated to the owner — plain small talk or a stray question gets a
+friendly redirect to /start instead, no ContactMessage saved (2026-09-02 fix: the owner tested the
+bot himself and every message, including "מה שלומך", was wrongly treated as a support ticket).
+
 The actual save+notify logic lives in handlers/support.py (shared with onboarding.py and
 filter_conversation.py, see that module's docstring) — contact_fallback.py just calls it and
 replies, so these tests patch handlers.support's OWNER_TELEGRAM_USER_ID/get_session, not
@@ -73,7 +78,7 @@ def test_saves_message_and_replies_even_without_owner_id_configured(monkeypatch)
     def fake_get_session():
         yield session
 
-    update = _make_update("היי איך אפשר לפנות לבעלים")
+    update = _make_update("אני רוצה לדבר עם נציג בבקשה")
     context = _make_context()
 
     with patch.object(support, "get_session", fake_get_session):
@@ -81,7 +86,7 @@ def test_saves_message_and_replies_even_without_owner_id_configured(monkeypatch)
 
     assert len(session.added) == 1
     saved = session.added[0]
-    assert saved.message == "היי איך אפשר לפנות לבעלים"
+    assert saved.message == "אני רוצה לדבר עם נציג בבקשה"
     assert saved.telegram_user_id == 555
     assert not saved.notified_owner
     context.bot.send_message.assert_not_called()
@@ -96,7 +101,7 @@ def test_notifies_owner_and_marks_notified_when_configured(monkeypatch):
     def fake_get_session():
         yield session
 
-    update = _make_update("שאלה על המחירים")
+    update = _make_update("יש לי בעיה טכנית עם הבוט")
     context = _make_context()
 
     with patch.object(support, "get_session", fake_get_session):
@@ -105,7 +110,7 @@ def test_notifies_owner_and_marks_notified_when_configured(monkeypatch):
     context.bot.send_message.assert_called_once()
     call_kwargs = context.bot.send_message.call_args.kwargs
     assert call_kwargs["chat_id"] == "999"
-    assert "שאלה על המחירים" in call_kwargs["text"]
+    assert "יש לי בעיה טכנית עם הבוט" in call_kwargs["text"]
     assert session.added[0].notified_owner is True
     update.message.reply_text.assert_called_once()
 
@@ -118,7 +123,7 @@ def test_send_failure_does_not_crash_or_mark_notified(monkeypatch):
     def fake_get_session():
         yield session
 
-    update = _make_update("הודעה כלשהי")
+    update = _make_update("צריך תמיכה בבקשה")
     context = _make_context()
     context.bot.send_message.side_effect = TelegramError("boom")
 
@@ -127,3 +132,31 @@ def test_send_failure_does_not_crash_or_mark_notified(monkeypatch):
 
     assert not session.added[0].notified_owner
     update.message.reply_text.assert_called_once()
+
+
+def test_casual_message_does_not_escalate_just_redirects_to_start(monkeypatch):
+    # The actual bug report (2026-09-02, live screenshot): the owner sent plain small talk
+    # ("מה שלומך") to test the bot and it came back as a support ticket every time. Nothing here
+    # should touch the DB or notify the owner - just a friendly redirect.
+    monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", "999")
+    context = _make_context()
+
+    for text in ("מה שלומך", "איזה דירות יש לך במבשרת"):
+        update = _make_update(text)
+        with patch.object(support, "get_session") as get_session_mock:
+            _run(contact_fallback.handle_stray_message(update, context))
+        get_session_mock.assert_not_called()
+
+    context.bot.send_message.assert_not_called()
+
+
+def test_casual_message_reply_mentions_start_not_support():
+    update = _make_update("מה שלומך")
+    context = _make_context()
+
+    _run(contact_fallback.handle_stray_message(update, context))
+
+    update.message.reply_text.assert_called_once()
+    reply = update.message.reply_text.call_args.args[0]
+    assert "/start" in reply
+    assert "נחזור אליך" not in reply

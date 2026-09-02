@@ -2439,3 +2439,29 @@ which is also installed in this sandbox and depends on a current torchvision.
 - 302 tests passing (no code paths changed by either fix beyond CSS/template + binary photo swaps
   — no test changes needed). Verified visually via Playwright for both: the caption banner clear
   of the dog in every one of the 18 photos, and the upscaled photos rendered at real card size.
+
+## 2026-09-02 (real bug found live-testing): the "stray message" catch-all treated EVERY message as a support ticket
+
+Owner tested the bot himself by sending it plain small talk ("מה שלומך") and a stray apartment
+question ("איזה דירות יש לך במבשרת?") — both came back with "your message was received, we'll get
+back to you" and generated a real support notification to the owner (live screenshot). Diagnosis:
+`bot/handlers/contact_fallback.py`'s `handle_stray_message` — the catch-all for free text no other
+handler claims — unconditionally escalated EVERY message to the owner via `escalate_to_owner`,
+with no check at all for whether the message actually looked like a support/help request. Real
+gap: `handlers/support.py` already has exactly this check (`looks_like_help_request`, a keyword
+regex — "תמיכה"/"נציג"/"לדבר עם בן אדם" etc.) and BOTH `onboarding.py` and
+`filter_conversation.py` already use it to gate their own owner-escalation branches
+mid-conversation — `contact_fallback.py` alone had never been wired up to it, escalating
+unconditionally instead.
+
+- Fixed to match the existing pattern exactly: `looks_like_help_request(text)` gates the
+  escalation branch (unchanged: save `ContactMessage`, notify the owner, "we got your message"
+  reply). Anything else — casual chat, a stray search-like question, literally anything without a
+  help/complaint keyword — gets a plain redirect ("שלח/י /start") instead, with NO DB write and
+  no owner notification at all.
+- `tests/test_contact_fallback.py`: the 3 existing escalation tests used generic messages
+  ("שאלה על המחירים", "הודעה כלשהי") that never actually matched `looks_like_help_request` — reworded
+  each to use a real help-keyword phrase so they keep testing the escalation branch they were
+  meant to. Added 2 new tests for the actual bug: a casual message never touches `get_session`/
+  `send_message` at all, and its reply mentions `/start` rather than the support "we'll get back
+  to you" copy. 304 tests passing.
