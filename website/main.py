@@ -57,6 +57,7 @@ from i18n import (
     SUPPORTED_LANGS,
     get_lang,
     make_translator,
+    relative_time_label,
 )
 from whatsapp_webhook import router as whatsapp_router
 
@@ -176,6 +177,7 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "lang": lang,
             "dir": "rtl" if lang in RTL_LANGS else "ltr",
             "t": make_translator(lang),
+            "posted_ago": lambda posted_at: relative_time_label(posted_at, lang),
             "supported_langs": SUPPORTED_LANGS,
             "lang_labels": LANG_LABELS,
             "current_user": current_user,
