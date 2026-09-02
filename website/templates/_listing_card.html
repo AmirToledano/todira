@@ -1,26 +1,52 @@
-{% set todi_photo_count = 18 %}
 {% macro listing_card(l, delay=0) %}
 <div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover-wrap">
-    <div class="listing-cover">
+    <div class="listing-cover {{ '' if l.image_urls else 'no-image' }}">
       {% if l.image_urls %}
         {% for img in l.image_urls[:8] %}
         <div class="cover-slide" style="background-image:url('{{ img }}')"></div>
         {% endfor %}
       {% else %}
-        {# No real photos for this listing — a staged photo of Todi (the user's own dachshund)
-           instead of a bare house icon, filling the whole cover like a real listing photo would.
-           Picked fully at random on every render (2026-09-02 request), not per-listing. The
-           caption is a separate banner BELOW the photo (not overlaid on it) — an overlay covered
-           Todi in several photos depending on where he happened to be framed; see PROJECT_STATE.md. #}
-        <div class="cover-slide" style="background-image:url('/static/dachshunds/todi_{{ '%02d'|format(range(1, todi_photo_count + 1) | list | random) }}.jpg')"></div>
+        {# No real photos for this listing — a single branded Todi mascot illustration instead of
+           a photo, inlined as SVG (crisp at any size, themeable, no per-listing variance needed —
+           2026-09-02 request, replacing every earlier photo-based attempt; see PROJECT_STATE.md
+           for that full history). The caption is a separate banner BELOW this, not overlaid on
+           it — kept from the previous version, still true here (nothing to ever cover). #}
+        <svg class="todi-mascot" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{{ t('card.no_image_caption') }}">
+          <path d="M 100 220 Q 55 195 62 150 Q 66 128 82 138 Q 76 165 105 190 Z" fill="#6b4226"/>
+          <rect x="255" y="255" width="26" height="55" rx="13" fill="#6b4226"/>
+          <rect x="145" y="255" width="26" height="55" rx="13" fill="#6b4226"/>
+          <ellipse cx="210" cy="230" rx="115" ry="58" fill="#8b5a3c"/>
+          <ellipse cx="205" cy="255" rx="80" ry="30" fill="#faf3e6"/>
+          <rect x="245" y="265" width="26" height="55" rx="13" fill="#8b5a3c"/>
+          <rect x="155" y="265" width="26" height="55" rx="13" fill="#8b5a3c"/>
+          <ellipse cx="300" cy="190" rx="62" ry="55" fill="#8b5a3c"/>
+          <path d="M 265 150 Q 230 160 235 220 Q 240 250 265 235 Q 250 190 265 150 Z" fill="#5c3823"/>
+          <path d="M 335 150 Q 370 165 362 225 Q 356 253 332 235 Q 350 190 335 150 Z" fill="#5c3823"/>
+          <ellipse cx="335" cy="205" rx="34" ry="26" fill="#a0724d"/>
+          <ellipse cx="355" cy="203" rx="10" ry="8" fill="#3a2317"/>
+          <circle cx="290" cy="175" r="8" fill="#241417"/>
+          <circle cx="292" cy="172" r="2.5" fill="#fff"/>
+          <circle cx="322" cy="172" r="8" fill="#241417"/>
+          <circle cx="324" cy="169" r="2.5" fill="#fff"/>
+          <path d="M 315 215 Q 340 236 362 216" stroke="#3a2317" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <path d="M 330 220 Q 338 236 346 220 Q 338 232 330 220 Z" fill="#d97a86"/>
+          <g transform="translate(268,108)">
+            <path d="M0 30 L0 10 L14 22 L27 0 L40 22 L54 10 L54 30 Z" fill="#e8c25a" stroke="#b8860b" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="27" cy="8" r="4.5" fill="#7a1f2b"/>
+          </g>
+          <g fill="#e8c25a">
+            <path d="M 95 120 l 6 16 l 16 6 l -16 6 l -6 16 l -6 -16 l -16 -6 l 16 -6 Z"/>
+            <path d="M 340 300 l 4 11 l 11 4 l -11 4 l -4 11 l -4 -11 l -11 -4 l 11 -4 Z"/>
+          </g>
+        </svg>
       {% endif %}
     </div>
     <span class="source-badge">{{ l.source }}</span>
     <span class="price-badge">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</span>
     {% if l.image_urls|length > 1 %}<span class="photo-count-badge">📷 {{ l.image_urls|length }}</span>{% endif %}
   </div>
-  {% if not l.image_urls %}<div class="no-image-caption">🐶 {{ t('card.no_image_caption') }}</div>{% endif %}
+  {% if not l.image_urls %}<div class="no-image-caption">{{ t('card.no_image_caption') }}</div>{% endif %}
   <div class="listing-body">
     <div class="listing-price">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</div>
     <div class="listing-loc">
