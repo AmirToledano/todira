@@ -2041,3 +2041,42 @@ rewritten since that's no longer what happens).
 No ZenRows credits involved anywhere in this change — pure code/asset addition, shipped and
 deployed the same as any other PR this session (the standing "don't run without approval" rule is
 specifically about ZenRows-costing scraper runs, not normal PR merges/deploys).
+
+## Update 2026-09-02, morning: relative "posted X ago" + real dachshund art (not hand-drawn)
+Two follow-up requests after the user saw the deployed dachshund feature live on their phone:
+
+1. **"עלתה/נוספה לפני X שניות/דקות/שעות/ימים" instead of a fixed dd/mm date.** Replaced the
+   listing card's `strftime('%d/%m')` with `relative_time_label()` (`website/i18n.py`) — largest
+   whole unit that fits, all 5 languages. Found and fixed a real layout bug while verifying this
+   visually (Playwright screenshot, not just unit tests): the footer broke the posted-time text
+   mid-word on narrow cards when it didn't fit next to the "view listing" link — `flex-wrap: wrap`
+   on `.listing-footer` fixed it. 9 new tests (`tests/test_relative_time.py`). Shipped as PR #102.
+
+2. **Real internet art instead of hand-drawn PIL shapes.** The user saw the PIL-drawn dachshunds
+   live and asked for actual cartoon images from the internet instead. This session's sandbox
+   blocks general web access (only `raw.githubusercontent.com`, `api.github.com`, and package
+   registries are reachable — confirmed by testing WebFetch/curl against openclipart.org,
+   freesvg.org, commons.wikimedia.org, pixabay.com: all `EGRESS_BLOCKED`/403). Searched GitHub
+   code search for "dachshund" SVGs instead: most promising hits (a mascot set in `kuaner/inkBoard`,
+   an icon in `kennethchapman99/weeniegame`, a logo in `KlepaczKotletow/perf-dashboard`) had NO
+   LICENSE file at all (all-rights-reserved by default — not usable), one was AGPL-3.0
+   (`nullthrone/kenny`), one was explicitly proprietary (`sqysh/lpdr`). The one usable find:
+   `cyanidecupcake/openclipart-svg` (a GitHub mirror of openclipart.org) carries
+   `svg/unsorted/dachshund.svg` — "dachshund" by Woof, openclipart.org/detail/194259, with an
+   embedded RDF block declaring `cc:license = creativecommons.org/licenses/publicdomain/` (CC0,
+   no attribution required). `scripts/fetch_dachshund_art.py` (replaces the deleted
+   `generate_dachshund_art.py`) downloads that one real illustration via its raw.githubusercontent
+   mirror and produces the same 6 palette variants as before by recoloring its actual fill hex
+   codes (a legitimate CC0 derivative), then rasterizes each to PNG via Playwright.
+   Hit a real Chromium/Playwright quirk along the way: screenshots kept coming back opaque white
+   despite `omit_background=True` on both `Locator.screenshot()` and `Page.screenshot(clip=...)` —
+   traced it to the source SVG's own first shape being a full-canvas opaque white background path
+   (`M0 0L0 290L434 290L434 0L0 0z`), invisible to the eye against a white viewer but very much
+   there; stripping that one path before recoloring fixed it. PNGs are now genuine RGBA with a
+   transparent background (verified by pixel-sampling the corners, not just eyeballing a
+   screenshot) so they composite into the card's own gradient instead of sitting in a white box —
+   confirmed with a Playwright screenshot of the actual rendered card before shipping.
+   `scripts/generate_dachshund_art.py` (the PIL version) deleted — fully superseded, not kept as
+   dead code. No new tests needed (same file names/palette count/selection logic as before, only
+   the PNG bytes changed) — the existing `test_dachshund_photo_pick_is_deterministic_per_listing_id`
+   test already asserts each palette file exists on disk. 291 tests still passing.
