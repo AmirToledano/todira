@@ -89,6 +89,27 @@ def test_price_drop_header_prepended():
     assert "18,000" in caption
 
 
+def test_price_line_is_forced_rtl_to_avoid_left_alignment():
+    # Real bug found live 2026-09-02: "💰 16,000 ₪" has no Hebrew letters at all (just an emoji,
+    # digits, and the ₪ sign - none of them a strong-direction character), so Telegram's bidi
+    # algorithm fell back to LTR for that one line and rendered it flush LEFT while every other
+    # line (which starts with real Hebrew text) sat correctly on the right. A leading RLM
+    # (U+200F) forces RTL without changing anything visible.
+    from dorin_common.cards import _RLM
+
+    caption = format_caption(make_listing())
+    assert f"{_RLM}💰 16,000 ₪" in caption
+
+
+def test_amenity_emoji_row_is_forced_rtl_to_avoid_left_alignment():
+    # Same bug, same fix - the amenity row is emoji-only (🅿️🛗🌳🐾), also with no strong-direction
+    # character.
+    from dorin_common.cards import _RLM
+
+    caption = format_caption(make_listing(has_parking=True))
+    assert f"{_RLM}🅿️" in caption
+
+
 def test_whatsapp_caption_uses_markdown_not_html():
     listing = make_listing(has_parking=True)
     caption = format_caption_whatsapp(listing)
@@ -149,21 +170,26 @@ def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
     bot.send_media_group.assert_not_awaited()
 
 
-def test_send_listing_card_multiple_images_uses_media_group_plus_keyboard_followup():
+def test_send_listing_card_multiple_images_still_sends_just_the_first_one():
+    # Deliberately NOT a sendMediaGroup gallery (2026-09-02: dropped after a real user report -
+    # sendMediaGroup can't carry an inline keyboard, so 2+ photos needed a separate "⬆️ הדירה
+    # למעלה" follow-up message just for the buttons, which got confusing once several listings
+    # arrived in a burst with delays between them). One send_photo call, first image only, caption
+    # and keyboard together - the listing's other photos are still reachable via the caption's own
+    # link to the full listing.
     bot = _make_bot()
     listing = make_listing(
         image_urls=["https://img.yad2.co.il/a.jpg", "https://img.yad2.co.il/b.jpg"]
     )
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
     assert ok is True
-    bot.send_media_group.assert_awaited_once()
-    media = bot.send_media_group.await_args.kwargs["media"]
-    assert len(media) == 2
-    assert media[0].caption == "caption"
-    # sendMediaGroup itself can't carry an inline keyboard - a follow-up message does
-    bot.send_message.assert_awaited_once()
-    assert bot.send_message.await_args.kwargs["reply_markup"] is not None
-    bot.send_photo.assert_not_awaited()
+    bot.send_photo.assert_awaited_once()
+    kwargs = bot.send_photo.await_args.kwargs
+    assert kwargs["photo"] == "https://img.yad2.co.il/a.jpg"
+    assert kwargs["caption"] == "caption"
+    assert kwargs["reply_markup"] is not None
+    bot.send_media_group.assert_not_awaited()
+    bot.send_message.assert_not_awaited()
 
 
 def test_send_listing_card_returns_false_on_telegram_error():
