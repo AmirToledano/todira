@@ -44,7 +44,7 @@
     {% endif %}
     {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
     <div class="listing-footer">
-      {% if l.posted_at %}<span class="posted">{{ t('card.posted_prefix') }} {{ l.posted_at.strftime('%d/%m') }}</span>{% else %}<span></span>{% endif %}
+      {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
       <a class="view-btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.view_btn') }}</a>
     </div>
   </div>
