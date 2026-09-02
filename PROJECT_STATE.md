@@ -2011,3 +2011,33 @@ Real user reports right after using the newly-live real-photos feature:
 
 5 new tests (`tests/test_find_new_matches_to_show.py`) plus one existing test's mock updated for
 the new `(total, new_matches)` return shape. 280 tests total, all passing.
+
+## Update 2026-09-02, overnight: photo-less listings get a cute cartoon dachshund (PR #100)
+User request while going to sleep: some Yad2 listings genuinely have zero photos; instead of a
+bare house emoji (website) or a plain text message (Telegram), show something nicer. Built:
+
+- `scripts/generate_dachshund_art.py` — a one-off local script (PIL shapes, no external image API,
+  no cost, not run at deploy/runtime) that draws 6 cute cartoon dachshunds in different color
+  palettes (chocolate/golden/cream/black_tan/reddish/silver), written to BOTH
+  `common/dorin_common/assets/dachshunds/*.png` (read directly by the bot — `send_listing_card` in
+  `cards.py` now sends this as a real Telegram photo, with the ❤️/🙈/🎉 keyboard, instead of a bare
+  text message, when a listing has no images) and `website/static/dachshunds/*.png` (identical
+  copies — the website's Docker image only mounts `website/static/`, not the `dorin_common`
+  package tree, so the art had to be duplicated there rather than served from one place).
+- Which of the 6 dogs a listing shows is deterministic (`listing.id % 6`), not random, so the same
+  listing always shows the same dog everywhere.
+- Caption on both surfaces: "דירה זו עלתה ללא תמונות, אבל הנה נקניקיה חמודה בשבילכם" — new
+  `card.no_image_caption` translation key in `website/i18n.py` (all 5 languages), appended to the
+  Telegram caption in `cards.py` (truncated back to `CAPTION_LIMIT` if needed, same as the existing
+  description-truncation logic).
+- Verified visually before shipping: rendered `_listing_card.html` standalone via Jinja2 + a
+  Playwright screenshot (not just unit tests) — three cards with different listing ids correctly
+  showed three different dog palettes, RTL Hebrew caption wrapped correctly under each.
+
+282 tests total, all passing (`test_cards.py` gained a deterministic-palette-pick test and a
+Telegram-caption-stays-within-1024-chars test; the old "no images → plain text message" test was
+rewritten since that's no longer what happens).
+
+No ZenRows credits involved anywhere in this change — pure code/asset addition, shipped and
+deployed the same as any other PR this session (the standing "don't run without approval" rule is
+specifically about ZenRows-costing scraper runs, not normal PR merges/deploys).
