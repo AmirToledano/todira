@@ -1,0 +1,142 @@
+name: Diagnose a Yad2 listing detail page (images/amenities/description structure)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-02, approved
+# by the owner as a single diagnostic ZenRows request. Real user ask: show actual apartment photos
+# (not just a link preview) plus "מה יש בנכס" (amenities) and "על הנכס" (description) in both the
+# bot and the website. Everything the scraper reads today comes from Yad2's SEARCH-RESULTS page
+# (yad2_client.py's `_parse_cards`/`_CARD_RE`) — price/rooms/floor/size/street/neighborhood/city
+# only. None of price/description/amenities/images live there; they only exist on each listing's
+# own DETAIL page, which nothing in this project has ever fetched or inspected.
+#
+# Per the standing "understand before you run" rule, this does NOT guess at a parser blind — it
+# fetches exactly ONE real Jerusalem listing's detail page (one ZenRows Fetch API call, the exact
+# same params/cost class as a search-page fetch) and prints a structured, size-bounded summary:
+# whether a Next.js __NEXT_DATA__ (or other application/json) script blob is embedded (if so, that
+# JSON is almost certainly a far more reliable data source than scraping visible HTML/icons), how
+# many <img> tags are present and what their src values look like, and windows of text around the
+# Hebrew section headers ("מה יש בנכס", "על הנכס", "תיאור") so the real markup shape is visible
+# before any parsing code gets written against it. Read-only: no listings are written or changed.
+#
+# Picks the listing itself via a read-only psql pod (same pattern as
+# diagnose-kiryat-motzkin-no-match.yaml) — the newest non-delisted Jerusalem listing already in the
+# DB, so this doesn't need a fresh search-page scrape just to get a URL to test with.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Pick one real, current Jerusalem listing URL from the DB (read-only)
+        run: |
+          kubectl delete pod diag-listing-url -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-listing-url
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-listing-url
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -t -A -c "SELECT 'LISTING_URL::' || url FROM listings WHERE city = 'ירושלים' AND is_delisted = false ORDER BY scraped_at DESC LIMIT 1;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-listing-url -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-listing-url > /tmp/db.log 2>&1 || true
+          echo "--- pod output ---"
+          cat /tmp/db.log
+          kubectl delete pod diag-listing-url -n todira --ignore-not-found
+          LISTING_URL=$(grep "LISTING_URL::" /tmp/db.log | tail -1 | sed 's/^.*LISTING_URL:://')
+          if [ -z "$LISTING_URL" ]; then
+            echo "No current Jerusalem listing found in the DB — nothing to fetch. Exiting."
+            exit 1
+          fi
+          echo "LISTING_URL=$LISTING_URL" >> "$GITHUB_ENV"
+          echo "Picked: $LISTING_URL"
+
+      - name: Fetch that listing's detail page via ZenRows (ONE request, the approved run)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          echo "Fetching: $LISTING_URL"
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=$LISTING_URL" \
+            --data-urlencode "js_render=true" \
+            --data-urlencode "premium_proxy=true" \
+            --data-urlencode "block_resources=image,stylesheet,font,media" \
+            -o /tmp/listing.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+
+      - name: Analyze the fetched HTML (bounded, structured summary — not a full dump)
+        run: |
+          python3 - << 'PYEOF'
+          import re
+
+          with open('/tmp/listing.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f"html_length={len(html)}")
+
+          if len(html) < 2000:
+              print("--- suspiciously short response, printing all of it ---")
+              print(html)
+              raise SystemExit(0)
+
+          m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+          print(f"__NEXT_DATA__ present: {bool(m)}")
+          if m:
+              raw = m.group(1)
+              print(f"__NEXT_DATA__ length: {len(raw)}")
+              try:
+                  import json
+                  data = json.loads(raw)
+                  print("__NEXT_DATA__ top-level keys:", list(data.keys()))
+              except Exception as e:
+                  print("__NEXT_DATA__ json parse failed:", e)
+              print("--- __NEXT_DATA__ first 4000 chars ---")
+              print(raw[:4000])
+
+          other_json = re.findall(r'<script[^>]+type="application/json"[^>]*>(.*?)</script>', html, re.S)
+          print(f"other application/json script blocks: {len(other_json)}")
+          for i, blob in enumerate(other_json[:3]):
+              print(f"--- other json blob {i} (first 1200 chars) ---")
+              print(blob[:1200])
+
+          imgs = re.findall(r'<img[^>]{0,300}>', html)
+          print(f"<img> tags found: {len(imgs)}")
+          for tag in imgs[:20]:
+              print(tag[:300])
+
+          for kw in ["מה יש בנכס", "על הנכס", "תיאור", "פרטים נוספים", "מאפייני"]:
+              idx = html.find(kw)
+              print(f"keyword {kw!r} found_at={idx}")
+              if idx != -1:
+                  snippet = re.sub(r'\s+', ' ', html[max(0, idx - 100):idx + 900])
+                  print(snippet)
+          PYEOF
