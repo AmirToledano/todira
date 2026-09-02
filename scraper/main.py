@@ -64,7 +64,14 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
     NOTHING` — less efficient at scale, but DO NOTHING can't see what the previous value was,
     and seeing it is exactly what price-drop detection needs (added after the user pointed out
     the reference bot's "📉 ירידת מחיר!" re-notification, which the original DO-NOTHING design
-    missed). Fine at this project's scale — a personal deployment, not high-throughput."""
+    missed). Fine at this project's scale — a personal deployment, not high-throughput.
+
+    Real photos/amenity tags/broker status are already merged into `item` by `normalize()` itself
+    (see its own `_enrich_from_feed_record` call) before this function ever sees it — a free
+    bonus from the search page already being fetched, not a separate cost this function has to
+    manage. An earlier version fetched a full per-listing detail page here for every genuinely new
+    item (~25 ZenRows credits each, real recurring cost) — rejected once that cost was understood;
+    see PROJECT_STATE.md, 2026-09-02."""
     table = Listing.__table__
     new_ids: list[int] = []
     price_drop_events: list[tuple[int, int]] = []

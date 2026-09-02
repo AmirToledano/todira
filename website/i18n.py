@@ -573,6 +573,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "card.amenity_renovated": {
         "he": "משופצת", "en": "renovated", "ru": "отремонтирована", "fr": "rénové", "ar": "مجدّدة",
     },
+    "card.amenity_safe_room": {
+        "he": 'ממ"ד', "en": "safe room", "ru": "защищённая комната",
+        "fr": "pièce sécurisée", "ar": "غرفة محصّنة",
+    },
+    "card.amenity_furnished": {
+        "he": "מרוהטת", "en": "furnished", "ru": "меблирована", "fr": "meublé", "ar": "مفروشة",
+    },
     "card.posted_prefix": {
         "he": "פורסם", "en": "Posted", "ru": "Опубликовано", "fr": "Publié", "ar": "نُشر",
     },

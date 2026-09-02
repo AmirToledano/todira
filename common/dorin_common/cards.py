@@ -4,9 +4,15 @@ listing identically. See plan Section 4 for the card format this implements.
 """
 from __future__ import annotations
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import logging
+
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram.constants import ParseMode
+from telegram.error import TelegramError
 
 from dorin_common.models import Listing
+
+logger = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
 
@@ -16,6 +22,29 @@ _AMENITY_EMOJI = (
     ("has_balcony", "🌳"),
     ("pets_allowed", "🐾"),
 )
+
+# A compact, readable "מה יש בנכס" line — the emoji row above is a quick glance, this is the
+# itemized list the user asked for (2026-09-02), modeled after the reference bot's own "פיצ'רים:"
+# line. Limited to fields this project actually models today (see dorin_common/models.py) — no
+# air conditioning/boiler/accessibility columns exist yet, even though Yad2's detail-page data now
+# carries them (see scraper/normalize.py's enrich_from_detail) - a real follow-up, not done here.
+_FEATURE_LABELS = (
+    ("has_parking", "חניה"),
+    ("has_elevator", "מעלית"),
+    ("has_balcony", "מרפסת"),
+    ("pets_allowed", "חיות מחמד"),
+    ("is_renovated", "משופצת"),
+    ("is_roommate_friendly", "מתאימה לשותפים"),
+)
+
+
+def _feature_list(listing: Listing) -> list[str]:
+    labels = [label for attr, label in _FEATURE_LABELS if getattr(listing, attr) is True]
+    if listing.safe_room_type in ("safe_room", "building_shelter"):
+        labels.append('ממ"ד')
+    if listing.furniture == "furnished":
+        labels.append("מרוהטת")
+    return labels
 
 
 def format_caption(listing: Listing, *, price_drop_from: int | None = None) -> str:
@@ -46,6 +75,10 @@ def format_caption(listing: Listing, *, price_drop_from: int | None = None) -> s
     location = ", ".join(p for p in (listing.neighborhood, listing.city) if p)
     if location:
         lines.append(f"📍 {location}")
+
+    features = _feature_list(listing)
+    if features:
+        lines.append(f"<i>🔑 פיצ'רים: {', '.join(features)}</i>")
 
     body = "\n".join(lines)
     header = ""
@@ -96,6 +129,10 @@ def format_caption_whatsapp(listing: Listing, *, price_drop_from: int | None = N
     if location:
         lines.append(f"📍 {location}")
 
+    features = _feature_list(listing)
+    if features:
+        lines.append(f"_🔑 פיצ'רים: {', '.join(features)}_")
+
     body = "\n".join(lines)
     header = ""
     if price_drop_from is not None:
@@ -109,6 +146,55 @@ def format_caption_whatsapp(listing: Listing, *, price_drop_from: int | None = N
         body += f"\n\n{description}"
 
     return (header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
+
+
+# Telegram's own sendMediaGroup limit — irrelevant in practice (Yad2 listings rarely carry this
+# many photos), but the API call itself rejects a longer list outright.
+MAX_MEDIA_GROUP_PHOTOS = 10
+
+
+async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: str) -> bool:
+    """Sends one listing to one Telegram chat — the ONE place this project actually puts a
+    listing on screen, used by the scraper's notifier and every bot handler that shows a listing,
+    so real photos (added 2026-09-02 — see scraper/normalize.py's enrich_from_detail) render
+    identically everywhere instead of each call site reinventing send_photo/send_message.
+
+    Real photos when the listing has them (a media group for 2+, a single photo for exactly 1),
+    a plain text message when it has none. Telegram's sendMediaGroup can't carry an inline
+    keyboard at all (a real API limitation, not a bug here), so for 2+ photos the ❤️/🙈/🎉 action
+    buttons go out as a short separate follow-up message instead of silently disappearing.
+    Never raises — a failed send (blocked bot, dead chat, bad photo URL) is logged and reported
+    as False, exactly like the single-message send this replaces used to."""
+    keyboard = listing_keyboard(listing.id)
+    images = listing.image_urls[:MAX_MEDIA_GROUP_PHOTOS] if listing.image_urls else []
+    try:
+        if len(images) >= 2:
+            media = [InputMediaPhoto(images[0], caption=caption, parse_mode=ParseMode.HTML)] + [
+                InputMediaPhoto(url) for url in images[1:]
+            ]
+            await bot.send_media_group(chat_id=chat_id, media=media)
+            await bot.send_message(chat_id=chat_id, text="⬆️", reply_markup=keyboard)
+        elif len(images) == 1:
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=images[0],
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+            )
+        else:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+            )
+        return True
+    except TelegramError:
+        logger.exception(
+            "Failed to send listing card to chat %s for listing %s", chat_id, listing.id
+        )
+        return False
 
 
 def listing_keyboard(listing_id: int) -> InlineKeyboardMarkup:

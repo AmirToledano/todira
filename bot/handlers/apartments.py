@@ -9,10 +9,9 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from telegram import Update
-from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
 
-from dorin_common.cards import format_caption, listing_keyboard
+from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.matching import evaluate
 from dorin_common.models import Filter, Listing, User, UserListingAction
@@ -79,10 +78,8 @@ async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     for listing in matches:
-        await update.message.reply_text(
-            format_caption(listing),
-            reply_markup=listing_keyboard(listing.id),
-            parse_mode=ParseMode.HTML,
+        await send_listing_card(
+            context.bot, update.effective_chat.id, listing, format_caption(listing)
         )
 
 
