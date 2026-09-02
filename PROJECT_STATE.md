@@ -2407,3 +2407,35 @@ editing) with: "תפצל מהם תמונות ותעשה תמונות יחידו�
 - File format stayed `.jpg`; `_TODI_PHOTO_COUNT`/`todi_photo_count` dropped 50 → 18.
 - 302 tests passing. Verified visually via Playwright — full 4-column grid of all 18 photos
   rendered as real listing cards with the redesigned full-bleed cover and enlarged caption.
+
+## 2026-09-02 (two follow-up fixes on real feedback, same day): caption moved off the photo, quality upscaled
+
+Real feedback with screenshots right after the above shipped: "הכיתוב הוגדל אבל הוא מסתיר ברוב
+התמונות את טודי הכלב... וגם האיכות של התמונות לא טובות כל כך. אני רוצה שזה יהיה חלק 100% וייראה
+טוב ממש עם איכות הכי טובה שיש". Two separate real problems, fixed and shipped as two separate PRs:
+
+**1. Caption overlap** — the bottom-overlaid pill from the previous pass sat over Todi's face/body
+in several photos, since a single fixed position can't work across 18 photos with different
+compositions (some have Todi centered, some near the bottom, etc.). Fixed by moving the caption
+OUT of the photo entirely into its own banner between the cover and the price/details section —
+guaranteed to never overlap the dog regardless of the photo, unlike any fixed-position overlay.
+Styled as a solid wine-colored banner instead of a translucent pill, since it no longer needs to
+stay legible over arbitrary photo content underneath it.
+
+**2. Photo quality** — root cause: each of the 18 photos came from cropping a single cell out of
+a shared collage image, and the collages themselves were small (768×1364 and 896×1195 total for 7
+and 12 cells respectively), so each cell was only ~260-380px on a side — genuinely low-resolution,
+not just a display issue. No Gemini/"nano banana" API key is available in this sandbox to
+regenerate the photos directly at full resolution, so instead each of the 18 crops was AI-upscaled
+4x with Real-ESRGAN (open weights, `RealESRGAN_x4plus.pth` from the model's GitHub release —
+reachable through this sandbox's egress policy, the same release-asset pattern used for every
+other model this project has downloaded). This measurably sharpened fine detail (fur texture, eye
+reflections) rather than just stretching pixels — confirmed with a real before/after crop
+comparison at matched zoom, not assumed. Needed a compatibility shim for `basicsr` (built for an
+older torchvision that had `functional_tensor`, since removed/renamed) — registered a stand-in
+module before importing it rather than downgrading torchvision and risking breaking `ultralytics`,
+which is also installed in this sandbox and depends on a current torchvision.
+- `scripts/prepare_todi_photos.py` docstring updated to document the upscale step and why.
+- 302 tests passing (no code paths changed by either fix beyond CSS/template + binary photo swaps
+  — no test changes needed). Verified visually via Playwright for both: the caption banner clear
+  of the dog in every one of the 18 photos, and the upscaled photos rendered at real card size.
