@@ -44,6 +44,20 @@ def test_all_documented_aliases_resolve():
     assert find_matches('ר"ג')[0] == find_matches("רג")[0] == "רמת גן"
 
 
+def test_newly_added_aliases_resolve():
+    # Expanded 2026-09-02 from the original 4 (בש/תא/פת/רג) after an explicit ask to cover every
+    # common Israeli city abbreviation, not just the ones a bug report happened to surface -
+    # "ראשל\"צ" for ראשון לציון was the one named explicitly.
+    assert find_matches('ראשל"צ')[0] == find_matches("ראשלצ")[0] == "ראשון לציון"
+    assert find_matches('כ"ס')[0] == find_matches("כס")[0] == "כפר סבא"
+    assert find_matches('ק"א')[0] == find_matches("קא")[0] == "קריית אתא"
+    assert find_matches('ק"ג')[0] == find_matches("קג")[0] == "קריית גת"
+    assert find_matches('ק"מ')[0] == find_matches("קמ")[0] == "קריית מוצקין"
+    assert find_matches('ק"ב')[0] == find_matches("קב")[0] == "קריית ביאליק"
+    assert find_matches('רמה"ש')[0] == find_matches("רמהש")[0] == "רמת השרון"
+    assert find_matches('ב"ב')[0] == find_matches("בב")[0] == "בני ברק"
+
+
 def test_alias_result_has_no_duplicate_of_canonical_city():
     # "רג" -> "רמת גן" canonical - "רמת גן" itself must not also appear a second time via the
     # plain substring pass over CITIES

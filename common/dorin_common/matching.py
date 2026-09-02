@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from dorin_common.cities import normalize_spelling
+
 
 @dataclass
 class MatchResult:
@@ -61,23 +63,32 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
         if listing_row.city not in filter_row.cities:
             failed.append("city")
 
+    # normalize_spelling collapses כתיב מלא/חסר doubling (יי->י, וו->ו) — the same fix that made
+    # city search tolerate "קרית מוצקין" vs "קריית מוצקין" (2026-09-02), generalized here to every
+    # free-text place name this filter checks, not just cities (2026-09-02 follow-up request:
+    # "לכל י' 1 או דאבל י' ... עיר רחוב או כל דבר אחר"). Neighborhood/street matching isn't reachable
+    # from any UI yet (see filter_conversation.py's module docstring) but is future-proofed the same
+    # way regardless, since it's a one-line cost and the whole point is not re-discovering this bug
+    # per field.
     if filter_row.neighborhoods_include:
-        key = f"{listing_row.city}:{listing_row.neighborhood}"
-        if key not in filter_row.neighborhoods_include:
+        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood}")
+        wanted = {normalize_spelling(s) for s in filter_row.neighborhoods_include}
+        if key not in wanted:
             failed.append("neighborhood_include")
     if filter_row.neighborhoods_exclude:
-        key = f"{listing_row.city}:{listing_row.neighborhood}"
-        if key in filter_row.neighborhoods_exclude:
+        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood}")
+        excluded = {normalize_spelling(s) for s in filter_row.neighborhoods_exclude}
+        if key in excluded:
             failed.append("neighborhood_exclude")
 
     if filter_row.streets_include:
-        street = (listing_row.street or "").strip().lower()
-        wanted = {s.strip().lower() for s in filter_row.streets_include}
+        street = normalize_spelling((listing_row.street or "").strip().lower())
+        wanted = {normalize_spelling(s.strip().lower()) for s in filter_row.streets_include}
         if street not in wanted:
             failed.append("street_include")
     if filter_row.streets_exclude:
-        street = (listing_row.street or "").strip().lower()
-        excluded = {s.strip().lower() for s in filter_row.streets_exclude}
+        street = normalize_spelling((listing_row.street or "").strip().lower())
+        excluded = {normalize_spelling(s.strip().lower()) for s in filter_row.streets_exclude}
         if street in excluded:
             failed.append("street_exclude")
 
