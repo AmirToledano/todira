@@ -277,10 +277,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   flex: 0 0 100%; scroll-snap-align: start; background-size: cover; background-position: center;
 }
 .no-image-caption {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-  background: rgba(36, 20, 23, .78); color: #fff; backdrop-filter: blur(3px);
-  padding: 8px 16px; border-radius: 999px; font-size: 1.05rem; font-weight: 700;
-  text-align: center; max-width: 92%; line-height: 1.3;
+  background: var(--wine); color: #fff;
+  padding: 10px 16px; font-size: 1.05rem; font-weight: 700;
+  text-align: center; line-height: 1.3;
 }
 .listing-cover-wrap .price-badge {
   position: absolute; top: 12px; inset-inline-end: 12px;

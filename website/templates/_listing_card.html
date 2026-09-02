@@ -10,15 +10,17 @@
       {% else %}
         {# No real photos for this listing — a staged photo of Todi (the user's own dachshund)
            instead of a bare house icon, filling the whole cover like a real listing photo would.
-           Picked fully at random on every render (2026-09-02 request), not per-listing. #}
+           Picked fully at random on every render (2026-09-02 request), not per-listing. The
+           caption is a separate banner BELOW the photo (not overlaid on it) — an overlay covered
+           Todi in several photos depending on where he happened to be framed; see PROJECT_STATE.md. #}
         <div class="cover-slide" style="background-image:url('/static/dachshunds/todi_{{ '%02d'|format(range(1, todi_photo_count + 1) | list | random) }}.jpg')"></div>
-        <div class="no-image-caption">{{ t('card.no_image_caption') }}</div>
       {% endif %}
     </div>
     <span class="source-badge">{{ l.source }}</span>
     <span class="price-badge">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</span>
     {% if l.image_urls|length > 1 %}<span class="photo-count-badge">📷 {{ l.image_urls|length }}</span>{% endif %}
   </div>
+  {% if not l.image_urls %}<div class="no-image-caption">🐶 {{ t('card.no_image_caption') }}</div>{% endif %}
   <div class="listing-body">
     <div class="listing-price">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</div>
     <div class="listing-loc">
