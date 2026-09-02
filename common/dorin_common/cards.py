@@ -20,11 +20,12 @@ logger = logging.getLogger(__name__)
 CAPTION_LIMIT = 1024
 
 # A listing with zero real photos gets a real photo of Todi — the user's own dachshund — instead
-# (2026-09-02 request; briefly a CC0 cartoon illustration before that, see PROJECT_STATE.md for
-# that history). All 50 submitted photos are used, background (and any touching person) removed
-# via class-aware segmentation — see scripts/prepare_todi_photos.py — picked deterministically from
-# the listing id (not random) so a given listing shows the same photo everywhere/every time. Same
-# treatment on the website — see website/templates/_listing_card.html.
+# (2026-09-02 request; briefly a CC0 cartoon illustration, then background-removed cutouts, before
+# that, see PROJECT_STATE.md for that history). All 50 submitted photos are used completely
+# unedited — no crop, no background removal — except a 😎 emoji stamped over any visible human face
+# (see scripts/prepare_todi_photos.py), picked deterministically from the listing id (not random)
+# so a given listing shows the same photo everywhere/every time. Same treatment on the website —
+# see website/templates/_listing_card.html.
 _DACHSHUND_DIR = Path(__file__).resolve().parent / "assets" / "dachshunds"
 _TODI_PHOTO_COUNT = 50
 _NO_PHOTOS_SUFFIX_HE = "\n\n🐶 <i>דירה זו עלתה ללא תמונות, אבל הנה טודי בשבילכם</i>"
@@ -32,7 +33,7 @@ _NO_PHOTOS_SUFFIX_HE = "\n\n🐶 <i>דירה זו עלתה ללא תמונות, 
 
 def _dachshund_photo_path(listing_id: int) -> Path:
     n = (listing_id % _TODI_PHOTO_COUNT) + 1
-    return _DACHSHUND_DIR / f"todi_{n:02d}.png"
+    return _DACHSHUND_DIR / f"todi_{n:02d}.jpg"
 
 
 _DEAL_TYPE_LABELS = {"rent": "שכירות", "sale": "מכירה", "sublet": "סאבלט"}

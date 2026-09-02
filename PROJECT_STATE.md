@@ -2326,3 +2326,49 @@ use ALL 50 submitted photos, not just the 27 rembg could cleanly handle.
   new pool size. 302 tests total, all passing. Verified visually by rendering all 50 as actual
   listing cards (same CSS/markup as production, real image files, not a synthetic mockup) via
   Playwright and reviewing every one at production display size.
+
+## 2026-09-02 (later still): pivot away from editing the photos at all — original photos + a 😎 sticker over faces
+
+Direct follow-up, rejecting the segmentation approach entirely: "בוא נעשה מחדש, תשתמש בכל ה50
+תמונות. רק איפה שיש עוד פרצוף בנוסף לטודי (בן אדם/משהו אחר) תשים על הבן אדם אמוג׳י גדול שיכסה אותו
+... אמרתי לך! תשתמש ב50 תמונות המקוריות שהגיעו אליך! בלי לשנות רקעים בלי להסתיר שום דבר. רק
+בתמונות שיש עוד פרצוף של בן אדם שים אמוג׳י על הבן אדם". Explicit and unambiguous: stop editing the
+photos (no cutout, no crop, no background removal) — use the 50 originals as submitted, and only
+where an actual human FACE is visible, cover it with a big friendly emoji.
+
+- This makes the two prior approaches (CC0 illustration, then rembg/YOLO segmentation) moot for
+  this feature — not a refinement of them, a different feature. `scripts/prepare_todi_photos.py`
+  rewritten a third time, much simpler: `ImageOps.exif_transpose` per photo (fixes sideways/
+  upside-down phone orientation) + resize to fit 1000px, nothing else, except a 😎 emoji composited
+  over the 5 (of 50) photos with a visible human face. Chose 😎 for "משהו חברי וכיפי" (something
+  friendly and fun) — it's a natural fit for "covering a face" and reads clearly at small card
+  size, unlike more detailed emoji.
+- Real color emoji rendering: `/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf` is present on
+  this sandbox (installed for Chromium) and Pillow 12 renders it in full color via
+  `ImageDraw.text(..., embedded_color=True)` — no external asset/network dependency needed for
+  the sticker itself.
+- Which 5 photos actually have a visible face was determined by direct visual review of all 50
+  originals (10-per-sheet contact sheets, large enough to see faces), not an automatic detector —
+  tried `cv2.FaceDetectorYN` (YuNet; its model had to be fetched from
+  `media.githubusercontent.com/media/...` since `raw.githubusercontent.com` only serves the
+  git-lfs pointer file for it) across all 4 rotations per photo (many of these phone photos have
+  the subject sideways/upside-down within an already-upright EXIF frame). At a strict confidence
+  threshold it found nothing at all across all 50 photos; at a permissive one it returned dozens
+  of false "faces" per photo (the dog's spotted coat reads as face-like texture). Neither setting
+  was usable unsupervised, so this went back to manual review, same as every other curation pass
+  in this project's Todi-photo history — confirmed reliable, an automatic model wasn't.
+- Real bug hit and fixed while placing the emoji: face coordinates measured by eye from directly
+  viewing a raw source photo don't match the coordinate space the script pastes into, for any
+  photo with a 90°/270° EXIF orientation tag — viewing the raw file shows it BEFORE rotation,
+  while `ImageOps.exif_transpose` (used before pasting, same as every other photo-prep pass in
+  this project) rotates it first. Caught this because one emoji landed floating next to the
+  person's head instead of over their face (`todi_chat_25.jpg`, EXIF tag 6). Fixed by explicitly
+  saving and re-measuring against the actual `exif_transpose` output for every face photo, not the
+  raw file — 3 of the 5 face photos had a non-1 orientation tag and needed this.
+- File format switched from `.png` back to `.jpg` (25 → 50 files, no transparency needed anymore
+  since nothing is a cutout) — `_TODI_PHOTO_COUNT`/`todi_photo_count` stay at 50,
+  `_dachshund_photo_path` and the template's image path updated for the extension, one test
+  assertion updated to match.
+- 302 tests passing. Verified visually the same way as the prior pass — all 50 rendered as real
+  listing cards via Playwright at production display size, all 5 face photos individually
+  double-checked for full coverage (no eye/nose/mouth peeking past the sticker) before shipping.
