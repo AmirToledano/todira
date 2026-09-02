@@ -4,11 +4,12 @@ listing identically. See plan Section 4 for the card format this implements.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
-from telegram.error import TelegramError
+from telegram.error import RetryAfter, TelegramError
 
 from dorin_common.models import Listing
 
@@ -163,11 +164,18 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     a plain text message when it has none. Telegram's sendMediaGroup can't carry an inline
     keyboard at all (a real API limitation, not a bug here), so for 2+ photos the ❤️/🙈/🎉 action
     buttons go out as a short separate follow-up message instead of silently disappearing.
-    Never raises — a failed send (blocked bot, dead chat, bad photo URL) is logged and reported
-    as False, exactly like the single-message send this replaces used to."""
+
+    Retries ONCE on Telegram's own flood-control response (RetryAfter) — found live 2026-09-02: a
+    real backfill run matched 17 listings to one user in a burst, and media-group sends (2 Telegram
+    API calls each — the group itself, then the follow-up keyboard message) hit Telegram's per-chat
+    rate limit after a handful of sends, silently dropping 4 of the 17 real match notifications
+    with no retry at all. A single wait-and-retry (honoring Telegram's own `retry_after` seconds)
+    is enough for a burst that size; still gives up and returns False if the second attempt also
+    fails, exactly like any other permanent failure (blocked bot, dead chat, bad photo URL)."""
     keyboard = listing_keyboard(listing.id)
     images = listing.image_urls[:MAX_MEDIA_GROUP_PHOTOS] if listing.image_urls else []
-    try:
+
+    async def _do_send() -> None:
         if len(images) >= 2:
             media = [InputMediaPhoto(images[0], caption=caption, parse_mode=ParseMode.HTML)] + [
                 InputMediaPhoto(url) for url in images[1:]
@@ -189,12 +197,33 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
                 parse_mode=ParseMode.HTML,
                 reply_markup=keyboard,
             )
-        return True
-    except TelegramError:
-        logger.exception(
-            "Failed to send listing card to chat %s for listing %s", chat_id, listing.id
-        )
-        return False
+
+    for attempt in range(2):
+        try:
+            await _do_send()
+            return True
+        except RetryAfter as exc:
+            if attempt == 0:
+                logger.warning(
+                    "Hit Telegram flood control sending listing %s to chat %s — retrying in %ss",
+                    listing.id,
+                    chat_id,
+                    exc.retry_after,
+                )
+                await asyncio.sleep(exc.retry_after + 0.5)
+                continue
+            logger.exception(
+                "Still flood-limited after one retry sending listing %s to chat %s",
+                listing.id,
+                chat_id,
+            )
+            return False
+        except TelegramError:
+            logger.exception(
+                "Failed to send listing card to chat %s for listing %s", chat_id, listing.id
+            )
+            return False
+    return False
 
 
 def listing_keyboard(listing_id: int) -> InlineKeyboardMarkup:
