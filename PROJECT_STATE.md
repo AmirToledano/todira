@@ -1846,3 +1846,59 @@ re-scraped as "new" again (which, per _mark_delisted, doesn't happen for a listi
 seen — this only benefits genuinely new postings going forward). Backfilling existing listings
 would mean deliberately re-fetching their detail pages, a separate, explicit cost decision not
 made here.
+
+## Update 2026-09-02, later still: real photos for FREE — the expensive per-listing plan reversed
+User pushed back hard on the ~25-ZenRows-credit-per-new-listing detail-page fetch (see the update
+above, PR #93 as originally written) — real, correct concern: at any meaningful listing volume
+that's a serious recurring cost, not a one-off. Went looking for a free alternative instead of
+accepting it.
+
+**Diagnosed, not guessed** (two more approved ZenRows diagnostics against the same real Jerusalem
+search page): `.github/workflows/diagnose-search-page-cheap-fetch.yaml` confirmed `js_render=true`
+is mandatory for Yad2 (dropping it gets an immediate `REQS002` rejection from ZenRows itself — no
+cheaper fetch mode exists), but also found strong evidence the search page's own `__NEXT_DATA__`
+blob carries far more than the visible cards. `diagnose-search-page-feed-shape.yaml` (a follow-up,
+after the first pass's top-level-only check found nothing — the data turned out nested one level
+deeper) confirmed it directly: `queries[...].state.data` (queryKey `realestate-rent-feed`) is a
+dict of `private`/`agency`/`platinum`/`booster` arrays (`yad1` = sponsored project marketing,
+already excluded), each entry keyed by the same `token` used as the listing's external id, and
+nearly every entry (19/20, 3/3, 1/1 in the real sample) carries real `metaData.images` photo URLs,
+a `tags` array of feature badges (e.g. "חניה"/'ממ"ד'/"2 מרפסות"), and — critically — the category
+itself (`private` vs `agency`/`platinum`/`booster`) is a **confirmed, both-directions** broker/
+private signal, better than anything the per-listing detail page alone gave.
+
+**This is the SAME request the project already pays for on every routine city scrape.** So: real
+photos, amenity tags, and broker status now come for free, every time, for every listing — not
+gated behind "new" listings, not costing anything beyond what already happens daily.
+
+**Reversed**: `scraper/main.py::_upsert_listings` no longer calls a per-listing detail fetch at
+all (removed entirely from the insert path). `scraper/yad2_client.py` gained
+`_extract_feed_records` (parses the search page's own `__NEXT_DATA__` once per fetch, maps
+`token -> record`) wired into `_parse_cards`, which now attaches a `_feed_record` key to any card
+it has a match for. `scraper/normalize.py` gained `_enrich_from_feed_record`, called automatically
+inside `normalize()` itself whenever `_feed_record` is present — real image_urls, a Hebrew-text
+property-type mapping (`_HEBREW_PROPERTY_TYPE_MAP`, only confirmed values: דירה/דירת גן/גג
+פנטהאוז/בית בודד), and a confirmed tag-to-amenity mapping (`_FEED_TAG_TO_FIELD`, only "חניה"→
+parking and 'ממ"ד'→safe_room_type confirmed so far; balcony matched by the Hebrew root "מרפס" —
+not "מרפסת", since the plural "מרפסות" doesn't contain that as a substring, caught live by this
+file's own test).
+
+**What's given up, honestly**: the search page's feed records do NOT carry a free-text
+description (only the single-listing detail page does — `metaData` here has `coverImage`/
+`images`/`squareMeterBuild` but no description key), nor the detail page's full `inProperty`
+amenity set (elevator, A/C, boiler, accessibility — only what a `tags` badge happens to confirm).
+`fetch_listing_detail`/`enrich_from_detail` (yad2_client.py / normalize.py) are kept as-is,
+fully tested, but deliberately not called by anything in the normal scrape path anymore — a real,
+separate ~25-credit cost, available if ever explicitly wanted (e.g. a future opt-in "get the full
+description for listing X" feature), not run automatically.
+
+`tests/test_scraper_upsert.py` rewritten (no longer asserts a detail fetch happens for new
+listings — asserts the opposite, that `_upsert_listings` stays a plain insert/update). New tests
+in `test_yad2_client.py`/`test_normalize.py` for the feed-record path, built from the real
+confirmed diagnostic output, not invented. 271 tests total, all passing.
+
+Also researched (WhatsApp side, separate from this): Business Verification is NOT the only path to
+a working WhatsApp bot for someone without a registered business — adding a real (non-test) phone
+number to the WhatsApp Business Account allows messaging up to 250 unique recipients/24h with no
+verification at all (only the free *test* number is capped at 5 manually-added recipients).
+Whether a permanent System User token specifically requires verification remains unconfirmed.

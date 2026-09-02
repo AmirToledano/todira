@@ -233,7 +233,68 @@ def _parse_location(raw: str) -> tuple[str | None, str | None]:
     return neighborhood, city
 
 
+# The search-results page (the one this project already fetches for every city, every run) turns
+# out to embed the SAME kind of Next.js __NEXT_DATA__ hydration JSON a listing's own detail page
+# does (see fetch_listing_detail's docstring below) — but here it covers EVERY listing on the
+# page, categorized into `private`/`agency`/`platinum`/`booster` (real per-unit ads; "yad1" is
+# sponsored whole-development marketing, already excluded from card parsing above for the same
+# reason) — confirmed live 2026-09-02 against a real Jerusalem search page (see
+# .github/workflows/diagnose-search-page-feed-shape.yaml): nearly every record carries real photo
+# URLs (`metaData.images`) and a `tags` list (feature badges like "חניה"/"מעלית"/'ממ"ד'). This
+# means real photos + amenity signals + a reliable broker/private distinction come from a request
+# this project already pays for — no per-listing detail-page fetch needed (that path,
+# fetch_listing_detail below, costs a real ~25 ZenRows credits PER LISTING and was rejected as too
+# expensive to run automatically; kept as a separate, deliberately-unused-by-default utility, not
+# wired into the normal scrape path — see scraper/main.py).
+#
+# The one thing NOT available here that the detail page has: a free-text description. Getting that
+# would still mean paying for a per-listing fetch.
+_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
+
+_FEED_CATEGORY_IS_BROKER = {
+    "private": False,
+    "agency": True,
+    "platinum": True,
+    "booster": True,
+    # "yad1" (sponsored development/project ads) deliberately excluded - not a real per-unit
+    # listing, already filtered out of card parsing via the /yad1/project/ check above.
+}
+
+
+def _extract_feed_records(html: str) -> dict[str, dict[str, Any]]:
+    """Best-effort: maps each listing's Yad2 `token` (== the external id `_parse_cards` extracts
+    from its card href) to its richer feed record — real photos, feature `tags`, and a confirmed
+    broker/private category — embedded in the SAME search-page HTML already fetched (see the
+    module comment above `_NEXT_DATA_RE`). Returns {} on any failure (missing/malformed
+    __NEXT_DATA__): this is a free bonus enrichment layered on top of `_parse_cards`'s own
+    regex-based parsing, never required for that to keep working."""
+    match = _NEXT_DATA_RE.search(html)
+    if match is None:
+        return {}
+    try:
+        next_data = json.loads(match.group(1))
+        queries = next_data["props"]["pageProps"]["dehydratedState"]["queries"]
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return {}
+
+    records: dict[str, dict[str, Any]] = {}
+    for query in queries:
+        data = query.get("state", {}).get("data")
+        if not isinstance(data, dict):
+            continue
+        for category, is_broker in _FEED_CATEGORY_IS_BROKER.items():
+            items = data.get(category)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if isinstance(item, dict) and isinstance(item.get("token"), str):
+                    records[item["token"]] = {**item, "_is_broker_listing": is_broker}
+    return records
+
+
 def _parse_cards(html: str) -> Iterator[dict[str, Any]]:
+    feed_records = _extract_feed_records(html)
+
     for href, price_raw, street_raw, info1_raw, info2_raw in _CARD_RE.findall(html):
         # Sponsored "new project" cards (`/yad1/project/...`) are marketing listings for a whole
         # development, not one rentable unit — they carry an absolute URL (not relative like real
@@ -246,7 +307,7 @@ def _parse_cards(html: str) -> Iterator[dict[str, Any]]:
         rooms, floor, size_sqm = _parse_info_line_2(info2_raw)
         neighborhood, city = _parse_location(info1_raw)
 
-        yield {
+        item = {
             "id": external_id,
             "url": urljoin(SEARCH_PAGE_URL, href.split("?")[0]),
             "price": _parse_price(price_raw),
@@ -257,6 +318,10 @@ def _parse_cards(html: str) -> Iterator[dict[str, Any]]:
             "neighborhood": neighborhood,
             "city": city,
         }
+        feed_record = feed_records.get(external_id)
+        if feed_record is not None:
+            item["_feed_record"] = feed_record
+        yield item
 
 
 def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
@@ -322,28 +387,26 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
     yield from _parse_cards(html)
 
 
-# Yad2's own listing DETAIL page (one specific apartment, not the search-results list) is a
-# Next.js page whose server-rendered data is embedded verbatim as a `<script id="__NEXT_DATA__"
-# type="application/json">` blob in the HTML — confirmed live 2026-09-02 (see
-# .github/workflows/diagnose-listing-detail-page.yaml, one real Jerusalem listing) to hold a
-# clean, complete JSON record: price/rooms/floor/size (redundant with the search card, but also
-# property type, amenity booleans, a free-text description, the REAL multi-photo image URLs, an
-# entrance date, and broker/agency info — none of which the search-results cards this project has
-# always scraped ever carry. Reading this embedded JSON is far more reliable than scraping visible
-# HTML/icons (which change with every front-end redesign and require guessing at icon meaning).
-_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
-
-
+# Yad2's own listing DETAIL page (one specific apartment, not the search-results list) uses the
+# same __NEXT_DATA__ hydration mechanism as the search page (see _NEXT_DATA_RE and the comment
+# above _extract_feed_records) and, for a single listing, additionally carries a free-text
+# description (confirmed live 2026-09-02, see .github/workflows/diagnose-listing-detail-page.yaml)
+# — the one field the search page's own feed records don't have.
+#
+# NOT wired into the normal scrape path (see scraper/main.py / normalize.py's enrich_from_detail):
+# each call is a real, separate ~25-ZenRows-credit request, rejected as too expensive to run
+# automatically per new listing once real per-listing cost was understood (see PROJECT_STATE.md,
+# 2026-09-02). Kept as a deliberately unused-by-default, already-validated utility — e.g. for a
+# possible future explicit/opt-in "fetch the full description for listing X" feature — rather than
+# deleted and potentially rebuilt later.
 def fetch_listing_detail(url: str) -> dict[str, Any] | None:
     """Fetches ONE listing's own detail page and returns its `__NEXT_DATA__` ad record as a plain
-    dict (the same shape confirmed live — see this function's module-level comment above), or
-    None on ANY failure (missing API key, network error, non-200, no/unparseable __NEXT_DATA__).
-    Never raises: this is an enrichment on top of a listing already known from its search card —
-    a failed enrichment must never lose or block ingesting that already-known data.
+    dict, or None on ANY failure (missing API key, network error, non-200, no/unparseable
+    __NEXT_DATA__). Never raises: this is an enrichment on top of a listing already known from its
+    search card — a failed enrichment must never lose or block ingesting that already-known data.
 
-    Costs one ZenRows Fetch API request, same as one search-results page — see this module's
-    caller (scraper/main.py) for the cost-bounding rule: only ever called for a listing genuinely
-    new to the DB this run, never re-fetched for a listing already known."""
+    Costs one ZenRows Fetch API request, same as one search-results page. Not currently called by
+    anything in the normal scrape path — see this function's module-level comment above."""
     api_key = os.environ.get(ZENROWS_API_KEY_ENV_VAR, "").strip()
     if not api_key:
         return None

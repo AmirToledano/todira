@@ -17,6 +17,7 @@ from yad2_client import (
     fetch_listing_detail,
     fetch_search_results,
 )
+from yad2_client import _extract_feed_records as extract_feed_records
 
 
 def test_every_slug_has_a_hebrew_name():
@@ -263,3 +264,88 @@ def test_fetch_listing_detail_no_query_carries_a_token_returns_none(monkeypatch)
 
     monkeypatch.setattr(httpx, "get", fake_get)
     assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None
+
+
+# --- _extract_feed_records / _parse_cards feed-record merge (2026-09-02) ---
+# The search-results page turns out to ALSO embed a __NEXT_DATA__ blob covering every listing on
+# the page (not just one, as the detail page does) - real photos, tags, and broker category, for
+# free, in the same request already being paid for. Shape below is trimmed from a real fetched
+# Jerusalem search page (see .github/workflows/diagnose-search-page-feed-shape.yaml's confirmed
+# output), not invented.
+
+_FEED_NEXT_DATA_JSON = """{
+"props": {"pageProps": {"dehydratedState": {"queries": [
+  {"queryKey": ["realestate-rent-feed", {}], "state": {"data": {
+    "private": [{
+      "token": "abcd1234",
+      "adType": "private",
+      "price": 7800,
+      "additionalDetails": {"property": {"text": "דירה"}, "roomsCount": 4},
+      "metaData": {
+        "coverImage": "https://img.yad2.co.il/Pic/1.jpeg",
+        "images": ["https://img.yad2.co.il/Pic/1.jpeg", "https://img.yad2.co.il/Pic/2.jpeg"]
+      },
+      "tags": [{"name": "חניה", "id": 1003}, {"name": "ממ\\"ד", "id": 1009}]
+    }],
+    "agency": [{
+      "token": "xyz789",
+      "adType": "commercial",
+      "price": 8000,
+      "additionalDetails": {"property": {"text": "דירת גן"}, "roomsCount": 3},
+      "metaData": {"images": ["https://img.yad2.co.il/Pic/3.jpeg"]},
+      "customer": {"agencyName": "רחלי נכסים"},
+      "tags": [{"name": "2 מרפסות", "id": 1212}]
+    }]
+  }}}
+]}}}}"""
+
+_CARD_HTML_WITH_FEED = (
+    f'<script id="__NEXT_DATA__" type="application/json">{_FEED_NEXT_DATA_JSON}</script>'
+    '<a class="itemLink" data-nagish="feed-item-layout-link" href="/item/abcd1234">'
+    '<span data-testid="price">7,800 ₪</span>'
+    '<span data-testid="street-name">רחוב כלשהו</span>'
+    '<span data-testid="item-info-line-1st">דירה, שכונה, ירושלים</span>'
+    '<span data-testid="item-info-line-2nd">4 חדרים • קומה 3 • 102 מ"ר</span>'
+    "</a>"
+    '<a class="itemLink" data-nagish="feed-item-layout-link" href="/item/xyz789">'
+    '<span data-testid="price">8,000 ₪</span>'
+    '<span data-testid="street-name">רחוב אחר</span>'
+    '<span data-testid="item-info-line-1st">דירת גן, שכונה, ירושלים</span>'
+    '<span data-testid="item-info-line-2nd">3 חדרים • קומה 0 • 90 מ"ר</span>'
+    "</a>"
+    '<a class="itemLink" data-nagish="feed-item-layout-link" href="/item/no-feed-match">'
+    '<span data-testid="price">5,000 ₪</span>'
+    '<span data-testid="street-name">עוד רחוב</span>'
+    '<span data-testid="item-info-line-1st">דירה, שכונה, ירושלים</span>'
+    '<span data-testid="item-info-line-2nd">2 חדרים • קומה 1 • 60 מ"ר</span>'
+    "</a>"
+)
+
+
+def test_extract_feed_records_maps_token_to_record_with_broker_flag():
+    records = extract_feed_records(_CARD_HTML_WITH_FEED)
+    assert set(records) == {"abcd1234", "xyz789"}
+    assert records["abcd1234"]["_is_broker_listing"] is False
+    assert records["xyz789"]["_is_broker_listing"] is True
+
+
+def test_extract_feed_records_returns_empty_dict_when_no_next_data():
+    assert extract_feed_records(_CARD_HTML) == {}
+
+
+def test_parse_cards_attaches_feed_record_only_when_a_match_exists(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_items = {}
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text=_CARD_HTML_WITH_FEED, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    items = list(fetch_search_results("tel-aviv"))
+    for item in items:
+        captured_items[item["id"]] = item
+
+    assert set(captured_items) == {"abcd1234", "xyz789", "no-feed-match"}
+    assert "_feed_record" in captured_items["abcd1234"]
+    assert "_feed_record" in captured_items["xyz789"]
+    assert "_feed_record" not in captured_items["no-feed-match"]

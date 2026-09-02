@@ -266,3 +266,116 @@ def test_enrich_missing_or_malformed_sections_degrade_gracefully_not_raise():
     result2 = enrich_from_detail(_base_item(), weird)
     assert result2.property_type is None
     assert result2.image_urls == []
+
+
+# --- _enrich_from_feed_record / normalize()'s automatic feed-record enrichment (2026-09-02) ---
+# Shape below is trimmed from a real fetched Jerusalem search page (see
+# .github/workflows/diagnose-search-page-feed-shape.yaml's confirmed output), not invented.
+from normalize import _enrich_from_feed_record  # noqa: E402
+
+_REAL_PRIVATE_FEED_RECORD = {
+    "token": "qrfnemhb",
+    "adType": "private",
+    "price": 7800,
+    "additionalDetails": {"property": {"text": "דירה"}, "roomsCount": 4},
+    "metaData": {
+        "coverImage": "https://img.yad2.co.il/Pic/1.jpeg",
+        "images": ["https://img.yad2.co.il/Pic/1.jpeg", "https://img.yad2.co.il/Pic/2.jpeg"],
+    },
+    "tags": [
+        {"name": "חדש מקבלן", "id": 1000},
+        {"name": "חניה", "id": 1003},
+        {"name": 'ממ"ד', "id": 1009},
+    ],
+    "_is_broker_listing": False,
+}
+
+_REAL_AGENCY_FEED_RECORD = {
+    "token": "kxcrjvx7",
+    "adType": "commercial",
+    "price": 8000,
+    "additionalDetails": {"property": {"text": "דירת גן"}, "roomsCount": 4},
+    "metaData": {"images": ["https://img.yad2.co.il/Pic/3.jpeg"]},
+    "customer": {"agencyName": "רחלי נכסים"},
+    "tags": [{"name": "2 מרפסות", "id": 1212}],
+    "_is_broker_listing": True,
+}
+
+
+def test_feed_enrich_fills_real_images():
+    item = normalize({"id": "1"})
+    result = _enrich_from_feed_record(item, _REAL_PRIVATE_FEED_RECORD)
+    assert result.image_urls == [
+        "https://img.yad2.co.il/Pic/1.jpeg",
+        "https://img.yad2.co.il/Pic/2.jpeg",
+    ]
+
+
+def test_feed_enrich_maps_hebrew_property_text():
+    item = normalize({"id": "1"})
+    assert _enrich_from_feed_record(item, _REAL_PRIVATE_FEED_RECORD).property_type == "apartment"
+    assert _enrich_from_feed_record(item, _REAL_AGENCY_FEED_RECORD).property_type == "garden_apartment"
+
+
+def test_feed_enrich_maps_confirmed_tags():
+    item = normalize({"id": "1"})
+    result = _enrich_from_feed_record(item, _REAL_PRIVATE_FEED_RECORD)
+    assert result.has_parking is True
+    assert result.safe_room_type == "safe_room"
+
+
+def test_feed_enrich_maps_balcony_tag_by_substring():
+    item = normalize({"id": "1"})
+    result = _enrich_from_feed_record(item, _REAL_AGENCY_FEED_RECORD)
+    assert result.has_balcony is True
+
+
+def test_feed_enrich_ignores_unconfirmed_tags():
+    item = normalize({"id": "1"})
+    result = _enrich_from_feed_record(item, _REAL_PRIVATE_FEED_RECORD)
+    # "חדש מקבלן" ("new from contractor") is deliberately NOT mapped to is_renovated - ambiguous,
+    # unconfirmed - must stay untouched (None) rather than guessed
+    assert result.is_renovated is None
+
+
+def test_feed_enrich_sets_broker_status_both_directions():
+    item = normalize({"id": "1"})
+    assert _enrich_from_feed_record(item, _REAL_PRIVATE_FEED_RECORD).is_broker_listing is False
+    assert _enrich_from_feed_record(item, _REAL_AGENCY_FEED_RECORD).is_broker_listing is True
+
+
+def test_feed_enrich_does_not_touch_card_derived_fields():
+    item = normalize({"id": "1", "price": 5000, "rooms": 2, "city": "תל אביב"})
+    result = _enrich_from_feed_record(item, _REAL_PRIVATE_FEED_RECORD)
+    assert result.price == 5000
+    assert result.rooms == 2
+    assert result.city == "תל אביב"
+
+
+def test_feed_enrich_missing_or_malformed_sections_degrade_gracefully():
+    item = normalize({"id": "1"})
+    result = _enrich_from_feed_record(item, {})
+    assert result.image_urls == []
+    assert result.property_type is None
+
+    weird = {"additionalDetails": "nope", "metaData": None, "tags": "nope", "_is_broker_listing": "nope"}
+    result2 = _enrich_from_feed_record(item, weird)
+    assert result2.image_urls == []
+    assert result2.is_broker_listing is None
+
+
+def test_normalize_applies_feed_record_automatically_when_present():
+    raw_item = {"id": "qrfnemhb", "price": 7800, "_feed_record": _REAL_PRIVATE_FEED_RECORD}
+    result = normalize(raw_item)
+    assert result.image_urls == [
+        "https://img.yad2.co.il/Pic/1.jpeg",
+        "https://img.yad2.co.il/Pic/2.jpeg",
+    ]
+    assert result.has_parking is True
+    assert result.is_broker_listing is False
+
+
+def test_normalize_without_feed_record_is_unaffected():
+    result = normalize({"id": "1", "price": 5000})
+    assert result.image_urls == []
+    assert result.has_parking is None

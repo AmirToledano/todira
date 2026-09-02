@@ -1,11 +1,17 @@
-"""Tests for _upsert_listings (scraper/main.py) — specifically the 2026-09-02 addition of
-per-listing detail-page enrichment (see yad2_client.fetch_listing_detail /
-normalize.enrich_from_detail): a real, separate ZenRows request per listing, so it must only ever
-fire for a listing genuinely NEW to the DB this run, never for one already known (an update).
+"""Tests for _upsert_listings (scraper/main.py) — plain insert-if-new / update-if-existing,
+with price-drop detection on the update path.
+
+Real photo/amenity/broker enrichment used to be fetched here per-new-listing via a separate,
+costly (~25 ZenRows credits each) detail-page request — rejected once that recurring cost was
+understood (see PROJECT_STATE.md, 2026-09-02) in favor of a free enrichment normalize() itself
+now applies from data already embedded in the search page (see yad2_client._extract_feed_records /
+normalize._enrich_from_feed_record). _upsert_listings no longer calls anything expensive — these
+tests lock down that it stays a plain SELECT-then-INSERT/UPDATE.
 
 No live DB in CI (same constraint as test_scraper_city_rotation.py's _mark_delisted tests) — a
 fake session with a canned, ordered queue of execute() results stands in for SQLAlchemy, matching
-the exact sequence _upsert_listings calls (SELECT existing-check, then INSERT or UPDATE).
+the exact sequence _upsert_listings issues per item: [SELECT existing-check] then [INSERT] or
+[UPDATE].
 """
 from __future__ import annotations
 
@@ -55,21 +61,49 @@ class _QueueSession:
         pass
 
 
-def test_detail_fetch_and_enrich_only_called_for_genuinely_new_listings(monkeypatch):
-    fetch_calls: list[str] = []
-    enrich_calls: list[tuple] = []
+def test_new_listing_is_inserted_and_returns_its_new_id():
+    new_item = _make_item("new-1", "https://example.com/new-1")
+    session = _QueueSession(
+        [
+            _CannedResult(None),  # SELECT -> no existing row
+            _CannedResult((5001,)),  # INSERT returning id
+        ]
+    )
 
-    def fake_fetch_detail(url):
-        fetch_calls.append(url)
-        return {"token": "fake"}
+    new_ids, price_drops = _upsert_listings(session, [new_item])
+    assert new_ids == [5001]
+    assert price_drops == []
 
-    def fake_enrich(item, detail):
-        enrich_calls.append((item.external_id, detail))
-        return item.model_copy(update={"description": "enriched"})
 
-    monkeypatch.setattr(scraper_main, "fetch_listing_detail", fake_fetch_detail)
-    monkeypatch.setattr(scraper_main, "enrich_from_detail", fake_enrich)
+def test_existing_listing_is_updated_not_inserted():
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=5000)
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, same price
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
 
+    new_ids, price_drops = _upsert_listings(session, [existing_item])
+    assert new_ids == []
+    assert price_drops == []
+
+
+def test_price_drop_on_existing_listing_is_reported():
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, price dropped 5000 -> 4000
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
+
+    new_ids, price_drops = _upsert_listings(session, [existing_item])
+    assert new_ids == []
+    assert price_drops == [(42, 5000)]
+
+
+def test_mixed_new_and_existing_items_in_one_call():
     new_item = _make_item("new-1", "https://example.com/new-1")
     existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)
 
@@ -82,49 +116,6 @@ def test_detail_fetch_and_enrich_only_called_for_genuinely_new_listings(monkeypa
         ]
     )
 
-    new_ids, _price_drops = _upsert_listings(session, [new_item, existing_item])
-
-    assert fetch_calls == ["https://example.com/new-1"]
-    assert [c[0] for c in enrich_calls] == ["new-1"]
+    new_ids, price_drops = _upsert_listings(session, [new_item, existing_item])
     assert new_ids == [5001]
-
-
-def test_failed_detail_fetch_does_not_call_enrich_and_still_inserts(monkeypatch):
-    def fake_fetch_detail(url):
-        return None  # e.g. no __NEXT_DATA__, network error, etc.
-
-    def fake_enrich(item, detail):
-        raise AssertionError("enrich_from_detail must not be called when detail fetch failed")
-
-    monkeypatch.setattr(scraper_main, "fetch_listing_detail", fake_fetch_detail)
-    monkeypatch.setattr(scraper_main, "enrich_from_detail", fake_enrich)
-
-    new_item = _make_item("new-1", "https://example.com/new-1")
-    session = _QueueSession(
-        [
-            _CannedResult(None),  # SELECT -> no existing row
-            _CannedResult((5001,)),  # INSERT returning id
-        ]
-    )
-
-    new_ids, _price_drops = _upsert_listings(session, [new_item])
-    assert new_ids == [5001]
-
-
-def test_detail_fetch_never_called_for_an_existing_listing_even_on_price_drop(monkeypatch):
-    def fake_fetch_detail(url):
-        raise AssertionError("must never re-fetch detail for a listing already in the DB")
-
-    monkeypatch.setattr(scraper_main, "fetch_listing_detail", fake_fetch_detail)
-
-    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)
-    session = _QueueSession(
-        [
-            _CannedResult((42, 5000)),  # SELECT -> existing row, price dropped 5000 -> 4000
-            _CannedResult(None),  # UPDATE result (never read)
-        ]
-    )
-
-    new_ids, price_drops = _upsert_listings(session, [existing_item])
-    assert new_ids == []
     assert price_drops == [(42, 5000)]

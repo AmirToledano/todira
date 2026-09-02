@@ -15,14 +15,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from dorin_common.db import get_session
 from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
-from normalize import enrich_from_detail, normalize
+from normalize import normalize
 from notifier import run_notifications
-from yad2_client import (
-    CITY_SLUG_TO_HEBREW_NAME,
-    Yad2FetchError,
-    fetch_listing_detail,
-    fetch_search_results,
-)
+from yad2_client import CITY_SLUG_TO_HEBREW_NAME, Yad2FetchError, fetch_search_results
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("scraper.main")
@@ -71,11 +66,12 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
     the reference bot's "📉 ירידת מחיר!" re-notification, which the original DO-NOTHING design
     missed). Fine at this project's scale — a personal deployment, not high-throughput.
 
-    A genuinely NEW item also gets its own detail page fetched and merged in here (real photos,
-    amenities, description, etc. — see normalize.enrich_from_detail) — deliberately only for the
-    insert branch, never on update: each detail fetch is a real, separate ZenRows request, so
-    re-running it for a listing already known would multiply cost for no benefit (the enrichment
-    was already stored the one time this listing was new)."""
+    Real photos/amenity tags/broker status are already merged into `item` by `normalize()` itself
+    (see its own `_enrich_from_feed_record` call) before this function ever sees it — a free
+    bonus from the search page already being fetched, not a separate cost this function has to
+    manage. An earlier version fetched a full per-listing detail page here for every genuinely new
+    item (~25 ZenRows credits each, real recurring cost) — rejected once that cost was understood;
+    see PROJECT_STATE.md, 2026-09-02."""
     table = Listing.__table__
     new_ids: list[int] = []
     price_drop_events: list[tuple[int, int]] = []
@@ -88,9 +84,6 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
         ).first()
 
         if existing is None:
-            detail = fetch_listing_detail(item.url)
-            if detail is not None:
-                item = enrich_from_detail(item, detail)
             row = session.execute(
                 pg_insert(table).values(**item.model_dump()).returning(table.c.id)
             ).first()
