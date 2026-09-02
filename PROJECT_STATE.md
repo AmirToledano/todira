@@ -2225,3 +2225,47 @@ A real user screenshot (comparing against the reference bot dorin.app) drove a f
   no-header-for-new-listings, no-header-when-prices-equal, WhatsApp bold-asterisks) + 1 new test
   in `test_scraper_upsert.py` (`test_price_increase_on_existing_listing_is_reported`). 302 tests
   total, all passing.
+
+## Update 2026-09-02, later still: real background/person removal on the Todi photo pool (17→27)
+Follow-up to the 17-photo curation: "תוסיף את כל ה-50! ... תוציא את טודי מתמונות עם אנשים ותשים
+אותו לבד ממש תערוך את התמונות כמו שצריך" — actually edit the rejected photos instead of just
+excluding every one with a person in it.
+
+- `pip install rembg onnxruntime` (u2netp model, ~4.5MB) does real background/foreground
+  segmentation — confirmed the model download itself works through this sandbox's egress policy
+  (a GitHub *release asset* URL, which redirects through `release-assets.githubusercontent.com` —
+  unlike most other domains tested this session, this one is reachable; found by testing, not
+  assumed). Ran it on all 50 submitted photos via a background-removed contact-sheet montage (same
+  review technique as the original 17-photo curation) to see which actually turned out clean.
+- **A generic foreground detector doesn't know "keep the dog, drop the person"** — it keeps
+  whatever's touching/adjacent as one foreground blob. So a hand PETTING Todi, or an arm he's lying
+  across, still shows up in the cutout; only photos where Todi was already the sole subject (or a
+  person was far enough away to not be "adjacent" in the frame) come out with the person genuinely
+  gone. Reviewed every result at full resolution (not just the thumbnail grid — two, `IMG_2057`'s
+  a hand+ring on a leash and one where a hand was petting Todi's head, only became visible as
+  actual human hands once viewed at full size) and dropped anything still showing a person.
+- Real bug found and fixed mid-pipeline: the first crop-to-content pass used `img.getbbox()` on
+  the full RGBA cutout, which PIL treats as "any band non-zero" — a fully-transparent pixel can
+  still carry leftover non-zero RGB noise from the original photo, so the box stayed almost
+  canvas-sized regardless of how small the actual visible dog was. Fixed by computing the bbox
+  from a THRESHOLDED alpha channel (`alpha > 50`) instead of the raw one — this also cropped out
+  the soft, low-confidence "ghost" fringe rembg leaves around subjects on complex/blurry
+  backgrounds, which had been making several results look like faint empty smudges rather than a
+  dog. Confirmed with a before/after contact-sheet screenshot, not just by reasoning about it.
+- Two source photos (a round bed / a bone-pattern donut bed, both with no person in the original)
+  had cutouts that came out genuinely broken — a patterned background confused the segmentation
+  into keeping ghost fragments of the pattern itself. Used the plain original photo for those two
+  instead of forcing a bad edit; `scripts/prepare_todi_photos.py` calls this out as
+  `PLAIN_SOURCES` vs. `CUTOUT_SOURCES`.
+- Net result: 17 → **27** photos (25 real cutouts + 2 plain originals), all saved as PNG (JPEG
+  can't hold the cutouts' transparency; the 2 plain ones went PNG too for one uniform extension
+  rather than mixed-format path logic). `common/dorin_common/cards.py`'s `_TODI_PHOTO_COUNT` and
+  `website/templates/_listing_card.html`'s `todi_photo_count` bumped to 27, `.jpg` → `.png`
+  throughout. Same deterministic-per-listing-id selection mechanism as always.
+- `scripts/prepare_todi_photos.py` (v2) replaces the v1 plain-resize version entirely — the whole
+  module docstring documents which packages/network access it needs, since (like
+  `fetch_dachshund_art.py` before it) it's a manual one-off tool, not a project dependency.
+- 2 tests updated for `.png` (was `.jpg`) and the larger listing-id range in the
+  determinism test. 302 tests total, all passing. Verified visually with a 4-listing Playwright
+  screenshot of the real rendered cards — transparent cutouts blend into the card's own gradient
+  exactly like the CC0 illustration used to, the 2 plain-photo fallbacks render as normal thumbnails.

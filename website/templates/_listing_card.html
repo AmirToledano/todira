@@ -1,4 +1,4 @@
-{% set todi_photo_count = 17 %}
+{% set todi_photo_count = 27 %}
 {% macro listing_card(l, delay=0) %}
 <div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover-wrap">
@@ -12,7 +12,7 @@
            instead of a bare house icon, picked deterministically per-listing (l.id) so it
            doesn't reshuffle on every reload. #}
         <div class="no-image-dachshund">
-          <img src="/static/dachshunds/todi_{{ '%02d'|format((l.id % todi_photo_count) + 1) }}.jpg"
+          <img src="/static/dachshunds/todi_{{ '%02d'|format((l.id % todi_photo_count) + 1) }}.png"
                alt="{{ t('card.no_image_caption') }}" loading="lazy">
           <p>{{ t('card.no_image_caption') }}</p>
         </div>
