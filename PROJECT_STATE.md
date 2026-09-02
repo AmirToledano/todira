@@ -2505,3 +2505,35 @@ AI-generated) photo at all — a completely different kind of solution than anyt
   logic). Verified visually via Playwright: the mascot renders cleanly inside the actual card
   markup/CSS at production size, matching the Dorin-inspired layout (illustration filling the
   cover area, confident caption banner below it).
+
+## 2026-09-02 (one more swap, same day): the crowned-mascot SVG replaced with a user-supplied illustration — Todi the detective
+
+Immediately after the flat-vector mascot shipped, the user supplied a specific different
+illustration directly and asked for it by name: Todi as a detective (deerstalker hat) standing on
+a laptop, pointing out a matching listing on a map to his smiling owner, with real-estate UI icons
+(a "for rent" sign, a key, a floor plan, a bot, a calculator) floating around them — plus a request
+to change the caption's framing from "here's Todi" to something practical: "דירה זו עלתה ללא
+תמונות אך שווה לדבר עם איש הקשר לבקשת תמונות" (worth contacting the lister to ask for photos), the
+user's own words offered as a starting point rather than a fixed requirement.
+
+- Unlike the SVG mascot (designed inside this session, iterated with Playwright screenshots), this
+  illustration was supplied as a finished image — no design iteration needed, just integration.
+  The source was portrait-oriented (896x1195), which didn't fit the card's own 4:3 cover aspect
+  ratio without heavy letterboxing or losing most of the detail to a crop; cropped down to its
+  lower ~60% (896x715 — Todi, the laptop, and the owner's face, the part that reads at small card
+  size) to land close to 4:3, then used exactly like a real listing photo — the SAME
+  `.cover-slide` background-image technique, not a special case, which is simpler than the SVG
+  mascot's own dedicated markup/CSS (all of which is now dead code, removed).
+- `scripts/generate_todi_mascot.py` (the SVG-to-PNG renderer) deleted outright — nothing to
+  regenerate anymore, this is a fixed static asset like the AI-photo eras before it.
+  `scripts/prepare_todi_photos.py` is a doc-only note again (see its docstring for exactly what was
+  cropped and why) — the original full image isn't checked into the repo, only the crop.
+- Caption copy changed in the same spirit as the request, in all 5 site languages
+  (`website/i18n.py`'s `card.no_image_caption`) plus the Telegram/WhatsApp suffix
+  (`cards.py`'s `_NO_PHOTOS_SUFFIX_HE`): from "here's Todi for you" to a practical nudge toward
+  contacting the lister for photos, with a 🕵️ instead of 🐾 to match the new detective framing.
+- 304 tests passing — the two tests that named the mascot PNG/`"טודי"` in the caption updated to
+  match the new filename and caption wording (the caption text itself no longer says "טודי", so
+  asserting that exact substring stopped being meaningful). Verified visually via Playwright: the
+  illustration fills the card's cover area cleanly at real card width, no awkward cropping, caption
+  banner reads clearly beneath it.

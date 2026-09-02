@@ -19,21 +19,23 @@ logger = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
 
-# A listing with zero real photos gets a single branded Todi mascot illustration instead — a
-# flat-vector dachshund wearing a small crown (matches the bot's own "טודירה 👑" royal branding),
-# hand-designed as an SVG and rendered once to this PNG for Telegram (the website inlines the same
-# SVG directly — see website/templates/_listing_card.html — so it stays crisp and themeable there).
-# 2026-09-02 request, replacing every earlier attempt at this feature (a CC0 cartoon illustration,
-# real photos with background/people removed, real photos with an emoji over any visible face, 18
-# AI-generated "nano banana" photos — all rejected; see PROJECT_STATE.md for that full history).
-# The direct ask was to do something ownable and consistently good-looking instead of another
-# photo-realism attempt, closer to how the reference bot Dorin uses one consistent branded
-# character graphic + a confident one-line caption for the same "no photos" case — so this is a
-# single static asset, not a rotating pool: there's no longer a "different photo each time" need
-# once it's a designed mascot rather than a stand-in for a missing real photo.
+# A listing with zero real photos gets a single branded illustration instead — Todi as a detective
+# (deerstalker hat), standing on a laptop pointing at a map of matching listings next to his happy
+# owner, with real-estate UI icons (a "for rent" sign, a key, a floor plan, a bot, a calculator)
+# floating around them. 2026-09-02 request, replacing the earlier flat-vector crowned-dachshund
+# mascot (which itself replaced several earlier photo-based attempts — CC0 illustration, background
+# /person removal, emoji-over-face, 18 AI-generated "nano banana" photos; see PROJECT_STATE.md for
+# that full history) — the user supplied this specific illustration directly and asked for it by
+# name, unlike every earlier round which was iterated on inside this session. Cropped from the
+# original portrait-oriented image (896x1195) down to its lower ~60% (896x715, Todi/laptop/owner —
+# the part that reads at small card size; the floating icon row above it wouldn't) to roughly match
+# the card's own 4:3 cover aspect ratio; the original full image isn't kept in the repo, only this
+# crop. A single static asset, not a rotating pool — same reasoning as the mascot it replaces: a
+# designed illustration doesn't need per-listing variety the way a stand-in for a missing real
+# photo would. Same treatment on the website — see website/templates/_listing_card.html.
 _DACHSHUND_DIR = Path(__file__).resolve().parent / "assets" / "dachshunds"
-_MASCOT_PATH = _DACHSHUND_DIR / "todi_mascot.png"
-_NO_PHOTOS_SUFFIX_HE = "\n\n🐾 <i>טודי אומר: גם בלי תמונה, שווה להציץ בפרטים!</i>"
+_MASCOT_PATH = _DACHSHUND_DIR / "todi_detective.jpg"
+_NO_PHOTOS_SUFFIX_HE = "\n\n🕵️ <i>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</i>"
 
 
 def _dachshund_photo_path() -> Path:
