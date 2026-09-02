@@ -2465,3 +2465,43 @@ unconditionally instead.
   meant to. Added 2 new tests for the actual bug: a casual message never touches `get_session`/
   `send_message` at all, and its reply mentions `/start` rather than the support "we'll get back
   to you" copy. 304 tests passing.
+
+## 2026-09-02 (final word on the "no photos" placeholder): scrapped photos entirely — a designed Todi mascot, like the reference bot's own approach
+
+After the AI-generated photos still didn't land (quality complaints kept recurring across three
+separate photo-based attempts that same day), direct feedback pointed at the reference bot Dorin's
+own solution to the identical problem: "אצל דורין נגיד זה נראה כך, היא הוסיפה טקסט [confident
+one-liner] ותמונה של דורין מחזיקה אצבעות... צריך להיות יצירתיים באמת באמת לחשוב מחוץ לקופסה." Dorin
+uses ONE consistent branded character illustration + a confident caption, not a real (or
+AI-generated) photo at all — a completely different kind of solution than anything tried so far.
+
+- Designed a small flat-vector illustration of Todi: a crowned dachshund (ties into the bot's own
+  "טודירה 👑" royal branding already in the header) with a happy expression, wagging tail, and
+  sparkle accents, in the site's own brand palette (`--wine`/`--gold` from style.css) plus natural
+  dog-brown tones for the dog itself. Built as a single SVG, iterated visually with Playwright
+  screenshots the same way every other visual change this session was verified (draft → screenshot
+  → inspect → adjust — the first pose, a raised paw, didn't read clearly at small size and was
+  simplified to a confident sit + sparkles instead).
+- This is a full replacement, not a variant: every earlier photo-based approach (CC0 illustration,
+  background/person removal, emoji-over-face, 18 AI-generated "nano banana" photos) is gone, and so
+  is the whole "which photo for this listing" question — a single owned illustration doesn't need
+  per-listing variety or randomness the way a stand-in for a missing real photo did, so
+  `_TODI_PHOTO_COUNT`/`todi_photo_count` and all random-selection logic are gone too.
+  `_dachshund_photo_path()` now just returns the one asset's path.
+- Two copies of the same SVG markup necessarily exist: `website/templates/_listing_card.html`
+  inlines it directly (crisp at any size, no image request, easy to theme), while
+  `scripts/generate_todi_mascot.py` renders the identical markup to a PNG for Telegram/WhatsApp,
+  which can only send a real image file, not inline SVG. `scripts/prepare_todi_photos.py` (every
+  earlier photo-pipeline version) is deleted outright — nothing in it applies anymore.
+- Caption copy also updated to match Dorin's confident tone rather than the old neutral
+  "here's Todi for you" line — in all 5 site languages (`website/i18n.py`'s
+  `card.no_image_caption`) plus the matching Telegram/WhatsApp suffix
+  (`cards.py`'s `_NO_PHOTOS_SUFFIX_HE`). Kept honest (no fabricated statistics like Dorin's "80%"
+  claim, since that number isn't something this project actually has data for) while still being
+  warm and Todi-branded, per the direct request ("אפילו משהו שקשור לטודי ועם משפט כלשהו").
+- 304 tests passing — the photo-randomness test replaced with a simple "resolves to the one real
+  mascot asset" check; the caption-overlap and quality tests from the prior two passes needed no
+  changes (this only touches which asset is shown and its file format, not `send_listing_card`'s
+  logic). Verified visually via Playwright: the mascot renders cleanly inside the actual card
+  markup/CSS at production size, matching the Dorin-inspired layout (illustration filling the
+  cover area, confident caption banner below it).
