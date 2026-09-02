@@ -1,0 +1,132 @@
+name: Diagnose a cheaper search-page fetch (no js_render) + embedded per-card data
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-02. Real
+# concern raised by the owner: enriching every NEW listing via its own detail page
+# (fetch_listing_detail, see PR #93 / diagnose-listing-detail-page.yaml) costs a full ~25-credit
+# ZenRows request PER LISTING — real, ongoing, and potentially large spend, not a one-off. Before
+# building anything more expensive, this tests two cost-cutting hypotheses on the SEARCH-RESULTS
+# page (the one fetch this project already pays for on every scrape, regardless of this feature):
+#
+# 1. Does the search page's own HTML need `js_render=true` at all? yad2_client.py's own docstring
+#    says the real feed items are "plain server/client-rendered HTML" (not injected by client-side
+#    JS after the fact) — if the cards (and any embedded JSON) are already present WITHOUT
+#    JS rendering, dropping `js_render` could cut the cost of EVERY scrape this project already
+#    does, search and (if the same holds for detail pages) detail alike — not just this feature.
+# 2. Does the search page ALSO embed a Next.js `__NEXT_DATA__`-style JSON blob — this time
+#    covering EVERY card in the result list, not just one ad (see diagnose-listing-detail-page.yaml
+#    for the shape confirmed on a single listing's own detail page)? If so, real photos/amenities/
+#    description for every listing on the page come along for free inside a fetch this project
+#    already pays for — no per-listing detail fetch needed at all.
+#
+# One ZenRows request (cheaper than a normal scrape if hypothesis 1 holds, same cost if not) —
+# approved by the owner. Read-only, writes nothing.
+on:
+  workflow_dispatch: {}
+
+env:
+  # Jerusalem's Yad2 numeric city id (CITY_SLUG_TO_ID["jerusalem"] in scraper/yad2_client.py) —
+  # hardcoded here since this doesn't need a DB lookup, only a fetch.
+  CITY_ID: "3000"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch a Jerusalem search page WITHOUT js_render (premium_proxy only)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.yad2.co.il/realestate/rent?city=$CITY_ID" \
+            --data-urlencode "premium_proxy=true" \
+            --data-urlencode "block_resources=image,stylesheet,font,media" \
+            -o /tmp/search_no_jsrender.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+
+      - name: Analyze the no-js_render fetch (cards parse? __NEXT_DATA__ present?)
+        run: |
+          echo "=== WITHOUT js_render ==="
+          python3 - << 'PYEOF'
+          import re, json
+
+          with open('/tmp/search_no_jsrender.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f"html_length={len(html)}")
+
+          card_re = re.compile(
+              r'<a class="[^"]*itemLink[^"]*" data-nagish="feed-item-layout-link" href="([^"]+)".*?'
+              r'data-testid="price">([^<]*)</span>',
+              re.S,
+          )
+          cards = card_re.findall(html)
+          print(f"cards matched by the EXISTING _CARD_RE-style pattern: {len(cards)}")
+
+          m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+          print(f"__NEXT_DATA__ present: {bool(m)}")
+          if m:
+              raw = m.group(1)
+              print(f"__NEXT_DATA__ length: {len(raw)}")
+              try:
+                  data = json.loads(raw)
+                  print("__NEXT_DATA__ top-level keys:", list(data.keys()))
+                  print("--- first 3000 chars ---")
+                  print(raw[:3000])
+              except Exception as e:
+                  print("json parse failed:", e)
+
+          if len(html) < 2000:
+              print("--- suspiciously short response, printing all of it (likely blocked) ---")
+              print(html)
+          PYEOF
+
+      - name: Fetch the SAME search page WITH js_render=true (for direct comparison)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.yad2.co.il/realestate/rent?city=$CITY_ID" \
+            --data-urlencode "js_render=true" \
+            --data-urlencode "premium_proxy=true" \
+            --data-urlencode "block_resources=image,stylesheet,font,media" \
+            -o /tmp/search_with_jsrender.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+
+      - name: Analyze the js_render=true fetch — does __NEXT_DATA__ cover every card here?
+        run: |
+          echo "=== WITH js_render=true ==="
+          python3 - << 'PYEOF'
+          import re, json
+
+          with open('/tmp/search_with_jsrender.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f"html_length={len(html)}")
+
+          card_re = re.compile(
+              r'<a class="[^"]*itemLink[^"]*" data-nagish="feed-item-layout-link" href="([^"]+)".*?'
+              r'data-testid="price">([^<]*)</span>',
+              re.S,
+          )
+          cards = card_re.findall(html)
+          print(f"cards matched: {len(cards)}")
+
+          m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+          print(f"__NEXT_DATA__ present: {bool(m)}")
+          if m:
+              raw = m.group(1)
+              print(f"__NEXT_DATA__ length: {len(raw)}")
+              try:
+                  data = json.loads(raw)
+                  print("__NEXT_DATA__ top-level keys:", list(data.keys()))
+                  # Looking specifically for a LIST of ad records (one per card), not a single ad
+                  serialized = json.dumps(data)
+                  print(f"'images' occurrences in blob: {serialized.count(chr(34)+'images'+chr(34))}")
+                  print(f"'coverImage' occurrences in blob: {serialized.count('coverImage')}")
+                  print("--- first 3000 chars ---")
+                  print(raw[:3000])
+              except Exception as e:
+                  print("json parse failed:", e)
+          PYEOF
