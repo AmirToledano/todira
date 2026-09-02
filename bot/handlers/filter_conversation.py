@@ -28,7 +28,7 @@ from dorin_common.db import get_session
 from dorin_common.models import Filter, User
 from dorin_common.schemas import FilterData
 from dorin_common.users import get_or_create_user
-from handlers.apartments import RESULT_LIMIT, find_matching_listings
+from handlers.apartments import RESULT_LIMIT, find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -233,7 +233,7 @@ def _describe_validation_error(exc: ValidationError) -> str:
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
-def _save_and_match_sync(tg_user, values: dict) -> list:
+def _save_and_match_sync(tg_user, values: dict) -> tuple[int, list]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
         existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
@@ -248,7 +248,11 @@ def _save_and_match_sync(tg_user, values: dict) -> list:
         # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
         # brand-new user especially shouldn't have to wait for the next scrape to see anything.
         # mirrors the reference bot's "👀 הראי לי דוגמה" prompt for the single inline example.
-        return find_matching_listings(session, user.id, existing, limit=RESULT_LIMIT)
+        # Only the NOT-already-shown ones, though (find_new_matches_to_show) - re-saving/tweaking
+        # a filter used to resend every current match in full, every time.
+        total, new_to_show = find_new_matches_to_show(session, user.id, existing, limit=RESULT_LIMIT)
+        session.commit()
+        return total, new_to_show
 
 
 async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dict) -> int:
@@ -268,23 +272,31 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    matches = await asyncio.to_thread(_save_and_match_sync, update.effective_user, validated.model_dump())
+    total, new_matches = await asyncio.to_thread(
+        _save_and_match_sync, update.effective_user, validated.model_dump()
+    )
 
     context.user_data.pop("draft", None)
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
     await query.edit_message_text("✅ הסינון נשמר! תתחיל/י לקבל התראות על דירות מתאימות.")
-    # Sends every current match as a real card, not just a count/link (mirrors the reference
-    # bot's behavior on both its guided-form and free-text paths, per the owner's screenshots
-    # 2026-08-31) — a brand-new user especially shouldn't have to click through anywhere to see
-    # what already matches right now.
-    if matches:
-        await query.message.reply_text(
-            f"👀 יש כרגע {len(matches)}{'+' if len(matches) >= RESULT_LIMIT else ''} דירות שמתאימות:"
-        )
-        for listing in matches:
+    # Sends every NEW-to-this-user current match as a real card, not just a count/link (mirrors
+    # the reference bot's behavior on both its guided-form and free-text paths, per the owner's
+    # screenshots 2026-08-31) — a brand-new user especially shouldn't have to click through
+    # anywhere to see what already matches right now. "New-to-this-user" (not just "every current
+    # match") since 2026-09-02 — see find_new_matches_to_show's own docstring for the real report.
+    if new_matches:
+        intro = f"👀 יש כרגע {total}{'+' if total >= RESULT_LIMIT else ''} דירות שמתאימות"
+        intro += ":" if len(new_matches) == total else f" — הנה {len(new_matches)} שעוד לא ראית:"
+        await query.message.reply_text(intro)
+        for listing in new_matches:
             await send_listing_card(
                 context.bot, update.effective_chat.id, listing, format_caption(listing)
             )
+    elif total:
+        await query.message.reply_text(
+            "הסינון עודכן! כל הדירות התואמות כרגע כבר נשלחו לך קודם — "
+            f"אפשר לראות את כולן שוב באתר: {apartments_url}"
+        )
     else:
         await query.message.reply_text(
             f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"

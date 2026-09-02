@@ -1960,3 +1960,54 @@ Full arc, in order, for anyone picking this up cold:
   free-text descriptions specifically.
 - Komo (קומו) and Facebook Marketplace/Groups scraping sources - long-standing backlog items,
   untouched this session.
+
+## Update 2026-09-02, later still: real-photos feature verified live + a flood-control bug found
+Ran the approved Jerusalem backfill after deploying the real-photos-for-free work (PR #93):
+`{'fetched': 43, 'new': 24, 'price_drops': 0, 'delisted': 29, 'errors': 0, 'matched': 17,
+'notifications_sent': 13, 'price_drop_notifications_sent': 0}`. Confirmed real `sendMediaGroup`
+calls actually going out (visible in the pod logs) — the feature works end to end, not just in
+unit tests.
+
+**But found a real bug in the same run**: only 13 of the 17 matched notifications actually reached
+the user — 4 failed with Telegram `429 Too Many Requests` / `RetryAfter` ("Flood control exceeded,
+retry in ~10s"), and `send_listing_card` just logged the failure and gave up, no retry. Root cause:
+`SEND_DELAY_SECONDS=0.05` (in `scraper/notifier.py`) was tuned for the OLD text/single-photo-only
+sending pattern, safely under Telegram's ~30 msgs/sec *global* cap — but that's not the limit that
+bites when one user matches several listings in a row (routine, and exactly what a 17-listing burst
+to one chat triggers): Telegram enforces roughly 1 message/sec *per chat*, and a real-photo send is
+now 2 API calls (the media group, then a separate follow-up message for the keyboard, since
+`sendMediaGroup` can't carry one) — twice the traffic per listing the old delay was tuned for.
+
+Fixed same-day: `dorin_common.cards.send_listing_card` now retries once on `RetryAfter`, honoring
+Telegram's own wait time, before giving up like any other permanent failure. `SEND_DELAY_SECONDS`
+raised 0.05 -> 1.1s. The 4 notifications lost in this specific run are NOT recoverable after the
+fact (their `SentNotification` rows were never written, but the listings are no longer "new" for a
+future run to retry) — a one-time cost of testing, not expected to recur now that both fixes are
+live. 275 tests total (2 new: retry-then-succeed, retry-then-give-up), all passing.
+
+## Update 2026-09-02, later still: two more live UX bugs, both fixed
+Real user reports right after using the newly-live real-photos feature:
+
+1. **Jumbo "⬆️" emoji taking over the chat.** The follow-up message carrying the ❤️/🙈/🎉 keyboard
+   (needed because `sendMediaGroup` can't carry an inline keyboard itself) was a bare `"⬆️"` —
+   Telegram renders a message containing ONLY 1-3 emoji as one giant "jumbo" emoji with no normal
+   bubble background. Fixed by pairing it with real words: `"⬆️ הדירה למעלה"` — pure text next to
+   an emoji renders as a normal-sized bubble.
+
+2. **Re-saving/tweaking a filter resent every current match, every time.** Saving a filter (either
+   path — the guided `/filter` menu or free-text onboarding) always called `find_matching_listings`
+   and sent a card for literally every current match, with no memory of what this user had already
+   been shown. A user adjusting their filter a few times in a row got the exact same set of cards
+   repeated each time, flooding their own chat. Fixed with `find_new_matches_to_show`
+   (`bot/handlers/apartments.py`) — reuses the SAME `SentNotification` (user_id, listing_id, reason)
+   bookkeeping the scraper's own push notifications already use, so a listing shown here is
+   recorded exactly like a real "new match" push and is never repeated through either channel.
+   `/apartments` itself is unchanged (still shows every current match on demand, by design — this
+   dedup only applies to the "here's what already matches" summary right after a save). Both
+   `filter_conversation.py`'s `_handle_save` and `onboarding.py`'s `_handle_freetext` now report
+   the real total match count alongside however many are actually new-to-show, with a distinct
+   message when everything currently matching was already sent before ("no new listings, but here's
+   the website link to see them all again").
+
+5 new tests (`tests/test_find_new_matches_to_show.py`) plus one existing test's mock updated for
+the new `(total, new_matches)` return shape. 280 tests total, all passing.
