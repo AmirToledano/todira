@@ -41,7 +41,7 @@ jobs:
             -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
             --max-time 100
 
-      - name: Find the feed query and print one full listing record's shape
+      - name: Recursively find the feed listing array and print one full record's shape
         run: |
           python3 - << 'PYEOF'
           import re, json
@@ -58,35 +58,38 @@ jobs:
           data = json.loads(m.group(1))
           queries = data["props"]["pageProps"]["dehydratedState"]["queries"]
           print(f"total queries in dehydratedState: {len(queries)}")
-
-          found_any = False
           for i, q in enumerate(queries):
-              state_data = q.get("state", {}).get("data")
-              query_key = q.get("queryKey")
+              sd = q.get("state", {}).get("data")
+              shape = type(sd).__name__
+              length = len(sd) if isinstance(sd, (list, dict)) else "n/a"
+              print(f"  [{i}] queryKey={q.get('queryKey')} data_type={shape} length={length}")
 
-              # Looking for a LIST of dicts each carrying "token" - the per-ad identifier
-              # confirmed on the single-listing detail page (diagnose-listing-detail-page.yaml).
-              if isinstance(state_data, list) and state_data and isinstance(state_data[0], dict) and "token" in state_data[0]:
-                  found_any = True
-                  print(f"\n=== FEED QUERY FOUND at index {i} ===")
-                  print(f"queryKey: {query_key}")
-                  print(f"list length (listings on this page): {len(state_data)}")
-                  record = state_data[0]
-                  print(f"first record top-level keys: {list(record.keys())}")
-                  print("--- first record, first 3000 chars ---")
-                  print(json.dumps(record, ensure_ascii=False)[:3000])
-                  # Count how many of the listed records actually carry real image data
-                  with_images = sum(
-                      1 for r in state_data
-                      if isinstance(r, dict) and isinstance(r.get("metaData"), dict) and r["metaData"].get("images")
-                  )
-                  print(f"\nrecords with non-empty metaData.images: {with_images} / {len(state_data)}")
+          # The previous pass only checked each query's TOP-LEVEL data for a list-of-ad-dicts
+          # shape and found none - several queries are dicts, so the listing array (if present)
+          # must be nested inside one of them. Walk the whole tree instead of just the top level.
+          def find_listing_arrays(node, path=""):
+              found = []
+              if isinstance(node, list) and node and isinstance(node[0], dict) and "token" in node[0]:
+                  found.append((path, node))
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      found.extend(find_listing_arrays(v, f"{path}.{k}"))
+              elif isinstance(node, list):
+                  for idx, v in enumerate(node):
+                      found.extend(find_listing_arrays(v, f"{path}[{idx}]"))
+              return found
 
-          if not found_any:
-              print("\nNo query matched the 'list of dicts with token' shape. Listing all queryKeys found:")
-              for i, q in enumerate(queries):
-                  sd = q.get("state", {}).get("data")
-                  shape = type(sd).__name__
-                  length = len(sd) if isinstance(sd, (list, dict)) else "n/a"
-                  print(f"  [{i}] queryKey={q.get('queryKey')} data_type={shape} length={length}")
+          results = find_listing_arrays(queries, "queries")
+          print(f"\nlisting-array matches found anywhere in the tree: {len(results)}")
+          for path, arr in results:
+              print(f"\n=== match at {path} — length={len(arr)} ===")
+              record = arr[0]
+              print(f"first record top-level keys: {list(record.keys())}")
+              print("--- first record, first 3500 chars ---")
+              print(json.dumps(record, ensure_ascii=False)[:3500])
+              with_images = sum(
+                  1 for r in arr
+                  if isinstance(r, dict) and isinstance(r.get("metaData"), dict) and r["metaData"].get("images")
+              )
+              print(f"records with non-empty metaData.images: {with_images} / {len(arr)}")
           PYEOF
