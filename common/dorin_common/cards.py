@@ -35,7 +35,12 @@ CAPTION_LIMIT = 1024
 # photo would. Same treatment on the website — see website/templates/_listing_card.html.
 _DACHSHUND_DIR = Path(__file__).resolve().parent / "assets" / "dachshunds"
 _MASCOT_PATH = _DACHSHUND_DIR / "todi_detective.jpg"
-_NO_PHOTOS_SUFFIX_HE = "\n\n🕵️ <i>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</i>"
+# On the website (website/templates/_listing_card.html + .no-image-caption in style.css) this same
+# notice is a full-width bold banner directly under the cover photo — impossible to miss. Telegram
+# captions can't do background colors or font-size, so the closest equivalent is BOLD (not italic
+# — italic reads as an aside, easy to skim past) and placed FIRST, before the listing's own details,
+# instead of tacked on at the very end where a real user reported missing it entirely (2026-09-03).
+_NO_PHOTOS_PREFIX_HE = "🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>\n\n"
 
 
 def _dachshund_photo_path() -> Path:
@@ -213,7 +218,7 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
                 reply_markup=keyboard,
             )
         else:
-            no_photo_caption = (caption + _NO_PHOTOS_SUFFIX_HE)[:CAPTION_LIMIT]
+            no_photo_caption = (_NO_PHOTOS_PREFIX_HE + caption)[:CAPTION_LIMIT]
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=_dachshund_photo_path(),
