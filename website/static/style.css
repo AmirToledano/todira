@@ -1,40 +1,41 @@
-/* טודירה — design system. Royal/premium real-estate aesthetic: wine + gold on warm cream,
-   Frank Ruhl Libre for display headings (Hebrew serif, matches the crown/royal bot branding),
-   Rubik for UI text. */
+/* טודירה — design system. Teal + a gold accent (a nod to Todi's crown) on warm cream — 2026-09-03
+   redesign, inspired by the reference bot dorin.app's clean/modern look but its own identity.
+   Rubik for display headings/price/buttons (rounded, friendly, full Hebrew support), Heebo for
+   body/UI text. Replaces the earlier wine + Frank Ruhl Libre look. */
 
 :root {
-  --wine: #7a1f2b;
-  --wine-dark: #5c1620;
-  --wine-tint: #fdf1f2;
-  --gold: #b8860b;
-  --gold-light: #e8c25a;
-  --bg: #faf6ee;
+  --teal: #0e8a82;
+  --teal-dark: #173c40;
+  --teal-tint: #eaf5f3;
+  --gold: #d9a441;
+  --gold-light: #ecc978;
+  --bg: #fbf7ef;
   --card: #ffffff;
-  --text: #241417;
-  --text-muted: #7a6f6a;
-  --border: #ece3d6;
+  --text: #1e2a29;
+  --text-muted: #66787c;
+  --border: #e6e1d4;
   --radius-lg: 20px;
   --radius-md: 14px;
   --radius-sm: 9px;
-  --shadow-sm: 0 1px 3px rgba(90, 30, 20, .08);
-  --shadow-md: 0 8px 24px rgba(90, 30, 20, .10);
-  --shadow-lg: 0 16px 40px rgba(90, 30, 20, .16);
+  --shadow-sm: 0 1px 3px rgba(14, 60, 58, .08);
+  --shadow-md: 0 8px 24px rgba(14, 60, 58, .10);
+  --shadow-lg: 0 16px 40px rgba(14, 60, 58, .16);
 }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
-  font-family: 'Rubik', system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: 'Heebo', system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 h1, h2, h3, .display {
-  font-family: 'Frank Ruhl Libre', Georgia, serif;
+  font-family: 'Rubik', Arial, sans-serif;
   font-weight: 700;
-  color: var(--wine-dark);
+  color: var(--teal-dark);
   line-height: 1.2;
   margin: 0 0 .4em;
 }
@@ -44,7 +45,7 @@ img { max-width: 100%; display: block; }
 /* ---------- header ---------- */
 header.site {
   position: sticky; top: 0; z-index: 40;
-  background: linear-gradient(135deg, var(--wine) 0%, var(--wine-dark) 100%);
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
   color: #fff;
   box-shadow: 0 2px 12px rgba(0,0,0,.15);
 }
@@ -55,7 +56,7 @@ header.site {
 .brand {
   display: flex; align-items: center; gap: 8px;
   text-decoration: none; color: #fff;
-  font-family: 'Frank Ruhl Libre', serif; font-weight: 700; font-size: 1.35rem;
+  font-family: 'Rubik', sans-serif; font-weight: 700; font-size: 1.35rem;
   letter-spacing: .3px;
 }
 .brand .crown { font-size: 1.15rem; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); display: inline-block; animation: float 3.2s ease-in-out infinite; }
@@ -76,17 +77,17 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 /* ---------- buttons ---------- */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  background: var(--wine); color: #fff !important;
+  background: var(--teal); color: #fff !important;
   padding: 13px 26px; border-radius: 999px; text-decoration: none;
   font-weight: 600; font-size: .98rem; border: none; cursor: pointer;
   box-shadow: var(--shadow-sm);
   transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
-.btn:hover { background: var(--wine-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-.btn.gold { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--wine-dark) !important; }
+.btn:hover { background: var(--teal-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn.gold { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark) !important; }
 .btn.gold:hover { filter: brightness(1.06); }
-.btn.outline { background: transparent; color: var(--wine) !important; border: 1.5px solid var(--wine); box-shadow: none; }
-.btn.outline:hover { background: var(--wine-tint); }
+.btn.outline { background: transparent; color: var(--teal) !important; border: 1.5px solid var(--teal); box-shadow: none; }
+.btn.outline:hover { background: var(--teal-tint); }
 .btn.block { width: 100%; justify-content: center; }
 
 /* ---------- hero (home page) ----------
@@ -100,8 +101,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
    bottom stays 100% visible. */
 .hero {
   position: relative; overflow: hidden;
-  background: radial-gradient(circle at 15% 20%, rgba(184,134,11,.14), transparent 45%),
-              radial-gradient(circle at 85% 0%, rgba(122,31,43,.10), transparent 40%);
+  background: radial-gradient(circle at 15% 20%, rgba(217,164,65,.14), transparent 45%),
+              radial-gradient(circle at 85% 0%, rgba(14,138,130,.10), transparent 40%);
   border-radius: var(--radius-lg);
   padding: 48px 28px 36px; text-align: center; margin-bottom: 0;
 }
@@ -111,7 +112,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .hero .eyebrow {
   display: inline-flex; align-items: center; gap: 6px;
   background: #fff; border: 1px solid var(--border); border-radius: 999px;
-  padding: 6px 16px; font-size: .82rem; font-weight: 700; color: var(--wine);
+  padding: 6px 16px; font-size: .82rem; font-weight: 700; color: var(--teal);
   margin-bottom: 18px; box-shadow: var(--shadow-sm);
 }
 
@@ -137,7 +138,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   flex: 1 1 140px; min-width: 140px;
 }
 .float-stat .fs-icon { font-size: 1.3rem; }
-.float-stat b { display: block; font-family: 'Frank Ruhl Libre', serif; color: var(--wine); font-size: 1.05rem; line-height: 1.2; }
+.float-stat b { display: block; font-family: 'Rubik', sans-serif; color: var(--teal); font-size: 1.05rem; line-height: 1.2; }
 .float-stat .label-sm { font-size: .72rem; color: var(--text-muted); }
 @media (max-width: 480px) {
   .hero-float-stats { gap: 8px; }
@@ -156,8 +157,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .compare-col li { font-size: .88rem; color: var(--text-muted); padding-inline-start: 24px; position: relative; }
 .compare-col.without { background: #f6f2ea; }
 .compare-col.without li::before { content: '✕'; position: absolute; inset-inline-start: 0; color: #b06a6a; font-weight: 700; }
-.compare-col.with { background: linear-gradient(160deg, var(--wine-tint), #fff); border-color: #eeded1; box-shadow: var(--shadow-sm); }
-.compare-col.with h3 { color: var(--wine-dark); }
+.compare-col.with { background: linear-gradient(160deg, var(--teal-tint), #fff); border-color: #d7ebe8; box-shadow: var(--shadow-sm); }
+.compare-col.with h3 { color: var(--teal-dark); }
 .compare-col.with li::before { content: '✓'; position: absolute; inset-inline-start: 0; color: var(--gold); font-weight: 700; }
 
 .section-title { text-align: center; margin-bottom: 8px; font-size: clamp(1.5rem, 3.5vw, 2rem); }
@@ -173,7 +174,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 }
 .feature-card .icon {
   width: 46px; height: 46px; border-radius: 12px;
-  background: var(--wine-tint); display: flex; align-items: center; justify-content: center;
+  background: var(--teal-tint); display: flex; align-items: center; justify-content: center;
   font-size: 1.4rem; margin-bottom: 14px;
 }
 .feature-card h3 { font-size: 1.08rem; margin-bottom: 6px; }
@@ -185,7 +186,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 }
 .steps::before {
   content: ''; position: absolute; top: 22px; bottom: 22px; inset-inline-start: 18px;
-  width: 2px; background: linear-gradient(var(--gold-light), var(--wine)); opacity: .45;
+  width: 2px; background: linear-gradient(var(--gold-light), var(--teal)); opacity: .45;
 }
 .step { position: relative; padding-inline-start: 56px; }
 .step::before {
@@ -193,7 +194,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   position: absolute; inset-inline-start: 0; top: -2px;
   width: 38px; height: 38px; border-radius: 50%;
   background: linear-gradient(135deg, var(--gold-light), var(--gold));
-  color: var(--wine-dark); font-weight: 700; font-family: 'Frank Ruhl Libre', serif;
+  color: var(--teal-dark); font-weight: 700; font-family: 'Rubik', sans-serif;
   display: flex; align-items: center; justify-content: center; font-size: 1.05rem;
   box-shadow: 0 0 0 6px var(--bg);
 }
@@ -217,7 +218,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .faq-item p { color: var(--text-muted); font-size: .89rem; margin: 0 0 16px; }
 
 .footer-cta {
-  text-align: center; background: linear-gradient(135deg, var(--wine), var(--wine-dark));
+  text-align: center; background: linear-gradient(135deg, var(--teal), var(--teal-dark));
   color: #fff; border-radius: var(--radius-lg); padding: 48px 24px; margin-top: 60px;
 }
 .footer-cta h2 { color: #fff; }
@@ -232,7 +233,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .filter-bar .label { font-weight: 600; color: var(--text-muted); font-size: .85rem; }
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
-  background: var(--wine-tint); color: var(--wine); border-radius: 999px;
+  background: var(--teal-tint); color: var(--teal); border-radius: 999px;
   padding: 5px 13px; font-size: .82rem; font-weight: 600;
 }
 .filter-bar .btn.outline { padding: 8px 16px; font-size: .85rem; margin-inline-start: auto; }
@@ -240,8 +241,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 /* ---------- listing grid & cards ---------- */
 /* ---------- page banner (apartments / liked / filter headers) ---------- */
 .page-banner {
-  background: radial-gradient(circle at 15% 20%, rgba(184,134,11,.14), transparent 45%),
-              radial-gradient(circle at 85% 0%, rgba(122,31,43,.10), transparent 40%);
+  background: radial-gradient(circle at 15% 20%, rgba(217,164,65,.14), transparent 45%),
+              radial-gradient(circle at 85% 0%, rgba(14,138,130,.10), transparent 40%);
   border-radius: var(--radius-lg);
   padding: 26px 24px; margin-bottom: 24px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
@@ -252,7 +253,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 10px 20px; text-align: center; box-shadow: var(--shadow-sm); min-width: 92px;
 }
-.page-banner .pb-count b { display: block; font-family: 'Frank Ruhl Libre', serif; font-size: 1.5rem; color: var(--wine); }
+.page-banner .pb-count b { display: block; font-family: 'Rubik', sans-serif; font-size: 1.5rem; color: var(--teal); }
 .page-banner .pb-count span { font-size: .72rem; color: var(--text-muted); }
 
 .listing-grid {
@@ -277,21 +278,28 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   flex: 0 0 100%; scroll-snap-align: start; background-size: cover; background-position: center;
 }
 .no-image-caption {
-  background: var(--wine); color: #fff;
+  background: var(--teal); color: #fff;
   padding: 10px 16px; font-size: 1.05rem; font-weight: 700;
   text-align: center; line-height: 1.3;
 }
-.listing-cover-wrap .price-badge {
-  position: absolute; top: 12px; inset-inline-end: 12px;
-  background: rgba(36, 20, 23, .82); color: #fff; backdrop-filter: blur(3px);
-  padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: .95rem;
-  font-family: 'Frank Ruhl Libre', serif;
+/* Top-left badge stack (source + broker) — 2026-09-03 request, matching the reference bot
+   dorin.app's own card (no price shown over the photo at all — .price-badge/.gold-text removed
+   the same day, price only lives in .listing-price below now). A flex column so a listing with
+   BOTH badges (source always shown, broker only for is_broker_listing) stacks them with a small
+   gap instead of needing hand-tuned per-badge pixel offsets; a listing with only the source badge
+   just has one child, no different from before. Physical `left` (not inset-inline-start) — a
+   deliberate, language-independent visual corner. */
+.listing-cover-wrap .top-left-badges {
+  position: absolute; top: 12px; left: 12px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
 }
-.listing-cover-wrap .price-badge .gold-text { color: var(--gold-light); }
 .listing-cover-wrap .source-badge {
-  position: absolute; top: 12px; inset-inline-start: 12px;
-  background: rgba(255,255,255,.9); color: var(--wine); font-size: .72rem; font-weight: 700;
+  background: rgba(255,255,255,.9); color: var(--teal); font-size: .72rem; font-weight: 700;
   padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em;
+}
+.listing-cover-wrap .broker-badge {
+  background: var(--gold); color: var(--teal-dark); font-size: .72rem; font-weight: 700;
+  padding: 4px 10px; border-radius: 999px;
 }
 .listing-cover-wrap .photo-count-badge {
   position: absolute; bottom: 10px; inset-inline-end: 12px;
@@ -302,7 +310,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 
 .listing-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
 .listing-price {
-  font-family: 'Frank Ruhl Libre', serif; font-weight: 800; font-size: 1.5rem; color: var(--wine);
+  font-family: 'Rubik', sans-serif; font-weight: 800; font-size: 1.5rem; color: var(--teal);
 }
 .listing-loc { font-weight: 700; font-size: 1.02rem; }
 .listing-loc .muted { color: var(--text-muted); font-weight: 400; font-size: .9rem; }
@@ -325,7 +333,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 }
 .listing-footer .posted { font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
 .listing-footer a.view-btn {
-  color: var(--wine); font-weight: 700; font-size: .88rem; text-decoration: none;
+  color: var(--teal); font-weight: 700; font-size: .88rem; text-decoration: none;
   display: inline-flex; align-items: center; gap: 4px;
 }
 .listing-footer a.view-btn:hover { text-decoration: underline; }
@@ -375,9 +383,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   background: var(--bg); border: 1.5px solid var(--border); border-radius: 999px;
   padding: 8px 14px; font-size: .88rem; transition: border-color .15s, background .15s, color .15s;
 }
-.check-chip input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--wine); margin: 0; }
+.check-chip input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--teal); margin: 0; }
 .check-chip:has(input:checked) {
-  background: var(--wine-tint); border-color: var(--wine); color: var(--wine); font-weight: 600;
+  background: var(--teal-tint); border-color: var(--teal); color: var(--teal); font-weight: 600;
 }
 /* `.check-chip`'s own `display: inline-flex` above overrides the browser's default
    `[hidden] { display: none }` rule (author styles always beat user-agent styles) - without this,
@@ -414,17 +422,17 @@ nav.site-nav a:active { transform: scale(.95); }
   max-width: 1100px; margin: 0 auto; padding: 32px 20px 28px;
   display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;
 }
-.footer-inner .brand { color: var(--wine-dark); font-size: 1.1rem; }
+.footer-inner .brand { color: var(--teal-dark); font-size: 1.1rem; }
 .footer-nav { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
 .footer-nav a { text-decoration: none; color: var(--text-muted); font-size: .88rem; }
-.footer-nav a:hover { color: var(--wine); }
+.footer-nav a:hover { color: var(--teal); }
 .footer-note { font-size: .78rem; color: var(--text-muted); margin: 0; }
 .footer-legal { max-width: 480px; }
 
 /* ---------- accessibility: skip link + visible focus ---------- */
 .skip-link {
   position: absolute; inset-inline-start: 12px; top: -60px;
-  background: var(--wine); color: #fff !important; text-decoration: none;
+  background: var(--teal); color: #fff !important; text-decoration: none;
   padding: 10px 18px; border-radius: var(--radius-sm); font-weight: 600; font-size: .9rem;
   z-index: 100; transition: top .15s ease;
 }
@@ -434,7 +442,7 @@ summary:focus-visible {
   outline: 2.5px solid var(--gold); outline-offset: 2px;
 }
 .field input:not([type="checkbox"]):focus, .field select:focus, .field textarea:focus {
-  box-shadow: 0 0 0 3px rgba(184, 134, 11, .25);
+  box-shadow: 0 0 0 3px rgba(217, 164, 65, .25);
 }
 
 /* ---------- language switcher, next to the main nav ---------- */
@@ -447,7 +455,7 @@ summary:focus-visible {
 }
 .auth-box .auth-logout:hover { color: #fff; }
 .auth-box .auth-login {
-  color: var(--wine-dark); background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  color: var(--teal-dark); background: linear-gradient(135deg, var(--gold-light), var(--gold));
   font-size: .78rem; font-weight: 700; text-decoration: none;
   padding: 6px 14px; border-radius: 999px;
 }
@@ -475,7 +483,7 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: rgba(255,255
 .legal-page p, .legal-page li { color: var(--text); line-height: 1.7; }
 .legal-page ul { padding-inline-start: 22px; }
 
-/* ---------- Arabic script fallback (Rubik/Frank Ruhl Libre don't cover Arabic glyphs) ---------- */
+/* ---------- Arabic script fallback (Heebo/Rubik don't cover Arabic glyphs) ---------- */
 :lang(ar) { font-family: 'Noto Sans Arabic', Tahoma, Arial, sans-serif; }
 :lang(ar) h1, :lang(ar) h2, :lang(ar) h3, :lang(ar) .display {
   font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', Georgia, serif;

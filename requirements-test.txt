@@ -20,3 +20,6 @@ httpx>=0.27,<1.0
 jinja2>=3.1,<4.0
 python-multipart>=0.0.9,<1.0
 itsdangerous>=2.1,<3.0
+# Pillow: test_cards.py imports dorin_common.cards, which imports PIL at module level
+# (_build_collage_sync, 2026-09-03) - pinned to match bot/scraper's own pin.
+Pillow>=10.0,<12.0
