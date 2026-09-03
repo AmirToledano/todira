@@ -61,11 +61,20 @@ from i18n import (
 )
 from whatsapp_webhook import router as whatsapp_router
 
-# Matches bot/main.py's own logging.basicConfig — without this, INFO-level messages (including
-# httpx's own automatic request logging) are invisible in pod logs by default (root logger stays
-# at WARNING), which made a real bug (a Telegram push silently not firing) much harder to diagnose
-# than it needed to be. Found and fixed 2026-09-01 alongside the OWNER_TELEGRAM_USER_ID bug below.
+# Matches bot/main.py's own logging.basicConfig — without this, INFO-level messages are invisible
+# in pod logs by default (root logger stays at WARNING), which made a real bug (a Telegram push
+# silently not firing) much harder to diagnose than it needed to be. Found and fixed 2026-09-01
+# alongside the OWNER_TELEGRAM_USER_ID bug below.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx's own "httpx" logger emits an INFO line per request with the FULL request URL — and
+# _notify_owner_sync below calls api.telegram.org/bot<TOKEN>/sendMessage directly, with the live
+# bot token embedded in the URL path. That's a leak, not the useful diagnostic this file's comment
+# above originally relied on httpx's auto-logging for (2026-09-01) — _notify_owner_sync already
+# logs its own status/body on failure and exceptions explicitly (see below), so silencing httpx
+# specifically loses nothing here. Same issue found and fixed in scraper/main.py and bot/main.py
+# (there: a ZenRows key and the Telegram bot token via python-telegram-bot's own httpx use)
+# 2026-09-03.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
