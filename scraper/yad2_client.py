@@ -37,6 +37,12 @@ Requires `ZENROWS_API_KEY` (free tier works — see PROJECT_STATE.md). Yad2 uses
 its URL, not the slugs configured in `SCRAPE_CITIES` — `CITY_SLUG_TO_ID` below maps the ones this
 project currently scrapes; extend it (search "yad2 city id <name>") before adding a new city to
 `SCRAPE_CITIES` without also adding it here, or that city will silently fetch zero results.
+
+2026-09-03: added `fetch_all_listings` — an EXPERIMENTAL, not-yet-validated alternative to the
+per-city `fetch_search_results` loop above, chasing the same "closer to real-time, like dorin.app"
+goal via a completely different lever: one nationwide unfiltered sweep instead of 42 separate
+per-city requests. See that function's own module-level comment for the full reasoning, what's
+still unconfirmed, and why it isn't wired into scraper/main.py yet.
 """
 from __future__ import annotations
 
@@ -324,10 +330,7 @@ def _parse_cards(html: str) -> Iterator[dict[str, Any]]:
         yield item
 
 
-def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
-    """Yields raw listing dicts (already close to normalize()'s expected shape) for one city.
-    `city` is the slug used elsewhere in this project (e.g. "tel-aviv") — translated to Yad2's
-    own numeric city ID via CITY_SLUG_TO_ID."""
+def _get_zenrows_api_key() -> str:
     api_key = os.environ.get(ZENROWS_API_KEY_ENV_VAR, "").strip()
     if not api_key:
         raise Yad2FetchError(
@@ -335,15 +338,15 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
             "ZenRows trial key. Scraping Yad2 without a residential-proxy service reliably hits "
             "its Radware Bot Manager wall (see YAD2_NOTES.md attempts 1-8)."
         )
+    return api_key
 
-    city_id = CITY_SLUG_TO_ID.get(city)
-    if city_id is None:
-        raise Yad2FetchError(
-            f"No Yad2 numeric city ID mapped for slug {city!r} — add it to CITY_SLUG_TO_ID in "
-            "yad2_client.py (search \"yad2 city id <name>\" to find it)."
-        )
 
-    url = f"{SEARCH_PAGE_URL}?city={city_id}"
+def _fetch_search_html(url: str, *, context_label: str) -> str:
+    """Fetches one Yad2 search-results URL through ZenRows' Fetch API and returns the raw HTML,
+    or raises Yad2FetchError. Shared by fetch_search_results (one city) and fetch_all_listings
+    (the whole country, unfiltered) — `context_label` is only used to make error messages say
+    which caller/URL failed (e.g. "city='tel-aviv'" or "page=2")."""
+    api_key = _get_zenrows_api_key()
 
     try:
         response = httpx.get(
@@ -358,9 +361,7 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
             timeout=PAGE_LOAD_TIMEOUT_S,
         )
     except httpx.HTTPError as exc:
-        raise Yad2FetchError(
-            f"ZenRows Fetch API request failed for city={city!r}: {exc}"
-        ) from exc
+        raise Yad2FetchError(f"ZenRows Fetch API request failed for {context_label}: {exc}") from exc
 
     html = response.text
 
@@ -377,14 +378,87 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
         code_match = _ZENROWS_ERROR_CODE_RE.search(html)
         title_match = _ZENROWS_ERROR_TITLE_RE.search(html)
         raise Yad2FetchError(
-            f"ZenRows returned an error instead of the Yad2 page for city={city!r}: "
+            f"ZenRows returned an error instead of the Yad2 page for {context_label}: "
             f"http_status={response.status_code} "
             f"code={code_match.group('code') if code_match else '?'!r} "
             f"title={title_match.group('title') if title_match else '?'!r} — check the ZenRows "
             "dashboard for usage/plan/auth issues."
         )
 
+    return html
+
+
+def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts (already close to normalize()'s expected shape) for one city.
+    `city` is the slug used elsewhere in this project (e.g. "tel-aviv") — translated to Yad2's
+    own numeric city ID via CITY_SLUG_TO_ID."""
+    city_id = CITY_SLUG_TO_ID.get(city)
+    if city_id is None:
+        raise Yad2FetchError(
+            f"No Yad2 numeric city ID mapped for slug {city!r} — add it to CITY_SLUG_TO_ID in "
+            "yad2_client.py (search \"yad2 city id <name>\" to find it)."
+        )
+
+    html = _fetch_search_html(f"{SEARCH_PAGE_URL}?city={city_id}", context_label=f"city={city!r}")
     yield from _parse_cards(html)
+
+
+# EXPERIMENTAL, NOT YET VALIDATED AGAINST LIVE YAD2 TRAFFIC — and NOT wired into scraper/main.py's
+# run_once() yet. Added 2026-09-03 chasing the same goal as CITY_SLUG_TO_ID/fetch_search_results
+# above (near-real-time coverage like the reference bot dorin.app appears to have) but from a
+# different angle: instead of one ZenRows request PER CITY (42 requests to cover everywhere, at
+# ~25 credits each — 1,050 credits per full sweep), SEARCH_PAGE_URL with NO ?city= param at all is
+# already a normal, working Yad2 search page (fetch_search_results only adds ?city=<id> — the bare
+# URL isn't a hack, it's just "don't filter by city"). If that bare page's default listing gives
+# real results from many different cities in one request (rather than erroring or redirecting), one
+# nationwide sweep could replace all 42 per-city ones — cutting the credit cost of "what's new"
+# discovery by close to 42x, and city/user matching would move to matching.py (which already
+# compares listings.city against each user's saved filters) instead of happening at query time.
+#
+# Partial support for this, seen live 2026-09-03: a Bright Data Scraper Studio test run against
+# this exact bare URL (no city filter, i.e. root_input={"location": ""}) returned a page showing
+# real listings from multiple cities before hitting an unrelated Bright Data account rate-limit —
+# see PROJECT_STATE.md. That's not the same as a clean, repeatable confirmation through this
+# project's own ZenRows pipeline, so treat this function as unproven until run for real.
+#
+# Concretely still unknown, and this function must NOT be scheduled in production until checked
+# against live output:
+#   1. Yad2's actual pagination query-param name/format for this page — `page` (used below) is a
+#      common Yad2 convention across its other categories, but NOT confirmed specifically for
+#      /realestate/rent; if wrong, every page after the first will silently return page 1's cards
+#      again (or an error) instead of advancing.
+#   2. Whether results are sorted newest-first by default (needed for "stop once we reach an
+#      already-seen listing ID" to be a valid depth-limiting strategy) — unconfirmed.
+#   3. How many pages deep a real per-run sweep needs to go to reliably catch everything new
+#      nationwide since the last run, at whatever schedule interval is eventually chosen.
+#   4. scraper/main.py's delisting logic (_mark_delisted) currently scopes "seen this run" by the
+#      specific cities scraped that run (scraped_city_names) — a nationwide paginated sweep that
+#      only reaches `max_pages` deep does NOT see every listing in every city each run, so wiring
+#      this in naively would risk wrongly delisting real, still-active listings that just didn't
+#      fall within the scanned page depth. That logic needs rethinking before this replaces (or
+#      supplements) fetch_search_results in main.py, not just dropped in as-is.
+def fetch_all_listings(max_pages: int = 5) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts from Yad2's nationwide, unfiltered rental search — no per-city
+    loop. Pages until `max_pages` is reached OR a page comes back with zero cards (whichever
+    first), on the assumption that an empty page means we've run past the real result set — see
+    the big caveat above this function: none of that pagination behavior is confirmed live yet."""
+    for page in range(1, max_pages + 1):
+        url = SEARCH_PAGE_URL if page == 1 else f"{SEARCH_PAGE_URL}?page={page}"
+        html = _fetch_search_html(url, context_label=f"nationwide sweep page={page}")
+
+        cards_this_page = 0
+        for card in _parse_cards(html):
+            cards_this_page += 1
+            yield card
+
+        if cards_this_page == 0:
+            logger.info(
+                "fetch_all_listings: page=%d returned 0 cards — stopping pagination (either the "
+                "real result set ended, or the `page` query param isn't what Yad2 expects; see "
+                "this function's module-level caveat)",
+                page,
+            )
+            break
 
 
 # Yad2's own listing DETAIL page (one specific apartment, not the search-results list) uses the
