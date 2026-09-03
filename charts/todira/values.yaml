@@ -85,6 +85,12 @@ scraper:
   # the current $19/mo plan rather than spend more for a tighter interval (Launch, $58/mo, would
   # allow every 30 min — see PROJECT_STATE.md for the full frequency/cost table if that changes).
   schedule: "0 8,10,12,14,16,18,20,22 * * *"
+  # 2026-09-03: frozen at the owner's explicit, urgent request — the product isn't ready to be
+  # live yet and every scheduled run spends real ZenRows credits regardless of whether anyone is
+  # actually using the site/bot. `suspend: true` on the CronJob (below) means k8s stops scheduling
+  # new runs entirely — a currently-running job, if any, still finishes, but no new one starts.
+  # Flip back to `false` (or delete this line) when ready to resume automatic scraping.
+  suspended: true
 
 resources:
   bot:

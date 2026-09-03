@@ -11,10 +11,24 @@
     <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">{{ t('home.cta_open_bot') }}</a>
     <a class="btn outline" href="#how">{{ t('home.cta_how') }}</a>
   </div>
+  <div class="fresh-row reveal">
+    <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>{{ t('home.live_badge') }}</span>
+    <span class="ai-pill">✨ {{ t('home.stat_ai_label') }}</span>
+    <div class="example-card">
+      <div class="ec-top"><span class="ec-title">{{ t('home.example_card_title') }}</span><span class="ec-badge">{{ t('home.example_badge_label') }}</span></div>
+      <span class="ec-sub">{{ t('home.example_card_sub') }}</span>
+    </div>
+  </div>
 </section>
 
 <div class="hero-image-full reveal">
-  <img src="/static/todira-brand.webp?v=4" alt="{{ t('home.hero_img_alt') }}" width="1184" height="1895" fetchpriority="high">
+  <img class="brand-blend" src="/static/todira-brand.webp?v=4" alt="{{ t('home.hero_img_alt') }}" width="1184" height="1895" fetchpriority="high">
+</div>
+
+<div class="hero-float-stats momentum-row reveal">
+  <div class="float-stat"><div><b>{{ t('home.momentum_1_value') }}</b><span class="label-sm">{{ t('home.momentum_1_label') }}</span></div></div>
+  <div class="float-stat"><div><b>{{ t('home.momentum_2_value') }}</b><span class="label-sm">{{ t('home.momentum_2_label') }}</span></div></div>
+  <div class="float-stat"><div><b>{{ t('home.momentum_3_value') }}</b><span class="label-sm">{{ t('home.momentum_3_label') }}</span></div></div>
 </div>
 
 <div class="hero-float-stats reveal">
