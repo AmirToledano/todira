@@ -15,7 +15,12 @@ afterwards for full control over every field.
 `/start` is owned entirely by this ConversationHandler (see build_onboarding_handler): its entry
 point calls handlers.start.start() to send the normal welcome and upsert/reactivate the user,
 then only continues into the free-text state if the user doesn't have a filter yet — a returning
-user just gets the plain welcome and the conversation ends immediately.
+user just gets the plain welcome and the conversation ends immediately. When `/start` carries a
+`ref_xxxxxx` channel-linking payload (see dorin_common/channel_link.py), start() attaches this
+Telegram account to the existing user the code belongs to BEFORE this function's own
+`_has_filter_sync` check runs — so a linked account that already has a filter (the normal case:
+someone connecting Telegram to a WhatsApp/Google account they already onboarded with elsewhere)
+still ends the conversation immediately instead of re-onboarding them.
 """
 from __future__ import annotations
 

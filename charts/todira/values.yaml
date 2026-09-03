@@ -57,6 +57,11 @@ website:
   # inbound 80+443, and this DNS name to already point at the node's public IP (it does, via
   # DuckDNS)
   domain: todira.duckdns.org
+  # E.164 digits (no leading '+') of the actual WhatsApp number people message — builds the
+  # /account page's wa.me channel-linking deep link. Not secret. Leave empty to hide that option
+  # until it's known (it's a display value, not an API credential, so it's not the same as the
+  # whatsappPhoneNumberId secret documented above).
+  whatsappPublicNumber: ""
 
 replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates pollers on one token
 

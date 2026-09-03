@@ -46,6 +46,7 @@ from urllib.parse import urlencode
 
 import httpx
 from dorin_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_access
+from dorin_common.channel_link import generate_link_code
 from dorin_common.cities import CITIES
 from dorin_common.db import get_session
 from dorin_common.matching import evaluate
@@ -124,6 +125,13 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 # an `http://` redirect_uri that doesn't match what's registered in the Google Cloud Console
 # (redirect_uri must match EXACTLY, or Google rejects the whole flow).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org")
+
+# Cross-channel linking (2026-09-05, /account below) — the actual displayable WhatsApp number
+# (E.164 digits, no leading '+') to build a `wa.me/<number>?text=ref_xxxxxx` deep link. Distinct
+# from WHATSAPP_PHONE_NUMBER_ID (whatsapp_client.py) — that's the Cloud API's own internal id
+# used to call the Graph API, not something a person can dial or a wa.me link can use. Optional:
+# without it, /account still shows the Telegram linking option, just not the WhatsApp one.
+WHATSAPP_PUBLIC_NUMBER = os.environ.get("WHATSAPP_PUBLIC_NUMBER", "").strip()
 
 
 def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: int | None) -> bool:
@@ -672,6 +680,45 @@ def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Fo
 
     return RedirectResponse(
         f"/upgrade?uid={redirect_uid}" if redirect_uid else "/upgrade", status_code=303
+    )
+
+
+@app.get("/account")
+def account(request: Request, uid: int | None = None):
+    """Cross-channel linking (dorin_common/channel_link.py) — same uid/session resolution as
+    /apartments, /liked, /upgrade. Shows which channels are already linked to this user, and —
+    for whichever aren't — a fresh 15-minute link code plus ready-to-use WhatsApp/Telegram deep
+    links to send it from that channel, matching the reference product's own confirmed UX."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "account"})
+
+        has_telegram = user.telegram_user_id is not None
+        has_whatsapp = user.whatsapp_phone_number is not None
+        has_google = user.google_sub is not None
+
+        code = None
+        if not has_telegram or not has_whatsapp:
+            code = generate_link_code(session, user)
+        redirect_uid = user.telegram_user_id
+
+    return _render(
+        request,
+        "account.html",
+        {
+            "uid": redirect_uid,
+            "has_telegram": has_telegram,
+            "has_whatsapp": has_whatsapp,
+            "has_google": has_google,
+            "code": code,
+            "telegram_link": f"https://t.me/AmirDirotBot?start={code}" if code else None,
+            "whatsapp_link": (
+                f"https://wa.me/{WHATSAPP_PUBLIC_NUMBER}?text={code}"
+                if code and WHATSAPP_PUBLIC_NUMBER
+                else None
+            ),
+        },
     )
 
 

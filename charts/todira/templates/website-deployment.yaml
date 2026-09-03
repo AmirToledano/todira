@@ -77,6 +77,12 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: whatsapp-app-secret
                   optional: true
+            # The actual displayable WhatsApp number (not WHATSAPP_PHONE_NUMBER_ID above, which is
+            # the Cloud API's internal id) — builds the wa.me deep link on website/main.py's
+            # /account channel-linking page. Not secret, so a plain value rather than a Secret
+            # ref; empty by default, in which case /account just hides the WhatsApp option.
+            - name: WHATSAPP_PUBLIC_NUMBER
+              value: "{{ .Values.website.whatsappPublicNumber | default "" }}"
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
