@@ -38,11 +38,11 @@ its URL, not the slugs configured in `SCRAPE_CITIES` — `CITY_SLUG_TO_ID` below
 project currently scrapes; extend it (search "yad2 city id <name>") before adding a new city to
 `SCRAPE_CITIES` without also adding it here, or that city will silently fetch zero results.
 
-2026-09-03: added `fetch_all_listings` — an EXPERIMENTAL, not-yet-validated alternative to the
-per-city `fetch_search_results` loop above, chasing the same "closer to real-time, like dorin.app"
-goal via a completely different lever: one nationwide unfiltered sweep instead of 42 separate
-per-city requests. See that function's own module-level comment for the full reasoning, what's
-still unconfirmed, and why it isn't wired into scraper/main.py yet.
+2026-09-03: added `fetch_all_listings` — a confirmed-live (not guessed) alternative to the per-city
+`fetch_search_results` loop above, chasing the same "closer to real-time, like dorin.app" goal via
+a different lever: 7 broad-region requests (REGION_SLUGS) instead of 42 per-city ones, ~6x cheaper
+per full-country sweep on the same ZenRows plan already in use. See that function's own
+module-level comment for the full reasoning and why it isn't wired into scraper/main.py yet.
 """
 from __future__ import annotations
 
@@ -419,62 +419,67 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
     yield from _parse_cards(html)
 
 
-# EXPERIMENTAL, NOT YET VALIDATED AGAINST LIVE YAD2 TRAFFIC — and NOT wired into scraper/main.py's
-# run_once() yet. Added 2026-09-03 chasing the same goal as CITY_SLUG_TO_ID/fetch_search_results
-# above (near-real-time coverage like the reference bot dorin.app appears to have) but from a
-# different angle: instead of one ZenRows request PER CITY (42 requests to cover everywhere, at
-# ~25 credits each — 1,050 credits per full sweep), SEARCH_PAGE_URL with NO ?city= param at all is
-# already a normal, working Yad2 search page (fetch_search_results only adds ?city=<id> — the bare
-# URL isn't a hack, it's just "don't filter by city"). If that bare page's default listing gives
-# real results from many different cities in one request (rather than erroring or redirecting), one
-# nationwide sweep could replace all 42 per-city ones — cutting the credit cost of "what's new"
-# discovery by close to 42x, and city/user matching would move to matching.py (which already
-# compares listings.city against each user's saved filters) instead of happening at query time.
+# 2026-09-03: chasing the same goal as CITY_SLUG_TO_ID/fetch_search_results above (near-real-time
+# coverage like the reference bot dorin.app appears to have) but from a different angle — one
+# request per REGION instead of one request PER CITY (42 requests to cover everywhere, at ~25
+# credits each — 1,050 credits per full sweep).
 #
-# Partial support for this, seen live 2026-09-03: a Bright Data Scraper Studio test run against
-# this exact bare URL (no city filter, i.e. root_input={"location": ""}) returned a page showing
-# real listings from multiple cities before hitting an unrelated Bright Data account rate-limit —
-# see PROJECT_STATE.md. That's not the same as a clean, repeatable confirmation through this
-# project's own ZenRows pipeline, so treat this function as unproven until run for real.
+# First attempt (bare SEARCH_PAGE_URL with no filter at all, page=2/3/... for pagination) was
+# WRONG and is gone — confirmed live 2026-09-03 via a throwaway pod on the real cluster (image
+# ghcr.io/amirtoledano/todira-scraper, real ZENROWS_API_KEY from the todira-bot-secret), not
+# guessed: the bare URL returns a real 200 page (no antibot block, __NEXT_DATA__ present) but ZERO
+# listing cards — it's Yad2's "lobby" page (`lobbyData.recommendationsTitle` etc.), not a results
+# feed. Yad2 apparently does require SOME area filter to show a results feed at all (matches the
+# "לפני שנמשיך" behavior already seen when trying to set up an Alert with no area picked — see
+# PROJECT_STATE.md) — this isn't a restriction worth trying to bypass, just how the site works.
 #
-# Concretely still unknown, and this function must NOT be scheduled in production until checked
-# against live output:
-#   1. Yad2's actual pagination query-param name/format for this page — `page` (used below) is a
-#      common Yad2 convention across its other categories, but NOT confirmed specifically for
-#      /realestate/rent; if wrong, every page after the first will silently return page 1's cards
-#      again (or an error) instead of advancing.
-#   2. Whether results are sorted newest-first by default (needed for "stop once we reach an
-#      already-seen listing ID" to be a valid depth-limiting strategy) — unconfirmed.
-#   3. How many pages deep a real per-run sweep needs to go to reliably catch everything new
-#      nationwide since the last run, at whatever schedule interval is eventually chosen.
-#   4. scraper/main.py's delisting logic (_mark_delisted) currently scopes "seen this run" by the
-#      specific cities scraped that run (scraped_city_names) — a nationwide paginated sweep that
-#      only reaches `max_pages` deep does NOT see every listing in every city each run, so wiring
-#      this in naively would risk wrongly delisting real, still-active listings that just didn't
-#      fall within the scanned page depth. That logic needs rethinking before this replaces (or
-#      supplements) fetch_search_results in main.py, not just dropped in as-is.
-def fetch_all_listings(max_pages: int = 5) -> Iterator[dict[str, Any]]:
-    """Yields raw listing dicts from Yad2's nationwide, unfiltered rental search — no per-city
-    loop. Pages until `max_pages` is reached OR a page comes back with zero cards (whichever
-    first), on the assumption that an empty page means we've run past the real result set — see
-    the big caveat above this function: none of that pagination behavior is confirmed live yet."""
-    for page in range(1, max_pages + 1):
-        url = SEARCH_PAGE_URL if page == 1 else f"{SEARCH_PAGE_URL}?page={page}"
-        html = _fetch_search_html(url, context_label=f"nationwide sweep page={page}")
+# BUT that same lobby page's `lobbyData.recommendationLinks` embeds exactly 7 broad region URLs
+# (`/rent/<slug>`) covering the whole country — extracted live from the real `__NEXT_DATA__` JSON,
+# not invented: center-and-sharon, tel-aviv-area, jerusalem-area, south, coastal-north,
+# north-and-valleys, partnership/east (see REGION_SLUGS below). Also confirmed live: fetching
+# .../rent/tel-aviv-area returned 43 real cards spanning multiple cities in one request — תל אביב
+# יפו, רמת גן, גבעתיים, בת ים, חולון all showed up in a single response (see PROJECT_STATE.md for
+# the full output). That's a materially different, coarser area taxonomy than the dozens of
+# fine-grained areas Yad2's own /filter "אזור" dropdown and paid Alerts feature offer (also seen
+# live the same day) — not the same list, don't confuse the two. It doesn't need to be: each
+# listing's own city still comes from parsing its own card (_parse_location), same as
+# fetch_search_results — querying a broad region just means "cast a wider net per request," it
+# doesn't change how a listing gets matched to a city or a user afterwards.
+#
+# Math: 7 regions × ~25 credits = ~175 credits per full-country sweep, vs. 1,050 for the 42-city
+# loop — about 6x cheaper per sweep, on the SAME ZenRows plan the project already pays for (Build,
+# 45,000 credits/mo): 45,000 / 175 ≈ 257 sweeps/month ≈ once every ~2.8 hours, with no plan
+# upgrade at all. See PROJECT_STATE.md for the full cost table at other ZenRows tiers.
+#
+# NOT wired into scraper/main.py's run_once() yet — that still needs deciding: whether this
+# REPLACES the per-city loop entirely or runs alongside it, and reworking _mark_delisted (currently
+# scoped by the specific city slugs passed into that run — a region sweep doesn't pick cities in
+# advance, it only knows which cities it actually saw after parsing results, and a single sweep
+# isn't guaranteed to surface every city in a region if that city genuinely has nothing new right
+# now — delisting logic needs to account for that difference before this goes live).
+REGION_SLUGS = (
+    "center-and-sharon",
+    "tel-aviv-area",
+    "jerusalem-area",
+    "south",
+    "coastal-north",
+    "north-and-valleys",
+    "partnership/east",
+)
 
-        cards_this_page = 0
-        for card in _parse_cards(html):
-            cards_this_page += 1
-            yield card
 
-        if cards_this_page == 0:
-            logger.info(
-                "fetch_all_listings: page=%d returned 0 cards — stopping pagination (either the "
-                "real result set ended, or the `page` query param isn't what Yad2 expects; see "
-                "this function's module-level caveat)",
-                page,
-            )
-            break
+def fetch_all_listings(regions: tuple[str, ...] = REGION_SLUGS) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts from Yad2's broad-region rental searches — REGION_SLUGS by
+    default, 7 requests covering the whole country instead of 42 (one per city). Each region
+    returns whatever's on its first results page (same "rely on scan frequency, not deep
+    pagination" design as fetch_search_results above) spanning many cities at once — a listing's
+    own city still comes from parsing its own card via _parse_cards, not from which region was
+    queried."""
+    for region in regions:
+        html = _fetch_search_html(
+            f"https://www.yad2.co.il/realestate/rent/{region}", context_label=f"region={region!r}"
+        )
+        yield from _parse_cards(html)
 
 
 # Yad2's own listing DETAIL page (one specific apartment, not the search-results list) uses the
