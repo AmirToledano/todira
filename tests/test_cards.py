@@ -163,6 +163,31 @@ def test_caption_starts_with_an_invisible_rtl_mark():
     assert caption.startswith("‏")
 
 
+def test_every_body_line_carries_its_own_rtl_mark_not_just_the_first():
+    # A second real user report the same day: the block kept drifting further left line by line -
+    # a single mark at the very front of the caption only anchors the FIRST line's direction, not
+    # every line independently. Every real content line needs its own leading mark.
+    caption = format_caption(make_listing(has_parking=True))
+    lines = [line for line in caption.split("\n") if line]
+    for line in lines:
+        assert line.startswith("‏"), f"line missing its own RTL mark: {line!r}"
+
+
+def test_blank_spacer_line_has_no_stray_rtl_mark():
+    caption = format_caption(make_listing(has_parking=True))
+    lines = caption.split("\n")
+    assert "" in lines  # the spacer before the features line
+
+
+def test_blank_line_separates_floor_from_features():
+    caption = format_caption(make_listing(has_parking=True, floor=4, floor_total=6))
+    lines = caption.split("\n")
+    floor_index = next(i for i, line in enumerate(lines) if "קומה" in line)
+    features_index = next(i for i, line in enumerate(lines) if "פיצ'רים" in line)
+    assert features_index == floor_index + 2
+    assert lines[floor_index + 1] == ""
+
+
 def test_price_drop_header_prepended():
     caption = format_caption(make_listing(price=16000), price_change_from=18000)
     assert caption.lstrip("‏").startswith("📉")
@@ -210,8 +235,8 @@ def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
     assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
     assert "<a href" not in caption
     lines = caption.split("\n")
-    # The invisible RTL mark (see _RTL_MARK) is prepended to the whole caption, so the very first
-    # line carries it right before the "📍" - "in", not "startswith", to not trip on that.
+    # Every line carries its own leading RTL mark (see _build_body_lines) right before its emoji,
+    # so the location line no longer literally starts with "📍" - "in", not "startswith".
     location_line = next(i for i, line in enumerate(lines) if "📍" in line)
     assert lines[location_line + 1].startswith("🗺️ https://www.google.com/maps/search/")
 
