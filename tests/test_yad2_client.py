@@ -14,6 +14,7 @@ from yad2_client import (
     CITY_SLUG_TO_ID,
     ZENROWS_API_KEY_ENV_VAR,
     Yad2FetchError,
+    fetch_all_listings,
     fetch_listing_detail,
     fetch_search_results,
 )
@@ -139,6 +140,86 @@ def test_network_failure_fails_soft_as_yad2_fetch_error(monkeypatch):
 
     with pytest.raises(Yad2FetchError):
         list(fetch_search_results("tel-aviv"))
+
+
+def test_yad2_own_antibot_page_raises_a_clear_error_not_silent_zero_cards(monkeypatch):
+    # A 200 response with none of ZenRows' own error JSON shape, but Yad2's actual bot-challenge
+    # text — must NOT be mistaken for "genuinely 0 listings this city" (see _YAD2_ANTIBOT_MARKER's
+    # module comment in yad2_client.py).
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    challenge_html = "<html><body>Are you for real, or a bot? Please verify.</body></html>"
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text=challenge_html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(Yad2FetchError, match="bot-challenge"):
+        list(fetch_search_results("tel-aviv"))
+
+
+# --- fetch_all_listings (2026-09-03, EXPERIMENTAL — see its module-level comment in
+# yad2_client.py) — nationwide, unfiltered, paginated sweep instead of the per-city loop above.
+# These tests only pin down this function's own request-building/pagination-stopping behavior
+# against mocked HTTP responses; they say nothing about whether Yad2's real pagination works the
+# way this function assumes (unconfirmed, see that comment).
+
+
+def test_fetch_all_listings_first_request_has_no_city_or_page_param(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        return httpx.Response(200, text="<html></html>", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    list(fetch_all_listings(max_pages=3))
+
+    assert captured_urls == ["https://www.yad2.co.il/realestate/rent"]
+
+
+def test_fetch_all_listings_stops_as_soon_as_a_page_has_zero_cards(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        # Page 1 has one real card, page 2 has none — pagination must stop there, never reaching 3.
+        html = _CARD_HTML if len(captured_urls) == 1 else "<html>no more listings</html>"
+        return httpx.Response(200, text=html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_all_listings(max_pages=5))
+
+    assert len(items) == 1
+    assert captured_urls == [
+        "https://www.yad2.co.il/realestate/rent",
+        "https://www.yad2.co.il/realestate/rent?page=2",
+    ]
+
+
+def test_fetch_all_listings_advances_the_page_param_up_to_max_pages(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        # Every page returns a card, so pagination only stops because max_pages was reached.
+        return httpx.Response(200, text=_CARD_HTML, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_all_listings(max_pages=3))
+
+    assert len(items) == 3
+    assert captured_urls == [
+        "https://www.yad2.co.il/realestate/rent",
+        "https://www.yad2.co.il/realestate/rent?page=2",
+        "https://www.yad2.co.il/realestate/rent?page=3",
+    ]
 
 
 # --- fetch_listing_detail (2026-09-02) — reads the __NEXT_DATA__ blob embedded in a listing's

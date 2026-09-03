@@ -199,6 +199,15 @@ _DIRECTION_MARKS_RE = re.compile(r"[‎‏]")  # LTR/RTL marks Yad2 wraps number
 _ZENROWS_ERROR_CODE_RE = re.compile(r'"code":"(?P<code>[A-Z0-9]+)"')
 _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 
+# Yad2's OWN bot-challenge page text (not a ZenRows error — js_render+premium_proxy got a response,
+# but Yad2's Radware Bot Manager wall itself is what came back instead of the real search page).
+# Confirmed 2026-09-03 via an independent, already-working open-source Yad2 scraper
+# (github.com/DavOstx7/yad2-scraper's ANTIBOT_CONTENT_IDENTIFIER constant), not verified live
+# through this project's own ZenRows pipeline yet. Worth checking for because right now a Yad2-side
+# block would just look like "0 cards this run" — indistinguishable from a genuinely quiet city —
+# instead of surfacing as the real, debuggable error it is.
+_YAD2_ANTIBOT_MARKER = "Are you for real"
+
 
 class Yad2FetchError(RuntimeError):
     """The Fetch API call failed, timed out, or ZenRows itself errored — see the wrapped
@@ -383,6 +392,13 @@ def _fetch_search_html(url: str, *, context_label: str) -> str:
             f"code={code_match.group('code') if code_match else '?'!r} "
             f"title={title_match.group('title') if title_match else '?'!r} — check the ZenRows "
             "dashboard for usage/plan/auth issues."
+        )
+
+    if _YAD2_ANTIBOT_MARKER in html:
+        raise Yad2FetchError(
+            f"Yad2's own bot-challenge page came back for {context_label} instead of the real "
+            "search page (js_render+premium_proxy didn't get past it this time) — this is Yad2 "
+            "itself blocking the request, not a ZenRows account/quota issue."
         )
 
     return html
