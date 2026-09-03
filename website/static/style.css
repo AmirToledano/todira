@@ -583,3 +583,83 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
   main { padding: 24px 14px 60px; }
   .amc-status { margin-inline-start: 0; }
 }
+
+/* ================= Accessibility widget ================= */
+/* 2026-09-03 request (real legal concern under Israeli accessibility regulations, matching the
+   floating accessibility button pattern on yad2.co.il and similar Israeli sites). Physical `left`
+   (not inset-inline-start) — a fixed, language-independent corner, same convention as the
+   listing-card badges above. Sits above everything else (z-index) since it must stay reachable
+   from anywhere on the page. */
+#a11y-widget { position: fixed; left: 16px; bottom: 16px; z-index: 200; }
+#a11y-toggle {
+  width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--teal); color: #fff; font-size: 1.6rem; line-height: 1;
+  box-shadow: var(--shadow-lg); display: flex; align-items: center; justify-content: center;
+}
+#a11y-toggle:hover { background: var(--teal-dark); }
+#a11y-panel {
+  position: absolute; bottom: 64px; left: 0; width: 280px; max-width: calc(100vw - 32px);
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg); padding: 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.a11y-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border);
+  font-family: 'Rubik', sans-serif; font-size: 1rem;
+}
+.a11y-panel-head button {
+  background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text-muted); padding: 4px;
+}
+.a11y-row { display: flex; align-items: center; justify-content: space-between; font-size: .88rem; }
+.a11y-font-controls { display: flex; gap: 4px; }
+.a11y-font-controls button {
+  border: 1px solid var(--border); background: var(--bg); border-radius: 8px; cursor: pointer;
+  padding: 5px 9px; font-size: .8rem; font-weight: 700; color: var(--text);
+}
+.a11y-toggle-chip {
+  text-align: start; border: 1.5px solid var(--border); background: var(--bg); border-radius: 10px;
+  padding: 9px 12px; font-size: .88rem; cursor: pointer; color: var(--text);
+}
+.a11y-toggle-chip.active { border-color: var(--teal); background: var(--teal-tint); color: var(--teal-dark); font-weight: 700; }
+.a11y-reset {
+  border: none; background: var(--teal-tint); color: var(--teal-dark); border-radius: 10px;
+  padding: 9px 12px; font-size: .85rem; font-weight: 700; cursor: pointer; margin-top: 4px;
+}
+.a11y-statement-link { text-align: center; font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
+
+/* ---- toggle effects, applied to <html> ---- */
+html.a11y-font-112 { font-size: 112.5%; }
+html.a11y-font-125 { font-size: 125%; }
+html.a11y-font-137 { font-size: 137.5%; }
+html.a11y-font-150 { font-size: 150%; }
+
+html.a11y-contrast {
+  --teal: #7fe9df; --teal-dark: #ffffff; --teal-tint: #0a2a28;
+  --gold: #ffd166; --gold-light: #ffe08a;
+  --bg: #000000; --card: #0d0d0d; --text: #ffffff; --text-muted: #e6e6e6; --border: #777777;
+}
+html.a11y-contrast body { background: #000; }
+
+html.a11y-grayscale { filter: grayscale(1); }
+
+html.a11y-underline-links a { text-decoration: underline !important; text-underline-offset: 2px; }
+
+html.a11y-big-targets .btn, html.a11y-big-targets nav.site-nav a, html.a11y-big-targets .a11y-toggle-chip,
+html.a11y-big-targets .check-chip, html.a11y-big-targets a.view-btn {
+  padding-top: 14px; padding-bottom: 14px; font-size: 1.08em;
+}
+
+html.a11y-no-motion *, html.a11y-no-motion *::before, html.a11y-no-motion *::after {
+  animation: none !important; transition: none !important;
+}
+
+#a11y-reading-guide-bar {
+  position: fixed; left: 0; width: 100%; height: 32px; margin-top: -16px;
+  background: rgba(217, 164, 65, .28); border-top: 2px solid var(--gold); border-bottom: 2px solid var(--gold);
+  pointer-events: none; z-index: 199;
+}
+
+@media (max-width: 480px) {
+  #a11y-widget { left: 10px; bottom: 10px; }
+  #a11y-panel { width: calc(100vw - 20px); }
+}
