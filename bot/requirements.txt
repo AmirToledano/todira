@@ -4,3 +4,10 @@ pydantic>=2.5,<3.0
 python-telegram-bot>=21,<22
 alembic>=1.13,<2.0
 google-genai>=0.3,<1.0
+# httpx: python-telegram-bot already depends on it transitively, but dorin_common/cards.py's
+# _build_collage_sync (2026-09-03, downloads a listing's photos to composite a Telegram collage)
+# calls it directly - pinned explicitly rather than relying on an undeclared transitive dep.
+httpx>=0.27,<1.0
+# Pillow: dorin_common/cards.py's _build_collage_sync composites a listing's photos into one
+# collage image for Telegram (2026-09-03) - see that function's own docstring.
+Pillow>=10.0,<12.0
