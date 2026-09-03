@@ -60,37 +60,23 @@ postgres:
   storageSize: 2Gi
 
 scraper:
-  # History: "*/10 * * * *" x 42 cities burned the ENTIRE monthly ZenRows free-tier credit pool
-  # (5,000 credits, ~25 credits/request with premium_proxy+js_render) in about 2 days (5,285
-  # credits / 217 requests, confirmed via the ZenRows dashboard) — see PROJECT_STATE.md,
-  # 2026-08-31. Introduced per-run city rotation (citiesPerRun) to fit the free tier, but the
-  # owner rightly pushed back on trading away daily-for-everyone coverage without being asked —
-  # also see PROJECT_STATE.md. Investigated whether a single ZenRows request could cover multiple
-  # cities at once (would have let rotation cover far more ground per request) — tested both
-  # `city=A,B` and repeated `city=A&city=B` against real Yad2 live, 2026-09-01: NEITHER works,
-  # Yad2 silently falls back to a single city either way (0 cards for the comma form, 43 cards but
-  # only the second city for the repeated-param form) — see PROJECT_STATE.md for the full test
-  # output. So there's no way to cut cost-per-city; the only lever is which paid tier to be on.
+  # History (see PROJECT_STATE.md for the full incident trail): a 42-city-every-10-minutes
+  # schedule burned an entire monthly ZenRows credit pool in ~2 days (2026-08-31); a later
+  # Playwright-proxy-level bug billed every sub-resource of a rendered page separately, burning a
+  # whole paid plan's credits in hours (2026-09-01/09-02, fixed by switching to ZenRows' flat-rate
+  # Fetch API). Per-run city rotation (citiesPerRun) existed for a while as a stopgap to fit
+  # whatever budget was available, at the cost of full coverage every run.
   #
-  # Owner upgraded to ZenRows' Build plan ($19/mo monthly billing, 45,000 credits/mo) to restore
-  # full coverage — but the Build plan's entire 45,000 credits got burned within hours (see
-  # PROJECT_STATE.md, 2026-09-01/09-02): yad2_client.py's Playwright browser had `proxy` set at
-  # the BROWSER level, so every sub-resource a rendered Yad2 page loaded (every listing photo,
-  # not just the page itself) was a separate billed ZenRows request — confirmed with ZenRows
-  # support, real cost per city was several times the "~1 request ≈ 25 credits" this 42-cities-
-  # daily budget math assumed. Fixed in yad2_client.py (image/media/font resource types now
-  # blocked before they ever leave the browser) and hardened further with a hard per-city
-  # request-count cap (_MAX_PROXIED_REQUESTS_PER_CITY in yad2_client.py — a deterministic ceiling
-  # on cost per city regardless of resource type, not just a guess about which types are safe),
-  # but neither fix has been validated against real traffic yet. citiesPerRun set to 1 (was 0 =
-  # all 42) for the smallest possible first real-world test after buying a small top-up — see
-  # PROJECT_STATE.md for the exact plan. Scale up gradually (1 → a few → 0) only as real runs at
-  # each size confirm the actual post-fix cost per city, never back to 0 on a guess.
-  schedule: "0 3 * * *" # once daily, 03:00 UTC (low-traffic hour)
-  citiesPerRun: 1
-  # scraper/yad2_client.py's CITY_SLUG_TO_ID must have a real Yad2 ID for every slug listed here,
-  # or that city silently scrapes nothing when its turn in the rotation comes up.
-  cities: "tel-aviv,ramat-gan,givatayim,jerusalem,haifa,beer-sheva,rishon-lezion,petah-tikva,ashdod,netanya,bnei-brak,holon,ashkelon,rehovot,bat-yam,beit-shemesh,kfar-saba,herzliya,hadera,raanana,nahariya,eilat,modiin,ramat-hasharon,ramla,nazareth,lod,hod-hasharon,kiryat-ata,kiryat-gat,kiryat-motzkin,kiryat-bialik,kiryat-ono,yavne,or-yehuda,tzfat,afula,tiberias,dimona,mevaseret-zion,har-gilo,karmiel"
+  # 2026-09-03: replaced the whole per-city approach. yad2_client.py's fetch_all_listings() now
+  # sweeps 7 broad Yad2 REGIONS (not 42 cities) every run — confirmed live that a single region
+  # request returns real listings spanning several cities at once (e.g. tel-aviv-area alone
+  # returned Tel Aviv, Ramat Gan, Givatayim, Bat Yam, and Holon together). ~175 credits per
+  # full-country sweep vs. 1,050 for the old 42-city loop, on the SAME plan — no per-run city
+  # selection or rotation needed anymore, so citiesPerRun/cities are gone from here; the region
+  # list itself lives in yad2_client.py's REGION_SLUGS, not configured per-deploy.
+  schedule: "0 3 * * *" # once daily, 03:00 UTC — unchanged for now; the region sweep's much lower
+  # per-run cost means this could go far more frequent within the same ZenRows budget (see
+  # yad2_client.py's REGION_SLUGS comment for the math) — a deliberate follow-up, not done here.
 
 resources:
   bot:
