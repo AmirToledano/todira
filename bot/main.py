@@ -16,6 +16,14 @@ from telegram import BotCommand, Update
 from telegram.ext import Application, ContextTypes, PicklePersistence
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# python-telegram-bot uses httpx internally for every Telegram Bot API call, and Telegram's API
+# URLs embed the bot token directly in the path (api.telegram.org/bot<TOKEN>/<method>) — httpx's
+# own "httpx" logger emits an INFO line per request with the FULL URL, so at the root INFO level
+# above this was leaking the live Telegram bot token into every pod log line, on every single API
+# call the bot makes. Same issue found and fixed in scraper/main.py (there: a ZenRows API key)
+# 2026-09-03 — silencing httpx specifically (not the whole app) keeps our own "bot.main" etc.
+# logging at INFO as intended.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("bot.main")
 
 # Persists user_data/chat_data and ConversationHandler state (see build_onboarding_handler and
