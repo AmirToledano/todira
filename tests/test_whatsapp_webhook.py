@@ -138,6 +138,97 @@ def _fake_user(pending_state=None):
     return SimpleNamespace(id=1, pending_onboarding_state=pending_state)
 
 
+class _QueuedScalarSession:
+    """`scalar()` returns queued results in call order — used for the channel-linking tests below,
+    where _handle_incoming_text_sync's conflict check does its own raw `session.scalar(select(User)
+    ...)` call (resolve_link_code itself is mocked out, so it never touches this session)."""
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.committed = False
+
+    def scalar(self, stmt):
+        return self._results.pop(0) if self._results else None
+
+    def commit(self):
+        self.committed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+# --- _handle_incoming_text_sync: channel linking (a `ref_xxxxxx` code sent as a plain message) ---
+
+
+def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
+    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name=None)
+    session = _QueuedScalarSession(results=[None])  # conflict check: nobody else has this number
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user") as get_or_create_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_abc123")
+
+    assert code_user.whatsapp_phone_number == "9725500000"
+    assert code_user.first_name == "Amir"
+    assert session.committed is True
+    get_or_create_mock.assert_not_called()  # never creates a separate new user row
+    send_mock.assert_called_once()
+    assert "חיברתי" in send_mock.call_args[0][1]
+
+
+def test_link_code_does_not_overwrite_an_existing_first_name():
+    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name="שם קיים")
+    session = _QueuedScalarSession(results=[None])
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user"),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_abc123")
+
+    assert code_user.first_name == "שם קיים"
+
+
+def test_link_code_conflict_when_whatsapp_number_already_has_a_different_account():
+    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name=None)
+    other_existing_user = SimpleNamespace(id=42)  # a DIFFERENT row already using this wa_id
+    session = _QueuedScalarSession(results=[other_existing_user])
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user") as get_or_create_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_abc123")
+
+    assert code_user.whatsapp_phone_number is None  # untouched — no merge happened
+    assert session.committed is False
+    get_or_create_mock.assert_not_called()
+    send_mock.assert_called_once()
+    assert "חשבון נפרד" in send_mock.call_args[0][1]
+
+
+def test_ref_prefixed_but_unknown_code_falls_through_to_normal_onboarding():
+    session = _FakeSession(existing_filter_id=99)
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: None),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_expiredcode")
+
+    send_mock.assert_called_once()
+    assert "כבר יש לך פילטר" in send_mock.call_args[0][1]
+
+
 def test_existing_filter_user_gets_already_registered_reply_no_gemini_call():
     session = _FakeSession(existing_filter_id=99)
     with (

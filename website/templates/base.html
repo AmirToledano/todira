@@ -51,6 +51,9 @@
           <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">🏠 {{ t('nav.apartments') }}</a>
           <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">❤️ {{ t('nav.liked') }}</a>
           <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">🎛️ {{ t('nav.filter') }}</a>
+          {% if uid or current_user %}
+          <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
+          {% endif %}
           <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">✉️ {{ t('nav.contact') }}</a>
           {% if is_owner %}
           <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}">📬</a>

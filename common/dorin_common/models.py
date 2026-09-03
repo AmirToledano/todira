@@ -33,8 +33,11 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    # Both nullable — a user has exactly one of the two, never both, never neither
-    # (dorin_common/users.py's two get_or_create_*_user helpers each set only their own).
+    # Both nullable. Originally a user had exactly one of the two, set once by whichever of
+    # dorin_common/users.py's two get_or_create_*_user helpers first created the row — that's
+    # still true for most rows. Channel-linking (channel_link_code below) lets a user end up with
+    # BOTH set: once linked, the SAME row gets a second identifier attached to it rather than a
+    # second row being created.
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True)
     whatsapp_phone_number: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(Text)
@@ -72,6 +75,18 @@ class User(Base):
     # Owner-granted comp access, independent of trial/payment — set only via the admin panel
     # (website's /admin/users), never by the user themselves.
     free_access_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    # Cross-channel account linking (2026-09-05) — a short code generated on the website
+    # (/account) for an already-logged-in user, then sent FROM a new channel (a WhatsApp text
+    # message, or opened as a Telegram /start deep-link payload) to attach that channel to this
+    # SAME row instead of creating a brand-new, disconnected one. Matches the reference product's
+    # own confirmed UX (a `ref_xxxxxx` code sent as a plain WhatsApp message). See
+    # dorin_common/channel_link.py for generation/consumption; cleared after a single successful
+    # use, and `channel_link_code_expires_at` bounds how long an unused code stays valid.
+    channel_link_code: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
+    channel_link_code_expires_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     filter: Mapped["Filter | None"] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"
