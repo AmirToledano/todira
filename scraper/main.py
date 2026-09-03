@@ -18,6 +18,12 @@ from notifier import run_notifications
 from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_all_listings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx's own "httpx" logger emits an INFO line per request with the FULL request URL — including
+# the `apikey=...` query param yad2_client.py's ZenRows calls carry — so at the root INFO level
+# above, every scraper run was leaking the live ZenRows key straight into pod logs. Confirmed live
+# 2026-09-03 on the real cluster's first post-deploy run. Silencing httpx specifically (not the
+# whole app) keeps our own "scraper.main"/"scraper.notifier" etc. logging at INFO as intended.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("scraper.main")
 
 
