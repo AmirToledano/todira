@@ -1,8 +1,10 @@
-"""Unit tests for dorin_common/cards.py — Telegram/WhatsApp caption rendering for a Listing.
+"""Unit tests for dorin_common/cards.py — Telegram/WhatsApp caption rendering for a Listing, plus
+send_listing_card's send behavior and _build_collage_sync's photo-compositing (both against a fake
+bot / mocked httpx — no real Telegram or network calls).
 
-Pure string-formatting logic (no I/O, no DB) — SimpleNamespace stands in for a real Listing row,
-same approach test_matching.py already uses, since format_caption/format_caption_whatsapp only
-ever read attributes off whatever's passed in.
+The format_caption*/make_listing tests are pure string-formatting logic (no I/O, no DB) —
+SimpleNamespace stands in for a real Listing row, same approach test_matching.py already uses,
+since format_caption/format_caption_whatsapp only ever read attributes off whatever's passed in.
 """
 from __future__ import annotations
 
@@ -167,6 +169,7 @@ def test_whatsapp_caption_includes_the_raw_url_not_an_html_link():
 import asyncio  # noqa: E402
 from unittest.mock import AsyncMock  # noqa: E402
 
+import dorin_common.cards as cards_module  # noqa: E402
 from dorin_common.cards import send_listing_card  # noqa: E402
 
 
@@ -205,13 +208,17 @@ def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
     bot.send_media_group.assert_not_awaited()
 
 
-def test_send_listing_card_multiple_images_still_sends_just_the_first_one():
-    # Deliberately NOT a sendMediaGroup gallery (2026-09-02: dropped after a real user report -
-    # sendMediaGroup can't carry an inline keyboard, so 2+ photos needed a separate "⬆️ הדירה
-    # למעלה" follow-up message just for the buttons, which got confusing once several listings
-    # arrived in a burst with delays between them). One send_photo call, first image only, caption
-    # and keyboard together - the listing's other photos are still reachable via the caption's own
-    # link to the full listing.
+def test_send_listing_card_multiple_images_sends_a_generated_collage(monkeypatch):
+    # 2026-09-03 request, matching the reference bot dorin.app's own style: 2+ real photos get ONE
+    # composited collage image instead of just the first one. Still deliberately NOT a
+    # sendMediaGroup gallery (2026-09-02: dropped after a real user report - sendMediaGroup can't
+    # carry an inline keyboard, so 2+ photos needed a separate "⬆️ הדירה למעלה" follow-up message
+    # just for the buttons) — one send_photo call, one image (now a collage instead of the bare
+    # first URL), caption and keyboard together. _build_collage_sync itself does real network
+    # downloads (see its own docstring) - monkeypatched here so this stays a fast, network-free
+    # unit test, same reasoning as this suite's other httpx-touching tests (e.g. test_yad2_client.py).
+    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: b"fake-jpeg-bytes")
+
     bot = _make_bot()
     listing = make_listing(
         image_urls=["https://img.yad2.co.il/a.jpg", "https://img.yad2.co.il/b.jpg"]
@@ -220,11 +227,42 @@ def test_send_listing_card_multiple_images_still_sends_just_the_first_one():
     assert ok is True
     bot.send_photo.assert_awaited_once()
     kwargs = bot.send_photo.await_args.kwargs
-    assert kwargs["photo"] == "https://img.yad2.co.il/a.jpg"
+    assert kwargs["photo"] == b"fake-jpeg-bytes"
     assert kwargs["caption"] == "caption"
     assert kwargs["reply_markup"] is not None
     bot.send_media_group.assert_not_awaited()
     bot.send_message.assert_not_awaited()
+
+
+def test_send_listing_card_falls_back_to_first_photo_when_collage_build_fails(monkeypatch):
+    # _build_collage_sync returns None on any failure (a bad URL, a timeout, a corrupt image) — a
+    # collage is a nice-to-have, never something that should block sending the listing at all.
+    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: None)
+
+    bot = _make_bot()
+    listing = make_listing(
+        image_urls=["https://img.yad2.co.il/a.jpg", "https://img.yad2.co.il/b.jpg"]
+    )
+    ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
+    assert ok is True
+    kwargs = bot.send_photo.await_args.kwargs
+    assert kwargs["photo"] == "https://img.yad2.co.il/a.jpg"
+
+
+def test_send_listing_card_single_image_never_attempts_a_collage(monkeypatch):
+    # Nothing to collage with exactly 1 real photo — _build_collage_sync must not even be called.
+    called = []
+    monkeypatch.setattr(
+        cards_module, "_build_collage_sync", lambda urls: called.append(urls) or None
+    )
+
+    bot = _make_bot()
+    listing = make_listing(image_urls=["https://img.yad2.co.il/a.jpg"])
+    ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
+    assert ok is True
+    assert called == []
+    kwargs = bot.send_photo.await_args.kwargs
+    assert kwargs["photo"] == "https://img.yad2.co.il/a.jpg"
 
 
 def test_send_listing_card_returns_false_on_telegram_error():
@@ -281,3 +319,112 @@ def test_send_listing_card_gives_up_after_second_flood_control_hit():
 
     assert ok is False
     assert bot.send_photo.await_count == 2
+
+
+# --- _build_collage_sync (2026-09-03) — real PIL compositing against mocked httpx.get responses,
+# so this stays a fast, network-free unit test (see the module-level comment above
+# test_send_listing_card_multiple_images_sends_a_generated_collage for why).
+
+import httpx as _httpx_module  # noqa: E402
+from PIL import Image as _PILImage  # noqa: E402
+
+from dorin_common.cards import _build_collage_sync  # noqa: E402
+
+
+def _fake_jpeg_bytes(color, size=(200, 300)):
+    """A real, valid JPEG (not just arbitrary bytes) — _build_collage_sync actually decodes each
+    download with PIL, so a fake image needs to be one. Non-square (200x300) deliberately, to
+    exercise the center-crop-to-square step with a real aspect ratio mismatch."""
+    buffer = __import__("io").BytesIO()
+    _PILImage.new("RGB", size, color).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _mock_httpx_get(monkeypatch, url_to_response: dict):
+    """url_to_response maps a URL to either JPEG bytes (200 OK) or an Exception instance (raised
+    as if the request itself failed)."""
+
+    def fake_get(url, timeout=None):
+        result = url_to_response[url]
+        if isinstance(result, Exception):
+            raise result
+        return _httpx_module.Response(200, content=result, request=_httpx_module.Request("GET", url))
+
+    monkeypatch.setattr(_httpx_module, "get", fake_get)
+
+
+def test_build_collage_two_photos_makes_a_2x1_grid(monkeypatch):
+    _mock_httpx_get(
+        monkeypatch,
+        {
+            "u1": _fake_jpeg_bytes("red"),
+            "u2": _fake_jpeg_bytes("blue"),
+        },
+    )
+    result = _build_collage_sync(["u1", "u2"])
+    assert result is not None
+    image = _PILImage.open(__import__("io").BytesIO(result))
+    assert image.size == (800, 400)  # 2 columns x 1 row, 400px tiles
+
+
+def test_build_collage_three_photos_makes_a_2x2_grid_with_one_empty_slot(monkeypatch):
+    _mock_httpx_get(
+        monkeypatch,
+        {
+            "u1": _fake_jpeg_bytes("red"),
+            "u2": _fake_jpeg_bytes("blue"),
+            "u3": _fake_jpeg_bytes("green"),
+        },
+    )
+    result = _build_collage_sync(["u1", "u2", "u3"])
+    assert result is not None
+    image = _PILImage.open(__import__("io").BytesIO(result))
+    assert image.size == (800, 800)  # 2 columns x 2 rows to fit a 3rd tile
+
+
+def test_build_collage_caps_at_four_photos_even_if_more_are_given(monkeypatch):
+    _mock_httpx_get(
+        monkeypatch,
+        {f"u{i}": _fake_jpeg_bytes("red") for i in range(1, 7)},
+    )
+    result = _build_collage_sync([f"u{i}" for i in range(1, 7)])
+    assert result is not None
+    image = _PILImage.open(__import__("io").BytesIO(result))
+    assert image.size == (800, 800)  # exactly 4 tiles' worth, not 6
+
+
+def test_build_collage_skips_photos_that_fail_to_download(monkeypatch):
+    _mock_httpx_get(
+        monkeypatch,
+        {
+            "u1": _fake_jpeg_bytes("red"),
+            "u2": _httpx_module.ConnectError("boom"),
+            "u3": _fake_jpeg_bytes("green"),
+        },
+    )
+    result = _build_collage_sync(["u1", "u2", "u3"])
+    assert result is not None  # 2 of 3 succeeded, still enough to build something
+    image = _PILImage.open(__import__("io").BytesIO(result))
+    assert image.size == (800, 400)  # only the 2 successful tiles
+
+
+def test_build_collage_returns_none_when_fewer_than_two_photos_succeed(monkeypatch):
+    _mock_httpx_get(
+        monkeypatch,
+        {
+            "u1": _fake_jpeg_bytes("red"),
+            "u2": _httpx_module.ConnectError("boom"),
+        },
+    )
+    assert _build_collage_sync(["u1", "u2"]) is None
+
+
+def test_build_collage_returns_none_when_every_download_fails(monkeypatch):
+    _mock_httpx_get(
+        monkeypatch,
+        {
+            "u1": _httpx_module.ConnectError("boom"),
+            "u2": _httpx_module.ConnectError("boom"),
+        },
+    )
+    assert _build_collage_sync(["u1", "u2"]) is None

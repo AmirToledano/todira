@@ -5,10 +5,13 @@ listing identically. See plan Section 4 for the card format this implements.
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 from pathlib import Path
 from typing import Callable
 
+import httpx
+from PIL import Image
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TelegramError
@@ -18,6 +21,67 @@ from dorin_common.models import Listing
 logger = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
+
+# A 2+ real-photo listing gets ONE composite collage image instead of just its first photo — 2026-
+# 09-03 request, matching the reference bot dorin.app's own style (a real user screenshot showed
+# its cards leading with a photo grid, not a single image). Deliberately still ONE send_photo call
+# with ONE image, not Telegram's sendMediaGroup — see send_listing_card's own docstring on why
+# that was already rejected once (2026-09-02): it can't carry an inline keyboard, so 2+ photos
+# meant a confusing second message just for the ❤️/🙈/🎉 buttons. A generated collage keeps the
+# "one message, one photo, one keyboard" design while still showing more than one real photo — the
+# website doesn't need this at all (website/templates/_listing_card.html already lets a visitor
+# scroll/swipe between every real photo directly, no compositing needed there).
+_COLLAGE_MAX_PHOTOS = 4
+_COLLAGE_TILE_PX = 400
+_COLLAGE_DOWNLOAD_TIMEOUT_S = 10.0
+
+
+def _build_collage_sync(image_urls: list[str]) -> bytes | None:
+    """Downloads up to _COLLAGE_MAX_PHOTOS listing photos and composites them into a single JPEG
+    grid image (2 columns, as many rows as needed). Returns None on ANY failure — a bad photo URL,
+    a timeout, a corrupt image — so the caller can fall back to sending just the first real photo
+    as before; a collage is a nice-to-have, never something that should block a listing from being
+    sent at all. Returns None outright for fewer than 2 usable photos (nothing to collage).
+
+    Synchronous and blocking (real network downloads + CPU-bound image resizing) — callers MUST
+    run this via asyncio.to_thread, never awaited directly on the event loop. See
+    tests/test_bot_async_db_calls.py's module docstring for why: this project already hit, and
+    fixed, the exact same class of bug for blocking DB calls (2026-08-31) — a bot with
+    max_concurrent_updates=1 processing every update on one event loop means ANY blocking call
+    made directly on it freezes every other user's interaction too, not just this one."""
+    tiles: list[Image.Image] = []
+    for url in image_urls[:_COLLAGE_MAX_PHOTOS]:
+        try:
+            response = httpx.get(url, timeout=_COLLAGE_DOWNLOAD_TIMEOUT_S)
+            response.raise_for_status()
+            photo = Image.open(io.BytesIO(response.content)).convert("RGB")
+        except Exception:
+            logger.warning("Skipping one collage photo that failed to download/decode: %s", url)
+            continue
+        # Center-crop to square first so tiles line up in a clean grid regardless of each source
+        # photo's own aspect ratio, then resize every tile to the same fixed size.
+        side = min(photo.size)
+        left = (photo.width - side) // 2
+        top = (photo.height - side) // 2
+        photo = photo.crop((left, top, left + side, top + side)).resize(
+            (_COLLAGE_TILE_PX, _COLLAGE_TILE_PX)
+        )
+        tiles.append(photo)
+
+    if len(tiles) < 2:
+        return None
+
+    columns = 2
+    rows = (len(tiles) + columns - 1) // columns
+    canvas = Image.new("RGB", (columns * _COLLAGE_TILE_PX, rows * _COLLAGE_TILE_PX), "white")
+    for index, tile in enumerate(tiles):
+        x = (index % columns) * _COLLAGE_TILE_PX
+        y = (index // columns) * _COLLAGE_TILE_PX
+        canvas.paste(tile, (x, y))
+
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue()
 
 # A listing with zero real photos gets a single branded illustration instead — Todi as a detective
 # (deerstalker hat), standing on a laptop pointing at a map of matching listings next to his happy
@@ -188,9 +252,10 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     so real photos (added 2026-09-02 — see scraper/normalize.py's enrich_from_detail) render
     identically everywhere instead of each call site reinventing send_photo/send_message.
 
-    ONE message per listing: the first real photo (or the Todi fallback — see
-    _dachshund_photo_path above) with the caption and the ❤️/🙈/🎉 keyboard all on it via a plain
-    send_photo. Deliberately NOT a multi-photo sendMediaGroup gallery anymore (2026-09-02, real
+    ONE message per listing: a generated photo collage (2+ real photos — see
+    _build_collage_sync above), the single real photo (exactly 1), or the Todi fallback (0) — with
+    the caption and the ❤️/🙈/🎉 keyboard all on it via a plain send_photo. Deliberately NOT a
+    multi-photo sendMediaGroup gallery anymore (2026-09-02, real
     user report + a direct ask to match the reference bot dorin.app's own cleaner single-message
     style): sendMediaGroup can't carry an inline keyboard at all, so showing 2+ photos meant a
     second, separate "⬆️ הדירה למעלה" message just to carry the buttons — confusing once several
@@ -210,9 +275,17 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
 
     async def _do_send() -> None:
         if image_url is not None:
+            photo: str | bytes = image_url
+            if len(listing.image_urls) > 1:
+                # asyncio.to_thread — _build_collage_sync does real network downloads + CPU-bound
+                # resizing; see its own docstring for why this must never run directly on the
+                # event loop.
+                collage = await asyncio.to_thread(_build_collage_sync, listing.image_urls)
+                if collage is not None:
+                    photo = collage
             await bot.send_photo(
                 chat_id=chat_id,
-                photo=image_url,
+                photo=photo,
                 caption=caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=keyboard,
