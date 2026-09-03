@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}שדרוג המנוי — טודירה{% endblock %}
+{% block content %}
+
+<div class="page-banner reveal">
+  <div class="pb-text">
+    <h1>👑 שדרוג המנוי</h1>
+    {% if is_owner %}
+      <p>אתה הבעלים של השירות — יש לך גישה מלאה תמיד, בלי קשר לתשלום.</p>
+    {% elif has_access %}
+      <p>
+        {% if paid_until %}יש לך גישה מלאה, בתוקף עד {{ paid_until.strftime('%d/%m/%Y') }}.
+        {% elif trial_ends_at %}אתה בתקופת הניסיון החינמית, עד {{ trial_ends_at.strftime('%d/%m/%Y') }}.
+        {% endif %}
+      </p>
+    {% else %}
+      <p>תקופת הניסיון החינמית הסתיימה. כדי להמשיך לקבל את המודעה המלאה + קישור ישיר, בחר תוכנית למטה.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if not is_owner %}
+<div class="settings-card reveal">
+  <div class="field-row">
+    <div class="field" style="text-align:center">
+      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">שבועי</div>
+      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 12px">₪{{ plan_prices.weekly }}</p>
+      <form method="post" action="/upgrade">
+        <input type="hidden" name="plan" value="weekly">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        <button type="submit" class="btn block">בחר שבועי</button>
+      </form>
+    </div>
+    <div class="field" style="text-align:center">
+      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">חודשי</div>
+      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 12px">₪{{ plan_prices.monthly }}</p>
+      <form method="post" action="/upgrade">
+        <input type="hidden" name="plan" value="monthly">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        <button type="submit" class="btn gold block">בחר חודשי</button>
+      </form>
+    </div>
+  </div>
+  <p class="field-hint" style="text-align:center;margin-top:20px">
+    התשלום מתבצע ידנית בביט — אחרי הלחיצה, שלח את הסכום כדי שהגישה תישאר פעילה. 🐾
+  </p>
+</div>
+{% endif %}
+{% endblock %}
