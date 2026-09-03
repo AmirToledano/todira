@@ -9,7 +9,7 @@ import os
 from handlers.apartments import build_apartments_handler
 from handlers.contact_fallback import build_contact_fallback_handler
 from handlers.filter_conversation import build_filter_conversation_handler
-from handlers.liked import build_liked_handler, build_reaction_handler
+from handlers.liked import build_hidden_handler, build_liked_handler, build_reaction_handler
 from handlers.onboarding import build_onboarding_handler
 from handlers.profile import build_profile_handlers
 from telegram import BotCommand, Update
@@ -41,6 +41,7 @@ BOT_COMMANDS = [
     BotCommand("filter", "🎯 החיפוש שלי"),
     BotCommand("apartments", "👀 כל הדירות"),
     BotCommand("liked", "❤️ דירות ששמרתי"),
+    BotCommand("hidden", "🙈 דירות שהסתרתי"),
     BotCommand("profile", "👤 אזור אישי"),
 ]
 
@@ -82,6 +83,7 @@ def main() -> None:
     application.add_handler(build_filter_conversation_handler())
     application.add_handler(build_apartments_handler())
     application.add_handler(build_liked_handler())
+    application.add_handler(build_hidden_handler())
     application.add_handler(build_reaction_handler())
     for handler in build_profile_handlers():
         application.add_handler(handler)
