@@ -6,15 +6,20 @@ metadata:
     app: {{ .Release.Name }}-scraper
 spec:
   schedule: {{ .Values.scraper.schedule | quote }}
+  # Local time, DST-safe — see values.yaml's scraper comment for why this window/timezone and the
+  # budget math behind the schedule above. Requires CronJob's timeZone field (stable since k8s
+  # 1.27); confirmed present on the real cluster 2026-09-03 (`kubectl get cronjobs -A` already
+  # showed a TIMEZONE column before this was ever set).
+  timeZone: "Asia/Jerusalem"
   concurrencyPolicy: Forbid # never overlap scrape runs
   jobTemplate:
     spec:
-      # 0, deliberately — see values.yaml's citiesPerRun comment for the incident this guards
-      # against. With backoffLimit>0, a pod crash (OOM, a transient DB hiccup, anything outside
-      # the per-city try/except in main.py's run_once — a single failed CITY is already caught
-      # and skipped there, this is about the whole pod dying) makes Kubernetes silently re-run
-      # the ENTIRE city batch from scratch, re-billing every ZenRows request already paid for in
-      # the failed attempt. A real run either succeeds outright or fails visibly (kubectl get jobs
+      # 0, deliberately — see values.yaml's scraper comment for the incident this guards against.
+      # With backoffLimit>0, a pod crash (OOM, a transient DB hiccup, anything outside the
+      # per-region try/except in main.py's run_once — a single failed region is already caught and
+      # skipped there, this is about the whole pod dying) makes Kubernetes silently re-run the
+      # ENTIRE region sweep from scratch, re-billing every ZenRows request already paid for in the
+      # failed attempt. A real run either succeeds outright or fails visibly (kubectl get jobs
       # shows Failed) — no silent, unbounded repeated spend.
       backoffLimit: 0
       template:
@@ -37,10 +42,6 @@ spec:
                     secretKeyRef:
                       name: {{ .Release.Name }}-bot-secret
                       key: telegram-bot-token
-                - name: SCRAPE_CITIES
-                  value: {{ .Values.scraper.cities | quote }}
-                - name: SCRAPE_CITIES_PER_RUN
-                  value: {{ .Values.scraper.citiesPerRun | quote }}
                 - name: ZENROWS_API_KEY
                   valueFrom:
                     secretKeyRef:

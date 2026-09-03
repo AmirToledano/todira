@@ -12,8 +12,10 @@ from yad2_client import (
     BLOCKED_RESOURCE_TYPES,
     CITY_SLUG_TO_HEBREW_NAME,
     CITY_SLUG_TO_ID,
+    REGION_SLUGS,
     ZENROWS_API_KEY_ENV_VAR,
     Yad2FetchError,
+    fetch_all_listings,
     fetch_listing_detail,
     fetch_search_results,
 )
@@ -139,6 +141,67 @@ def test_network_failure_fails_soft_as_yad2_fetch_error(monkeypatch):
 
     with pytest.raises(Yad2FetchError):
         list(fetch_search_results("tel-aviv"))
+
+
+def test_yad2_own_antibot_page_raises_a_clear_error_not_silent_zero_cards(monkeypatch):
+    # A 200 response with none of ZenRows' own error JSON shape, but Yad2's actual bot-challenge
+    # text — must NOT be mistaken for "genuinely 0 listings this city" (see _YAD2_ANTIBOT_MARKER's
+    # module comment in yad2_client.py).
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    challenge_html = "<html><body>Are you for real, or a bot? Please verify.</body></html>"
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text=challenge_html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(Yad2FetchError, match="bot-challenge"):
+        list(fetch_search_results("tel-aviv"))
+
+
+# --- fetch_all_listings (2026-09-03 — see its module-level comment in yad2_client.py) — 7
+# broad-region requests (REGION_SLUGS, confirmed live against real Yad2 traffic) instead of the
+# 42-city loop above. These tests pin down this function's own request-building behavior against
+# mocked HTTP responses.
+
+
+def test_region_slugs_has_seven_real_regions_no_duplicates():
+    assert len(REGION_SLUGS) == 7
+    assert len(set(REGION_SLUGS)) == 7
+
+
+def test_fetch_all_listings_hits_every_region_url_once(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        return httpx.Response(200, text=_CARD_HTML, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_all_listings())
+
+    assert len(items) == len(REGION_SLUGS)  # one card per region in this mocked HTML
+    assert captured_urls == [
+        f"https://www.yad2.co.il/realestate/rent/{region}" for region in REGION_SLUGS
+    ]
+
+
+def test_fetch_all_listings_accepts_a_custom_region_subset(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        return httpx.Response(200, text=_CARD_HTML, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_all_listings(regions=("tel-aviv-area",)))
+
+    assert len(items) == 1
+    assert captured_urls == ["https://www.yad2.co.il/realestate/rent/tel-aviv-area"]
 
 
 # --- fetch_listing_detail (2026-09-02) — reads the __NEXT_DATA__ blob embedded in a listing's
