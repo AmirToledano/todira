@@ -135,15 +135,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "התנתקות", "en": "Log out", "ru": "Выйти", "fr": "Se déconnecter", "ar": "تسجيل الخروج",
     },
     "auth.login": {
-        "he": "התחברות עם טלגרם", "en": "Log in with Telegram", "ru": "Войти через Telegram",
-        "fr": "Se connecter avec Telegram", "ar": "تسجيل الدخول عبر تيليجرام",
+        "he": "התחברות עם Google", "en": "Sign in with Google", "ru": "Войти через Google",
+        "fr": "Se connecter avec Google", "ar": "تسجيل الدخول عبر Google",
+    },
+    "auth.link_google": {
+        "he": "🔗 קשר את Google לחשבון", "en": "🔗 Link your Google account", "ru": "🔗 Привязать аккаунт Google",
+        "fr": "🔗 Lier votre compte Google", "ar": "🔗 ربط حساب Google",
     },
     "auth.error_body": {
-        "he": "לא הצלחנו לאמת את ההתחברות דרך טלגרם. אפשר לנסות שוב.",
-        "en": "We couldn't verify the Telegram login. Please try again.",
-        "ru": "Не удалось подтвердить вход через Telegram. Попробуйте снова.",
-        "fr": "Impossible de vérifier la connexion Telegram. Veuillez réessayer.",
-        "ar": "تعذّر التحقق من تسجيل الدخول عبر تيليجرام. يرجى المحاولة مرة أخرى.",
+        "he": "לא הצלחנו לאמת את ההתחברות. אפשר לנסות שוב.",
+        "en": "We couldn't verify the login. Please try again.",
+        "ru": "Не удалось подтвердить вход. Попробуйте снова.",
+        "fr": "Impossible de vérifier la connexion. Veuillez réessayer.",
+        "ar": "تعذّر التحقق من تسجيل الدخول. يرجى المحاولة مرة أخرى.",
     },
     "auth.error_cta": {
         "he": "חזרה לדף הבית", "en": "Back to home", "ru": "На главную",

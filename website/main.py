@@ -1,27 +1,35 @@
 """ToDira public website (Phase 2) — FastAPI, server-rendered Jinja2 templates, reuses
 common/dorin_common (same models/matching/db as the bot and scraper).
 
-AUTH: two ways in, and both resolve to the same signed session cookie in the end.
-  1. Real login — /auth/telegram/callback, which verifies a Telegram Login Widget-shaped HMAC
-     callback and sets the session cookie to the internal `users.id` PK (deliberately NOT
-     "telegram_user_id" or anything Telegram-specific, so a future login provider's own route just
-     needs to resolve its own user identity to the same `users.id` and populate the same session
-     key — `request.session["user_id"]` — no changes needed here).
+AUTH: three ways in, and all three resolve to the same signed session cookie in the end.
+  1. Real login via Google — /auth/google/start + /auth/google/callback (2026-09-04), the actual
+     replacement UI referenced in #2's history below. This is a LINK to an existing user, not a
+     third standalone identity: a brand-new Google sign-in with no `users.google_sub` match and no
+     ?uid= in flight gets sent to the bot, same as #2's own "never started the bot" case — Google
+     alone can't create a filter. The valuable case is linking: reached with `?uid=` (a visitor
+     only viewing a page via their own bot deep link, no real session yet) it stashes that uid in
+     the signed session cookie (never the OAuth `state` param — state is attacker-visible, the
+     session cookie is cryptographically signed), and on callback links `google_sub` to that SAME
+     existing user row. Every later "Sign in with Google" then resolves straight to it — solving
+     iOS Safari's actual complaint below without touching Telegram's own flaky redirect at all.
+  2. /auth/telegram/callback, which verifies a Telegram Login Widget-shaped HMAC callback and sets
+     the session cookie to the internal `users.id` PK (deliberately NOT "telegram_user_id" or
+     anything Telegram-specific, so a login provider's own route just needs to resolve its own user
+     identity to the same `users.id` and populate the same session key —
+     `request.session["user_id"]` — no changes needed here; #1 above is exactly that).
      As of 2026-09-02 nothing in the UI links to this route anymore — the header/`need_uid.html`
      widget embed was removed (real complaint: on iOS Safari's in-app floating browser, Telegram's
      own oauth.telegram.org handshake behind the widget re-asked for phone verification on nearly
      every visit instead of staying logged in — a problem in Telegram's redirect flow itself, not
      in this route's session handling). The route/`_verify_telegram_auth` are kept as-is (untouched,
-     still fully tested) since Google Sign-In is coming next as the real replacement UI for
-     establishing this same session cookie; only the trigger changes. In the gap, /admin/messages
-     (which deliberately requires this real session, not just `?uid=`) has no way to be reached —
-     expected to be short-lived until Google Sign-In lands.
-  2. `?uid=` query param, via a direct `https://t.me/AmirDirotBot` deep link (bot onboarding/filter
+     still fully tested) as a fallback login path even though #1 is now the header's own button.
+  3. `?uid=` query param, via a direct `https://t.me/AmirDirotBot` deep link (bot onboarding/filter
      flows already send these) — the ONLY way in from Telegram now, matching how the reference
      product (dorin.app) treats "Continue with Telegram": open the bot directly, no OAuth handshake
      at all. Not secure on its own (anyone who knows/guesses a uid can view that user's
      filter/liked listings via a raw link), but the real session cookie above is what protects a
-     page once you've actually logged in via #1.
+     page once you've actually logged in via #1 or #2 — and is also exactly the trust level #1's
+     linking flow relies on to prove "this visitor really is that uid" (see #1's own comment).
 """
 from __future__ import annotations
 
@@ -30,8 +38,10 @@ import hashlib
 import hmac
 import logging
 import os
+import secrets
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 from dorin_common.cities import CITIES
@@ -100,6 +110,18 @@ LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year — a site-wide preference, n
 # proactively pushed — find your own numeric Telegram ID via a bot like @userinfobot, then set it.
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
+
+# Google Sign-In (login redesign step 2) — a real, persistent website session, independent of
+# Telegram's own login-widget flow (which iOS Safari's in-app browser kept re-asking to re-verify,
+# see this file's module docstring). Both optional/unset by default so a deploy before the owner
+# creates a Google Cloud OAuth Client doesn't break — /auth/google/start just 400s until then.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+# Built from a fixed env var, never from the incoming request's own scheme/host — Caddy terminates
+# TLS in front of this pod and proxies plain HTTP internally, so trusting the request could produce
+# an `http://` redirect_uri that doesn't match what's registered in the Google Cloud Console
+# (redirect_uri must match EXACTLY, or Google rejects the whole flow).
+WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org")
 
 
 def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: int | None) -> bool:
@@ -292,6 +314,112 @@ def auth_telegram_callback(request: Request, next: str = "/apartments"):
 
     request.session["user_id"] = user_pk
     return RedirectResponse(_safe_next(next), status_code=303)
+
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+
+
+@app.get("/auth/google/start")
+def auth_google_start(request: Request, next: str = "/apartments", uid: int | None = None):
+    """Kicks off the Google OAuth Authorization Code flow. `uid` (present when reached from a page
+    the visitor is only viewing via their own ?uid= bot deep link, not a real session yet) is
+    stashed in the signed session cookie, not the OAuth `state` param — state is visible to/
+    replayable by anyone who intercepts the redirect, while the session cookie is cryptographically
+    signed (SESSION_SECRET_KEY), so a forged uid can't be smuggled in to link someone else's
+    account. See /auth/google/callback for how it's used."""
+    if not GOOGLE_CLIENT_ID:
+        logger.warning("Rejected /auth/google/start: GOOGLE_CLIENT_ID is not configured")
+        return _render(request, "auth_error.html", {}, status_code=400)
+
+    state = secrets.token_urlsafe(24)
+    request.session["oauth_state"] = state
+    request.session["oauth_next"] = _safe_next(next)
+    if uid is not None:
+        request.session["oauth_link_uid"] = uid
+    else:
+        request.session.pop("oauth_link_uid", None)
+
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": f"{WEBSITE_URL}/auth/google/callback",
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "prompt": "select_account",
+    }
+    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(params)}", status_code=303)
+
+
+@app.get("/auth/google/callback")
+def auth_google_callback(
+    request: Request, code: str | None = None, state: str | None = None, error: str | None = None
+):
+    expected_state = request.session.pop("oauth_state", None)
+    link_uid = request.session.pop("oauth_link_uid", None)
+    next_url = request.session.pop("oauth_next", "/apartments")
+
+    if (
+        error
+        or not code
+        or not GOOGLE_CLIENT_ID
+        or not GOOGLE_CLIENT_SECRET
+        or not expected_state
+        or state != expected_state
+    ):
+        logger.warning(
+            "Rejected Google login callback: error=%s missing_code=%s bad_state=%s",
+            error,
+            code is None,
+            state != expected_state,
+        )
+        return _render(request, "auth_error.html", {}, status_code=400)
+
+    try:
+        token_resp = httpx.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": f"{WEBSITE_URL}/auth/google/callback",
+                "grant_type": "authorization_code",
+            },
+            timeout=10.0,
+        )
+        token_resp.raise_for_status()
+        access_token = token_resp.json()["access_token"]
+        userinfo_resp = httpx.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10.0,
+        )
+        userinfo_resp.raise_for_status()
+        google_sub = userinfo_resp.json()["sub"]
+    except (httpx.HTTPError, KeyError):
+        logger.exception("Failed to complete the Google OAuth token/userinfo exchange")
+        return _render(request, "auth_error.html", {}, status_code=400)
+
+    with get_session() as session:
+        user = session.scalar(select(User).where(User.google_sub == google_sub))
+        if user is None and link_uid is not None:
+            # First time this Google account signs in while viewing a page via the visitor's own
+            # ?uid= deep link — link it to that SAME existing Telegram/WhatsApp-created account so
+            # every later "Sign in with Google" resolves straight back to it.
+            user = _get_user_by_uid(session, link_uid)
+            if user is not None:
+                user.google_sub = google_sub
+                session.commit()
+        user_pk = user.id if user is not None else None
+
+    if user_pk is None:
+        # A real Google account, but not yet linked to any Telegram/WhatsApp-created user — same
+        # restriction /auth/telegram/callback already has: Google alone can't create a filter.
+        return RedirectResponse("https://t.me/AmirDirotBot", status_code=303)
+
+    request.session["user_id"] = user_pk
+    return RedirectResponse(_safe_next(next_url), status_code=303)
 
 
 @app.get("/auth/logout")
