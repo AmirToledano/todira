@@ -83,6 +83,26 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: gemini-api-key
                   optional: true
+            # Google Sign-In (website/main.py's /auth/google/start + /auth/google/callback) —
+            # optional/unset by default so a deploy before the owner creates a Google Cloud OAuth
+            # Client doesn't break; the route itself 400s cleanly until both are set.
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: google-client-id
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: google-client-secret
+                  optional: true
+            # Must match EXACTLY what's registered as the OAuth Client's redirect URI in the
+            # Google Cloud Console — see main.py's own comment on why this is a fixed value, never
+            # derived from the incoming request (Caddy terminates TLS in front of this pod).
+            - name: WEBSITE_URL
+              value: "https://{{ .Values.website.domain }}"
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}

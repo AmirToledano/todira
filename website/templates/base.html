@@ -2,6 +2,21 @@
 <html lang="{{ lang }}" dir="{{ dir }}">
 <head>
   <meta charset="utf-8">
+  <script>
+    // Apply any saved accessibility prefs before first paint, so a returning visitor never sees
+    // a flash of the un-adjusted page (the full toggle logic lives in the script near the end of
+    // <body> — this is just the synchronous, as-early-as-possible subset).
+    (function () {
+      try {
+        var prefs = JSON.parse(localStorage.getItem('todira-a11y-prefs')) || {};
+        var root = document.documentElement;
+        if (prefs.font && prefs.font !== '100') { root.classList.add('a11y-font-' + prefs.font); }
+        ['contrast', 'grayscale', 'underline-links', 'big-targets', 'reading-guide', 'no-motion'].forEach(function (key) {
+          if (prefs[key]) { root.classList.add('a11y-' + key); }
+        });
+      } catch (e) { /* localStorage unavailable — page renders with defaults, no crash */ }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ t('meta.title_home') }}{% endblock %}</title>
   <meta name="description" content="{{ t('meta.description') }}">
@@ -51,8 +66,10 @@
             {% if current_user %}
             <span class="auth-name">{{ current_user.first_name or (current_user.telegram_username and ('@' ~ current_user.telegram_username)) or t('auth.you') }}</span>
             <a class="auth-logout" href="/auth/logout">{{ t('auth.logout') }}</a>
+            {% elif uid %}
+            <a class="auth-login" href="/auth/google/start?uid={{ uid }}&amp;next={{ request.url.path | urlencode }}">{{ t('auth.link_google') }}</a>
             {% else %}
-            <a class="auth-login" href="https://t.me/AmirDirotBot" target="_blank">{{ t('auth.login') }}</a>
+            <a class="auth-login" href="/auth/google/start?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
             {% endif %}
           </div>
         </div>
@@ -73,12 +90,41 @@
         <a href="https://t.me/AmirDirotBot" target="_blank">{{ t('nav.bot') }}</a>
         <a href="/terms">{{ t('footer.terms') }}</a>
         <a href="/privacy">{{ t('footer.privacy') }}</a>
+        <a href="/accessibility">{{ t('footer.accessibility') }}</a>
       </nav>
       <p class="footer-note">{{ t('footer.built_by') }} 🐾</p>
       <p class="footer-note footer-legal">{{ t('footer.gender_note') }}</p>
       <p class="footer-note footer-legal">{{ t('footer.copyright') }}</p>
     </div>
   </footer>
+
+  <div id="a11y-widget">
+    <button type="button" id="a11y-toggle" aria-expanded="false" aria-controls="a11y-panel" aria-label="{{ t('a11y.widget_toggle_label') }}">♿</button>
+    <div id="a11y-panel" role="dialog" aria-label="{{ t('a11y.panel_title') }}" hidden>
+      <div class="a11y-panel-head">
+        <strong>{{ t('a11y.panel_title') }}</strong>
+        <button type="button" id="a11y-close" aria-label="{{ t('a11y.close') }}">✕</button>
+      </div>
+      <div class="a11y-row">
+        <span>{{ t('a11y.font_size') }}</span>
+        <div class="a11y-font-controls">
+          <button type="button" data-a11y-action="font-dec" aria-label="{{ t('a11y.font_decrease') }}">A-</button>
+          <button type="button" data-a11y-action="font-reset" aria-label="{{ t('a11y.font_reset') }}">A</button>
+          <button type="button" data-a11y-action="font-inc" aria-label="{{ t('a11y.font_increase') }}">A+</button>
+        </div>
+      </div>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="contrast">{{ t('a11y.contrast') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="grayscale">{{ t('a11y.grayscale') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="underline-links">{{ t('a11y.underline_links') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="big-targets">{{ t('a11y.big_targets') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="reading-guide">{{ t('a11y.reading_guide') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="no-motion">{{ t('a11y.no_motion') }}</button>
+      <button type="button" class="a11y-toggle-chip" id="a11y-speak" data-stop-label="{{ t('a11y.stop_reading') }}">{{ t('a11y.read_aloud') }}</button>
+      <button type="button" class="a11y-reset" id="a11y-reset-all">{{ t('a11y.reset_all') }}</button>
+      <a class="a11y-statement-link" href="/accessibility">{{ t('a11y.statement_link') }}</a>
+    </div>
+  </div>
+
   <script>
     (function () {
       var toggle = document.getElementById('nav-toggle');
@@ -89,6 +135,151 @@
           toggle.classList.toggle('open', open);
           toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         });
+      }
+    })();
+    (function () {
+      // Accessibility widget: toggle classes/attrs on <html>, persisted in localStorage so a
+      // visitor's choices survive page navigation. The FONT_STEPS/TOGGLE_KEYS below are also
+      // read by the tiny blocking script in <head> (see there) that applies saved prefs before
+      // first paint, so returning visitors never see a flash of the un-adjusted page.
+      var root = document.documentElement;
+      var STORAGE_KEY = 'todira-a11y-prefs';
+      var FONT_STEPS = ['100', '112', '125', '137', '150'];
+      var TOGGLE_KEYS = ['contrast', 'grayscale', 'underline-links', 'big-targets', 'reading-guide', 'no-motion'];
+
+      function loadPrefs() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+        } catch (e) {
+          return {};
+        }
+      }
+      function savePrefs(prefs) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+        } catch (e) { /* private-browsing / storage disabled — the toggle still works this visit */ }
+      }
+      var prefs = loadPrefs();
+
+      var toggleBtn = document.getElementById('a11y-toggle');
+      var panel = document.getElementById('a11y-panel');
+      var closeBtn = document.getElementById('a11y-close');
+
+      function openPanel() {
+        panel.hidden = false;
+        toggleBtn.setAttribute('aria-expanded', 'true');
+      }
+      function closePanel() {
+        panel.hidden = true;
+        toggleBtn.setAttribute('aria-expanded', 'false');
+      }
+      if (toggleBtn && panel) {
+        toggleBtn.addEventListener('click', function () {
+          if (panel.hidden) { openPanel(); } else { closePanel(); }
+        });
+        closeBtn.addEventListener('click', closePanel);
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && !panel.hidden) { closePanel(); toggleBtn.focus(); }
+        });
+      }
+
+      function applyFontStep(step) {
+        FONT_STEPS.forEach(function (s) { root.classList.remove('a11y-font-' + s); });
+        if (step !== '100') { root.classList.add('a11y-font-' + step); }
+      }
+      function applyToggle(key, on) {
+        root.classList.toggle('a11y-' + key, !!on);
+      }
+
+      // Apply saved prefs on load (belt-and-suspenders — the <head> script already did this
+      // before paint; this just keeps the JS-side state/UI in sync) and reflect them in the UI.
+      applyFontStep(prefs.font || '100');
+      TOGGLE_KEYS.forEach(function (key) {
+        applyToggle(key, prefs[key]);
+        var chip = document.querySelector('[data-a11y-toggle="' + key + '"]');
+        if (chip) { chip.setAttribute('aria-pressed', prefs[key] ? 'true' : 'false'); chip.classList.toggle('active', !!prefs[key]); }
+      });
+
+      document.querySelectorAll('[data-a11y-toggle]').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+          var key = chip.getAttribute('data-a11y-toggle');
+          var next = !prefs[key];
+          prefs[key] = next;
+          applyToggle(key, next);
+          chip.setAttribute('aria-pressed', next ? 'true' : 'false');
+          chip.classList.toggle('active', next);
+          savePrefs(prefs);
+        });
+      });
+
+      document.querySelectorAll('[data-a11y-action]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var action = btn.getAttribute('data-a11y-action');
+          var idx = FONT_STEPS.indexOf(prefs.font || '100');
+          if (action === 'font-inc') { idx = Math.min(idx + 1, FONT_STEPS.length - 1); }
+          else if (action === 'font-dec') { idx = Math.max(idx - 1, 0); }
+          else { idx = 0; }
+          prefs.font = FONT_STEPS[idx];
+          applyFontStep(prefs.font);
+          savePrefs(prefs);
+        });
+      });
+
+      var resetAllBtn = document.getElementById('a11y-reset-all');
+      if (resetAllBtn) {
+        resetAllBtn.addEventListener('click', function () {
+          prefs = {};
+          savePrefs(prefs);
+          applyFontStep('100');
+          TOGGLE_KEYS.forEach(function (key) {
+            applyToggle(key, false);
+            var chip = document.querySelector('[data-a11y-toggle="' + key + '"]');
+            if (chip) { chip.setAttribute('aria-pressed', 'false'); chip.classList.remove('active'); }
+          });
+        });
+      }
+
+      // Reading guide: a thin bar that follows the pointer vertically, so a line of text is
+      // easier to track — only listens for mousemove while the toggle is actually on.
+      var guideBar = null;
+      function ensureGuideBar() {
+        if (!guideBar) {
+          guideBar = document.createElement('div');
+          guideBar.id = 'a11y-reading-guide-bar';
+          document.body.appendChild(guideBar);
+        }
+        return guideBar;
+      }
+      document.addEventListener('mousemove', function (e) {
+        if (!root.classList.contains('a11y-reading-guide')) { return; }
+        ensureGuideBar().style.top = e.clientY + 'px';
+      });
+
+      // Read-aloud via the browser's own built-in speech synthesis — no external service, no
+      // extra cost. Hebrew voice quality/availability depends on the visitor's own device; this
+      // degrades gracefully (falls back to whatever default voice the browser has) rather than
+      // failing outright when a Hebrew voice isn't installed.
+      var speakBtn = document.getElementById('a11y-speak');
+      if (speakBtn && 'speechSynthesis' in window) {
+        var speakLabel = speakBtn.textContent;
+        var stopLabel = speakBtn.dataset.stopLabel;
+        speakBtn.addEventListener('click', function () {
+          if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+            speakBtn.textContent = speakLabel;
+            return;
+          }
+          var main = document.getElementById('main-content');
+          var text = main ? main.innerText : document.body.innerText;
+          var utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = root.getAttribute('lang') || 'he-IL';
+          utterance.onend = function () { speakBtn.textContent = speakLabel; };
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utterance);
+          speakBtn.textContent = stopLabel;
+        });
+      } else if (speakBtn) {
+        speakBtn.disabled = true;
       }
     })();
     (function () {
