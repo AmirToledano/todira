@@ -74,9 +74,17 @@ scraper:
   # full-country sweep vs. 1,050 for the old 42-city loop, on the SAME plan — no per-run city
   # selection or rotation needed anymore, so citiesPerRun/cities are gone from here; the region
   # list itself lives in yad2_client.py's REGION_SLUGS, not configured per-deploy.
-  schedule: "0 3 * * *" # once daily, 03:00 UTC — unchanged for now; the region sweep's much lower
-  # per-run cost means this could go far more frequent within the same ZenRows budget (see
-  # yad2_client.py's REGION_SLUGS comment for the math) — a deliberate follow-up, not done here.
+  # 2026-09-03: bumped from once-daily (03:00 UTC) to every 2 hours during the reference bot
+  # dorin.app's own apparent active window (established live via the owner's own WhatsApp
+  # screenshots of it: listings start arriving ~08:00 and continue until ~00:00 Israel time, then
+  # stop overnight — presumably deliberate, so a notification doesn't land while people are
+  # asleep). 8 runs/day (08:00,10:00,...,22:00 Israel time — scraper-cronjob.yaml's `timeZone`
+  # field handles Israel's DST automatically, no UTC math needed here) × 30 days × 175 credits/run
+  # (7-region sweep, see REGION_SLUGS above) = 42,000 credits/month — safely under the existing
+  # ZenRows Build plan's 45,000/month with margin, no upgrade. Owner explicitly chose to stay on
+  # the current $19/mo plan rather than spend more for a tighter interval (Launch, $58/mo, would
+  # allow every 30 min — see PROJECT_STATE.md for the full frequency/cost table if that changes).
+  schedule: "0 8,10,12,14,16,18,20,22 * * *"
 
 resources:
   bot:
