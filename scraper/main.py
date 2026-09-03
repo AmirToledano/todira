@@ -4,9 +4,7 @@ CronJob (see charts/todira), or manually via `docker compose run --rm scraper` l
 from __future__ import annotations
 
 import asyncio
-import datetime
 import logging
-import os
 import sys
 
 from sqlalchemy import func, select
@@ -17,41 +15,10 @@ from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
 from normalize import normalize
 from notifier import run_notifications
-from yad2_client import CITY_SLUG_TO_HEBREW_NAME, Yad2FetchError, fetch_search_results
+from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_all_listings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("scraper.main")
-
-
-def _select_cities_for_run(all_cities: list[str], batch_size: int) -> list[str]:
-    """Picks a `batch_size`-sized, deterministically-rotating slice of `all_cities` for this run.
-
-    Every ZenRows request costs real, limited credits (see PROJECT_STATE.md, 2026-08-31 — the
-    free tier's entire monthly 5,000-credit budget was burned in ~2 days scraping all 42 cities
-    every 10 minutes). Scraping only a rotating slice per run, keyed off the calendar day so it's
-    stable across every run within the same day and advances the next day with no stored state
-    needed, keeps every city in eventual rotation (nobody's chosen city is structurally
-    unreachable) while bounding total monthly requests. `batch_size <= 0` or `>= len(all_cities)`
-    disables rotation entirely (every city, every run) — useful for local/manual testing."""
-    if batch_size <= 0 or batch_size >= len(all_cities):
-        return all_cities
-    day_index = datetime.date.today().toordinal()
-    start = (day_index * batch_size) % len(all_cities)
-    end = start + batch_size
-    if end <= len(all_cities):
-        return all_cities[start:end]
-    return all_cities[start:] + all_cities[: end - len(all_cities)]
-
-
-def _scrape_cities() -> list[str]:
-    raw = os.environ.get("SCRAPE_CITIES", "")
-    cities = [c.strip() for c in raw.split(",") if c.strip()]
-    if not cities:
-        raise RuntimeError(
-            "SCRAPE_CITIES environment variable is not set (comma-separated list of cities)"
-        )
-    batch_size = int(os.environ.get("SCRAPE_CITIES_PER_RUN", "0") or "0")
-    return _select_cities_for_run(cities, batch_size)
 
 
 def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[int, int]]]:
@@ -105,27 +72,23 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
 
 def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
     """Mark previously-active listings that weren't seen in this (complete) run as delisted, and
-    un-delist any that reappeared. Scoped to `scraped_city_names` (the canonical Hebrew names —
-    see cities.canonicalize_city — of the cities actually scraped THIS run), NOT globally across
-    every city ever scraped.
+    un-delist any that reappeared. Scoped to `scraped_city_names` — the canonical Hebrew names
+    (see cities.canonicalize_city) of the cities actually REPRESENTED among this run's fetched
+    listings, NOT globally across every city this project tracks.
 
-    This used to run globally, on the reasoning that `listings.city` might not reliably match the
-    city slug used in the search query, so scoping per-city on a possibly-mismatched string risked
-    wrongly delisting an entire city's worth of listings. That reasoning predates
-    canonicalize_city() (2026-09-02, see cities.py's docstring) — `listings.city` is now
-    normalized to exactly the Hebrew name CITY_SLUG_TO_HEBREW_NAME maps the scraped slug to, so
-    matching against it here is reliable.
-
-    Running this globally turned out to be a much worse bug than the one it was written to avoid:
-    once SCRAPE_CITIES_PER_RUN started rotating through a 1-city subset per run (added later, for
-    ZenRows cost control — see _select_cities_for_run), a global pass meant EVERY run delisted
-    every listing from every city NOT scraped that specific run, since their external_ids are
-    never in that run's (necessarily city-scoped) seen_external_ids. In practice this meant only
-    whichever single city was scraped most recently ever had any non-delisted listings at all —
-    found live 2026-09-02 via a production query showing literally every non-delisted listing in
-    the entire table belonged to the one city just scraped. Still only called when every city
-    ATTEMPTED this run succeeded (see run_once) — a partial fetch failure within that scoped set
-    must never be mistaken for "everything in these cities disappeared"."""
+    Since 2026-09-03 (see yad2_client.py's REGION_SLUGS/fetch_all_listings), a run no longer picks
+    cities in advance — it fetches 7 broad regions and only learns which cities actually showed up
+    after parsing the results. `scraped_city_names` is therefore built from the fetched listings
+    themselves (each already canonicalized by normalize()), not from a fixed slug list. A city
+    genuinely absent from this run's results (nothing new/active there right now) is simply never
+    in this set — correctly excluded from delisting, rather than wrongly assumed to have emptied
+    out. This mirrors the same fix this function already needed once before (2026-09-02, when
+    scoping was still per-scraped-city): running delisting globally, or against cities the run
+    didn't actually observe, wrongly delists everything elsewhere — found live via a production
+    query showing literally every non-delisted listing in the whole table belonged to the one city
+    just scraped. Still only called when every region ATTEMPTED this run succeeded (see
+    run_once) — a partial fetch failure within that observed set must never be mistaken for
+    "everything in these cities disappeared"."""
     table = Listing.__table__
     newly_delisted = session.execute(
         table.update()
@@ -153,18 +116,17 @@ def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set
 
 
 def run_once() -> dict[str, int]:
-    cities = _scrape_cities()
-    logger.info("Scraping %d cities this run: %s", len(cities), ", ".join(cities))
+    logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
     fetched = 0
     normalized_items = []
     errors = 0
     seen_external_ids: set[str] = set()
-    all_cities_succeeded = True
+    all_regions_succeeded = True
 
-    for city in cities:
-        logger.info("Fetching Yad2 listings for city=%s", city)
+    for region in REGION_SLUGS:
+        logger.info("Fetching Yad2 listings for region=%s", region)
         try:
-            for raw_item in fetch_search_results(city):
+            for raw_item in fetch_all_listings(regions=(region,)):
                 fetched += 1
                 normalized = normalize(raw_item, deal_type=DealType.RENT)
                 if normalized is not None:
@@ -174,21 +136,21 @@ def run_once() -> dict[str, int]:
                     errors += 1
         except Yad2FetchError:
             logger.exception(
-                "Failed to fetch Yad2 results for city=%s — skipping this city", city
+                "Failed to fetch Yad2 results for region=%s — skipping this region", region
             )
             errors += 1
-            all_cities_succeeded = False
+            all_regions_succeeded = False
 
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, normalized_items)
 
         delisted_count = 0
-        if all_cities_succeeded and seen_external_ids:
-            scraped_city_names = {CITY_SLUG_TO_HEBREW_NAME[slug] for slug in cities}
+        if all_regions_succeeded and seen_external_ids:
+            scraped_city_names = {item.city for item in normalized_items if item.city}
             delisted_count = _mark_delisted(session, seen_external_ids, scraped_city_names)
-        elif not all_cities_succeeded:
+        elif not all_regions_succeeded:
             logger.warning(
-                "Skipping delisting check this run — at least one city failed to fetch, so the "
+                "Skipping delisting check this run — at least one region failed to fetch, so the "
                 "seen-listings set is incomplete and can't be trusted for delisting."
             )
 
