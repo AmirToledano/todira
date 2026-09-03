@@ -9,6 +9,7 @@ import io
 import logging
 from pathlib import Path
 from typing import Callable
+from urllib.parse import quote
 
 import httpx
 from PIL import Image
@@ -111,76 +112,111 @@ def _dachshund_photo_path() -> Path:
     return _MASCOT_PATH
 
 
-_DEAL_TYPE_LABELS = {"rent": "שכירות", "sale": "מכירה", "sublet": "סאבלט"}
-
-# A compact, readable "מה יש בנכס" list — modeled after the reference bot's own "פיצ'רים:" line
-# (2026-09-02), then folded into a single "|"-separated line as the sole amenity display (a
-# separate emoji-only row used to sit above this one; dropped 2026-09-02 as redundant once every
-# field here already carries its own label — see format_caption's docstring). Limited to fields
-# this project actually models today (see dorin_common/models.py) — no air conditioning/boiler/
-# accessibility columns exist yet, even though Yad2's detail-page data now carries them (see
-# scraper/normalize.py's enrich_from_detail) - a real follow-up, not done here.
-_FEATURE_LABELS = (
-    ("has_parking", "חניה"),
-    ("has_elevator", "מעלית"),
-    ("has_balcony", "מרפסת"),
-    ("pets_allowed", "חיות מחמד"),
-    ("is_renovated", "משופצת"),
-    ("is_roommate_friendly", "מתאימה לשותפים"),
+# 2026-09-03 rewrite: field order/labels/emphasis matching the reference bot dorin.app 1:1, per a
+# real side-by-side comparison against its own screenshots. Deal-type/broker prefix, then location
+# (city bold, street a clickable Google-Maps link on Telegram — see _google_maps_url), then price/
+# rooms/size/floor/move-in each on its own BOLD-labeled line (previously plain labels; italicized
+# features; ISO move-in dates; "ש"ח" currency — all superseded here), a per-feature-emoji list
+# instead of a generic "🔑" line, and a 📝-prefixed description. The old deal-type line ("🏠
+# שכירות"/"מכירה") is GONE — replaced by a bold "🏢תיווך"/"🏢סאבלט" prefix shown only when relevant
+# (a plain rent or sale listing gets no prefix line at all; broker status is independent of deal
+# type, so it takes priority over the sublet label if somehow both apply). The old "🏷️ {source}"
+# footer line is also gone — a real request that Telegram/WhatsApp readers don't need to know which
+# source site a listing came from (the website's own card still shows a source badge — see
+# website/templates/_listing_card.html).
+_FEATURE_EMOJI_LABELS = (
+    ("has_parking", "🚗", "חניה"),
+    ("has_elevator", "🛗", "מעלית"),
+    ("has_balcony", "🌿", "מרפסת"),
+    ("pets_allowed", "🐾", "חיות מחמד"),
+    ("is_renovated", "✨", "משופצת"),
+    ("is_roommate_friendly", "🤝", "מתאימה לשותפים"),
 )
 
 
 def _feature_list(listing: Listing) -> list[str]:
-    labels = [label for attr, label in _FEATURE_LABELS if getattr(listing, attr) is True]
+    """Each feature prefixed with its own emoji — the SAME ones the website's own amenity row
+    uses (website/static/style.css's .amenity-row / _listing_card.html) for has_parking through
+    furniture, so the two surfaces read consistently. is_roommate_friendly has no website
+    equivalent to match (not shown there today) — 🤝 chosen fresh."""
+    items = [
+        f"{emoji}{label}" for attr, emoji, label in _FEATURE_EMOJI_LABELS if getattr(listing, attr) is True
+    ]
     if listing.safe_room_type in ("safe_room", "building_shelter"):
-        labels.append('ממ"ד')
+        items.append('🛡️ממ"ד')
     if listing.furniture == "furnished":
-        labels.append("מרוהטת")
-    return labels
+        items.append("🛋️מרוהטת")
+    return items
 
 
-def _build_body_lines(listing: Listing) -> list[str]:
-    """The field order/labels a real user asked for directly (2026-09-02, comparing screenshots
-    against the reference bot dorin.app): deal type (+ "תיווך" when broker-listed) first, then
-    location before anything else ("אני חושב שהמיקום צריך להיות ראשון"), then price/rooms/size/
-    floor/move-in — each its own labeled line instead of the old single combined "X חדרים · Y מ"ר
-    · קומה Z" line, deliberately using the SAME emoji the website's own card meta-row already uses
-    for rooms/floor/size (🛏️/🏢/📐 — see website/templates/_listing_card.html) so the two surfaces
-    read consistently. Currency is "ש"ח" (written form), not the ₪ sign, per the same request.
+def _google_maps_url(listing: Listing) -> str | None:
+    """A plain Google Maps search-URL — no API key needed, works for any address string. None
+    when there's no street to point at (a bare city/neighborhood isn't precise enough to be worth
+    a map link)."""
+    if not listing.street:
+        return None
+    parts = [p for p in (listing.street, listing.neighborhood, listing.city) if p]
+    return f"https://www.google.com/maps/search/?api=1&query={quote(', '.join(parts))}"
 
-    Every line here now starts with a real Hebrew label word, which — as a side effect — also
-    fully resolves the RTL-alignment bidi bug the old bare "💰 7,800 ₪"/emoji-only amenity row
-    used to hit (a line with no strong-direction character fell back to LTR and rendered flush
-    left in Telegram; see PROJECT_STATE.md). The explicit U+200F RLM workaround that used to guard
-    against that is gone — no longer needed now that every line carries Hebrew text of its own."""
+
+def _deal_type_prefix_word(listing: Listing) -> str | None:
+    """"תיווך" (broker) takes priority over "סאבלט" (sublet) when both would somehow apply — a
+    plain rent or sale listing gets None (no prefix line at all)."""
+    if listing.is_broker_listing:
+        return "תיווך"
+    if listing.deal_type == "sublet":
+        return "סאבלט"
+    return None
+
+
+def _build_body_lines(
+    listing: Listing, *, bold: Callable[[str], str], street_link: Callable[[str, str], str]
+) -> list[str]:
+    """`bold` wraps label text in each platform's own emphasis syntax (<b> on Telegram, *asterisks*
+    on WhatsApp). `street_link(text, url)` wraps the street name as a tappable link where the
+    platform supports custom link text (Telegram); WhatsApp can't do that (its text messages only
+    auto-link raw URLs, never custom anchor text) — its own caller passes an identity function and
+    appends the raw maps URL as a separate line instead, see format_caption_whatsapp."""
     lines = []
 
-    deal_label = _DEAL_TYPE_LABELS.get(listing.deal_type, listing.deal_type)
-    deal_line = f"🏠 {deal_label}"
-    if listing.is_broker_listing:
-        deal_line += " · תיווך"
-    lines.append(deal_line)
+    prefix_word = _deal_type_prefix_word(listing)
+    if prefix_word is not None:
+        lines.append(f"🏢{bold(prefix_word)}")
 
-    location = ", ".join(p for p in (listing.city, listing.neighborhood, listing.street) if p)
+    location_bits = []
+    if listing.city:
+        location_bits.append(bold(listing.city))
+    if listing.neighborhood:
+        location_bits.append(listing.neighborhood)
+    location = " - ".join(location_bits)
+    if listing.street:
+        maps_url = _google_maps_url(listing)
+        street_text = street_link(listing.street, maps_url) if maps_url else listing.street
+        location = f"{location} {street_text}" if location else street_text
     if location:
-        lines.append(f"📍 מיקום: {location}")
+        lines.append(f"📍{location}")
 
     if listing.price is not None:
-        lines.append(f'💰 מחיר: {listing.price:,} ש"ח')
+        lines.append(f"💰 {bold('מחיר:')} {listing.price:,}₪")
 
-    lines.append(f"🛏️ חדרים: {listing.rooms or '?'}")
+    lines.append(f"🛏️ {bold('חדרים:')} {listing.rooms or '?'}")
 
     if listing.size_sqm:
-        lines.append(f'📐 שטח: {listing.size_sqm} מ"ר')
+        lines.append(f'📐 {bold("שטח:")} {listing.size_sqm} מ"ר')
 
     if listing.floor is not None:
-        floor_line = f"🏢 קומה: {listing.floor}"
+        floor_line = f"🏢 {bold('קומה:')} {listing.floor}"
         if listing.floor_total is not None:
             floor_line += f" מתוך {listing.floor_total}"
         lines.append(floor_line)
 
     if listing.move_in_date is not None:
-        lines.append(f"📅 כניסה: {listing.move_in_date.isoformat()}")
+        lines.append(f"📅 {bold('כניסה:')} {listing.move_in_date.strftime('%d.%m.%Y')}")
+
+    features = _feature_list(listing)
+    if features:
+        features_label = bold("פיצ'רים:")
+        lines.append(f"🔑 {features_label} {' | '.join(features)}")
 
     return lines
 
@@ -196,54 +232,76 @@ def _price_change_header(price_change_from: int | None, current_price: int | Non
         emoji, label = "📉", "ירידת מחיר!"
     else:
         emoji, label = "📈", "עליית מחיר!"
-    return f'{emoji} {bold(label)} (היה {price_change_from:,} ש"ח)\n\n'
+    return f"{emoji} {bold(label)} (היה {price_change_from:,}₪)\n\n"
+
+
+# U+200F (Right-to-Left Mark, invisible) forces Telegram/WhatsApp to treat the WHOLE caption as an
+# RTL paragraph regardless of which character comes first. Needed again because nearly every line
+# above deliberately starts with an emoji (📍, 💰, 🛏️, ...) — emoji have no strong bidi direction
+# of their own, so without this mark the caption's rendered alignment can fall back to LTR (a real
+# user report + screenshot, 2026-09-03: their own card's text visibly started from the middle/left
+# instead of the right, unlike the reference bot dorin.app's). An earlier version of this file used
+# the same mark and removed it (2026-09-02) on the assumption that every line starting with real
+# Hebrew TEXT (not emoji-first) would be enough on its own — that assumption didn't hold once the
+# emoji-first, bold-label format above replaced it.
+_RTL_MARK = "‏"
 
 
 def format_caption(listing: Listing, *, price_change_from: int | None = None) -> str:
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card."""
-    lines = _build_body_lines(listing)
-    features = _feature_list(listing)
-    if features:
-        lines.append(f"<i>🔑 פיצ'רים: {' | '.join(features)}</i>")
+    bold = lambda s: f"<b>{s}</b>"  # noqa: E731
+    lines = _build_body_lines(
+        listing, bold=bold, street_link=lambda text, url: f'<a href="{url}">{text}</a>'
+    )
 
     body = "\n".join(lines)
-    header = _price_change_header(price_change_from, listing.price, bold=lambda s: f"<b>{s}</b>")
-    footer = f'\n\n🔗 <a href="{listing.url}">לצפייה במודעה המלאה</a>\n🏷️ {listing.source}'
+    header = _price_change_header(price_change_from, listing.price, bold=bold)
+    footer = f'\n\n🔗 <a href="{listing.url}">לפרטי הדירה המלאים &gt;&gt;</a>'
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{description}"
+        body += f"\n\n📝 {description}"
 
-    return (header + body + footer)[:CAPTION_LIMIT]
+    return (_RTL_MARK + header + body + footer)[:CAPTION_LIMIT]
 
 
 WHATSAPP_MESSAGE_LIMIT = 4096
 
 
 def format_caption_whatsapp(listing: Listing, *, price_change_from: int | None = None) -> str:
-    """Same content as format_caption, but WhatsApp's own markdown (*bold*, no HTML tags — the
+    """Same content/order as format_caption, WhatsApp's own markdown (*bold*, no HTML tags — the
     Cloud API's text messages don't render HTML) and no inline keyboard equivalent; the listing
     URL at the end is the only action available (WhatsApp's like/hide/found buttons would need
-    interactive "reply button" messages, a separate message type — not built yet, plain text
-    with a link is the MVP)."""
-    lines = _build_body_lines(listing)
-    features = _feature_list(listing)
-    if features:
-        lines.append(f"_🔑 פיצ'רים: {' | '.join(features)}_")
+    interactive "reply button" messages, a separate message type — not built yet, plain text with
+    a link is the MVP). The street can't be a custom-text link the way Telegram's can (WhatsApp
+    only auto-links raw URLs, never arbitrary anchor text) — the plain street name stays inline
+    and the same Google Maps URL is appended as its own tappable line instead."""
+    bold = lambda s: f"*{s}*"  # noqa: E731
+    lines = _build_body_lines(listing, bold=bold, street_link=lambda text, url: text)
+    maps_url = _google_maps_url(listing)
+    if maps_url:
+        # Placed right after the location line, matching where it visually sits on Telegram. A
+        # maps_url only exists when listing.street is set, which always makes _build_body_lines
+        # add a "📍..." line too — but found defensively (default -1, appends at the end) rather
+        # than assumed, so this can never raise even if that correlation ever changes.
+        location_index = next(
+            (i for i, line in enumerate(lines) if line.startswith("📍")), len(lines) - 1
+        )
+        lines.insert(location_index + 1, f"🗺️ {maps_url}")
 
     body = "\n".join(lines)
-    header = _price_change_header(price_change_from, listing.price, bold=lambda s: f"*{s}*")
-    footer = f"\n\n🔗 {listing.url}\n🏷️ {listing.source}"
+    header = _price_change_header(price_change_from, listing.price, bold=bold)
+    footer = f"\n\n🔗 לפרטי הדירה המלאים >>\n{listing.url}"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{description}"
+        body += f"\n\n📝 {description}"
 
-    return (header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
+    return (_RTL_MARK + header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
 
 
 async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: str) -> bool:
