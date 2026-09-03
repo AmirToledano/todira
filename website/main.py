@@ -263,6 +263,11 @@ def privacy(request: Request):
     return _render(request, "privacy.html", {})
 
 
+@app.get("/accessibility")
+def accessibility(request: Request):
+    return _render(request, "accessibility.html", {})
+
+
 def _safe_next(next: str) -> str:
     return next if next.startswith("/") and not next.startswith("//") else "/apartments"
 

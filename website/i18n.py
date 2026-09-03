@@ -96,6 +96,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Politique de confidentialité — Todira",
         "ar": "سياسة الخصوصية — טודירה",
     },
+    "meta.title_accessibility": {
+        "he": "הצהרת נגישות — טודירה",
+        "en": "Accessibility Statement — Todira",
+        "ru": "Заявление о доступности — Todira",
+        "fr": "Déclaration d'accessibilité — Todira",
+        "ar": "بيان إمكانية الوصول — טודירה",
+    },
     "meta.title_contact": {
         "he": "צור קשר — טודירה",
         "en": "Contact us — Todira",
@@ -186,6 +193,75 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "footer.privacy": {
         "he": "מדיניות פרטיות", "en": "Privacy Policy", "ru": "Политика конфиденциальности",
         "fr": "Politique de confidentialité", "ar": "سياسة الخصوصية",
+    },
+    "footer.accessibility": {
+        "he": "הצהרת נגישות", "en": "Accessibility", "ru": "Доступность",
+        "fr": "Accessibilité", "ar": "إمكانية الوصول",
+    },
+    # ---------- accessibility widget (site-wide floating button + panel) ----------
+    "a11y.widget_toggle_label": {
+        "he": "כלי נגישות", "en": "Accessibility tools", "ru": "Инструменты доступности",
+        "fr": "Outils d'accessibilité", "ar": "أدوات إمكانية الوصول",
+    },
+    "a11y.panel_title": {
+        "he": "נגישות", "en": "Accessibility", "ru": "Доступность",
+        "fr": "Accessibilité", "ar": "إمكانية الوصول",
+    },
+    "a11y.close": {
+        "he": "סגור", "en": "Close", "ru": "Закрыть", "fr": "Fermer", "ar": "إغلاق",
+    },
+    "a11y.font_size": {
+        "he": "גודל טקסט", "en": "Text size", "ru": "Размер текста",
+        "fr": "Taille du texte", "ar": "حجم النص",
+    },
+    "a11y.font_decrease": {
+        "he": "הקטן", "en": "Decrease", "ru": "Уменьшить", "fr": "Réduire", "ar": "تصغير",
+    },
+    "a11y.font_reset": {
+        "he": "איפוס", "en": "Reset", "ru": "Сброс", "fr": "Réinitialiser", "ar": "إعادة تعيين",
+    },
+    "a11y.font_increase": {
+        "he": "הגדל", "en": "Increase", "ru": "Увеличить", "fr": "Agrandir", "ar": "تكبير",
+    },
+    "a11y.contrast": {
+        "he": "ניגודיות גבוהה", "en": "High contrast", "ru": "Высокая контрастность",
+        "fr": "Contraste élevé", "ar": "تباين عالٍ",
+    },
+    "a11y.grayscale": {
+        "he": "גווני אפור", "en": "Grayscale", "ru": "Оттенки серого",
+        "fr": "Niveaux de gris", "ar": "تدرج الرمادي",
+    },
+    "a11y.underline_links": {
+        "he": "הדגשת קישורים", "en": "Highlight links", "ru": "Выделить ссылки",
+        "fr": "Souligner les liens", "ar": "تمييز الروابط",
+    },
+    "a11y.big_targets": {
+        "he": "הגדלת כפתורים", "en": "Bigger buttons", "ru": "Крупные кнопки",
+        "fr": "Boutons agrandis", "ar": "أزرار أكبر",
+    },
+    "a11y.reading_guide": {
+        "he": "פס קריאה", "en": "Reading guide", "ru": "Линия чтения",
+        "fr": "Guide de lecture", "ar": "دليل القراءة",
+    },
+    "a11y.no_motion": {
+        "he": "עצירת אנימציות", "en": "Stop animations", "ru": "Остановить анимацию",
+        "fr": "Arrêter les animations", "ar": "إيقاف الحركة",
+    },
+    "a11y.read_aloud": {
+        "he": "הקראת העמוד", "en": "Read page aloud", "ru": "Озвучить страницу",
+        "fr": "Lire la page à voix haute", "ar": "قراءة الصفحة بصوت عالٍ",
+    },
+    "a11y.stop_reading": {
+        "he": "עצור הקראה", "en": "Stop reading", "ru": "Остановить озвучивание",
+        "fr": "Arrêter la lecture", "ar": "إيقاف القراءة",
+    },
+    "a11y.reset_all": {
+        "he": "איפוס כל ההגדרות", "en": "Reset all settings", "ru": "Сбросить все настройки",
+        "fr": "Réinitialiser tous les réglages", "ar": "إعادة تعيين كل الإعدادات",
+    },
+    "a11y.statement_link": {
+        "he": "הצהרת הנגישות שלנו", "en": "Our accessibility statement", "ru": "Наше заявление о доступности",
+        "fr": "Notre déclaration d'accessibilité", "ar": "بيان إمكانية الوصول لدينا",
     },
     # ---------- home page ----------
     "home.eyebrow": {
