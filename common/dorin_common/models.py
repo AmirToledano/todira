@@ -38,6 +38,13 @@ class User(Base):
     whatsapp_phone_number: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(Text)
     first_name: Mapped[str | None] = mapped_column(Text)
+    # A Google account LINKED to an existing Telegram/WhatsApp-created user — not a third
+    # standalone identity like the two above (a Google-only visitor has no filter/account yet,
+    # same restriction the Telegram Login flow already has), just an extra way back into the SAME
+    # account for a persistent browser session. Set once via /auth/google/callback's link flow
+    # (website/main.py) when a user first signs in with Google while viewing a page via their own
+    # ?uid= deep link; every later "Sign in with Google" then resolves straight to this same row.
+    google_sub: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

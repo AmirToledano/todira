@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ t('meta.title_accessibility') }}{% endblock %}
+{% block content %}
+<div class="legal-page reveal">
+{% if lang == 'he' %}
+  <h1>הצהרת נגישות</h1>
+  <p class="legal-updated">עודכן לאחרונה: ספטמבר 2026</p>
+
+  <h2>1. המחויבות שלנו</h2>
+  <p>טודירה פועל להנגיש את האתר לאנשים עם מוגבלות, ברוח תקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע"ג-2013, ובהתאם לתקן הישראלי (ת"י 5568) המבוסס על הנחיות WCAG 2.0 ברמה AA. זהו תהליך מתמשך — האתר עדיין לא עבר בדיקת התאמה מלאה על ידי גורם מוסמך חיצוני.</p>
+
+  <h2>2. מה קיים באתר כיום</h2>
+  <ul>
+    <li>כפתור נגישות צף (בפינת המסך) עם כלים להתאמה אישית: הגדלת/הקטנת טקסט, ניגודיות גבוהה, גווני אפור, הדגשת קישורים, הגדלת אזורי לחיצה, פס קריאה, עצירת אנימציות, והקראת תוכן העמוד בקול.</li>
+    <li>ניווט מלא במקלדת, כולל קישור "דלג לתוכן" בתחילת כל עמוד.</li>
+    <li>תיאורי טקסט (aria-label) לרכיבי ניווט עיקריים, ומצב פוקוס גלוי לכל רכיב אינטראקטיבי.</li>
+    <li>תמיכה בהעדפת "הפחתת תנועה" של מערכת ההפעלה/הדפדפן.</li>
+  </ul>
+
+  <h2>3. מגבלות ידועות</h2>
+  <p>תוכן המודעות עצמו (תמונות, טקסט תיאור) מגיע ממקורות חיצוניים (כגון יד2) שאינם בשליטת טודירה, וייתכן שאינו נגיש במלואו. אנו פועלים לשפר את הנגישות של שאר האתר באופן שוטף.</p>
+
+  <h2>4. פנייה בנושא נגישות</h2>
+  <p>נתקלתם בבעיית נגישות באתר? נשמח שתדווחו לנו כדי שנוכל לטפל בכך — ניתן לפנות דרך הבוט בטלגרם.</p>
+{% else %}
+  {% if lang != 'en' %}<div class="notice">{{ t('legal.non_native_notice') }}</div>{% endif %}
+  <h1>Accessibility Statement</h1>
+  <p class="legal-updated">Last updated: September 2026</p>
+
+  <h2>1. Our commitment</h2>
+  <p>Todira works to make this website accessible to people with disabilities, in the spirit of Israel's Equal Rights for Persons with Disabilities (Service Accessibility Adjustments) Regulations, 2013, and the Israeli standard (IS 5568) based on WCAG 2.0 Level AA guidelines. This is an ongoing effort — the site has not yet undergone a full conformance audit by an external accredited party.</p>
+
+  <h2>2. What's available today</h2>
+  <ul>
+    <li>A floating accessibility button (in the corner of the screen) with tools for: increasing/decreasing text size, high contrast, grayscale, link highlighting, larger click targets, a reading guide, stopping animations, and reading the page's content aloud.</li>
+    <li>Full keyboard navigation, including a "skip to content" link at the top of every page.</li>
+    <li>Text descriptions (aria-label) for key navigation elements, and a visible focus state on every interactive element.</li>
+    <li>Support for the operating system/browser's "reduce motion" preference.</li>
+  </ul>
+
+  <h2>3. Known limitations</h2>
+  <p>Listing content itself (photos, description text) comes from external sources (such as Yad2) not controlled by Todira, and may not be fully accessible. We continue to work on improving the accessibility of the rest of the site.</p>
+
+  <h2>4. Reporting an accessibility issue</h2>
+  <p>Found an accessibility problem on the site? We'd appreciate a report so we can address it — please reach out via the Telegram bot.</p>
+{% endif %}
+</div>
+{% endblock %}
