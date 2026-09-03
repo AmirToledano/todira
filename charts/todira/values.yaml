@@ -33,6 +33,13 @@
 #                             without this, rejecting every incoming message, rather than accepting
 #                             unverified requests. From the Meta app dashboard: App settings >
 #                             Basic > App Secret > Show.)
+#   googleClientId           (optional — enables real Google Sign-In, website/main.py's
+#                             /auth/google/start + /auth/google/callback. From a Google Cloud OAuth
+#                             Client, application type "Web application" — authorized redirect URI
+#                             must be exactly https://<website.domain>/auth/google/callback.
+#                             Without it, the route 400s cleanly rather than breaking the deploy.)
+#   googleClientSecret       (optional — same OAuth Client as above, required alongside
+#                             googleClientId for Google Sign-In to work at all.)
 
 botImage:
   repository: ghcr.io/CHANGE-ME/todira-bot

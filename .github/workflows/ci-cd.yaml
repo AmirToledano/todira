@@ -130,6 +130,8 @@ jobs:
             --set whatsappPhoneNumberId="${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" \
             --set whatsappWebhookVerifyToken="${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}" \
             --set whatsappAppSecret="${{ secrets.WHATSAPP_APP_SECRET }}" \
+            --set googleClientId="${{ secrets.GOOGLE_CLIENT_ID }}" \
+            --set googleClientSecret="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
             --namespace todira --create-namespace
 
       - name: Diagnose bot pod (owner reported it's not responding)
