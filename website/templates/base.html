@@ -26,28 +26,35 @@
   <header class="site">
     <div class="header-inner">
       <a class="brand" href="/"><span class="crown">👑</span> טודירה</a>
-      <div class="nav-group">
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-panel" aria-label="{{ t('a11y.main_nav_label') }}">
+        <span class="nav-toggle-lines"><span></span><span></span><span></span></span>
+      </button>
+    </div>
+    <div class="nav-panel" id="nav-panel">
+      <div class="nav-panel-inner">
         <nav class="site-nav" aria-label="{{ t('a11y.main_nav_label') }}">
-          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }}</a>
-          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }}</a>
-          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }}</a>
-          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
+          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">🏠 {{ t('nav.apartments') }}</a>
+          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">❤️ {{ t('nav.liked') }}</a>
+          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">🎛️ {{ t('nav.filter') }}</a>
+          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">✉️ {{ t('nav.contact') }}</a>
           {% if is_owner %}
           <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}">📬</a>
           {% endif %}
         </nav>
-        <nav class="lang-switcher" aria-label="{{ t('a11y.lang_switcher_label') }}">
-          {% for code in supported_langs %}
-          <a href="{{ request.url.include_query_params(lang=code) }}" class="{{ 'active' if code == lang else '' }}" lang="{{ code }}" {{ 'aria-current="page"' if code == lang else '' }}>{{ lang_labels[code] }}</a>
-          {% endfor %}
-        </nav>
-        <div class="auth-box">
-          {% if current_user %}
-          <span class="auth-name">{{ current_user.first_name or (current_user.telegram_username and ('@' ~ current_user.telegram_username)) or t('auth.you') }}</span>
-          <a class="auth-logout" href="/auth/logout">{{ t('auth.logout') }}</a>
-          {% else %}
-          <a class="auth-login" href="https://t.me/AmirDirotBot" target="_blank">{{ t('auth.login') }}</a>
-          {% endif %}
+        <div class="nav-panel-foot">
+          <nav class="lang-switcher" aria-label="{{ t('a11y.lang_switcher_label') }}">
+            {% for code in supported_langs %}
+            <a href="{{ request.url.include_query_params(lang=code) }}" class="{{ 'active' if code == lang else '' }}" lang="{{ code }}" {{ 'aria-current="page"' if code == lang else '' }}>{{ lang_labels[code] }}</a>
+            {% endfor %}
+          </nav>
+          <div class="auth-box">
+            {% if current_user %}
+            <span class="auth-name">{{ current_user.first_name or (current_user.telegram_username and ('@' ~ current_user.telegram_username)) or t('auth.you') }}</span>
+            <a class="auth-logout" href="/auth/logout">{{ t('auth.logout') }}</a>
+            {% else %}
+            <a class="auth-login" href="https://t.me/AmirDirotBot" target="_blank">{{ t('auth.login') }}</a>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>
@@ -73,6 +80,17 @@
     </div>
   </footer>
   <script>
+    (function () {
+      var toggle = document.getElementById('nav-toggle');
+      var panel = document.getElementById('nav-panel');
+      if (toggle && panel) {
+        toggle.addEventListener('click', function () {
+          var open = panel.classList.toggle('open');
+          toggle.classList.toggle('open', open);
+          toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+      }
+    })();
     (function () {
       var els = document.querySelectorAll('.reveal');
       if (!('IntersectionObserver' in window) || !els.length) {

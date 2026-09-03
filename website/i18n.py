@@ -227,7 +227,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Le roi Todi — le bot de recherche d'appartements Todira",
         "ar": "الملك טודي — بوت البحث عن شقق טודירה",
     },
-    "home.stat_scan_freq_value": {"he": "10 דק׳", "en": "10 min", "ru": "10 мин", "fr": "10 min", "ar": "10 دقائق"},
+    "home.stat_scan_freq_value": {"he": "כל שעתיים", "en": "Every 2h", "ru": "Каждые 2 ч", "fr": "Toutes les 2h", "ar": "كل ساعتين"},
     "home.stat_scan_freq_label": {
         "he": "תדירות סריקה", "en": "Scan frequency", "ru": "Частота сканирования",
         "fr": "Fréquence de scan", "ar": "تكرار الفحص",
@@ -249,6 +249,48 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "home.stat_free_label": {
         "he": "לגמרי בחינם", "en": "Completely free", "ru": "Полностью бесплатно",
         "fr": "Entièrement gratuit", "ar": "مجاني بالكامل",
+    },
+    "home.momentum_1_value": {
+        "he": "גדל כל יום", "en": "Growing daily", "ru": "Растёт каждый день",
+        "fr": "En croissance", "ar": "ينمو كل يوم",
+    },
+    "home.momentum_1_label": {
+        "he": "קהילת המשתמשים שלנו", "en": "Our user community", "ru": "Наше сообщество пользователей",
+        "fr": "Notre communauté d'utilisateurs", "ar": "مجتمع مستخدمينا",
+    },
+    "home.momentum_2_value": {
+        "he": "כמה פעמים ביום", "en": "Several times a day", "ru": "Несколько раз в день",
+        "fr": "Plusieurs fois par jour", "ar": "عدة مرات في اليوم",
+    },
+    "home.momentum_2_label": {
+        "he": "מהפרסום ועד ההתראה אצלך", "en": "From listing to your alert", "ru": "От публикации до уведомления",
+        "fr": "De l'annonce à votre alerte", "ar": "من النشر إلى تنبيهك",
+    },
+    "home.momentum_3_value": {
+        "he": "כל הארץ", "en": "Nationwide", "ru": "По всей стране",
+        "fr": "Tout le pays", "ar": "في جميع أنحاء البلاد",
+    },
+    "home.momentum_3_label": {
+        "he": "כל אזורי יד2 במקום אחד", "en": "Every Yad2 region, in one place", "ru": "Все регионы Yad2 в одном месте",
+        "fr": "Toutes les régions Yad2 réunies", "ar": "جميع مناطق يد2 في مكان واحد",
+    },
+    "home.live_badge": {
+        "he": "🔔 התראות בזמן אמת", "en": "🔔 Real-time alerts", "ru": "🔔 Уведомления в реальном времени",
+        "fr": "🔔 Alertes en temps réel", "ar": "🔔 تنبيهات فورية",
+    },
+    "home.example_badge_label": {
+        "he": "לדוגמה", "en": "Example", "ru": "Пример", "fr": "Exemple", "ar": "مثال",
+    },
+    "home.example_card_title": {
+        "he": "דירה חדשה!", "en": "New listing!", "ru": "Новое объявление!",
+        "fr": "Nouvelle annonce !", "ar": "شقة جديدة!",
+    },
+    "home.example_card_sub": {
+        "he": "תל אביב · 3 חדרים · 6,200 ₪",
+        "en": "Tel Aviv · 3 rooms · ₪6,200",
+        "ru": "Тель-Авив · 3 комнаты · 6,200 ₪",
+        "fr": "Tel-Aviv · 3 pièces · 6 200 ₪",
+        "ar": "تل أبيب · 3 غرف · 6,200 ₪",
     },
     "home.feature1_title": {
         "he": "מבין אותך בשפה חופשית",
