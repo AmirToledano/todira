@@ -16,7 +16,10 @@
         <div class="cover-slide" style="background-image:url('/static/dachshunds/todi_detective.jpg')"></div>
       {% endif %}
     </div>
-    <span class="source-badge">{{ l.source }}</span>
+    <div class="top-left-badges">
+      <span class="source-badge">{{ l.source }}</span>
+      {% if l.is_broker_listing %}<span class="broker-badge">{{ t('card.broker_badge') }}</span>{% endif %}
+    </div>
     <span class="price-badge">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</span>
     {% if l.image_urls|length > 1 %}<span class="photo-count-badge">📷 {{ l.image_urls|length }}</span>{% endif %}
   </div>

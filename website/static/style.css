@@ -282,16 +282,31 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   text-align: center; line-height: 1.3;
 }
 .listing-cover-wrap .price-badge {
-  position: absolute; top: 12px; inset-inline-end: 12px;
+  /* Physical `right` (not inset-inline-end) — 2026-09-03 request: the price badge stays on the
+     visual right of the image regardless of page language, opposite the top-left badge stack
+     below (source + broker), which is likewise pinned to the visual left on purpose. */
+  position: absolute; top: 12px; right: 12px;
   background: rgba(36, 20, 23, .82); color: #fff; backdrop-filter: blur(3px);
   padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: .95rem;
   font-family: 'Frank Ruhl Libre', serif;
 }
 .listing-cover-wrap .price-badge .gold-text { color: var(--gold-light); }
+/* Top-left badge stack (source + broker) — 2026-09-03 request. A flex column so a listing with
+   BOTH badges (source always shown, broker only for is_broker_listing) stacks them with a small
+   gap instead of needing hand-tuned per-badge pixel offsets; a listing with only the source badge
+   just has one child, no different from before. Physical `left`, same reasoning as price-badge
+   above — a deliberate, language-independent visual corner, not inset-inline-start. */
+.listing-cover-wrap .top-left-badges {
+  position: absolute; top: 12px; left: 12px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+}
 .listing-cover-wrap .source-badge {
-  position: absolute; top: 12px; inset-inline-start: 12px;
   background: rgba(255,255,255,.9); color: var(--wine); font-size: .72rem; font-weight: 700;
   padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em;
+}
+.listing-cover-wrap .broker-badge {
+  background: var(--wine); color: #fff; font-size: .72rem; font-weight: 700;
+  padding: 4px 10px; border-radius: 999px;
 }
 .listing-cover-wrap .photo-count-badge {
   position: absolute; bottom: 10px; inset-inline-end: 12px;

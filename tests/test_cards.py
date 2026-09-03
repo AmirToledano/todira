@@ -44,36 +44,71 @@ def make_listing(**overrides):
 
 
 def test_basic_caption_includes_core_fields():
-    # Real field order/layout a user asked for directly (2026-09-02): location before price,
-    # every field its own labeled line, ש"ח (not ₪) as the currency.
+    # 2026-09-03 rewrite, matching the reference bot dorin.app 1:1: location before price, every
+    # field its own BOLD-labeled line, ₪ (not "ש"ח") as the currency, no source tag anywhere.
     caption = format_caption(make_listing())
-    assert "🛏️ חדרים: 4" in caption
-    assert '📐 שטח: 160 מ"ר' in caption
-    assert '💰 מחיר: 16,000 ש"ח' in caption
-    assert "📍 מיקום: ירושלים, ניות" in caption
-    assert "yad2" in caption
+    assert "🛏️ <b>חדרים:</b> 4" in caption
+    assert '📐 <b>שטח:</b> 160 מ"ר' in caption
+    assert "💰 <b>מחיר:</b> 16,000₪" in caption
+    assert "📍<b>ירושלים</b> - ניות" in caption
+    assert "🏷️" not in caption  # the old "🏷️ {source}" footer line is gone
     # location must come before price in the actual rendered order, not just be present somewhere
-    assert caption.index("📍 מיקום") < caption.index("💰 מחיר")
+    assert caption.index("📍") < caption.index("💰")
 
 
-def test_deal_type_and_broker_tag_line():
+def test_no_prefix_line_for_a_plain_rent_or_sale_listing():
     caption = format_caption(make_listing(deal_type="rent", is_broker_listing=False))
-    assert "🏠 שכירות" in caption
+    assert "תיווך" not in caption
+    assert "סאבלט" not in caption
+
+    caption = format_caption(make_listing(deal_type="sale", is_broker_listing=False))
+    assert "תיווך" not in caption
+    assert "סאבלט" not in caption
+
+
+def test_broker_prefix_line_shown_regardless_of_deal_type():
+    caption = format_caption(make_listing(deal_type="sale", is_broker_listing=True))
+    assert "🏢<b>תיווך</b>" in caption
+
+    caption = format_caption(make_listing(deal_type="rent", is_broker_listing=True))
+    assert "🏢<b>תיווך</b>" in caption
+
+
+def test_sublet_prefix_line_shown_when_not_broker():
+    caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=False))
+    assert "🏢<b>סאבלט</b>" in caption
     assert "תיווך" not in caption
 
-    caption = format_caption(make_listing(deal_type="sale", is_broker_listing=True))
-    assert "🏠 מכירה" in caption
-    assert "תיווך" in caption
+
+def test_broker_prefix_wins_over_sublet_if_somehow_both():
+    caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=True))
+    assert "🏢<b>תיווך</b>" in caption
+    assert "סאבלט" not in caption
 
 
-def test_location_includes_street_when_known():
-    caption = format_caption(make_listing(street="דיזנגוף"))
-    assert "📍 מיקום: ירושלים, ניות, דיזנגוף" in caption
+def test_location_street_is_a_google_maps_link_on_telegram():
+    caption = format_caption(make_listing(street="דיזנגוף 10"))
+    assert '📍<b>ירושלים</b> - ניות <a href="https://www.google.com/maps/search/' in caption
+    assert ">דיזנגוף 10</a>" in caption
+    assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
+
+
+def test_location_without_street_has_no_maps_link():
+    caption = format_caption(make_listing())
+    assert "google.com/maps" not in caption
 
 
 def test_floor_line_includes_total_when_known():
     caption = format_caption(make_listing(floor=4, floor_total=6))
-    assert "🏢 קומה: 4 מתוך 6" in caption
+    assert "🏢 <b>קומה:</b> 4 מתוך 6" in caption
+
+
+def test_move_in_date_is_day_month_year_not_iso():
+    import datetime
+
+    caption = format_caption(make_listing(move_in_date=datetime.date(2026, 9, 21)))
+    assert "📅 <b>כניסה:</b> 21.09.2026" in caption
+    assert "2026-09-21" not in caption
 
 
 def test_no_features_line_when_nothing_is_known():
@@ -81,48 +116,63 @@ def test_no_features_line_when_nothing_is_known():
     assert "פיצ'רים" not in caption
 
 
-def test_features_line_lists_known_true_amenities_pipe_separated():
+def test_features_line_uses_a_distinct_emoji_per_feature_pipe_separated():
     listing = make_listing(has_parking=True, has_elevator=True, is_renovated=True)
     caption = format_caption(listing)
-    assert "🔑 פיצ'רים:" in caption
-    assert "חניה" in caption
-    assert "מעלית" in caption
-    assert "משופצת" in caption
-    assert "חניה | מעלית | משופצת" in caption
+    assert "🔑 <b>פיצ'רים:</b>" in caption
+    assert "🚗חניה | 🛗מעלית | ✨משופצת" in caption
 
 
 def test_features_line_excludes_false_and_unknown_amenities():
     listing = make_listing(has_parking=True, has_elevator=False, has_balcony=None)
     caption = format_caption(listing)
-    assert "חניה" in caption
-    assert "מעלית" not in caption
-    assert "מרפסת" not in caption
+    assert "🚗חניה" in caption
+    assert "🛗מעלית" not in caption
+    assert "🌿מרפסת" not in caption
 
 
-def test_features_line_includes_safe_room_and_furniture():
+def test_features_line_includes_safe_room_and_furniture_with_their_own_emoji():
     listing = make_listing(safe_room_type="safe_room", furniture="furnished")
     caption = format_caption(listing)
-    assert 'ממ"ד' in caption
-    assert "מרוהטת" in caption
+    assert '🛡️ממ"ד' in caption
+    assert "🛋️מרוהטת" in caption
 
 
-def test_features_line_is_italicized_in_telegram_html():
+def test_features_line_is_not_italicized_anymore():
     listing = make_listing(has_parking=True)
     caption = format_caption(listing)
-    assert "<i>🔑 פיצ'רים:" in caption
-    assert "</i>" in caption
+    assert "<i>" not in caption
+
+
+def test_description_gets_a_note_emoji_prefix():
+    caption = format_caption(make_listing(description="דירה מקסימה"))
+    assert "📝 דירה מקסימה" in caption
+
+
+def test_footer_link_text_and_no_source_tag():
+    caption = format_caption(make_listing())
+    assert '<a href="https://www.yad2.co.il/item/abc123">לפרטי הדירה המלאים &gt;&gt;</a>' in caption
+    assert "🏷️" not in caption
+
+
+def test_caption_starts_with_an_invisible_rtl_mark():
+    # 2026-09-03: real user report + screenshot - Telegram rendered the caption's alignment
+    # starting from the middle/left instead of the right, because nearly every line starts with
+    # an emoji (no strong bidi direction of its own). An invisible U+200F forces RTL regardless.
+    caption = format_caption(make_listing())
+    assert caption.startswith("‏")
 
 
 def test_price_drop_header_prepended():
     caption = format_caption(make_listing(price=16000), price_change_from=18000)
-    assert caption.startswith("📉")
+    assert caption.lstrip("‏").startswith("📉")
     assert "ירידת מחיר" in caption
     assert "18,000" in caption
 
 
 def test_price_increase_header_prepended():
     caption = format_caption(make_listing(price=18000), price_change_from=16000)
-    assert caption.startswith("📈")
+    assert caption.lstrip("‏").startswith("📈")
     assert "עליית מחיר" in caption
     assert "16,000" in caption
 
@@ -147,8 +197,23 @@ def test_whatsapp_caption_uses_markdown_not_html():
     caption = format_caption_whatsapp(listing)
     assert "<b>" not in caption
     assert "<i>" not in caption
-    assert "🛏️ חדרים: 4" in caption
-    assert "_🔑 פיצ'רים: חניה_" in caption
+    assert "🛏️ *חדרים:* 4" in caption
+    assert "🔑 *פיצ'רים:* 🚗חניה" in caption
+    assert "_" not in caption  # no more italics markdown either
+
+
+def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
+    # WhatsApp text messages can't make custom text a link (only raw URLs auto-link), unlike
+    # Telegram's HTML <a> tag — same underlying Google Maps URL, just on its own tappable line
+    # right after the location line instead of inline.
+    caption = format_caption_whatsapp(make_listing(street="דיזנגוף 10"))
+    assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
+    assert "<a href" not in caption
+    lines = caption.split("\n")
+    # The invisible RTL mark (see _RTL_MARK) is prepended to the whole caption, so the very first
+    # line carries it right before the "📍" - "in", not "startswith", to not trip on that.
+    location_line = next(i for i, line in enumerate(lines) if "📍" in line)
+    assert lines[location_line + 1].startswith("🗺️ https://www.google.com/maps/search/")
 
 
 def test_whatsapp_price_change_header_is_bold_with_asterisks():
@@ -160,6 +225,11 @@ def test_whatsapp_caption_includes_the_raw_url_not_an_html_link():
     caption = format_caption_whatsapp(make_listing())
     assert "https://www.yad2.co.il/item/abc123" in caption
     assert "<a href" not in caption
+
+
+def test_whatsapp_footer_has_no_source_tag():
+    caption = format_caption_whatsapp(make_listing())
+    assert "🏷️" not in caption
 
 
 # --- send_listing_card (2026-09-02) — real Yad2 photos, added once the scraper started actually
