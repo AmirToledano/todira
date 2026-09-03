@@ -6,6 +6,7 @@ metadata:
     app: {{ .Release.Name }}-scraper
 spec:
   schedule: {{ .Values.scraper.schedule | quote }}
+  suspend: {{ .Values.scraper.suspended | default false }}
   # Local time, DST-safe — see values.yaml's scraper comment for why this window/timezone and the
   # budget math behind the schedule above. Requires CronJob's timeZone field (stable since k8s
   # 1.27); confirmed present on the real cluster 2026-09-03 (`kubectl get cronjobs -A` already
