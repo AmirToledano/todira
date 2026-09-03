@@ -34,6 +34,7 @@ AUTH: three ways in, and all three resolve to the same signed session cookie in 
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import hashlib
 import hmac
 import logging
@@ -44,6 +45,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
+from dorin_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_access
 from dorin_common.cities import CITIES
 from dorin_common.db import get_session
 from dorin_common.matching import evaluate
@@ -566,6 +568,111 @@ def admin_messages(request: Request):
         ).all()
 
     return _render(request, "admin_messages.html", {"messages": messages})
+
+
+def _require_owner(request: Request, session) -> User | None:
+    """Same gate as /admin/messages (real signed session, not ?uid=; 404 not 403 for anyone
+    else) — shared here so /admin/users doesn't re-derive it slightly differently."""
+    session_user_id = request.session.get("user_id")
+    user = session.get(User, session_user_id) if session_user_id is not None else None
+    if user is None or not _is_owner_id(user.telegram_user_id):
+        return None
+    return user
+
+
+@app.get("/admin/users")
+def admin_users(request: Request):
+    """Owner-only — lets the owner grant/revoke free access (independent of trial/payment) to any
+    user, from any device, regardless of which channel they signed up through (Telegram/WhatsApp/
+    Google are all just columns on the same `users` row) — a real, explicit request (2026-09-04),
+    not something Google/Telegram/WhatsApp each need their own separate tool for."""
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+
+        users = session.scalars(select(User).order_by(User.created_at.desc()).limit(500)).all()
+        now = dt.datetime.now(dt.timezone.utc)
+        rows = [
+            {
+                "id": u.id,
+                "label": u.first_name
+                or u.telegram_username
+                or u.whatsapp_phone_number
+                or f"#{u.id}",
+                "channel": "טלגרם" if u.telegram_user_id else ("ווצאפ" if u.whatsapp_phone_number else "—"),
+                "has_google": u.google_sub is not None,
+                "free_access_granted": u.free_access_granted,
+                "has_access": has_full_access(u, is_owner=_is_owner_id(u.telegram_user_id)),
+                "trial_ends_at": u.trial_ends_at,
+                "paid_until": u.paid_until,
+                "in_trial": u.trial_ends_at is not None and now < u.trial_ends_at,
+            }
+            for u in users
+        ]
+
+    return _render(request, "admin_users.html", {"rows": rows})
+
+
+@app.post("/admin/users/{user_id}/toggle-free-access")
+def admin_toggle_free_access(request: Request, user_id: int):
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+
+        target = session.get(User, user_id)
+        if target is not None:
+            target.free_access_granted = not target.free_access_granted
+            session.commit()
+
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+PLAN_LABELS_HE = {"weekly": "שבועי — ₪10", "monthly": "חודשי — ₪20"}
+
+
+@app.get("/upgrade")
+def upgrade(request: Request, uid: int | None = None):
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "upgrade"})
+        is_owner = _is_owner_id(user.telegram_user_id)
+        access = has_full_access(user, is_owner=is_owner)
+
+    return _render(
+        request,
+        "upgrade.html",
+        {
+            "uid": user.telegram_user_id,
+            "has_access": access,
+            "is_owner": is_owner,
+            "trial_ends_at": user.trial_ends_at,
+            "paid_until": user.paid_until,
+            "plan_prices": PLAN_PRICES_ILS,
+        },
+    )
+
+
+@app.post("/upgrade")
+def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Form(None)):
+    """Self-service plan selection — the click itself IS the payment signal (2026-09-04 decision):
+    payment happens informally via a Bit transfer outside this system, with no payment-gateway
+    webhook to verify against, so this trusts the click rather than a confirmed charge. The owner's
+    /admin/users free-access toggle is the remedy for a click that was never actually paid for."""
+    if plan not in PLAN_PRICES_ILS:
+        return _render(request, "auth_error.html", {}, status_code=400)
+
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "upgrade"})
+        extend_paid_until(user, plan)
+        session.commit()
+        redirect_uid = user.telegram_user_id
+
+    return RedirectResponse(
+        f"/upgrade?uid={redirect_uid}" if redirect_uid else "/upgrade", status_code=303
+    )
 
 
 @app.get("/filter")

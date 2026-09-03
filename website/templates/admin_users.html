@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% set active_page = "admin_users" %}
+{% block title %}ניהול משתמשים{% endblock %}
+{% block content %}
+
+<div class="page-banner reveal">
+  <div class="pb-text">
+    <h1>👥 ניהול משתמשים</h1>
+    <p>גישה חופשית ידנית, ללא קשר לתשלום — לא משנה דרך איזה ערוץ המשתמש נרשם.</p>
+  </div>
+  <div class="pb-count"><b>{{ rows|length }}</b><span>משתמשים</span></div>
+</div>
+
+{% if not rows %}
+  <div class="empty-state">
+    <div class="glyph" aria-hidden="true">👤</div>
+    <p>אין עדיין משתמשים</p>
+  </div>
+{% else %}
+  <div class="admin-message-list">
+    {% for r in rows %}
+    <div class="admin-message-card">
+      <div class="amc-header">
+        <span class="amc-source">{{ r.label }}</span>
+        <span class="amc-date">{{ r.channel }}{% if r.has_google %} · 🔗 Google{% endif %}</span>
+        {% if r.has_access %}
+          <span class="amc-status amc-status-ok">✅ יש גישה{% if r.in_trial %} (ניסיון){% endif %}</span>
+        {% else %}
+          <span class="amc-status amc-status-warn">⚠️ אין גישה</span>
+        {% endif %}
+      </div>
+      <div class="amc-meta">
+        {% if r.trial_ends_at %}<span>ניסיון עד {{ r.trial_ends_at.strftime('%d/%m/%Y') }}</span>{% endif %}
+        {% if r.paid_until %}<span>שולם עד {{ r.paid_until.strftime('%d/%m/%Y') }}</span>{% endif %}
+      </div>
+      <form method="post" action="/admin/users/{{ r.id }}/toggle-free-access" style="margin-top:10px">
+        <button type="submit" class="btn outline" style="padding:8px 16px;font-size:.85rem">
+          {{ "🚫 בטל גישה חופשית" if r.free_access_granted else "🎁 תן גישה חופשית לצמיתות" }}
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

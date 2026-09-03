@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -56,6 +57,21 @@ class User(Base):
     # In-progress WhatsApp onboarding state across stateless webhook calls — see migration
     # 0003_whatsapp_users. None once no onboarding is in progress (not started, or completed).
     pending_onboarding_state: Mapped[dict | None] = mapped_column(JSONB)
+
+    # Paid-access fields — 2026-09-04 pricing decision (see common/dorin_common/access.py for the
+    # actual gate, `has_full_access`). Payment itself is informal/manual for now (a Bit transfer
+    # outside this system) — there's no payment-gateway webhook, so `paid_until` is set directly
+    # by the user's own plan-selection click (website's /upgrade), trusting it rather than
+    # verifying a real charge. A migration backfills trial_ends_at = (deploy time + 3 days) for
+    # every row that already existed when this shipped, so existing users get the SAME 3-day grace
+    # a brand-new signup gets, not an instant cutoff.
+    trial_ends_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now() + interval '3 days'")
+    )
+    paid_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Owner-granted comp access, independent of trial/payment — set only via the admin panel
+    # (website's /admin/users), never by the user themselves.
+    free_access_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     filter: Mapped["Filter | None"] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"

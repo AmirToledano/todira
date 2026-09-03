@@ -54,6 +54,7 @@
           <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">✉️ {{ t('nav.contact') }}</a>
           {% if is_owner %}
           <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}">📬</a>
+          <a href="/admin/users" class="{{ 'active' if active_page == 'admin_users' else '' }}">👥</a>
           {% endif %}
         </nav>
         <div class="nav-panel-foot">
