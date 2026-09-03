@@ -37,6 +37,12 @@ Requires `ZENROWS_API_KEY` (free tier works — see PROJECT_STATE.md). Yad2 uses
 its URL, not the slugs configured in `SCRAPE_CITIES` — `CITY_SLUG_TO_ID` below maps the ones this
 project currently scrapes; extend it (search "yad2 city id <name>") before adding a new city to
 `SCRAPE_CITIES` without also adding it here, or that city will silently fetch zero results.
+
+2026-09-03: added `fetch_all_listings` — a confirmed-live (not guessed) alternative to the per-city
+`fetch_search_results` loop above, chasing the same "closer to real-time, like dorin.app" goal via
+a different lever: 7 broad-region requests (REGION_SLUGS) instead of 42 per-city ones, ~6x cheaper
+per full-country sweep on the same ZenRows plan already in use. See that function's own
+module-level comment for the full reasoning and why it isn't wired into scraper/main.py yet.
 """
 from __future__ import annotations
 
@@ -193,6 +199,15 @@ _DIRECTION_MARKS_RE = re.compile(r"[‎‏]")  # LTR/RTL marks Yad2 wraps number
 _ZENROWS_ERROR_CODE_RE = re.compile(r'"code":"(?P<code>[A-Z0-9]+)"')
 _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 
+# Yad2's OWN bot-challenge page text (not a ZenRows error — js_render+premium_proxy got a response,
+# but Yad2's Radware Bot Manager wall itself is what came back instead of the real search page).
+# Confirmed 2026-09-03 via an independent, already-working open-source Yad2 scraper
+# (github.com/DavOstx7/yad2-scraper's ANTIBOT_CONTENT_IDENTIFIER constant), not verified live
+# through this project's own ZenRows pipeline yet. Worth checking for because right now a Yad2-side
+# block would just look like "0 cards this run" — indistinguishable from a genuinely quiet city —
+# instead of surfacing as the real, debuggable error it is.
+_YAD2_ANTIBOT_MARKER = "Are you for real"
+
 
 class Yad2FetchError(RuntimeError):
     """The Fetch API call failed, timed out, or ZenRows itself errored — see the wrapped
@@ -324,10 +339,7 @@ def _parse_cards(html: str) -> Iterator[dict[str, Any]]:
         yield item
 
 
-def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
-    """Yields raw listing dicts (already close to normalize()'s expected shape) for one city.
-    `city` is the slug used elsewhere in this project (e.g. "tel-aviv") — translated to Yad2's
-    own numeric city ID via CITY_SLUG_TO_ID."""
+def _get_zenrows_api_key() -> str:
     api_key = os.environ.get(ZENROWS_API_KEY_ENV_VAR, "").strip()
     if not api_key:
         raise Yad2FetchError(
@@ -335,15 +347,15 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
             "ZenRows trial key. Scraping Yad2 without a residential-proxy service reliably hits "
             "its Radware Bot Manager wall (see YAD2_NOTES.md attempts 1-8)."
         )
+    return api_key
 
-    city_id = CITY_SLUG_TO_ID.get(city)
-    if city_id is None:
-        raise Yad2FetchError(
-            f"No Yad2 numeric city ID mapped for slug {city!r} — add it to CITY_SLUG_TO_ID in "
-            "yad2_client.py (search \"yad2 city id <name>\" to find it)."
-        )
 
-    url = f"{SEARCH_PAGE_URL}?city={city_id}"
+def _fetch_search_html(url: str, *, context_label: str) -> str:
+    """Fetches one Yad2 search-results URL through ZenRows' Fetch API and returns the raw HTML,
+    or raises Yad2FetchError. Shared by fetch_search_results (one city) and fetch_all_listings
+    (the whole country, unfiltered) — `context_label` is only used to make error messages say
+    which caller/URL failed (e.g. "city='tel-aviv'" or "page=2")."""
+    api_key = _get_zenrows_api_key()
 
     try:
         response = httpx.get(
@@ -358,9 +370,7 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
             timeout=PAGE_LOAD_TIMEOUT_S,
         )
     except httpx.HTTPError as exc:
-        raise Yad2FetchError(
-            f"ZenRows Fetch API request failed for city={city!r}: {exc}"
-        ) from exc
+        raise Yad2FetchError(f"ZenRows Fetch API request failed for {context_label}: {exc}") from exc
 
     html = response.text
 
@@ -377,14 +387,99 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
         code_match = _ZENROWS_ERROR_CODE_RE.search(html)
         title_match = _ZENROWS_ERROR_TITLE_RE.search(html)
         raise Yad2FetchError(
-            f"ZenRows returned an error instead of the Yad2 page for city={city!r}: "
+            f"ZenRows returned an error instead of the Yad2 page for {context_label}: "
             f"http_status={response.status_code} "
             f"code={code_match.group('code') if code_match else '?'!r} "
             f"title={title_match.group('title') if title_match else '?'!r} — check the ZenRows "
             "dashboard for usage/plan/auth issues."
         )
 
+    if _YAD2_ANTIBOT_MARKER in html:
+        raise Yad2FetchError(
+            f"Yad2's own bot-challenge page came back for {context_label} instead of the real "
+            "search page (js_render+premium_proxy didn't get past it this time) — this is Yad2 "
+            "itself blocking the request, not a ZenRows account/quota issue."
+        )
+
+    return html
+
+
+def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts (already close to normalize()'s expected shape) for one city.
+    `city` is the slug used elsewhere in this project (e.g. "tel-aviv") — translated to Yad2's
+    own numeric city ID via CITY_SLUG_TO_ID."""
+    city_id = CITY_SLUG_TO_ID.get(city)
+    if city_id is None:
+        raise Yad2FetchError(
+            f"No Yad2 numeric city ID mapped for slug {city!r} — add it to CITY_SLUG_TO_ID in "
+            "yad2_client.py (search \"yad2 city id <name>\" to find it)."
+        )
+
+    html = _fetch_search_html(f"{SEARCH_PAGE_URL}?city={city_id}", context_label=f"city={city!r}")
     yield from _parse_cards(html)
+
+
+# 2026-09-03: chasing the same goal as CITY_SLUG_TO_ID/fetch_search_results above (near-real-time
+# coverage like the reference bot dorin.app appears to have) but from a different angle — one
+# request per REGION instead of one request PER CITY (42 requests to cover everywhere, at ~25
+# credits each — 1,050 credits per full sweep).
+#
+# First attempt (bare SEARCH_PAGE_URL with no filter at all, page=2/3/... for pagination) was
+# WRONG and is gone — confirmed live 2026-09-03 via a throwaway pod on the real cluster (image
+# ghcr.io/amirtoledano/todira-scraper, real ZENROWS_API_KEY from the todira-bot-secret), not
+# guessed: the bare URL returns a real 200 page (no antibot block, __NEXT_DATA__ present) but ZERO
+# listing cards — it's Yad2's "lobby" page (`lobbyData.recommendationsTitle` etc.), not a results
+# feed. Yad2 apparently does require SOME area filter to show a results feed at all (matches the
+# "לפני שנמשיך" behavior already seen when trying to set up an Alert with no area picked — see
+# PROJECT_STATE.md) — this isn't a restriction worth trying to bypass, just how the site works.
+#
+# BUT that same lobby page's `lobbyData.recommendationLinks` embeds exactly 7 broad region URLs
+# (`/rent/<slug>`) covering the whole country — extracted live from the real `__NEXT_DATA__` JSON,
+# not invented: center-and-sharon, tel-aviv-area, jerusalem-area, south, coastal-north,
+# north-and-valleys, partnership/east (see REGION_SLUGS below). Also confirmed live: fetching
+# .../rent/tel-aviv-area returned 43 real cards spanning multiple cities in one request — תל אביב
+# יפו, רמת גן, גבעתיים, בת ים, חולון all showed up in a single response (see PROJECT_STATE.md for
+# the full output). That's a materially different, coarser area taxonomy than the dozens of
+# fine-grained areas Yad2's own /filter "אזור" dropdown and paid Alerts feature offer (also seen
+# live the same day) — not the same list, don't confuse the two. It doesn't need to be: each
+# listing's own city still comes from parsing its own card (_parse_location), same as
+# fetch_search_results — querying a broad region just means "cast a wider net per request," it
+# doesn't change how a listing gets matched to a city or a user afterwards.
+#
+# Math: 7 regions × ~25 credits = ~175 credits per full-country sweep, vs. 1,050 for the 42-city
+# loop — about 6x cheaper per sweep, on the SAME ZenRows plan the project already pays for (Build,
+# 45,000 credits/mo): 45,000 / 175 ≈ 257 sweeps/month ≈ once every ~2.8 hours, with no plan
+# upgrade at all. See PROJECT_STATE.md for the full cost table at other ZenRows tiers.
+#
+# NOT wired into scraper/main.py's run_once() yet — that still needs deciding: whether this
+# REPLACES the per-city loop entirely or runs alongside it, and reworking _mark_delisted (currently
+# scoped by the specific city slugs passed into that run — a region sweep doesn't pick cities in
+# advance, it only knows which cities it actually saw after parsing results, and a single sweep
+# isn't guaranteed to surface every city in a region if that city genuinely has nothing new right
+# now — delisting logic needs to account for that difference before this goes live).
+REGION_SLUGS = (
+    "center-and-sharon",
+    "tel-aviv-area",
+    "jerusalem-area",
+    "south",
+    "coastal-north",
+    "north-and-valleys",
+    "partnership/east",
+)
+
+
+def fetch_all_listings(regions: tuple[str, ...] = REGION_SLUGS) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts from Yad2's broad-region rental searches — REGION_SLUGS by
+    default, 7 requests covering the whole country instead of 42 (one per city). Each region
+    returns whatever's on its first results page (same "rely on scan frequency, not deep
+    pagination" design as fetch_search_results above) spanning many cities at once — a listing's
+    own city still comes from parsing its own card via _parse_cards, not from which region was
+    queried."""
+    for region in regions:
+        html = _fetch_search_html(
+            f"https://www.yad2.co.il/realestate/rent/{region}", context_label=f"region={region!r}"
+        )
+        yield from _parse_cards(html)
 
 
 # Yad2's own listing DETAIL page (one specific apartment, not the search-results list) uses the
