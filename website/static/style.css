@@ -602,6 +602,13 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg); padding: 14px; display: flex; flex-direction: column; gap: 8px;
 }
+/* `display: flex` above (an author style) always beats the browser's own default
+   `[hidden] { display: none }` UA rule, regardless of specificity — the SAME bug this project
+   already hit once with `.check-chip[hidden]` (see that rule's own comment). Without this, toggling
+   the `hidden` attribute in JS (base.html's openPanel/closePanel) has no visual effect at all: the
+   panel stays permanently visible, and neither the ✕ nor the toggle button can ever close it —
+   confirmed live 2026-09-04. */
+#a11y-panel[hidden] { display: none !important; }
 .a11y-panel-head {
   display: flex; align-items: center; justify-content: space-between;
   padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border);
