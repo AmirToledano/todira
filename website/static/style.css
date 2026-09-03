@@ -61,16 +61,45 @@ header.site {
 }
 .brand .crown { font-size: 1.15rem; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); display: inline-block; animation: float 3.2s ease-in-out infinite; }
 @keyframes float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-3px) rotate(-4deg); } }
-nav.site-nav { display: flex; gap: 4px; }
+
+/* ---------- nav: single hamburger toggle, panel pushes the page down (no overlay) ----------
+   2026-09-03 request, matching the reference bot dorin.app's own nav: one button instead of a
+   crowded inline row of nav links + lang switcher + auth box (which is what this used to be —
+   the old `.nav-group`/`nav.site-nav`/`nav.lang-switcher`/`.auth-box` rules, now replaced).
+   `.nav-panel` lives inside `header.site` itself (a normal-flow block, not `position: absolute`),
+   so expanding it pushes `main` down the page rather than covering it. */
+.nav-toggle {
+  width: 38px; height: 38px; border-radius: 10px; border: none; cursor: pointer;
+  background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background .15s;
+}
+.nav-toggle:hover { background: rgba(255,255,255,.22); }
+.nav-toggle-lines { width: 18px; height: 13px; position: relative; display: block; }
+.nav-toggle-lines span {
+  position: absolute; inset-inline-start: 0; width: 100%; height: 2px; background: #fff; border-radius: 2px;
+  transition: transform .2s ease, opacity .2s ease, top .2s ease;
+}
+.nav-toggle-lines span:nth-child(1) { top: 0; }
+.nav-toggle-lines span:nth-child(2) { top: 5.5px; }
+.nav-toggle-lines span:nth-child(3) { top: 11px; }
+.nav-toggle.open .nav-toggle-lines span:nth-child(1) { top: 5.5px; transform: rotate(45deg); }
+.nav-toggle.open .nav-toggle-lines span:nth-child(2) { opacity: 0; }
+.nav-toggle.open .nav-toggle-lines span:nth-child(3) { top: 5.5px; transform: rotate(-45deg); }
+
+.nav-panel { max-height: 0; overflow: hidden; transition: max-height .32s ease; }
+.nav-panel.open { max-height: 70vh; overflow-y: auto; }
+.nav-panel-inner {
+  max-width: 1100px; margin: 0 auto; padding: 6px 16px 16px;
+  background: var(--card); border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+nav.site-nav { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
 nav.site-nav a {
-  text-decoration: none; color: rgba(255,255,255,.88);
-  padding: 8px 14px; border-radius: 999px; font-size: .92rem; font-weight: 500;
+  text-decoration: none; color: var(--text);
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: 10px; font-size: .96rem; font-weight: 600;
   transition: background .15s, color .15s;
-  white-space: nowrap;
 }
-nav.site-nav a:hover, nav.site-nav a.active {
-  background: rgba(255,255,255,.14); color: #fff;
-}
+nav.site-nav a:hover, nav.site-nav a.active { background: var(--teal-tint); color: var(--teal-dark); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 
@@ -125,12 +154,51 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   .hero-image-full { display: flex; justify-content: center; background: var(--bg); }
   .hero-image-full img { width: auto; max-width: 100%; height: 560px; }
 }
+/* Blend the brand image's flat-color top/bottom margins into the page background instead of a
+   hard rectangle edge (2026-09-03 request, inspired by dorin.app's illustration melting into its
+   own page). The fade window is deliberately tight — only the plain background strip above the
+   crown (~0-3% of the image's height) and below the "טודירה" wordmark (~95-100%) — so the crown
+   and the caption text stay fully visible; this must never be widened without re-checking that. */
+.brand-blend {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 95%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 95%, transparent 100%);
+}
+
+/* ---------- "look, it's alive" strip right under the hero CTAs ---------- */
+.fresh-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: center; margin-top: 22px; }
+.live-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: #fff; border: 1px solid var(--border); border-radius: 999px;
+  padding: 7px 15px; font-size: .8rem; font-weight: 700; color: var(--teal-dark);
+  box-shadow: var(--shadow-sm);
+}
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: live-pulse 1.7s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.ai-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark);
+  font-weight: 700; font-size: .8rem; padding: 8px 16px; border-radius: 999px;
+}
+.example-card {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 10px 16px; box-shadow: var(--shadow-sm); text-align: start;
+}
+.example-card .ec-top { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
+.example-card .ec-title { font-family: 'Rubik', sans-serif; font-weight: 700; font-size: .9rem; }
+.example-card .ec-badge {
+  background: var(--teal-tint); color: var(--teal-dark); font-size: .68rem; font-weight: 700;
+  padding: 2px 9px; border-radius: 999px;
+}
+.example-card .ec-sub { color: var(--text-muted); font-size: .8rem; }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
 
 /* ---------- floating stat cards, right under the hero image ---------- */
 .hero-float-stats {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
   max-width: 720px; margin: 26px auto 60px; padding: 0 18px;
 }
+.hero-float-stats.momentum-row { margin-top: 8px; }
+.hero-float-stats.momentum-row .float-stat b { font-size: 1.25rem; }
 .float-stat {
   background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
@@ -445,28 +513,31 @@ summary:focus-visible {
   box-shadow: 0 0 0 3px rgba(217, 164, 65, .25);
 }
 
-/* ---------- language switcher, next to the main nav ---------- */
-.nav-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.auth-box { display: flex; align-items: center; gap: 10px; border-inline-start: 1px solid rgba(255,255,255,.25); padding-inline-start: 12px; }
-.auth-box .auth-name { color: #fff; font-size: .84rem; font-weight: 600; }
+/* ---------- lang switcher + auth, inside the nav panel's footer row (white bg now, not teal) --- */
+.nav-panel-foot {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.auth-box { display: flex; align-items: center; gap: 10px; }
+.auth-box .auth-name { color: var(--text); font-size: .84rem; font-weight: 600; }
 .auth-box .auth-logout {
-  color: rgba(255,255,255,.8); font-size: .8rem; text-decoration: underline;
+  color: var(--text-muted); font-size: .8rem; text-decoration: underline;
   text-underline-offset: 2px;
 }
-.auth-box .auth-logout:hover { color: #fff; }
+.auth-box .auth-logout:hover { color: var(--text); }
 .auth-box .auth-login {
   color: var(--teal-dark); background: linear-gradient(135deg, var(--gold-light), var(--gold));
   font-size: .78rem; font-weight: 700; text-decoration: none;
-  padding: 6px 14px; border-radius: 999px;
+  padding: 7px 15px; border-radius: 999px;
 }
 .auth-box .auth-login:hover { filter: brightness(1.06); }
-nav.lang-switcher { display: flex; gap: 2px; border-inline-start: 1px solid rgba(255,255,255,.25); padding-inline-start: 12px; }
+nav.lang-switcher { display: flex; gap: 2px; }
 nav.lang-switcher a {
-  text-decoration: none; color: rgba(255,255,255,.75);
-  padding: 6px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600;
+  text-decoration: none; color: var(--text-muted);
+  padding: 5px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600;
   transition: background .15s, color .15s;
 }
-nav.lang-switcher a:hover, nav.lang-switcher a.active { background: rgba(255,255,255,.14); color: #fff; }
+nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-tint); color: var(--teal-dark); }
 
 /* ---------- contact page ---------- */
 .contact-other {

@@ -105,7 +105,7 @@ _MASCOT_PATH = _DACHSHUND_DIR / "todi_detective.jpg"
 # captions can't do background colors or font-size, so the closest equivalent is BOLD (not italic
 # — italic reads as an aside, easy to skim past) and placed FIRST, before the listing's own details,
 # instead of tacked on at the very end where a real user reported missing it entirely (2026-09-03).
-_NO_PHOTOS_PREFIX_HE = "🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>\n\n"
+_NO_PHOTOS_PREFIX_HE = "‏🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>\n\n"
 
 
 def _dachshund_photo_path() -> Path:
@@ -216,9 +216,17 @@ def _build_body_lines(
     features = _feature_list(listing)
     if features:
         features_label = bold("פיצ'רים:")
+        lines.append("")  # a visual gap before the features line — a real request, 2026-09-03
         lines.append(f"🔑 {features_label} {' | '.join(features)}")
 
-    return lines
+    # Every line gets its OWN leading RTL mark, not just the caption as a whole — a real user
+    # report (screenshot) showed the block drifting further left line by line. A single mark up
+    # front (the previous fix, 2026-09-03) only anchors the first line; each of these lines still
+    # starts with an emoji (no strong bidi direction of its own), so a renderer that computes
+    # alignment per line — not just once for the whole message — needs the mark on every one.
+    # Skip it on the blank spacer line: a lone RTL mark isn't actually invisible-and-blank, it can
+    # render as a faint stray mark on an otherwise empty line in some clients.
+    return [(_RTL_MARK + line if line else line) for line in lines]
 
 
 def _price_change_header(price_change_from: int | None, current_price: int | None, *, bold: Callable[[str], str]) -> str:
@@ -232,7 +240,7 @@ def _price_change_header(price_change_from: int | None, current_price: int | Non
         emoji, label = "📉", "ירידת מחיר!"
     else:
         emoji, label = "📈", "עליית מחיר!"
-    return f"{emoji} {bold(label)} (היה {price_change_from:,}₪)\n\n"
+    return f"{_RTL_MARK}{emoji} {bold(label)} (היה {price_change_from:,}₪)\n\n"
 
 
 # U+200F (Right-to-Left Mark, invisible) forces Telegram/WhatsApp to treat the WHOLE caption as an
@@ -256,15 +264,15 @@ def format_caption(listing: Listing, *, price_change_from: int | None = None) ->
 
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold)
-    footer = f'\n\n🔗 <a href="{listing.url}">לפרטי הדירה המלאים &gt;&gt;</a>'
+    footer = f'\n\n{_RTL_MARK}🔗 <a href="{listing.url}">לפרטי הדירה המלאים &gt;&gt;</a>'
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n📝 {description}"
+        body += f"\n\n{_RTL_MARK}📝 {description}"
 
-    return (_RTL_MARK + header + body + footer)[:CAPTION_LIMIT]
+    return (header + body + footer)[:CAPTION_LIMIT]
 
 
 WHATSAPP_MESSAGE_LIMIT = 4096
@@ -285,23 +293,25 @@ def format_caption_whatsapp(listing: Listing, *, price_change_from: int | None =
         # Placed right after the location line, matching where it visually sits on Telegram. A
         # maps_url only exists when listing.street is set, which always makes _build_body_lines
         # add a "📍..." line too — but found defensively (default -1, appends at the end) rather
-        # than assumed, so this can never raise even if that correlation ever changes.
+        # than assumed, so this can never raise even if that correlation ever changes. "in", not
+        # "startswith" — every line now carries its own leading RTL mark (see _build_body_lines),
+        # so the location line no longer literally starts with "📍" itself.
         location_index = next(
-            (i for i, line in enumerate(lines) if line.startswith("📍")), len(lines) - 1
+            (i for i, line in enumerate(lines) if "📍" in line), len(lines) - 1
         )
         lines.insert(location_index + 1, f"🗺️ {maps_url}")
 
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold)
-    footer = f"\n\n🔗 לפרטי הדירה המלאים >>\n{listing.url}"
+    footer = f"\n\n{_RTL_MARK}🔗 לפרטי הדירה המלאים >>\n{listing.url}"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n📝 {description}"
+        body += f"\n\n{_RTL_MARK}📝 {description}"
 
-    return (_RTL_MARK + header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
+    return (header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
 
 
 async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: str) -> bool:
