@@ -134,6 +134,16 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
         user = session.get(User, filter_row.user_id)
         if user is None:
             continue
+        if user.telegram_user_id is None:
+            # Push notifications are Telegram-only today (see this module's own docstring — no
+            # WhatsApp send path exists yet). A Google-only standalone account (2026-09-05) or a
+            # WhatsApp-only account both legitimately have no telegram_user_id — they check the
+            # website manually, or can link Telegram via /account for push, but there is
+            # nothing to send to right now. Skipping here (rather than letting send_listing_card
+            # fail on chat_id=None every single time) avoids repeated wasted API calls/log noise
+            # for the exact same listing on every future scrape run, since a failed send never
+            # writes a SentNotification row to remember "already tried."
+            continue
         to_notify.append((filter_row, user))
 
     await _maybe_fetch_description(session, listing, [user for _f, user in to_notify])
@@ -186,6 +196,9 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
             continue
         user = session.get(User, user_id)
         if user is None or not user.is_active or not user.notifications_enabled:
+            continue
+        if user.telegram_user_id is None:
+            # See _notify_new_matches' own comment on why this is skipped, not attempted.
             continue
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user_id))
         if filter_row is None or not evaluate(filter_row, listing).matched:

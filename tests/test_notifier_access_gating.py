@@ -161,6 +161,63 @@ def test_maybe_fetch_description_does_not_cache_on_fetch_failure():
     assert committed == []
 
 
+def test_notify_new_matches_skips_a_user_with_no_telegram_id():
+    """2026-09-05 real gap found while auditing today's standalone-Google-account feature: push
+    notifications are Telegram-only (no WhatsApp send path exists yet — see this module's own
+    docstring), but the recipient query never filtered for telegram_user_id at all. A Google-only
+    or WhatsApp-only user (both legitimately telegram_user_id=None) would have hit
+    send_listing_card(bot, None, ...) on every single matching listing, forever — never a crash
+    (send_listing_card catches TelegramError), but a wasted API call + log noise every time,
+    since a failed send never writes the SentNotification row that would otherwise remember
+    "already tried" this listing."""
+    listing = SimpleNamespace(id=10, price=5000, description=None)
+    filter_row = SimpleNamespace(user_id=1)
+    user = _user(telegram_user_id=None)
+    session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: None, commit=lambda: None)
+    bot = SimpleNamespace()
+
+    with (
+        patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
+        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
+        patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "format_caption") as mock_format,
+        patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
+    ):
+        mock_format.return_value = "caption"
+        matched, sent = asyncio.run(notifier._notify_new_matches(bot, session, listing))
+
+    mock_send.assert_not_awaited()
+    mock_format.assert_not_called()
+    assert matched == 1  # still counted as a real filter match, just nothing to send to
+    assert sent == 0
+
+
+def test_notify_price_change_skips_a_user_with_no_telegram_id():
+    listing = SimpleNamespace(id=10, price=4000, description=None)
+    filter_row = SimpleNamespace(user_id=1)
+    user = _user(telegram_user_id=None)
+    session = SimpleNamespace(
+        scalars=lambda stmt: [1],
+        get=lambda model, pk: user,
+        scalar=lambda stmt: filter_row,
+        add=lambda obj: None,
+        commit=lambda: None,
+    )
+    bot = SimpleNamespace()
+
+    with (
+        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
+        patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "format_caption") as mock_format,
+        patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
+    ):
+        mock_format.return_value = "caption"
+        sent = asyncio.run(notifier._notify_price_change(bot, session, listing, old_price=5000))
+
+    mock_send.assert_not_awaited()
+    assert sent == 0
+
+
 def test_notify_price_change_also_passes_has_access():
     listing = SimpleNamespace(id=10, price=4000, description=None)
     filter_row = SimpleNamespace(user_id=1)
