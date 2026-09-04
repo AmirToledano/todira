@@ -38,6 +38,12 @@
 </head>
 <body>
   <a class="skip-link" href="#main-content">{{ t('a11y.skip_to_content') }}</a>
+  {% if preview_as_free %}
+  <div class="preview-banner">
+    🕵️ מצב תצוגה מקדימה פעיל — אתה רואה את האתר בדיוק כמו משתמש רגיל בלי מנוי.
+    <a href="/preview/toggle?next={{ request.url.path | urlencode }}">כבה תצוגה מקדימה וחזור לגישה מלאה</a>
+  </div>
+  {% endif %}
   <header class="site">
     <div class="header-inner">
       <a class="brand" href="/"><span class="crown">👑</span> טודירה</a>
@@ -74,6 +80,11 @@
             <a class="auth-login" href="/account?uid={{ uid }}">{{ t('auth.link_google') }}</a>
             {% else %}
             <a class="auth-login" href="/login?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
+            {% endif %}
+            {% if is_real_owner %}
+            <a class="auth-logout" href="/preview/toggle?next={{ request.url.path | urlencode }}">
+              {{ '👁️ בטל תצוגה מקדימה' if preview_as_free else '👁️ תצוגה מקדימה' }}
+            </a>
             {% endif %}
           </div>
         </div>

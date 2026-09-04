@@ -2689,3 +2689,33 @@ already-authenticated session to fall back to, and will still show `google_pendi
 (correctly, by design) until the visitor opens the bot at least once. This is expected behavior,
 not a bug, but worth flagging to the owner in plain language on the next report so a first-ever
 sign-in isn't mistaken for the same failure.
+
+## 2026-09-05 (same day, follow-up): owner-only "preview as a regular user" mode
+
+The owner asked, directly, to see the real paywall/purchase experience himself — but he's also the
+`OWNER_TELEGRAM_USER_ID`, so `has_full_access` always short-circuits to True for his own account
+regardless of trial/paid state (by design — that's the point of the owner bypass). Nulling his
+`trial_ends_at`/`paid_until` in the DB wouldn't have helped even if this sandbox had live DB access
+(it does not — no `kubectl`/`DATABASE_URL`/postgres reachable from here, confirmed by checking; the
+only way to touch production data is through code the CI/CD pipeline deploys).
+
+**Fix, entirely code-side, no DB writes**: a new session-scoped `preview_as_free` flag, toggled by
+the owner himself via a new `/preview/toggle` route (owner-gated the same way `/admin/*` is — a
+plain visitor gets 404). Three new helpers in `website/main.py`:
+- `_preview_as_free(request)` — reads the flag.
+- `_display_is_owner(request, telegram_user_id)` — real owner status minus the flag; used for
+  what's *shown* (admin nav links, `/upgrade`'s "you're the owner" banner).
+- `_effective_access(request, user)` — `has_full_access`, minus the flag; when the flag is on this
+  returns `False` unconditionally, regardless of the owner bypass OR the account's real
+  `trial_ends_at`/`paid_until` — so the preview reliably shows "no subscription at all" even if the
+  owner's own trial happens to still be technically valid.
+
+Actual authorization (`_require_owner`, the `/admin/*` route guards) deliberately keeps checking
+`_is_owner_id` directly, untouched by the flag — so toggling preview mode never actually locks the
+owner out of admin functionality, it only changes what's displayed/gated on the regular-user-facing
+pages (`/apartments`, `/liked`, `/upgrade`, the header's admin nav links). A banner
+("🕵️ מצב תצוגה מקדימה פעיל…") shows site-wide whenever the flag is on, with a one-click link back
+to full access, plus a small toggle link next to the header's own login/logout controls (visible
+only to the real owner, labeled "👁️ תצוגה מקדימה" / "👁️ בטל תצוגה מקדימה"). 11 new tests in
+`tests/test_website_preview_mode.py` cover the helpers directly and the toggle route (owner flips
+it on/off; a logged-in non-owner and an anonymous visitor both get 404). Full suite: 462 passing.
