@@ -179,10 +179,11 @@ def test_upgrade_page_shows_plan_options_for_a_real_user():
     assert "₪40" in resp.text
 
 
-def test_upgrade_submit_extends_paid_until_and_redirects():
+def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instructions():
     """Grow isn't configured in these tests (no GROW_* env vars set) — /upgrade falls back to the
-    earlier informal click-trust flow, exactly as before this feature shipped. See
-    test_website_grow_payments.py for the real-gateway path."""
+    informal Bit/PayBox flow: a pending Payment, then a redirect to the instructions page.
+    extend_paid_until only runs once /upgrade/pay/confirm is actually clicked — see
+    test_website_informal_payment.py. See test_website_grow_payments.py for the real-gateway path."""
     user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
 
@@ -198,12 +199,12 @@ def test_upgrade_submit_extends_paid_until_and_redirects():
         resp = c.post("/upgrade", data={"plan": "weekly", "uid": "222"})
 
     assert resp.status_code == 303
-    assert user.paid_until is not None
-    assert user.paid_until > _NOW + dt.timedelta(days=6)
+    assert resp.headers["location"].startswith("/upgrade/pay?payment_id=")
+    assert user.paid_until is None  # NOT granted yet
     assert fake_session.committed is True
     assert len(fake_session.added) == 1
     payment = fake_session.added[0]
-    assert payment.status == "paid"
+    assert payment.status == "pending"
     assert payment.gateway is None
     assert payment.amount_ils == 15
 
