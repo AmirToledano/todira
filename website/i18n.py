@@ -128,6 +128,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "צור קשר", "en": "Contact us", "ru": "Связаться с нами",
         "fr": "Nous contacter", "ar": "تواصل معنا",
     },
+    "nav.account": {
+        "he": "🔗 חיבור ערוצים", "en": "🔗 Link channels", "ru": "🔗 Связать каналы",
+        "fr": "🔗 Lier des canaux", "ar": "🔗 ربط القنوات",
+    },
     "auth.you": {
         "he": "מחובר/ת", "en": "Logged in", "ru": "Вы вошли", "fr": "Connecté(e)", "ar": "تم تسجيل الدخول",
     },
@@ -730,6 +734,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "לצפייה במודעה ←", "en": "View listing →", "ru": "Смотреть объявление →",
         "fr": "Voir l'annonce →", "ar": "عرض الإعلان ←",
     },
+    "card.locked_btn": {
+        "he": "שדרג/י לצפייה", "en": "Upgrade to view", "ru": "Обновить, чтобы посмотреть",
+        "fr": "Mettre à niveau pour voir", "ar": "الترقية للعرض",
+    },
     # Badge shown on the cover photo (top-left, see .broker-badge in style.css) for a broker-listed
     # property — independent of deal_type (rent or sale, doesn't matter), 2026-09-03 request.
     "card.broker_badge": {
@@ -911,6 +919,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "need_uid.target_filter": {
         "he": "סינון", "en": "filter", "ru": "фильтр", "fr": "filtre", "ar": "الفلتر",
+    },
+    "need_uid.target_upgrade": {
+        "he": "שדרוג המנוי", "en": "subscription upgrade", "ru": "обновление подписки",
+        "fr": "mise à niveau de l'abonnement", "ar": "ترقية الاشتراك",
+    },
+    "need_uid.target_account": {
+        "he": "חיבור הערוצים", "en": "channel linking", "ru": "связывание каналов",
+        "fr": "liaison des canaux", "ar": "ربط القنوات",
     },
     "need_uid.cta": {
         "he": "פתח את הבוט", "en": "Open the bot", "ru": "Открыть бота", "fr": "Ouvrir le bot", "ar": "افتح البوت",

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}תשלום — טודירה{% endblock %}
+{% block content %}
+
+<div class="page-banner reveal">
+  <div class="pb-text">
+    <h1>💳 השלמת התשלום</h1>
+    <p>תוכנית {{ plan_label }} — לתשלום: <b>₪{{ amount }}</b></p>
+  </div>
+</div>
+
+<div class="settings-card reveal">
+  {% if bit_phone %}
+  <div class="field">
+    <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">Bit</div>
+    <p class="field-hint">פתח/י את אפליקציית Bit, חפש/י את המספר הבא ושלח/י ₪{{ amount }}:</p>
+    <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.6rem;color:var(--teal);margin:8px 0" dir="ltr">{{ bit_phone }}</p>
+  </div>
+  {% endif %}
+
+  {% if paybox_url %}
+  <div class="field" style="margin-top:16px">
+    <div class="field-section-title">PayBox</div>
+    <a class="btn outline block" href="{{ paybox_url }}" target="_blank">פתח/י את דף התשלום ב-PayBox</a>
+  </div>
+  {% endif %}
+
+  {% if not bit_phone and not paybox_url %}
+  <p class="field-hint">שלח/י ₪{{ amount }} בביט — פרטים יישלחו אליך בנפרד. 🐾</p>
+  {% endif %}
+
+  <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+    {% if already_paid %}
+      <p class="field-hint" style="text-align:center">✅ התשלום כבר אושר.</p>
+      <a class="btn gold block" href="/upgrade/success?payment_id={{ payment_id }}{{ '&uid=' ~ uid if uid else '' }}">המשך</a>
+    {% else %}
+      <form method="post" action="/upgrade/pay/confirm">
+        <input type="hidden" name="payment_id" value="{{ payment_id }}">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        <button type="submit" class="btn gold block">✅ שילמתי, אשר/י את הגישה</button>
+      </form>
+      <p class="field-hint" style="text-align:center;margin-top:10px">
+        לוחצים רק אחרי ששלחתם את התשלום בפועל.
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

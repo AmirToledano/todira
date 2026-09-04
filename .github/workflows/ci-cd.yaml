@@ -132,6 +132,11 @@ jobs:
             --set whatsappAppSecret="${{ secrets.WHATSAPP_APP_SECRET }}" \
             --set googleClientId="${{ secrets.GOOGLE_CLIENT_ID }}" \
             --set googleClientSecret="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            --set growPageCode="${{ secrets.GROW_PAGE_CODE }}" \
+            --set growUserId="${{ secrets.GROW_USER_ID }}" \
+            --set growApiKey="${{ secrets.GROW_API_KEY }}" \
+            --set brightDataApiKey="${{ secrets.BRIGHT_DATA_API_KEY }}" \
+            --set brightDataDatasetId="${{ secrets.BRIGHT_DATA_DATASET_ID }}" \
             --namespace todira --create-namespace
 
       - name: Diagnose bot pod (owner reported it's not responding)

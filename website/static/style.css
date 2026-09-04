@@ -405,6 +405,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   display: inline-flex; align-items: center; gap: 4px;
 }
 .listing-footer a.view-btn:hover { text-decoration: underline; }
+.listing-footer a.view-btn.locked { color: var(--gold); }
 
 /* ---------- empty states ---------- */
 .empty-state {

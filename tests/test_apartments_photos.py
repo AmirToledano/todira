@@ -37,7 +37,7 @@ def test_no_filter_tells_user_to_set_one_up():
 def test_no_matches_tells_user_none_found_currently():
     update = _make_update()
     context = _make_context()
-    with patch.object(apartments_module, "_load_matches_sync", return_value=[]):
+    with patch.object(apartments_module, "_load_matches_sync", return_value=(True, [])):
         asyncio.run(apartments_module.apartments(update, context))
     update.message.reply_text.assert_awaited_once()
 
@@ -49,11 +49,13 @@ def test_each_match_sent_via_send_listing_card_not_plain_reply_text():
     listing_b = SimpleNamespace(id=2)
 
     with patch.object(
-        apartments_module, "_load_matches_sync", return_value=[listing_a, listing_b]
+        apartments_module, "_load_matches_sync", return_value=(True, [listing_a, listing_b])
     ), patch.object(
         apartments_module, "send_listing_card", AsyncMock()
     ) as mock_send, patch.object(
-        apartments_module, "format_caption", side_effect=lambda listing: f"caption-{listing.id}"
+        apartments_module,
+        "format_caption",
+        side_effect=lambda listing, **kw: f"caption-{listing.id}",
     ):
         asyncio.run(apartments_module.apartments(update, context))
 

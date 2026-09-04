@@ -6,11 +6,14 @@ of which process originally sent the card.
 from __future__ import annotations
 
 import asyncio
+import os
 
 from sqlalchemy import delete, select
 from telegram import Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
+from config import WEBSITE_URL
+from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Listing, UserListingAction
@@ -19,10 +22,19 @@ from dorin_common.users import get_or_create_user
 LIKED_LIMIT = 10
 HIDDEN_LIMIT = 10
 
+# Mirrors website/main.py's _is_owner_id / bot/handlers/start.py's own copy — same secret, same
+# "owner always has full access" override.
+OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
-def _load_by_action_sync(tg_user, db_action: str, limit: int) -> list[Listing]:
+
+def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[bool, list[Listing]]:
+    """(has_access, listings) — has_access (dorin_common.access.has_full_access) decides whether
+    format_caption below shows the full card or the locked/teaser one, see that module's
+    2026-09-05 comment."""
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
+        is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
+        access = has_full_access(user, is_owner=is_owner)
         stmt = (
             select(Listing)
             .join(UserListingAction, UserListingAction.listing_id == Listing.id)
@@ -32,14 +44,16 @@ def _load_by_action_sync(tg_user, db_action: str, limit: int) -> list[Listing]:
             .order_by(UserListingAction.created_at.desc())
             .limit(limit)
         )
-        return list(session.scalars(stmt))
+        return access, list(session.scalars(stmt))
 
 
 async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    results = await asyncio.to_thread(_load_by_action_sync, update.effective_user, "liked", LIKED_LIMIT)
+    has_access, results = await asyncio.to_thread(
+        _load_by_action_sync, update.effective_user, "liked", LIKED_LIMIT
+    )
 
     if not results:
         await update.message.reply_text(
@@ -47,9 +61,13 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
+    upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
     for listing in results:
         await send_listing_card(
-            context.bot, update.effective_chat.id, listing, format_caption(listing)
+            context.bot,
+            update.effective_chat.id,
+            listing,
+            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
         )
 
 
@@ -59,15 +77,21 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # was no way to ever see a hidden listing again to change your mind. Mirrors /liked exactly,
     # just for action="hidden" — same toggle-capable ❤️/🙈 buttons on each card (see
     # _apply_reaction_sync below), so pressing 🙈 here un-hides it.
-    results = await asyncio.to_thread(_load_by_action_sync, update.effective_user, "hidden", HIDDEN_LIMIT)
+    has_access, results = await asyncio.to_thread(
+        _load_by_action_sync, update.effective_user, "hidden", HIDDEN_LIMIT
+    )
 
     if not results:
         await update.message.reply_text("אין לך כרגע דירות מוסתרות.")
         return
 
+    upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
     for listing in results:
         await send_listing_card(
-            context.bot, update.effective_chat.id, listing, format_caption(listing)
+            context.bot,
+            update.effective_chat.id,
+            listing,
+            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
         )
 
 

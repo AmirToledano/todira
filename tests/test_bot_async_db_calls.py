@@ -84,7 +84,7 @@ def test_filter_start_db_load_does_not_block_the_event_loop(monkeypatch):
 def test_apartments_db_load_does_not_block_the_event_loop(monkeypatch):
     def _slow_load(_tg_user):
         time.sleep(SLOW_CALL_SECONDS)
-        return []
+        return True, []
 
     monkeypatch.setattr(apartments_module, "_load_matches_sync", _slow_load)
 

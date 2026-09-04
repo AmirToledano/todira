@@ -77,6 +77,12 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: whatsapp-app-secret
                   optional: true
+            # The actual displayable WhatsApp number (not WHATSAPP_PHONE_NUMBER_ID above, which is
+            # the Cloud API's internal id) — builds the wa.me deep link on website/main.py's
+            # /account channel-linking page. Not secret, so a plain value rather than a Secret
+            # ref; empty by default, in which case /account just hides the WhatsApp option.
+            - name: WHATSAPP_PUBLIC_NUMBER
+              value: "{{ .Values.website.whatsappPublicNumber | default "" }}"
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -103,6 +109,38 @@ spec:
             # derived from the incoming request (Caddy terminates TLS in front of this pod).
             - name: WEBSITE_URL
               value: "https://{{ .Values.website.domain }}"
+            # Real payment-gateway checkout (website/grow_client.py, 2026-09-05) — all optional/
+            # unset by default so a deploy before the owner has a Grow account doesn't break;
+            # /upgrade falls back to the earlier informal click-trust flow until all three are set.
+            - name: GROW_PAGE_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: grow-page-code
+                  optional: true
+            - name: GROW_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: grow-user-id
+                  optional: true
+            - name: GROW_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: grow-api-key
+                  optional: true
+            # "true" (default) hits Grow's sandbox endpoint — deliberate safety default for an
+            # unverified integration (see grow_client.py's module docstring); the owner must
+            # explicitly opt into "false" once a real sandbox checkout has been tested end to end.
+            - name: GROW_SANDBOX
+              value: "{{ .Values.growSandbox | default "true" }}"
+            # Informal Bit/PayBox payment instructions (website/main.py's /upgrade/pay, 2026-09-05
+            # — used only while Grow isn't configured above). Not secret; both optional.
+            - name: OWNER_BIT_PHONE
+              value: "{{ .Values.website.ownerBitPhone | default "" }}"
+            - name: OWNER_PAYBOX_URL
+              value: "{{ .Values.website.ownerPayboxUrl | default "" }}"
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}
