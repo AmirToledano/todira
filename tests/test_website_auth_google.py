@@ -56,9 +56,15 @@ class _FakeSession:
         self._scalar_results = list(scalar_results)
         self._users_by_pk = users_by_pk or {}
         self.committed = False
+        self.added: list = []
 
     def scalar(self, stmt):
         return self._scalar_results.pop(0) if self._scalar_results else None
+
+    def add(self, obj):
+        # Backs generate_google_link_token's PendingGoogleLink insert, called whenever the
+        # callback ends up on the "we don't recognize this account" path.
+        self.added.append(obj)
 
     def get(self, model, pk):
         return self._users_by_pk.get(pk)
@@ -218,6 +224,12 @@ def test_callback_unlinked_google_account_with_no_uid_shows_pending_link_page(cl
     assert resp.status_code == 200
     assert "פתח את הבוט" in resp.text
     assert client.cookies.get("session") is not None
+    # 2026-09-05: the bot link now carries a google_link_token (dorin_common/google_link.py) so
+    # the link completes on /start regardless of which browser/app the visitor ends up in — not
+    # just the plain, no-payload bot link this page used to show.
+    assert 'href="https://t.me/AmirDirotBot?start=gl_' in resp.text
+    assert len(fake_session.added) == 1
+    assert fake_session.added[0].google_sub == "google-sub-unknown"
 
 
 def test_resolve_user_completes_pending_google_link_once_a_real_uid_shows_up():
@@ -333,8 +345,10 @@ def test_callback_does_not_overwrite_an_already_linked_session_users_google_acco
         resp = website_main.auth_google_callback(request, code="abc", state="abc")
 
     assert resp.status_code == 200
-    assert existing_user.google_sub == "other-google-sub"
-    assert fake_session.committed is False
+    assert existing_user.google_sub == "other-google-sub"  # never overwritten — the real invariant
+    # A PendingGoogleLink row IS still generated for this new google_sub (harmless: consuming its
+    # token later just hits the same "don't overwrite" guard again bot-side), so committed is True.
+    assert fake_session.committed is True
 
 
 def test_callback_token_exchange_failure_returns_400(client):

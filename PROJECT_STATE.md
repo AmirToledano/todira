@@ -2793,3 +2793,42 @@ had ever asserted the literal rendered href for this particular button — every
 browser would actually parse. Worth remembering next time a URL is built by string concatenation
 inside a template: render it and read the literal output at least once, don't just trust the
 Jinja source to look right.
+
+## 2026-09-05 (same day, follow-up): rebuilt Google linking to not depend on browser context at all
+
+Even with the double-escape bug fixed, the owner correctly diagnosed a deeper design flaw and
+described it precisely: the ONLY way `/auth/google/callback`'s pending-link recovery ever worked
+was the session-cookie path (`pending_google_sub` stashed in the signed cookie, completed by
+`_resolve_user` once a real `uid` resolves in that SAME browser). But the ONLY way back to a `uid`
+was tapping the bot's own account link — which opens inside **Telegram's own in-app browser**, a
+completely separate cookie jar from whatever browser (Safari, Chrome, the site's own `/login`
+button) the Google sign-in actually started in. So the recovery path was structurally guaranteed
+to fail for anyone who started from the website itself rather than already being inside Telegram's
+browser — exactly what he walked through step by step: "start from the website in any browser →
+get bounced to the bot → tap the link that pops up after /start → land back in a FLOATING (in-app)
+browser, never the one you started in." Nothing in that loop could ever complete the link for that
+common case.
+
+**Real fix, not a patch**: linking now happens entirely server-side, without needing ANY browser
+session to survive anything. New `pending_google_links` table (migration `0009_pending_google_
+links`) + `dorin_common/google_link.py` (`generate_google_link_token`/`resolve_google_link_token`,
+mirroring `channel_link.py`'s existing `ref_` pattern but for the reverse direction — an unclaimed
+Google identity waiting for whichever Telegram account claims it, rather than a known user waiting
+for a new channel). `auth_google_callback` now generates a `gl_xxxxx` token (15-min TTL, single
+use) alongside the old session-cookie stash, and embeds it in `google_pending.html`'s bot button as
+`t.me/<bot>?start=gl_xxxxx`. `bot/handlers/start.py`'s `/start` handler now dispatches the deep-link
+payload by prefix (`ref_` = channel link, `gl_` = pending Google link — the two never collide) and,
+when it's a `gl_` token, resolves the pending `google_sub` and attaches it to whichever user this
+`/start` resolves to (new or existing) — BEFORE ever sending a reply, with a `🔗 קושר בהצלחה` note
+prepended to the normal WELCOME/RENEWAL_NEEDED text. The link is done the instant `/start` fires,
+full stop — no return trip to any specific browser required at all. Guards against overwriting an
+existing different `google_sub` the same way the website's own `session_user_id` fallback already
+does. `google_pending.html`'s copy updated to say so explicitly ("החיבור יושלם מיד שם, בלי קשר
+לאיזה דפדפן תשתמש/י בהמשך"). The old session-cookie path is left in place too (harmless, occasionally
+resolves a moment earlier in the lucky same-browser case) rather than ripped out.
+
+14 new tests: `tests/test_google_link.py` (the module itself), `tests/test_start_google_link.py`
+(all four `/start` outcomes — new user, existing unlinked user, existing user with a DIFFERENT
+google_sub already set, an expired/unknown token), plus updates to `tests/test_website_auth_
+google.py` (the pending page now asserts the real `gl_` token appears in the bot link, and a
+PendingGoogleLink row was actually queued for insert). Full suite: 479 passing.
