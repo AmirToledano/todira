@@ -172,8 +172,13 @@ def test_callback_links_google_to_the_uid_being_viewed(client):
     assert fake_session.committed is True
 
 
-def test_callback_unlinked_google_account_with_no_uid_redirects_to_bot(client):
-    state = _do_start(client)  # no uid — nothing to link to
+def test_callback_unlinked_google_account_with_no_uid_shows_pending_link_page(client):
+    """2026-09-05 fix: this used to bounce straight to the bot with no way back — a real dead
+    end, since the plain header "Sign in with Google" button (shown whenever there's no uid in
+    the URL) could then never succeed for a first-time linker. Now it stashes the google_sub in
+    the session and explains what to do instead; see test_resolve_user_completes_pending_google_
+    link_once_a_real_uid_shows_up below for the other half of the fix."""
+    state = _do_start(client)  # no uid — nothing to link to right now
     fake_session = _FakeSession(scalar_results=[None])
 
     @contextmanager
@@ -188,8 +193,52 @@ def test_callback_unlinked_google_account_with_no_uid_redirects_to_bot(client):
     ):
         resp = client.get("/auth/google/callback", params={"code": "abc", "state": state})
 
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "https://t.me/AmirDirotBot"
+    assert resp.status_code == 200
+    assert "פתח את הבוט" in resp.text
+    assert client.cookies.get("session") is not None
+
+
+def test_resolve_user_completes_pending_google_link_once_a_real_uid_shows_up():
+    """The other half of the fix: once a browser holding a pending_google_sub (from the test
+    above) later resolves a real uid — e.g. the visitor opened the bot and came back via any
+    ?uid= link — _resolve_user finishes the link AND starts a real session right there, so they
+    never have to repeat the Google sign-in."""
+    from starlette.requests import Request as StarletteRequest
+
+    user = _FakeUser(id=7, telegram_user_id=123456, google_sub=None)
+    fake_session = _FakeSession(scalar_results=[user])
+
+    scope = {
+        "type": "http",
+        "session": {"pending_google_sub": "google-sub-unknown"},
+    }
+    request = StarletteRequest(scope)
+
+    result = website_main._resolve_user(request, fake_session, 123456)
+
+    assert result is user
+    assert user.google_sub == "google-sub-unknown"
+    assert fake_session.committed is True
+    assert request.session.get("pending_google_sub") is None
+    assert request.session.get("user_id") == 7
+
+
+def test_resolve_user_leaves_a_plain_uid_visit_unaffected_with_no_pending_link():
+    """No pending_google_sub in the session at all — the overwhelmingly common case (any normal
+    bot deep-link visit) — must stay exactly as low-trust/ephemeral as before: no session
+    established, no DB write."""
+    from starlette.requests import Request as StarletteRequest
+
+    user = _FakeUser(id=7, telegram_user_id=123456, google_sub=None)
+    fake_session = _FakeSession(scalar_results=[user])
+
+    request = StarletteRequest({"type": "http", "session": {}})
+    result = website_main._resolve_user(request, fake_session, 123456)
+
+    assert result is user
+    assert user.google_sub is None
+    assert fake_session.committed is False
+    assert request.session.get("user_id") is None
 
 
 def test_callback_token_exchange_failure_returns_400(client):
