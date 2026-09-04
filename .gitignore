@@ -10,3 +10,4 @@ values-secret.yaml
 kubeconfig*
 *kubeconfig*
 k3s-b64.txt
+.claude/settings.local.json
