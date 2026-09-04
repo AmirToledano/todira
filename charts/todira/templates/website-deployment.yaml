@@ -135,6 +135,12 @@ spec:
             # explicitly opt into "false" once a real sandbox checkout has been tested end to end.
             - name: GROW_SANDBOX
               value: "{{ .Values.growSandbox | default "true" }}"
+            # Informal Bit/PayBox payment instructions (website/main.py's /upgrade/pay, 2026-09-05
+            # — used only while Grow isn't configured above). Not secret; both optional.
+            - name: OWNER_BIT_PHONE
+              value: "{{ .Values.website.ownerBitPhone | default "" }}"
+            - name: OWNER_PAYBOX_URL
+              value: "{{ .Values.website.ownerPayboxUrl | default "" }}"
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}

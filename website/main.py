@@ -135,6 +135,16 @@ WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org")
 # without it, /account still shows the Telegram linking option, just not the WhatsApp one.
 WHATSAPP_PUBLIC_NUMBER = os.environ.get("WHATSAPP_PUBLIC_NUMBER", "").strip()
 
+# Informal Bit/PayBox payment (2026-09-05 — the owner decided against עוסק פטור/Grow for now, see
+# /upgrade/pay below) — the owner's own phone number for Bit and, optionally, a PayBox payment
+# link he generates himself from the PayBox app. Deliberately NOT a "click to open the app
+# pre-filled" deep link: neither Bit nor PayBox publish a documented URL scheme for that (checked
+# — even commercial Bit-payment WooCommerce plugins just show a phone number + QR code and rely on
+# the customer typing the amount manually), so this only ever displays plain instructions. Both
+# optional; /upgrade/pay falls back to a generic "send the amount via Bit" hint when unset.
+OWNER_BIT_PHONE = os.environ.get("OWNER_BIT_PHONE", "").strip()
+OWNER_PAYBOX_URL = os.environ.get("OWNER_PAYBOX_URL", "").strip()
+
 
 def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: int | None) -> bool:
     """Best-effort — returns whether the Telegram push succeeded. Never raises: a broken/missing
@@ -717,22 +727,15 @@ def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Fo
             return _render(request, "need_uid.html", {"target": "upgrade"})
 
         if not grow_client.is_configured():
-            extend_paid_until(user, plan)
-            session.add(
-                Payment(
-                    user_id=user.id,
-                    plan=plan,
-                    amount_ils=amount,
-                    status="paid",
-                    gateway=None,
-                    paid_at=dt.datetime.now(dt.timezone.utc),
-                )
+            payment = Payment(
+                user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway=None
             )
+            session.add(payment)
             session.commit()
+            payment_id = payment.id
             redirect_uid = user.telegram_user_id
-            return RedirectResponse(
-                f"/upgrade?uid={redirect_uid}" if redirect_uid else "/upgrade", status_code=303
-            )
+            qs = f"?payment_id={payment_id}" + (f"&uid={redirect_uid}" if redirect_uid else "")
+            return RedirectResponse(f"/upgrade/pay{qs}", status_code=303)
 
         webhook_token = secrets.token_urlsafe(24)
         payment = Payment(
@@ -770,14 +773,64 @@ def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Fo
 
 @app.get("/upgrade/success")
 def upgrade_success(request: Request, payment_id: int, uid: int | None = None):
-    """Where Grow redirects the customer's browser back to after checkout. Purely informational —
-    the actual access grant happens server-to-server via /webhooks/grow below, which may land
-    slightly before or after this redirect, so this just reports the payment's CURRENT status
-    rather than granting anything itself."""
+    """Landing page for BOTH payment paths: where Grow redirects the browser after checkout
+    (access is granted server-to-server by /webhooks/grow below, which may land slightly before or
+    after this redirect — this just reports the payment's CURRENT status, never grants anything
+    itself), and where /upgrade/pay/confirm below sends the browser after the informal Bit/PayBox
+    flow (there access WAS already granted by that POST, so this always shows "paid" immediately)."""
     with get_session() as session:
         payment = session.get(Payment, payment_id)
     paid = payment is not None and payment.status == "paid"
     return _render(request, "upgrade_success.html", {"uid": uid, "paid": paid})
+
+
+@app.get("/upgrade/pay")
+def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
+    """Informal Bit/PayBox payment instructions (2026-09-05) — no verified "open the app
+    pre-filled" deep link exists for either (see OWNER_BIT_PHONE's own comment), so this just
+    shows the exact amount + the owner's Bit phone / PayBox link plainly, with a self-service
+    "I paid" confirmation below. Same honesty tradeoff as the old instant-grant-on-click flow —
+    still trusted, not verified — just made into an explicit, visible step instead of an invisible
+    side effect of clicking a plan button."""
+    with get_session() as session:
+        payment = session.get(Payment, payment_id)
+        user = _resolve_user(request, session, uid)
+        if user is None or payment is None or payment.user_id != user.id:
+            return _render(request, "404.html", {}, status_code=404)
+        redirect_uid = user.telegram_user_id
+
+    return _render(
+        request,
+        "upgrade_pay.html",
+        {
+            "uid": redirect_uid,
+            "payment_id": payment.id,
+            "amount": payment.amount_ils,
+            "plan_label": PLAN_LABELS_HE.get(payment.plan, payment.plan),
+            "already_paid": payment.status == "paid",
+            "bit_phone": OWNER_BIT_PHONE,
+            "paybox_url": OWNER_PAYBOX_URL,
+        },
+    )
+
+
+@app.post("/upgrade/pay/confirm")
+def upgrade_pay_confirm(request: Request, payment_id: int = Form(...), uid: int | None = Form(None)):
+    with get_session() as session:
+        payment = session.get(Payment, payment_id)
+        user = _resolve_user(request, session, uid)
+        if user is None or payment is None or payment.user_id != user.id:
+            return _render(request, "404.html", {}, status_code=404)
+
+        if payment.status == "pending":
+            extend_paid_until(user, payment.plan)
+            payment.status = "paid"
+            payment.paid_at = dt.datetime.now(dt.timezone.utc)
+            session.commit()
+        redirect_uid = user.telegram_user_id
+
+    uid_qs = f"&uid={redirect_uid}" if redirect_uid else ""
+    return RedirectResponse(f"/upgrade/success?payment_id={payment_id}{uid_qs}", status_code=303)
 
 
 def _looks_like_a_successful_grow_payload(body: dict) -> bool:
