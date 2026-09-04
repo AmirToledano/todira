@@ -461,8 +461,10 @@ def auth_google_callback(
         logger.exception("Failed to complete the Google OAuth token/userinfo exchange")
         return _render(request, "auth_error.html", {}, status_code=400)
 
+    session_user_id = request.session.get("user_id")
     with get_session() as session:
         user = session.scalar(select(User).where(User.google_sub == google_sub))
+        matched_via = "google_sub" if user is not None else None
         if user is None and link_uid is not None:
             # First time this Google account signs in while viewing a page via the visitor's own
             # ?uid= deep link — link it to that SAME existing Telegram/WhatsApp-created account so
@@ -471,7 +473,33 @@ def auth_google_callback(
             if user is not None:
                 user.google_sub = google_sub
                 session.commit()
+                matched_via = "link_uid"
+        if user is None and session_user_id is not None:
+            # 2026-09-05 fix: the visitor may already be in an authenticated session (e.g. they
+            # signed in via Telegram earlier, or a prior Google attempt in this same browser
+            # already established one) even though this particular attempt carries no usable
+            # link_uid — e.g. the "קשר את Google לחשבון" link was rendered before Telegram
+            # finished linking, or the uid param otherwise got lost in transit. Trust the signed
+            # session cookie over a missing/stale query param: link this new Google account
+            # straight to whoever is already logged in here, instead of stranding them on the
+            # google_pending screen while the header plainly shows them as logged in.
+            user = session.get(User, session_user_id)
+            if user is not None:
+                if user.google_sub is None:
+                    user.google_sub = google_sub
+                    session.commit()
+                    matched_via = "session_user_id"
+                else:
+                    # Already linked to a different Google account — don't silently overwrite it.
+                    user = None
         user_pk = user.id if user is not None else None
+        logger.info(
+            "Google OAuth callback resolved: matched_via=%s link_uid=%s session_user_id=%s user_pk=%s",
+            matched_via,
+            link_uid,
+            session_user_id,
+            user_pk,
+        )
 
     if user_pk is None:
         # A real Google account, but not yet linked to any Telegram/WhatsApp-created user, and no

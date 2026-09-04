@@ -2638,3 +2638,54 @@ then verify `bright_data_client.py` against a real fetch and fix `BRIGHT_DATA_DE
 to match his scraper's real output schema; (c) Komo/Facebook Marketplace scraping sources (old
 backlog, untouched this session, deprioritized while the product is intentionally not live yet —
 `scraper.suspended: true` is still set from the earlier token-spend freeze).
+
+## 2026-09-05 (follow-up): the /login redesign shipped but Google account-linking still dead-ended — found the real gap and a copy fix
+
+Live-tested by the owner right after the /login redesign (previous section) went out: signing in
+with Google from a fresh (logged-out) state still bounced through the bot and back without
+linking, and — more tellingly — clicking `/account`'s own "🔗 קשר את Google לחשבון" button (which
+*does* carry `uid=` explicitly, so it shouldn't depend on any previously-stashed session state at
+all) landed on `google_pending.html` a second time, in a page where the hamburger menu simultaneously
+showed him already logged in as "Amir" with owner nav items. That combination — content says
+"not linked yet," header says "already logged in" — is the tell: they're two different reads of
+auth state on the same response.
+
+**Root cause**: `auth_google_callback` (website/main.py) only ever tried to resolve who to link
+the new Google account to via `oauth_link_uid` (the `?uid=` the visitor's browser carried into
+`/auth/google/start`, stashed in the signed session cookie). It never checked whether the
+*current* session already had `user_id` set — i.e. was already authenticated, e.g. from an
+earlier Telegram login or an earlier partial Google attempt in the same browser. If `link_uid`
+came back empty or matched no row (plausible if the `/account` page were rendered from a cached
+copy, or from a moment before Telegram had finished linking, or simply a different browser
+context than the one now completing the callback) while the session cookie genuinely was already
+logged in, the callback fell straight to `google_pending.html` even though `base.html`'s header —
+which reads `request.session["user_id"]` completely independently — correctly showed the visitor
+as logged in. Two independent auth reads, only one of them wired to the new linking path.
+
+**Fix**: `auth_google_callback` now has a third fallback, after the `google_sub` match and the
+`link_uid` match both miss: if `request.session["user_id"]` is already set, link the new
+`google_sub` straight onto that user (refusing to overwrite if that user already has a
+*different* Google account linked — an intentional guard, not a gap). This makes linking work
+correctly regardless of whether the specific query-param/session
+state that produced this one callback happened to carry a usable `uid` — the already-authenticated
+session is now trusted the same way the header always was. Added diagnostic logging
+(`matched_via=google_sub|link_uid|session_user_id|None`) to `auth_google_callback` so any future
+failure mode surfaces immediately in logs instead of requiring another round of screenshots. Two
+new tests cover the fallback (`test_callback_links_google_to_already_authenticated_session`) and
+its guard (`test_callback_does_not_overwrite_an_already_linked_session_users_google_account`) in
+`tests/test_website_auth_google.py`.
+
+**Copy fixes, also from the same feedback**: `login.html`'s `<h1>ברוך/ה הבא/ה בחזרה</h1>` ("welcome
+*back*") replaced with `התחברות לטודירה` — the owner correctly flagged that "back" makes no sense
+for a first-time visitor and the page can't tell which case it is. The hamburger menu's
+`auth.login` i18n key, still reading "התחברות עם Google" (a holdover from before `/login` existed
+as a 3-option page), updated to plain "התחברות" so the label matches its actual destination.
+
+**Still unverified**: whether the specific browser-context split (Safari vs. Telegram's in-app
+WebView, each with its own cookie jar) that likely caused the *first* failure in the owner's test
+sequence is still a real trap independent of this fix — a plain first-time Google sign-in
+attempted from within an embedded WebView, with no prior session at all, still has no
+already-authenticated session to fall back to, and will still show `google_pending.html`
+(correctly, by design) until the visitor opens the bot at least once. This is expected behavior,
+not a bug, but worth flagging to the owner in plain language on the next report so a first-ever
+sign-in isn't mistaken for the same failure.

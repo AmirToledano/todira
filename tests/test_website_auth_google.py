@@ -40,19 +40,41 @@ class _FakeUser:
         self.id = id
         self.telegram_user_id = telegram_user_id
         self.google_sub = google_sub
+        self.first_name = "Amir"
+        self.telegram_username = "amirtest"
 
 
 class _FakeSession:
     """`scalar()` returns queued results in call order — matches the exact sequence
     auth_google_callback makes: (1) lookup by google_sub, (2) if unlinked + a uid is being linked,
-    lookup by telegram_user_id via _get_user_by_uid. At most 2 calls per request."""
+    lookup by telegram_user_id via _get_user_by_uid. At most 2 calls per request.
 
-    def __init__(self, scalar_results):
+    `users_by_pk` backs the third fallback path — session.get(User, session_user_id) — used when
+    the visitor already has an authenticated session but no usable link_uid."""
+
+    def __init__(self, scalar_results, users_by_pk: dict | None = None):
         self._scalar_results = list(scalar_results)
+        self._users_by_pk = users_by_pk or {}
         self.committed = False
 
     def scalar(self, stmt):
         return self._scalar_results.pop(0) if self._scalar_results else None
+
+    def get(self, model, pk):
+        return self._users_by_pk.get(pk)
+
+    def execute(self, stmt):
+        # Backs base.html's header lookup (_current_user_summary) when google_pending.html
+        # renders for an already-authenticated session — only the users_by_pk seed matters here.
+        class _Result:
+            def __init__(self, row):
+                self._row = row
+
+            def first(self):
+                return self._row
+
+        user = next(iter(self._users_by_pk.values()), None)
+        return _Result(user)
 
     def commit(self):
         self.committed = True
@@ -239,6 +261,80 @@ def test_resolve_user_leaves_a_plain_uid_visit_unaffected_with_no_pending_link()
     assert user.google_sub is None
     assert fake_session.committed is False
     assert request.session.get("user_id") is None
+
+
+def test_callback_links_google_to_already_authenticated_session():
+    """2026-09-05 fix: a visitor who already has an authenticated session (session["user_id"] —
+    e.g. from an earlier Telegram login, or an earlier Google attempt in this same browser) but
+    whose *this* callback carries no usable link_uid (the "קשר את Google לחשבון" link can be
+    rendered before Telegram finishes linking, or the uid param can otherwise get lost) must
+    still get the new Google account linked to that session's user — not stranded on the
+    pending-link page while the header plainly shows them as already logged in."""
+    from starlette.requests import Request as StarletteRequest
+
+    existing_user = _FakeUser(id=42, telegram_user_id=555, google_sub=None)
+    fake_session = _FakeSession(scalar_results=[None], users_by_pk={42: existing_user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    transport = _mock_google_exchange("google-sub-new-2")
+    scope = {"type": "http", "session": {"oauth_state": "abc", "user_id": 42}}
+    request = StarletteRequest(scope)
+
+    with patch.object(website_main, "GOOGLE_CLIENT_ID", _CLIENT_ID), patch.object(
+        website_main, "GOOGLE_CLIENT_SECRET", _CLIENT_SECRET
+    ), patch.object(website_main, "get_session", _fake_get_session), patch.object(
+        httpx, "post", lambda url, **kw: httpx.Client(transport=transport).post(url, **kw)
+    ), patch.object(
+        httpx, "get", lambda url, **kw: httpx.Client(transport=transport).get(url, **kw)
+    ):
+        resp = website_main.auth_google_callback(request, code="abc", state="abc")
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/apartments"
+    assert existing_user.google_sub == "google-sub-new-2"
+    assert fake_session.committed is True
+    assert request.session.get("user_id") == 42
+
+
+def test_callback_does_not_overwrite_an_already_linked_session_users_google_account():
+    """The already-authenticated session's user is already linked to a DIFFERENT Google
+    account — this callback's new google_sub must not silently overwrite it."""
+    from starlette.requests import Request as StarletteRequest
+
+    existing_user = _FakeUser(id=42, telegram_user_id=555, google_sub="other-google-sub")
+    fake_session = _FakeSession(scalar_results=[None], users_by_pk={42: existing_user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    transport = _mock_google_exchange("google-sub-new-3")
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/auth/google/callback",
+        "session": {"oauth_state": "abc", "user_id": 42},
+        "query_string": b"",
+        "headers": [],
+        "app": website_main.app,
+    }
+    request = StarletteRequest(scope)
+
+    with patch.object(website_main, "GOOGLE_CLIENT_ID", _CLIENT_ID), patch.object(
+        website_main, "GOOGLE_CLIENT_SECRET", _CLIENT_SECRET
+    ), patch.object(website_main, "get_session", _fake_get_session), patch.object(
+        httpx, "post", lambda url, **kw: httpx.Client(transport=transport).post(url, **kw)
+    ), patch.object(
+        httpx, "get", lambda url, **kw: httpx.Client(transport=transport).get(url, **kw)
+    ):
+        resp = website_main.auth_google_callback(request, code="abc", state="abc")
+
+    assert resp.status_code == 200
+    assert existing_user.google_sub == "other-google-sub"
+    assert fake_session.committed is False
 
 
 def test_callback_token_exchange_failure_returns_400(client):
