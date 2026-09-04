@@ -26,7 +26,7 @@
   {% if user.filter.price_min or user.filter.price_max %}
     <span class="chip">💰 {{ user.filter.price_min or 0 }}–{{ user.filter.price_max or '∞' }} ₪</span>
   {% endif %}
-  <a class="btn outline" href="/filter?uid={{ uid }}">{{ t('apartments.edit_filter_btn') }}</a>
+  <a class="btn outline" href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('apartments.edit_filter_btn') }}</a>
 </div>
 {% endif %}
 
