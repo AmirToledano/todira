@@ -44,11 +44,18 @@
       {% if l.furniture == 'furnished' %}<span class="amenity">🛋️ {{ t('card.amenity_furnished') }}</span>{% endif %}
     </div>
     {% endif %}
-    {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
-    <div class="listing-footer">
-      {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
-      <a class="view-btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.view_btn') }}</a>
-    </div>
+    {% if has_access %}
+      {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
+      <div class="listing-footer">
+        {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
+        <a class="view-btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.view_btn') }}</a>
+      </div>
+    {% else %}
+      <div class="listing-footer">
+        {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
+        <a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">🔒 {{ t('card.locked_btn') }}</a>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endmacro %}

@@ -23,12 +23,13 @@ import logging
 import keyboards as kb
 from config import WEBSITE_URL
 from dorin_common import cities
+from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Filter, User
 from dorin_common.schemas import FilterData
 from dorin_common.users import get_or_create_user
-from handlers.apartments import RESULT_LIMIT, find_new_matches_to_show
+from handlers.apartments import OWNER_TELEGRAM_USER_ID, RESULT_LIMIT, find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -233,9 +234,11 @@ def _describe_validation_error(exc: ValidationError) -> str:
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
-def _save_and_match_sync(tg_user, values: dict) -> tuple[int, list]:
+def _save_and_match_sync(tg_user, values: dict) -> tuple[int, list, bool]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
+        is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
+        access = has_full_access(user, is_owner=is_owner)
         existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
         if existing is None:
             existing = Filter(user_id=user.id, **values)
@@ -252,7 +255,7 @@ def _save_and_match_sync(tg_user, values: dict) -> tuple[int, list]:
         # a filter used to resend every current match in full, every time.
         total, new_to_show = find_new_matches_to_show(session, user.id, existing, limit=RESULT_LIMIT)
         session.commit()
-        return total, new_to_show
+        return total, new_to_show, access
 
 
 async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dict) -> int:
@@ -272,7 +275,7 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    total, new_matches = await asyncio.to_thread(
+    total, new_matches, has_access = await asyncio.to_thread(
         _save_and_match_sync, update.effective_user, validated.model_dump()
     )
 
@@ -288,9 +291,13 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
         intro = f"👀 יש כרגע {total}{'+' if total >= RESULT_LIMIT else ''} דירות שמתאימות"
         intro += ":" if len(new_matches) == total else f" — הנה {len(new_matches)} שעוד לא ראית:"
         await query.message.reply_text(intro)
+        upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
         for listing in new_matches:
             await send_listing_card(
-                context.bot, update.effective_chat.id, listing, format_caption(listing)
+                context.bot,
+                update.effective_chat.id,
+                listing,
+                format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
             )
     elif total:
         await query.message.reply_text(

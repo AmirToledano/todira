@@ -25,12 +25,26 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
+from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.enums import NotificationReason
 from dorin_common.matching import evaluate
 from dorin_common.models import Filter, Listing, SentNotification, User
 
 logger = logging.getLogger(__name__)
+
+# Mirrors website/main.py's WEBSITE_URL/_is_owner_id and bot/handlers/start.py's own copies — a
+# proactive push notification needs both to build the same "🔒 upgrade to see this" lock line the
+# bot's own on-demand handlers show (dorin_common.cards.format_caption, 2026-09-05).
+WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org").rstrip("/")
+OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
+
+
+def _has_access_for(user: User) -> bool:
+    is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(user.telegram_user_id) == str(
+        OWNER_TELEGRAM_USER_ID
+    )
+    return has_full_access(user, is_owner=is_owner)
 
 # Telegram's ~30 msgs/sec is a GLOBAL cap across different chats, not the same-chat limit that
 # actually matters here: one user matching several listings in a row (routine — a burst of new
@@ -100,7 +114,12 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
         user = session.get(User, filter_row.user_id)
         if user is None:
             continue
-        if await send_listing_card(bot, user.telegram_user_id, listing, format_caption(listing)):
+        caption = format_caption(
+            listing,
+            has_access=_has_access_for(user),
+            upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
+        )
+        if await send_listing_card(bot, user.telegram_user_id, listing, caption):
             session.add(
                 SentNotification(
                     user_id=filter_row.user_id,
@@ -146,7 +165,12 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
         if filter_row is None or not evaluate(filter_row, listing).matched:
             continue
 
-        caption = format_caption(listing, price_change_from=old_price)
+        caption = format_caption(
+            listing,
+            has_access=_has_access_for(user),
+            price_change_from=old_price,
+            upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
+        )
         if await send_listing_card(bot, user.telegram_user_id, listing, caption):
             session.add(
                 SentNotification(user_id=user_id, listing_id=listing.id, reason=reason)

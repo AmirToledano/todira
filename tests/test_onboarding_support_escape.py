@@ -70,7 +70,7 @@ def test_normal_criteria_message_does_not_escalate():
     with patch.object(onboarding.gemini_client, "parse_onboarding_message", return_value=gemini_result), \
          patch.object(onboarding, "escalate_to_owner", AsyncMock(return_value=True)) as mock_escalate, \
          patch.object(onboarding, "asyncio") as mock_asyncio:
-        mock_asyncio.to_thread = AsyncMock(return_value=(0, []))
+        mock_asyncio.to_thread = AsyncMock(return_value=(0, [], True))
         asyncio.run(onboarding._handle_freetext(update, context))
 
     mock_escalate.assert_not_called()

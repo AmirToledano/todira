@@ -554,11 +554,18 @@ def apartments(request: Request, uid: int | None = None):
         # "insecure temporary access" notice below must not show for a real login just because a
         # stale ?uid= also happens to be sitting in the URL from an older bookmark/deep link.
         via_session = request.session.get("user_id") == user.id
+        has_access = has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
 
     return _render(
         request,
         "apartments.html",
-        {"listings": matches, "uid": user.telegram_user_id, "user": user, "via_session": via_session},
+        {
+            "listings": matches,
+            "uid": user.telegram_user_id,
+            "user": user,
+            "via_session": via_session,
+            "has_access": has_access,
+        },
     )
 
 
@@ -579,9 +586,12 @@ def liked(request: Request, uid: int | None = None):
             if liked_listing_ids
             else []
         )
+        has_access = has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
 
     return _render(
-        request, "liked.html", {"listings": listings, "uid": user.telegram_user_id, "user": user}
+        request,
+        "liked.html",
+        {"listings": listings, "uid": user.telegram_user_id, "user": user, "has_access": has_access},
     )
 
 
