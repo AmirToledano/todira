@@ -111,6 +111,23 @@ def test_account_hides_whatsapp_link_when_public_number_not_configured(client):
     assert "wa.me" not in resp.text
 
 
+def test_account_google_link_button_carries_a_real_uid_query_param(client):
+    """2026-09-05 real bug found live: the template hand-wrote '&amp;uid=' inside a Jinja
+    expression, which Jinja's own autoescaping then escaped AGAIN into '&amp;amp;uid=' — a browser
+    HTML-decodes that once into the literal string '&amp;uid=123', so the actual query string sent
+    to the server was 'next=/account&amp;uid=123', parsed as a param literally named 'amp;uid',
+    never 'uid'. Every "🔗 קשר את Google לחשבון" click therefore silently lost its uid server-side,
+    which is why linking kept landing on the "we don't recognize this account" page no matter how
+    many times it was retried. Asserts the real, single-escaped, correctly-parseable href."""
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", google_sub=None)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert 'href="/auth/google/start?next=/account&amp;uid=222"' in resp.text
+    assert "&amp;amp;" not in resp.text  # the double-escape signature itself, never again
+
+
 def test_account_does_not_generate_a_code_once_telegram_and_whatsapp_are_both_linked(client):
     user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
     fake_session = _FakeSession(users_by_telegram_id={222: user})
