@@ -49,6 +49,7 @@ from dorin_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_acc
 from dorin_common.channel_link import generate_link_code
 from dorin_common.cities import CITIES
 from dorin_common.db import get_session
+from dorin_common.google_link import generate_google_link_token
 from dorin_common.matching import evaluate
 from dorin_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from fastapi import FastAPI, Form, Request
@@ -505,6 +506,7 @@ def auth_google_callback(
                     # Already linked to a different Google account — don't silently overwrite it.
                     user = None
         user_pk = user.id if user is not None else None
+        google_link_token = None if user_pk is not None else generate_google_link_token(session, google_sub)
         logger.info(
             "Google OAuth callback resolved: matched_via=%s link_uid=%s session_user_id=%s user_pk=%s",
             matched_via,
@@ -520,11 +522,16 @@ def auth_google_callback(
         # silently bounce to the bot with zero explanation and zero way back — a real dead end,
         # since the plain header "Sign in with Google" button (shown whenever there's no uid in
         # the URL) could then NEVER succeed for a first-time linker. Now it stashes the google_sub
-        # in the signed session cookie and explains what to do; _resolve_user above finishes the
-        # link (and starts a real session) automatically the moment this same browser later
-        # resolves a real uid — e.g. by opening the bot as instructed and coming back.
+        # in the signed session cookie (still useful for the lucky case where the SAME browser
+        # later resolves a real uid — _resolve_user above completes it instantly) AND generates a
+        # google_link_token (dorin_common/google_link.py) embedded in the bot deep-link below —
+        # THAT is the reliable path: it completes the link the moment the visitor does /start,
+        # entirely server-side, regardless of which browser/app they're in when they get there.
+        # Real bug found live 2026-09-05: the session-cookie-only version above never actually
+        # worked for the common case, because Telegram's own in-app browser (opened when tapping
+        # the bot deep-link) is a SEPARATE cookie jar from whatever browser started the sign-in.
         request.session["pending_google_sub"] = google_sub
-        return _render(request, "google_pending.html", {})
+        return _render(request, "google_pending.html", {"google_link_token": google_link_token})
 
     request.session["user_id"] = user_pk
     return RedirectResponse(_safe_next(next_url), status_code=303)

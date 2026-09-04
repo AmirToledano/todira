@@ -310,6 +310,30 @@ class ContactMessage(Base):
     )
 
 
+class PendingGoogleLink(Base):
+    """A Google sign-in that succeeded but couldn't be attached to any user yet (no google_sub
+    match, no ?uid= in flight, no active session) — see website/main.py's auth_google_callback.
+
+    2026-09-05: exists specifically so linking survives the visitor bouncing through Telegram's
+    OWN in-app browser (a separate cookie jar from whatever browser/app they started the Google
+    sign-in in) to reach the bot and back — the session-cookie-based pending_google_sub alone can't
+    survive that round-trip, which is exactly the real report: "I open the bot, tap the link it
+    sends back, and it still says unlinked." Storing the google_sub server-side under an opaque,
+    single-use token (embedded in the bot deep-link as `?start=gl_<token>`) means the link
+    completes the MOMENT the visitor does /start — entirely bot-side, before they ever return to
+    any browser at all. See dorin_common/google_link.py for generation/consumption."""
+
+    __tablename__ = "pending_google_links"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    token: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
+    google_sub: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Payment(Base):
     """A single real payment attempt through a gateway (Grow/Meshulam, see website/grow_client.py)
     — replaces the earlier informal model where a user's plan-selection CLICK directly extended
