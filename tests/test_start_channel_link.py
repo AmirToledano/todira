@@ -126,7 +126,9 @@ def test_unknown_or_expired_code_falls_through_to_normal_upsert():
         outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "ref_expired")
 
     assert outcome == "normal"
-    assert reply == start_module.WELCOME.format(name="Amir")
+    assert reply == start_module.WELCOME.format(
+    name="Amir", account_url="https://todira.duckdns.org/account?uid=555"
+)
     assert session.committed is True
 
 
@@ -148,7 +150,9 @@ def test_returning_user_within_trial_gets_plain_welcome():
         outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), None)
 
     assert outcome == "normal"
-    assert reply == start_module.WELCOME.format(name="Amir")
+    assert reply == start_module.WELCOME.format(
+    name="Amir", account_url="https://todira.duckdns.org/account?uid=555"
+)
 
 
 def test_returning_user_with_no_filter_yet_gets_plain_welcome_even_if_trial_expired():
@@ -158,7 +162,9 @@ def test_returning_user_with_no_filter_yet_gets_plain_welcome_even_if_trial_expi
         outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), None)
 
     assert outcome == "normal"
-    assert reply == start_module.WELCOME.format(name="Amir")
+    assert reply == start_module.WELCOME.format(
+    name="Amir", account_url="https://todira.duckdns.org/account?uid=555"
+)
 
 
 def test_returning_user_with_expired_access_and_a_filter_gets_renewal_nudge():
@@ -239,7 +245,9 @@ def test_start_replies_with_conflict_message():
 
 
 def test_start_replies_with_normal_welcome_when_no_args():
-    welcome = start_module.WELCOME.format(name="Amir")
+    welcome = start_module.WELCOME.format(
+    name="Amir", account_url="https://todira.duckdns.org/account?uid=555"
+)
     update = _make_update()
     with patch.object(
         start_module, "_upsert_or_link_user_sync", lambda tg_user, code: ("normal", welcome)

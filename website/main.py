@@ -249,14 +249,32 @@ def _get_user_by_uid(session, uid: int) -> User | None:
 
 def _resolve_user(request: Request, session, uid: int | None) -> User | None:
     """Prefer the signed session cookie (real login) over the legacy ?uid= query param — the
-    query param stays supported unchanged so existing bot deep links keep working."""
+    query param stays supported unchanged so existing bot deep links keep working.
+
+    Also completes a PENDING Google link (2026-09-05 fix): if this same browser recently signed
+    in with Google but had no ?uid= in flight to link to at that moment (auth_google_callback
+    stashed the google_sub in the signed session cookie instead of just dead-ending at the bot,
+    see that route's own comment), the moment a real uid resolves here — e.g. the visitor opened
+    the bot as instructed and came back via any ?uid= link — the link is finished AND a real
+    session is established right here, so they don't have to repeat the Google sign-in and don't
+    get asked to log in again on the next visit. Only fires when a pending_google_sub genuinely
+    exists in THIS session, so a plain uid visit with no prior Google attempt is completely
+    unaffected — still exactly as low-trust/ephemeral as the module docstring describes."""
     session_user_id = request.session.get("user_id")
     if session_user_id is not None:
         user = session.get(User, session_user_id)
         if user is not None:
             return user
     if uid is not None:
-        return _get_user_by_uid(session, uid)
+        user = _get_user_by_uid(session, uid)
+        if user is not None:
+            pending_google_sub = request.session.get("pending_google_sub")
+            if pending_google_sub and user.google_sub is None:
+                user.google_sub = pending_google_sub
+                session.commit()
+                request.session.pop("pending_google_sub", None)
+                request.session["user_id"] = user.id
+        return user
     return None
 
 
@@ -426,9 +444,17 @@ def auth_google_callback(
         user_pk = user.id if user is not None else None
 
     if user_pk is None:
-        # A real Google account, but not yet linked to any Telegram/WhatsApp-created user — same
-        # restriction /auth/telegram/callback already has: Google alone can't create a filter.
-        return RedirectResponse("https://t.me/AmirDirotBot", status_code=303)
+        # A real Google account, but not yet linked to any Telegram/WhatsApp-created user, and no
+        # ?uid= was in flight right now to link it to (same restriction /auth/telegram/callback
+        # already has: Google alone can't create a filter). 2026-09-05 fix: this used to just
+        # silently bounce to the bot with zero explanation and zero way back — a real dead end,
+        # since the plain header "Sign in with Google" button (shown whenever there's no uid in
+        # the URL) could then NEVER succeed for a first-time linker. Now it stashes the google_sub
+        # in the signed session cookie and explains what to do; _resolve_user above finishes the
+        # link (and starts a real session) automatically the moment this same browser later
+        # resolves a real uid — e.g. by opening the bot as instructed and coming back.
+        request.session["pending_google_sub"] = google_sub
+        return _render(request, "google_pending.html", {})
 
     request.session["user_id"] = user_pk
     return RedirectResponse(_safe_next(next_url), status_code=303)

@@ -33,7 +33,8 @@ WELCOME = (
     "/filter — הגדרת/עדכון הסינון שלך\n"
     "/apartments — הדירות התואמות האחרונות\n"
     "/liked — הדירות ששמרת\n"
-    "/profile — הפרופיל וההגדרות שלך"
+    "/profile — הפרופיל וההגדרות שלך\n\n"
+    "רוצה גם להתחבר באתר (Google/ווטסאפ)? {account_url} 🔗"
 )
 
 LINKED = "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת — מעכשיו תקבל עדכונים גם כאן בטלגרם."
@@ -98,7 +99,10 @@ def _upsert_or_link_user_sync(tg_user, link_code: str | None) -> tuple[str, str]
             )
             session.add(user)
             session.commit()
-            return "normal", WELCOME.format(name=tg_user.first_name or "")
+            return "normal", WELCOME.format(
+                name=tg_user.first_name or "",
+                account_url=f"{WEBSITE_URL}/account?uid={tg_user.id}",
+            )
 
         # reactivate — mirrors the reference bot re-engaging a paused/"found apartment" user
         user.is_active = True
@@ -118,7 +122,10 @@ def _upsert_or_link_user_sync(tg_user, link_code: str | None) -> tuple[str, str]
             )
             return "expired", reply
 
-        return "normal", WELCOME.format(name=tg_user.first_name or "")
+        return "normal", WELCOME.format(
+            name=tg_user.first_name or "",
+            account_url=f"{WEBSITE_URL}/account?uid={tg_user.id}",
+        )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
