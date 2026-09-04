@@ -86,7 +86,19 @@ def client():
 
 
 def test_admin_users_requires_owner_session_not_uid(client):
-    resp = client.get("/admin/users", params={"uid": _OWNER_TG_ID})
+    # _require_owner short-circuits on the missing session cookie without ever querying — but
+    # entering `with get_session() as session:` still constructs a real SQLAlchemy Engine, which
+    # fails on driver import (requirements-test.txt deliberately has no psycopg driver — see that
+    # file's own comment: no test here is supposed to need a real DB connection) unless get_session
+    # is mocked like every other test in this file does.
+    fake_session = _FakeSession()
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        resp = client.get("/admin/users", params={"uid": _OWNER_TG_ID})
     assert resp.status_code == 404
 
 
