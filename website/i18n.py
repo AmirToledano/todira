@@ -929,7 +929,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "liaison des canaux", "ar": "ربط القنوات",
     },
     "need_uid.cta": {
-        "he": "פתח את הבוט", "en": "Open the bot", "ru": "Открыть бота", "fr": "Ouvrir le bot", "ar": "افتح البوت",
+        "he": "התחברות", "en": "Log in", "ru": "Войти", "fr": "Se connecter", "ar": "تسجيل الدخول",
     },
     "404.body": {
         "he": "הדף שחיפשת לא קיים, או שהקישור אליו שגוי.",
