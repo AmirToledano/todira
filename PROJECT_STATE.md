@@ -2832,3 +2832,48 @@ resolves a moment earlier in the lucky same-browser case) rather than ripped out
 google_sub already set, an expired/unknown token), plus updates to `tests/test_website_auth_
 google.py` (the pending page now asserts the real `gl_` token appears in the bot link, and a
 PendingGoogleLink row was actually queued for insert). Full suite: 479 passing.
+
+## 2026-09-05 (same day, follow-up): the website becomes a first-class, standalone way in — not just a link target
+
+Owner feedback, live-tested and screenshotted step by step: even with server-side linking fixed,
+signing in with Google from the website STILL always bounced through Telegram's own in-app
+"floating browser" — because a brand-new Google sign-in with nothing to link to had exactly one
+option (open the bot). His ask, verbatim in spirit: the website should have its own real interface
+— sign in there, see apartments there, and Telegram/WhatsApp become optional extras for whoever
+wants push notifications, not a mandatory detour just to browse. "It's fine that the floating
+browser stays available, but there also has to be an option that keeps you in the same browser you
+started in."
+
+**The real blocker wasn't Google OAuth at all — it was that the website had no way to CREATE a
+filter, only edit one.** `GET /filter` already handled "no filter yet" by bouncing to
+`no_filter.html`'s bot-only CTA, and `POST /filter` required `uid: int = Form(...)` — a mandatory
+Telegram id, which a Google-only account (by design) doesn't have, so even a manually-created
+standalone user could never save changes to their own filter. Two fixes made the existing pages
+just work instead of needing a whole new onboarding UI:
+- `matching.py`'s own `if filter_row.cities:` check (empty list = no restriction, matches every
+  city) means a completely blank, all-defaults `Filter` row matches broadly out of the box —
+  apartments show up immediately, no separate "what are you looking for" wizard needed. `/filter`
+  already IS a full editing UI for narrowing it down whenever they want.
+- `POST /filter` now resolves the user via `_resolve_user` (session-first, `uid` as the low-trust
+  fallback for a bot-deep-link visitor) instead of requiring `uid` unconditionally — matches how
+  every other page (`/apartments`, `/liked`, `/account`, `/upgrade`) already resolves. `filter.html`'s
+  hidden `uid` field is now conditional so a session-only visitor doesn't submit an empty string
+  where an int was expected.
+
+**`google_pending.html` now offers a real, deliberate choice** instead of one path: "✨ זה חשבון חדש
+— תתחיל/י ישר כאן באתר" (new `POST /auth/google/create-account`, reads the `pending_google_sub`
+already stashed in the session by the callback — never trusts a client-supplied one — creates a
+standalone `User(google_sub=..., first_name=...)` with a blank `Filter`, logs in immediately, same
+tab, same browser) alongside "🔗 קשר לחשבון הקיים שלי" (the existing `gl_` bot-link flow, for anyone
+who already has a Telegram/WhatsApp account and should be LINKED to it, not given a duplicate). This
+matters: without the choice, an existing bot user visiting the site fresh (no `uid`, no session)
+and clicking "new account" by default would fork into two disconnected accounts. `/account`
+already supported a Google-only anchor generating Telegram/WhatsApp channel-link codes with no
+changes needed — it was never written assuming `telegram_user_id` specifically.
+
+3 new tests in `tests/test_website_auth_google.py` for the create-account route (a fresh signup, a
+request with no pending state rejected, logging into an existing account instead of duplicating on
+a double-submit) plus one existing test there updated for the new pending-page copy. The existing
+`tests/test_website_filter_cities.py` suite stays green unchanged — confirms the session/uid
+resolution swap didn't break the existing Telegram-anchored path. Verified visually with a local
+server + headless Chromium in both light and dark. Full suite: 482 passing.
