@@ -69,3 +69,25 @@ def test_login_page_next_param_is_sanitized_by_safe_next(client):
     assert resp.status_code == 200
     # _safe_next falls back to /apartments for any non-relative target
     assert 'href="/auth/google/start?next=/apartments"' in resp.text
+
+
+def test_login_page_forwards_uid_into_the_google_button(client):
+    """2026-09-05 fix: found live — a visitor who arrives at /login WITH a uid in flight (e.g. a
+    bot deep link that routes through here instead of straight to /account) used to silently lose
+    it, so their Google sign-in fell back to the contextless "unknown account" path instead of
+    performing a real link on the first try, exactly like /account's own button already does.
+    Also guards against the double-escape bug found live in account.html's identical pattern:
+    hand-writing '&amp;uid=' inside a Jinja expression gets escaped AGAIN by autoescaping into
+    '&amp;amp;uid=', which a browser decodes into a query string whose param is literally named
+    'amp;uid', not 'uid' — silently dropping it server-side on every single click."""
+    resp = client.get("/login", params={"uid": 123456})
+    assert resp.status_code == 200
+    assert 'href="/auth/google/start?next=/apartments&amp;uid=123456"' in resp.text
+    assert "&amp;amp;" not in resp.text
+
+
+def test_login_page_google_button_has_no_uid_param_when_none_given(client):
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert 'href="/auth/google/start?next=/apartments"' in resp.text
+    assert "uid=" not in resp.text

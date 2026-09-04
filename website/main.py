@@ -318,7 +318,7 @@ def home(request: Request):
 
 
 @app.get("/login")
-def login(request: Request, next: str = "/apartments"):
+def login(request: Request, next: str = "/apartments", uid: int | None = None):
     """A dedicated screen (2026-09-05 request) instead of the header's own small Google-only
     button — Google/Telegram/WhatsApp shown as three separate, equally prominent "continue with"
     options, matching the reference product's own login screen. Already-logged-in visitors skip
@@ -327,13 +327,23 @@ def login(request: Request, next: str = "/apartments"):
     Login Widget exists (see _verify_telegram_auth below) but was pulled from the UI after a real
     iOS Safari reliability complaint, see this file's module docstring); the payoff for choosing
     Google here shows up once you're actually signed in with it — see _resolve_user's own comment
-    on why coming back from either of those two also finishes a pending Google link automatically."""
+    on why coming back from either of those two also finishes a pending Google link automatically.
+
+    `uid` (2026-09-05 fix): forwarded into the Google button exactly like /account already does,
+    so arriving here WITH a uid in flight (e.g. a bot deep link that happens to route through
+    /login instead of straight to /account) still performs a real link on the first try, instead
+    of silently falling back to the contextless "we don't recognize this Google account yet" path
+    — found live: base.html's header only ever links to THIS route when it has no uid at all (see
+    its own template), so a visitor with zero context (no uid, no session — the ordinary case for
+    "hamburger menu → login") still can't be linked automatically; that part is inherent to how
+    OAuth works, not a bug — Google alone can't tell us which existing Telegram/WhatsApp account
+    it belongs to. See google_pending.html for the recovery path in that case."""
     if request.session.get("user_id") is not None:
         return RedirectResponse(_safe_next(next), status_code=303)
     return _render(
         request,
         "login.html",
-        {"next": _safe_next(next), "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER},
+        {"next": _safe_next(next), "uid": uid, "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER},
     )
 
 
