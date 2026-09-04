@@ -118,6 +118,15 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .btn.outline { background: transparent; color: var(--teal) !important; border: 1.5px solid var(--teal); box-shadow: none; }
 .btn.outline:hover { background: var(--teal-tint); }
 .btn.block { width: 100%; justify-content: center; }
+/* Real brand colors — /login's "continue with X" buttons (2026-09-05), matching the reference
+   product's own login screen: Telegram blue, WhatsApp green, both distinct from the site's own
+   teal/gold so each reads as "this is that platform's button," not a themed variant of ours. */
+.btn.telegram { background: #229ed9; }
+.btn.telegram:hover { background: #1b87bd; }
+.btn.whatsapp { background: #25d366; color: #06301c !important; }
+.btn.whatsapp:hover { background: #20bd5a; }
+.btn.google { background: #fff; color: #3c4043 !important; border: 1.5px solid #dadce0; box-shadow: none; }
+.btn.google:hover { background: #f8f9fa; }
 
 /* ---------- hero (home page) ----------
    Headline/CTA live in the plain hero, on the page's own background - no
@@ -420,6 +429,20 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   background: #fff3cd; border: 1px solid #ffe69c; color: #6b5200;
   padding: 10px 16px; border-radius: var(--radius-sm); font-size: .86rem; margin-bottom: 20px;
 }
+
+/* ---------- /login — a dedicated screen, not a menu widget (2026-09-05) ---------- */
+.login-card {
+  max-width: 380px; margin: 40px auto; padding: 36px 28px; background: var(--card);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 14px; text-align: center;
+}
+.login-head { margin-bottom: 8px; }
+.login-head .crown { font-size: 2rem; display: block; margin-bottom: 6px; }
+.login-head h1 { font-size: 1.35rem; margin: 0 0 6px; }
+.login-head p { color: var(--text-muted); font-size: .92rem; margin: 0; }
+.login-divider { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: .8rem; margin: 6px 0; }
+.login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.login-hint { font-size: .78rem; color: var(--text-muted); margin: 12px 0 0; line-height: 1.5; }
 
 /* ---------- settings / filter form ---------- */
 .settings-card {

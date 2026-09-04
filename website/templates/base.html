@@ -71,9 +71,9 @@
             <span class="auth-name">{{ current_user.first_name or (current_user.telegram_username and ('@' ~ current_user.telegram_username)) or t('auth.you') }}</span>
             <a class="auth-logout" href="/auth/logout">{{ t('auth.logout') }}</a>
             {% elif uid %}
-            <a class="auth-login" href="/auth/google/start?uid={{ uid }}&amp;next={{ request.url.path | urlencode }}">{{ t('auth.link_google') }}</a>
+            <a class="auth-login" href="/account?uid={{ uid }}">{{ t('auth.link_google') }}</a>
             {% else %}
-            <a class="auth-login" href="/auth/google/start?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
+            <a class="auth-login" href="/login?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
             {% endif %}
           </div>
         </div>
