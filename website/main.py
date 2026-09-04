@@ -221,7 +221,7 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
     """
     lang = get_lang(request)
     current_user = _current_user_summary(request)
-    is_owner = current_user is not None and _is_owner_id(current_user["telegram_user_id"])
+    is_real_owner = current_user is not None and _is_owner_id(current_user["telegram_user_id"])
     response = templates.TemplateResponse(
         request,
         template_name,
@@ -234,7 +234,9 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "supported_langs": SUPPORTED_LANGS,
             "lang_labels": LANG_LABELS,
             "current_user": current_user,
-            "is_owner": is_owner,
+            "is_owner": is_real_owner and not _preview_as_free(request),
+            "is_real_owner": is_real_owner,
+            "preview_as_free": _preview_as_free(request),
         },
         status_code=status_code,
     )
@@ -602,7 +604,7 @@ def apartments(request: Request, uid: int | None = None):
         # "insecure temporary access" notice below must not show for a real login just because a
         # stale ?uid= also happens to be sitting in the URL from an older bookmark/deep link.
         via_session = request.session.get("user_id") == user.id
-        has_access = has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
+        has_access = _effective_access(request, user)
 
     return _render(
         request,
@@ -634,7 +636,7 @@ def liked(request: Request, uid: int | None = None):
             if liked_listing_ids
             else []
         )
-        has_access = has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
+        has_access = _effective_access(request, user)
 
     return _render(
         request,
@@ -652,6 +654,46 @@ def _is_owner_id(telegram_user_id: int | None) -> bool:
     in principle contain non-numeric noise — this way a malformed secret just never matches
     instead of throwing."""
     return bool(OWNER_TELEGRAM_USER_ID) and str(telegram_user_id) == str(OWNER_TELEGRAM_USER_ID)
+
+
+def _preview_as_free(request: Request) -> bool:
+    """2026-09-05: a self-toggled, session-scoped flag (see /preview/toggle) that lets the owner
+    see exactly what a brand-new, never-subscribed visitor sees — no owner bypass, no trial, no
+    active subscription — without touching his own account's trial_ends_at/paid_until row or the
+    OWNER_TELEGRAM_USER_ID secret. Off by default; never set for anyone but the owner, since the
+    toggle route itself is owner-gated."""
+    return bool(request.session.get("preview_as_free"))
+
+
+def _display_is_owner(request: Request, telegram_user_id: int | None) -> bool:
+    """Real owner status, minus the preview-as-regular-user override above — used wherever owner
+    status is DISPLAYED (nav admin links, the upgrade page's "you're the owner" banner). Actual
+    authorization (admin routes, _require_owner) always checks _is_owner_id directly instead, so
+    admin functionality never actually goes away during a preview — only what's shown does."""
+    return _is_owner_id(telegram_user_id) and not _preview_as_free(request)
+
+
+def _effective_access(request: Request, user: User) -> bool:
+    """has_full_access, minus the same preview override — forces "no access at all" regardless of
+    the owner bypass or the account's real trial_ends_at/paid_until, so a preview reliably shows
+    the real paywall even if the owner's own trial happens to still be technically valid."""
+    if _preview_as_free(request):
+        return False
+    return has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
+
+
+@app.get("/preview/toggle")
+def preview_toggle(request: Request, next: str = "/account"):
+    """Owner-only. Flips the session-scoped preview_as_free flag so the owner can see the site
+    exactly as a regular, trial-expired, never-subscribed user would — the real gated listing
+    cards and the real /upgrade paywall — then flip it back once done. No DB writes, nothing
+    touches OWNER_TELEGRAM_USER_ID; a plain visitor hitting this route (not logged in as the
+    owner) gets a 404, same posture as the other /admin/* routes."""
+    current_user = _current_user_summary(request)
+    if current_user is None or not _is_owner_id(current_user["telegram_user_id"]):
+        return _render(request, "404.html", {}, status_code=404)
+    request.session["preview_as_free"] = not _preview_as_free(request)
+    return RedirectResponse(_safe_next(next), status_code=303)
 
 
 @app.get("/admin/messages")
@@ -744,8 +786,7 @@ def upgrade(request: Request, uid: int | None = None):
         user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "upgrade"})
-        is_owner = _is_owner_id(user.telegram_user_id)
-        access = has_full_access(user, is_owner=is_owner)
+        access = _effective_access(request, user)
 
     return _render(
         request,
@@ -753,7 +794,7 @@ def upgrade(request: Request, uid: int | None = None):
         {
             "uid": user.telegram_user_id,
             "has_access": access,
-            "is_owner": is_owner,
+            "is_owner": _display_is_owner(request, user.telegram_user_id),
             "trial_ends_at": user.trial_ends_at,
             "paid_until": user.paid_until,
             "plan_prices": PLAN_PRICES_ILS,
