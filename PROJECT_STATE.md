@@ -3005,3 +3005,52 @@ default local mode) would NOT be connected to this session — pointed him to
 `code.claude.com/docs/en/claude-code-on-the-web` for the exact current mechanics of bridging a
 local editor to a cloud environment, since that's a product-capability question worth getting
 exactly right rather than guessed.
+
+## 2026-09-05 (continuation, same day): switched to the local machine mid-conversation — sync notes
+
+Owner opened this same session from VS Code on his actual Windows machine (`c:\diramir`), and the
+tool backend switched to that local checkout — genuinely the same conversation/memory, but a
+DIFFERENT filesystem than whatever cloud container had been executing everything up to this point.
+The local checkout was stale (last real commit from ~2026-08-29, missing every PR merged today)
+and had one never-committed edit (an old EC2 Elastic-IP/`KUBECONFIG_B64` note — superseded, since
+every deploy today already succeeded against the current cluster; preserved anyway in
+`git stash` rather than discarded, message "pre-sync backup: old EC2 IP note from Aug 29, never
+committed").
+
+**Real, reusable finding**: a plain `git fetch`/`pull` on this machine reliably fails on anything
+but a tiny transfer — authentication itself is fine (confirmed via `GIT_TRACE`/`GIT_CURL_VERBOSE`:
+full request/response headers exchanged normally, HTTP 200), but the actual pack data arrives
+corrupted (`fatal: fetch-pack: invalid index-pack output`) once the payload is more than trivially
+small. Very likely local antivirus/security software doing HTTPS inspection with a buffering bug
+on larger binary streams — plain `curl -I https://github.com` and small requests work fine; only
+larger ones corrupt. **Workaround that works**: `git fetch --depth=1 <url> main:refs/remotes/
+origin/main` (a shallow fetch of just the latest commit's snapshot) goes through cleanly, then
+`git reset --hard` onto it — sacrifices local commit history (this checkout is now a shallow clone
+as of commit `6b5a714`) but fully restores a correct, current working tree. Good enough for local
+development; don't burn more time trying to fix the underlying transfer issue unless full history
+is actually needed later (e.g. `git log`/`git blame` on old code, which now no longer works
+locally on this machine — origin's GitHub-hosted history is unaffected).
+
+Also found (already existed on origin, unknown to this session until the sync):
+`.github/workflows/set-whatsapp-secret.yaml` — a `workflow_dispatch`-triggered workflow that
+patches `todira-bot-secret`'s WhatsApp keys directly via `kubectl patch` (with per-input log
+masking, added after two real past leaks via GitHub Actions' own echo-before-mask default
+behavior — see the workflow's own comment for exactly which two mechanisms leaked and how both are
+closed). **This is the RIGHT way for the owner to update these 4 credentials going forward** — run
+it from the Actions tab and type values straight into the form, never through a chat session. For
+this round, the owner had already pasted `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_APP_SECRET` into chat
+and set all 4 as GitHub Actions **repo secrets** (`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_
+ID`/`WHATSAPP_WEBHOOK_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET`) before this new workflow was noticed —
+confirmed those map to the exact same `todira-bot-secret` keys (`charts/todira/templates/bot-
+secret.yaml`), so the normal CI/CD path (this commit) also correctly delivers them; no rework
+needed this time, just flagging the better path for next time. The WhatsApp access token used here
+is Meta's own short-lived (~24h) test token, not a permanent System User token yet — the owner
+knows to regenerate it once the test-number-only flow is confirmed working.
+
+Also configured, at the owner's request: `.claude/settings.local.json` (new, gitignored — personal
+to this checkout) with a permissions allowlist for routine safe commands (git status/diff/log/add/
+commit/fetch/push-to-origin/checkout, python/pytest, npm, read-only kubectl) plus an explicit deny
+list for the dangerous variants that a broad `git *`/`kubectl *` wildcard would otherwise have
+silently let through unprompted (`git push --force`/`-f`, `git reset --hard`, `git clean`, `rm
+-rf`, `kubectl delete`/`apply`) — he wanted fewer permission prompts for routine work without
+losing the safety rail on destructive ops specifically.
