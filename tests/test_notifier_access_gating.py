@@ -46,7 +46,7 @@ def test_has_access_for_owner_is_true_even_if_expired():
 
 
 def test_notify_new_matches_passes_has_access_false_for_an_expired_user():
-    listing = SimpleNamespace(id=10, price=5000)
+    listing = SimpleNamespace(id=10, price=5000, description=None)
     filter_row = SimpleNamespace(user_id=1)
     user = _user()
     session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: None, commit=lambda: None)
@@ -69,7 +69,7 @@ def test_notify_new_matches_passes_has_access_false_for_an_expired_user():
 
 
 def test_notify_new_matches_passes_has_access_true_for_a_trial_user():
-    listing = SimpleNamespace(id=10, price=5000)
+    listing = SimpleNamespace(id=10, price=5000, description=None)
     filter_row = SimpleNamespace(user_id=1)
     user = _user(trial_ends_at=_NOW + dt.timedelta(days=2))
     session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: None, commit=lambda: None)
@@ -88,8 +88,81 @@ def test_notify_new_matches_passes_has_access_true_for_a_trial_user():
     assert mock_format.call_args.kwargs["has_access"] is True
 
 
+# --- _maybe_fetch_description (2026-09-05, Bright Data on-demand enrichment) — answers the
+# owner's own sequencing question: fetch only after matching is done, and only when at least one
+# recipient about to be notified is a paying user.
+
+
+def test_maybe_fetch_description_skips_when_not_configured():
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    session = SimpleNamespace(commit=lambda: None)
+    with (
+        patch.object(notifier.bright_data_client, "is_configured", lambda: False),
+        patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]))
+    mock_fetch.assert_not_called()
+
+
+def test_maybe_fetch_description_skips_when_already_cached():
+    listing = SimpleNamespace(description="כבר יש תיאור", url="https://yad2.co.il/item/1")
+    session = SimpleNamespace(commit=lambda: None)
+    with (
+        patch.object(notifier.bright_data_client, "is_configured", lambda: True),
+        patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]))
+    mock_fetch.assert_not_called()
+
+
+def test_maybe_fetch_description_skips_when_no_recipient_is_paying():
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    session = SimpleNamespace(commit=lambda: None)
+    free_users = [_user(), _user(id=2, telegram_user_id=556)]  # both expired trial, no payment
+    with (
+        patch.object(notifier.bright_data_client, "is_configured", lambda: True),
+        patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, free_users))
+    mock_fetch.assert_not_called()
+
+
+def test_maybe_fetch_description_fetches_and_caches_when_a_recipient_is_paying():
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    committed = []
+    session = SimpleNamespace(commit=lambda: committed.append(True))
+    recipients = [_user(), _user(id=2, telegram_user_id=556, trial_ends_at=_NOW + dt.timedelta(days=1))]
+
+    with (
+        patch.object(notifier.bright_data_client, "is_configured", lambda: True),
+        patch.object(
+            notifier.bright_data_client, "fetch_listing_description", lambda url: "תיאור אמיתי"
+        ),
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
+
+    assert listing.description == "תיאור אמיתי"
+    assert committed == [True]
+
+
+def test_maybe_fetch_description_does_not_cache_on_fetch_failure():
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    committed = []
+    session = SimpleNamespace(commit=lambda: committed.append(True))
+    recipients = [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
+
+    with (
+        patch.object(notifier.bright_data_client, "is_configured", lambda: True),
+        patch.object(notifier.bright_data_client, "fetch_listing_description", lambda url: None),
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
+
+    assert listing.description is None
+    assert committed == []
+
+
 def test_notify_price_change_also_passes_has_access():
-    listing = SimpleNamespace(id=10, price=4000)
+    listing = SimpleNamespace(id=10, price=4000, description=None)
     filter_row = SimpleNamespace(user_id=1)
     user = _user()
     session = SimpleNamespace(
