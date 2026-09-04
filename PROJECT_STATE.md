@@ -2944,3 +2944,64 @@ today gets exactly the same "nothing sent, check the website" treatment as a Goo
 correctly, not silently wasting API calls) rather than an actual WhatsApp message. Building real
 WhatsApp Business API send support is a legitimate, scoped feature for a future session, not
 something to invent unprompted while the owner is unreachable — flagging it here so it isn't lost.
+
+## 2026-09-05 (same day, after landing): green light on Komo + Facebook Marketplace/Groups, WhatsApp API setup in progress
+
+Owner back from his flight, gave the go-ahead to start both remaining Phase-3 scraping sources
+(Komo, Facebook Marketplace/Groups — see the 2026-08-30 entries above for the original research)
+and to move forward on real WhatsApp Business API sending. Three threads now open in parallel,
+tracked as tasks #38/#39 in the session's own task list:
+
+**Komo — blocked on real HTML, not code.** This sandbox's egress still blocks `komo.co.il`
+directly (confirmed again today — same restriction as `docs.brightdata.com`/`todira.duckdns.org`/
+GitHub's own blob-storage log URLs, all EGRESS_BLOCKED). Websearch surfaced real, working URL
+patterns though: `https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?ezorNum=31` — an
+old-style ASP site with query-param-driven search (region via `ezorNum`), which reads as
+meaningfully easier to scrape than Yad2's heavier JS rendering IF the real markup confirms it.
+**Waiting on the owner** to open a couple of those URLs himself and send back the page source
+(View Source) or screenshots — deliberately NOT guessing at selectors blind, since that's the
+exact mistake that cost Yad2's first 8 attempts (see this file's own 2026-08-30 entry). Once real
+HTML is in hand, build against `zenrows` the same way `scraper/yad2_client.py` already does.
+
+**Facebook Marketplace/Groups — waiting on account safety confirmation + cookies.** Owner sent a
+Facebook profile share link as "his account" for this — flagged back that (a) a plain profile
+link alone gives no scraping access at all, real session cookies are needed, and (b) critically,
+asked him to confirm this is a DEDICATED/throwaway account and not his real personal one before
+touching it at all, given the real permanent-ban risk to a personal account that this file's own
+2026-08-30 entry already flagged. Also walked him through cookie export given he's on iPhone (no
+on-device F12 exists on iOS at all, unlike Android's Kiwi Browser + extension route) — the
+practical answer is borrowing any computer for a couple of minutes, or a Mac + cable + Safari's
+Web Inspector if he has one; explicitly steered him away from any random App-Store "cookie
+export" app, since a session cookie is equivalent to a password. **Still waiting** on his
+confirmation that the account is safe to use, and then the actual exported cookies.
+
+**WhatsApp Business API — mid-setup, real progress.** Confirmed via Meta's own developer docs
+(`developers.facebook.com/documentation/business-messaging/whatsapp/messaging-limits`) that
+**no business registration/`עוסק פטור` is needed to start** — an unverified app can message up to
+250 unique customers per rolling 24 hours on the Cloud API's basic tier; Business Verification is
+only required to lift that cap or get the official green-checkmark display name. Owner already has
+a `WhatsApp phone number ID` and a `WhatsApp Business Account ID` from an earlier attempt — cross-
+checked against `website/whatsapp_client.py`'s own `graph.facebook.com/{phone_number_id}/messages`
+call and confirmed the phone number ID (not the WABA container ID, which this codebase doesn't use
+anywhere) is exactly the right value for the `WHATSAPP_PHONE_NUMBER_ID` secret. Open question:
+whether that ID belongs to Meta's auto-provisioned TEMPORARY test number (works immediately but
+can only message up to 5 pre-approved tester numbers) or a real production number — asked him to
+try the API Setup page's "Send test message" button to confirm which. Still needed before this can
+be wired up end to end: `WHATSAPP_ACCESS_TOKEN` (API Setup page, temporary 24h token or a
+permanent System User token under Business Settings), `WHATSAPP_WEBHOOK_VERIFY_TOKEN` (any secret
+string HE picks, entered on both sides — Meta's dashboard and as the GitHub secret), and
+`WHATSAPP_APP_SECRET` (App Dashboard → Settings → Basic). Webhook callback URL to register with
+Meta once ready: `https://todira.duckdns.org/webhook/whatsapp`. Once all 4 values are in hand they
+become GitHub Actions repo secrets (`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`/
+`WHATSAPP_WEBHOOK_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET`, already wired into `ci-cd.yaml`'s Helm
+upgrade step — see that file — so no chart/pipeline changes needed, just populating the secrets
+and redeploying).
+
+**Also answered, unrelated to code**: owner asked whether opening this same conversation from a
+computer (vs. phone) continues the same session — yes, this is Claude Code Remote, account-scoped
+not device-scoped, so `claude.ai/code` on any device with the same login shows the same session
+with full history. A genuinely separate LOCAL `claude` CLI install (or the VS Code extension's
+default local mode) would NOT be connected to this session — pointed him to
+`code.claude.com/docs/en/claude-code-on-the-web` for the exact current mechanics of bridging a
+local editor to a cloud environment, since that's a product-capability question worth getting
+exactly right rather than guessed.
