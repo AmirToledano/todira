@@ -2908,3 +2908,39 @@ One new regression test (`tests/test_website_content_gating.py`) renders `/apart
 session-only, uid-less standalone user and asserts the literal string "uid=None" never appears in
 the response and the edit-filter link correctly omits the query param entirely. Full suite: 483
 passing.
+
+## 2026-09-05 (same day, follow-up): proactive-notification audit — found and closed one more real gap
+
+Owner went offline for a flight right after the last live bug report ("תעבוד על הכל" — work on
+everything while I'm out). Used the window to audit the rest of today's Google-only-account work
+for the same failure class (code that silently assumed every `User` row has a `telegram_user_id`)
+rather than waiting idle — found one real, previously-latent gap.
+
+`scraper/notifier.py`'s two send loops (`_notify_new_matches`/`_notify_price_change`) never
+filtered recipients by channel before calling `send_listing_card(bot, user.telegram_user_id, ...)`
+— proactive push notifications are Telegram-only today (no WhatsApp send path exists in this
+module at all, a separate real gap noted below, not fixed here). A Google-only standalone account
+(this session's own new feature) or a WhatsApp-only account both legitimately have
+`telegram_user_id=None`, `notifications_enabled=True` by default, and `is_active=True` by default
+— so the very first listing that matched such a user's filter would have called
+`send_listing_card(bot, None, ...)`. `send_listing_card` already catches `TelegramError` broadly
+(existing code, unrelated to this fix) so this was never a crash, but every such attempt: wasted a
+real Telegram API call, logged an exception, and — critically — never wrote the `SentNotification`
+row that lets the system remember "already tried this listing," so the SAME wasted attempt would
+repeat on every future scrape run for that listing, forever, not just once.
+
+**Fix**: both functions now skip a candidate with `telegram_user_id is None` before it ever reaches
+`to_notify`, with a comment explaining why (not a bug to "fix" by adding WhatsApp support right
+now — a Google-only or WhatsApp-only user checking the website manually, or linking Telegram via
+/account for push, is the intended behavior this session already built). Two new tests
+(`test_notify_new_matches_skips_a_user_with_no_telegram_id`,
+`test_notify_price_change_skips_a_user_with_no_telegram_id`) assert `send_listing_card` is never
+even attempted for such a user, and that a real filter match is still correctly counted in the
+`matched` return value even though nothing was sent. Full suite: 485 passing.
+
+**Still a real, separate gap, deliberately not built tonight**: WhatsApp has never had a proactive
+push-notification send path in `notifier.py` at all — only Telegram does. A WhatsApp-only user
+today gets exactly the same "nothing sent, check the website" treatment as a Google-only one (now
+correctly, not silently wasting API calls) rather than an actual WhatsApp message. Building real
+WhatsApp Business API send support is a legitimate, scoped feature for a future session, not
+something to invent unprompted while the owner is unreachable — flagging it here so it isn't lost.
