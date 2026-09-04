@@ -315,6 +315,26 @@ def home(request: Request):
     return _render(request, "home.html", {})
 
 
+@app.get("/login")
+def login(request: Request, next: str = "/apartments"):
+    """A dedicated screen (2026-09-05 request) instead of the header's own small Google-only
+    button — Google/Telegram/WhatsApp shown as three separate, equally prominent "continue with"
+    options, matching the reference product's own login screen. Already-logged-in visitors skip
+    straight past it. Telegram/WhatsApp still just open that platform directly (there's no
+    "sign in with Telegram/WhatsApp" that logs into THIS site without leaving it — Telegram's own
+    Login Widget exists (see _verify_telegram_auth below) but was pulled from the UI after a real
+    iOS Safari reliability complaint, see this file's module docstring); the payoff for choosing
+    Google here shows up once you're actually signed in with it — see _resolve_user's own comment
+    on why coming back from either of those two also finishes a pending Google link automatically."""
+    if request.session.get("user_id") is not None:
+        return RedirectResponse(_safe_next(next), status_code=303)
+    return _render(
+        request,
+        "login.html",
+        {"next": _safe_next(next), "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER},
+    )
+
+
 @app.get("/terms")
 def terms(request: Request):
     return _render(request, "terms.html", {})
