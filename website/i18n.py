@@ -139,8 +139,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "התנתקות", "en": "Log out", "ru": "Выйти", "fr": "Se déconnecter", "ar": "تسجيل الخروج",
     },
     "auth.login": {
-        "he": "התחברות עם Google", "en": "Sign in with Google", "ru": "Войти через Google",
-        "fr": "Se connecter avec Google", "ar": "تسجيل الدخول عبر Google",
+        "he": "התחברות", "en": "Log in", "ru": "Войти",
+        "fr": "Se connecter", "ar": "تسجيل الدخول",
     },
     "auth.link_google": {
         "he": "🔗 קשר את Google לחשבון", "en": "🔗 Link your Google account", "ru": "🔗 Привязать аккаунт Google",
