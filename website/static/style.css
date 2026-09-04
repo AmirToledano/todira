@@ -11,6 +11,15 @@
   --gold-light: #ecc978;
   --bg: #fbf7ef;
   --card: #ffffff;
+  /* muted cream chip/panel surfaces (amenity chip, "without Todira" compare column) — one shade
+     off --card, distinct enough to read as a secondary surface in both themes */
+  --surface-tint: #f6f2ea;
+  /* heading/text-on-a-theme-adapting-surface color (h1-h3, badges on --teal-tint, etc) — starts
+     equal to --teal-dark in light mode but gets its OWN, lighter value in dark mode below.
+     --teal-dark itself stays frozen across themes: it also does double duty as fixed dark text on
+     gold surfaces (.btn.gold, badges) and as a background gradient stop (header, footer-cta),
+     neither of which should flip color just because the page theme did. */
+  --heading: var(--teal-dark);
   --text: #1e2a29;
   --text-muted: #66787c;
   --border: #e6e1d4;
@@ -20,6 +29,45 @@
   --shadow-sm: 0 1px 3px rgba(14, 60, 58, .08);
   --shadow-md: 0 8px 24px rgba(14, 60, 58, .10);
   --shadow-lg: 0 16px 40px rgba(14, 60, 58, .16);
+}
+
+/* ---------- dark mode (2026-09-05) ----------
+   Same three-state model as any theme-aware surface: the default "system" setting follows
+   prefers-color-scheme with no attribute needed at all (pure CSS, zero JS, zero flash); an
+   explicit choice from the header's theme toggle stamps data-theme="dark"/"light" on <html> and
+   wins in both directions (see base.html's early <head> script + the toggle's own JS at the
+   bottom of <body>). Only the tokens that should actually flip are redefined here — --teal-dark,
+   --gold/--gold-light, and the brand-button colors are deliberately left untouched, see their own
+   comments above/below. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --teal: #2bbcae;
+    --teal-tint: #123330;
+    --bg: #0f1715;
+    --card: #182422;
+    --surface-tint: #1c2725;
+    --heading: #d9f2ee;
+    --text: #eef3f1;
+    --text-muted: #9db2ad;
+    --border: #2b3937;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, .35);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, .40);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, .55);
+  }
+}
+:root[data-theme="dark"] {
+  --teal: #2bbcae;
+  --teal-tint: #123330;
+  --bg: #0f1715;
+  --card: #182422;
+  --surface-tint: #1c2725;
+  --heading: #d9f2ee;
+  --text: #eef3f1;
+  --text-muted: #9db2ad;
+  --border: #2b3937;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, .35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, .40);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, .55);
 }
 
 * { box-sizing: border-box; }
@@ -35,7 +83,7 @@ body {
 h1, h2, h3, .display {
   font-family: 'Rubik', Arial, sans-serif;
   font-weight: 700;
-  color: var(--teal-dark);
+  color: var(--heading);
   line-height: 1.2;
   margin: 0 0 .4em;
 }
@@ -68,6 +116,7 @@ header.site {
    the old `.nav-group`/`nav.site-nav`/`nav.lang-switcher`/`.auth-box` rules, now replaced).
    `.nav-panel` lives inside `header.site` itself (a normal-flow block, not `position: absolute`),
    so expanding it pushes `main` down the page rather than covering it. */
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .nav-toggle {
   width: 38px; height: 38px; border-radius: 10px; border: none; cursor: pointer;
   background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center;
@@ -99,7 +148,7 @@ nav.site-nav a {
   padding: 12px 14px; border-radius: 10px; font-size: .96rem; font-weight: 600;
   transition: background .15s, color .15s;
 }
-nav.site-nav a:hover, nav.site-nav a.active { background: var(--teal-tint); color: var(--teal-dark); }
+nav.site-nav a:hover, nav.site-nav a.active { background: var(--teal-tint); color: var(--heading); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 
@@ -149,7 +198,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .hero .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .hero .eyebrow {
   display: inline-flex; align-items: center; gap: 6px;
-  background: #fff; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 999px;
   padding: 6px 16px; font-size: .82rem; font-weight: 700; color: var(--teal);
   margin-bottom: 18px; box-shadow: var(--shadow-sm);
 }
@@ -177,8 +226,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .fresh-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: center; margin-top: 22px; }
 .live-badge {
   display: inline-flex; align-items: center; gap: 7px;
-  background: #fff; border: 1px solid var(--border); border-radius: 999px;
-  padding: 7px 15px; font-size: .8rem; font-weight: 700; color: var(--teal-dark);
+  background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+  padding: 7px 15px; font-size: .8rem; font-weight: 700; color: var(--heading);
   box-shadow: var(--shadow-sm);
 }
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: live-pulse 1.7s ease-in-out infinite; }
@@ -189,13 +238,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   font-weight: 700; font-size: .8rem; padding: 8px 16px; border-radius: 999px;
 }
 .example-card {
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 10px 16px; box-shadow: var(--shadow-sm); text-align: start;
 }
 .example-card .ec-top { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
 .example-card .ec-title { font-family: 'Rubik', sans-serif; font-weight: 700; font-size: .9rem; }
 .example-card .ec-badge {
-  background: var(--teal-tint); color: var(--teal-dark); font-size: .68rem; font-weight: 700;
+  background: var(--teal-tint); color: var(--heading); font-size: .68rem; font-weight: 700;
   padding: 2px 9px; border-radius: 999px;
 }
 .example-card .ec-sub { color: var(--text-muted); font-size: .8rem; }
@@ -209,7 +258,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .hero-float-stats.momentum-row { margin-top: 8px; }
 .hero-float-stats.momentum-row .float-stat b { font-size: 1.25rem; }
 .float-stat {
-  background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+  background: var(--card); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
   padding: 14px 18px; display: flex; align-items: center; gap: 10px;
   flex: 1 1 140px; min-width: 140px;
@@ -232,10 +281,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .compare-col h3 { font-size: 1.05rem; margin-bottom: 14px; }
 .compare-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .compare-col li { font-size: .88rem; color: var(--text-muted); padding-inline-start: 24px; position: relative; }
-.compare-col.without { background: #f6f2ea; }
+.compare-col.without { background: var(--surface-tint); }
 .compare-col.without li::before { content: '✕'; position: absolute; inset-inline-start: 0; color: #b06a6a; font-weight: 700; }
-.compare-col.with { background: linear-gradient(160deg, var(--teal-tint), #fff); border-color: #d7ebe8; box-shadow: var(--shadow-sm); }
-.compare-col.with h3 { color: var(--teal-dark); }
+.compare-col.with { background: linear-gradient(160deg, var(--teal-tint), var(--card)); border-color: var(--border); box-shadow: var(--shadow-sm); }
+.compare-col.with h3 { color: var(--heading); }
 .compare-col.with li::before { content: '✓'; position: absolute; inset-inline-start: 0; color: var(--gold); font-weight: 700; }
 
 .section-title { text-align: center; margin-bottom: 8px; font-size: clamp(1.5rem, 3.5vw, 2rem); }
@@ -327,7 +376,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .page-banner .pb-text h1 { margin: 0 0 4px; font-size: clamp(1.4rem, 4vw, 1.9rem); }
 .page-banner .pb-text p { margin: 0; color: var(--text-muted); font-size: .92rem; }
 .page-banner .pb-count {
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 10px 20px; text-align: center; box-shadow: var(--shadow-sm); min-width: 92px;
 }
 .page-banner .pb-count b { display: block; font-family: 'Rubik', sans-serif; font-size: 1.5rem; color: var(--teal); }
@@ -397,7 +446,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 
 .amenity-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .amenity {
-  font-size: .74rem; background: #f4efe4; color: var(--text-muted);
+  font-size: .74rem; background: var(--surface-tint); color: var(--text-muted);
   border-radius: 999px; padding: 3px 10px; display: inline-flex; align-items: center; gap: 4px;
 }
 
@@ -462,7 +511,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 }
 .field textarea { resize: vertical; min-height: 120px; }
 .field input:not([type="checkbox"]):focus, .field select:focus, .field textarea:focus {
-  outline: none; border-color: var(--gold); background: #fff;
+  outline: none; border-color: var(--gold); background: var(--card);
 }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
@@ -514,7 +563,7 @@ nav.site-nav a:active { transform: scale(.95); }
   max-width: 1100px; margin: 0 auto; padding: 32px 20px 28px;
   display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;
 }
-.footer-inner .brand { color: var(--teal-dark); font-size: 1.1rem; }
+.footer-inner .brand { color: var(--heading); font-size: 1.1rem; }
 .footer-nav { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
 .footer-nav a { text-decoration: none; color: var(--text-muted); font-size: .88rem; }
 .footer-nav a:hover { color: var(--teal); }
@@ -567,7 +616,7 @@ nav.lang-switcher a {
   padding: 5px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600;
   transition: background .15s, color .15s;
 }
-nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-tint); color: var(--teal-dark); }
+nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-tint); color: var(--heading); }
 
 /* ---------- contact page ---------- */
 .contact-other {
@@ -657,9 +706,9 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
   text-align: start; border: 1.5px solid var(--border); background: var(--bg); border-radius: 10px;
   padding: 9px 12px; font-size: .88rem; cursor: pointer; color: var(--text);
 }
-.a11y-toggle-chip.active { border-color: var(--teal); background: var(--teal-tint); color: var(--teal-dark); font-weight: 700; }
+.a11y-toggle-chip.active { border-color: var(--teal); background: var(--teal-tint); color: var(--heading); font-weight: 700; }
 .a11y-reset {
-  border: none; background: var(--teal-tint); color: var(--teal-dark); border-radius: 10px;
+  border: none; background: var(--teal-tint); color: var(--heading); border-radius: 10px;
   padding: 9px 12px; font-size: .85rem; font-weight: 700; cursor: pointer; margin-top: 4px;
 }
 .a11y-statement-link { text-align: center; font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
@@ -700,3 +749,21 @@ html.a11y-no-motion *, html.a11y-no-motion *::before, html.a11y-no-motion *::aft
   #a11y-widget { left: 10px; bottom: 10px; }
   #a11y-panel { width: calc(100vw - 20px); }
 }
+
+/* ---------- dark-mode header toggle ---------- */
+.theme-toggle {
+  width: 38px; height: 38px; border-radius: 10px; border: none; cursor: pointer;
+  background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 1.1rem; line-height: 1; transition: background .15s;
+}
+.theme-toggle:hover { background: rgba(255,255,255,.22); }
+
+/* ---------- dark mode: one-off component colors that aren't worth their own tokens ---------- */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .notice { background: #3a2f0a; border-color: #5c4a12; color: #f0d585; }
+  html:not([data-theme="light"]) .amc-status-warn { color: #f0b169; }
+  html:not([data-theme="light"]) .amc-status-ok { color: #6fd897; }
+}
+html[data-theme="dark"] .notice { background: #3a2f0a; border-color: #5c4a12; color: #f0d585; }
+html[data-theme="dark"] .amc-status-warn { color: #f0b169; }
+html[data-theme="dark"] .amc-status-ok { color: #6fd897; }

@@ -2719,3 +2719,38 @@ to full access, plus a small toggle link next to the header's own login/logout c
 only to the real owner, labeled "👁️ תצוגה מקדימה" / "👁️ בטל תצוגה מקדימה"). 11 new tests in
 `tests/test_website_preview_mode.py` cover the helpers directly and the toggle route (owner flips
 it on/off; a logged-in non-owner and an anonymous visitor both get 404). Full suite: 462 passing.
+
+## 2026-09-05 (same day, follow-up): dark mode
+
+Requested unprompted, separate from everything above: a proper night/dark theme so users
+searching late aren't staring at a bright cream page. The design system was already built on CSS
+custom properties (`--teal`/`--card`/`--bg`/`--text`/`--border`/etc — see `style.css`'s own header
+comment), which made this mostly a token exercise rather than a rewrite, but two things needed
+real care:
+
+**`--teal-dark` was doing double duty** — used both as heading/text color on surfaces that should
+flip with the theme (h1-h3, badges on `--teal-tint`, the footer brand mark) AND as fixed dark text
+on gold surfaces that must NEVER flip (`.btn.gold`, the gold circle numbers on the "how it works"
+steps, the broker badge) plus as a background gradient stop (header, `.footer-cta`). Redefining it
+for dark mode would have made gold buttons unreadable (dark-on-dark). Fix: `--teal-dark` stays
+frozen across themes; a new `--heading` token (`var(--teal-dark)` by default, its own lighter value
+in dark mode) took over just the theme-adapting text-color call sites. A handful of hardcoded
+`background: #fff`/`#f6f2ea`/`#f4efe4` that had silently bypassed the token system entirely (hero
+eyebrow, live badge, example card, float stats, compare columns, page-banner count, amenity chips,
+an input's `:focus` background) got routed through `--card`/`--border` or a new `--surface-tint`
+token so dark mode doesn't leave white islands on the page. Brand buttons (Google/Telegram/
+WhatsApp on `/login`) and the platform-colored badges deliberately stay fixed regardless of theme,
+same reasoning as gold.
+
+**Three-state model, matching how the a11y widget already persists prefs**: no stored choice
+follows the OS's `prefers-color-scheme` via CSS alone (zero JS, zero flash — the media query paints
+correctly on first render); an explicit choice from the new header toggle button (🌙/☀️, next to
+the hamburger, always visible without opening the menu) stamps `data-theme="dark"`/`"light"` on
+`<html>`, applied by a tiny blocking `<head>` script (same pattern as the a11y-prefs one right next
+to it) so a returning visitor with an explicit choice never sees a flash of the wrong theme either;
+saved in `localStorage` under `todira-theme`. Verified live with a local server + headless Chromium
+across the home page, `/login`, `/terms`, and the accessibility widget's own panel, in both themes
+and combined with the pre-existing high-contrast a11y mode (which still works correctly stacked on
+top — `--teal-dark`/`--heading`'s CSS-custom-property late-binding resolves through both layers).
+No template/behavior changes, no new tests needed (pure CSS + a client-side toggle); full suite
+still 462 passing.
