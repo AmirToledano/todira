@@ -52,6 +52,7 @@ class _FakeSession:
         self._by_telegram_id = users_by_telegram_id or {}
         self._all = all_users or []
         self.committed = False
+        self.added: list = []
 
     def get(self, model, pk):
         return self._by_pk.get(pk)
@@ -70,6 +71,9 @@ class _FakeSession:
                 return self._items
 
         return _Scalars(self._all)
+
+    def add(self, obj):
+        self.added.append(obj)
 
     def commit(self):
         self.committed = True
@@ -170,11 +174,15 @@ def test_upgrade_page_shows_plan_options_for_a_real_user():
         resp = c.get("/upgrade", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert "₪10" in resp.text
-    assert "₪20" in resp.text
+    assert "₪15" in resp.text
+    assert "₪25" in resp.text
+    assert "₪40" in resp.text
 
 
 def test_upgrade_submit_extends_paid_until_and_redirects():
+    """Grow isn't configured in these tests (no GROW_* env vars set) — /upgrade falls back to the
+    earlier informal click-trust flow, exactly as before this feature shipped. See
+    test_website_grow_payments.py for the real-gateway path."""
     user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
 
@@ -182,7 +190,10 @@ def test_upgrade_submit_extends_paid_until_and_redirects():
     def _fake_get_session():
         yield fake_session
 
-    with patch.object(website_main, "get_session", _fake_get_session):
+    with (
+        patch.object(website_main, "get_session", _fake_get_session),
+        patch.object(website_main.grow_client, "is_configured", lambda: False),
+    ):
         c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
         resp = c.post("/upgrade", data={"plan": "weekly", "uid": "222"})
 
@@ -190,6 +201,11 @@ def test_upgrade_submit_extends_paid_until_and_redirects():
     assert user.paid_until is not None
     assert user.paid_until > _NOW + dt.timedelta(days=6)
     assert fake_session.committed is True
+    assert len(fake_session.added) == 1
+    payment = fake_session.added[0]
+    assert payment.status == "paid"
+    assert payment.gateway is None
+    assert payment.amount_ils == 15
 
 
 def test_upgrade_submit_rejects_unknown_plan():
