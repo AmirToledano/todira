@@ -32,6 +32,15 @@
       </form>
     </div>
     <div class="field" style="text-align:center">
+      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">שבועיים</div>
+      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 12px">₪{{ plan_prices.biweekly }}</p>
+      <form method="post" action="/upgrade">
+        <input type="hidden" name="plan" value="biweekly">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        <button type="submit" class="btn block">בחר שבועיים</button>
+      </form>
+    </div>
+    <div class="field" style="text-align:center">
       <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">חודשי</div>
       <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 12px">₪{{ plan_prices.monthly }}</p>
       <form method="post" action="/upgrade">
@@ -41,9 +50,15 @@
       </form>
     </div>
   </div>
+  {% if grow_configured %}
+  <p class="field-hint" style="text-align:center;margin-top:20px">
+    התשלום מאובטח דרך Grow — ביט, פייבוקס, Apple Pay, Google Pay או כרטיס אשראי. 🐾
+  </p>
+  {% else %}
   <p class="field-hint" style="text-align:center;margin-top:20px">
     התשלום מתבצע ידנית בביט — אחרי הלחיצה, שלח את הסכום כדי שהגישה תישאר פעילה. 🐾
   </p>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

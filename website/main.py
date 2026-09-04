@@ -50,8 +50,10 @@ from dorin_common.channel_link import generate_link_code
 from dorin_common.cities import CITIES
 from dorin_common.db import get_session
 from dorin_common.matching import evaluate
-from dorin_common.models import ContactMessage, Filter, Listing, User, UserListingAction
+from dorin_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from fastapi import FastAPI, Form, Request
+
+import grow_client
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -635,7 +637,11 @@ def admin_toggle_free_access(request: Request, user_id: int):
     return RedirectResponse("/admin/users", status_code=303)
 
 
-PLAN_LABELS_HE = {"weekly": "שבועי — ₪10", "monthly": "חודשי — ₪20"}
+PLAN_LABELS_HE = {
+    "weekly": "שבועי — ₪15",
+    "biweekly": "שבועיים — ₪25",
+    "monthly": "חודשי — ₪40",
+}
 
 
 @app.get("/upgrade")
@@ -657,30 +663,160 @@ def upgrade(request: Request, uid: int | None = None):
             "trial_ends_at": user.trial_ends_at,
             "paid_until": user.paid_until,
             "plan_prices": PLAN_PRICES_ILS,
+            "plan_labels": PLAN_LABELS_HE,
+            "grow_configured": grow_client.is_configured(),
         },
     )
 
 
 @app.post("/upgrade")
 def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Form(None)):
-    """Self-service plan selection — the click itself IS the payment signal (2026-09-04 decision):
-    payment happens informally via a Bit transfer outside this system, with no payment-gateway
-    webhook to verify against, so this trusts the click rather than a confirmed charge. The owner's
-    /admin/users free-access toggle is the remedy for a click that was never actually paid for."""
+    """Plan selection. Real gateway (Grow/Meshulam, 2026-09-05) once GROW_PAGE_CODE/GROW_USER_ID/
+    GROW_API_KEY are all configured — creates a pending Payment row and redirects to Grow's hosted
+    checkout; access is granted only once /webhooks/grow below confirms a real charge (see
+    grow_client.py's own comment on why that confirmation logic is still provisional). Falls back
+    to the earlier informal click-trust model (2026-09-04 decision: the click itself IS the
+    payment signal, a Bit transfer happens outside this system) whenever Grow isn't configured
+    yet, so the site keeps working exactly as before until the owner's Grow account is ready. The
+    owner's /admin/users free-access toggle remains the remedy for a click/payment that turns out
+    not to have actually happened, under either model."""
     if plan not in PLAN_PRICES_ILS:
         return _render(request, "auth_error.html", {}, status_code=400)
+
+    amount = PLAN_PRICES_ILS[plan]
 
     with get_session() as session:
         user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "upgrade"})
-        extend_paid_until(user, plan)
+
+        if not grow_client.is_configured():
+            extend_paid_until(user, plan)
+            session.add(
+                Payment(
+                    user_id=user.id,
+                    plan=plan,
+                    amount_ils=amount,
+                    status="paid",
+                    gateway=None,
+                    paid_at=dt.datetime.now(dt.timezone.utc),
+                )
+            )
+            session.commit()
+            redirect_uid = user.telegram_user_id
+            return RedirectResponse(
+                f"/upgrade?uid={redirect_uid}" if redirect_uid else "/upgrade", status_code=303
+            )
+
+        webhook_token = secrets.token_urlsafe(24)
+        payment = Payment(
+            user_id=user.id,
+            plan=plan,
+            amount_ils=amount,
+            status="pending",
+            gateway="grow",
+            webhook_token=webhook_token,
+        )
+        session.add(payment)
         session.commit()
+        payment_id = payment.id
         redirect_uid = user.telegram_user_id
 
-    return RedirectResponse(
-        f"/upgrade?uid={redirect_uid}" if redirect_uid else "/upgrade", status_code=303
+    uid_qs = f"&uid={redirect_uid}" if redirect_uid else ""
+    checkout_url = grow_client.create_checkout_url(
+        payment_id=payment_id,
+        amount_ils=amount,
+        description=f"טודירה — מנוי {PLAN_LABELS_HE.get(plan, plan)}",
+        success_url=f"{WEBSITE_URL}/upgrade/success?payment_id={payment_id}{uid_qs}",
+        cancel_url=f"{WEBSITE_URL}/upgrade?{uid_qs.lstrip('&')}" if redirect_uid else f"{WEBSITE_URL}/upgrade",
+        notify_url=f"{WEBSITE_URL}/webhooks/grow?token={webhook_token}",
     )
+    if checkout_url is None:
+        with get_session() as session:
+            failed = session.get(Payment, payment_id)
+            if failed is not None:
+                failed.status = "failed"
+                session.commit()
+        return _render(request, "auth_error.html", {}, status_code=502)
+
+    return RedirectResponse(checkout_url, status_code=303)
+
+
+@app.get("/upgrade/success")
+def upgrade_success(request: Request, payment_id: int, uid: int | None = None):
+    """Where Grow redirects the customer's browser back to after checkout. Purely informational —
+    the actual access grant happens server-to-server via /webhooks/grow below, which may land
+    slightly before or after this redirect, so this just reports the payment's CURRENT status
+    rather than granting anything itself."""
+    with get_session() as session:
+        payment = session.get(Payment, payment_id)
+    paid = payment is not None and payment.status == "paid"
+    return _render(request, "upgrade_success.html", {"uid": uid, "paid": paid})
+
+
+def _looks_like_a_successful_grow_payload(body: dict) -> bool:
+    """UNVERIFIED — see webhooks_grow's own comment below and grow_client.py's module docstring.
+    Accepts any of a few plausible "it worked" shapes rather than betting everything on one
+    guessed key name. Update this once a real sandbox transaction shows the actual payload."""
+    status = str(body.get("status", body.get("statusCode", ""))).strip().lower()
+    if status in {"1", "true", "success", "ok", "approved"}:
+        return True
+    return bool(body.get("transactionId") or body.get("asmachta"))
+
+
+@app.post("/webhooks/grow")
+async def webhooks_grow(request: Request, token: str | None = None):
+    """Grow's server-to-server payment confirmation. The exact payload shape Grow sends here is
+    UNVERIFIED (see grow_client.py's module docstring — this sandbox's network egress blocks every
+    Grow/Meshulam docs domain), so this logs the full raw body unconditionally and only ever marks
+    a payment paid when it can positively identify BOTH a pending payment matching `token` (the
+    per-payment secret WE generated and embedded in the notifyUrl handed to Grow at checkout time
+    — see /upgrade above; this stands in for Grow's own webhook authentication, which is equally
+    unverified) AND a plausible success signal in the body. Anything less confident is left
+    pending rather than guessed at — a real customer payment can always still be reconciled by
+    hand via /admin/users' free-access toggle. Always returns 200 so Grow doesn't retry-storm this
+    endpoint even when the payload can't be made sense of yet (matches whatsapp_webhook.py's own
+    documented always-200 contract)."""
+    try:
+        body = dict(await request.json())
+    except Exception:
+        body = dict(await request.form())
+    logger.info("Grow webhook raw payload (token=%s): %r", token, body)
+
+    if not token:
+        logger.warning("Grow webhook received with no token — ignoring")
+        return Response(status_code=200)
+
+    with get_session() as session:
+        payment = session.scalar(
+            select(Payment).where(Payment.webhook_token == token, Payment.status == "pending")
+        )
+        if payment is None:
+            logger.warning("Grow webhook token did not match any pending payment — ignoring")
+            return Response(status_code=200)
+
+        if not _looks_like_a_successful_grow_payload(body):
+            logger.warning(
+                "Grow webhook for payment_id=%s had no recognizable success signal — left "
+                "pending, see the raw payload logged above",
+                payment.id,
+            )
+            return Response(status_code=200)
+
+        user = session.get(User, payment.user_id)
+        if user is None:
+            logger.error("Grow webhook for payment_id=%s references a deleted user", payment.id)
+            return Response(status_code=200)
+
+        payment.status = "paid"
+        payment.paid_at = dt.datetime.now(dt.timezone.utc)
+        payment.gateway_transaction_id = str(
+            body.get("transactionId") or body.get("asmachta") or body.get("processId") or payment.id
+        )
+        extend_paid_until(user, payment.plan)
+        session.commit()
+
+    return Response(status_code=200)
 
 
 @app.get("/account")

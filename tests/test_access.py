@@ -66,6 +66,14 @@ def test_extend_paid_until_monthly_from_no_prior_payment():
     assert user.paid_until - before >= PLAN_DURATIONS["monthly"] - dt.timedelta(seconds=5)
 
 
+def test_extend_paid_until_biweekly_from_no_prior_payment():
+    user = make_user(paid_until=None)
+    before = dt.datetime.now(dt.timezone.utc)
+    extend_paid_until(user, "biweekly")
+    assert user.paid_until - before >= PLAN_DURATIONS["biweekly"] - dt.timedelta(seconds=5)
+    assert user.paid_until - before <= PLAN_DURATIONS["biweekly"] + dt.timedelta(seconds=5)
+
+
 def test_extend_paid_until_stacks_on_top_of_a_still_valid_period():
     # Paying again before the current period expires should ADD to it, not reset from "now" and
     # waste the remaining time.

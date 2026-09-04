@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}תודה — טודירה{% endblock %}
+{% block extra_head %}{% if not paid %}<meta http-equiv="refresh" content="4">{% endif %}{% endblock %}
+{% block content %}
+
+<div class="empty-state reveal">
+  {% if paid %}
+    <div class="glyph" aria-hidden="true">✅</div>
+    <p>התשלום התקבל, הגישה שלך פעילה! 🎉</p>
+    <a class="btn gold" href="/apartments{{ '?uid=' ~ uid if uid else '' }}">לצפייה בדירות</a>
+  {% else %}
+    <div class="glyph" aria-hidden="true">⏳</div>
+    <p>מעבדים את התשלום... הדף יתעדכן אוטומטית בעוד כמה שניות.</p>
+    <a class="btn outline" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">חזרה לדף השדרוג</a>
+  {% endif %}
+</div>
+{% endblock %}

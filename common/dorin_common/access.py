@@ -1,10 +1,10 @@
-"""Paid-access gate — 2026-09-04 pricing decision: a 3-day free trial, then ₪10/week or ₪20/month,
-informal/manual payment (a Bit transfer outside this system — no payment-gateway webhook), so
-`paid_until` is set directly by the user's own plan-selection click (website's /upgrade route),
-trusted rather than verified against a real charge. The owner can also grant free access to anyone
-via the admin panel, independent of trial/payment. This module is the ONE place that answers
-"does this user get the real thing, or the free lite tier" — bot/website/notifier all call it
-rather than re-deriving the rule themselves.
+"""Paid-access gate — a 3-day free trial, then a weekly/biweekly/monthly plan (₪15/₪25/₪40,
+2026-09-05 pricing revision). Payment itself is website/grow_client.py's job (Grow/Meshulam,
+2026-09-05 — real gateway once the owner's עוסק פטור registration + Grow account are ready;
+website/main.py's /upgrade falls back to the earlier informal click-trust model when Grow isn't
+configured yet, see that module's own comment). This module only answers "does this user get the
+real thing, or the free lite tier" and "how long does a given plan extend access for" — bot/
+website/notifier all call it rather than re-deriving the rule themselves.
 """
 from __future__ import annotations
 
@@ -14,11 +14,13 @@ from dorin_common.models import User
 
 PLAN_DURATIONS: dict[str, dt.timedelta] = {
     "weekly": dt.timedelta(days=7),
+    "biweekly": dt.timedelta(days=14),
     "monthly": dt.timedelta(days=30),
 }
 PLAN_PRICES_ILS: dict[str, int] = {
-    "weekly": 10,
-    "monthly": 20,
+    "weekly": 15,
+    "biweekly": 25,
+    "monthly": 40,
 }
 
 

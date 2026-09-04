@@ -109,6 +109,32 @@ spec:
             # derived from the incoming request (Caddy terminates TLS in front of this pod).
             - name: WEBSITE_URL
               value: "https://{{ .Values.website.domain }}"
+            # Real payment-gateway checkout (website/grow_client.py, 2026-09-05) — all optional/
+            # unset by default so a deploy before the owner has a Grow account doesn't break;
+            # /upgrade falls back to the earlier informal click-trust flow until all three are set.
+            - name: GROW_PAGE_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: grow-page-code
+                  optional: true
+            - name: GROW_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: grow-user-id
+                  optional: true
+            - name: GROW_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: grow-api-key
+                  optional: true
+            # "true" (default) hits Grow's sandbox endpoint — deliberate safety default for an
+            # unverified integration (see grow_client.py's module docstring); the owner must
+            # explicitly opt into "false" once a real sandbox checkout has been tested end to end.
+            - name: GROW_SANDBOX
+              value: "{{ .Values.growSandbox | default "true" }}"
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}

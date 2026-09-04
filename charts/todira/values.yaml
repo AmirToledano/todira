@@ -40,6 +40,19 @@
 #                             Without it, the route 400s cleanly rather than breaking the deploy.)
 #   googleClientSecret       (optional — same OAuth Client as above, required alongside
 #                             googleClientId for Google Sign-In to work at all.)
+#   growPageCode             (optional — real payment-gateway checkout via Grow/Meshulam,
+#   growUserId                website/grow_client.py, 2026-09-05. All three required together —
+#   growApiKey                get them from Grow support once the owner's business is registered
+#                             and a Grow account exists. Without them, /upgrade falls back to the
+#                             earlier informal click-trust flow (a Bit transfer outside this
+#                             system), exactly as before this feature shipped.)
+
+# "true" (default) hits Grow's sandbox checkout endpoint instead of the real one — see
+# website/grow_client.py's module docstring for why (the integration is unverified against Grow's
+# own docs; this sandbox's network egress blocks every Grow/Meshulam docs domain). Flip to "false"
+# only after a real sandbox checkout has been run end to end and the logs confirm the request/
+# response field names actually match what Grow sends.
+growSandbox: "true"
 
 botImage:
   repository: ghcr.io/CHANGE-ME/todira-bot
