@@ -40,6 +40,28 @@
 #                             Without it, the route 400s cleanly rather than breaking the deploy.)
 #   googleClientSecret       (optional — same OAuth Client as above, required alongside
 #                             googleClientId for Google Sign-In to work at all.)
+#   growPageCode             (optional — real payment-gateway checkout via Grow/Meshulam,
+#   growUserId                website/grow_client.py, 2026-09-05. All three required together —
+#   growApiKey                get them from Grow support once the owner's business is registered
+#                             and a Grow account exists. Without them, /upgrade falls back to the
+#                             earlier informal click-trust flow (a Bit transfer outside this
+#                             system), exactly as before this feature shipped.)
+#   brightDataApiKey         (optional — on-demand listing-description enrichment for paying
+#   brightDataDatasetId       users, scraper/bright_data_client.py, 2026-09-05. Both required
+#                             together; brightDataDatasetId needs a Bright Data Scraper Studio
+#                             scraper the owner builds targeting Yad2 listing DETAIL pages — see
+#                             that module's own docstring for why this can't just reuse the
+#                             existing (broken) search-results scraper. Without these, listings
+#                             are sent with no description, exactly as before this feature shipped.)
+#   brightDataDescriptionField (optional — the field name in that scraper's own output schema
+#                             that holds the description text; defaults to "description" if unset.)
+
+# "true" (default) hits Grow's sandbox checkout endpoint instead of the real one — see
+# website/grow_client.py's module docstring for why (the integration is unverified against Grow's
+# own docs; this sandbox's network egress blocks every Grow/Meshulam docs domain). Flip to "false"
+# only after a real sandbox checkout has been run end to end and the logs confirm the request/
+# response field names actually match what Grow sends.
+growSandbox: "true"
 
 botImage:
   repository: ghcr.io/CHANGE-ME/todira-bot
@@ -57,6 +79,18 @@ website:
   # inbound 80+443, and this DNS name to already point at the node's public IP (it does, via
   # DuckDNS)
   domain: todira.duckdns.org
+  # E.164 digits (no leading '+') of the actual WhatsApp number people message — builds the
+  # /account page's wa.me channel-linking deep link. Not secret. Leave empty to hide that option
+  # until it's known (it's a display value, not an API credential, so it's not the same as the
+  # whatsappPhoneNumberId secret documented above).
+  whatsappPublicNumber: ""
+  # Informal Bit/PayBox payment instructions on /upgrade/pay (2026-09-05) — used only while Grow
+  # isn't configured. ownerBitPhone: the owner's own phone number, shown plainly for the customer
+  # to Bit-transfer to (no verified "open the app pre-filled" deep link exists for Bit, so this is
+  # just a display value). ownerPayboxUrl: a PayBox payment link the owner generates himself from
+  # the PayBox app, if he has one — omit to just hide that option. Neither is secret.
+  ownerBitPhone: ""
+  ownerPayboxUrl: ""
 
 replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates pollers on one token
 

@@ -5,12 +5,15 @@ prompt)."""
 from __future__ import annotations
 
 import asyncio
+import os
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
+from config import WEBSITE_URL
+from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.enums import NotificationReason
@@ -19,6 +22,10 @@ from dorin_common.models import Filter, Listing, SentNotification, User, UserLis
 
 RECENT_LISTINGS_SCANNED = 200  # how far back to look before filtering/matching
 RESULT_LIMIT = 10
+
+# Mirrors website/main.py's _is_owner_id / bot/handlers/start.py's own copy — same secret, same
+# "owner always has full access" override.
+OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
 
 def find_matching_listings(session: Session, user_id: int, filter_row: Filter, limit: int) -> list[Listing]:
@@ -80,9 +87,12 @@ def find_new_matches_to_show(
     return len(matches), new_to_show
 
 
-def _load_matches_sync(tg_user) -> list[Listing] | None:
+def _load_matches_sync(tg_user) -> tuple[bool, list[Listing]] | None:
     """Returns None to signal "no saved filter yet" (vs. an empty list = a real filter with 0
-    current matches) — the caller needs to tell the two apart to show a different message."""
+    current matches) — the caller needs to tell the two apart to show a different message.
+    Otherwise (has_access, matches) — has_access (dorin_common.access.has_full_access) decides
+    whether format_caption below shows the full card or the locked/teaser one, see that module's
+    2026-09-05 comment."""
     with get_session() as session:
         user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
         filter_row = (
@@ -90,17 +100,21 @@ def _load_matches_sync(tg_user) -> list[Listing] | None:
         )
         if user is None or filter_row is None:
             return None
-        return find_matching_listings(session, user.id, filter_row, RESULT_LIMIT)
+        is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
+        access = has_full_access(user, is_owner=is_owner)
+        matches = find_matching_listings(session, user.id, filter_row, RESULT_LIMIT)
+        return access, matches
 
 
 async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: PTB processes
     # updates one at a time by default, so a blocking DB call on the event loop freezes every
     # other user's interaction with the bot too, not just this one.
-    matches = await asyncio.to_thread(_load_matches_sync, update.effective_user)
-    if matches is None:
+    result = await asyncio.to_thread(_load_matches_sync, update.effective_user)
+    if result is None:
         await update.message.reply_text("עדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.")
         return
+    has_access, matches = result
 
     if not matches:
         await update.message.reply_text(
@@ -108,9 +122,13 @@ async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
 
+    upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
     for listing in matches:
         await send_listing_card(
-            context.bot, update.effective_chat.id, listing, format_caption(listing)
+            context.bot,
+            update.effective_chat.id,
+            listing,
+            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
         )
 
 

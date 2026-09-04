@@ -34,6 +34,7 @@ AUTH: three ways in, and all three resolve to the same signed session cookie in 
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import hashlib
 import hmac
 import logging
@@ -44,11 +45,15 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
+from dorin_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_access
+from dorin_common.channel_link import generate_link_code
 from dorin_common.cities import CITIES
 from dorin_common.db import get_session
 from dorin_common.matching import evaluate
-from dorin_common.models import ContactMessage, Filter, Listing, User, UserListingAction
+from dorin_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from fastapi import FastAPI, Form, Request
+
+import grow_client
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -122,6 +127,23 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 # an `http://` redirect_uri that doesn't match what's registered in the Google Cloud Console
 # (redirect_uri must match EXACTLY, or Google rejects the whole flow).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org")
+
+# Cross-channel linking (2026-09-05, /account below) — the actual displayable WhatsApp number
+# (E.164 digits, no leading '+') to build a `wa.me/<number>?text=ref_xxxxxx` deep link. Distinct
+# from WHATSAPP_PHONE_NUMBER_ID (whatsapp_client.py) — that's the Cloud API's own internal id
+# used to call the Graph API, not something a person can dial or a wa.me link can use. Optional:
+# without it, /account still shows the Telegram linking option, just not the WhatsApp one.
+WHATSAPP_PUBLIC_NUMBER = os.environ.get("WHATSAPP_PUBLIC_NUMBER", "").strip()
+
+# Informal Bit/PayBox payment (2026-09-05 — the owner decided against עוסק פטור/Grow for now, see
+# /upgrade/pay below) — the owner's own phone number for Bit and, optionally, a PayBox payment
+# link he generates himself from the PayBox app. Deliberately NOT a "click to open the app
+# pre-filled" deep link: neither Bit nor PayBox publish a documented URL scheme for that (checked
+# — even commercial Bit-payment WooCommerce plugins just show a phone number + QR code and rely on
+# the customer typing the amount manually), so this only ever displays plain instructions. Both
+# optional; /upgrade/pay falls back to a generic "send the amount via Bit" hint when unset.
+OWNER_BIT_PHONE = os.environ.get("OWNER_BIT_PHONE", "").strip()
+OWNER_PAYBOX_URL = os.environ.get("OWNER_PAYBOX_URL", "").strip()
 
 
 def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: int | None) -> bool:
@@ -237,14 +259,32 @@ def _get_user_by_uid(session, uid: int) -> User | None:
 
 def _resolve_user(request: Request, session, uid: int | None) -> User | None:
     """Prefer the signed session cookie (real login) over the legacy ?uid= query param — the
-    query param stays supported unchanged so existing bot deep links keep working."""
+    query param stays supported unchanged so existing bot deep links keep working.
+
+    Also completes a PENDING Google link (2026-09-05 fix): if this same browser recently signed
+    in with Google but had no ?uid= in flight to link to at that moment (auth_google_callback
+    stashed the google_sub in the signed session cookie instead of just dead-ending at the bot,
+    see that route's own comment), the moment a real uid resolves here — e.g. the visitor opened
+    the bot as instructed and came back via any ?uid= link — the link is finished AND a real
+    session is established right here, so they don't have to repeat the Google sign-in and don't
+    get asked to log in again on the next visit. Only fires when a pending_google_sub genuinely
+    exists in THIS session, so a plain uid visit with no prior Google attempt is completely
+    unaffected — still exactly as low-trust/ephemeral as the module docstring describes."""
     session_user_id = request.session.get("user_id")
     if session_user_id is not None:
         user = session.get(User, session_user_id)
         if user is not None:
             return user
     if uid is not None:
-        return _get_user_by_uid(session, uid)
+        user = _get_user_by_uid(session, uid)
+        if user is not None:
+            pending_google_sub = request.session.get("pending_google_sub")
+            if pending_google_sub and user.google_sub is None:
+                user.google_sub = pending_google_sub
+                session.commit()
+                request.session.pop("pending_google_sub", None)
+                request.session["user_id"] = user.id
+        return user
     return None
 
 
@@ -414,9 +454,17 @@ def auth_google_callback(
         user_pk = user.id if user is not None else None
 
     if user_pk is None:
-        # A real Google account, but not yet linked to any Telegram/WhatsApp-created user — same
-        # restriction /auth/telegram/callback already has: Google alone can't create a filter.
-        return RedirectResponse("https://t.me/AmirDirotBot", status_code=303)
+        # A real Google account, but not yet linked to any Telegram/WhatsApp-created user, and no
+        # ?uid= was in flight right now to link it to (same restriction /auth/telegram/callback
+        # already has: Google alone can't create a filter). 2026-09-05 fix: this used to just
+        # silently bounce to the bot with zero explanation and zero way back — a real dead end,
+        # since the plain header "Sign in with Google" button (shown whenever there's no uid in
+        # the URL) could then NEVER succeed for a first-time linker. Now it stashes the google_sub
+        # in the signed session cookie and explains what to do; _resolve_user above finishes the
+        # link (and starts a real session) automatically the moment this same browser later
+        # resolves a real uid — e.g. by opening the bot as instructed and coming back.
+        request.session["pending_google_sub"] = google_sub
+        return _render(request, "google_pending.html", {})
 
     request.session["user_id"] = user_pk
     return RedirectResponse(_safe_next(next_url), status_code=303)
@@ -506,11 +554,18 @@ def apartments(request: Request, uid: int | None = None):
         # "insecure temporary access" notice below must not show for a real login just because a
         # stale ?uid= also happens to be sitting in the URL from an older bookmark/deep link.
         via_session = request.session.get("user_id") == user.id
+        has_access = has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
 
     return _render(
         request,
         "apartments.html",
-        {"listings": matches, "uid": user.telegram_user_id, "user": user, "via_session": via_session},
+        {
+            "listings": matches,
+            "uid": user.telegram_user_id,
+            "user": user,
+            "via_session": via_session,
+            "has_access": has_access,
+        },
     )
 
 
@@ -531,9 +586,12 @@ def liked(request: Request, uid: int | None = None):
             if liked_listing_ids
             else []
         )
+        has_access = has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
 
     return _render(
-        request, "liked.html", {"listings": listings, "uid": user.telegram_user_id, "user": user}
+        request,
+        "liked.html",
+        {"listings": listings, "uid": user.telegram_user_id, "user": user, "has_access": has_access},
     )
 
 
@@ -566,6 +624,327 @@ def admin_messages(request: Request):
         ).all()
 
     return _render(request, "admin_messages.html", {"messages": messages})
+
+
+def _require_owner(request: Request, session) -> User | None:
+    """Same gate as /admin/messages (real signed session, not ?uid=; 404 not 403 for anyone
+    else) — shared here so /admin/users doesn't re-derive it slightly differently."""
+    session_user_id = request.session.get("user_id")
+    user = session.get(User, session_user_id) if session_user_id is not None else None
+    if user is None or not _is_owner_id(user.telegram_user_id):
+        return None
+    return user
+
+
+@app.get("/admin/users")
+def admin_users(request: Request):
+    """Owner-only — lets the owner grant/revoke free access (independent of trial/payment) to any
+    user, from any device, regardless of which channel they signed up through (Telegram/WhatsApp/
+    Google are all just columns on the same `users` row) — a real, explicit request (2026-09-04),
+    not something Google/Telegram/WhatsApp each need their own separate tool for."""
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+
+        users = session.scalars(select(User).order_by(User.created_at.desc()).limit(500)).all()
+        now = dt.datetime.now(dt.timezone.utc)
+        rows = [
+            {
+                "id": u.id,
+                "label": u.first_name
+                or u.telegram_username
+                or u.whatsapp_phone_number
+                or f"#{u.id}",
+                "channel": "טלגרם" if u.telegram_user_id else ("ווצאפ" if u.whatsapp_phone_number else "—"),
+                "has_google": u.google_sub is not None,
+                "free_access_granted": u.free_access_granted,
+                "has_access": has_full_access(u, is_owner=_is_owner_id(u.telegram_user_id)),
+                "trial_ends_at": u.trial_ends_at,
+                "paid_until": u.paid_until,
+                "in_trial": u.trial_ends_at is not None and now < u.trial_ends_at,
+            }
+            for u in users
+        ]
+
+    return _render(request, "admin_users.html", {"rows": rows})
+
+
+@app.post("/admin/users/{user_id}/toggle-free-access")
+def admin_toggle_free_access(request: Request, user_id: int):
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+
+        target = session.get(User, user_id)
+        if target is not None:
+            target.free_access_granted = not target.free_access_granted
+            session.commit()
+
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+PLAN_LABELS_HE = {
+    "weekly": "שבועי — ₪15",
+    "biweekly": "שבועיים — ₪25",
+    "monthly": "חודשי — ₪40",
+}
+
+
+@app.get("/upgrade")
+def upgrade(request: Request, uid: int | None = None):
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "upgrade"})
+        is_owner = _is_owner_id(user.telegram_user_id)
+        access = has_full_access(user, is_owner=is_owner)
+
+    return _render(
+        request,
+        "upgrade.html",
+        {
+            "uid": user.telegram_user_id,
+            "has_access": access,
+            "is_owner": is_owner,
+            "trial_ends_at": user.trial_ends_at,
+            "paid_until": user.paid_until,
+            "plan_prices": PLAN_PRICES_ILS,
+            "plan_labels": PLAN_LABELS_HE,
+            "grow_configured": grow_client.is_configured(),
+        },
+    )
+
+
+@app.post("/upgrade")
+def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Form(None)):
+    """Plan selection. Real gateway (Grow/Meshulam, 2026-09-05) once GROW_PAGE_CODE/GROW_USER_ID/
+    GROW_API_KEY are all configured — creates a pending Payment row and redirects to Grow's hosted
+    checkout; access is granted only once /webhooks/grow below confirms a real charge (see
+    grow_client.py's own comment on why that confirmation logic is still provisional). Falls back
+    to the earlier informal click-trust model (2026-09-04 decision: the click itself IS the
+    payment signal, a Bit transfer happens outside this system) whenever Grow isn't configured
+    yet, so the site keeps working exactly as before until the owner's Grow account is ready. The
+    owner's /admin/users free-access toggle remains the remedy for a click/payment that turns out
+    not to have actually happened, under either model."""
+    if plan not in PLAN_PRICES_ILS:
+        return _render(request, "auth_error.html", {}, status_code=400)
+
+    amount = PLAN_PRICES_ILS[plan]
+
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "upgrade"})
+
+        if not grow_client.is_configured():
+            payment = Payment(
+                user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway=None
+            )
+            session.add(payment)
+            session.commit()
+            payment_id = payment.id
+            redirect_uid = user.telegram_user_id
+            qs = f"?payment_id={payment_id}" + (f"&uid={redirect_uid}" if redirect_uid else "")
+            return RedirectResponse(f"/upgrade/pay{qs}", status_code=303)
+
+        webhook_token = secrets.token_urlsafe(24)
+        payment = Payment(
+            user_id=user.id,
+            plan=plan,
+            amount_ils=amount,
+            status="pending",
+            gateway="grow",
+            webhook_token=webhook_token,
+        )
+        session.add(payment)
+        session.commit()
+        payment_id = payment.id
+        redirect_uid = user.telegram_user_id
+
+    uid_qs = f"&uid={redirect_uid}" if redirect_uid else ""
+    checkout_url = grow_client.create_checkout_url(
+        payment_id=payment_id,
+        amount_ils=amount,
+        description=f"טודירה — מנוי {PLAN_LABELS_HE.get(plan, plan)}",
+        success_url=f"{WEBSITE_URL}/upgrade/success?payment_id={payment_id}{uid_qs}",
+        cancel_url=f"{WEBSITE_URL}/upgrade?{uid_qs.lstrip('&')}" if redirect_uid else f"{WEBSITE_URL}/upgrade",
+        notify_url=f"{WEBSITE_URL}/webhooks/grow?token={webhook_token}",
+    )
+    if checkout_url is None:
+        with get_session() as session:
+            failed = session.get(Payment, payment_id)
+            if failed is not None:
+                failed.status = "failed"
+                session.commit()
+        return _render(request, "auth_error.html", {}, status_code=502)
+
+    return RedirectResponse(checkout_url, status_code=303)
+
+
+@app.get("/upgrade/success")
+def upgrade_success(request: Request, payment_id: int, uid: int | None = None):
+    """Landing page for BOTH payment paths: where Grow redirects the browser after checkout
+    (access is granted server-to-server by /webhooks/grow below, which may land slightly before or
+    after this redirect — this just reports the payment's CURRENT status, never grants anything
+    itself), and where /upgrade/pay/confirm below sends the browser after the informal Bit/PayBox
+    flow (there access WAS already granted by that POST, so this always shows "paid" immediately)."""
+    with get_session() as session:
+        payment = session.get(Payment, payment_id)
+    paid = payment is not None and payment.status == "paid"
+    return _render(request, "upgrade_success.html", {"uid": uid, "paid": paid})
+
+
+@app.get("/upgrade/pay")
+def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
+    """Informal Bit/PayBox payment instructions (2026-09-05) — no verified "open the app
+    pre-filled" deep link exists for either (see OWNER_BIT_PHONE's own comment), so this just
+    shows the exact amount + the owner's Bit phone / PayBox link plainly, with a self-service
+    "I paid" confirmation below. Same honesty tradeoff as the old instant-grant-on-click flow —
+    still trusted, not verified — just made into an explicit, visible step instead of an invisible
+    side effect of clicking a plan button."""
+    with get_session() as session:
+        payment = session.get(Payment, payment_id)
+        user = _resolve_user(request, session, uid)
+        if user is None or payment is None or payment.user_id != user.id:
+            return _render(request, "404.html", {}, status_code=404)
+        redirect_uid = user.telegram_user_id
+
+    return _render(
+        request,
+        "upgrade_pay.html",
+        {
+            "uid": redirect_uid,
+            "payment_id": payment.id,
+            "amount": payment.amount_ils,
+            "plan_label": PLAN_LABELS_HE.get(payment.plan, payment.plan),
+            "already_paid": payment.status == "paid",
+            "bit_phone": OWNER_BIT_PHONE,
+            "paybox_url": OWNER_PAYBOX_URL,
+        },
+    )
+
+
+@app.post("/upgrade/pay/confirm")
+def upgrade_pay_confirm(request: Request, payment_id: int = Form(...), uid: int | None = Form(None)):
+    with get_session() as session:
+        payment = session.get(Payment, payment_id)
+        user = _resolve_user(request, session, uid)
+        if user is None or payment is None or payment.user_id != user.id:
+            return _render(request, "404.html", {}, status_code=404)
+
+        if payment.status == "pending":
+            extend_paid_until(user, payment.plan)
+            payment.status = "paid"
+            payment.paid_at = dt.datetime.now(dt.timezone.utc)
+            session.commit()
+        redirect_uid = user.telegram_user_id
+
+    uid_qs = f"&uid={redirect_uid}" if redirect_uid else ""
+    return RedirectResponse(f"/upgrade/success?payment_id={payment_id}{uid_qs}", status_code=303)
+
+
+def _looks_like_a_successful_grow_payload(body: dict) -> bool:
+    """UNVERIFIED — see webhooks_grow's own comment below and grow_client.py's module docstring.
+    Accepts any of a few plausible "it worked" shapes rather than betting everything on one
+    guessed key name. Update this once a real sandbox transaction shows the actual payload."""
+    status = str(body.get("status", body.get("statusCode", ""))).strip().lower()
+    if status in {"1", "true", "success", "ok", "approved"}:
+        return True
+    return bool(body.get("transactionId") or body.get("asmachta"))
+
+
+@app.post("/webhooks/grow")
+async def webhooks_grow(request: Request, token: str | None = None):
+    """Grow's server-to-server payment confirmation. The exact payload shape Grow sends here is
+    UNVERIFIED (see grow_client.py's module docstring — this sandbox's network egress blocks every
+    Grow/Meshulam docs domain), so this logs the full raw body unconditionally and only ever marks
+    a payment paid when it can positively identify BOTH a pending payment matching `token` (the
+    per-payment secret WE generated and embedded in the notifyUrl handed to Grow at checkout time
+    — see /upgrade above; this stands in for Grow's own webhook authentication, which is equally
+    unverified) AND a plausible success signal in the body. Anything less confident is left
+    pending rather than guessed at — a real customer payment can always still be reconciled by
+    hand via /admin/users' free-access toggle. Always returns 200 so Grow doesn't retry-storm this
+    endpoint even when the payload can't be made sense of yet (matches whatsapp_webhook.py's own
+    documented always-200 contract)."""
+    try:
+        body = dict(await request.json())
+    except Exception:
+        body = dict(await request.form())
+    logger.info("Grow webhook raw payload (token=%s): %r", token, body)
+
+    if not token:
+        logger.warning("Grow webhook received with no token — ignoring")
+        return Response(status_code=200)
+
+    with get_session() as session:
+        payment = session.scalar(
+            select(Payment).where(Payment.webhook_token == token, Payment.status == "pending")
+        )
+        if payment is None:
+            logger.warning("Grow webhook token did not match any pending payment — ignoring")
+            return Response(status_code=200)
+
+        if not _looks_like_a_successful_grow_payload(body):
+            logger.warning(
+                "Grow webhook for payment_id=%s had no recognizable success signal — left "
+                "pending, see the raw payload logged above",
+                payment.id,
+            )
+            return Response(status_code=200)
+
+        user = session.get(User, payment.user_id)
+        if user is None:
+            logger.error("Grow webhook for payment_id=%s references a deleted user", payment.id)
+            return Response(status_code=200)
+
+        payment.status = "paid"
+        payment.paid_at = dt.datetime.now(dt.timezone.utc)
+        payment.gateway_transaction_id = str(
+            body.get("transactionId") or body.get("asmachta") or body.get("processId") or payment.id
+        )
+        extend_paid_until(user, payment.plan)
+        session.commit()
+
+    return Response(status_code=200)
+
+
+@app.get("/account")
+def account(request: Request, uid: int | None = None):
+    """Cross-channel linking (dorin_common/channel_link.py) — same uid/session resolution as
+    /apartments, /liked, /upgrade. Shows which channels are already linked to this user, and —
+    for whichever aren't — a fresh 15-minute link code plus ready-to-use WhatsApp/Telegram deep
+    links to send it from that channel, matching the reference product's own confirmed UX."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "account"})
+
+        has_telegram = user.telegram_user_id is not None
+        has_whatsapp = user.whatsapp_phone_number is not None
+        has_google = user.google_sub is not None
+
+        code = None
+        if not has_telegram or not has_whatsapp:
+            code = generate_link_code(session, user)
+        redirect_uid = user.telegram_user_id
+
+    return _render(
+        request,
+        "account.html",
+        {
+            "uid": redirect_uid,
+            "has_telegram": has_telegram,
+            "has_whatsapp": has_whatsapp,
+            "has_google": has_google,
+            "code": code,
+            "telegram_link": f"https://t.me/AmirDirotBot?start={code}" if code else None,
+            "whatsapp_link": (
+                f"https://wa.me/{WHATSAPP_PUBLIC_NUMBER}?text={code}"
+                if code and WHATSAPP_PUBLIC_NUMBER
+                else None
+            ),
+        },
+    )
 
 
 @app.get("/filter")

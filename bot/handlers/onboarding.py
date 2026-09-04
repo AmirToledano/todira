@@ -15,18 +15,29 @@ afterwards for full control over every field.
 `/start` is owned entirely by this ConversationHandler (see build_onboarding_handler): its entry
 point calls handlers.start.start() to send the normal welcome and upsert/reactivate the user,
 then only continues into the free-text state if the user doesn't have a filter yet — a returning
-user just gets the plain welcome and the conversation ends immediately.
+user just gets the plain welcome and the conversation ends immediately. When `/start` carries a
+`ref_xxxxxx` channel-linking payload (see dorin_common/channel_link.py), start() attaches this
+Telegram account to the existing user the code belongs to BEFORE this function's own
+`_has_filter_sync` check runs — so a linked account that already has a filter (the normal case:
+someone connecting Telegram to a WhatsApp/Google account they already onboarded with elsewhere)
+still ends the conversation immediately instead of re-onboarding them.
 """
 from __future__ import annotations
 
 import asyncio
+import os
 
 from config import WEBSITE_URL
 from dorin_common import cities, gemini_client
+from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
+
+# Mirrors website/main.py's _is_owner_id / bot/handlers/start.py's own copy — same secret, same
+# "owner always has full access" override.
+OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 from handlers.apartments import RESULT_LIMIT, find_new_matches_to_show
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
@@ -78,9 +89,11 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return AWAIT_FREETEXT
 
 
-def _save_filter_sync(tg_user, state: dict) -> tuple[int, list]:
+def _save_filter_sync(tg_user, state: dict) -> tuple[int, list, bool]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
+        is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
+        access = has_full_access(user, is_owner=is_owner)
         filter_row = Filter(
             user_id=user.id,
             deal_type=state["deal_type"],
@@ -101,7 +114,7 @@ def _save_filter_sync(tg_user, state: dict) -> tuple[int, list]:
         # a later /filter re-save (filter_conversation.py) from resending the same ones again.
         total, new_to_show = find_new_matches_to_show(session, user.id, filter_row, limit=RESULT_LIMIT)
         session.commit()
-        return total, new_to_show
+        return total, new_to_show, access
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -158,7 +171,9 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
         return AWAIT_FREETEXT
 
-    total, new_matches = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
+    total, new_matches, has_access = await asyncio.to_thread(
+        _save_filter_sync, update.effective_user, state
+    )
 
     context.user_data.pop("onboarding", None)
     await update.message.reply_text(
@@ -174,9 +189,13 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text(
             f"👀 יש כרגע {total}{'+' if total >= RESULT_LIMIT else ''} דירות שמתאימות:"
         )
+        upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
         for listing in new_matches:
             await send_listing_card(
-                context.bot, update.effective_chat.id, listing, format_caption(listing)
+                context.bot,
+                update.effective_chat.id,
+                listing,
+                format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
             )
     else:
         apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
