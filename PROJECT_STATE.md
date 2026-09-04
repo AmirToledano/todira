@@ -2754,3 +2754,42 @@ and combined with the pre-existing high-contrast a11y mode (which still works co
 top — `--teal-dark`/`--heading`'s CSS-custom-property late-binding resolves through both layers).
 No template/behavior changes, no new tests needed (pure CSS + a client-side toggle); full suite
 still 462 passing.
+
+## 2026-09-05 (same day, follow-up): the REAL root cause of the Google-linking dead-end — an HTML double-escape bug
+
+Amir kept hitting `google_pending.html` from `/account`'s own "🔗 קשר את Google לחשבון" button — the
+one flow that carries an explicit `uid` and should never depend on any stashed session state. Two
+earlier follow-up commits this session (the `session_user_id` fallback in `auth_google_callback`,
+the `/login` "welcome back" copy fix) treated this as a session-continuity problem. It wasn't. While
+walking him through it live and re-testing the exact click he made, the actual bug turned up:
+`account.html`'s href was `href="/auth/google/start?next=/account{{ '&amp;uid=' ~ uid if uid else '' }}"`
+— a hand-written `&amp;uid=` **inside** a Jinja expression, on a template with autoescaping on.
+Jinja escapes the whole rendered attribute, so the literal `&amp;` in the source got escaped AGAIN
+into `&amp;amp;uid=123456`. A browser HTML-decodes an attribute value exactly once when parsing the
+page: `&amp;amp;` decodes to `&` + the literal text `amp;uid=123456` — so the actual href a browser
+ever navigated to was `/auth/google/start?next=/account&amp;uid=123456`, whose query string, split
+on `&`, produces a param literally named `amp;uid`, never `uid`. FastAPI's `uid: int | None = None`
+route parameter never matched, so `uid` was **always None** server-side on every single click of
+that button, unconditionally — not flaky, not context-dependent, just silently broken from the
+moment `/account` shipped. This fully explains every one of Amir's repeated "still shows unlinked"
+reports; the session/cookie theories from earlier this session were real but were never the actual
+blocker for this specific flow.
+
+**Fix**: `'&amp;uid=' ~ uid` → `'&uid=' ~ uid` in both `account.html` (the pre-existing bug) and
+`login.html` (a `uid`-forwarding feature added earlier the same session, written with the same
+copy-pasted broken pattern — caught immediately by its own new test before ever reaching main).
+Two new regression tests assert the exact single-escaped href AND that the literal string
+`&amp;amp;` never appears anywhere in either page's rendered HTML again. `/login`'s route also now
+accepts and forwards a `uid` query param at all (it silently dropped one before this fix existed),
+so arriving there with a uid in flight performs a real link on the first try instead of falling
+back to the contextless path. Full suite: 465 passing.
+
+**Lesson for future template work**: never hand-write an HTML entity (`&amp;`, `&lt;`, etc.) inside
+a Jinja `{{ }}` expression on an autoescaped template — write the literal character (`&`, `<`) and
+let Jinja's own autoescaping encode it exactly once. This bug shipped and stayed live through
+several PRs and multiple rounds of live user testing without being caught simply because no test
+had ever asserted the literal rendered href for this particular button — every other check on
+`/account`/`/login` looked at page content, redirects, or session state, never the exact HTML a
+browser would actually parse. Worth remembering next time a URL is built by string concatenation
+inside a template: render it and read the literal output at least once, don't just trust the
+Jinja source to look right.

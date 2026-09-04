@@ -47,7 +47,7 @@
         <p class="field-hint">מחובר</p>
       {% else %}
         <p style="font-size:1.5rem;margin:0 0 8px">⭕</p>
-        <a class="btn outline block" href="/auth/google/start?next=/account{{ '&amp;uid=' ~ uid if uid else '' }}">🔗 קשר את Google לחשבון</a>
+        <a class="btn outline block" href="/auth/google/start?next=/account{{ '&uid=' ~ uid if uid else '' }}">🔗 קשר את Google לחשבון</a>
       {% endif %}
     </div>
   </div>
