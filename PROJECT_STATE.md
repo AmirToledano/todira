@@ -2537,3 +2537,104 @@ user's own words offered as a starting point rather than a fixed requirement.
   asserting that exact substring stopped being meaningful). Verified visually via Playwright: the
   illustration fills the card's cover area cleanly at real card width, no awkward cropping, caption
   banner reads clearly beneath it.
+
+## 2026-09-05: channel unification, real payment-gateway readiness, then a pivot to informal Bit/PayBox, and closing the paid-content gate for real (445 tests passing)
+
+A long session covering several linked decisions, in the order they actually happened — read this
+whole section before touching auth, payments, or listing-card rendering, since several of these
+land on top of each other.
+
+**1. Cross-channel account linking** (`dorin_common/channel_link.py`, migration `0007`) — matches
+the reference product's own confirmed UX (screenshotted live by the owner): the website's new
+`/account` page generates a short-lived `ref_xxxxxx` code for the logged-in user; sending it FROM
+a channel you want to add (a plain WhatsApp text message, or opened as a Telegram `/start`
+deep-link payload) attaches that channel to the SAME existing user row instead of creating a new
+one. `users.telegram_user_id`/`whatsapp_phone_number` can now both be set on one row — the old "a
+user has exactly one, never both" invariant in `models.py`'s comment is gone. Declines (with a
+clear reply, never a silent merge) when the channel already has its own separate account.
+Consumers: `bot/handlers/start.py`, `website/whatsapp_webhook.py`. `WHATSAPP_PUBLIC_NUMBER`
+(optional) builds the wa.me deep link.
+
+**2. Google sign-in dead end, found and fixed** — the header's plain "Sign in with Google" button
+(shown whenever there's no `?uid=` in the URL) could never succeed for a first-time linker: no
+existing `google_sub` match + no uid in flight meant `/auth/google/callback` just bounced straight
+to the bot with zero explanation and zero way back, and the site then asked to log in again every
+time. Fix: stash the `google_sub` in the signed session cookie (`google_pending.html` explains
+what happened + links to the bot), and `_resolve_user` in `website/main.py` finishes the link
+(and starts a real session) automatically the moment that same browser later resolves a real uid —
+e.g. via the `/account` link now included in the bot's `/start` welcome message. A plain uid visit
+with no pending Google sign-in is completely unaffected.
+
+**3. `/start` renewal nudge** — a returning, already-onboarded user whose trial/paid access has run
+out now gets a personalized "your access ended, want to renew?" message naming their own filter
+cities and linking straight to `/upgrade`, instead of the plain welcome — matches the reference
+product's own confirmed behavior, screenshotted live. Owner and free-access-granted users are
+never affected; a brand-new user or one mid-onboarding (no filter yet) always gets the plain
+welcome, since they're still within a fresh trial by definition.
+
+**4. Payments — Grow/Meshulam built, then the owner changed direction.** The owner initially said
+he'd register עוסק פטור and asked for the site to be Grow-ready: built a `payments` table
+(migration `0008`) tracking pending/paid/failed attempts, `website/grow_client.py` (a real
+createPaymentProcess integration — **explicitly flagged provisional**: this sandbox's network
+egress blocks every Grow/Meshulam docs domain, so the field names are corroborated from public
+references, not read from Grow's own docs; `/webhooks/grow` only trusts a per-payment token WE
+generate, since Grow's own webhook auth is equally unverified), and reworked `/upgrade` to redirect
+to real Grow checkout when `GROW_PAGE_CODE`/`GROW_USER_ID`/`GROW_API_KEY` are all configured.
+**Then the owner said he's not doing עוסק פטור right now** ("לא חשבתי על עניין התשלום יותר מדי") and
+asked for a Bit/PayBox window instead, no credit cards. Checked for a real "open the app
+pre-filled" deep link for either — none is publicly documented (even commercial Bit-payment
+WooCommerce plugins just show a phone number + QR and rely on the customer typing the amount,
+confirmed manually) — so built the honest version: `/upgrade/pay` (new `Payment` row, gateway=NULL)
+shows the exact amount + `OWNER_BIT_PHONE`/`OWNER_PAYBOX_URL` (both optional plain config, not
+secret) with an explicit "✅ שילמתי" confirmation that extends access at that point. **The Grow
+code is untouched and still there** — `grow_client.is_configured()` gates which path `/upgrade`
+takes, so setting the three Grow secrets later switches back to real-gateway checkout with zero
+code changes. Pricing landed at the previously-agreed 3 tiers: weekly ₪15, biweekly ₪25, monthly
+₪40 (`dorin_common/access.py`'s `PLAN_PRICES_ILS`/`PLAN_DURATIONS`).
+
+**5. Paid content is now genuinely gated — this was an explicit correction, not a refinement.**
+Earlier framing (comparing Dorin's own "view original listing" bypass) proposed keeping a free
+escape hatch to the real listing. The owner rejected that outright: "אין פה שום עניין של נוחות...
+כל האינטרס של מנוי פרימיום זה שהפרטים יהיו מוחבאים ללא המנוי" — no convenience angle, the whole
+point of paying is that the details are hidden without it. `dorin_common/cards.py`'s
+`format_caption`/`format_caption_whatsapp` now take a **required** `has_access` argument (no
+default — every call site must explicitly decide, so a future forgotten call site fails closed by
+construction, not open) that strips the description and replaces the real listing link with a 🔒
+upgrade line when False. Wired through every card-rendering surface: bot `/apartments`, `/liked`,
+`/hidden`, onboarding, `/filter` save-and-match, the scraper's proactive notifier, and the
+website's `/apartments`/`/liked` (`_listing_card.html` locks the same way). Teaser fields — price,
+rooms, city, amenities, photos — stay visible either way.
+
+**6. Bright Data on-demand description fetch — answers the owner's own sequencing question**
+("איך תדע על איזה מודעה לשלוח, לפני הסינון של המשתמש המשלם?"): `scraper/notifier.py` now builds the
+full list of recipients for a listing BEFORE formatting anything, and only spends a Bright Data
+fetch (`scraper/bright_data_client.py`) on the listing's description when at least one recipient
+about to be notified actually has paid access — never speculatively for the full scrape volume.
+Cached on `listings.description` (fetched at most once ever). Same honesty posture as Grow:
+`docs.brightdata.com` is also blocked by this sandbox's egress, but `github.com/brightdata/skills`
+(their own public reference repo) IS reachable and gave a real, corroborated trigger/progress/
+snapshot flow (`POST /datasets/v3/trigger` → `GET progress/{id}` → `GET snapshot/{id}`) — so the
+endpoints aren't guessed. What's still missing and can't be resolved without the owner's own
+account: `BRIGHT_DATA_DATASET_ID` needs a Bright Data Scraper Studio scraper he builds targeting
+Yad2 **listing DETAIL pages** — a different, simpler target than his existing scraper (which
+targets search-RESULTS pages and is the one already diagnosed as broken by a brittle CSS-module
+class selector, see the 2026-08-27 entries above; that diagnosis and fix are now deprioritized —
+the owner's own direction this session was to keep ZenRows for bulk scraping and use Bright Data
+only for this narrower per-listing fetch, not to fix/replace the bulk scraper). Both
+`BRIGHT_DATA_API_KEY`/`BRIGHT_DATA_DATASET_ID` unset (the default) = no descriptions fetched,
+exactly the behavior before this feature existed.
+
+**Net effect on `values.yaml`/CI secrets**: `growPageCode`/`growUserId`/`growApiKey`/`growSandbox`,
+`ownerBitPhone`/`ownerPayboxUrl`, `whatsappPublicNumber` (from the channel-linking work),
+`brightDataApiKey`/`brightDataDatasetId`/`brightDataDescriptionField` — all optional, all
+documented in `values.yaml`'s own top-of-file secrets comment block. The scraper CronJob also
+picked up `OWNER_TELEGRAM_USER_ID`/`WEBSITE_URL` for the first time (a real gap: the access-gating
+work needs both, and neither was ever wired into that pod's env before).
+
+**Still open for a future session**: (a) get real Grow API docs/credentials from the owner once
+he does register a business, and verify `grow_client.py`'s field-name guesses against a real
+sandbox transaction; (b) get the owner's Bright Data API key + a listing-detail-page dataset_id,
+then verify `bright_data_client.py` against a real fetch and fix `BRIGHT_DATA_DESCRIPTION_FIELD`
+to match his scraper's real output schema; (c) Komo/Facebook Marketplace scraping sources (old
+backlog, untouched this session, deprioritized while the product is intentionally not live yet —
+`scraper.suspended: true` is still set from the earlier token-spend freeze).
