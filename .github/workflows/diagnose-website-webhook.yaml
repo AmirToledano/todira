@@ -1,0 +1,39 @@
+name: Diagnose website pod (WhatsApp webhook debugging)
+
+# Read-only diagnostic - dumps the website pod's recent logs and status. Added 2026-09-05 while
+# debugging why a real WhatsApp message sent to the test number never reached the bot (no reply)
+# even after the Meta app was Published and the webhook shows "Configure Webhooks" verified with
+# live subscriptions to messages/v26.0 etc. The webhook's own GET verification already proved
+# reachability (Meta's "Verify and save" succeeded), so the remaining suspects are all POST-path:
+# app-secret signature mismatch (whatsapp_webhook.py fails CLOSED and rejects the POST outright if
+# WHATSAPP_APP_SECRET is missing/wrong) or a bug in message processing. This dumps exactly what's
+# needed to tell those apart without needing local kubectl access.
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Website pod status
+        run: kubectl get pods -n todira -l app=todira-website -o wide
+
+      - name: Website pod logs (current container, last 300 lines)
+        run: kubectl logs -n todira -l app=todira-website --tail=300
+
+      - name: Website pod logs (previous container, if restarted)
+        if: always()
+        run: kubectl logs -n todira -l app=todira-website --tail=150 --previous || true
+
+      - name: Recent namespace events
+        if: always()
+        run: kubectl get events -n todira --sort-by=.lastTimestamp | tail -40
