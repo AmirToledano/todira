@@ -734,6 +734,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "לצפייה במודעה ←", "en": "View listing →", "ru": "Смотреть объявление →",
         "fr": "Voir l'annonce →", "ar": "عرض الإعلان ←",
     },
+    "card.locked_btn": {
+        "he": "שדרג/י לצפייה", "en": "Upgrade to view", "ru": "Обновить, чтобы посмотреть",
+        "fr": "Mettre à niveau pour voir", "ar": "الترقية للعرض",
+    },
     # Badge shown on the cover photo (top-left, see .broker-badge in style.css) for a broker-listed
     # property — independent of deal_type (rent or sale, doesn't matter), 2026-09-03 request.
     "card.broker_badge": {

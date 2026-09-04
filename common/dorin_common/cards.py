@@ -255,8 +255,22 @@ def _price_change_header(price_change_from: int | None, current_price: int | Non
 _RTL_MARK = "‏"
 
 
-def format_caption(listing: Listing, *, price_change_from: int | None = None) -> str:
-    """`price_change_from`: see _price_change_header. Left unset for a normal new-match card."""
+def format_caption(
+    listing: Listing,
+    *,
+    has_access: bool,
+    price_change_from: int | None = None,
+    upgrade_url: str | None = None,
+) -> str:
+    """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
+
+    `has_access` is required, not defaulted — 2026-09-05 request ("אני רוצה שזה יהיה סגור
+    למשתמש... כל האינטרס של מנוי פרימיום זה שהפרטים יהיו מוחבאים ללא המנוי"): a lite/expired user
+    (has_full_access() == False) gets everything a paying user gets EXCEPT the description and the
+    actual listing link — the two things that let someone act on a match (read more, go apply) —
+    replaced by a lock line pointing at `upgrade_url`. No default value on purpose: every call site
+    must explicitly decide, so gating a new one is never something a future caller can forget to
+    do by just not passing the argument."""
     bold = lambda s: f"<b>{s}</b>"  # noqa: E731
     lines = _build_body_lines(
         listing, bold=bold, street_link=lambda text, url: f'<a href="{url}">{text}</a>'
@@ -264,9 +278,14 @@ def format_caption(listing: Listing, *, price_change_from: int | None = None) ->
 
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold)
-    footer = f'\n\n{_RTL_MARK}🔗 <a href="{listing.url}">לפרטי הדירה המלאים &gt;&gt;</a>'
+    if has_access:
+        footer = f'\n\n{_RTL_MARK}🔗 <a href="{listing.url}">לפרטי הדירה המלאים &gt;&gt;</a>'
+    elif upgrade_url:
+        footer = f'\n\n{_RTL_MARK}🔒 <a href="{upgrade_url}">לפרטים המלאים וקישור ישיר — שדרג/י את המנוי</a>'
+    else:
+        footer = f"\n\n{_RTL_MARK}🔒 לפרטים המלאים וקישור ישיר יש לשדרג את המנוי"
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
-    description = (listing.description or "").strip()
+    description = (listing.description or "").strip() if has_access else ""
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
@@ -278,14 +297,23 @@ def format_caption(listing: Listing, *, price_change_from: int | None = None) ->
 WHATSAPP_MESSAGE_LIMIT = 4096
 
 
-def format_caption_whatsapp(listing: Listing, *, price_change_from: int | None = None) -> str:
+def format_caption_whatsapp(
+    listing: Listing,
+    *,
+    has_access: bool,
+    price_change_from: int | None = None,
+    upgrade_url: str | None = None,
+) -> str:
     """Same content/order as format_caption, WhatsApp's own markdown (*bold*, no HTML tags — the
     Cloud API's text messages don't render HTML) and no inline keyboard equivalent; the listing
     URL at the end is the only action available (WhatsApp's like/hide/found buttons would need
     interactive "reply button" messages, a separate message type — not built yet, plain text with
     a link is the MVP). The street can't be a custom-text link the way Telegram's can (WhatsApp
     only auto-links raw URLs, never arbitrary anchor text) — the plain street name stays inline
-    and the same Google Maps URL is appended as its own tappable line instead."""
+    and the same Google Maps URL is appended as its own tappable line instead.
+
+    `has_access`/`upgrade_url`: see format_caption's own docstring — same gating, same required-
+    not-defaulted argument."""
     bold = lambda s: f"*{s}*"  # noqa: E731
     lines = _build_body_lines(listing, bold=bold, street_link=lambda text, url: text)
     maps_url = _google_maps_url(listing)
@@ -303,9 +331,14 @@ def format_caption_whatsapp(listing: Listing, *, price_change_from: int | None =
 
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold)
-    footer = f"\n\n{_RTL_MARK}🔗 לפרטי הדירה המלאים >>\n{listing.url}"
+    if has_access:
+        footer = f"\n\n{_RTL_MARK}🔗 לפרטי הדירה המלאים >>\n{listing.url}"
+    elif upgrade_url:
+        footer = f"\n\n{_RTL_MARK}🔒 לפרטים המלאים וקישור ישיר — שדרג/י את המנוי:\n{upgrade_url}"
+    else:
+        footer = f"\n\n{_RTL_MARK}🔒 לפרטים המלאים וקישור ישיר יש לשדרג את המנוי"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
-    description = (listing.description or "").strip()
+    description = (listing.description or "").strip() if has_access else ""
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"

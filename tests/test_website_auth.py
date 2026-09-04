@@ -54,6 +54,10 @@ class _FakeUser:
         self.filter = None
         self.first_name = "Amir"
         self.telegram_username = "amirt"
+        # has_full_access() reads these — /apartments computes has_access for the listing cards.
+        self.free_access_granted = False
+        self.trial_ends_at = None
+        self.paid_until = None
 
 
 class _FakeSession:
