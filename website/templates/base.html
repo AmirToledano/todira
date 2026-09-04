@@ -16,6 +16,19 @@
         });
       } catch (e) { /* localStorage unavailable — page renders with defaults, no crash */ }
     })();
+    // Dark mode (2026-09-05): with NO saved override, the CSS's own prefers-color-scheme media
+    // query already renders the right theme with zero JS — no flash possible. This only needs to
+    // run before paint for the case where a visitor has explicitly overridden the system setting
+    // (stamps data-theme on <html> before first paint; the toggle's own click handler + icon sync
+    // live in the script near the end of <body>, same split as the a11y prefs above).
+    (function () {
+      try {
+        var saved = localStorage.getItem('todira-theme');
+        if (saved === 'dark' || saved === 'light') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) { /* localStorage unavailable — page renders with the system theme, no crash */ }
+    })();
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ t('meta.title_home') }}{% endblock %}</title>
@@ -47,9 +60,14 @@
   <header class="site">
     <div class="header-inner">
       <a class="brand" href="/"><span class="crown">👑</span> טודירה</a>
-      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-panel" aria-label="{{ t('a11y.main_nav_label') }}">
-        <span class="nav-toggle-lines"><span></span><span></span><span></span></span>
-      </button>
+      <div class="header-actions">
+        <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ t('a11y.theme_toggle_label') }}">
+          <span id="theme-toggle-icon" aria-hidden="true">🌙</span>
+        </button>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-panel" aria-label="{{ t('a11y.main_nav_label') }}">
+          <span class="nav-toggle-lines"><span></span><span></span><span></span></span>
+        </button>
+      </div>
     </div>
     <div class="nav-panel" id="nav-panel">
       <div class="nav-panel-inner">
@@ -151,6 +169,38 @@
           toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         });
       }
+    })();
+    (function () {
+      // Dark mode toggle: with no explicit choice, the page follows the OS's prefers-color-scheme
+      // (pure CSS, see style.css). Clicking the header button stamps an explicit override on
+      // <html>'s data-theme, saved in localStorage so it survives navigation — the <head> script
+      // above applies it before paint on every later page.
+      var STORAGE_KEY = 'todira-theme';
+      var root = document.documentElement;
+      var btn = document.getElementById('theme-toggle');
+      var icon = document.getElementById('theme-toggle-icon');
+      if (!btn || !icon) { return; }
+
+      function systemPrefersDark() {
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+      function currentTheme() {
+        var explicit = root.getAttribute('data-theme');
+        if (explicit === 'dark' || explicit === 'light') { return explicit; }
+        return systemPrefersDark() ? 'dark' : 'light';
+      }
+      function syncIcon() {
+        // Shows the mode that's currently ACTIVE (moon = night mode on), not what clicking does.
+        icon.textContent = currentTheme() === 'dark' ? '🌙' : '☀️';
+      }
+      syncIcon();
+
+      btn.addEventListener('click', function () {
+        var next = currentTheme() === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* still works this visit */ }
+        syncIcon();
+      });
     })();
     (function () {
       // Accessibility widget: toggle classes/attrs on <html>, persisted in localStorage so a
