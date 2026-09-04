@@ -172,6 +172,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "ניווט ראשי", "en": "Main navigation", "ru": "Основная навигация",
         "fr": "Navigation principale", "ar": "التنقل الرئيسي",
     },
+    "a11y.theme_toggle_label": {
+        "he": "החלף מצב כהה/בהיר", "en": "Toggle dark/light mode", "ru": "Переключить тёмный/светлый режим",
+        "fr": "Basculer le mode sombre/clair", "ar": "تبديل الوضع الداكن/الفاتح",
+    },
     # ---------- footer ----------
     "footer.built_by": {
         "he": "נבנה באהבה על ידי אמיר טולדנו",
