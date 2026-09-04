@@ -2877,3 +2877,34 @@ a double-submit) plus one existing test there updated for the new pending-page c
 `tests/test_website_filter_cities.py` suite stays green unchanged — confirms the session/uid
 resolution swap didn't break the existing Telegram-anchored path. Verified visually with a local
 server + headless Chromium in both light and dark. Full suite: 482 passing.
+
+## 2026-09-05 (same day, follow-up): fixed the standalone-account feature's own launch bug
+
+Owner tested the brand-new standalone-signup feature within minutes of it going live: created a
+new account, saw apartments (200 results — the blank-filter-matches-everything design worked),
+then clicked "ערוך סינון" (edit filter) and got a raw FastAPI validation error dumped to the
+screen: `{"detail":[{"type":"int_parsing","loc":["query","uid"],... "input":"None"}]}`.
+
+Same bug CLASS as the double-escape issue from earlier today, different template:
+`apartments.html`'s "ערוך סינון" link built its href as `/filter?uid={{ uid }}` with NO
+conditional guard — every other `uid`-bearing link in the codebase already uses the safe
+`{{ '?uid=' ~ uid if uid else '' }}` pattern (added across several templates this session), but
+this ONE spot was missed. For a Google-only standalone account, the `uid` template variable
+(`user.telegram_user_id`) is genuinely `None`, and Jinja renders a bare `None` value as the
+literal 4-character text "None" — so the link became `/filter?uid=None`, and FastAPI's
+`uid: int | None = None` route parameter correctly rejected the literal string "None" as
+unparseable, 422ing instead of gracefully treating it as absent. Swept every template for the same
+unguarded pattern (`grep -rn "uid=\{\{"`) — this was the only other occurrence left; everywhere
+else already used the safe form. Fixed with the same conditional.
+
+Also confirmed via the owner's own report: he tested this by deliberately clicking "this is a new
+account" on a phone that already has a Telegram account linked to the bot, specifically to see
+what happens — this is expected, not a bug: the two-button choice screen exists precisely so a
+returning bot user isn't defaulted into a duplicate, and choosing "new account" on purpose does
+create a second, disconnected account, exactly as designed. (Not touched — he was testing
+deliberately; can merge/relink or delete that test row on request.)
+
+One new regression test (`tests/test_website_content_gating.py`) renders `/apartments` for a
+session-only, uid-less standalone user and asserts the literal string "uid=None" never appears in
+the response and the edit-filter link correctly omits the query param entirely. Full suite: 483
+passing.

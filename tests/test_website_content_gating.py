@@ -41,6 +41,8 @@ class _FakeUser:
     def __init__(self, id, telegram_user_id, **overrides):
         self.id = id
         self.telegram_user_id = telegram_user_id
+        self.first_name = overrides.get("first_name")
+        self.telegram_username = overrides.get("telegram_username")
         self.filter = overrides.get("filter")
         self.free_access_granted = overrides.get("free_access_granted", False)
         self.trial_ends_at = overrides.get("trial_ends_at", _NOW - dt.timedelta(days=1))
@@ -83,6 +85,18 @@ class _FakeSession:
 
     def get(self, model, pk):
         return self._user
+
+    def execute(self, stmt):
+        # Backs base.html's header lookup (_current_user_summary), triggered whenever the
+        # request's session already carries a user_id (a real session-only visitor).
+        class _Result:
+            def __init__(self, row):
+                self._row = row
+
+            def first(self_inner):
+                return self_inner._row
+
+        return _Result(self._user)
 
     def scalars(self, stmt):
         class _Scalars:
@@ -143,6 +157,37 @@ def test_apartments_shows_description_and_url_for_a_trial_user(client):
     assert resp.status_code == 200
     assert "תיאור סודי" in resp.text
     assert "secret999" in resp.text
+
+
+def test_apartments_edit_filter_link_omits_uid_for_a_session_only_standalone_user():
+    """Real bug found live (2026-09-05): a Google-only standalone account (dorin_common.models.
+    User, created via /auth/google/create-account) has no telegram_user_id at all, so `uid` in the
+    template context is None for a visitor resolved purely via their session cookie. apartments.
+    html's "ערוך סינון" link used to string-interpolate it unconditionally (`?uid={{ uid }}`), and
+    Jinja renders a raw None as the literal text "None" — every click 422'd with
+    `{"detail":[{"type":"int_parsing","loc":["query","uid"],... "input":"None"}]}`."""
+    from starlette.requests import Request as StarletteRequest
+
+    user = _FakeUser(id=2, telegram_user_id=None, filter=SimpleNamespaceFilter())
+    fake_session = _FakeSession(user, listings=[])
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/apartments",
+        "session": {"user_id": 2},
+        "query_string": b"",
+        "headers": [],
+        "app": website_main.app,
+    }
+    request = StarletteRequest(scope)
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = website_main.apartments(request, uid=None)
+
+    body = resp.body.decode()
+    assert "uid=None" not in body
+    assert 'href="/filter"' in body
 
 
 def test_liked_hides_description_and_url_for_an_expired_user(client):
