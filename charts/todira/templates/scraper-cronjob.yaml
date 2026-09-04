@@ -49,6 +49,41 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: zenrows-api-key
                       optional: true
+                # scraper/notifier.py's access gating (2026-09-05, dorin_common.access.
+                # has_full_access) needs both to build the same owner-override + "🔒 upgrade" link
+                # the bot's own on-demand handlers already have — see notifier.py's own comment.
+                - name: OWNER_TELEGRAM_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: owner-telegram-user-id
+                      optional: true
+                - name: WEBSITE_URL
+                  value: "https://{{ .Values.website.domain }}"
+                # On-demand listing-description enrichment via Bright Data (scraper/
+                # bright_data_client.py, 2026-09-05) — all optional; unset means
+                # fetch_listing_description always returns None, same as before this feature
+                # existed. See that module's own docstring for what the owner still needs to set
+                # these up (a Bright Data account + a Scraper Studio scraper targeting Yad2 listing
+                # DETAIL pages, not the existing broken search-results one).
+                - name: BRIGHT_DATA_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: bright-data-api-key
+                      optional: true
+                - name: BRIGHT_DATA_DATASET_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: bright-data-dataset-id
+                      optional: true
+                - name: BRIGHT_DATA_DESCRIPTION_FIELD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: bright-data-description-field
+                      optional: true
               resources:
                 requests:
                   cpu: {{ .Values.resources.scraper.requests.cpu }}

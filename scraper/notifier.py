@@ -25,6 +25,7 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
+import bright_data_client
 from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.enums import NotificationReason
@@ -98,6 +99,24 @@ def _already_notified(session: Session, user_id: int, listing_id: int, reason: s
     )
 
 
+async def _maybe_fetch_description(session: Session, listing: Listing, recipients: list[User]) -> None:
+    """Bright Data on-demand enrichment (2026-09-05, scraper/bright_data_client.py) — fetches and
+    caches the listing's real description, but ONLY when it's worth the cost: this is called after
+    matching is already done, with the actual list of users about to be notified, and does nothing
+    unless at least one of them is a PAYING user (has_access) who would actually see the result
+    (format_caption strips the description entirely for anyone else). This is the exact sequencing
+    difference the owner asked for — match first, then decide whether to spend a fetch — not
+    fetching speculatively for every scraped listing regardless of who it matches."""
+    if listing.description or not bright_data_client.is_configured():
+        return
+    if not any(_has_access_for(user) for user in recipients):
+        return
+    description = await asyncio.to_thread(bright_data_client.fetch_listing_description, listing.url)
+    if description:
+        listing.description = description
+        session.commit()
+
+
 async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> tuple[int, int]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
@@ -105,6 +124,7 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
     Returns (matched_count, sent_count)."""
     matched = 0
     sent = 0
+    to_notify: list[tuple[Filter, User]] = []
     for filter_row in _candidate_filters(session, listing):
         if not evaluate(filter_row, listing).matched:
             continue
@@ -114,6 +134,11 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
         user = session.get(User, filter_row.user_id)
         if user is None:
             continue
+        to_notify.append((filter_row, user))
+
+    await _maybe_fetch_description(session, listing, [user for _f, user in to_notify])
+
+    for filter_row, user in to_notify:
         caption = format_caption(
             listing,
             has_access=_has_access_for(user),
@@ -155,6 +180,7 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
             )
         )
     )
+    to_notify: list[User] = []
     for user_id in previously_notified_user_ids:
         if _already_notified(session, user_id, listing.id, reason):
             continue
@@ -164,7 +190,11 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user_id))
         if filter_row is None or not evaluate(filter_row, listing).matched:
             continue
+        to_notify.append(user)
 
+    await _maybe_fetch_description(session, listing, to_notify)
+
+    for user in to_notify:
         caption = format_caption(
             listing,
             has_access=_has_access_for(user),
@@ -173,7 +203,7 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
         )
         if await send_listing_card(bot, user.telegram_user_id, listing, caption):
             session.add(
-                SentNotification(user_id=user_id, listing_id=listing.id, reason=reason)
+                SentNotification(user_id=user.id, listing_id=listing.id, reason=reason)
             )
             session.commit()
             sent += 1

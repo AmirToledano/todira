@@ -46,6 +46,15 @@
 #                             and a Grow account exists. Without them, /upgrade falls back to the
 #                             earlier informal click-trust flow (a Bit transfer outside this
 #                             system), exactly as before this feature shipped.)
+#   brightDataApiKey         (optional — on-demand listing-description enrichment for paying
+#   brightDataDatasetId       users, scraper/bright_data_client.py, 2026-09-05. Both required
+#                             together; brightDataDatasetId needs a Bright Data Scraper Studio
+#                             scraper the owner builds targeting Yad2 listing DETAIL pages — see
+#                             that module's own docstring for why this can't just reuse the
+#                             existing (broken) search-results scraper. Without these, listings
+#                             are sent with no description, exactly as before this feature shipped.)
+#   brightDataDescriptionField (optional — the field name in that scraper's own output schema
+#                             that holds the description text; defaults to "description" if unset.)
 
 # "true" (default) hits Grow's sandbox checkout endpoint instead of the real one — see
 # website/grow_client.py's module docstring for why (the integration is unverified against Grow's
