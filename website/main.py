@@ -469,7 +469,9 @@ def auth_google_callback(
             timeout=10.0,
         )
         userinfo_resp.raise_for_status()
-        google_sub = userinfo_resp.json()["sub"]
+        userinfo = userinfo_resp.json()
+        google_sub = userinfo["sub"]
+        google_first_name = userinfo.get("given_name") or userinfo.get("name") or ""
     except (httpx.HTTPError, KeyError):
         logger.exception("Failed to complete the Google OAuth token/userinfo exchange")
         return _render(request, "auth_error.html", {}, status_code=400)
@@ -517,24 +519,66 @@ def auth_google_callback(
 
     if user_pk is None:
         # A real Google account, but not yet linked to any Telegram/WhatsApp-created user, and no
-        # ?uid= was in flight right now to link it to (same restriction /auth/telegram/callback
-        # already has: Google alone can't create a filter). 2026-09-05 fix: this used to just
-        # silently bounce to the bot with zero explanation and zero way back — a real dead end,
-        # since the plain header "Sign in with Google" button (shown whenever there's no uid in
-        # the URL) could then NEVER succeed for a first-time linker. Now it stashes the google_sub
-        # in the signed session cookie (still useful for the lucky case where the SAME browser
-        # later resolves a real uid — _resolve_user above completes it instantly) AND generates a
-        # google_link_token (dorin_common/google_link.py) embedded in the bot deep-link below —
-        # THAT is the reliable path: it completes the link the moment the visitor does /start,
-        # entirely server-side, regardless of which browser/app they're in when they get there.
-        # Real bug found live 2026-09-05: the session-cookie-only version above never actually
-        # worked for the common case, because Telegram's own in-app browser (opened when tapping
-        # the bot deep-link) is a SEPARATE cookie jar from whatever browser started the sign-in.
+        # ?uid= was in flight right now to link it to. Two real possibilities from here, so
+        # google_pending.html now offers both explicitly instead of assuming one:
+        #  (a) this person already has a Telegram/WhatsApp-created account, just not reachable
+        #      from this browser/session right now — they should LINK, not duplicate. The
+        #      google_link_token (dorin_common/google_link.py) below completes that the instant
+        #      they do /start in the bot, entirely server-side, regardless of which browser/app
+        #      they're in when they get there (found live 2026-09-05: the session-cookie-only
+        #      version alone never actually worked for this, since Telegram's own in-app browser
+        #      is a separate cookie jar from whatever browser started the sign-in).
+        #  (b) this is a genuinely first-time visitor with no bot account at all — 2026-09-05
+        #      request: the website should be a first-class, standalone way in, not force a
+        #      Telegram detour just to browse. /auth/google/create-account below creates a real
+        #      standalone account (google_sub only, blank filter — matches everything until they
+        #      narrow it on /filter) and logs them in on the SAME page load, same browser tab.
+        # pending_google_sub/first_name are also stashed in the session for the lucky same-browser
+        # case (_resolve_user above completes a pending link instantly if a real uid shows up
+        # here later) and are what /auth/google/create-account reads to build the new account.
         request.session["pending_google_sub"] = google_sub
+        request.session["pending_google_first_name"] = google_first_name
         return _render(request, "google_pending.html", {"google_link_token": google_link_token})
 
     request.session["user_id"] = user_pk
     return RedirectResponse(_safe_next(next_url), status_code=303)
+
+
+@app.post("/auth/google/create-account")
+def auth_google_create_account(request: Request, next: str = "/apartments"):
+    """The "this is a new account, start right here" half of google_pending.html (see
+    auth_google_callback's own comment on why both options exist). Reads the pending_google_sub
+    stashed by the callback — never trusts a client-supplied google_sub, since that would let
+    anyone claim an arbitrary Google identity by just POSTing here directly. Creates a real
+    standalone user (no telegram_user_id/whatsapp_phone_number at all — both stay nullable, see
+    User's own docstring) with a blank Filter (empty cities/no restrictions at all matches EVERY
+    listing per matching.py's own `if filter_row.cities:` check, so apartments show up immediately;
+    /filter already works as a pure session-based edit UI for narrowing it down, no separate
+    onboarding screen needed). Telegram/WhatsApp stay fully optional afterward, addable anytime via
+    /account's existing channel-link-code flow for whoever wants push notifications there too."""
+    pending_google_sub = request.session.pop("pending_google_sub", None)
+    first_name = request.session.pop("pending_google_first_name", "")
+    if not pending_google_sub:
+        return _render(request, "auth_error.html", {}, status_code=400)
+
+    with get_session() as session:
+        # Someone could double-submit this form (double click, back-button resubmit) — the
+        # google_sub is already consumed from the session above (single use), but also guard the
+        # DB's own unique constraint on google_sub so a genuine race doesn't 500.
+        existing = session.scalar(select(User).where(User.google_sub == pending_google_sub))
+        if existing is not None:
+            request.session["user_id"] = existing.id
+            return RedirectResponse(_safe_next(next), status_code=303)
+
+        user = User(google_sub=pending_google_sub, first_name=first_name or None)
+        session.add(user)
+        session.flush()
+        session.add(Filter(user_id=user.id))
+        session.commit()
+        user_pk = user.id
+
+    request.session["user_id"] = user_pk
+    return RedirectResponse(_safe_next(next), status_code=303)
 
 
 @app.get("/auth/logout")
@@ -1082,7 +1126,8 @@ def filter_view(request: Request, uid: int | None = None):
 
 @app.post("/filter")
 def filter_update(
-    uid: int = Form(...),
+    request: Request,
+    uid: int | None = Form(None),
     cities: list[str] = Form([]),
     price_min: str = Form(""),
     price_max: str = Form(""),
@@ -1107,9 +1152,13 @@ def filter_update(
     flexible_match: str | None = Form(None),
 ):
     with get_session() as session:
-        user = _get_user_by_uid(session, uid)
+        # session-first (like every other page), uid as the low-trust fallback for a bot-deep-link
+        # visitor with no real login yet — 2026-09-05 fix: this used to require uid unconditionally
+        # (Form(...)), which a session-only Google-standalone account (no telegram_user_id at all)
+        # could never satisfy, breaking their own filter form with a 422 on every save.
+        user = _resolve_user(request, session, uid)
         if user is None or user.filter is None:
-            return RedirectResponse(f"/filter?uid={uid}", status_code=303)
+            return RedirectResponse(f"/filter{'?uid=' + str(uid) if uid else ''}", status_code=303)
 
         f: Filter = user.filter
         f.cities = [c for c in cities if c in CITIES]
@@ -1136,4 +1185,4 @@ def filter_update(
         f.flexible_match = flexible_match is not None
         session.commit()
 
-    return RedirectResponse(f"/filter?uid={uid}", status_code=303)
+    return RedirectResponse(f"/filter{'?uid=' + str(uid) if uid else ''}", status_code=303)

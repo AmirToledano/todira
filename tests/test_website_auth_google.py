@@ -63,8 +63,12 @@ class _FakeSession:
 
     def add(self, obj):
         # Backs generate_google_link_token's PendingGoogleLink insert, called whenever the
-        # callback ends up on the "we don't recognize this account" path.
+        # callback ends up on the "we don't recognize this account" path — also backs
+        # auth_google_create_account's User/Filter inserts.
         self.added.append(obj)
+
+    def flush(self):
+        pass
 
     def get(self, model, pk):
         return self._users_by_pk.get(pk)
@@ -203,9 +207,10 @@ def test_callback_links_google_to_the_uid_being_viewed(client):
 def test_callback_unlinked_google_account_with_no_uid_shows_pending_link_page(client):
     """2026-09-05 fix: this used to bounce straight to the bot with no way back — a real dead
     end, since the plain header "Sign in with Google" button (shown whenever there's no uid in
-    the URL) could then never succeed for a first-time linker. Now it stashes the google_sub in
-    the session and explains what to do instead; see test_resolve_user_completes_pending_google_
-    link_once_a_real_uid_shows_up below for the other half of the fix."""
+    the URL) could then never succeed for a first-time linker. Now it offers BOTH real options:
+    create a standalone account right here (test_create_account_* below) or link to an existing
+    Telegram/WhatsApp account via the bot — see test_resolve_user_completes_pending_google_
+    link_once_a_real_uid_shows_up below for the other half of the second option."""
     state = _do_start(client)  # no uid — nothing to link to right now
     fake_session = _FakeSession(scalar_results=[None])
 
@@ -222,11 +227,12 @@ def test_callback_unlinked_google_account_with_no_uid_shows_pending_link_page(cl
         resp = client.get("/auth/google/callback", params={"code": "abc", "state": state})
 
     assert resp.status_code == 200
-    assert "פתח את הבוט" in resp.text
     assert client.cookies.get("session") is not None
-    # 2026-09-05: the bot link now carries a google_link_token (dorin_common/google_link.py) so
-    # the link completes on /start regardless of which browser/app the visitor ends up in — not
-    # just the plain, no-payload bot link this page used to show.
+    # 2026-09-05: standalone signup, right here on the website — no bot required at all.
+    assert 'action="/auth/google/create-account"' in resp.text
+    # ...and the "I already have an account" path is still offered, now with a google_link_token
+    # (dorin_common/google_link.py) so THAT link completes on /start regardless of which
+    # browser/app the visitor ends up in — not just the plain, no-payload bot link this used to be.
     assert 'href="https://t.me/AmirDirotBot?start=gl_' in resp.text
     assert len(fake_session.added) == 1
     assert fake_session.added[0].google_sub == "google-sub-unknown"
@@ -361,3 +367,95 @@ def test_callback_token_exchange_failure_returns_400(client):
         resp = client.get("/auth/google/callback", params={"code": "bad-code", "state": state})
 
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# /auth/google/create-account — 2026-09-05: the website as a first-class, standalone way in, not
+# just a link target for an existing Telegram/WhatsApp account. See google_pending.html's other
+# button and auth_google_callback's own comment on why both options exist now.
+# ---------------------------------------------------------------------------
+
+
+def test_create_account_makes_a_standalone_user_with_a_blank_filter_and_logs_in():
+    from starlette.requests import Request as StarletteRequest
+
+    fake_session = _FakeSession(scalar_results=[None])  # no existing user claims this google_sub
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/google/create-account",
+        "session": {"pending_google_sub": "google-sub-new", "pending_google_first_name": "Amir"},
+        "query_string": b"",
+        "headers": [],
+        "app": website_main.app,
+    }
+    request = StarletteRequest(scope)
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        resp = website_main.auth_google_create_account(request, next="/apartments")
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/apartments"
+    assert len(fake_session.added) == 2
+    new_user, new_filter = fake_session.added
+    assert new_user.google_sub == "google-sub-new"
+    assert new_user.first_name == "Amir"
+    assert new_user.telegram_user_id is None
+    assert new_user.whatsapp_phone_number is None
+    assert new_filter.user_id == new_user.id  # both None under the fake session — real FK wiring
+    assert request.session.get("user_id") == new_user.id
+    assert "pending_google_sub" not in request.session
+    assert "pending_google_first_name" not in request.session
+
+
+def test_create_account_rejects_a_request_with_no_pending_google_sub():
+    from starlette.requests import Request as StarletteRequest
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/google/create-account",
+        "session": {},
+        "query_string": b"",
+        "headers": [],
+        "app": website_main.app,
+    }
+    resp = website_main.auth_google_create_account(StarletteRequest(scope))
+    assert resp.status_code == 400
+
+
+def test_create_account_logs_into_an_existing_user_instead_of_duplicating_on_a_double_submit():
+    """A double click / back-button resubmit after the account was already created — the DB's own
+    unique constraint on google_sub is the real backstop, but this path should just log the
+    visitor into the account that already exists rather than erroring or duplicating."""
+    from starlette.requests import Request as StarletteRequest
+
+    existing = _FakeUser(id=42, google_sub="google-sub-existing")
+    fake_session = _FakeSession(scalar_results=[existing])
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/google/create-account",
+        "session": {"pending_google_sub": "google-sub-existing"},
+        "query_string": b"",
+        "headers": [],
+        "app": website_main.app,
+    }
+    request = StarletteRequest(scope)
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        resp = website_main.auth_google_create_account(request, next="/apartments")
+
+    assert resp.status_code == 303
+    assert fake_session.added == []  # no new user/filter created
+    assert request.session.get("user_id") == 42

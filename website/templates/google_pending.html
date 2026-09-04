@@ -1,21 +1,33 @@
 {% extends "base.html" %}
 {% block title %}כמעט שם — טודירה{% endblock %}
 {% block content %}
-<div class="empty-state reveal">
-  <div class="glyph" aria-hidden="true">🔗</div>
-  <p>
-    ההתחברות עם Google הצליחה, אבל זו הפעם הראשונה שאנחנו רואים את החשבון הזה — צריך לחבר אותו
-    לחשבון הקיים שלך (טלגרם/ווטסאפ) קודם.
+<div class="login-card reveal">
+  <div class="login-head">
+    <span class="crown" aria-hidden="true">🔗</span>
+    <h1>ההתחברות עם Google הצליחה</h1>
+    <p>זו הפעם הראשונה שאנחנו רואים את החשבון הזה — איך תרצה/י להמשיך?</p>
+  </div>
+
+  <form method="post" action="/auth/google/create-account">
+    <button type="submit" class="btn gold block">✨ זה חשבון חדש — תתחיל/י ישר כאן באתר</button>
+  </form>
+  <p class="login-hint" style="margin-top:0">
+    ניצור לך חשבון וסינון פתוח שמתאים לכל הדירות — תוכל/י לצמצם אותו בכל רגע ב"סינון". טלגרם
+    וווטסאפ יישארו זמינים תמיד כאופציה נוספת לקבלת התראות, בלי חובה להשתמש בהם.
   </p>
-  <p class="field-hint">
+
+  <div class="login-divider"><span>או</span></div>
+
+  <p class="field-hint" style="margin-top:0">כבר יש לך חשבון דרך טלגרם או ווטסאפ?</p>
+  <a class="btn outline block" href="https://t.me/AmirDirotBot{{ '?start=' ~ google_link_token if google_link_token else '' }}" target="_blank">
+    🔗 קשר לחשבון הקיים שלי
+  </a>
+  <p class="login-hint">
     {% if google_link_token %}
-    פתח/י את הבוט בטלגרם ושלח/י /start (הכפתור למטה) — החיבור יושלם מיד שם, בלי קשר לאיזה דפדפן
-    תשתמש/י בהמשך.
+    שלח/י /start בבוט — החיבור יושלם מיד שם, בלי קשר לאיזה דפדפן תשתמש/י בהמשך.
     {% else %}
-    פתח/י את הבוט בטלגרם פעם אחת (הכפתור למטה) — כשתחזור/י לאתר מאותו דפדפן, נשלים את החיבור
-    אוטומטית ותישאר/י מחובר/ת.
+    פתח/י את הבוט פעם אחת — כשתחזור/י לאתר מאותו דפדפן, נשלים את החיבור אוטומטית.
     {% endif %}
   </p>
-  <a class="btn gold" href="https://t.me/AmirDirotBot{{ '?start=' ~ google_link_token if google_link_token else '' }}" target="_blank">פתח את הבוט</a>
 </div>
 {% endblock %}
