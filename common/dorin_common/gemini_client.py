@@ -94,6 +94,20 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=_SCHEMA,
+                # 2026-09-05 fix: found live via the WhatsApp webhook — a real onboarding reply
+                # took ~1 minute (WhatsApp users perceive that as "the bot is broken"). Root
+                # cause confirmed from the SDK's own field docs: HttpOptions.retry_options
+                # defaults to up to 5 attempts on 408/429/5xx with exponential backoff up to a
+                # 60s max delay — exactly what a Gemini "high demand" 503 triggers — and this
+                # call never overrode it, so it silently applied. This isn't a bug in our code,
+                # just an unsuitable default for a synchronous chat reply the user is actively
+                # waiting on. types.HttpRetryOptions isn't constructible directly in the
+                # installed SDK version (not exported / rejects a plain dict here), so bounding
+                # just the per-call timeout is the safe fix available: a real outage now fails
+                # within ~10s and falls through to the existing "technical hiccup, try again"
+                # message (below) instead of leaving the user staring at an unanswered chat for
+                # up to a minute. Revisit if a future SDK version exposes retry tuning cleanly.
+                http_options=types.HttpOptions(timeout=10_000),
             ),
         )
         result = json.loads(response.text)
