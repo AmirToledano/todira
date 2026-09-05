@@ -282,6 +282,44 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "הצהרת הנגישות שלנו", "en": "Our accessibility statement", "ru": "Наше заявление о доступности",
         "fr": "Notre déclaration d'accessibilité", "ar": "بيان إمكانية الوصول لدينا",
     },
+    # 2026-09-06: matched against a competitor's (Takbull) own accessibility toolbar, screenshot by
+    # the owner — these 9 fill the real gaps between what we had and what theirs offers.
+    "a11y.line_height": {
+        "he": "מרווח שורות", "en": "Line spacing", "ru": "Межстрочный интервал",
+        "fr": "Interligne", "ar": "تباعد الأسطر",
+    },
+    "a11y.letter_spacing": {
+        "he": "מרווח אותיות", "en": "Letter spacing", "ru": "Межбуквенный интервал",
+        "fr": "Espacement des lettres", "ar": "تباعد الأحرف",
+    },
+    "a11y.readable_font": {
+        "he": "גופן קריא", "en": "Readable font", "ru": "Читаемый шрифт",
+        "fr": "Police lisible", "ar": "خط سهل القراءة",
+    },
+    "a11y.emphasize_headings": {
+        "he": "הדגשת כותרות", "en": "Emphasize headings", "ru": "Выделить заголовки",
+        "fr": "Souligner les titres", "ar": "تمييز العناوين",
+    },
+    "a11y.invert_colors": {
+        "he": "היפוך צבעים", "en": "Invert colors", "ru": "Инвертировать цвета",
+        "fr": "Inverser les couleurs", "ar": "عكس الألوان",
+    },
+    "a11y.big_cursor": {
+        "he": "סמן גדול", "en": "Big cursor", "ru": "Крупный курсор",
+        "fr": "Grand curseur", "ar": "مؤشر كبير",
+    },
+    "a11y.reading_mask": {
+        "he": "מסכת קריאה", "en": "Reading mask", "ru": "Маска для чтения",
+        "fr": "Masque de lecture", "ar": "قناع القراءة",
+    },
+    "a11y.justify_text": {
+        "he": "יישור טקסט", "en": "Justify text", "ru": "Выровнять текст по ширине",
+        "fr": "Justifier le texte", "ar": "محاذاة النص",
+    },
+    "a11y.keyboard_nav": {
+        "he": "ניווט מקלדת", "en": "Keyboard navigation", "ru": "Навигация с клавиатуры",
+        "fr": "Navigation au clavier", "ar": "التنقل بلوحة المفاتيح",
+    },
     # ---------- home page ----------
     "home.eyebrow": {
         "he": "👑 דירות בזמן אמת · דרך טלגרם",
