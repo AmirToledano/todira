@@ -49,10 +49,10 @@ APP_SECRET_ENV_VAR = "WHATSAPP_APP_SECRET"
 # instead of just saying editing isn't available (2026-09-06 fix, see that reply's own comment).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org").rstrip("/")
 
-# Same emoji base.html's own nav bar already uses for the filter page (🎛️ {{ t('nav.filter') }}) —
+# Same emoji base.html's own nav bar uses for the filter page (⚙️ {{ t('nav.filter') }}) —
 # 2026-09-06: a real tappable button (whatsapp_client.send_cta_url_message), not a bare link in the
 # message text, matching how the reference competitor bot renders its own "עדכון סינון ⚙️" prompt.
-_FILTER_EDIT_BUTTON_TEXT = "🎛️ עריכת הסינון"
+_FILTER_EDIT_BUTTON_TEXT = "⚙️ עריכת הסינון"
 
 # 2026-09-06 follow-up: the owner sent a screenshot of the reference competitor bot's own 3-message
 # sequence for this exact moment (a CTA button, then two short explanatory follow-ups) and asked

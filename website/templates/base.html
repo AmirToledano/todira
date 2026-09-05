@@ -74,7 +74,7 @@
         <nav class="site-nav" aria-label="{{ t('a11y.main_nav_label') }}">
           <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">🏠 {{ t('nav.apartments') }}</a>
           <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">❤️ {{ t('nav.liked') }}</a>
-          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">🎛️ {{ t('nav.filter') }}</a>
+          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">⚙️ {{ t('nav.filter') }}</a>
           {% if uid or current_user %}
           <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
           {% endif %}
