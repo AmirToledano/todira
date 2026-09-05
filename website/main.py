@@ -278,11 +278,17 @@ def _resolve_user(request: Request, session, uid: int | None, wid: str | None = 
     exists in THIS session, so a plain uid visit with no prior Google attempt is completely
     unaffected — still exactly as low-trust/ephemeral as the module docstring describes.
 
-    `wid` (2026-09-06, WhatsApp filter-edit link): the exact same low-trust pattern as ?uid=, just
-    keyed on whatsapp_phone_number instead of telegram_user_id — a WhatsApp-only account has no
-    telegram_user_id at all, so it could never resolve via uid. Checked after uid so an existing
-    session/uid match always wins; no pending-Google-link completion here since that flow is
-    specifically about a Telegram/uid identity, not WhatsApp."""
+    `wid` (2026-09-06, WhatsApp filter-edit link): keyed on whatsapp_phone_number instead of
+    telegram_user_id — a WhatsApp-only account has no telegram_user_id at all, so it could never
+    resolve via uid. Checked after uid so an existing session/uid match always wins. UNLIKE uid,
+    a successful wid match establishes a real signed session right here (not just for this one
+    request) — a WhatsApp-only account has no stronger auth available at all (no password, no
+    Google link, no Telegram widget), so the magic link IS its login, and the owner specifically
+    asked for the competitor-app behavior of staying signed in across every page once you land
+    from one, not just the single /filter page the link happened to point at. This is also
+    strictly safer than the alternative of threading ?wid=<phone number> through every link on
+    the site (browser history, referrers, screenshots) the way ?uid= already does for a plain
+    numeric Telegram id."""
     session_user_id = request.session.get("user_id")
     if session_user_id is not None:
         user = session.get(User, session_user_id)
@@ -299,7 +305,10 @@ def _resolve_user(request: Request, session, uid: int | None, wid: str | None = 
                 request.session["user_id"] = user.id
         return user
     if wid:
-        return _get_user_by_wid(session, wid)
+        user = _get_user_by_wid(session, wid)
+        if user is not None:
+            request.session["user_id"] = user.id
+        return user
     return None
 
 

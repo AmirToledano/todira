@@ -56,15 +56,20 @@ class _FakeUser:
         self.id = id
         self.telegram_user_id = telegram_user_id
         self.whatsapp_phone_number = whatsapp_phone_number
+        self.first_name = "Amir"
+        self.telegram_username = None
         self.filter = _FakeFilter()
 
 
 class _FakeSession:
     """`scalar()` returns queued results in call order — same convention as
-    test_website_auth_google.py's own _FakeSession."""
+    test_website_auth_google.py's own _FakeSession. `users_by_pk` backs `session.get(User, pk)`,
+    which is what a SUBSEQUENT request (already carrying the session cookie a successful wid
+    resolution establishes) resolves through instead of ever calling scalar() again."""
 
-    def __init__(self, scalar_results):
+    def __init__(self, scalar_results, users_by_pk: dict | None = None):
         self._scalar_results = list(scalar_results)
+        self._users_by_pk = users_by_pk or {}
         self.call_count = 0
         self.committed = False
 
@@ -76,7 +81,19 @@ class _FakeSession:
         self.committed = True
 
     def get(self, model, pk):
-        return None
+        return self._users_by_pk.get(pk)
+
+    def execute(self, stmt):
+        # Backs base.html's header lookup (_current_user_summary) once a session is established —
+        # same simplified single-user approach as test_website_auth_google.py's own _FakeSession.
+        class _Result:
+            def __init__(self, row):
+                self._row = row
+
+            def first(self):
+                return self._row
+
+        return _Result(next(iter(self._users_by_pk.values()), None))
 
 
 def _client(session):
@@ -156,3 +173,23 @@ def test_no_uid_or_wid_and_no_session_shows_need_uid_page():
 
     assert resp.status_code == 200
     assert session.call_count == 0  # _resolve_user returns None without ever querying
+
+
+def test_a_wid_resolution_establishes_a_session_for_every_later_page(whatsapp_only_user):
+    """2026-09-06 follow-up, after the owner pointed at how the reference competitor app keeps you
+    signed in on EVERY page once you land from its own magic link, not just the one page it
+    happened to point at. A wid match now sets request.session["user_id"] — proven here by a
+    second request that carries NO identity in its URL at all still resolving the same user,
+    purely from the cookie the first request's Set-Cookie response header established."""
+    session = _FakeSession(
+        scalar_results=[whatsapp_only_user], users_by_pk={whatsapp_only_user.id: whatsapp_only_user}
+    )
+    for client in _client(session):
+        first = client.get("/filter?wid=972501234567")
+        assert first.status_code == 200
+        assert "set-cookie" in first.headers
+
+        second = client.get("/filter")  # no uid, no wid — only the session cookie now
+        assert second.status_code == 200
+
+    assert session.call_count == 1  # the second request never touched scalar() at all
