@@ -329,11 +329,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "home.stat_ai_value": {"he": "AI", "en": "AI", "ru": "ИИ", "fr": "IA", "ar": "ذكاء اصطناعي"},
     "home.stat_ai_label": {
-        "he": "מבין עברית חופשית",
-        "en": "Understands free-form Hebrew",
-        "ru": "Понимает свободный иврит",
-        "fr": "Comprend l'hébreu en langage libre",
-        "ar": "يفهم العبرية الحرة",
+        "he": "מבין שפה חופשית",
+        "en": "Understands free-form text",
+        "ru": "Понимает свободный текст",
+        "fr": "Comprend le langage libre",
+        "ar": "يفهم النص الحر",
     },
     "home.stat_uptime_value": {"he": "24/7", "en": "24/7", "ru": "24/7", "fr": "24/7", "ar": "24/7"},
     "home.stat_uptime_label": {
@@ -346,20 +346,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Période d'essai", "ar": "فترة تجريبية",
     },
     "home.momentum_1_value": {
-        "he": "גדל כל יום", "en": "Growing daily", "ru": "Растёт каждый день",
-        "fr": "En croissance", "ar": "ينمو كل يوم",
+        "he": "הקהילה שלנו", "en": "Our community", "ru": "Наше сообщество",
+        "fr": "Notre communauté", "ar": "مجتمعنا",
     },
     "home.momentum_1_label": {
-        "he": "קהילת המשתמשים שלנו", "en": "Our user community", "ru": "Наше сообщество пользователей",
-        "fr": "Notre communauté d'utilisateurs", "ar": "مجتمع مستخدمينا",
+        "he": "גדלה כל יום", "en": "Growing every day", "ru": "Растёт каждый день",
+        "fr": "En croissance chaque jour", "ar": "ينمو كل يوم",
     },
     "home.momentum_2_value": {
-        "he": "כמה פעמים ביום", "en": "Several times a day", "ru": "Несколько раз в день",
-        "fr": "Plusieurs fois par jour", "ar": "عدة مرات في اليوم",
+        "he": "ההתראה שלך", "en": "Your alert", "ru": "Ваше уведомление",
+        "fr": "Votre alerte", "ar": "تنبيهك",
     },
     "home.momentum_2_label": {
-        "he": "מהפרסום ועד ההתראה אצלך", "en": "From listing to your alert", "ru": "От публикации до уведомления",
-        "fr": "De l'annonce à votre alerte", "ar": "من النشر إلى تنبيهك",
+        "he": "ישר לטלגרם, ברגע שיש התאמה", "en": "Straight to Telegram, the moment there's a match",
+        "ru": "Прямо в Telegram, как только есть совпадение",
+        "fr": "Directement sur Telegram, dès qu'il y a une correspondance",
+        "ar": "مباشرة إلى تيليجرام، بمجرد وجود تطابق",
     },
     "home.momentum_3_value": {
         "he": "כל הארץ", "en": "Nationwide", "ru": "По всей стране",
@@ -815,8 +817,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- filter page ----------
     "filter.title": {
-        "he": "🎛️ הסינון שלי", "en": "🎛️ My filter", "ru": "🎛️ Мой фильтр",
-        "fr": "🎛️ Mon filtre", "ar": "🎛️ فلتري",
+        "he": "⚙️ הסינון שלי", "en": "⚙️ My filter", "ru": "⚙️ Мой фильтр",
+        "fr": "⚙️ Mon filtre", "ar": "⚙️ فلتري",
     },
     "filter.subtitle": {
         "he": "עריכה מלאה כאן. לעריכה של שכונות/רחובות ספציפיים ותאריכי כניסה — ב-/filter בטלגרם",

@@ -38,7 +38,7 @@ PERSISTENCE_PATH = os.environ.get("BOT_PERSISTENCE_PATH", "/data/bot_persistence
 # menu looked like in the screenshots.
 BOT_COMMANDS = [
     BotCommand("start", "👋 היי טודירה"),
-    BotCommand("filter", "🎯 החיפוש שלי"),
+    BotCommand("filter", "⚙️ החיפוש שלי"),
     BotCommand("apartments", "👀 כל הדירות"),
     BotCommand("liked", "❤️ דירות ששמרתי"),
     BotCommand("hidden", "🙈 דירות שהסתרתי"),
