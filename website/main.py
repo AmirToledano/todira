@@ -336,7 +336,12 @@ def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
 
 @app.get("/")
 def home(request: Request):
-    return _render(request, "home.html", {})
+    """2026-09-06: hero/footer CTAs now also offer WhatsApp (when WHATSAPP_PUBLIC_NUMBER is
+    configured) alongside the original Telegram-only button — the product grew a WhatsApp bot and
+    direct website browsing since this page was first written, and a Telegram-only funnel no
+    longer reflects the real entry points, found live by the owner comparing the page to the
+    current product."""
+    return _render(request, "home.html", {"whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER})
 
 
 @app.get("/login")

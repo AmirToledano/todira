@@ -9,6 +9,9 @@
   <p class="lead">{{ t('home.lead') }}</p>
   <div class="cta-row">
     <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">{{ t('home.cta_open_bot') }}</a>
+    {% if whatsapp_public_number %}
+    <a class="btn whatsapp" href="https://wa.me/{{ whatsapp_public_number }}?text={{ 'היי! אני רוצה להתחיל לחפש דירה 🏠' | urlencode }}" target="_blank">{{ t('home.cta_open_whatsapp') }}</a>
+    {% endif %}
     <a class="btn outline" href="#how">{{ t('home.cta_how') }}</a>
   </div>
   <div class="fresh-row reveal">
@@ -125,7 +128,12 @@
 <section class="footer-cta reveal">
   <h2>{{ t('home.footer_cta_title') }}</h2>
   <p>{{ t('home.footer_cta_body') }}</p>
-  <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">{{ t('home.footer_cta_btn') }}</a>
+  <div class="cta-row">
+    <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">{{ t('home.footer_cta_btn') }}</a>
+    {% if whatsapp_public_number %}
+    <a class="btn whatsapp" href="https://wa.me/{{ whatsapp_public_number }}?text={{ 'היי! אני רוצה להתחיל לחפש דירה 🏠' | urlencode }}" target="_blank">{{ t('home.footer_cta_whatsapp_btn') }}</a>
+    {% endif %}
+  </div>
 </section>
 
 {% endblock %}
