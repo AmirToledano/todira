@@ -3928,8 +3928,29 @@ comment in `website-deployment.yaml`. This is the last piece needed to activate 
 WhatsApp-conditional UI already built and merged inert this session: the homepage's two CTAs
 (2026-09-06 earlier today), `/login`'s three-button screen, and `/account`'s channel-linking card.
 
-Still pending, deliberately not done from here: an actual end-to-end test of a real user message
-to the new number reaching *our own* webhook handler (as opposed to Meta's own built-in test-
-message tool, which only proves Meta's side works) — asked the owner to send one real WhatsApp
-message to 052-498-3967 from his personal phone once this deploy is live, to confirm the bot
-itself (not just Meta's infrastructure) responds on the new number for the first time.
+**Confirmed working end-to-end, same session**: asked the owner to send a real WhatsApp message
+to 052-498-3967 from his own personal phone (not Meta's built-in test tool) to prove the bot
+itself — not just Meta's infrastructure — responds on the new production number. First attempt
+("Hello! I am interested in learning more about your business.") got no reply at all; the only
+thing that landed in that chat was Meta's own canned test-tool message, arriving ~10 minutes late.
+Suspected cause: the WhatsApp Manager page had a separate "Subscribe webhooks" action next to
+"Register" under the phone number's row, distinct from the app-level webhook URL config done when
+the bot was first built — webhook delivery in the Cloud API is scoped per WABA, and this
+registration created a NEW WABA ("Your WhatsApp Business account"), separate from the WABA the
+original test number lived under. Told the owner to find and click "Subscribe webhooks" for the
+new WABA. His very next message ("שלום") got a real, correct, Hebrew AI-generated reply about
+editing the filter (matching bot/handlers/onboarding.py's own conversational style) — so it's
+now confirmed live end-to-end. Whether "Subscribe webhooks" was the actual fix or the first
+message simply hadn't finished propagating yet through Meta's side is not conclusively verified
+(no repeat of the original failure to isolate it) — but the outcome itself, a real inbound message
+correctly answered by our own bot on the new number, is confirmed directly by the owner's own
+screenshot, not inferred.
+
+The Meta wizard's own "Send message" checkbox under Step 2 never turned green despite this working
+completely — treated as a cosmetic UI quirk on Meta's side, not a real blocker: a live, correct
+conversation is stronger evidence than a checkbox.
+
+WhatsApp Coexistence (owner keeping the option to also chat manually from the WhatsApp Business
+App on this same number, discussed earlier this session) has NOT been set up — this number is
+Cloud-API-only for now. Revisit if the owner asks to also message customers manually from his own
+phone on this number.
