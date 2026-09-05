@@ -26,6 +26,12 @@
   {% if user.filter.price_min or user.filter.price_max %}
     <span class="chip">💰 {{ user.filter.price_min or 0 }}–{{ user.filter.price_max or '∞' }} ₪</span>
   {% endif %}
+  <form method="post" action="/apartments/no-brokers" style="display:inline">
+    {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+    <button type="submit" class="chip chip-toggle {{ 'active' if user.filter.no_brokers else '' }}">
+      {{ t('apartments.no_brokers_on') if user.filter.no_brokers else t('apartments.no_brokers_off') }}
+    </button>
+  </form>
   <a class="btn outline" href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('apartments.edit_filter_btn') }}</a>
 </div>
 {% endif %}

@@ -1,6 +1,29 @@
 {% macro listing_card(l, delay=0) %}
+{% set _next = request.url.path ~ (('?' ~ request.url.query) if request.url.query else '') %}
 <div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover-wrap">
+    <div class="card-reactions">
+      <form method="post" action="/react" class="card-reaction-form">
+        <input type="hidden" name="listing_id" value="{{ l.id }}">
+        <input type="hidden" name="action" value="like">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
+        <input type="hidden" name="next" value="{{ _next }}">
+        <button type="submit" class="card-reaction-btn {{ 'active' if l.id in (liked_ids | default([])) else '' }}" title="{{ t('card.like_btn') }}" aria-label="{{ t('card.like_btn') }}">
+          {{ '💔' if l.id in (liked_ids | default([])) else '❤️' }}
+        </button>
+      </form>
+      <form method="post" action="/react" class="card-reaction-form">
+        <input type="hidden" name="listing_id" value="{{ l.id }}">
+        <input type="hidden" name="action" value="hide">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
+        <input type="hidden" name="next" value="{{ _next }}">
+        <button type="submit" class="card-reaction-btn {{ 'active' if l.id in (hidden_ids | default([])) else '' }}" title="{{ t('card.hide_btn') if l.id not in (hidden_ids | default([])) else t('card.unhide_btn') }}" aria-label="{{ t('card.hide_btn') if l.id not in (hidden_ids | default([])) else t('card.unhide_btn') }}">
+          {{ '👀' if l.id in (hidden_ids | default([])) else '🙈' }}
+        </button>
+      </form>
+    </div>
     <div class="listing-cover">
       {% if l.image_urls %}
         {% for img in l.image_urls[:8] %}
