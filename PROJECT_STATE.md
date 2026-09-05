@@ -3144,3 +3144,36 @@ locally in the exact environment this fix was made in (no CI round-trip needed t
 against the ACTUAL installed dependency version before assuming an SDK's documented-sounding API
 shape is real; `types.HttpRetryOptions(...)` looked entirely reasonable from the field annotation
 alone and was still wrong).
+
+## 2026-09-05 (later, cloud session): syncing back up after tonight's local-machine session
+
+The owner ran a separate Claude Code session locally tonight (on the Windows machine at
+`c:\diramir`, see the two entries above this one) while this cloud session was idle, then asked how
+to bring that local work "into the cloud." **The two sessions are entirely separate conversations —
+there is no way to merge chat history between them** — but that doesn't matter, because the actual
+work product (code + this very file) flows through the one shared GitHub repo, not through chat
+state. Confirmed via `git fetch origin` that everything from tonight's local session was already
+sitting on `main`, fully visible from here: `7510b6a` (git-transfer-corruption workaround +
+`set-whatsapp-secret.yaml` discovery + `.claude/settings.local.json` setup), `3ab2df8` (gitignore
+that local settings file), `80595c8` + `fe6d6eb` (the two read-only diagnostic workflows built
+tonight), `3b5ad53` (the Gemini timeout fix above), `53be2db` (the WhatsApp end-to-end fix writeup
+above). This cloud session's own branch (`claude/project-state-update-9qzsco`, last merged as PR
+#135 at `6b5a714`) was reset to start fresh from this new `main` tip so future work here builds on
+top of all of it rather than on the stale pre-#135 base.
+
+**Practical answer for next time this comes up**: work done in ANY Claude Code session — cloud,
+local, phone — becomes visible to every OTHER session the moment it's committed and pushed to
+`origin/main` (or merged via PR). Nothing else is needed to "transfer" it. The one thing that does
+NOT carry over is the conversation itself (this session has no memory of what was said on the
+Windows machine) — but `PROJECT_STATE.md` is exactly the deliberate workaround for that: every
+session is expected to read it first and write to it before finishing, precisely so a fresh session
+with zero chat memory can still pick up full context from the repo alone.
+
+**Also resolved while syncing**: two long-idle branches turned up in the fetch output looking like
+they might be new tonight-created work needing review — `claude/diagnose-contact-notify` and
+`claude/diagnose-scraper-credits`. Checked: both sit on commits from the PR #50–#54 era (WhatsApp
+Business API integration, multi-city Yad2 diagnostics) — far behind current `main` (diffing either
+against `main` shows ~13,000 lines that would be *deleted* if merged, i.e. they'd revert most of the
+current codebase). These are stale leftover branches from long before this session's work, not
+anything from tonight — no action needed; safe to delete whenever convenient, not touched here since
+deleting branches wasn't asked for.
