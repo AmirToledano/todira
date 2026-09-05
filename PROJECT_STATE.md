@@ -3954,3 +3954,21 @@ WhatsApp Coexistence (owner keeping the option to also chat manually from the Wh
 App on this same number, discussed earlier this session) has NOT been set up — this number is
 Cloud-API-only for now. Revisit if the owner asks to also message customers manually from his own
 phone on this number.
+
+**Status as of right now: the public WhatsApp number (052-498-3967 / 972524983967) is fully live,
+verified with Meta, and confirmed working end-to-end** — registered, access token issued, payment
+added, `WHATSAPP_PUBLIC_NUMBER` deployed, and a real inbound message answered correctly by the
+bot's own Hebrew onboarding flow (all above). Nothing about the number itself is still pending.
+
+One cosmetic gap, being worked on next: chats show the raw phone number in the header/chat list
+instead of the "טודירה" display name — per Meta's own docs (WebSearch-verified, not guessed), this
+is normal for a brand-new number and resolves once **Step 3: Business Verification** (a separate,
+optional-but-recommended step from Step 2's production setup, 2–10 business day Meta review) is
+approved. Owner is now on that step's document-upload screen. Since he's an individual/sole
+proprietor (עוסק פטור, not an incorporated company), Meta's default document list (Certificate of
+Incorporation, Business License, etc.) is aimed at companies — the realistic equivalent for his
+case is Israel's אישור עוסק פטור/ניהול פנקסים from רשות המסים, though the exact accepted list is
+whatever Meta's own form shows once Israel is selected as the business location (verify against
+that live screen rather than this note, since document requirements are set by Meta and vary by
+country). This step does not block anything the bot already does — it only affects how the chat
+header looks and unlocks higher messaging limits.
