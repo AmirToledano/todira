@@ -54,6 +54,29 @@ WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org").rstrip
 # message text, matching how the reference competitor bot renders its own "עדכון סינון ⚙️" prompt.
 _FILTER_EDIT_BUTTON_TEXT = "🎛️ עריכת הסינון"
 
+# 2026-09-06 follow-up: the owner sent a screenshot of the reference competitor bot's own 3-message
+# sequence for this exact moment (a CTA button, then two short explanatory follow-ups) and asked
+# for the same flow, one to one — these two follow-up lines are copied verbatim from that
+# screenshot; the fields they name (price, cities, parking/elevator/safe room) are a real match for
+# Todira's own filter fields, not just borrowed wording that happens not to fit.
+_FILTER_EDIT_INTRO_TEXT = "כדי לערוך את הסינון, הכי פשוט להיכנס ישירות לדף הסינון שלנו:"
+_FILTER_EDIT_FOLLOWUP_1 = (
+    "שם תוכל לשנות בקלות את המחיר, להוסיף או להסיר ערים ושכונות, ולבחור העדפות כמו חניה, "
+    "מעלית, או ממ\"ד. ברגע שתשמור שם את השינויים, אני אעדכן את ההתראות שלך בהתאם! ✨🏠"
+)
+_FILTER_EDIT_FOLLOWUP_2 = "צריך עזרה עם משהו ספציפי בסינון? 😊"
+
+
+def _send_filter_edit_prompt(wa_id: str) -> None:
+    """The CTA button + its two follow-up messages, in one place since both call sites below (the
+    "you already have a filter" reply and the registration confirmation) end with the exact same
+    prompt to go edit it."""
+    whatsapp_client.send_cta_url_message(
+        wa_id, _FILTER_EDIT_INTRO_TEXT, _FILTER_EDIT_BUTTON_TEXT, f"{WEBSITE_URL}/filter?wid={wa_id}"
+    )
+    whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_1)
+    whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_2)
+
 # Meta redelivers a webhook it didn't get a prompt 200 for — and used to, here: the whole
 # onboarding turn (DB roundtrip + a Gemini call that can legitimately take up to the 10s timeout
 # in dorin_common/gemini_client.py, longer under Gemini's own retries before that fix) used to run
@@ -172,12 +195,7 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             # pattern used everywhere else — same low-trust model, keyed on whatsapp_phone_number
             # instead of telegram_user_id, so this link opens straight to their own filter with no
             # login step (matches the "magic link" pattern the owner asked to build).
-            whatsapp_client.send_cta_url_message(
-                wa_id,
-                "כבר יש לך פילטר רשום אצלנו — אני אמשיך לחפש ולעדכן ברגע שתעלה דירה מתאימה.",
-                _FILTER_EDIT_BUTTON_TEXT,
-                f"{WEBSITE_URL}/filter?wid={wa_id}",
-            )
+            _send_filter_edit_prompt(wa_id)
             return
 
         state = user.pending_onboarding_state or dict(_EMPTY_ONBOARDING_STATE)
@@ -215,12 +233,10 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         user.pending_onboarding_state = None
         session.commit()
 
-        whatsapp_client.send_cta_url_message(
-            wa_id,
-            "מעולה, נרשמת! אני אתריע ברגע שתעלה דירה מתאימה 🏠",
-            _FILTER_EDIT_BUTTON_TEXT,
-            f"{WEBSITE_URL}/filter?wid={wa_id}",
+        whatsapp_client.send_text_message(
+            wa_id, "מעולה, נרשמת! אני אתריע ברגע שתעלה דירה מתאימה 🏠"
         )
+        _send_filter_edit_prompt(wa_id)
 
 
 def _process_payload_sync(payload: dict) -> None:
