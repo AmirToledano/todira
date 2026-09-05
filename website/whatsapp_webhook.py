@@ -49,6 +49,11 @@ APP_SECRET_ENV_VAR = "WHATSAPP_APP_SECRET"
 # instead of just saying editing isn't available (2026-09-06 fix, see that reply's own comment).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org").rstrip("/")
 
+# Same emoji base.html's own nav bar already uses for the filter page (🎛️ {{ t('nav.filter') }}) —
+# 2026-09-06: a real tappable button (whatsapp_client.send_cta_url_message), not a bare link in the
+# message text, matching how the reference competitor bot renders its own "עדכון סינון ⚙️" prompt.
+_FILTER_EDIT_BUTTON_TEXT = "🎛️ עריכת הסינון"
+
 # Meta redelivers a webhook it didn't get a prompt 200 for — and used to, here: the whole
 # onboarding turn (DB roundtrip + a Gemini call that can legitimately take up to the 10s timeout
 # in dorin_common/gemini_client.py, longer under Gemini's own retries before that fix) used to run
@@ -167,10 +172,11 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             # pattern used everywhere else — same low-trust model, keyed on whatsapp_phone_number
             # instead of telegram_user_id, so this link opens straight to their own filter with no
             # login step (matches the "magic link" pattern the owner asked to build).
-            whatsapp_client.send_text_message(
+            whatsapp_client.send_cta_url_message(
                 wa_id,
-                "כבר יש לך פילטר רשום אצלנו — אני אמשיך לחפש ולעדכן ברגע שתעלה דירה מתאימה. "
-                f"לעריכת הסינון: {WEBSITE_URL}/filter?wid={wa_id}",
+                "כבר יש לך פילטר רשום אצלנו — אני אמשיך לחפש ולעדכן ברגע שתעלה דירה מתאימה.",
+                _FILTER_EDIT_BUTTON_TEXT,
+                f"{WEBSITE_URL}/filter?wid={wa_id}",
             )
             return
 
@@ -209,10 +215,11 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         user.pending_onboarding_state = None
         session.commit()
 
-        whatsapp_client.send_text_message(
+        whatsapp_client.send_cta_url_message(
             wa_id,
-            "מעולה, נרשמת! אני אתריע ברגע שתעלה דירה מתאימה 🏠\n"
-            f"לשינוי הסינון בכל שלב: {WEBSITE_URL}/filter?wid={wa_id}",
+            "מעולה, נרשמת! אני אתריע ברגע שתעלה דירה מתאימה 🏠",
+            _FILTER_EDIT_BUTTON_TEXT,
+            f"{WEBSITE_URL}/filter?wid={wa_id}",
         )
 
 

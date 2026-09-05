@@ -121,3 +121,65 @@ def test_send_text_message_and_typing_indicator_share_one_http_client(monkeypatc
 
 def test_http_client_is_a_real_persistent_httpx_client():
     assert isinstance(whatsapp_client._http_client, httpx.Client)
+
+
+# --- send_cta_url_message (2026-09-06 tappable-button feature, matches the reference competitor
+# bot's own "עדכון סינון ⚙️" button instead of a bare https:// link sitting in the message text) ---
+
+
+def test_cta_url_returns_false_when_credentials_not_configured(monkeypatch):
+    monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
+    assert (
+        whatsapp_client.send_cta_url_message("972550000000", "body", "כפתור", "https://x.test")
+        is False
+    )
+
+
+def test_cta_url_sends_correct_payload_on_success(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
+
+    class _FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
+        assert (
+            whatsapp_client.send_cta_url_message(
+                "972550000000", "כבר יש לך פילטר", "✏️ עריכת הסינון", "https://todira.duckdns.org/filter?wid=972550000000"
+            )
+            is True
+        )
+
+    call_kwargs = post_mock.call_args.kwargs
+    assert call_kwargs["json"] == {
+        "messaging_product": "whatsapp",
+        "to": "972550000000",
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "body": {"text": "כבר יש לך פילטר"},
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": "✏️ עריכת הסינון",
+                    "url": "https://todira.duckdns.org/filter?wid=972550000000",
+                },
+            },
+        },
+    }
+    assert call_kwargs["headers"]["Authorization"] == "Bearer test-token"
+
+
+def test_cta_url_returns_false_on_http_error(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
+
+    with patch.object(whatsapp_client._http_client, "post", side_effect=httpx.ConnectError("boom")):
+        assert (
+            whatsapp_client.send_cta_url_message("972550000000", "body", "כפתור", "https://x.test")
+            is False
+        )
