@@ -3663,3 +3663,41 @@ the old `⭕` placeholder; a fully-linked account renders exactly 3 `channel-sta
 (one per channel). Full existing suite (login page, preview mode, channel/google linking) re-run
 unchanged and still green — this was a template/CSS-only change, no route logic touched. Full
 suite: 513 passing (up from 511).
+
+## 2026-09-06 (same day, one more fix): the hand-drawn Telegram/WhatsApp icons didn't actually look right
+
+Owner's live screenshot of the shipped icons confirmed exactly the risk flagged in the entry
+above: Telegram's hand-drawn paper-airplane read as "okay, recognizable," but WhatsApp's
+hand-drawn chat-bubble-with-dots looked generic — nothing like the real WhatsApp mark. Asked
+whether there was a way to pull the exact original logo, or whether to just send an image instead.
+
+**Before asking him to send a file, tried one more real source**: `developers.facebook.com`,
+`cdn.jsdelivr.net`, and every other CDN/doc domain tried earlier tonight are blocked by this
+sandbox's egress policy — but `raw.githubusercontent.com` is NOT blocked (confirmed live). Fetched
+the actual Telegram and WhatsApp icon files from the **Simple Icons** project
+(simple-icons/simple-icons on GitHub — a widely-used, actively-maintained open-source SVG set of
+brand marks, exactly built for this "put a real logo on a connect/login button" use case), verified
+by reading the raw SVG content directly rather than reciting path data from memory. Both marks turn
+out to be single self-contained `<path>` shapes (Telegram: a 24×24 circle-with-airplane-cutout in
+one path; WhatsApp: a 24×24 rounded-speech-bubble-with-tail-and-phone-glyph in one path) meant to be
+filled with one solid brand color directly — no separate circle backdrop needed for either, unlike
+the hand-drawn version's approach.
+
+**Swapped in**: `website/templates/account.html`'s two icon badges and `website/templates/
+login.html`'s two button icons now use these verified real paths — brand-colored fill
+(`#229ED9`/`#25D366`) on `account.html`'s standalone badges, white/dark-green fill on `login.html`'s
+already-colored button backgrounds (matching each button's own existing text color for contrast).
+Google's icon is untouched — it was already the real 4-color "G" mark, never part of this problem.
+
+**Lesson, stated plainly**: the earlier entry's reasoning — "a simplified-but-safe glyph beats a
+possibly-garbled memory-recited path" — was the right call given the ACTUAL constraint at the time
+(no verified source, no way to preview-render). But "no way to verify" turned out to be
+over-broad: `raw.githubusercontent.com` was reachable the whole time and nobody tried it before
+shipping the simplified version. Next time a brand asset is needed and the obvious CDN/doc domain
+is blocked, try GitHub raw content for a well-known open-source icon set before falling back to a
+hand-drawn approximation — it was one fetch away.
+
+Verified: existing `tests/test_website_account.py` assertions for the brand-color hex codes
+(`#229ED9`/`#25D366`) still pass unchanged, since both colors carry over into the real paths too —
+confirms the swap didn't silently drop the color contract those tests check. Full suite: 513
+passing (same count — path data swapped, no new test surface).
