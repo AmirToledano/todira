@@ -19,18 +19,18 @@ extending it is a follow-up, not silently promised here.
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import logging
 import os
+from collections import OrderedDict
 
 from dorin_common import cities, gemini_client
 from dorin_common.channel_link import resolve_link_code
 from dorin_common.db import get_session
 from dorin_common.models import Filter, User
 from dorin_common.users import get_or_create_whatsapp_user
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 
@@ -42,6 +42,30 @@ router = APIRouter()
 
 WEBHOOK_VERIFY_TOKEN_ENV_VAR = "WHATSAPP_WEBHOOK_VERIFY_TOKEN"
 APP_SECRET_ENV_VAR = "WHATSAPP_APP_SECRET"
+
+# Meta redelivers a webhook it didn't get a prompt 200 for — and used to, here: the whole
+# onboarding turn (DB roundtrip + a Gemini call that can legitimately take up to the 10s timeout
+# in dorin_common/gemini_client.py, longer under Gemini's own retries before that fix) used to run
+# INSIDE the request/response cycle below, so a slow or high-demand Gemini call meant Meta's own
+# retry fired before we ever answered — producing the exact live symptom the owner reported
+# 2026-09-06: two different bot replies to what looked like one message, and a "technical hiccup"
+# reply that took up to a minute to show up. `_seen_message_ids` is a small in-memory
+# belt-and-suspenders guard (WhatsApp's own docs call delivery "at least once") — fine as
+# process-local state since the website pod is a single replica (charts/todira/templates/
+# website-deployment.yaml, replicas: 1), not correctness-critical infrastructure.
+_MAX_SEEN_MESSAGE_IDS = 500
+_seen_message_ids: "OrderedDict[str, None]" = OrderedDict()
+
+
+def _already_processed(message_id: str | None) -> bool:
+    if not message_id:
+        return False
+    if message_id in _seen_message_ids:
+        return True
+    _seen_message_ids[message_id] = None
+    if len(_seen_message_ids) > _MAX_SEEN_MESSAGE_IDS:
+        _seen_message_ids.popitem(last=False)
+    return False
 
 # Mirrors bot/handlers/onboarding.py's _EMPTY_STATE exactly — both feed the same parser.
 _EMPTY_ONBOARDING_STATE = {
@@ -163,14 +187,12 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         )
 
 
-@router.post("/webhook/whatsapp")
-async def receive_webhook(request: Request) -> Response:
-    body = await request.body()
-    if not _verify_signature(body, request.headers.get("x-hub-signature-256")):
-        return Response(status_code=403)
-
+def _process_payload_sync(payload: dict) -> None:
+    """Runs as a FastAPI BackgroundTask — i.e. AFTER the 200 below has already been sent to Meta.
+    Doing the actual work (DB + Gemini + the WhatsApp send) here instead of inline in
+    receive_webhook is the fix for the slow-reply/duplicate-reply bug: Meta's own retry no longer
+    has anything to race, because the ack no longer waits on any of this."""
     try:
-        payload = await request.json()
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
@@ -185,21 +207,34 @@ async def receive_webhook(request: Request) -> Response:
                     wa_id = message.get("from")
                     if not wa_id:
                         continue
+                    if _already_processed(message.get("id")):
+                        continue
                     if message.get("type") != "text":
-                        await asyncio.to_thread(
-                            whatsapp_client.send_text_message,
+                        whatsapp_client.send_text_message(
                             wa_id,
                             "כרגע אני יודע לקרוא רק הודעות טקסט 🙂 אפשר לתאר במילים מה את/ה מחפש/ת?",
                         )
                         continue
                     text = (message.get("text") or {}).get("body", "")
-                    await asyncio.to_thread(
-                        _handle_incoming_text_sync, wa_id, contacts.get(wa_id), text
-                    )
+                    _handle_incoming_text_sync(wa_id, contacts.get(wa_id), text)
     except Exception:
-        # Meta retries a webhook that doesn't return 200 promptly — always return 200 below
-        # regardless of what happened processing the payload, so a malformed/unexpected shape
-        # can't turn into a retry storm; the exception is still logged for visibility.
         logger.exception("Error processing WhatsApp webhook payload")
 
+
+@router.post("/webhook/whatsapp")
+async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -> Response:
+    body = await request.body()
+    if not _verify_signature(body, request.headers.get("x-hub-signature-256")):
+        return Response(status_code=403)
+
+    try:
+        payload = await request.json()
+    except Exception:
+        logger.exception("Error parsing WhatsApp webhook payload")
+        return Response(status_code=200)
+
+    # Ack Meta FIRST, always — see _process_payload_sync's own comment on why this ordering is
+    # the actual fix, not just a refactor. A malformed/unexpected payload shape is handled inside
+    # the background task itself (logged, never raised) so it can't turn into a retry storm either.
+    background_tasks.add_task(_process_payload_sync, payload)
     return Response(status_code=200)
