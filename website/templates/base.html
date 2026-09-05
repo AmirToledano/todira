@@ -11,7 +11,9 @@
         var prefs = JSON.parse(localStorage.getItem('todira-a11y-prefs')) || {};
         var root = document.documentElement;
         if (prefs.font && prefs.font !== '100') { root.classList.add('a11y-font-' + prefs.font); }
-        ['contrast', 'grayscale', 'underline-links', 'big-targets', 'reading-guide', 'no-motion'].forEach(function (key) {
+        ['contrast', 'grayscale', 'underline-links', 'big-targets', 'reading-guide', 'no-motion',
+         'line-height', 'letter-spacing', 'readable-font', 'emphasize-headings', 'invert-colors',
+         'big-cursor', 'reading-mask', 'justify-text', 'keyboard-nav'].forEach(function (key) {
           if (prefs[key]) { root.classList.add('a11y-' + key); }
         });
       } catch (e) { /* localStorage unavailable — page renders with defaults, no crash */ }
@@ -151,7 +153,16 @@
       <button type="button" class="a11y-toggle-chip" data-a11y-toggle="underline-links">{{ t('a11y.underline_links') }}</button>
       <button type="button" class="a11y-toggle-chip" data-a11y-toggle="big-targets">{{ t('a11y.big_targets') }}</button>
       <button type="button" class="a11y-toggle-chip" data-a11y-toggle="reading-guide">{{ t('a11y.reading_guide') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="reading-mask">{{ t('a11y.reading_mask') }}</button>
       <button type="button" class="a11y-toggle-chip" data-a11y-toggle="no-motion">{{ t('a11y.no_motion') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="line-height">{{ t('a11y.line_height') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="letter-spacing">{{ t('a11y.letter_spacing') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="readable-font">{{ t('a11y.readable_font') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="emphasize-headings">{{ t('a11y.emphasize_headings') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="invert-colors">{{ t('a11y.invert_colors') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="big-cursor">{{ t('a11y.big_cursor') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="justify-text">{{ t('a11y.justify_text') }}</button>
+      <button type="button" class="a11y-toggle-chip" data-a11y-toggle="keyboard-nav">{{ t('a11y.keyboard_nav') }}</button>
       <button type="button" class="a11y-toggle-chip" id="a11y-speak" data-stop-label="{{ t('a11y.stop_reading') }}">{{ t('a11y.read_aloud') }}</button>
       <button type="button" class="a11y-reset" id="a11y-reset-all">{{ t('a11y.reset_all') }}</button>
       <a class="a11y-statement-link" href="/accessibility">{{ t('a11y.statement_link') }}</a>
@@ -210,7 +221,15 @@
       var root = document.documentElement;
       var STORAGE_KEY = 'todira-a11y-prefs';
       var FONT_STEPS = ['100', '112', '125', '137', '150'];
-      var TOGGLE_KEYS = ['contrast', 'grayscale', 'underline-links', 'big-targets', 'reading-guide', 'no-motion'];
+      // 2026-09-06: the last 9 keys were added to match a competitor's (Takbull) own accessibility
+      // toolbar, screenshotted by the owner — see style.css's "toggle effects" section for what
+      // each class actually does (reading-mask gets its own mousemove handler below, same pattern
+      // as the pre-existing reading-guide bar).
+      var TOGGLE_KEYS = [
+        'contrast', 'grayscale', 'underline-links', 'big-targets', 'reading-guide', 'no-motion',
+        'line-height', 'letter-spacing', 'readable-font', 'emphasize-headings', 'invert-colors',
+        'big-cursor', 'reading-mask', 'justify-text', 'keyboard-nav',
+      ];
 
       function loadPrefs() {
         try {
@@ -318,6 +337,31 @@
       document.addEventListener('mousemove', function (e) {
         if (!root.classList.contains('a11y-reading-guide')) { return; }
         ensureGuideBar().style.top = e.clientY + 'px';
+      });
+
+      // Reading mask: dims everything except a horizontal band around the pointer, wider than the
+      // reading-guide bar above (a spotlight, not a highlighted line) — the other item from the
+      // owner's Takbull screenshot ("מסכת קריאה").
+      var maskTop = null, maskBottom = null;
+      var MASK_BAND = 90;
+      function ensureMask() {
+        if (!maskTop) {
+          maskTop = document.createElement('div');
+          maskTop.id = 'a11y-reading-mask-top';
+          maskTop.className = 'a11y-reading-mask-part';
+          maskBottom = document.createElement('div');
+          maskBottom.id = 'a11y-reading-mask-bottom';
+          maskBottom.className = 'a11y-reading-mask-part';
+          document.body.appendChild(maskTop);
+          document.body.appendChild(maskBottom);
+        }
+      }
+      document.addEventListener('mousemove', function (e) {
+        if (!root.classList.contains('a11y-reading-mask')) { return; }
+        ensureMask();
+        var half = MASK_BAND / 2;
+        maskTop.style.height = Math.max(0, e.clientY - half) + 'px';
+        maskBottom.style.top = (e.clientY + half) + 'px';
       });
 
       // Read-aloud via the browser's own built-in speech synthesis — no external service, no
