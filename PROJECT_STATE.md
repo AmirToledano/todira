@@ -3579,3 +3579,36 @@ alongside their existing `send_cta_url_message` one, since the flow now calls bo
 `send_cta_url_message` call, asserting each message's exact content and order. Full suite: 509
 passing (same count as before — no new tests added this round, existing ones re-shaped to match
 the new message sequence).
+
+## 2026-09-06 (same day, small polish): a WhatsApp-only visitor was told to use a Telegram command they can't run
+
+Owner sent a screenshot of the actual `/filter` page rendering correctly for his WhatsApp-only
+account via the wid link — confirmed everything worked end to end. Looking at that screenshot
+caught one small but real leftover: `filter.html`'s subtitle (`filter.subtitle` in `i18n.py`) has
+always said "...לעריכה של שכונות/רחובות ספציפיים ותאריכי כניסה — ב-/filter בטלגרם" (for specific
+neighborhoods/streets and move-in dates, use `/filter` on Telegram) — correct advice for a
+Telegram-linked visitor, but a dead end for the WhatsApp-only wid path just built tonight: that
+visitor has no Telegram account at all, so "run `/filter` on Telegram" isn't something they can act
+on. Not caught by the owner — found by re-reading his own screenshot text carefully, the same
+audit-after-ship habit that caught the apartments.html `uid=None` bug and the notifier
+recipient-filtering gap earlier this project.
+
+**Fix**: added `filter.subtitle_short` to `i18n.py` (all 5 languages) — just the first sentence of
+the existing subtitle in each language, which is still fully true and actionable on its own.
+`filter.html` now picks between the two based on `user.telegram_user_id` (already in the template's
+own context, no new main.py plumbing needed): a Telegram-linked visitor keeps seeing the full
+subtitle with the Telegram pointer; a WhatsApp-only (or Google-only) visitor sees just the first
+sentence, with the inapplicable advice silently omitted rather than shown and ignored.
+
+**Not touched, flagged as a known low-probability edge case**: `no_filter.html` (shown when a
+resolved user has no `Filter` row at all) points unconditionally at the Telegram bot with zero
+context — worse for the same reason, but the wid link is only ever sent to a user confirmed to
+already have a filter, so a WhatsApp-only visitor hitting this specific page should be rare/only
+reachable via direct URL tampering. Left alone rather than expanding scope beyond what was actually
+observed live.
+
+Verified: `tests/test_website_filter_whatsapp.py` +2 tests — a WhatsApp-only user's `/filter` page
+does NOT contain the subtitle's Telegram-specific phrase but DOES contain the short version; a
+Telegram-linked user's page still contains the full phrase (regression guard against silently
+losing the Telegram pointer for the audience it's actually meant for). Full suite: 511 passing (up
+from 509).

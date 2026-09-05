@@ -766,6 +766,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Édition complète ici. Pour des quartiers/rues spécifiques et des dates d'emménagement, utilisez /filter sur Telegram.",
         "ar": "التعديل الكامل هنا. للأحياء/الشوارع المحددة وتواريخ الانتقال، استخدم /filter في تيليجرام.",
     },
+    # 2026-09-06: shown instead of filter.subtitle for a visitor with no telegram_user_id at all
+    # (a WhatsApp-only or Google-only account) — pointing them at "/filter on Telegram" is a dead
+    # end when they have no Telegram account to run that command from. Just the first sentence of
+    # the full subtitle in each language, since that sentence alone is still fully true and
+    # actionable regardless of which channel got them here.
+    "filter.subtitle_short": {
+        "he": "עריכה מלאה כאן.",
+        "en": "Full editing here.",
+        "ru": "Полное редактирование здесь.",
+        "fr": "Édition complète ici.",
+        "ar": "التعديل الكامل هنا.",
+    },
     "filter.cities_count_label": {
         "he": "ערים בסינון", "en": "cities in filter", "ru": "городов в фильтре",
         "fr": "villes dans le filtre", "ar": "مدن في الفلتر",
