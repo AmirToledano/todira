@@ -27,6 +27,17 @@ PHONE_NUMBER_ID_ENV_VAR = "WHATSAPP_PHONE_NUMBER_ID"
 _GRAPH_API_VERSION = "v21.0"
 _REQUEST_TIMEOUT_SECONDS = 15.0
 
+# 2026-09-06 speed pass: `httpx.post(...)` (the module-level convenience function used here until
+# now) opens and tears down a brand-new TCP+TLS connection to graph.facebook.com on EVERY single
+# call — real, measurable latency (a fresh HTTPS handshake typically costs on the order of a
+# hundred-plus ms) paid again and again, even though every call in this module hits the exact same
+# host. A single reused `httpx.Client` keeps that connection alive (HTTP keep-alive) across calls,
+# so only the FIRST request per pod lifetime pays full handshake cost — every call after that,
+# including the typing-indicator call that immediately precedes almost every real reply here, reuses
+# the same warm connection. Module-level and created once, same lifetime as the cached Gemini client
+# in dorin_common/gemini_client.py.
+_http_client = httpx.Client(timeout=_REQUEST_TIMEOUT_SECONDS)
+
 
 def send_text_message(to: str, body: str) -> bool:
     """`to` is the recipient's wa_id (E.164 digits, no leading '+') — same format the webhook
@@ -50,11 +61,10 @@ def send_text_message(to: str, body: str) -> bool:
         "text": {"body": body, "preview_url": True},
     }
     try:
-        response = httpx.post(
+        response = _http_client.post(
             url,
             json=payload,
             headers={"Authorization": f"Bearer {access_token}"},
-            timeout=_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         return True
@@ -84,11 +94,10 @@ def mark_as_read_with_typing_indicator(message_id: str) -> bool:
         "typing_indicator": {"type": "text"},
     }
     try:
-        response = httpx.post(
+        response = _http_client.post(
             url,
             json=payload,
             headers={"Authorization": f"Bearer {access_token}"},
-            timeout=_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         return True

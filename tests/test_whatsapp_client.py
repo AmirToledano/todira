@@ -36,7 +36,7 @@ def test_returns_true_on_successful_send(monkeypatch):
         def raise_for_status(self):
             pass
 
-    with patch.object(httpx, "post", return_value=_FakeResponse()) as post_mock:
+    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
         assert whatsapp_client.send_text_message("972550000000", "hi") is True
 
     call_kwargs = post_mock.call_args.kwargs
@@ -50,7 +50,7 @@ def test_returns_false_on_http_error(monkeypatch):
     monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
     monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
 
-    with patch.object(httpx, "post", side_effect=httpx.ConnectError("boom")):
+    with patch.object(whatsapp_client._http_client, "post", side_effect=httpx.ConnectError("boom")):
         assert whatsapp_client.send_text_message("972550000000", "hi") is False
 
 
@@ -73,7 +73,7 @@ def test_typing_indicator_sends_correct_payload_on_success(monkeypatch):
         def raise_for_status(self):
             pass
 
-    with patch.object(httpx, "post", return_value=_FakeResponse()) as post_mock:
+    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
         assert whatsapp_client.mark_as_read_with_typing_indicator("wamid.abc") is True
 
     call_kwargs = post_mock.call_args.kwargs
@@ -91,5 +91,33 @@ def test_typing_indicator_returns_false_on_http_error(monkeypatch):
     monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
     monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
 
-    with patch.object(httpx, "post", side_effect=httpx.ConnectError("boom")):
+    with patch.object(whatsapp_client._http_client, "post", side_effect=httpx.ConnectError("boom")):
         assert whatsapp_client.mark_as_read_with_typing_indicator("wamid.abc") is False
+
+
+# --- 2026-09-06 speed pass: a single reused httpx.Client (connection keep-alive) instead of a
+# fresh TCP+TLS handshake on every call ---
+
+
+def test_send_text_message_and_typing_indicator_share_one_http_client(monkeypatch):
+    """Both calls must go through the SAME httpx.Client instance so the connection opened by
+    whichever fires first (almost always the typing indicator) is reused by the other — a
+    per-call httpx.post() would pay a fresh handshake on every single request instead."""
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
+
+    class _FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
+        whatsapp_client.mark_as_read_with_typing_indicator("wamid.abc")
+        whatsapp_client.send_text_message("972550000000", "hi")
+
+    assert post_mock.call_count == 2  # both routed through the one shared client's .post
+
+
+def test_http_client_is_a_real_persistent_httpx_client():
+    assert isinstance(whatsapp_client._http_client, httpx.Client)
