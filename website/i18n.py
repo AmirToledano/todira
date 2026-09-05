@@ -61,6 +61,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Appartements enregistrés — Todira",
         "ar": "شقق محفوظة — טודירה",
     },
+    "meta.title_hidden": {
+        "he": "דירות מוסתרות — טודירה",
+        "en": "Hidden apartments — Todira",
+        "ru": "Скрытые квартиры — Todira",
+        "fr": "Appartements masqués — Todira",
+        "ar": "شقق مخفية — טודירה",
+    },
     "meta.title_filter": {
         "he": "הסינון שלי — טודירה",
         "en": "My filter — Todira",
@@ -645,6 +652,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "ערוך סינון", "en": "Edit filter", "ru": "Изменить фильтр",
         "fr": "Modifier le filtre", "ar": "تعديل الفلتر",
     },
+    "apartments.no_brokers_on": {
+        "he": "🚫 בלי תיווך", "en": "🚫 No brokers", "ru": "🚫 Без посредников",
+        "fr": "🚫 Sans agences", "ar": "🚫 بدون سماسرة",
+    },
+    "apartments.no_brokers_off": {
+        "he": "🏢 כולל תיווך", "en": "🏢 Including brokers", "ru": "🏢 С посредниками",
+        "fr": "🏢 Avec agences", "ar": "🏢 يشمل السماسرة",
+    },
     "apartments.empty_title": {
         "he": "אין עדיין דירות תואמות להצגה.",
         "en": "No matching apartments to show yet.",
@@ -683,7 +698,51 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Dès que vous marquez un appartement comme « aimé » sur Telegram, il apparaîtra ici.",
         "ar": "بمجرد أن تعلّم شقة بـ\"أعجبتني\" في تيليجرام، ستظهر هنا.",
     },
+    "liked.hidden_link": {
+        "he": "🙈 דירות מוסתרות", "en": "🙈 Hidden apartments", "ru": "🙈 Скрытые квартиры",
+        "fr": "🙈 Appartements masqués", "ar": "🙈 الشقق المخفية",
+    },
+    # ---------- hidden page ----------
+    "hidden.title": {
+        "he": "🙈 דירות מוסתרות", "en": "🙈 Hidden apartments", "ru": "🙈 Скрытые квартиры",
+        "fr": "🙈 Appartements masqués", "ar": "🙈 شقق مخفية",
+    },
+    "hidden.subtitle": {
+        "he": "דירות שהסתרת מרשימת ההתאמות — לחיצה נוספת על 👀 מחזירה אותן",
+        "en": "Apartments you hid from your matches — tap 👀 again to bring them back",
+        "ru": "Квартиры, которые вы скрыли из совпадений — нажмите 👀 ещё раз, чтобы вернуть их",
+        "fr": "Appartements que vous avez masqués de vos correspondances — appuyez à nouveau sur 👀 pour les récupérer",
+        "ar": "شقق أخفيتها من نتائجك — اضغط 👀 مجددًا لإعادتها",
+    },
+    "hidden.empty_title": {
+        "he": "אין לך כרגע דירות מוסתרות.", "en": "You don't have any hidden apartments right now.",
+        "ru": "У вас сейчас нет скрытых квартир.", "fr": "Vous n'avez actuellement aucun appartement masqué.",
+        "ar": "ليس لديك حاليًا شقق مخفية.",
+    },
+    "hidden.empty_hint": {
+        "he": "כשתסתיר דירה (🙈) כאן או בטלגרם, היא תופיע כאן.",
+        "en": "Once you hide an apartment (🙈) here or on Telegram, it'll show up here.",
+        "ru": "Как только вы скроете квартиру (🙈) здесь или в Telegram, она появится здесь.",
+        "fr": "Dès que vous masquez un appartement (🙈) ici ou sur Telegram, il apparaîtra ici.",
+        "ar": "بمجرد أن تخفي شقة (🙈) هنا أو في تيليجرام، ستظهر هنا.",
+    },
+    "hidden.liked_link": {
+        "he": "❤️ דירות שמורות", "en": "❤️ Saved apartments", "ru": "❤️ Сохранённые квартиры",
+        "fr": "❤️ Appartements enregistrés", "ar": "❤️ الشقق المحفوظة",
+    },
     # ---------- listing card ----------
+    "card.like_btn": {
+        "he": "שמור/י דירה", "en": "Save apartment", "ru": "Сохранить квартиру",
+        "fr": "Enregistrer l'appartement", "ar": "احفظ الشقة",
+    },
+    "card.hide_btn": {
+        "he": "הסתר דירה", "en": "Hide apartment", "ru": "Скрыть квартиру",
+        "fr": "Masquer l'appartement", "ar": "إخفاء الشقة",
+    },
+    "card.unhide_btn": {
+        "he": "החזר לרשימה", "en": "Unhide", "ru": "Вернуть в список",
+        "fr": "Réafficher", "ar": "إظهار مجددًا",
+    },
     "card.no_price": {
         "he": "מחיר לא צוין", "en": "Price not listed", "ru": "Цена не указана",
         "fr": "Prix non indiqué", "ar": "السعر غير محدد",

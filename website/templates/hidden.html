@@ -1,24 +1,24 @@
 {% extends "base.html" %}
 {% set active_page = "liked" %}
-{% block title %}{{ t('meta.title_liked') }}{% endblock %}
+{% block title %}{{ t('meta.title_hidden') }}{% endblock %}
 {% block content %}
 {% from "_listing_card.html" import listing_card with context %}
 
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>{{ t('liked.title') }}</h1>
-    <p>{{ t('liked.subtitle') }}</p>
+    <h1>{{ t('hidden.title') }}</h1>
+    <p>{{ t('hidden.subtitle') }}</p>
   </div>
   <div class="pb-count"><b>{{ listings|length }}</b><span>{{ t('apartments.results_label') }}</span></div>
 </div>
 
-<p style="margin:-8px 0 20px"><a href="/hidden{{ '?uid=' ~ uid if uid else '' }}">{{ t('liked.hidden_link') }}</a></p>
+<p style="margin:-8px 0 20px"><a href="/liked{{ '?uid=' ~ uid if uid else '' }}">{{ t('hidden.liked_link') }}</a></p>
 
 {% if not listings %}
   <div class="empty-state">
-    <div class="glyph" aria-hidden="true">💌</div>
-    <p>{{ t('liked.empty_title') }}</p>
-    <p class="hint">{{ t('liked.empty_hint') }}</p>
+    <div class="glyph" aria-hidden="true">🙈</div>
+    <p>{{ t('hidden.empty_title') }}</p>
+    <p class="hint">{{ t('hidden.empty_hint') }}</p>
   </div>
 {% else %}
   <div class="listing-grid">
