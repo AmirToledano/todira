@@ -19,13 +19,29 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 logger = logging.getLogger(__name__)
 
 _MODEL = "gemini-3.6-flash"
+
+# 2026-09-06: real production logs (pulled via the diagnose-website-webhook workflow after the
+# owner reported 2 of 3 live WhatsApp messages getting the "technical hiccup" fallback) showed the
+# 10s-timeout fix above working exactly as intended — one attempt per message, no more duplicates
+# — but a chunk of those single attempts hitting a genuine `google.genai.errors.ServerError: 503
+# UNAVAILABLE ... This model is currently experiencing high demand` straight from Gemini itself.
+# Google's own error message calls these spikes "usually temporary," which is exactly the case a
+# single retry is for. Retrying was NOT safe before the ack-first webhook fix (website/
+# whatsapp_webhook.py) shipped earlier today — back then, every extra second here just made Meta's
+# own webhook redelivery race more likely. Now that Meta is acked before this function is ever
+# called, one bounded retry only affects how long the (already-backgrounded) reply takes to arrive,
+# never whether Meta double-processes the message. Scoped to ServerError (5xx) specifically —
+# retrying a malformed-response or bad-request error would just fail identically a second time.
+_MAX_ATTEMPTS = 2
+_RETRY_DELAY_SECONDS = 1.0
 
 _client: genai.Client | None = None
 _client_checked = False
@@ -87,29 +103,46 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
         "יש בה גם שאלה נוספת בצד) — false."
     )
 
+    response = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            response = client.models.generate_content(
+                model=_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=_SCHEMA,
+                    # 2026-09-05 fix: found live via the WhatsApp webhook — a real onboarding
+                    # reply took ~1 minute (WhatsApp users perceive that as "the bot is broken").
+                    # Root cause confirmed from the SDK's own field docs: HttpOptions.retry_options
+                    # defaults to up to 5 attempts on 408/429/5xx with exponential backoff up to a
+                    # 60s max delay — exactly what a Gemini "high demand" 503 triggers — and this
+                    # call never overrode it, so it silently applied. This isn't a bug in our code,
+                    # just an unsuitable default for a synchronous chat reply the user is actively
+                    # waiting on. types.HttpRetryOptions isn't constructible directly in the
+                    # installed SDK version (not exported / rejects a plain dict here), so bounding
+                    # just the per-call timeout is the safe fix available: a real outage now fails
+                    # within ~10s and falls through to the existing "technical hiccup, try again"
+                    # message (below) instead of leaving the user staring at an unanswered chat for
+                    # up to a minute. Revisit if a future SDK version exposes retry tuning cleanly.
+                    http_options=types.HttpOptions(timeout=10_000),
+                ),
+            )
+            break
+        except errors.ServerError as exc:
+            if attempt < _MAX_ATTEMPTS:
+                logger.warning(
+                    "Gemini 5xx on attempt %d/%d, retrying once: %s", attempt, _MAX_ATTEMPTS, exc
+                )
+                time.sleep(_RETRY_DELAY_SECONDS)
+                continue
+            logger.exception("Gemini onboarding parse failed (5xx, retry exhausted)")
+            return None
+        except Exception:
+            logger.exception("Gemini onboarding parse failed")
+            return None
+
     try:
-        response = client.models.generate_content(
-            model=_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=_SCHEMA,
-                # 2026-09-05 fix: found live via the WhatsApp webhook — a real onboarding reply
-                # took ~1 minute (WhatsApp users perceive that as "the bot is broken"). Root
-                # cause confirmed from the SDK's own field docs: HttpOptions.retry_options
-                # defaults to up to 5 attempts on 408/429/5xx with exponential backoff up to a
-                # 60s max delay — exactly what a Gemini "high demand" 503 triggers — and this
-                # call never overrode it, so it silently applied. This isn't a bug in our code,
-                # just an unsuitable default for a synchronous chat reply the user is actively
-                # waiting on. types.HttpRetryOptions isn't constructible directly in the
-                # installed SDK version (not exported / rejects a plain dict here), so bounding
-                # just the per-call timeout is the safe fix available: a real outage now fails
-                # within ~10s and falls through to the existing "technical hiccup, try again"
-                # message (below) instead of leaving the user staring at an unanswered chat for
-                # up to a minute. Revisit if a future SDK version exposes retry tuning cleanly.
-                http_options=types.HttpOptions(timeout=10_000),
-            ),
-        )
         result = json.loads(response.text)
     except Exception:
         logger.exception("Gemini onboarding parse failed")
