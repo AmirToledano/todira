@@ -3740,3 +3740,49 @@ so a future session has the full picture instead of re-discovering it from scrat
 
 Verified: full suite re-run after the CSS/color change, 513 passing (same count — visual-only
 change, no new test surface expected or added).
+
+## 2026-09-06 (next session): started on the logged account-page roadmap — subscription card, notifications toggle, payment history
+
+Owner asked directly why the roadmap items from the entry above hadn't been started yet, and to
+begin with whatever was cheapest to do well — i.e. the three items whose backing data already
+existed in the DB (subscription status via `trial_ends_at`/`paid_until`/`free_access_granted`,
+`notifications_enabled`, and the `Payment` table), leaving the genuinely new-concept items
+(referral program, AI chat, hidden-listings, broker-filter shortcut, social footer) logged only,
+since those need real product decisions, not just surfacing data that already exists.
+
+**Shipped**: `/account` now shows, above the existing channel-linking card:
+- A subscription-status tile (hidden for the owner) with the exact status wording already used on
+  `/upgrade` (`✅ פעיל, בתוקף עד …` / `⏳ תקופת ניסיון, עד …` / `⚠️ תקופת הניסיון הסתיימה`) plus a
+  "שדרג/י מנוי" button to `/upgrade`, carrying whichever of uid/wid got the visitor there.
+- A notifications on/off tile, visible to everyone including the owner, backed by a new
+  `POST /account/notifications` route that flips `User.notifications_enabled` (a field that
+  already existed and was already respected by `scraper/notifier.py` — it just had no UI anywhere
+  to change it before now) and redirects back with the same uid/wid.
+- A payment-history section at the bottom (`GET /account` now queries the 10 most recent `Payment`
+  rows for the user), rendered only when at least one payment exists — plan label, ₪ amount, date,
+  and a status badge (paid/pending/failed/cancelled).
+
+`_filter_redirect_url` was generalized into `_identity_redirect_url(path, uid, wid)` so the new
+notifications-toggle redirect could reuse the same uid-then-wid priority logic instead of
+duplicating it a third time.
+
+**Real bug found and fixed along the way**: the new subscription card was built to hide itself for
+the owner via a route-supplied `"is_owner"` context key — but `_render()` (the shared template
+helper every page goes through) *always* overwrites an `"is_owner"` key with its own session-based
+value, specifically so the nav's admin-only link can never be spoofed via a low-trust `?uid=`
+match. That's the right behavior for the nav link, but it meant any route-supplied `"is_owner"` was
+silent dead code — caught only because a test asserted on the rendered HTML rather than just the
+context dict passed into `_render`. Same bug already existed on the live `/upgrade` page (added
+before this session, unrelated to tonight's work) — its "אתה הבעלים של השירות" owner banner and the
+`{% if not is_owner %}` guard around the plan-purchase cards never actually fired unless the owner
+already had a real signed-in session, so an owner arriving via a plain Telegram `?uid=` link saw
+the regular paywall/purchase UI instead. Fixed both routes by renaming the per-page flag to
+`display_is_owner` (computed the same way, via `_display_is_owner()`) — a name `_render()` doesn't
+reserve — and updating `account.html`/`upgrade.html` to match. The nav's own `is_owner` stays
+exactly as strict/session-only as before; only the two content-display banners changed.
+
+Verified: `tests/test_website_account.py` extended with 8 new tests (subscription status in all
+three states, the card hidden for the owner, the notifications toggle both directions via uid and
+via wid, payment history rendered and its empty-state) — all pass in `/tmp/ci_sim_venv_login`, a
+clean venv built from `requirements-test.txt`. Full suite: 521 passing (up from 513 — the 8 new
+tests, no regressions).
