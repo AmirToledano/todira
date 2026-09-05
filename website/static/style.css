@@ -545,6 +545,21 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 }
 .field-section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
 
+/* ---------- /account channel-linking tiles (Telegram/WhatsApp/Google brand badges) ---------- */
+.channel-tile { text-align: center; }
+.channel-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; margin-bottom: 4px;
+}
+.channel-icon svg { display: block; }
+/* Telegram/WhatsApp draw their own colored circle inside the SVG itself; Google's "G" glyph has
+   no background of its own, so it gets one here to match the other two tiles' visual weight. */
+.channel-icon-plain {
+  background: var(--card); border: 1.5px solid var(--border); border-radius: 50%;
+}
+.channel-status { font-size: .95rem; font-weight: 600; margin: 6px 0 0; }
+.channel-status.connected { color: var(--teal); }
+
 /* ---------- scroll-reveal & tactile feedback ---------- */
 .reveal { opacity: 0; transform: translateY(26px); transition: opacity .65s cubic-bezier(.2,.7,.3,1), transform .65s cubic-bezier(.2,.7,.3,1); }
 .reveal.is-visible { opacity: 1; transform: none; }

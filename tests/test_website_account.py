@@ -128,6 +128,33 @@ def test_account_google_link_button_carries_a_real_uid_query_param(client):
     assert "&amp;amp;" not in resp.text  # the double-escape signature itself, never again
 
 
+def test_account_shows_real_brand_logos_and_english_channel_names(client):
+    """2026-09-06: the owner asked for real brand logos + English channel names (Telegram/
+    WhatsApp/Google) instead of the plain ✅/⭕ emoji + Hebrew labels this page used before."""
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None, google_sub=None)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert ">Telegram<" in resp.text
+    assert ">WhatsApp<" in resp.text
+    assert ">Google<" in resp.text
+    # brand colors from each channel's SVG icon
+    assert "#229ED9" in resp.text  # Telegram blue
+    assert "#25D366" in resp.text  # WhatsApp green
+    assert "#4285F4" in resp.text  # Google blue (part of the 4-color G logo)
+    assert "⭕" not in resp.text  # the old plain-circle placeholder is gone
+
+
+def test_account_connected_channel_shows_status_not_plain_checkmark(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", google_sub="sub123")
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert resp.text.count('class="channel-status connected"') == 3  # all 3 channels linked
+
+
 def test_account_does_not_generate_a_code_once_telegram_and_whatsapp_are_both_linked(client):
     user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
     fake_session = _FakeSession(users_by_telegram_id={222: user})
