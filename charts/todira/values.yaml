@@ -83,7 +83,7 @@ website:
   # /account page's wa.me channel-linking deep link. Not secret. Leave empty to hide that option
   # until it's known (it's a display value, not an API credential, so it's not the same as the
   # whatsappPhoneNumberId secret documented above).
-  whatsappPublicNumber: ""
+  whatsappPublicNumber: "972524983967"
   # Informal Bit/PayBox payment instructions on /upgrade/pay (2026-09-05) — used only while Grow
   # isn't configured. ownerBitPhone: the owner's own phone number, shown plainly for the customer
   # to Bit-transfer to (no verified "open the app pre-filled" deep link exists for Bit, so this is

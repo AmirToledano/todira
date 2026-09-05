@@ -3899,3 +3899,37 @@ inert today and activates automatically, no further deploy needed, the moment th
 Verified: new `tests/test_website_home.py` (2 tests — WhatsApp CTA shown in both hero and
 footer-cta sections when configured, Telegram CTA stays either way; hidden entirely when not
 configured). Full suite: 533 passing (up from 531).
+
+## 2026-09-06 (same session, continued): real WhatsApp production number live — 052-498-3967
+
+Owner registered a real phone number (a fresh, never-used-on-WhatsApp Talkman SIM his friend held
+physically — walked through the "SIM doesn't need to be permanently with you, just reachable for
+the one-time OTP" mechanics live) as the production WhatsApp Business Platform number, replacing
+the "Try it out" test number the bot had been using. Walked him screenshot-by-screenshot through
+Meta's own wizard (developers.facebook.com → the app's WhatsApp → API Setup → Step 2. Production
+setup): business info, WA Business profile, phone verification, a permanent access token, billing
+(required for business-initiated messages, i.e. our own proactive new-listing alerts), and the
+built-in test message — all four Step 2 subtasks completed, confirmed live by the owner's own
+phone actually receiving Meta's test message from the new number.
+
+Credentials (access token + Phone Number ID) were set via the existing `set-whatsapp-secret.yaml`
+GitHub Actions workflow, run directly by the owner from the Actions UI — never pasted into this
+chat as text (the token did appear once in a screenshot; noted to the owner, not treated as a
+reason to rotate it, just a reminder to paste rather than screenshot going forward). One real mix-
+up caught and corrected mid-flow: the owner first put the actual phone number into the workflow's
+"Phone Number ID" field — that field wants Meta's own internal numeric ID (the one explicitly
+labeled "Phone Number ID:" next to the registered number), not the phone number itself; corrected
+before running.
+
+**Shipped**: `charts/todira/values.yaml`'s `website.whatsappPublicNumber` set to `972524983967`
+(E.164 without the leading `+`, matching every `wa.me/{{ whatsapp_public_number }}` call site) —
+not secret, so a plain committed value rather than a k8s Secret, per that field's own existing
+comment in `website-deployment.yaml`. This is the last piece needed to activate every
+WhatsApp-conditional UI already built and merged inert this session: the homepage's two CTAs
+(2026-09-06 earlier today), `/login`'s three-button screen, and `/account`'s channel-linking card.
+
+Still pending, deliberately not done from here: an actual end-to-end test of a real user message
+to the new number reaching *our own* webhook handler (as opposed to Meta's own built-in test-
+message tool, which only proves Meta's side works) — asked the owner to send one real WhatsApp
+message to 052-498-3967 from his personal phone once this deploy is live, to confirm the bot
+itself (not just Meta's infrastructure) responds on the new number for the first time.
