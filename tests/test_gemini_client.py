@@ -9,6 +9,7 @@ never raises" contract on API errors or malformed responses.
 import json
 from unittest.mock import patch
 
+import requests
 from google.genai import errors
 
 from dorin_common import gemini_client
@@ -190,3 +191,22 @@ def test_non_server_error_is_not_retried(monkeypatch):
     assert result is None
     assert fake.models.call_count == 1  # no retry spent on a non-transient error
     sleep_mock.assert_not_called()
+
+
+def test_read_timeout_is_also_retried(monkeypatch):
+    """2026-09-06, same-day follow-up: a second round of live logs showed the OTHER shape of
+    "Gemini didn't answer" that the ServerError-only retry above missed entirely — a plain
+    requests.exceptions.ReadTimeout with no error response at all (Gemini just didn't reply within
+    the 10s budget)."""
+    payload = json.dumps(
+        {"deal_type": "sale", "cities": ["ירושלים"], "missing_required": [], "response_message": "מעולה"}
+    )
+    timeout_exc = requests.exceptions.ReadTimeout("Read timed out. (read timeout=10.0)")
+    fake = _install_fake_client(monkeypatch, raise_sequence=[timeout_exc, None], response_text=payload)
+
+    with patch.object(gemini_client.time, "sleep") as sleep_mock:
+        result = gemini_client.parse_onboarding_message("דירה למכירה בירושלים", {}, ["ירושלים"])
+
+    assert result["cities"] == ["ירושלים"]
+    assert fake.models.call_count == 2
+    sleep_mock.assert_called_once_with(gemini_client._RETRY_DELAY_SECONDS)
