@@ -3701,3 +3701,42 @@ Verified: existing `tests/test_website_account.py` assertions for the brand-colo
 (`#229ED9`/`#25D366`) still pass unchanged, since both colors carry over into the real paths too —
 confirms the swap didn't silently drop the color contract those tests check. Full suite: 513
 passing (same count — path data swapped, no new test surface).
+
+## 2026-09-06 (same day, last one tonight): login button gradients now, competitor's full account page logged as a roadmap idea
+
+Owner sent screenshots of the reference competitor's own `/login` page (gradient Telegram/WhatsApp
+buttons, a stats bar) and its full logged-in profile/account page (subscription status + toggle,
+notification toggle, payment history, quick links to saved/hidden/broker-filtered listings, a
+referral program, an AI chat entry point, contact support, social footer) — asked whether to build
+toward that look. Given the size gap between "restyle two buttons" and "build an entire new page
+with several features that don't exist in this codebase at all yet," asked the owner directly which
+scope he wanted rather than guessing; he chose both — the small styling win now, the bigger page as
+a logged roadmap item for deliberate future planning, not attempted tonight.
+
+**Shipped now**: `.btn.telegram`/`.btn.whatsapp` in `style.css` switched from flat brand colors to
+diagonal gradients, matching the competitor's more vibrant button look — but built from each
+brand's OWN real color range, not an arbitrary stylized hue: Telegram's two documented blues
+(`#2AABEE` → `#229ed9`), WhatsApp's own light/dark green pairing from its own app icon
+(`#25d366` → `#128C7E`). WhatsApp's button text/icon switched from the old dark-green
+(`#06301c`) to white for reliable contrast across the new gradient's full range. Deliberately did
+NOT copy the competitor's stats bar ("+773 cities," "5,128,624 notifications sent," "+17,515
+searches") — those numbers are either fabricated or wildly out of Todira's actual current scale;
+inventing impressive-sounding fake stats would be dishonest marketing copy, not a design choice.
+Revisit with REAL numbers (queryable from the DB, not guessed) if a stats bar is wanted later.
+
+**Logged as a future roadmap idea, not built**: the competitor's full account/profile page design.
+Worth a real look next session, not rushed in as tonight's ~20th shipped PR. What it actually shows
+that Todira's own `/account` doesn't have yet: a subscription-status card with a toggle and
+"upgrade" CTA (Todira has `/upgrade` as a separate page, not surfaced on `/account` itself), a
+notifications-enabled toggle inline on the page (Todira's `notifications_enabled` field exists on
+`User` already — see `dorin_common/models.py` — just isn't exposed as a toggle anywhere on the
+website yet, only implicitly via the bot), payment history (Todira already has a `Payment` model
+with real rows — just never rendered anywhere on the website), quick links to saved/hidden/matched
+listings and a broker-only filter shortcut (Todira has `no_brokers` as a Filter field and `liked`
+listings already — "hidden" listings has no equivalent concept yet), a referral/rewards program
+(doesn't exist in this codebase in any form), an AI chat entry point (doesn't exist), and a social
+media footer (doesn't exist). None of this is promised or scoped yet — recorded here specifically
+so a future session has the full picture instead of re-discovering it from scratch.
+
+Verified: full suite re-run after the CSS/color change, 513 passing (same count — visual-only
+change, no new test surface expected or added).

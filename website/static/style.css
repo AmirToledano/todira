@@ -169,11 +169,15 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .btn.block { width: 100%; justify-content: center; }
 /* Real brand colors — /login's "continue with X" buttons (2026-09-05), matching the reference
    product's own login screen: Telegram blue, WhatsApp green, both distinct from the site's own
-   teal/gold so each reads as "this is that platform's button," not a themed variant of ours. */
-.btn.telegram { background: #229ed9; }
-.btn.telegram:hover { background: #1b87bd; }
-.btn.whatsapp { background: #25d366; color: #06301c !important; }
-.btn.whatsapp:hover { background: #20bd5a; }
+   teal/gold so each reads as "this is that platform's button," not a themed variant of ours.
+   Gradients (2026-09-06, matching the reference product's own more vibrant button look) stay
+   inside each brand's own real color range — Telegram's two documented blues, WhatsApp's own
+   light/dark green pairing from its own app icon — not a stylized hue that would read as a
+   different color entirely. */
+.btn.telegram { background: linear-gradient(135deg, #2AABEE, #229ed9); }
+.btn.telegram:hover { filter: brightness(1.06); }
+.btn.whatsapp { background: linear-gradient(135deg, #25d366, #128C7E); color: #fff !important; }
+.btn.whatsapp:hover { filter: brightness(1.06); }
 .btn.google { background: #fff; color: #3c4043 !important; border: 1.5px solid #dadce0; box-shadow: none; }
 .btn.google:hover { background: #f8f9fa; }
 
