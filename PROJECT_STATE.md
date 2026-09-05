@@ -3457,3 +3457,44 @@ for a linked account (asserted by call-count: the wid lookup never runs), and no
 still shows the existing `need_uid.html` page. Plus 2 existing `tests/test_whatsapp_webhook.py`
 tests extended to assert the new link text appears in both the "already registered" and the
 brand-new "נרשמת!" replies. Full suite: 505 passing (up from 499).
+
+## 2026-09-06 (same day, one more round): the wid link now signs you in site-wide, not just on /filter
+
+Sent the owner the plan above; he came back with a screenshot of the competitor app's own top bar
+— clicking `dorin.app` there goes to a full home screen, and every other page (liked/hidden/search
+settings/profile) stays signed in as the same person no matter which one you land on or navigate to
+next. The `?wid=` fix above only made `/filter` itself reachable — every OTHER route
+(`/apartments`, `/liked`, `/account`, …) still only accepts `uid` or a real session, so clicking
+anywhere else from that one page would still dead-end. Not what was asked for.
+
+**Fix, one line doing the real work**: `_resolve_user`'s `wid` branch now also sets
+`request.session["user_id"] = user.id` the moment it successfully resolves a WhatsApp-only user —
+establishing a REAL signed session cookie, not just resolving that one request. This is different
+from how `uid` behaves (a bare `?uid=` visit stays deliberately session-less/ephemeral, per that
+docstring) — but a WhatsApp-only account has no stronger auth available at all (no password, no
+linked Google, no Telegram widget), so the magic link genuinely IS its login, and the owner
+specifically asked for the "stays connected everywhere" behavior the competitor app has.
+
+Once that session exists, **every other route needed zero changes**: `_resolve_user`'s very first
+check is always the session cookie, before uid/wid are even looked at — so `/apartments`, `/liked`,
+`/account`, `/upgrade`, `/contact` (all of which already call `_resolve_user(request, session,
+uid)`) resolve the same WhatsApp user correctly the instant the browser carries that cookie, with
+no `?wid=` in their URLs at all. `base.html`'s nav links, which only ever build `?uid=` into hrefs,
+work unmodified too — they render as plain paths with no query string for a wid-only visitor, and
+the destination page resolves via the cookie regardless. The one line in `_resolve_user` was the
+entire fix; nothing else in the route layer needed touching, because the whole site already shared
+one central `_resolve_user` chokepoint.
+
+Security note (considered, not a downgrade): a signed session cookie is strictly SAFER than the
+alternative of threading `?wid=<phone number>` through every link on the site the way `?uid=`
+already does for a Telegram id — a phone number sitting in browser history, referrer headers, or a
+screenshot is worse to leak than an opaque signed cookie value.
+
+Verified: new `tests/test_website_filter_whatsapp.py::test_a_wid_resolution_establishes_a_session_for_every_later_page`
+— two consecutive requests through the same TestClient (so cookies persist exactly like a real
+browser), first `?wid=...`, second with NO identity in the URL at all; asserts the second request
+still resolves the same user and that `session.scalar()` (the DB lookup) was only ever called
+ONCE — proving the second page truly came from the cookie, not a second lookup. Required extending
+the test file's `_FakeSession` with `.execute()` (backs `_current_user_summary`'s header lookup,
+which now actually runs once a session exists) — same pattern `test_website_auth_google.py`'s own
+`_FakeSession` already established. Full suite: 506 passing (up from 505).
