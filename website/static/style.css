@@ -802,6 +802,49 @@ html.a11y-no-motion *, html.a11y-no-motion *::before, html.a11y-no-motion *::aft
   pointer-events: none; z-index: 199;
 }
 
+/* 2026-09-06: the 9 rules below match a competitor's (Takbull) own accessibility toolbar, screenshot
+   by the owner — filling real gaps between what we had and what theirs offers. */
+html.a11y-line-height body { line-height: 2.1; }
+
+html.a11y-letter-spacing body { letter-spacing: .06em; word-spacing: .12em; }
+
+html.a11y-readable-font, html.a11y-readable-font body {
+  font-family: Verdana, Arial, Heebo, sans-serif !important; letter-spacing: .02em;
+}
+
+html.a11y-emphasize-headings h1, html.a11y-emphasize-headings h2, html.a11y-emphasize-headings h3,
+html.a11y-emphasize-headings h4, html.a11y-emphasize-headings h5, html.a11y-emphasize-headings h6 {
+  text-decoration: underline; text-underline-offset: 4px; background: var(--teal-tint);
+  color: var(--heading); box-decoration-break: clone; -webkit-box-decoration-break: clone;
+}
+
+html.a11y-invert-colors { filter: invert(1) hue-rotate(180deg); }
+html.a11y-invert-colors img, html.a11y-invert-colors video, html.a11y-invert-colors picture {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Hand-drawn arrow (SVG data URI, URL-encoded) at 2x the default size — browsers don't offer a
+   plain "make the system cursor bigger" API, so a custom cursor image is the only real option. */
+html.a11y-big-cursor, html.a11y-big-cursor * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='42' height='42' viewBox='0 0 24 24'%3E%3Cpath d='M2 2 L2 20 L7 16 L10 22 L13 20.5 L10 14 L16 14 Z' fill='%23111' stroke='%23fff' stroke-width='1.2'/%3E%3C/svg%3E") 2 2, auto !important;
+}
+
+/* Reading mask: two fixed dark panels created/positioned by base.html's mousemove handler,
+   leaving a bright horizontal band around the pointer — a spotlight, distinct from the
+   reading-guide bar above (a highlighted line vs. dimming everything else). */
+.a11y-reading-mask-part {
+  position: fixed; left: 0; width: 100%; background: rgba(0, 0, 0, .72);
+  pointer-events: none; z-index: 199;
+}
+#a11y-reading-mask-top { top: 0; }
+#a11y-reading-mask-bottom { bottom: 0; }
+
+html.a11y-justify-text main :where(p, li, blockquote) { text-align: justify; text-justify: inter-word; }
+
+html.a11y-keyboard-nav *:focus {
+  outline: 3px solid var(--teal) !important; outline-offset: 2px !important;
+}
+
 @media (max-width: 480px) {
   #a11y-widget { left: 10px; bottom: 10px; }
   #a11y-panel { width: calc(100vw - 20px); }
