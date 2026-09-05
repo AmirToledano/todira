@@ -177,7 +177,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     context.user_data.pop("onboarding", None)
     await update.message.reply_text(
-        "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter 🎛️"
+        "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter ⚙️"
     )
 
     # Sends every current match as a real card, not just a count/link (mirrors the reference
