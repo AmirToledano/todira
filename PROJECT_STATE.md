@@ -3866,3 +3866,36 @@ right pattern to reuse here rather than inventing a new one).
 Verified: full suite re-run after all the copy/emoji changes above — 531 passing (same count, no
 test coverage depends on this exact wording), confirmed no test asserts on any of the old strings
 before changing them.
+
+## 2026-09-06 (same session, continued): homepage CTAs now also offer WhatsApp, not just Telegram
+
+Answered the owner's own question from earlier ("do we need something that also goes to WhatsApp
+from the home page? there's a WhatsApp bot too, and apartments on the site too") after he sent full
+screenshots of the page top to bottom: yes — both the hero CTA row and the bottom "מוכנים למצוא את
+הדירה?" footer-cta section only ever linked to `https://t.me/AmirDirotBot`, hardcoded, even though
+the product has since grown a WhatsApp bot and real website login/browsing. A Telegram-only funnel
+no longer matches what the product actually offers a brand-new anonymous visitor.
+
+**Shipped**: `home()` now passes `whatsapp_public_number` into the template (same
+`WHATSAPP_PUBLIC_NUMBER` env var every other WhatsApp-conditional UI already keys off, e.g.
+`/login`'s own three-button screen) — both CTA spots now show a second "💬 המשך בווטסאפ" /
+"המשך בווטסאפ ←" button right next to the Telegram one, using the exact same `wa.me` deep-link
+pattern (with the same pre-filled greeting text) `/login.html` already established, and hidden
+entirely when the number isn't configured — same `{% if whatsapp_public_number %}` convention used
+everywhere else. Did NOT also add a "browse the site directly" link here: that's already one click
+away via the header's own login/account entry, and crowding the hero with a third option risks
+diluting the two channels that actually do the onboarding work (Telegram/WhatsApp are where the
+free-text filter conversation happens; the website itself has no anonymous "start here" flow of its
+own yet).
+
+`.cta-row`'s CSS was scoped as `.hero .cta-row` — generalized to a bare `.cta-row` (identical
+behavior inside `.hero`, now also picked up by the footer-cta section's own two-button row) instead
+of duplicating the same flex/gap/center rule a second time.
+
+Note: `WHATSAPP_PUBLIC_NUMBER` isn't set in production yet (owner is sending a real number for it
+soon, per the WhatsApp Business Platform/Talkman discussion earlier this session) — so this ships
+inert today and activates automatically, no further deploy needed, the moment that secret is set.
+
+Verified: new `tests/test_website_home.py` (2 tests — WhatsApp CTA shown in both hero and
+footer-cta sections when configured, Telegram CTA stays either way; hidden entirely when not
+configured). Full suite: 533 passing (up from 531).
