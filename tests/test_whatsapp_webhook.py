@@ -397,7 +397,11 @@ def test_existing_filter_user_gets_already_registered_reply_no_gemini_call():
 
     parse_mock.assert_not_called()
     send_mock.assert_called_once()
-    assert "כבר יש לך פילטר" in send_mock.call_args[0][1]
+    reply = send_mock.call_args[0][1]
+    assert "כבר יש לך פילטר" in reply
+    # 2026-09-06 fix: this used to dead-end WhatsApp-only accounts (no telegram_user_id, so the
+    # "edit via the Telegram bot" pointer led nowhere real) - now it's a direct wid link to /filter.
+    assert f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000" in reply
     assert not session.added
 
 
@@ -475,3 +479,7 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert user.pending_onboarding_state is None
     assert session.committed
     assert send_mock.call_count == 2  # the Gemini response_message, then the registration confirmation
+    # 2026-09-06 fix: the registration confirmation now includes the same wid edit link, so the
+    # very first WhatsApp-only user never even hits the "how do I change this?" dead end.
+    confirmation = send_mock.call_args_list[1][0][1]
+    assert f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000" in confirmation
