@@ -3542,3 +3542,40 @@ call — `test_post_webhook_processes_a_real_text_message`, `test_a_redelivered_
 `send_text_message` (the Gemini response) and `send_cta_url_message` (the registration confirmation)
 separately, since they're now two different calls, not two calls to the same function. Full suite:
 509 passing (up from 506).
+
+## 2026-09-06 (same day, one more polish round): the button WORKED live — then matched Dorin's exact wording
+
+Owner confirmed the cta_url button rendered correctly and worked end to end on a real device (the
+JSON shape guessed via web search, since developers.facebook.com was blocked, turned out right).
+Then sent a screenshot of the reference competitor bot's own 3-message sequence for this exact
+moment — a CTA button with one intro line, then two short explanatory follow-up messages — and
+asked for the identical flow, wording copied one to one (the follow-ups mention price, cities,
+parking/elevator/safe-room preferences — a genuine match for Todira's own filter fields, not
+borrowed text that happens not to fit).
+
+**Built**: `website/whatsapp_webhook.py` gained `_send_filter_edit_prompt(wa_id)` — sends the CTA
+button (intro text now `"כדי לערוך את הסינון, הכי פשוט להיכנס ישירות לדף הסינון שלנו:"`, copied
+verbatim from the screenshot) followed by two `send_text_message` follow-ups
+(`_FILTER_EDIT_FOLLOWUP_1`/`_FILTER_EDIT_FOLLOWUP_2`, also copied verbatim). Both existing call
+sites now share this one function instead of duplicating the CTA call inline:
+- The "already have a filter" reply dropped its old "כבר יש לך פילטר רשום אצלנו..." preamble
+  entirely in favor of leading straight into the competitor-matched flow — cleaner and more
+  actionable, and what was actually asked for.
+- The registration confirmation keeps its own "מעולה, נרשמת!" line as a first message (still
+  genuinely different content — welcoming a brand-new user, not generic filter-editing help), then
+  appends the SAME 3-message prompt right after it, so a first-time WhatsApp user gets the same
+  polished, competitor-matched onboarding into filter editing as an existing one asking to change
+  their filter later.
+
+Verified: `tests/test_whatsapp_webhook.py` — the two "already have a filter"-path tests
+(`test_ref_prefixed_but_unknown_code_falls_through_to_normal_onboarding`,
+`test_existing_filter_user_gets_already_registered_reply_no_gemini_call`) updated to assert the new
+intro text and both follow-up messages fire with the exact expected wording; two webhook-level
+tests (`test_post_webhook_processes_a_real_text_message`,
+`test_a_redelivered_message_id_is_not_processed_twice`) gained a `send_text_message` patch
+alongside their existing `send_cta_url_message` one, since the flow now calls both.
+`test_complete_state_creates_filter_and_clears_pending_state` updated for the now-4-call
+`send_text_message` sequence (Gemini response → "נרשמת!" → both follow-ups) plus the one
+`send_cta_url_message` call, asserting each message's exact content and order. Full suite: 509
+passing (same count as before — no new tests added this round, existing ones re-shaped to match
+the new message sequence).
