@@ -23,6 +23,7 @@ import hashlib
 import hmac
 import logging
 import os
+import threading
 from collections import OrderedDict
 
 from dorin_common import cities, gemini_client
@@ -104,6 +105,19 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
     expected = hmac.new(app_secret.encode(), body, hashlib.sha256).hexdigest()
     provided = signature_header[len("sha256=") :]
     return hmac.compare_digest(expected, provided)
+
+
+def _fire_typing_indicator(message_id: str) -> None:
+    """Kicks off the "typing…" indicator on its own thread instead of awaiting it inline — this
+    already runs inside a BackgroundTask worker thread, and the indicator call itself is a network
+    round-trip that has nothing to do with the actual reply; waiting for it here would just tack
+    its own latency onto the START of the Gemini call it's meant to cover for. Best-effort: if it
+    fails, the user simply doesn't see the bubble, same as before this feature existed."""
+    threading.Thread(
+        target=whatsapp_client.mark_as_read_with_typing_indicator,
+        args=(message_id,),
+        daemon=True,
+    ).start()
 
 
 def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) -> None:
@@ -215,6 +229,8 @@ def _process_payload_sync(payload: dict) -> None:
                             "כרגע אני יודע לקרוא רק הודעות טקסט 🙂 אפשר לתאר במילים מה את/ה מחפש/ת?",
                         )
                         continue
+                    if message.get("id"):
+                        _fire_typing_indicator(message["id"])
                     text = (message.get("text") or {}).get("body", "")
                     _handle_incoming_text_sync(wa_id, contacts.get(wa_id), text)
     except Exception:
