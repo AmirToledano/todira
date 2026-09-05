@@ -136,8 +136,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Nous contacter", "ar": "تواصل معنا",
     },
     "nav.account": {
-        "he": "🔗 חיבור ערוצים", "en": "🔗 Link channels", "ru": "🔗 Связать каналы",
-        "fr": "🔗 Lier des canaux", "ar": "🔗 ربط القنوات",
+        "he": "👤 החשבון שלי", "en": "👤 My account", "ru": "👤 Мой аккаунт",
+        "fr": "👤 Mon compte", "ar": "👤 حسابي",
     },
     "auth.you": {
         "he": "מחובר/ת", "en": "Logged in", "ru": "Вы вошли", "fr": "Connecté(e)", "ar": "تم تسجيل الدخول",
