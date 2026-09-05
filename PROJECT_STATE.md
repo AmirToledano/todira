@@ -3364,3 +3364,42 @@ exception confirmed to NOT consume a retry (1 call, `time.sleep` never invoked) 
 `errors.ServerError` built via `__new__` (bypassing `__init__`, which expects a real
 `requests.Response` object this test doesn't have) plus `Exception.__init__` to still carry a
 usable message. Full suite: 498 passing (up from 495).
+
+## 2026-09-06 (same day, third round): the retry above missed a whole other failure shape — fixed
+
+The owner tested again after the `ServerError` retry shipped and still got "תקלה טכנית" on a real
+message. Pulled fresh production logs the same way (`diagnose-website-webhook.yaml`) instead of
+assuming the previous fix just needed tuning, and found something genuinely different this time:
+not `google.genai.errors.ServerError` at all, but a plain
+`requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='generativelanguage.googleapis.com',
+port=443): Read timed out. (read timeout=10.0)`. Gemini didn't return an error — it just didn't
+answer within the 10s budget from the earlier timeout fix. Since the retry added earlier today was
+scoped to `except errors.ServerError` specifically, it never even saw this exception; it fell
+straight through to the generic `except Exception` path and returned `None` on the very first
+attempt, no retry spent at all.
+
+**Fix**: added `requests.exceptions.Timeout` alongside `errors.ServerError` in a new
+`_RETRYABLE_ERRORS` tuple, so both real failure shapes ("Gemini answered with a 5xx" and "Gemini
+didn't answer in time") get the same one bounded retry before falling back. Confirmed
+`requests.exceptions.ReadTimeout` is NOT a subclass of Python's built-in `TimeoutError` in the
+installed version (checked directly — `issubclass(...)` is `False` — rather than assumed), so
+catching the built-in wouldn't have worked; had to import `requests` directly and catch its actual
+exception type by name.
+
+**Dependency hygiene**: `requests` was only ever an undeclared transitive dependency of
+`google-genai`'s own HTTP transport — never imported directly anywhere in this codebase before now.
+Added it as an explicit pin (`requests>=2.31,<3.0`) to `bot/requirements.txt`,
+`website/requirements.txt`, and `requirements-test.txt`, matching this project's own existing
+convention (see `bot/requirements.txt`'s pre-existing comment on why `httpx` is pinned explicitly
+even though `python-telegram-bot` already pulls it in transitively) — a future `google-genai`
+version could drop or replace its own transport dependency without warning, and an explicit pin is
+what keeps this module's own direct `import requests` from breaking silently if that ever happens.
+
+Verified: `tests/test_gemini_client.py` +1 test — a `ReadTimeout` on attempt 1 that succeeds on a
+retried attempt 2, mirroring the existing `ServerError` retry test. Full suite: 499 passing (up
+from 498).
+
+**Lesson for next time a "still get the hiccup" report comes in**: don't assume the shape of the
+failure from the previous one — pull fresh logs every time. Two real, distinct failure modes hit
+the exact same user-visible fallback message tonight (a 5xx response, then a bare timeout with no
+response at all); a plausible-sounding guess at either point would have fixed only one of them.

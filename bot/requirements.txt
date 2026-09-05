@@ -11,3 +11,8 @@ httpx>=0.27,<1.0
 # Pillow: dorin_common/cards.py's _build_collage_sync composites a listing's photos into one
 # collage image for Telegram (2026-09-03) - see that function's own docstring.
 Pillow>=10.0,<12.0
+# requests: google-genai already depends on it transitively for its HTTP transport, but
+# dorin_common/gemini_client.py (2026-09-06) catches requests.exceptions.Timeout by name to retry
+# a Gemini call that times out - pinned explicitly rather than relying on an undeclared transitive
+# dep, same reasoning as this file's own httpx comment above.
+requests>=2.31,<3.0
