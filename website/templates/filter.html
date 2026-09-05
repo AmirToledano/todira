@@ -5,7 +5,10 @@
 <div class="page-banner reveal">
   <div class="pb-text">
     <h1>{{ t('filter.title') }}</h1>
-    <p>{{ t('filter.subtitle') }}</p>
+    {# 2026-09-06: a visitor with no telegram_user_id (WhatsApp-only/Google-only, arrived via wid)
+       has no Telegram account to run /filter from — the full subtitle's Telegram pointer would be
+       a dead end for them, so they get just the first sentence instead. #}
+    <p>{{ t('filter.subtitle') if user.telegram_user_id else t('filter.subtitle_short') }}</p>
   </div>
   <div class="pb-count"><b>{{ f.cities|length }}</b><span>{{ t('filter.cities_count_label') }}</span></div>
 </div>

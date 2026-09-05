@@ -128,6 +128,29 @@ def test_get_filter_renders_wid_hidden_field_not_uid(whatsapp_only_user):
     assert 'name="uid"' not in resp.text
 
 
+def test_get_filter_shows_short_subtitle_for_a_whatsapp_only_user(whatsapp_only_user):
+    """2026-09-06 real UX gap found live: the full subtitle points at '/filter on Telegram' for
+    more granular editing — a dead end for a visitor with no telegram_user_id to run that command
+    from at all. They should get just the first (still fully true) sentence instead. (base.html's
+    own footer always links to the Telegram bot regardless of who's viewing — this checks the
+    subtitle's own distinguishing phrase, not "בטלגרם" anywhere on the page.)"""
+    session = _FakeSession(scalar_results=[whatsapp_only_user])
+    for client in _client(session):
+        resp = client.get("/filter?wid=972501234567")
+
+    assert "ב-/filter בטלגרם" not in resp.text
+    assert "עריכה מלאה כאן." in resp.text
+
+
+def test_get_filter_shows_full_subtitle_for_a_telegram_linked_user():
+    linked_user = _FakeUser(id=2, telegram_user_id=555, whatsapp_phone_number=None)
+    session = _FakeSession(scalar_results=[linked_user])
+    for client in _client(session):
+        resp = client.get("/filter?uid=555")
+
+    assert "ב-/filter בטלגרם" in resp.text
+
+
 def test_post_filter_update_resolves_via_wid_and_saves(whatsapp_only_user):
     session = _FakeSession(scalar_results=[whatsapp_only_user])
     for client in _client(session):
