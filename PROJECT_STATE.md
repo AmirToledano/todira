@@ -3263,3 +3263,61 @@ thread (an anyio portal) to run the ASGI app, so globally stubbing `Thread.start
 harness itself, not just the code under test. Fixed by patching `_fire_typing_indicator` at the
 call site instead for that test, keeping the thread-safety assertion in its own separate, narrowly
 scoped test. Full suite: 493 passing (up from 488).
+
+## 2026-09-06 (same day, again): asked for every remaining WhatsApp speed lever — audited all of them
+
+Explicit follow-up ask after the typing-indicator ship: find and apply any REAL remaining latency
+win, and look everywhere, not just the one obvious spot. Went through every layer of the WhatsApp
+reply path and only shipped what could be verified against the actual installed dependency —
+consistent with this project's own standing lesson (see the Gemini timeout entry above) about not
+trusting an SDK's documented-sounding API shape without checking it against the real installed
+version.
+
+**Shipped — a real, verified win**: `website/whatsapp_client.py` was calling the module-level
+`httpx.post(...)` convenience function for every single WhatsApp API call (the typing indicator AND
+the actual reply). That function opens and tears down a brand-new TCP+TLS connection to
+`graph.facebook.com` on every call — real cost, paid twice per message (typing indicator, then the
+reply) even though both hit the identical host. Replaced with one module-level, reused
+`httpx.Client(timeout=...)` (`_http_client`) that both functions now call through — HTTP
+keep-alive means only the first request per pod lifetime pays a full handshake; everything after
+reuses the warm connection. Mirrors the same "create once, reuse the connection pool" pattern
+`dorin_common/gemini_client.py` already used for its own `genai.Client`.
+
+**Checked and deliberately NOT shipped — disabling Gemini's "thinking"**: `gemini-3.6-flash` calls
+via `google.genai` can, on SDK versions that expose it, skip internal chain-of-thought reasoning via
+`types.ThinkingConfig(thinking_budget=0)` — a real, potentially large latency win for a simple
+structured-extraction task like this one, which needs zero actual reasoning. Tried it directly
+against the exact SDK version this project's own `requirements-test.txt` pins
+(`google-genai>=0.3,<1.0`, resolves to 0.8.0 in the CI-faithful venv):
+`types.ThinkingConfig(thinking_budget=0)` raises `pydantic.ValidationError: Extra inputs are not
+permitted [type=extra_forbidden]` — that field doesn't exist in this SDK version's `ThinkingConfig`
+(only `include_thoughts` does). Shipping this blind would have broken EVERY onboarding message in
+production (every Gemini call raising → every reply falling to "technical hiccup, try again") for a
+speed win that might not even apply to `gemini-3.6-flash`. Revisit only once the actual SDK version
+running in production is confirmed to expose `thinking_budget` — do not re-attempt this from the
+field's presence in a newer SDK's docs alone.
+
+**Checked and deliberately NOT shipped — capping `max_output_tokens`**: bounding the model's output
+length is a real lever for worst-case tail latency, but the response includes a free-form Hebrew
+`response_message` sentence whose real-world length was never measured against a live sample —
+guessing a cap risks silently truncating the JSON output mid-generation (a parse failure → the exact
+"technical hiccup" fallback this whole effort is trying to reduce). Not worth the regression risk
+for an unverified, likely-marginal gain; revisit with real production `response.text` lengths in
+hand if this becomes worth the actual measurement.
+
+**Already optimal, confirmed by reading the code, not touched**: `dorin_common/db.py`'s
+SQLAlchemy engine is `@lru_cache`d (one pooled engine, reused connections, not recreated per
+request); `dorin_common/gemini_client.py`'s `genai.Client` is likewise cached at module level, so
+its internal HTTP transport/connection pool already persists across calls exactly like the fix
+above does for `whatsapp_client.py` now.
+
+**Where the remaining latency actually lives**: the Gemini API round-trip itself (typically the
+dominant chunk of a real reply's wall-clock time) is a third-party network call whose speed this
+codebase cannot change — the typing indicator (previous entry) is the honest answer to that
+remainder: it can't get faster, so make the wait feel like progress instead.
+
+Verified: `tests/test_whatsapp_client.py` +2 tests (`send_text_message` and
+`mark_as_read_with_typing_indicator` route through the same shared `_http_client` instance; that
+instance really is a persistent `httpx.Client`) plus the 4 pre-existing tests updated to patch
+`whatsapp_client._http_client.post` instead of the now-unused module-level `httpx.post`. Full
+suite: 495 passing (up from 493).
