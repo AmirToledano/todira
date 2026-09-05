@@ -3826,3 +3826,43 @@ and empty states, `/apartments` actually excluding a hidden listing, the no-brok
 directions) plus re-running the existing `/apartments`/`/liked` test files this touched
 (`test_apartments_photos.py`, `test_website_content_gating.py`, `test_website_auth.py`, etc.) — all
 green. Full suite: 531 passing (up from 521).
+
+## 2026-09-06 (same session, continued): homepage copy fixes + filter emoji unified to ⚙️ everywhere
+
+Owner sent screenshots of the live homepage and flagged several real copy problems, live:
+- The three "momentum" stat tiles (`home.momentum_1/2/3`) paired a bold headline with a caption
+  underneath that didn't logically follow from it — e.g. value "גדל כל יום" (masc., grammatically
+  wrong next to the implied feminine "קהילה") + label "קהילת המשתמשים שלנו" read backwards (predicate
+  before subject), and value "כמה פעמים ביום" + label "מהפרסום ועד ההתראה אצלך" conflated two
+  unrelated ideas (frequency vs. latency) — worse, that second one was already a vaguer restatement
+  of the separate, precise `home.stat_scan_freq` tile ("כל שעתיים / תדירות סריקה") elsewhere on the
+  same page. Rewrote both to the same [noun value] + [descriptor label] pattern the OTHER working
+  tiles already use (e.g. "AI" + "מבין שפה חופשית"): tile 1 is now "הקהילה שלנו" + "גדלה כל יום"
+  (gender-agreed, subject-first); tile 2 is now "ההתראה שלך" + "ישר לטלגרם, ברגע שיש התאמה" — a
+  genuinely different, non-duplicated, and honest claim (Telegram delivery is immediate once a match
+  is found; the separate 2-hour figure is about scan frequency, not notification delay after a
+  match — kept those two facts from blurring together into one imprecise claim). Tile 3 ("כל הארץ" /
+  "כל אזורי יד2 במקום אחד") was already logical, left unchanged.
+- "מבין עברית חופשית" ("understands free Hebrew") isn't an idiomatic Hebrew phrase — "עברית חופשית"
+  doesn't parse the way English "free-form Hebrew" does. Changed to "מבין שפה חופשית" ("understands
+  free-form text/language"), matching the phrasing the page's own feature1 section already used
+  correctly ("מבין אותך בשפה חופשית").
+- The 🎛️ (level-slider) emoji used for "the filter" was inconsistent and, per the owner, reads as a
+  flat grey square rather than something that says "filter" — replaced with ⚙️ everywhere it
+  appeared across all three surfaces: website nav (`base.html`) and the `/filter` page title
+  (`filter.title`, all 5 languages), the WhatsApp filter-edit CTA button
+  (`whatsapp_webhook._FILTER_EDIT_BUTTON_TEXT` — this one had actually drifted from ⚙️, which the
+  code's OWN comment already said the reference competitor bot uses, back to 🎛️ by mistake when it
+  was first built), and the Telegram bot's `/filter` command menu entry (`bot/main.py`'s
+  `BOT_COMMANDS`, which had used a third, different emoji — 🎯 — not 🎛️ at all) plus its onboarding
+  follow-up message (`bot/handlers/onboarding.py`).
+
+Still pending, per the owner's own "wait, I'm sending 2 more screenshots" — not yet addressed: his
+question about whether the homepage's single Telegram-only hero CTA still makes sense now that
+WhatsApp and direct website browsing both exist as full entry points too (worth a real answer, not
+a rushed change — the `/login` page already solved exactly this with 3 parallel buttons, likely the
+right pattern to reuse here rather than inventing a new one).
+
+Verified: full suite re-run after all the copy/emoji changes above — 531 passing (same count, no
+test coverage depends on this exact wording), confirmed no test asserts on any of the old strings
+before changing them.
