@@ -39,38 +39,66 @@ _REQUEST_TIMEOUT_SECONDS = 15.0
 _http_client = httpx.Client(timeout=_REQUEST_TIMEOUT_SECONDS)
 
 
-def send_text_message(to: str, body: str) -> bool:
-    """`to` is the recipient's wa_id (E.164 digits, no leading '+') — same format the webhook
-    payload's `messages[].from` field uses, so a reply can pass that value straight back in."""
+def _credentials() -> tuple[str, str] | None:
     access_token = os.environ.get(ACCESS_TOKEN_ENV_VAR, "").strip()
     phone_number_id = os.environ.get(PHONE_NUMBER_ID_ENV_VAR, "").strip()
     if not access_token or not phone_number_id:
+        return None
+    return access_token, phone_number_id
+
+
+def _post_message(payload: dict, *, to: str, action_desc: str) -> bool:
+    """Shared send path for every message shape below — same fail-soft contract throughout
+    (never raises; a False return means "didn't go out", logged, not fatal to the caller)."""
+    creds = _credentials()
+    if creds is None:
         logger.error(
-            "%s/%s not set — cannot send WhatsApp message to %s",
-            ACCESS_TOKEN_ENV_VAR,
-            PHONE_NUMBER_ID_ENV_VAR,
-            to,
+            "%s/%s not set — cannot %s to %s", ACCESS_TOKEN_ENV_VAR, PHONE_NUMBER_ID_ENV_VAR, action_desc, to
         )
         return False
-
+    access_token, phone_number_id = creds
     url = f"https://graph.facebook.com/{_GRAPH_API_VERSION}/{phone_number_id}/messages"
+    try:
+        response = _http_client.post(url, json=payload, headers={"Authorization": f"Bearer {access_token}"})
+        response.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        logger.exception("Failed to %s to %s", action_desc, to)
+        return False
+
+
+def send_text_message(to: str, body: str) -> bool:
+    """`to` is the recipient's wa_id (E.164 digits, no leading '+') — same format the webhook
+    payload's `messages[].from` field uses, so a reply can pass that value straight back in."""
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
         "type": "text",
         "text": {"body": body, "preview_url": True},
     }
-    try:
-        response = _http_client.post(
-            url,
-            json=payload,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        response.raise_for_status()
-        return True
-    except httpx.HTTPError:
-        logger.exception("Failed to send WhatsApp message to %s", to)
-        return False
+    return _post_message(payload, to=to, action_desc="send WhatsApp message")
+
+
+def send_cta_url_message(to: str, body: str, button_text: str, url: str) -> bool:
+    """A tappable button instead of a bare link in the message text — WhatsApp Cloud API's
+    "interactive cta_url" message type (POST .../messages with type: "interactive",
+    interactive.type: "cta_url"; action.name is always the literal string "cta_url", not
+    caller-configurable — that's Meta's own required constant for this message shape, not a typo).
+    2026-09-06: the owner compared this against the reference competitor bot, whose own filter-edit
+    prompt renders as a real button ("עדכון סינון ⚙️"), not a plain https:// link sitting in the
+    message text — this is the same UI element. `button_text` should stay short (WhatsApp truncates
+    a long CTA label; keep it well under the ~20-character budget other WhatsApp button types use)."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "body": {"text": body},
+            "action": {"name": "cta_url", "parameters": {"display_text": button_text, "url": url}},
+        },
+    }
+    return _post_message(payload, to=to, action_desc="send WhatsApp CTA button message")
 
 
 def mark_as_read_with_typing_indicator(message_id: str) -> bool:
@@ -81,26 +109,10 @@ def mark_as_read_with_typing_indicator(message_id: str) -> bool:
     it doesn't make the underlying Gemini call any faster, but it turns the same wait from "did it
     even get my message?" into visibly "it's working on it," which is most of what "feels slow"
     actually is for a chat bot."""
-    access_token = os.environ.get(ACCESS_TOKEN_ENV_VAR, "").strip()
-    phone_number_id = os.environ.get(PHONE_NUMBER_ID_ENV_VAR, "").strip()
-    if not access_token or not phone_number_id:
-        return False
-
-    url = f"https://graph.facebook.com/{_GRAPH_API_VERSION}/{phone_number_id}/messages"
     payload = {
         "messaging_product": "whatsapp",
         "status": "read",
         "message_id": message_id,
         "typing_indicator": {"type": "text"},
     }
-    try:
-        response = _http_client.post(
-            url,
-            json=payload,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        response.raise_for_status()
-        return True
-    except httpx.HTTPError:
-        logger.exception("Failed to mark WhatsApp message %s as read/typing", message_id)
-        return False
+    return _post_message(payload, to=message_id, action_desc="mark WhatsApp message as read/typing")

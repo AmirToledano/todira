@@ -144,7 +144,7 @@ def test_post_webhook_processes_a_real_text_message(monkeypatch, client):
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_mock,
     ):
         resp = client.post(
             "/webhook/whatsapp",
@@ -185,7 +185,7 @@ def test_a_redelivered_message_id_is_not_processed_twice(monkeypatch, client):
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_mock,
     ):
         first = client.post("/webhook/whatsapp", content=body, headers=headers)
         second = client.post("/webhook/whatsapp", content=body, headers=headers)
@@ -231,7 +231,7 @@ def test_post_webhook_fires_typing_indicator_for_a_text_message(monkeypatch, cli
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message"),
         patch.object(whatsapp_webhook, "_fire_typing_indicator") as typing_mock,
     ):
         resp = client.post(
@@ -377,7 +377,7 @@ def test_ref_prefixed_but_unknown_code_falls_through_to_normal_onboarding():
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: None),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_mock,
     ):
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_expiredcode")
 
@@ -391,17 +391,18 @@ def test_existing_filter_user_gets_already_registered_reply_no_gemini_call():
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
         patch.object(whatsapp_webhook.gemini_client, "parse_onboarding_message") as parse_mock,
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_mock,
     ):
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "שלום")
 
     parse_mock.assert_not_called()
     send_mock.assert_called_once()
-    reply = send_mock.call_args[0][1]
-    assert "כבר יש לך פילטר" in reply
     # 2026-09-06 fix: this used to dead-end WhatsApp-only accounts (no telegram_user_id, so the
-    # "edit via the Telegram bot" pointer led nowhere real) - now it's a direct wid link to /filter.
-    assert f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000" in reply
+    # "edit via the Telegram bot" pointer led nowhere real) - now it's a real tappable button
+    # (send_cta_url_message, not a bare link in the text) straight to /filter?wid=.
+    call_args = send_mock.call_args[0]
+    assert "כבר יש לך פילטר" in call_args[1]
+    assert call_args[3] == f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000"
     assert not session.added
 
 
@@ -467,7 +468,8 @@ def test_complete_state_creates_filter_and_clears_pending_state():
         patch.object(
             whatsapp_webhook.gemini_client, "parse_onboarding_message", return_value=complete_result
         ),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_text_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_cta_mock,
     ):
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "תל אביב, עד 7000, 2 חדרים")
 
@@ -478,8 +480,9 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert saved_filter.price_max == 7000
     assert user.pending_onboarding_state is None
     assert session.committed
-    assert send_mock.call_count == 2  # the Gemini response_message, then the registration confirmation
-    # 2026-09-06 fix: the registration confirmation now includes the same wid edit link, so the
-    # very first WhatsApp-only user never even hits the "how do I change this?" dead end.
-    confirmation = send_mock.call_args_list[1][0][1]
-    assert f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000" in confirmation
+    send_text_mock.assert_called_once_with("9725500000", "מעולה, קיבלתי הכל!")  # the Gemini response_message
+    # 2026-09-06 fix: the registration confirmation is now a real tappable button (send_cta_url_message,
+    # not a bare link in plain text) pointing at the same wid edit link, so the very first
+    # WhatsApp-only user never even hits the "how do I change this?" dead end.
+    send_cta_mock.assert_called_once()
+    assert send_cta_mock.call_args[0][3] == f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000"
