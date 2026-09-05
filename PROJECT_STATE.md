@@ -3222,3 +3222,44 @@ its response back), the exact "Meta redelivers the same message id" scenario ass
 reply goes out, and a direct unit test of `_already_processed`'s dedup/None-handling. Full suite:
 488 passing (up from 485), run in the CI-faithful `/tmp/ci_sim_venv_login` venv, not the sandbox's
 ambient environment.
+
+## 2026-09-06 (same day): WhatsApp "typing…" indicator, after a live side-by-side comparison
+
+The owner compared this bot live against a competitor's ("דורין") and noticed its WhatsApp bot
+shows the native "typing…" bubble while it works, asked for the same, and separately asked to
+squeeze out any remaining reply latency after the ack-first fix above.
+
+**What shipped**: `website/whatsapp_client.py` gained `mark_as_read_with_typing_indicator(message_id)`
+— WhatsApp Cloud API's own combined "mark read + typing indicator" call
+(`POST /{phone_number_id}/messages` with `status: "read"` and `typing_indicator: {"type": "text"}`).
+Meta shows the bubble for up to ~25s and clears it automatically the instant the real reply is
+sent (or after 25s) — nothing to turn off ourselves. `website/whatsapp_webhook.py`'s
+`_process_payload_sync` fires it (via a new `_fire_typing_indicator` helper) for every incoming
+text message, right before handing off to `_handle_incoming_text_sync`.
+
+**The one deliberate non-obvious choice**: `_fire_typing_indicator` spawns its own daemon thread
+rather than calling `mark_as_read_with_typing_indicator` inline. This already runs inside a
+`BackgroundTasks` worker thread (see the ack-first fix above) — waiting for the indicator's own
+network round-trip there would tack that latency onto the FRONT of the Gemini call it exists to
+cover for, the opposite of the point. Fire-and-forget means the indicator request and the Gemini
+call happen concurrently instead of back-to-back. Best-effort by design: if the indicator call
+fails, the user just doesn't see the bubble — exactly the same fallback as before this feature
+existed, never a reason to block or fail the real reply.
+
+**Speed, honestly**: this doesn't make Gemini itself respond faster — nothing here can, that's a
+third-party API call whose latency is outside this codebase. What it does is turn the same wait
+into visible "it's working" instead of "did this even arrive?", which is most of what "feels slow"
+actually is for a chat bot. The real latency fix was the ack-first change above (eliminating the
+duplicate-processing multiplier); this is the perceived-latency layer on top of it.
+
+Verified: `tests/test_whatsapp_client.py` +3 tests for the new function (no-credentials, correct
+payload shape, HTTP-error fail-soft — mirrors `send_text_message`'s own existing test pattern).
+`tests/test_whatsapp_webhook.py` +2 tests — a real text message through the full `POST` route
+confirming `_fire_typing_indicator` is called with the right message id, and a direct test that
+`_fire_typing_indicator` actually executes the call on a background thread (not inline). One test
+authoring pitfall hit and fixed along the way: patching `threading.Thread.start` globally to force
+synchronous execution deadlocked the whole suite — Starlette's TestClient uses a real background
+thread (an anyio portal) to run the ASGI app, so globally stubbing `Thread.start` breaks the test
+harness itself, not just the code under test. Fixed by patching `_fire_typing_indicator` at the
+call site instead for that test, keeping the thread-safety assertion in its own separate, narrowly
+scoped test. Full suite: 493 passing (up from 488).
