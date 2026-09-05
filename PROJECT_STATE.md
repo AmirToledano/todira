@@ -3053,4 +3053,94 @@ commit/fetch/push-to-origin/checkout, python/pytest, npm, read-only kubectl) plu
 list for the dangerous variants that a broad `git *`/`kubectl *` wildcard would otherwise have
 silently let through unprompted (`git push --force`/`-f`, `git reset --hard`, `git clean`, `rm
 -rf`, `kubectl delete`/`apply`) — he wanted fewer permission prompts for routine work without
-losing the safety rail on destructive ops specifically.
+losing the safety rail on destructive ops specifically. Owner also gave a standing, durable
+authorization the same night: no more asking before acting, with exactly one carve-out — any run
+that spends ZenRows/BrightData scraping credits still needs a check-in first. Everything else
+(pushes, deploys, PRs, merges, infra changes) is pre-authorized going forward.
+
+## 2026-09-05 (same night, continued): WhatsApp actually working end to end — the real saga
+
+Picking up from the "owner action needed" list in the 2026-09-01 WhatsApp entry above: all 4
+credentials got configured tonight, but getting from "secrets are set" to "the bot actually
+replies" took solving three separate, real, non-obvious problems — worth the full trail since each
+one will recur if WhatsApp setup is ever redone (a new number, a new app, disaster recovery):
+
+**Problem 1 — the temporary Access Token needed a K8s pod restart, not just a Secret update.**
+Setting a GitHub Actions repo secret and re-running `ci-cd.yaml` updates the *Kubernetes Secret*
+object via `helm upgrade`, but the already-running pod's env vars were read once at container
+start — changing the Secret's data does **not** trigger Kubernetes to restart pods automatically.
+Confirmed live: after updating `WHATSAPP_ACCESS_TOKEN` and a full CI/CD re-run, the website pod's
+age hadn't changed (`ci-cd.yaml`'s image tag is the git SHA — re-running an *already-completed* run
+rebuilds the identical tag, so Helm sees no Pod-template diff and never recreates the pod either).
+Fix: `.github/workflows/set-whatsapp-secret.yaml` (found already built — see below) does
+`kubectl patch secret` **and** `kubectl rollout restart deployment/todira-website` together — that
+restart is the part that actually matters when only a Secret's *value* changed, not its key names.
+
+**Problem 2 — the WhatsApp Business Account was never subscribed to our app.** The app-level
+"Configure Webhooks" screen (callback URL + verify token + field subscriptions) is necessary but
+not sufficient — Meta's own "Test" button on that screen bypasses real routing entirely (posts
+straight to the callback URL), which is why it succeeded while real messages never arrived. The
+actual routing is governed separately: `GET /{waba_id}/subscribed_apps` showed only Meta's own
+default "WA DevX Webhook Events 1P App" subscribed, never our "Todira" app — so real inbound
+messages to the test number were delivered to Meta's internal app, not ours, regardless of the
+app-level webhook config. Fixed with one API call: `POST /{waba_id}/subscribed_apps` (System User
+token with `whatsapp_business_management`). No UI path for this was found in the current dashboard
+layout — it's a Graph API-only step. **Write this down for next time**: after configuring webhooks
+in the dashboard, always also verify (and if needed, POST to) `subscribed_apps` on the actual WABA.
+
+**Problem 3 — real messages take ~1 minute to reply to, separate bug, see the dedicated entry
+below (Gemini's default retry/backoff on a transient 503).**
+
+**Also done tonight**: swapped the 24h temporary access token for a permanent one — created a
+Business Settings → System User ("todira bot", Admin access, all assets + all app permissions
+assigned per the owner's own explicit choice to avoid future permission-hunting friction) →
+generated a token scoped to `whatsapp_business_management` + `whatsapp_business_messaging` with no
+expiry. Both the GitHub Actions repo secret and the live K8s secret were updated and the website
+pod restarted to pick it up.
+
+**New diagnostic tool**: `.github/workflows/diagnose-website-webhook.yaml` (workflow_dispatch,
+read-only) — dumps the website pod's logs/status/events plus Caddy's logs, built specifically
+because this session had no local `kubectl`/log access on the machine being used tonight (see the
+git-sync entry above) and needed a way to see server-side reality to debug the two problems above.
+Caddy's own logs turned out to only capture non-2xx errors by default (no `log` directive in the
+Caddyfile) — not useful for confirming a *successful* delivery, only for ruling out connectivity
+failures.
+
+**Repo secrets note**: setting a GitHub Actions repo secret via the API requires a fine-grained PAT
+with the **Secrets: Read and write** permission specifically — distinct from **Actions** (needed to
+list/dispatch/read workflow runs and logs) and **Workflows** (needed to push changes to files under
+`.github/workflows/`). All three had to be added one at a time tonight before the local PAT
+(`local-sync`) could do everything this session ended up needing.
+
+## 2026-09-05 (same night): Gemini onboarding replies could take up to ~60 seconds — fixed
+
+Real user report mid-WhatsApp-testing: a successful onboarding reply took about a minute to arrive
+— reads as "the bot is broken" to someone actually searching for an apartment in real time, not an
+abstract latency number. Root cause, confirmed from production logs and the SDK's own field
+documentation: `dorin_common/gemini_client.py`'s `generate_content` call never set `http_options`,
+so `HttpOptions.retry_options` silently used Google's own default — **up to 5 attempts on
+408/429/5xx with exponential backoff up to a 60-second max delay**. A live production log from
+tonight showed exactly the trigger: `google.genai.errors.ServerError: 503 UNAVAILABLE... This model
+is currently experiencing high demand` — `gemini-3.6-flash` under real-world load hits this
+occasionally, and each occurrence meant a ~30-60s retry sequence before either succeeding on a
+later attempt (the slow-but-eventually-fine case the user saw) or exhausting retries and falling
+through to the existing "technical hiccup, try again" message (the fast-fail case, also observed
+live minutes later).
+
+**Fix**: `http_options=types.HttpOptions(timeout=10_000)` (10s) added to the call. Tried also
+setting `retry_options` to cap attempts at 2 with a short backoff — `types.HttpRetryOptions` is
+referenced in `HttpOptions`'s own field annotation but isn't constructible directly in the
+installed SDK version (not exported at the `types` module level, and passing a plain dict raises
+`extra_forbidden`) — so only the per-call timeout could actually be bounded this way. Not a full
+fix for Gemini's own retry policy, but real relief for the actual user-facing symptom: a real
+outage now surfaces the fail-soft message within ~10s instead of up to a minute. Revisit if a
+future `google-genai` version exposes retry tuning more cleanly, or if 10s proves too tight for a
+merely-slow-but-healthy response (no evidence of that yet).
+
+Verified: existing `tests/test_gemini_client.py` (8 cases, unaffected by this change — the
+`_install_fake_client` mock doesn't inspect `http_options`) plus the full suite, 485 passing, run
+locally in the exact environment this fix was made in (no CI round-trip needed to catch a basic
+`AttributeError` on the wrong SDK API before it reached the code — worth remembering: verify
+against the ACTUAL installed dependency version before assuming an SDK's documented-sounding API
+shape is real; `types.HttpRetryOptions(...)` looked entirely reasonable from the field annotation
+alone and was still wrong).
