@@ -21,6 +21,7 @@ import logging
 import os
 import time
 
+import requests
 from google import genai
 from google.genai import errors, types
 
@@ -34,14 +35,22 @@ _MODEL = "gemini-3.6-flash"
 # — but a chunk of those single attempts hitting a genuine `google.genai.errors.ServerError: 503
 # UNAVAILABLE ... This model is currently experiencing high demand` straight from Gemini itself.
 # Google's own error message calls these spikes "usually temporary," which is exactly the case a
-# single retry is for. Retrying was NOT safe before the ack-first webhook fix (website/
-# whatsapp_webhook.py) shipped earlier today — back then, every extra second here just made Meta's
-# own webhook redelivery race more likely. Now that Meta is acked before this function is ever
-# called, one bounded retry only affects how long the (already-backgrounded) reply takes to arrive,
-# never whether Meta double-processes the message. Scoped to ServerError (5xx) specifically —
-# retrying a malformed-response or bad-request error would just fail identically a second time.
+# single retry is for. A SECOND round of live logs (same day, next report) showed a different
+# failure shape hitting this same "still get the hiccup" complaint: a plain
+# `requests.exceptions.ReadTimeout` — Gemini just not answering within the 10s budget at all, no
+# error response, nothing to do with the SDK's own retry policy. Both are retried the same way:
+# `requests` is imported directly (not relying on it as google-genai's undeclared transitive
+# dependency — matches this project's own existing convention, see bot/requirements.txt's httpx
+# comment) specifically so `requests.exceptions.Timeout` can be caught by name instead of guessed
+# at. Retrying was NOT safe before the ack-first webhook fix (website/whatsapp_webhook.py) shipped
+# earlier today — back then, every extra second here just made Meta's own webhook redelivery race
+# more likely. Now that Meta is acked before this function is ever called, one bounded retry only
+# affects how long the (already-backgrounded) reply takes to arrive, never whether Meta
+# double-processes the message. Scoped tight — a malformed-response or bad-request error still
+# fails immediately, since retrying those would just fail identically a second time.
 _MAX_ATTEMPTS = 2
 _RETRY_DELAY_SECONDS = 1.0
+_RETRYABLE_ERRORS = (errors.ServerError, requests.exceptions.Timeout)
 
 _client: genai.Client | None = None
 _client_checked = False
@@ -129,14 +138,17 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
                 ),
             )
             break
-        except errors.ServerError as exc:
+        except _RETRYABLE_ERRORS as exc:
             if attempt < _MAX_ATTEMPTS:
                 logger.warning(
-                    "Gemini 5xx on attempt %d/%d, retrying once: %s", attempt, _MAX_ATTEMPTS, exc
+                    "Gemini call failed (attempt %d/%d), retrying once: %s",
+                    attempt,
+                    _MAX_ATTEMPTS,
+                    exc,
                 )
                 time.sleep(_RETRY_DELAY_SECONDS)
                 continue
-            logger.exception("Gemini onboarding parse failed (5xx, retry exhausted)")
+            logger.exception("Gemini onboarding parse failed (retry budget exhausted)")
             return None
         except Exception:
             logger.exception("Gemini onboarding parse failed")
