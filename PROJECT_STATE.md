@@ -3612,3 +3612,54 @@ does NOT contain the subtitle's Telegram-specific phrase but DOES contain the sh
 Telegram-linked user's page still contains the full phrase (regression guard against silently
 losing the Telegram pointer for the audience it's actually meant for). Full suite: 511 passing (up
 from 509).
+
+## 2026-09-06 (same day, last request tonight): real brand logos + English names on /account
+
+Owner's next screenshot was `/account` (the cross-channel-linking page) itself — asked to add
+WhatsApp there, relabel Telegram/WhatsApp to their English brand names with real logos, and give
+Google its own logo/colors "if everything is fine legally." Worth answering the legal question
+directly rather than skipping past it: displaying a company's logo next to a "connect your X
+account" control, to truthfully indicate interoperability — not to imply partnership or
+endorsement, not modified/distorted, not used as part of Todira's own brand identity — is
+long-established nominative/referential trademark use, and is literally what Google's own "Sign in
+with Google" branding guidelines and Meta's WhatsApp Brand Resource Center exist to standardize,
+not prohibit. The one already-live proof this project follows that correctly:
+`website/templates/login.html`'s existing Google button (`.btn.google`) already uses white
+background + `#3c4043` grey text + `#dadce0` border — that is Google's own official light-theme
+sign-in button spec, not a guess, and it was already right before tonight.
+
+**Built**: hand-authored SVG icon badges for Telegram (paper-plane-in-circle, `#229ED9`) and
+WhatsApp (chat-bubble-in-circle, `#25D366`) using ONLY basic SVG primitives — `circle`/`polygon`,
+zero bezier-curve path data. This was a deliberate choice, not a shortcut: reciting a company's
+precise official logo path data from memory carries real risk of a subtly wrong curve command
+rendering a garbled shape (unverifiable in this sandbox — no way to screenshot/preview-render a
+template here), which would be a worse outcome on every axis (ugly AND still a logo-reproduction
+attempt) than a simplified, unmistakably-recognizable glyph in the correct brand color sitting
+directly next to the brand's own name in text. Google's icon reuses the EXACT SVG already live in
+`login.html` (the real 4-color "G" mark) rather than re-deriving it — same asset, one source of
+truth. `website/templates/account.html`'s three tiles now show an icon badge above the brand name
+(English: "Telegram" / "WhatsApp" / "Google"), and the connect buttons switched from generic
+`.btn.gold`/`.btn.outline` to the channel's own `.btn.telegram`/`.btn.whatsapp`/`.btn.google`
+classes (already-correct brand colors, previously only used on `login.html`) so the icon badge and
+the button read as one consistent brand block. New CSS: `.channel-tile`/`.channel-icon`/
+`.channel-icon-plain` (Google's glyph gets its own white+border circle badge to match the other
+two's built-in colored-circle backgrounds)/`.channel-status.connected` in `style.css`, all built on
+the existing `var(--card)`/`var(--border)`/`var(--teal)` tokens so dark mode needs no extra rules.
+Also swapped `login.html`'s own 💬/🟢 emoji placeholders for the same two new SVGs (small, obviously
+related consistency win using assets already being built — Hebrew CTA text there is unchanged,
+only the icon).
+
+**Not done — needs the owner, not guessable**: the actual "connect WhatsApp" functional gap is
+still open. `website/main.py`'s `whatsapp_link` only renders when `WHATSAPP_PUBLIC_NUMBER` (a real,
+human-dialable phone number for the `wa.me/<number>` deep link — DIFFERENT from
+`WHATSAPP_PHONE_NUMBER_ID`, the Meta Graph API id already configured for outbound sends) is set,
+and the account page's own screenshot tonight still showed "חיבור ווטסאפ עוד לא זמין כרגע" — that
+k8s secret value appears to still be empty. This is real business/account data only the owner has;
+asked him directly for the number rather than guessing or leaving it silently broken.
+
+Verified: `tests/test_website_account.py` +2 tests — the rendered page contains the English brand
+names and each channel's real brand-color hex (`#229ED9`/`#25D366`/`#4285F4`) and no longer contains
+the old `⭕` placeholder; a fully-linked account renders exactly 3 `channel-status connected` badges
+(one per channel). Full existing suite (login page, preview mode, channel/google linking) re-run
+unchanged and still green — this was a template/CSS-only change, no route logic touched. Full
+suite: 513 passing (up from 511).
