@@ -109,6 +109,98 @@ def test_post_webhook_accepts_correctly_signed_request(monkeypatch, client):
     assert resp.status_code == 200
 
 
+# --- 2026-09-06: ack-Meta-first fix (the slow/duplicate-reply bug) ---
+#
+# Live symptom the owner reported: a real WhatsApp message got TWO different bot replies (or a
+# ~1-minute-late "technical hiccup" reply). Root cause: the whole onboarding turn (DB + Gemini)
+# used to run INSIDE the request/response cycle, so a slow Gemini call meant Meta's own webhook
+# retry fired before we ever answered. The fix moves that work into a FastAPI BackgroundTask that
+# only runs AFTER the 200 is already on the wire, plus a message-id dedup as a second line of
+# defense against Meta's documented at-least-once delivery.
+
+
+def test_post_webhook_processes_a_real_text_message(monkeypatch, client):
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "app-secret")
+    payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "contacts": [{"wa_id": "9725500000", "profile": {"name": "Amir"}}],
+                    "messages": [{
+                        "id": "wamid.FIRST",
+                        "from": "9725500000",
+                        "type": "text",
+                        "text": {"body": "שלום"},
+                    }],
+                }
+            }]
+        }]
+    }
+    import json as _json
+
+    body = _json.dumps(payload).encode()
+    digest = hmac.new(b"app-secret", body, hashlib.sha256).hexdigest()
+
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+    ):
+        resp = client.post(
+            "/webhook/whatsapp",
+            content=body,
+            headers={"content-type": "application/json", "x-hub-signature-256": f"sha256={digest}"},
+        )
+
+    assert resp.status_code == 200
+    send_mock.assert_called_once()  # BackgroundTasks ran before TestClient returned the response
+
+
+def test_a_redelivered_message_id_is_not_processed_twice(monkeypatch, client):
+    """Simulates exactly what Meta does when it doesn't get a fast-enough ack: POSTs the SAME
+    message id a second time. The dedup guard must stop the second delivery from producing a
+    second reply."""
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "app-secret")
+    payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "contacts": [{"wa_id": "9725500001", "profile": {"name": "Amir"}}],
+                    "messages": [{
+                        "id": "wamid.REDELIVERED-TEST",
+                        "from": "9725500001",
+                        "type": "text",
+                        "text": {"body": "שלום שוב"},
+                    }],
+                }
+            }]
+        }]
+    }
+    import json as _json
+
+    body = _json.dumps(payload).encode()
+    digest = hmac.new(b"app-secret", body, hashlib.sha256).hexdigest()
+    headers = {"content-type": "application/json", "x-hub-signature-256": f"sha256={digest}"}
+
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+    ):
+        first = client.post("/webhook/whatsapp", content=body, headers=headers)
+        second = client.post("/webhook/whatsapp", content=body, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    send_mock.assert_called_once()
+
+
+def test_already_processed_dedup_helper():
+    assert whatsapp_webhook._already_processed("wamid.unit-test-1") is False
+    assert whatsapp_webhook._already_processed("wamid.unit-test-1") is True
+    assert whatsapp_webhook._already_processed(None) is False
+
+
 # --- _handle_incoming_text_sync: the onboarding state machine ---
 
 
