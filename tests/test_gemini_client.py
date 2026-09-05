@@ -7,6 +7,9 @@ fallback" commit in git history), rejecting an invalid deal_type, and the docume
 never raises" contract on API errors or malformed responses.
 """
 import json
+from unittest.mock import patch
+
+from google.genai import errors
 
 from dorin_common import gemini_client
 
@@ -16,24 +19,44 @@ class _FakeResponse:
         self.text = text
 
 
+def _fake_server_error(code=503):
+    """A real google.genai.errors.ServerError needs a response object; a bare instance built via
+    __new__ (bypassing __init__, which parses a requests.Response we don't have here) is enough to
+    satisfy `except errors.ServerError` and to be logged."""
+    exc = errors.ServerError.__new__(errors.ServerError)
+    exc.code = code
+    exc.status = "UNAVAILABLE"
+    exc.details = {"message": "This model is currently experiencing high demand."}
+    Exception.__init__(exc, f"{code} UNAVAILABLE. {exc.details}")
+    return exc
+
+
 class _FakeModels:
-    def __init__(self, response_text=None, raise_exc=None):
+    def __init__(self, response_text=None, raise_exc=None, raise_sequence=None):
         self._response_text = response_text
         self._raise_exc = raise_exc
+        self._raise_sequence = list(raise_sequence) if raise_sequence else None
+        self.call_count = 0
 
     def generate_content(self, model, contents, config):
+        self.call_count += 1
+        if self._raise_sequence is not None:
+            outcome = self._raise_sequence.pop(0)
+            if outcome is not None:
+                raise outcome
+            return _FakeResponse(self._response_text)
         if self._raise_exc is not None:
             raise self._raise_exc
         return _FakeResponse(self._response_text)
 
 
 class _FakeClient:
-    def __init__(self, response_text=None, raise_exc=None):
-        self.models = _FakeModels(response_text, raise_exc)
+    def __init__(self, response_text=None, raise_exc=None, raise_sequence=None):
+        self.models = _FakeModels(response_text, raise_exc, raise_sequence)
 
 
-def _install_fake_client(monkeypatch, response_text=None, raise_exc=None):
-    fake = _FakeClient(response_text=response_text, raise_exc=raise_exc)
+def _install_fake_client(monkeypatch, response_text=None, raise_exc=None, raise_sequence=None):
+    fake = _FakeClient(response_text=response_text, raise_exc=raise_exc, raise_sequence=raise_sequence)
     monkeypatch.setattr(gemini_client, "_get_client", lambda: fake)
     return fake
 
@@ -124,3 +147,46 @@ def test_malformed_json_response_fails_soft_returns_none(monkeypatch):
     _install_fake_client(monkeypatch, response_text="not valid json{{{")
     result = gemini_client.parse_onboarding_message("משהו", {}, ["תל אביב"])
     assert result is None
+
+
+# --- 2026-09-06: one bounded retry on Gemini's own transient 5xx ("high demand") errors — added
+# after real production logs (pulled via the diagnose-website-webhook workflow) showed exactly
+# this ServerError on 2 of 3 live WhatsApp messages the owner sent back-to-back. Safe to do only
+# because the ack-first webhook fix shipped earlier the same day decouples this function's total
+# runtime from Meta's own webhook redelivery. ---
+
+
+def test_server_error_is_retried_and_succeeds_on_second_attempt(monkeypatch):
+    payload = json.dumps(
+        {"deal_type": "rent", "cities": ["חיפה"], "missing_required": [], "response_message": "מעולה"}
+    )
+    fake = _install_fake_client(
+        monkeypatch, raise_sequence=[_fake_server_error(), None], response_text=payload
+    )
+    with patch.object(gemini_client.time, "sleep") as sleep_mock:
+        result = gemini_client.parse_onboarding_message("סאבלט בחיפה", {}, ["חיפה"])
+
+    assert result["cities"] == ["חיפה"]
+    assert fake.models.call_count == 2
+    sleep_mock.assert_called_once_with(gemini_client._RETRY_DELAY_SECONDS)
+
+
+def test_server_error_on_every_attempt_fails_soft_after_retry_budget(monkeypatch):
+    fake = _install_fake_client(
+        monkeypatch, raise_sequence=[_fake_server_error(), _fake_server_error()]
+    )
+    with patch.object(gemini_client.time, "sleep"):
+        result = gemini_client.parse_onboarding_message("משהו", {}, ["תל אביב"])
+
+    assert result is None
+    assert fake.models.call_count == gemini_client._MAX_ATTEMPTS
+
+
+def test_non_server_error_is_not_retried(monkeypatch):
+    fake = _install_fake_client(monkeypatch, raise_exc=RuntimeError("network exploded"))
+    with patch.object(gemini_client.time, "sleep") as sleep_mock:
+        result = gemini_client.parse_onboarding_message("משהו", {}, ["תל אביב"])
+
+    assert result is None
+    assert fake.models.call_count == 1  # no retry spent on a non-transient error
+    sleep_mock.assert_not_called()
