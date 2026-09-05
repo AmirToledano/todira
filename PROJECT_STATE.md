@@ -3403,3 +3403,57 @@ from 498).
 failure from the previous one — pull fresh logs every time. Two real, distinct failure modes hit
 the exact same user-visible fallback message tonight (a 5xx response, then a bare timeout with no
 response at all); a plausible-sounding guess at either point would have fixed only one of them.
+
+## 2026-09-06 (same day, once more): a WhatsApp-only account had NO way to edit its filter — fixed
+
+With the reliability fixes above landed, the owner completed a real WhatsApp onboarding end to end
+and then asked the obvious next question: how does he change the filter he just set? The bot's own
+reply already answered honestly — "עריכת הפילטר דרך וואטסאפ עוד לא זמינה... דרך הבוט בטלגרם" — but
+tracing that pointer to its end revealed a REAL dead end, not just a missing feature: a WhatsApp-only
+`User` row has `telegram_user_id = None`, and every single website route (`_get_user_by_uid`,
+used via `_resolve_user` everywhere) resolves a visitor strictly by matching `telegram_user_id`.
+There is no session-cookie login path for a WhatsApp-only account either (no `google_sub`, no
+Telegram Login Widget data). So "go use the Telegram bot instead" pointed at a *different,
+disconnected* account (a fresh `/start` with no link code creates a brand-new row), and the website
+itself was completely unreachable — not a missing feature, a genuine identity dead end nobody could
+route around.
+
+The owner sent a screenshot of how the reference competitor bot ("דורין") handles this: its
+"עדכון סינון ⚙️" button opens a `dorin.app` webpage that's already signed in as the right person
+("שלום Amir Toledano FIFA") — a magic link, not a login screen — landing straight on a filter-editing
+form. Asked whether to build the same pattern; confirmed yes.
+
+**Built the same pattern**: a `wid` (WhatsApp id) query param, the exact same low-trust model this
+codebase already uses for `?uid=` (a bare identifier trusted because the link only ever reaches the
+right person via a channel they already control — see `_resolve_user`'s own long-standing docstring
+on this), just keyed on `whatsapp_phone_number` instead of `telegram_user_id`:
+- `website/main.py`: new `_get_user_by_wid(session, wid)`; `_resolve_user(request, session, uid,
+  wid=None)` gets a new final fallback branch — tried only after the session cookie and `uid` both
+  come up empty, so an already-working uid/session path is completely unaffected and takes priority
+  (verified: a linked account with both identities present resolves via uid, wid's lookup never
+  even runs). New `_filter_redirect_url(uid, wid)` helper centralizes the "which query param do the
+  two /filter redirects carry" logic that used to be uid-only string interpolation repeated twice.
+  Both `GET /filter` and `POST /filter` now accept an optional `wid`.
+- `website/templates/filter.html`: a second hidden `wid` input alongside the existing `uid` one, so
+  the form's own POST preserves whichever identity got the visitor there.
+- `website/whatsapp_webhook.py`: the "already have a filter" reply and the initial "נרשמת!"
+  registration confirmation BOTH now include a real `{WEBSITE_URL}/filter?wid={wa_id}` link instead
+  of the old dead-end pointer — added to the registration message too (not just the "already
+  registered" one) so no future WhatsApp user hits this same confusion on their very first
+  onboarding.
+
+**Deliberately scoped tight, not a full site**: only `/filter` (GET+POST) accepts `wid` — matching
+what the competitor's own product actually does too (its screenshot shows only a filter-editing
+screen, not full site navigation). `base.html`'s header nav links (Apartments/Liked/Account/Contact)
+still only carry `?uid=`, so a WhatsApp-only visitor who clicks away from the filter-edit link they
+arrived on lands on a login wall on any other page — a known, deliberate limitation for now, not
+something this fix silently promises to have solved everywhere. Revisit if WhatsApp-only accounts
+need real multi-page site access later, not assumed needed today.
+
+Verified: new `tests/test_website_filter_whatsapp.py` (6 tests) — `GET`/`POST /filter?wid=` resolve
+and save correctly, the rendered page's hidden field is `wid` (not `uid`) for a WhatsApp-only user,
+the post-save redirect carries `wid` even on the no-filter bailout path, uid takes priority over wid
+for a linked account (asserted by call-count: the wid lookup never runs), and no identity at all
+still shows the existing `need_uid.html` page. Plus 2 existing `tests/test_whatsapp_webhook.py`
+tests extended to assert the new link text appears in both the "already registered" and the
+brand-new "נרשמת!" replies. Full suite: 505 passing (up from 499).
