@@ -3498,3 +3498,47 @@ ONCE — proving the second page truly came from the cookie, not a second lookup
 the test file's `_FakeSession` with `.execute()` (backs `_current_user_summary`'s header lookup,
 which now actually runs once a session exists) — same pattern `test_website_auth_google.py`'s own
 `_FakeSession` already established. Full suite: 506 passing (up from 505).
+
+## 2026-09-06 (same day, last round tonight): the wid link is now a real tappable button, not a bare URL
+
+Owner's screenshot comparison: the reference competitor bot renders its filter-edit prompt as an
+actual button ("עדכון סינון ⚙️"), not a plain `https://` link sitting in message text (which is what
+both WhatsApp replies built above still did). Asked for the same visual treatment.
+
+**Built with `whatsapp_client.send_cta_url_message`** — WhatsApp Cloud API's "interactive cta_url"
+message type (`type: "interactive"`, `interactive.type: "cta_url"`, `action.name` always the
+literal constant `"cta_url"`, `action.parameters.display_text`/`.url` for the button label/target).
+**Verification note, in the interest of honesty**: `developers.facebook.com` (Meta's own docs
+domain) is blocked by this sandbox's egress policy, same as every other doc-hosting domain hit
+this session — could not fetch the canonical spec directly. Cross-checked the exact JSON shape
+via `WebSearch` instead, which independently returned matching structures from three unrelated
+secondary sources (LivePerson, Kaleyra, D7 Networks) all citing the same Meta doc page, converging
+on the identical field names — high confidence, but not the same as reading Meta's page directly,
+so if the owner sees the button NOT render live (falls back to invisible/no message, since this
+follows the same fail-soft contract — a bad request would raise `httpx.HTTPStatusError`, get
+caught, logged, and return `False`, never crash), that's the first thing to check with real
+production logs, not re-guessed from memory.
+
+**Where it's used**: both WhatsApp replies that link to `/filter?wid=` (the "already have a
+filter" reply and the registration confirmation, both from the wid entries above) now call
+`send_cta_url_message` instead of embedding the URL in `send_text_message`'s plain body text. Button
+label reuses the same 🎛️ emoji `base.html`'s own filter nav link already uses, for consistency.
+
+**Refactor along the way**: `whatsapp_client.py` had grown three near-identical
+credentials-check-then-POST blocks (`send_text_message`, `mark_as_read_with_typing_indicator`, and
+now this). Factored the shared parts into `_credentials()` and `_post_message(payload, *, to,
+action_desc)` — each public function now just builds its own payload shape and calls the shared
+sender. Same fail-soft contract preserved exactly (verified by the pre-existing tests passing
+unchanged after the refactor, before any new cta_url code was added).
+
+Verified: `tests/test_whatsapp_client.py` +3 tests for `send_cta_url_message` (no-credentials,
+correct interactive/cta_url payload shape, HTTP-error fail-soft). `tests/test_whatsapp_webhook.py`:
+5 existing tests updated (they'd patched `send_text_message` for what is now a `send_cta_url_message`
+call — `test_post_webhook_processes_a_real_text_message`, `test_a_redelivered_message_id_is_not_processed_twice`,
+`test_post_webhook_fires_typing_indicator_for_a_text_message`,
+`test_ref_prefixed_but_unknown_code_falls_through_to_normal_onboarding`,
+`test_existing_filter_user_gets_already_registered_reply_no_gemini_call`) plus
+`test_complete_state_creates_filter_and_clears_pending_state` split to mock both
+`send_text_message` (the Gemini response) and `send_cta_url_message` (the registration confirmation)
+separately, since they're now two different calls, not two calls to the same function. Full suite:
+509 passing (up from 506).
