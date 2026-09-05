@@ -876,7 +876,11 @@ def upgrade(request: Request, uid: int | None = None):
         {
             "uid": user.telegram_user_id,
             "has_access": access,
-            "is_owner": _display_is_owner(request, user.telegram_user_id),
+            # named display_is_owner, not is_owner: _render() always overwrites an "is_owner" key
+            # with the real session-based nav-admin-link check, so a route-supplied one was silently
+            # dropped here — a pre-existing bug (the owner banner below never actually showed unless
+            # already signed in with a real session) found while fixing the same collision on /account.
+            "display_is_owner": _display_is_owner(request, user.telegram_user_id),
             "trial_ends_at": user.trial_ends_at,
             "paid_until": user.paid_until,
             "plan_prices": PLAN_PRICES_ILS,
@@ -1080,13 +1084,19 @@ async def webhooks_grow(request: Request, token: str | None = None):
 
 
 @app.get("/account")
-def account(request: Request, uid: int | None = None):
-    """Cross-channel linking (dorin_common/channel_link.py) — same uid/session resolution as
-    /apartments, /liked, /upgrade. Shows which channels are already linked to this user, and —
-    for whichever aren't — a fresh 15-minute link code plus ready-to-use WhatsApp/Telegram deep
-    links to send it from that channel, matching the reference product's own confirmed UX."""
+def account(request: Request, uid: int | None = None, wid: str | None = None):
+    """Cross-channel linking (dorin_common/channel_link.py) — same uid/wid/session resolution as
+    /apartments, /liked, /upgrade, /filter. Shows which channels are already linked to this user,
+    and — for whichever aren't — a fresh 15-minute link code plus ready-to-use WhatsApp/Telegram
+    deep links to send it from that channel, matching the reference product's own confirmed UX.
+
+    2026-09-06: also surfaces subscription status, a notifications on/off toggle, and payment
+    history — all backed by data that already existed (trial_ends_at/paid_until/
+    notifications_enabled on User, the Payment table) but was never rendered anywhere on the
+    website before tonight, prompted by the owner's own side-by-side look at the reference
+    product's fuller account page."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid)
+        user = _resolve_user(request, session, uid, wid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
 
@@ -1098,12 +1108,25 @@ def account(request: Request, uid: int | None = None):
         if not has_telegram or not has_whatsapp:
             code = generate_link_code(session, user)
         redirect_uid = user.telegram_user_id
+        redirect_wid = user.whatsapp_phone_number if redirect_uid is None else None
+
+        access = _effective_access(request, user)
+        notifications_enabled = user.notifications_enabled
+        payments = list(
+            session.scalars(
+                select(Payment)
+                .where(Payment.user_id == user.id)
+                .order_by(Payment.created_at.desc())
+                .limit(10)
+            )
+        )
 
     return _render(
         request,
         "account.html",
         {
             "uid": redirect_uid,
+            "wid": redirect_wid,
             "has_telegram": has_telegram,
             "has_whatsapp": has_whatsapp,
             "has_google": has_google,
@@ -1114,18 +1137,51 @@ def account(request: Request, uid: int | None = None):
                 if code and WHATSAPP_PUBLIC_NUMBER
                 else None
             ),
+            # named display_is_owner, not is_owner: _render() always overwrites an "is_owner" key
+            # with the real session-based nav-admin-link check, so a route-supplied one is silently dropped.
+            "display_is_owner": _display_is_owner(request, user.telegram_user_id),
+            "has_access": access,
+            "trial_ends_at": user.trial_ends_at,
+            "paid_until": user.paid_until,
+            "notifications_enabled": notifications_enabled,
+            "payments": payments,
+            "plan_labels": PLAN_LABELS_HE,
         },
     )
 
 
-def _filter_redirect_url(uid: int | None, wid: str | None) -> str:
-    """/filter's own two redirect targets (no-filter bail-out, post-save) — uid takes priority
-    exactly like _resolve_user does, wid as the WhatsApp-only fallback."""
+@app.post("/account/notifications")
+def account_notifications_toggle(
+    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+):
+    """Flips User.notifications_enabled — the field already existed (used by scraper/notifier.py
+    to skip a paused user) but had no UI anywhere to change it before tonight. A plain form POST,
+    not a JS toggle-switch, matching this site's own mostly-server-rendered pattern elsewhere
+    (/preview/toggle, /filter)."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "account"})
+        user.notifications_enabled = not user.notifications_enabled
+        session.commit()
+
+    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+
+
+def _identity_redirect_url(path: str, uid: int | None, wid: str | None) -> str:
+    """A redirect target back to `path` carrying whichever low-trust identity got the visitor
+    there — uid takes priority exactly like _resolve_user does, wid as the WhatsApp-only fallback.
+    Originally /filter-specific; generalized 2026-09-06 for /account's own notifications-toggle
+    redirect rather than duplicating the same three-branch logic a second time."""
     if uid:
-        return f"/filter?uid={uid}"
+        return f"{path}?uid={uid}"
     if wid:
-        return f"/filter?wid={wid}"
-    return "/filter"
+        return f"{path}?wid={wid}"
+    return path
+
+
+def _filter_redirect_url(uid: int | None, wid: str | None) -> str:
+    return _identity_redirect_url("/filter", uid, wid)
 
 
 @app.get("/filter")
