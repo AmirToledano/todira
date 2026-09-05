@@ -44,6 +44,11 @@ router = APIRouter()
 WEBHOOK_VERIFY_TOKEN_ENV_VAR = "WHATSAPP_WEBHOOK_VERIFY_TOKEN"
 APP_SECRET_ENV_VAR = "WHATSAPP_APP_SECRET"
 
+# Mirrors website/main.py's own WEBSITE_URL (and scraper/notifier.py's copy of the same pattern) —
+# needed here so the "you already have a filter" reply (below) can link straight to /filter?wid=
+# instead of just saying editing isn't available (2026-09-06 fix, see that reply's own comment).
+WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org").rstrip("/")
+
 # Meta redelivers a webhook it didn't get a prompt 200 for — and used to, here: the whole
 # onboarding turn (DB roundtrip + a Gemini call that can legitimately take up to the 10s timeout
 # in dorin_common/gemini_client.py, longer under Gemini's own retries before that fix) used to run
@@ -154,10 +159,18 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         user = get_or_create_whatsapp_user(session, wa_id, profile_name)
 
         if session.scalar(select(Filter.id).where(Filter.user_id == user.id)) is not None:
+            # 2026-09-06 fix: this used to just say editing isn't available via WhatsApp and point
+            # to the Telegram bot — but a WhatsApp-only account has no telegram_user_id, so there
+            # was no actual account for that bot to recognize; a genuine dead end, found live by
+            # the owner testing his own WhatsApp-only account. wid (website/main.py's
+            # _resolve_user) is the WhatsApp equivalent of the existing ?uid= bot-deep-link
+            # pattern used everywhere else — same low-trust model, keyed on whatsapp_phone_number
+            # instead of telegram_user_id, so this link opens straight to their own filter with no
+            # login step (matches the "magic link" pattern the owner asked to build).
             whatsapp_client.send_text_message(
                 wa_id,
                 "כבר יש לך פילטר רשום אצלנו — אני אמשיך לחפש ולעדכן ברגע שתעלה דירה מתאימה. "
-                "עריכת הפילטר דרך וואטסאפ עוד לא זמינה, אבל אפשר כבר עכשיו דרך הבוט בטלגרם.",
+                f"לעריכת הסינון: {WEBSITE_URL}/filter?wid={wa_id}",
             )
             return
 
@@ -197,7 +210,9 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         session.commit()
 
         whatsapp_client.send_text_message(
-            wa_id, "מעולה, נרשמת! אני אתריע ברגע שתעלה דירה מתאימה 🏠"
+            wa_id,
+            "מעולה, נרשמת! אני אתריע ברגע שתעלה דירה מתאימה 🏠\n"
+            f"לשינוי הסינון בכל שלב: {WEBSITE_URL}/filter?wid={wa_id}",
         )
 
 

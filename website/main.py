@@ -260,7 +260,11 @@ def _get_user_by_uid(session, uid: int) -> User | None:
     return session.scalar(select(User).where(User.telegram_user_id == uid))
 
 
-def _resolve_user(request: Request, session, uid: int | None) -> User | None:
+def _get_user_by_wid(session, wid: str) -> User | None:
+    return session.scalar(select(User).where(User.whatsapp_phone_number == wid))
+
+
+def _resolve_user(request: Request, session, uid: int | None, wid: str | None = None) -> User | None:
     """Prefer the signed session cookie (real login) over the legacy ?uid= query param — the
     query param stays supported unchanged so existing bot deep links keep working.
 
@@ -272,7 +276,13 @@ def _resolve_user(request: Request, session, uid: int | None) -> User | None:
     session is established right here, so they don't have to repeat the Google sign-in and don't
     get asked to log in again on the next visit. Only fires when a pending_google_sub genuinely
     exists in THIS session, so a plain uid visit with no prior Google attempt is completely
-    unaffected — still exactly as low-trust/ephemeral as the module docstring describes."""
+    unaffected — still exactly as low-trust/ephemeral as the module docstring describes.
+
+    `wid` (2026-09-06, WhatsApp filter-edit link): the exact same low-trust pattern as ?uid=, just
+    keyed on whatsapp_phone_number instead of telegram_user_id — a WhatsApp-only account has no
+    telegram_user_id at all, so it could never resolve via uid. Checked after uid so an existing
+    session/uid match always wins; no pending-Google-link completion here since that flow is
+    specifically about a Telegram/uid identity, not WhatsApp."""
     session_user_id = request.session.get("user_id")
     if session_user_id is not None:
         user = session.get(User, session_user_id)
@@ -288,6 +298,8 @@ def _resolve_user(request: Request, session, uid: int | None) -> User | None:
                 request.session.pop("pending_google_sub", None)
                 request.session["user_id"] = user.id
         return user
+    if wid:
+        return _get_user_by_wid(session, wid)
     return None
 
 
@@ -1097,11 +1109,21 @@ def account(request: Request, uid: int | None = None):
     )
 
 
+def _filter_redirect_url(uid: int | None, wid: str | None) -> str:
+    """/filter's own two redirect targets (no-filter bail-out, post-save) — uid takes priority
+    exactly like _resolve_user does, wid as the WhatsApp-only fallback."""
+    if uid:
+        return f"/filter?uid={uid}"
+    if wid:
+        return f"/filter?wid={wid}"
+    return "/filter"
+
+
 @app.get("/filter")
-def filter_view(request: Request, uid: int | None = None):
+def filter_view(request: Request, uid: int | None = None, wid: str | None = None):
     lang = get_lang(request)
     with get_session() as session:
-        user = _resolve_user(request, session, uid)
+        user = _resolve_user(request, session, uid, wid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "filter"})
         if user.filter is None:
@@ -1113,6 +1135,7 @@ def filter_view(request: Request, uid: int | None = None):
             {
                 "f": filter_row,
                 "uid": user.telegram_user_id,
+                "wid": user.whatsapp_phone_number if user.telegram_user_id is None else None,
                 "user": user,
                 # sorted for display only — CITIES itself stays in its original order since other
                 # code (matching, the bot's own city picker) reads it as-is.
@@ -1128,6 +1151,7 @@ def filter_view(request: Request, uid: int | None = None):
 def filter_update(
     request: Request,
     uid: int | None = Form(None),
+    wid: str | None = Form(None),
     cities: list[str] = Form([]),
     price_min: str = Form(""),
     price_max: str = Form(""),
@@ -1152,13 +1176,14 @@ def filter_update(
     flexible_match: str | None = Form(None),
 ):
     with get_session() as session:
-        # session-first (like every other page), uid as the low-trust fallback for a bot-deep-link
-        # visitor with no real login yet — 2026-09-05 fix: this used to require uid unconditionally
-        # (Form(...)), which a session-only Google-standalone account (no telegram_user_id at all)
-        # could never satisfy, breaking their own filter form with a 422 on every save.
-        user = _resolve_user(request, session, uid)
+        # session-first (like every other page), uid/wid as the low-trust fallback for a
+        # bot-deep-link visitor with no real login yet — 2026-09-05 fix: this used to require uid
+        # unconditionally (Form(...)), which a session-only Google-standalone account (no
+        # telegram_user_id at all) could never satisfy, breaking their own filter form with a 422
+        # on every save. wid (2026-09-06) is the same idea for a WhatsApp-only account.
+        user = _resolve_user(request, session, uid, wid)
         if user is None or user.filter is None:
-            return RedirectResponse(f"/filter{'?uid=' + str(uid) if uid else ''}", status_code=303)
+            return RedirectResponse(_filter_redirect_url(uid, wid), status_code=303)
 
         f: Filter = user.filter
         f.cities = [c for c in cities if c in CITIES]
@@ -1185,4 +1210,4 @@ def filter_update(
         f.flexible_match = flexible_match is not None
         session.commit()
 
-    return RedirectResponse(f"/filter{'?uid=' + str(uid) if uid else ''}", status_code=303)
+    return RedirectResponse(_filter_redirect_url(uid, wid), status_code=303)
