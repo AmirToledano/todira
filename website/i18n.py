@@ -315,6 +315,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "איך זה עובד?", "en": "How does it work?", "ru": "Как это работает?",
         "fr": "Comment ça marche ?", "ar": "كيف يعمل؟",
     },
+    "home.cta_open_whatsapp": {
+        "he": "💬 המשך בווטסאפ", "en": "💬 Continue on WhatsApp",
+        "ru": "💬 Продолжить в WhatsApp", "fr": "💬 Continuer sur WhatsApp",
+        "ar": "💬 تابع عبر واتساب",
+    },
     "home.hero_img_alt": {
         "he": "טודי המלך — בוט חיפוש דירות טודירה",
         "en": "King Todi — the Todira apartment-search bot",
@@ -621,6 +626,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "פתח את הבוט בטלגרם ←", "en": "Open the Telegram bot →",
         "ru": "Открыть бота в Telegram →", "fr": "Ouvrir le bot Telegram →",
         "ar": "افتح البوت على تيليجرام ←",
+    },
+    "home.footer_cta_whatsapp_btn": {
+        "he": "המשך בווטסאפ ←", "en": "Continue on WhatsApp →",
+        "ru": "Продолжить в WhatsApp →", "fr": "Continuer sur WhatsApp →",
+        "ar": "تابع عبر واتساب ←",
     },
     # ---------- apartments page ----------
     "apartments.title": {
