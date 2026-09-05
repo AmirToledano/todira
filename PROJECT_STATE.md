@@ -3321,3 +3321,46 @@ Verified: `tests/test_whatsapp_client.py` +2 tests (`send_text_message` and
 instance really is a persistent `httpx.Client`) plus the 4 pre-existing tests updated to patch
 `whatsapp_client._http_client.post` instead of the now-unused module-level `httpx.post`. Full
 suite: 495 passing (up from 493).
+
+## 2026-09-06 (same day, once more): found the real cause of the remaining failures — pulled prod logs
+
+The owner tested live after all three fixes above and reported: bubble showed correctly every
+time, but 2 of 3 messages still got the "technical hiccup" fallback. Rather than guess again,
+pulled real production logs via `diagnose-website-webhook.yaml` (workflow_dispatch, this sandbox
+has no direct kubectl/log access — see earlier PROJECT_STATE.md entries on that constraint) and
+grepped them for the actual exceptions. Found exactly two, each a genuine
+`google.genai.errors.ServerError: 503 UNAVAILABLE. {'error': {... 'message': 'This model is
+currently experiencing high demand. Spikes in demand are usually temporary...'}}` — Gemini's own
+service rejecting the request, not a timeout, not a bug in this codebase, and — confirmed from the
+same logs — NOT a duplicate/retried delivery of the same message (each 503 sits under a distinct
+`POST /webhook/whatsapp` log line at a different timestamp matching a different message the owner
+sent). This is independent, direct proof the ack-first fix from earlier today is working exactly as
+designed: one Gemini attempt per real message, no more Meta-retry-induced duplication.
+
+**Fix**: `dorin_common/gemini_client.py` now retries ONCE, specifically on
+`google.genai.errors.ServerError` (5xx), with a 1-second delay, before giving up and returning
+`None` (the existing fallback path). Google's own error message calls these spikes "usually
+temporary" — exactly the case a single retry is for. Deliberately scoped tight: only `ServerError`
+retries (a malformed response, bad request, or network exception fails immediately, same as
+before — retrying those would just fail identically a second time and waste up to a second for
+nothing). This retry was NOT safe to add before today's ack-first webhook fix — every extra second
+in this function used to directly widen the window for Meta's own webhook redelivery to race it;
+now that Meta is acked before this function is ever reached, a bounded retry only affects how long
+the already-backgrounded reply takes to arrive.
+
+**One honest tradeoff flagged, not fixed**: `dorin_common/gemini_client.py` is shared by the
+Telegram bot too (`bot/handlers/onboarding.py::_handle_freetext`), which calls it directly inside
+an `async def` handler with no `asyncio.to_thread`/executor wrapping — meaning the ENTIRE call
+(already up to 10s) blocks the bot's single event loop for every user, not just the one being
+served. This retry adds up to 1 more second of that blocking, but only in the already-rare 503
+case. Pre-existing architectural constraint, not introduced here — worth a real fix (wrap the call
+in `asyncio.to_thread` on the Telegram side) if the bot ever gets busy enough for this to bite in
+practice, but out of scope for tonight's WhatsApp-specific ask.
+
+Verified: `tests/test_gemini_client.py` +3 tests — a `ServerError` on attempt 1 that succeeds on a
+retried attempt 2 (asserts exactly 2 calls, exactly 1 `time.sleep`), `ServerError` on every attempt
+exhausting the retry budget (still fails soft, exactly `_MAX_ATTEMPTS` calls), and a non-`ServerError`
+exception confirmed to NOT consume a retry (1 call, `time.sleep` never invoked) — a fake
+`errors.ServerError` built via `__new__` (bypassing `__init__`, which expects a real
+`requests.Response` object this test doesn't have) plus `Exception.__init__` to still carry a
+usable message. Full suite: 498 passing (up from 495).
