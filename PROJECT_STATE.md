@@ -3177,3 +3177,48 @@ against `main` shows ~13,000 lines that would be *deleted* if merged, i.e. they'
 current codebase). These are stale leftover branches from long before this session's work, not
 anything from tonight — no action needed; safe to delete whenever convenient, not touched here since
 deleting branches wasn't asked for.
+
+## 2026-09-06: real WhatsApp traffic exposed the actual bug behind "slow/duplicate replies" — fixed
+
+Live report with a WhatsApp screenshot: the bot sent **two different replies** to what looked like
+one message a minute apart, then later replied with the "technical hiccup" fallback either almost
+instantly or after about a minute, unpredictably. The owner's own hypothesis (the new 10s Gemini
+timeout from the entry above just failing fast under load) was half right but not the actual root
+cause — this was a **webhook ack-timing bug that predated last night's Gemini fix**, only exposed by
+it.
+
+**Root cause**: `website/whatsapp_webhook.py`'s `POST /webhook/whatsapp` ran the ENTIRE onboarding
+turn — DB lookups, the Gemini call, the WhatsApp send — *inside* the request/response cycle, before
+ever returning Meta's required 200 ack. WhatsApp Cloud API redelivers a webhook it didn't get a
+prompt ack for (Meta's own docs describe delivery as "at least once," precisely because of this).
+So: a Gemini call slow enough to blow past Meta's ack window meant Meta fired an independent retry
+of the *same inbound message* — which re-entered `_handle_incoming_text_sync` from scratch, calling
+Gemini a second time (nondeterministic wording → two visibly different replies) and, since Gemini's
+JSON schema output is not literally identical between calls, sometimes landing on the fallback
+message on one of the two attempts. The ~1-minute total latency was the sum of Meta's own retry
+backoff, not one long single call.
+
+**Fix, two parts**:
+1. `POST /webhook/whatsapp` now does only `_verify_signature` + `await request.json()` before
+   returning 200 — the actual work (`_process_payload_sync`, wrapping the same per-message loop
+   that used to run inline) is handed to a FastAPI `BackgroundTasks.add_task`, which Starlette runs
+   only *after* the response is already on the wire. Meta gets its ack in milliseconds regardless
+   of how long Gemini takes, so its own retry has nothing left to race.
+2. Added `_already_processed(message_id)` — a small in-memory, size-capped (500) seen-ID guard as a
+   second line of defense against any future duplicate delivery (Meta's docs explicitly warn
+   delivery can repeat for reasons beyond slow acks too). Deliberately process-local, not a DB
+   table: the website pod is a single replica (`charts/todira/templates/website-deployment.yaml`,
+   `replicas: 1`), so in-memory state here is a real, sufficient guard, not a shortcut that silently
+   breaks under horizontal scaling — revisit if the website is ever scaled beyond 1 replica.
+
+The 10s Gemini timeout from the entry above is unchanged and still correct — it now only bounds
+how long the BACKGROUND task can take, with zero risk of triggering a duplicate delivery, since
+Meta was already acked before that clock even starts.
+
+Verified: `tests/test_whatsapp_webhook.py` extended with 3 new tests — a real text-message payload
+end-to-end through the actual `POST` route (confirms the reply is sent even though the work now
+runs via `BackgroundTasks`, since Starlette/TestClient run background tasks before the test gets
+its response back), the exact "Meta redelivers the same message id" scenario asserting only ONE
+reply goes out, and a direct unit test of `_already_processed`'s dedup/None-handling. Full suite:
+488 passing (up from 485), run in the CI-faithful `/tmp/ci_sim_venv_login` venv, not the sandbox's
+ambient environment.
