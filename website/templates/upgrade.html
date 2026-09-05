@@ -5,7 +5,7 @@
 <div class="page-banner reveal">
   <div class="pb-text">
     <h1>👑 שדרוג המנוי</h1>
-    {% if is_owner %}
+    {% if display_is_owner %}
       <p>אתה הבעלים של השירות — יש לך גישה מלאה תמיד, בלי קשר לתשלום.</p>
     {% elif has_access %}
       <p>
@@ -19,7 +19,7 @@
   </div>
 </div>
 
-{% if not is_owner %}
+{% if not display_is_owner %}
 <div class="settings-card reveal">
   <div class="field-row">
     <div class="field" style="text-align:center">

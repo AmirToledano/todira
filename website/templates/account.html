@@ -10,6 +10,39 @@
   </div>
 </div>
 
+<div class="settings-card reveal" style="margin-bottom:20px">
+  <div class="field-row">
+    {% if not display_is_owner %}
+    <div class="field" style="text-align:center">
+      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">👑 המנוי שלי</div>
+      {% if has_access %}
+        <p class="channel-status connected">
+          {% if paid_until %}✅ פעיל, בתוקף עד {{ paid_until.strftime('%d/%m/%Y') }}
+          {% elif trial_ends_at %}⏳ תקופת ניסיון, עד {{ trial_ends_at.strftime('%d/%m/%Y') }}
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="amc-status amc-status-warn" style="font-size:.95rem;font-weight:600">⚠️ תקופת הניסיון הסתיימה</p>
+      {% endif %}
+      <a class="btn gold block" style="margin-top:10px" href="/upgrade{{ '?uid=' ~ uid if uid else ('?wid=' ~ wid if wid else '') }}">
+        {{ 'שדרג/י מנוי' if has_access else 'לשדרוג המנוי' }}
+      </a>
+    </div>
+    {% endif %}
+    <div class="field" style="text-align:center">
+      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">🔔 התראות</div>
+      <p class="channel-status {{ 'connected' if notifications_enabled else '' }}">
+        {{ '🔔 מופעלות' if notifications_enabled else '🔕 כבויות' }}
+      </p>
+      <form method="post" action="/account/notifications" style="margin-top:10px">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
+        <button type="submit" class="btn outline block">{{ 'כבה התראות' if notifications_enabled else 'הפעל התראות' }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <div class="settings-card reveal">
   <div class="field-row">
     <div class="field channel-tile">
@@ -60,4 +93,22 @@
   </p>
   {% endif %}
 </div>
+
+{% if payments %}
+<div class="settings-card reveal" style="margin-top:20px">
+  <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">📄 היסטוריית תשלומים</div>
+  <div class="payment-history">
+    {% for payment in payments %}
+    <div class="payment-row">
+      <span class="payment-plan">{{ plan_labels.get(payment.plan, payment.plan) }}</span>
+      <span class="payment-amount">₪{{ payment.amount_ils }}</span>
+      <span class="payment-date">{{ (payment.paid_at or payment.created_at).strftime('%d/%m/%Y') }}</span>
+      <span class="amc-status {{ 'amc-status-ok' if payment.status == 'paid' else ('amc-status-warn' if payment.status == 'pending' else 'amc-status-bad') }}">
+        {{ {'paid': '✅ שולם', 'pending': '⏳ ממתין', 'failed': '❌ נכשל', 'cancelled': '✋ בוטל'}.get(payment.status, payment.status) }}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}

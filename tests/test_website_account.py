@@ -7,6 +7,7 @@ website/main.py shares a basename with scraper/main.py so it can't go through a 
 """
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import os
 import sys
@@ -32,22 +33,40 @@ _FIXED_CODE = "ref_test01"
 
 
 class _FakeUser:
-    def __init__(self, id, telegram_user_id=None, whatsapp_phone_number=None, google_sub=None):
+    def __init__(
+        self,
+        id,
+        telegram_user_id=None,
+        whatsapp_phone_number=None,
+        google_sub=None,
+        free_access_granted=False,
+        trial_ends_at=None,
+        paid_until=None,
+        notifications_enabled=True,
+    ):
         self.id = id
         self.telegram_user_id = telegram_user_id
         self.whatsapp_phone_number = whatsapp_phone_number
         self.google_sub = google_sub
+        self.free_access_granted = free_access_granted
+        self.trial_ends_at = trial_ends_at
+        self.paid_until = paid_until
+        self.notifications_enabled = notifications_enabled
 
 
 class _FakeSession:
-    def __init__(self, users_by_telegram_id=None):
+    def __init__(self, users_by_telegram_id=None, payments=None):
         self._by_telegram_id = users_by_telegram_id or {}
+        self._payments = payments or []
         self.committed = False
 
     def scalar(self, stmt):
         for user in self._by_telegram_id.values():
             return user
         return None
+
+    def scalars(self, stmt):
+        return self._payments
 
     def commit(self):
         self.committed = True
@@ -65,6 +84,15 @@ def _fake_get_session(session):
         yield session
 
     return _inner
+
+
+class _FakePayment:
+    def __init__(self, plan, amount_ils, status, created_at, paid_at=None):
+        self.plan = plan
+        self.amount_ils = amount_ils
+        self.status = status
+        self.created_at = created_at
+        self.paid_at = paid_at
 
 
 def test_account_requires_a_resolvable_user(client):
@@ -152,7 +180,8 @@ def test_account_connected_channel_shows_status_not_plain_checkmark(client):
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
 
-    assert resp.text.count('class="channel-status connected"') == 3  # all 3 channels linked
+    # 3 linked channels + the notifications tile (also "connected" while enabled, the default)
+    assert resp.text.count('class="channel-status connected"') == 4
 
 
 def test_account_does_not_generate_a_code_once_telegram_and_whatsapp_are_both_linked(client):
@@ -166,3 +195,108 @@ def test_account_does_not_generate_a_code_once_telegram_and_whatsapp_are_both_li
     generate_mock.assert_not_called()
     assert resp.status_code == 200
     assert _FIXED_CODE not in resp.text
+
+
+def test_account_shows_active_subscription_status_when_paid_until_is_future(client):
+    paid_until = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=10)
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", paid_until=paid_until)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "👑 המנוי שלי" in resp.text
+    assert "✅ פעיל, בתוקף עד" in resp.text
+    assert paid_until.strftime("%d/%m/%Y") in resp.text
+
+
+def test_account_shows_trial_subscription_status_when_trial_still_open(client):
+    trial_ends_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2)
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", trial_ends_at=trial_ends_at)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "⏳ תקופת ניסיון, עד" in resp.text
+    assert trial_ends_at.strftime("%d/%m/%Y") in resp.text
+
+
+def test_account_shows_expired_subscription_status_when_no_trial_or_paid(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "⚠️ תקופת הניסיון הסתיימה" in resp.text
+
+
+def test_account_hides_subscription_card_for_the_owner(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "OWNER_TELEGRAM_USER_ID", "222"),
+    ):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "👑 המנוי שלי" not in resp.text
+    assert "🔔 התראות" in resp.text  # notifications tile stays visible for the owner too
+
+
+def test_account_notifications_toggle_flips_and_redirects_with_uid(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", notifications_enabled=True)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post("/account/notifications", data={"uid": 222})
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/account?uid=222"
+    assert user.notifications_enabled is False
+    assert fake_session.committed is True
+
+
+def test_account_notifications_toggle_falls_back_to_wid_when_no_uid(client):
+    user = _FakeUser(id=2, whatsapp_phone_number="9725500000", notifications_enabled=False)
+
+    class _WidSession(_FakeSession):
+        def scalar(self, stmt):
+            return None
+
+    fake_session = _WidSession()
+    with patch.object(website_main, "_get_user_by_wid", lambda session, wid: user):
+        with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+            resp = client.post("/account/notifications", data={"wid": "9725500000"})
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/account?wid=9725500000"
+    assert user.notifications_enabled is True
+
+
+def test_account_renders_payment_history_when_payments_exist(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    payments = [
+        _FakePayment(
+            "monthly", 40, "paid", dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
+            paid_at=dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
+        ),
+        _FakePayment("weekly", 15, "pending", dt.datetime(2026, 8, 15, tzinfo=dt.timezone.utc)),
+    ]
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=payments)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "📄 היסטוריית תשלומים" in resp.text
+    assert "חודשי — ₪40" in resp.text
+    assert "₪40" in resp.text
+    assert "01/08/2026" in resp.text
+    assert "✅ שולם" in resp.text
+    assert "⏳ ממתין" in resp.text
+    assert "15/08/2026" in resp.text
+
+
+def test_account_hides_payment_history_section_when_no_payments(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=[])
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "📄 היסטוריית תשלומים" not in resp.text
