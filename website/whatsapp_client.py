@@ -61,3 +61,37 @@ def send_text_message(to: str, body: str) -> bool:
     except httpx.HTTPError:
         logger.exception("Failed to send WhatsApp message to %s", to)
         return False
+
+
+def mark_as_read_with_typing_indicator(message_id: str) -> bool:
+    """Marks the incoming message read AND shows WhatsApp's own "typing…" bubble to the user for
+    up to ~25s (Meta clears it automatically the moment we send the actual reply, or after 25s,
+    whichever comes first — no need to ever turn it off ourselves). 2026-09-06: the owner compared
+    this bot live against a competitor's ("דורין") that shows this, and asked for it specifically —
+    it doesn't make the underlying Gemini call any faster, but it turns the same wait from "did it
+    even get my message?" into visibly "it's working on it," which is most of what "feels slow"
+    actually is for a chat bot."""
+    access_token = os.environ.get(ACCESS_TOKEN_ENV_VAR, "").strip()
+    phone_number_id = os.environ.get(PHONE_NUMBER_ID_ENV_VAR, "").strip()
+    if not access_token or not phone_number_id:
+        return False
+
+    url = f"https://graph.facebook.com/{_GRAPH_API_VERSION}/{phone_number_id}/messages"
+    payload = {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": message_id,
+        "typing_indicator": {"type": "text"},
+    }
+    try:
+        response = httpx.post(
+            url,
+            json=payload,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        logger.exception("Failed to mark WhatsApp message %s as read/typing", message_id)
+        return False

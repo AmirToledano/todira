@@ -201,6 +201,70 @@ def test_already_processed_dedup_helper():
     assert whatsapp_webhook._already_processed(None) is False
 
 
+# --- 2026-09-06: WhatsApp "typing…" indicator, requested after a live side-by-side comparison
+# against a competitor's bot that shows one — doesn't make Gemini faster, but makes the same wait
+# feel like "it's working" instead of "did this even arrive?"
+
+
+def test_post_webhook_fires_typing_indicator_for_a_text_message(monkeypatch, client):
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "app-secret")
+    payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "contacts": [{"wa_id": "9725500002", "profile": {"name": "Amir"}}],
+                    "messages": [{
+                        "id": "wamid.TYPING-TEST",
+                        "from": "9725500002",
+                        "type": "text",
+                        "text": {"body": "שלום"},
+                    }],
+                }
+            }]
+        }]
+    }
+    import json as _json
+
+    body = _json.dumps(payload).encode()
+    digest = hmac.new(b"app-secret", body, hashlib.sha256).hexdigest()
+
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(whatsapp_webhook, "_fire_typing_indicator") as typing_mock,
+    ):
+        resp = client.post(
+            "/webhook/whatsapp",
+            content=body,
+            headers={"content-type": "application/json", "x-hub-signature-256": f"sha256={digest}"},
+        )
+
+    assert resp.status_code == 200
+    typing_mock.assert_called_once_with("wamid.TYPING-TEST")
+
+
+def test_fire_typing_indicator_runs_on_a_background_thread():
+    calls = []
+    with (
+        patch.object(
+            whatsapp_webhook.whatsapp_client,
+            "mark_as_read_with_typing_indicator",
+            lambda mid: calls.append(mid),
+        ),
+    ):
+        whatsapp_webhook._fire_typing_indicator("wamid.direct-test")
+        # Thread.start() is async by nature — give it a moment to actually run.
+        import time
+
+        for _ in range(50):
+            if calls:
+                break
+            time.sleep(0.01)
+
+    assert calls == ["wamid.direct-test"]
+
+
 # --- _handle_incoming_text_sync: the onboarding state machine ---
 
 
