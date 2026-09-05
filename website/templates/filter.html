@@ -13,6 +13,7 @@
 <div class="settings-card reveal">
   <form method="post" action="/filter">
     {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+    {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
 
     <div class="field">
       <label for="f-cities-search"><span class="field-icon" aria-hidden="true">📍</span> {{ t('filter.cities_label') }}</label>
