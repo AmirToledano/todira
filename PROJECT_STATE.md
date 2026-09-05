@@ -3786,3 +3786,43 @@ three states, the card hidden for the owner, the notifications toggle both direc
 via wid, payment history rendered and its empty-state) — all pass in `/tmp/ci_sim_venv_login`, a
 clean venv built from `requirements-test.txt`. Full suite: 521 passing (up from 513 — the 8 new
 tests, no regressions).
+
+## 2026-09-06 (same session, continued): website like/hide reactions, /hidden page, no-brokers quick filter
+
+Owner asked to keep going down the roadmap (referral program, AI chat, "the rest"). Those two
+specifically need real product/business decisions (reward mechanics, AI chat's actual purpose and
+ongoing per-message API cost) — asked the owner rather than guessing, still pending his answer.
+Meanwhile found that "hidden listings has no equivalent concept yet" (last entry's own assessment)
+was actually wrong: `UserListingAction.action` already supports `"hidden"` — the Telegram bot has
+had a full `/hidden` command + toggle-capable 🙈 button since 2026-09-03 (`bot/handlers/liked.py`).
+It just was never surfaced on the website. That, plus the `no_brokers` Filter field (already a full
+checkbox on `/filter`), were both well-defined, no-new-decisions items — built those instead while
+waiting on the roadmap answers.
+
+**Real bug found and fixed**: the website's `/apartments` never excluded hidden listings at all —
+unlike the bot's own `find_matching_listings`, which does. A listing hidden via the bot's 🙈 button
+kept showing up on the website regardless. Same `UserListingAction` table on both sides; this was a
+straightforward miss, not a design difference. Fixed by adding the same hidden-id exclusion the bot
+already had, via a new shared `_listing_action_ids(session, user_id, action)` helper.
+
+**Shipped**:
+- **❤️/🙈 buttons directly on website listing cards** (`_listing_card.html`, top-right corner,
+  mirroring the top-left source/broker badge stack) — new `POST /react` route, same toggle-on-
+  repeat semantics as the bot's `_apply_reaction_sync` (press again to undo), same
+  `UserListingAction` table, so liking/hiding from either channel is instantly reflected in both.
+  Previously the website had NO way to like or hide a listing at all — only view what the bot had
+  already recorded.
+- **`GET /hidden`** — mirrors `/liked` exactly (same query shape, same empty-state pattern), with
+  a small cross-link between the two pages. Not added to the main nav (would clutter it further);
+  reachable via the quick link on `/liked` instead, matching how the reference product framed it as
+  a "quick link," not a top-level tab.
+- **No-brokers quick toggle** on `/apartments`'s existing filter-bar — `POST /apartments/no-brokers`
+  flips `Filter.no_brokers` (a field that already existed with a full checkbox on `/filter`) without
+  leaving the page, one click instead of opening the whole filter form.
+
+Verified: new `tests/test_website_reactions.py` (10 tests — like/hide add and remove, an unknown
+action rejected, the redirect target sanitized against a non-relative `next`, `/hidden`'s populated
+and empty states, `/apartments` actually excluding a hidden listing, the no-brokers toggle both
+directions) plus re-running the existing `/apartments`/`/liked` test files this touched
+(`test_apartments_photos.py`, `test_website_content_gating.py`, `test_website_auth.py`, etc.) — all
+green. Full suite: 531 passing (up from 521).

@@ -58,7 +58,7 @@ import grow_client
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
@@ -666,6 +666,20 @@ async def contact_submit(
     return RedirectResponse(redirect_url, status_code=303)
 
 
+def _listing_action_ids(session, user_id: int, action: str) -> set[int]:
+    """Same query as bot/handlers/apartments.py's find_matching_listings and bot/handlers/
+    liked.py — shared here so the website reads the exact same UserListingAction rows: a listing
+    liked/hidden from the Telegram bot's ❤️/🙈 buttons shows that state on the website instantly,
+    and vice versa via POST /react below."""
+    return set(
+        session.scalars(
+            select(UserListingAction.listing_id).where(
+                UserListingAction.user_id == user_id, UserListingAction.action == action
+            )
+        ).all()
+    )
+
+
 @app.get("/apartments")
 def apartments(request: Request, uid: int | None = None):
     with get_session() as session:
@@ -675,13 +689,23 @@ def apartments(request: Request, uid: int | None = None):
         if user.filter is None:
             return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
 
+        hidden_ids = _listing_action_ids(session, user.id, "hidden")
         listings = session.scalars(
             select(Listing)
             .where(Listing.is_delisted.is_(False))
             .order_by(Listing.scraped_at.desc())
             .limit(200)
         ).all()
-        matches = [listing for listing in listings if evaluate(user.filter, listing).matched]
+        # 2026-09-06: previously didn't exclude hidden listings at all (unlike the bot's own
+        # /apartments, see find_matching_listings) — a listing hidden via the Telegram 🙈 button
+        # kept showing up here regardless. Same UserListingAction table, so this is a real fix, not
+        # a new feature.
+        matches = [
+            listing
+            for listing in listings
+            if listing.id not in hidden_ids and evaluate(user.filter, listing).matched
+        ]
+        liked_ids = _listing_action_ids(session, user.id, "liked")
         # Only true when this page was actually reached via the real, signed session cookie — the
         # "insecure temporary access" notice below must not show for a real login just because a
         # stale ?uid= also happens to be sitting in the URL from an older bookmark/deep link.
@@ -697,6 +721,8 @@ def apartments(request: Request, uid: int | None = None):
             "user": user,
             "via_session": via_session,
             "has_access": has_access,
+            "liked_ids": liked_ids,
+            "hidden_ids": set(),
         },
     )
 
@@ -708,14 +734,10 @@ def liked(request: Request, uid: int | None = None):
         if user is None:
             return _render(request, "need_uid.html", {"target": "liked"})
 
-        liked_listing_ids = session.scalars(
-            select(UserListingAction.listing_id).where(
-                UserListingAction.user_id == user.id, UserListingAction.action == "liked"
-            )
-        ).all()
+        liked_ids = _listing_action_ids(session, user.id, "liked")
         listings = (
-            session.scalars(select(Listing).where(Listing.id.in_(liked_listing_ids))).all()
-            if liked_listing_ids
+            session.scalars(select(Listing).where(Listing.id.in_(liked_ids))).all()
+            if liked_ids
             else []
         )
         has_access = _effective_access(request, user)
@@ -723,8 +745,104 @@ def liked(request: Request, uid: int | None = None):
     return _render(
         request,
         "liked.html",
-        {"listings": listings, "uid": user.telegram_user_id, "user": user, "has_access": has_access},
+        {
+            "listings": listings,
+            "uid": user.telegram_user_id,
+            "user": user,
+            "has_access": has_access,
+            "liked_ids": liked_ids,
+            "hidden_ids": set(),
+        },
     )
+
+
+@app.get("/hidden")
+def hidden(request: Request, uid: int | None = None):
+    """Mirrors /liked exactly, for action="hidden" — the website equivalent of the Telegram bot's
+    /hidden command (bot/handlers/liked.py), added so a listing hidden from either channel can also
+    be brought back (🙈 toggles) from either channel, not just the one it was hidden from."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "hidden"})
+
+        hidden_ids = _listing_action_ids(session, user.id, "hidden")
+        listings = (
+            session.scalars(select(Listing).where(Listing.id.in_(hidden_ids))).all()
+            if hidden_ids
+            else []
+        )
+        has_access = _effective_access(request, user)
+
+    return _render(
+        request,
+        "hidden.html",
+        {
+            "listings": listings,
+            "uid": user.telegram_user_id,
+            "user": user,
+            "has_access": has_access,
+            "liked_ids": set(),
+            "hidden_ids": hidden_ids,
+        },
+    )
+
+
+@app.post("/react")
+def react_toggle(
+    request: Request,
+    listing_id: int = Form(...),
+    action: str = Form(...),
+    uid: int | None = Form(None),
+    wid: str | None = Form(None),
+    next: str = Form("/apartments"),
+):
+    """Website equivalent of the Telegram bot's ❤️/🙈 inline buttons (bot/handlers/liked.py's
+    _apply_reaction_sync) — same UserListingAction table and the same toggle-on-repeat semantics
+    (press again to undo), so liking/hiding a listing from either channel is reflected in both."""
+    if action not in ("like", "hide"):
+        raise StarletteHTTPException(status_code=404)
+    db_action = "liked" if action == "like" else "hidden"
+
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "apartments"})
+
+        existing_id = session.scalar(
+            select(UserListingAction.id).where(
+                UserListingAction.user_id == user.id,
+                UserListingAction.listing_id == listing_id,
+                UserListingAction.action == db_action,
+            )
+        )
+        if existing_id is not None:
+            session.execute(delete(UserListingAction).where(UserListingAction.id == existing_id))
+        else:
+            session.add(UserListingAction(user_id=user.id, listing_id=listing_id, action=db_action))
+        session.commit()
+
+    # same-origin relative path only — `next` is attacker-controllable form input, never redirect
+    # anywhere else with it.
+    safe_next = next if next.startswith("/") and not next.startswith("//") else "/apartments"
+    return RedirectResponse(safe_next, status_code=303)
+
+
+@app.post("/apartments/no-brokers")
+def toggle_no_brokers(
+    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+):
+    """Quick shortcut for Filter.no_brokers — the field already existed (a full checkbox on
+    /filter), just had no one-click way to flip it from /apartments itself, unlike the reference
+    product's own quick broker-filter link. A plain form POST, matching /account/notifications."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None or user.filter is None:
+            return _render(request, "need_uid.html", {"target": "apartments"})
+        user.filter.no_brokers = not user.filter.no_brokers
+        session.commit()
+
+    return RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)
 
 
 def _is_owner_id(telegram_user_id: int | None) -> bool:
