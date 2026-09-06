@@ -203,6 +203,82 @@ def test_liked_hides_description_and_url_for_an_expired_user(client):
     assert "secret999" not in resp.text
 
 
+# ---------------------------------------------------------------------------
+# /apartments pagination — 2026-09-06: rendering all (up to 200) matches in one page crashed real
+# visitors' browsers, so the route now paginates (APARTMENTS_PAGE_SIZE at a time) with a
+# JS-driven "load more" fragment endpoint. See main.py's apartments() route and apartments.html's
+# own script for the full mechanism.
+# ---------------------------------------------------------------------------
+
+
+def test_apartments_first_page_shows_only_page_size_and_a_sentinel(client):
+    page_size = website_main.APARTMENTS_PAGE_SIZE
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listings = [_FakeListing(id=i) for i in range(page_size + 5)]
+    for i, listing in enumerate(listings):
+        listing.city = f"עיר-{i}"
+    fake_session = _FakeSession(user, listings=listings)
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    for i in range(page_size):
+        assert f"עיר-{i}" in resp.text
+    for i in range(page_size, page_size + 5):
+        assert f"עיר-{i}" not in resp.text
+    assert f'data-next-offset="{page_size}"' in resp.text
+    # The results-count badge shows the TOTAL match count, not just this page's size.
+    assert f"<b>{page_size + 5}</b>" in resp.text
+
+
+def test_apartments_no_sentinel_when_everything_fits_on_one_page(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listings = [_FakeListing(id=1)]
+    fake_session = _FakeSession(user, listings=listings)
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    # The script itself mentions the class name (querySelector calls) regardless — check for the
+    # actual sentinel *element*, not just the substring anywhere on the page.
+    assert 'class="load-more-sentinel"' not in resp.text
+
+
+def test_apartments_fragment_request_returns_only_the_next_batch_no_page_layout(client):
+    page_size = website_main.APARTMENTS_PAGE_SIZE
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listings = [_FakeListing(id=i) for i in range(page_size + 5)]
+    for i, listing in enumerate(listings):
+        listing.city = f"עיר-{i}"
+    fake_session = _FakeSession(user, listings=listings)
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222, "offset": page_size, "fragment": "1"})
+
+    assert resp.status_code == 200
+    # The next batch's listings are here...
+    for i in range(page_size, page_size + 5):
+        assert f"עיר-{i}" in resp.text
+    # ...the first page's are not (this is only the new batch, appended client-side)...
+    assert "עיר-0" not in resp.text
+    # ...no more after this, so no sentinel...
+    assert "load-more-sentinel" not in resp.text
+    # ...and critically, no full-page layout (header/nav) — just the card markup to insert.
+    assert "<html" not in resp.text
+    assert "nav-toggle" not in resp.text
+
+
 class SimpleNamespaceFilter:
     """A minimal stand-in for dorin_common.models.Filter — /apartments only reads .cities off it
     in the template's filter-bar, and passes the whole object to evaluate() (mocked in these
