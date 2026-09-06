@@ -4351,3 +4351,87 @@ rate wasn't found yet); (c) once a real Parser ships, wire `BRIGHT_DATA_DATASET_
 `BRIGHT_DATA_DESCRIPTION_FIELD`, matching whatever the real output schema calls the description
 field) into the actual deployment secrets — still unset today, so `bright_data_client.py` still
 no-ops exactly as before this whole investigation.
+
+## 2026-09-06 (still later, continued): Bright Data Stage 2 — `window.__NEXT_DATA__` guess was wrong, AND production was silently never updated
+
+Two separate findings from continuing the investigation above.
+
+**Finding 1 — `window` doesn't exist in Bright Data's Parser code context.** The
+`window.__NEXT_DATA__` fix (proposed above) was run for real and came back with a NEW, different
+error this time — `ReferenceError: window is not defined` — on every record. This proves Bright
+Data's **Parser code** step does NOT execute inside a live browser (unlike **Interaction code**,
+which does — it navigates, waits on selectors, etc.). Parser code runs against the page's already-
+*captured* content through a limited, cheerio/jQuery-style `$()` API (confirmed working: `$('script#
+__NEXT_DATA__')` DOES find the element) plus a bare `location` binding (confirmed working:
+`product_page_url` came out correct in every single run so far) — but no `window` wrapper object at
+all. Wrong guess on my part, corrected once the real error came back.
+
+This also reframes Round 3's original `SyntaxError: Unexpected end of JSON input` finding: since
+Parser code works on captured static content rather than a live, still-hydrating page, "hydration
+timing" was the wrong explanation. "Unexpected end of JSON input" is the textbook symptom of
+**truncated** JSON — so the more likely real cause is that Bright Data's page-capture step cuts off
+the `__NEXT_DATA__` script tag's content before its end, plausibly because a real Yad2 ad record's
+full `dehydratedState` (which can carry the whole search/recommendation payload, not just one ad) is
+simply large. Next step already handed to the owner: a new diagnostic Parser (back to reading
+`$('script#__NEXT_DATA__').html()`, no `window`) that reports `raw_length` plus the first/last 300
+characters of the captured text, to see directly whether it's cut off and where — not written yet as
+of this entry (see Finding 2, below, for why nothing had actually been tested yet).
+
+**Finding 2 — every one of tonight's "new" test results was actually the same stale production
+code, because Save to production silently never went through.** Real, avoidable time sink worth
+flagging for next time: the owner ran what looked like fresh tests **five separate times** across
+this session and kept getting byte-for-byte identical (confirmed via `md5sum`) or symptom-identical
+output, despite believing each time that new code had been saved and run. Root cause, only found by
+opening the collector's own **Changelog** (Code tab → the `⌄` next to "Draft" → Changelog →
+Versions): **Version 7, still marked "Production version" at the time of checking, was the
+`window.__NEXT_DATA__` code** — the newer raw-length diagnostic Parser existed ONLY as an
+**"Unpublished draft"**, never actually saved to development or production at all, despite multiple
+attempts. The likely trigger: a "Run test crawl" flow (opened via the same `⌄` dropdown as "Save to
+development") threw its own unrelated error ("Couldn't compare the cycles results because the
+template steps' inputs don't match") mid-attempt, and the "Save to production" button click that
+happened around/after that modal never actually completed.
+
+**Process fix for the rest of this investigation**: after every future "Save to production" claim,
+open **Changelog → Versions** and confirm a new version number is actually tagged "Production
+version" with the expected "Summary of changes" text, BEFORE spending a real "Initiate manually" run
+on it — this is now the one reliable way to know what code is actually live, since run *symptoms*
+alone had already produced three false leads tonight. Also learned along the way: "Run test crawl"
+(reached via that same `⌄` dropdown) can replay the exact page captures from a past run (pick one
+from a list of prior run IDs, e.g. `j_mtq7qj4a1lg0yvkp73`) against newly-saved Parser code **without
+spending fresh scrape credits** — worth using once the compare-mismatch issue above is sorted out,
+though tonight it kept erroring instead. Free-tier credits are not actually tight either way — 5,000
+total, only ~127 spent so far.
+
+## 2026-09-06 (still later): Takbull/UPAY — real evidence the account has no active terminal at all, likely needs their support to unstick
+
+Continuation of the UPAY walkthrough above (setup fee paid, `processOrder` bug fixed, then got
+Takbull's own explicit "לא קיים מספר סודר" (no serial/terminal number exists) and "אין לך הרשאה
+לבצע פעולה זו" errors on real checkout attempts). Tonight's session found concrete, converging
+evidence for WHY, rather than just waiting blind:
+
+- On `app.takbull.co.il/api-setting` (API key management, general tab), the **"מסוף" (terminal)
+  dropdown required to generate API keys is completely empty** ("אין נתונים להצגה" — no data to
+  display), and clicking "צור מפתחות חדשים" (create new keys) fails immediately with an alert:
+  **"יש לבחור מסוף"** (you must select a terminal). There is, literally, no terminal object to pick
+  from anywhere in the account — not a permissions issue, an actually-empty list.
+- On `app.takbull.co.il/credit-payment-settings` ("רשימת מסופים" / terminal list), the existing
+  "upay" row is only a **provider/gateway connection** (login credentials, 3DS toggle, Bit-payment
+  toggle — confirmed Bit IS enabled there — an Apple Pay domain-verification flow, and an
+  installment-fee schedule) — none of which is the same thing as a fully-provisioned, approved
+  terminal with a real serial number.
+- The owner tried deleting that upay connection and registering a fresh one: got **"החשבון כבר
+  קיים"** (the account already exists) blocking the new registration, proving Takbull's backend DOES
+  recognize this as an existing UPAY account — but a page refresh immediately un-did the delete
+  (the row reappeared exactly as before), suggesting the delete action itself may not even be a real
+  server-side operation, or is being rejected server-side while still rendering as if it succeeded
+  client-side.
+
+**Conclusion**: this is not something fixable by re-clicking things in Takbull's own UI — the
+account is stuck in a registered-but-not-fully-provisioned state on their backend (most likely
+pending the same document/KYC verification suspected earlier, now with much more concrete symptoms
+than "generic errors on checkout"). Advised the owner to stop trying delete/re-register (real risk
+of confusing their backend state further with no evidence it helps) and instead contact Takbull
+support directly (live chat if available, faster than email) with a specific, reproducible bug
+report combining all three symptoms above plus the payment-page errors and the 06/09 setup-fee
+invoice as proof of payment — handed to the owner as ready-to-send text. **Still waiting on Takbull's
+side; nothing further to try from ours until they respond or fix the account.**
