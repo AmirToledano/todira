@@ -29,6 +29,18 @@ logger = logging.getLogger(__name__)
 
 _MODEL = "gemini-3.6-flash"
 
+# 2026-09-06: chat_with_existing_user (below) uses this lighter model instead of _MODEL —
+# found live: the owner reported real, felt latency ("לוקח לו מלא זמן לענות") on every casual
+# WhatsApp/Telegram message now going through Gemini, a cost this feature didn't have before (a
+# static canned reply was instant). Flash-Lite is Google's purpose-built low-latency tier
+# (~350 output tokens/sec vs. no published number for 3.6 Flash, and ~3.5x cheaper per token) for
+# exactly this shape of task — short structured extraction + a short reply, not deep reasoning —
+# so it's a genuine latency AND cost win here, not a quality tradeoff for what this call needs.
+# Deliberately NOT applied to parse_onboarding_message above: that flow is already proven live in
+# production and untouched by tonight's complaint, so it keeps _MODEL rather than risking a
+# behavior change to something that already works.
+_CHAT_MODEL = "gemini-3.5-flash-lite"
+
 # 2026-09-06: real production logs (pulled via the diagnose-website-webhook workflow after the
 # owner reported 2 of 3 live WhatsApp messages getting the "technical hiccup" fallback) showed the
 # 10s-timeout fix above working exactly as intended — one attempt per message, no more duplicates
@@ -237,7 +249,7 @@ def chat_with_existing_user(
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             response = client.models.generate_content(
-                model=_MODEL,
+                model=_CHAT_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
