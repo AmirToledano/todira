@@ -186,16 +186,51 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
 
         user = get_or_create_whatsapp_user(session, wa_id, profile_name)
 
-        if session.scalar(select(Filter.id).where(Filter.user_id == user.id)) is not None:
-            # 2026-09-06 fix: this used to just say editing isn't available via WhatsApp and point
-            # to the Telegram bot — but a WhatsApp-only account has no telegram_user_id, so there
-            # was no actual account for that bot to recognize; a genuine dead end, found live by
-            # the owner testing his own WhatsApp-only account. wid (website/main.py's
-            # _resolve_user) is the WhatsApp equivalent of the existing ?uid= bot-deep-link
-            # pattern used everywhere else — same low-trust model, keyed on whatsapp_phone_number
-            # instead of telegram_user_id, so this link opens straight to their own filter with no
-            # login step (matches the "magic link" pattern the owner asked to build).
-            _send_filter_edit_prompt(wa_id)
+        existing_filter = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        if existing_filter is not None:
+            # 2026-09-06: used to unconditionally send the exact same 3-message "here's how to
+            # edit your filter" block on EVERY free-text message from an already-onboarded user,
+            # regardless of what they actually wrote ("מה שלומך", random slang, anything) — found
+            # live by the owner comparing side-by-side against the reference bot, whose already-
+            # onboarded users get a real, varied, contextual reply instead. Now a genuine chat
+            # turn via chat_with_existing_user: either applies a requested filter change directly
+            # (see that function's own docstring for exactly which fields it can touch and its one
+            # known limitation), or just replies naturally — no canned block on every message.
+            current_filter = {
+                "deal_type": existing_filter.deal_type,
+                "cities": existing_filter.cities,
+                "rooms_min": float(existing_filter.rooms_min) if existing_filter.rooms_min is not None else None,
+                "rooms_max": float(existing_filter.rooms_max) if existing_filter.rooms_max is not None else None,
+                "price_min": existing_filter.price_min,
+                "price_max": existing_filter.price_max,
+                "keywords": existing_filter.keywords,
+            }
+            result = gemini_client.chat_with_existing_user(
+                text, current_filter, cities.CITIES, profile_name
+            )
+            if result is None:
+                whatsapp_client.send_text_message(
+                    wa_id, "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע."
+                )
+                return
+
+            if result.get("filter_changed"):
+                for key in ("deal_type", "cities", "keywords"):
+                    if key in result:
+                        setattr(existing_filter, key, result[key])
+                if "rooms_min" in result:
+                    existing_filter.rooms_min = result["rooms_min"]
+                if "rooms_max" in result:
+                    existing_filter.rooms_max = result["rooms_max"]
+                if "price_min" in result:
+                    price_min = result["price_min"]
+                    existing_filter.price_min = int(price_min) if price_min is not None else None
+                if "price_max" in result:
+                    price_max = result["price_max"]
+                    existing_filter.price_max = int(price_max) if price_max is not None else None
+                session.commit()
+
+            whatsapp_client.send_text_message(wa_id, result.get("response_message") or "בסדר! 🙂")
             return
 
         state = user.pending_onboarding_state or dict(_EMPTY_ONBOARDING_STATE)

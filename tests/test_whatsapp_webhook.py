@@ -142,10 +142,14 @@ def test_post_webhook_processes_a_real_text_message(monkeypatch, client):
     digest = hmac.new(b"app-secret", body, hashlib.sha256).hexdigest()
 
     with (
-        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
+        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter=_FakeFilter())),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_mock,
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(
+            whatsapp_webhook.gemini_client,
+            "chat_with_existing_user",
+            return_value={"filter_changed": False, "response_message": "היי! מה שלומך? 😊"},
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
     ):
         resp = client.post(
             "/webhook/whatsapp",
@@ -184,10 +188,14 @@ def test_a_redelivered_message_id_is_not_processed_twice(monkeypatch, client):
     headers = {"content-type": "application/json", "x-hub-signature-256": f"sha256={digest}"}
 
     with (
-        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
+        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter=_FakeFilter())),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_mock,
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(
+            whatsapp_webhook.gemini_client,
+            "chat_with_existing_user",
+            return_value={"filter_changed": False, "response_message": "שוב שלום! 😊"},
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
     ):
         first = client.post("/webhook/whatsapp", content=body, headers=headers)
         second = client.post("/webhook/whatsapp", content=body, headers=headers)
@@ -231,9 +239,14 @@ def test_post_webhook_fires_typing_indicator_for_a_text_message(monkeypatch, cli
     digest = hmac.new(b"app-secret", body, hashlib.sha256).hexdigest()
 
     with (
-        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter_id=99)),
+        patch.object(whatsapp_webhook, "get_session", lambda: _FakeSession(existing_filter=_FakeFilter())),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message"),
+        patch.object(
+            whatsapp_webhook.gemini_client,
+            "chat_with_existing_user",
+            return_value={"filter_changed": False, "response_message": "היי! 😊"},
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
         patch.object(whatsapp_webhook, "_fire_typing_indicator") as typing_mock,
     ):
         resp = client.post(
@@ -270,14 +283,30 @@ def test_fire_typing_indicator_runs_on_a_background_thread():
 # --- _handle_incoming_text_sync: the onboarding state machine ---
 
 
+class _FakeFilter:
+    """Stands in for a real Filter row — `_handle_incoming_text_sync`'s existing-filter branch
+    reads these attributes to build the `current_filter` dict it hands to
+    gemini_client.chat_with_existing_user, and (on filter_changed=True) setattr()s some of them
+    back."""
+
+    def __init__(self, **kwargs):
+        self.deal_type = kwargs.get("deal_type", "rent")
+        self.cities = kwargs.get("cities", ["תל אביב יפו"])
+        self.rooms_min = kwargs.get("rooms_min")
+        self.rooms_max = kwargs.get("rooms_max")
+        self.price_min = kwargs.get("price_min")
+        self.price_max = kwargs.get("price_max")
+        self.keywords = kwargs.get("keywords", [])
+
+
 class _FakeSession:
-    def __init__(self, existing_filter_id=None):
-        self._existing_filter_id = existing_filter_id
+    def __init__(self, existing_filter=None):
+        self._existing_filter = existing_filter
         self.added: list = []
         self.committed = False
 
     def scalar(self, stmt):
-        return self._existing_filter_id
+        return self._existing_filter
 
     def add(self, obj):
         self.added.append(obj)
@@ -374,48 +403,99 @@ def test_link_code_conflict_when_whatsapp_number_already_has_a_different_account
 
 
 def test_ref_prefixed_but_unknown_code_falls_through_to_normal_onboarding():
-    session = _FakeSession(existing_filter_id=99)
+    session = _FakeSession(existing_filter=_FakeFilter())
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: None),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as cta_mock,
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(
+            whatsapp_webhook.gemini_client,
+            "chat_with_existing_user",
+            return_value={"filter_changed": False, "response_message": "לא הכרתי את הקוד הזה 🙂"},
+        ) as chat_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as text_mock,
     ):
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_expiredcode")
 
-    cta_mock.assert_called_once()
-    assert whatsapp_webhook._FILTER_EDIT_INTRO_TEXT in cta_mock.call_args[0][1]
+    chat_mock.assert_called_once()
+    text_mock.assert_called_once_with("9725500000", "לא הכרתי את הקוד הזה 🙂")
 
 
-def test_existing_filter_user_gets_already_registered_reply_no_gemini_call():
-    session = _FakeSession(existing_filter_id=99)
+def test_existing_filter_user_gets_chat_reply_via_gemini_no_canned_block():
+    """2026-09-06: replaces sending the exact same 3-message "edit your filter" block on EVERY
+    free-text message from an already-onboarded user regardless of content — found live by the
+    owner comparing against the reference bot, whose already-onboarded users get real, varied,
+    contextual replies. A plain chit-chat message with no filter-change intent now gets Gemini's
+    own natural reply and nothing else."""
+    filter_row = _FakeFilter(cities=["תל אביב יפו"], price_max=6000)
+    session = _FakeSession(existing_filter=filter_row)
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(whatsapp_webhook.gemini_client, "parse_onboarding_message") as parse_mock,
+        patch.object(
+            whatsapp_webhook.gemini_client,
+            "chat_with_existing_user",
+            return_value={"filter_changed": False, "response_message": "הכל מצוין, תודה ששאלת! 😊"},
+        ) as chat_mock,
         patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as cta_mock,
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as text_mock,
     ):
-        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "שלום")
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "מה שלומך")
 
-    parse_mock.assert_not_called()
-    # 2026-09-06 fix: this used to dead-end WhatsApp-only accounts (no telegram_user_id, so the
-    # "edit via the Telegram bot" pointer led nowhere real) - now it's the same 3-message prompt
-    # (a real tappable button, then 2 follow-ups) as the reference competitor bot's own flow,
-    # straight to /filter?wid=.
-    cta_mock.assert_called_once()
-    call_args = cta_mock.call_args[0]
-    assert call_args[1] == whatsapp_webhook._FILTER_EDIT_INTRO_TEXT
-    assert call_args[3] == f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000"
-    assert text_mock.call_count == 2
-    assert text_mock.call_args_list[0][0][1] == whatsapp_webhook._FILTER_EDIT_FOLLOWUP_1
-    assert text_mock.call_args_list[1][0][1] == whatsapp_webhook._FILTER_EDIT_FOLLOWUP_2
+    chat_mock.assert_called_once()
+    call_args, call_kwargs = chat_mock.call_args
+    assert call_args[0] == "מה שלומך"
+    assert call_args[1]["cities"] == ["תל אביב יפו"]
+    assert call_args[1]["price_max"] == 6000
+    assert call_args[3] == "Amir"
+    text_mock.assert_called_once_with("9725500000", "הכל מצוין, תודה ששאלת! 😊")
+    cta_mock.assert_not_called()  # no canned CTA block on plain chit-chat
     assert not session.added
+    assert session.committed is False  # nothing changed, nothing to save
+
+
+def test_existing_filter_user_message_that_changes_the_filter_updates_it_directly():
+    filter_row = _FakeFilter(cities=["תל אביב יפו"], price_max=6000)
+    session = _FakeSession(existing_filter=filter_row)
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
+        patch.object(
+            whatsapp_webhook.gemini_client,
+            "chat_with_existing_user",
+            return_value={
+                "filter_changed": True,
+                "cities": ["תל אביב יפו", "רמת גן"],
+                "price_max": 6000,
+                "response_message": "הוספתי גם את רמת גן לחיפוש! 🏠",
+            },
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as text_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "תוסיף לי גם רמת גן")
+
+    assert filter_row.cities == ["תל אביב יפו", "רמת גן"]
+    assert session.committed is True
+    text_mock.assert_called_once_with("9725500000", "הוספתי גם את רמת גן לחיפוש! 🏠")
+
+
+def test_existing_filter_user_gemini_failure_sends_hiccup_message():
+    session = _FakeSession(existing_filter=_FakeFilter())
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
+        patch.object(whatsapp_webhook.gemini_client, "chat_with_existing_user", return_value=None),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "משהו")
+
+    send_mock.assert_called_once()
+    assert "תקלה טכנית" in send_mock.call_args[0][1]
+    assert session.committed is False
 
 
 def test_gemini_failure_sends_hiccup_message():
-    session = _FakeSession(existing_filter_id=None)
+    session = _FakeSession(existing_filter=None)
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
@@ -430,7 +510,7 @@ def test_gemini_failure_sends_hiccup_message():
 
 
 def test_incomplete_state_persists_pending_onboarding_without_creating_filter():
-    session = _FakeSession(existing_filter_id=None)
+    session = _FakeSession(existing_filter=None)
     user = _fake_user()
     partial_result = {
         "deal_type": "rent",
@@ -455,7 +535,7 @@ def test_incomplete_state_persists_pending_onboarding_without_creating_filter():
 
 
 def test_complete_state_creates_filter_and_clears_pending_state():
-    session = _FakeSession(existing_filter_id=None)
+    session = _FakeSession(existing_filter=None)
     user = _fake_user(pending_state={"deal_type": "rent", "cities": [], "rooms_min": None,
                                       "rooms_max": None, "price_min": None, "price_max": None,
                                       "keywords": []})

@@ -137,13 +137,20 @@ def test_send_failure_does_not_crash_or_mark_notified(monkeypatch):
 def test_casual_message_does_not_escalate_just_redirects_to_start(monkeypatch):
     # The actual bug report (2026-09-02, live screenshot): the owner sent plain small talk
     # ("מה שלומך") to test the bot and it came back as a support ticket every time. Nothing here
-    # should touch the DB or notify the owner - just a friendly redirect.
+    # should touch support.py's DB or notify the owner - just a friendly redirect. This user has
+    # NO filter yet (contact_fallback.get_session returns a session whose Filter lookup is None),
+    # so the 2026-09-06 chat feature (tested separately below) doesn't engage either.
     monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", "999")
     context = _make_context()
+    no_filter_session = _FakeFilterSession(existing_filter=None)
 
     for text in ("מה שלומך", "איזה דירות יש לך במבשרת"):
         update = _make_update(text)
-        with patch.object(support, "get_session") as get_session_mock:
+        with (
+            patch.object(support, "get_session") as get_session_mock,
+            patch.object(contact_fallback, "get_session", lambda: no_filter_session),
+            patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        ):
             _run(contact_fallback.handle_stray_message(update, context))
         get_session_mock.assert_not_called()
 
@@ -153,10 +160,143 @@ def test_casual_message_does_not_escalate_just_redirects_to_start(monkeypatch):
 def test_casual_message_reply_mentions_start_not_support():
     update = _make_update("מה שלומך")
     context = _make_context()
+    no_filter_session = _FakeFilterSession(existing_filter=None)
 
-    _run(contact_fallback.handle_stray_message(update, context))
+    with (
+        patch.object(contact_fallback, "get_session", lambda: no_filter_session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
 
     update.message.reply_text.assert_called_once()
     reply = update.message.reply_text.call_args.args[0]
     assert "/start" in reply
     assert "נחזור אליך" not in reply
+
+
+# --- 2026-09-06: real chat (+ live filter editing) for already-onboarded users ---
+# Found live by the owner comparing side-by-side against the reference bot: an already-onboarded
+# user's free-text message used to always hit the plain "type /start" redirect above, which
+# doesn't even acknowledge they're already registered. Mirrors website/whatsapp_webhook.py's
+# identical fix for the same gap on that channel.
+
+
+class _FakeFilterRow:
+    def __init__(self, **kwargs):
+        self.deal_type = kwargs.get("deal_type", "rent")
+        self.cities = kwargs.get("cities", ["תל אביב יפו"])
+        self.rooms_min = kwargs.get("rooms_min")
+        self.rooms_max = kwargs.get("rooms_max")
+        self.price_min = kwargs.get("price_min")
+        self.price_max = kwargs.get("price_max")
+        self.keywords = kwargs.get("keywords", [])
+
+
+class _FakeFilterSession:
+    def __init__(self, existing_filter=None):
+        self._existing_filter = existing_filter
+        self.committed = False
+
+    def scalar(self, stmt):
+        return self._existing_filter
+
+    def commit(self):
+        self.committed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_onboarded_user_casual_message_gets_gemini_chat_reply_not_start_redirect():
+    filter_row = _FakeFilterRow()
+    session = _FakeFilterSession(existing_filter=filter_row)
+    update = _make_update("מה שלומך")
+    context = _make_context()
+
+    with (
+        patch.object(contact_fallback, "get_session", lambda: session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        patch.object(
+            contact_fallback.gemini_client,
+            "chat_with_existing_user",
+            return_value={"filter_changed": False, "response_message": "הכל מצוין, תודה ששאלת! 😊"},
+        ) as chat_mock,
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+
+    chat_mock.assert_called_once()
+    call_args = chat_mock.call_args.args
+    assert call_args[0] == "מה שלומך"
+    assert call_args[3] == "Amir"
+    update.message.reply_text.assert_called_once_with("הכל מצוין, תודה ששאלת! 😊")
+    assert session.committed is False
+
+
+def test_onboarded_user_filter_change_message_updates_filter_directly():
+    filter_row = _FakeFilterRow(cities=["תל אביב יפו"])
+    session = _FakeFilterSession(existing_filter=filter_row)
+    update = _make_update("תוסיף לי גם רמת גן")
+    context = _make_context()
+
+    with (
+        patch.object(contact_fallback, "get_session", lambda: session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        patch.object(
+            contact_fallback.gemini_client,
+            "chat_with_existing_user",
+            return_value={
+                "filter_changed": True,
+                "cities": ["תל אביב יפו", "רמת גן"],
+                "response_message": "הוספתי גם את רמת גן! 🏠",
+            },
+        ),
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+
+    assert filter_row.cities == ["תל אביב יפו", "רמת גן"]
+    assert session.committed is True
+    update.message.reply_text.assert_called_once_with("הוספתי גם את רמת גן! 🏠")
+
+
+def test_onboarded_user_gemini_failure_sends_hiccup_message():
+    session = _FakeFilterSession(existing_filter=_FakeFilterRow())
+    update = _make_update("משהו")
+    context = _make_context()
+
+    with (
+        patch.object(contact_fallback, "get_session", lambda: session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        patch.object(contact_fallback.gemini_client, "chat_with_existing_user", return_value=None),
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+
+    update.message.reply_text.assert_called_once()
+    assert "תקלה טכנית" in update.message.reply_text.call_args.args[0]
+    assert session.committed is False
+
+
+def test_onboarded_user_help_request_still_escalates_not_chat(monkeypatch):
+    """looks_like_help_request must still take priority over the chat feature — an existing filter
+    shouldn't change that a real support request gets escalated the same way as before."""
+    monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", "999")
+    support_session = _FakeSession()
+    update = _make_update("יש לי בעיה טכנית עם הבוט")
+    context = _make_context()
+
+    @contextmanager
+    def fake_support_get_session():
+        yield support_session
+
+    with (
+        patch.object(support, "get_session", fake_support_get_session),
+        patch.object(contact_fallback, "get_session") as chat_get_session_mock,
+        patch.object(contact_fallback.gemini_client, "chat_with_existing_user") as chat_mock,
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+
+    chat_get_session_mock.assert_not_called()
+    chat_mock.assert_not_called()
+    context.bot.send_message.assert_called_once()
