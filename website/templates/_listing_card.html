@@ -27,16 +27,23 @@
     <div class="listing-cover">
       {% if l.image_urls %}
         {% for img in l.image_urls[:8] %}
-        <div class="cover-slide" style="background-image:url('{{ img }}')"></div>
+        {# `loading="lazy"` matters a lot here — with up to 200 listings x 8 slides each on
+           /apartments, a plain CSS background-image (the old technique) has no native lazy
+           loading at all, so every slide of every card — including ones scrolled far off-screen —
+           fired an eager image request the instant the page rendered. On a weak mobile connection
+           that's a burst of hundreds of concurrent image fetches, which is what was crashing real
+           visitors' browsers mid-load on this exact page (2026-09-06, see PROJECT_STATE.md). A
+           real <img> is the only element the browser will actually defer. #}
+        <img class="cover-slide" src="{{ img }}" loading="lazy" decoding="async" alt="">
         {% endfor %}
       {% else %}
         {# No real photos for this listing — a single branded illustration instead: Todi as a
            detective, standing on a laptop pointing out a matching listing to his owner. Treated
-           exactly like a real photo (same .cover-slide background-image technique) — a static
-           local asset, not a per-listing variant (2026-09-02 request; see PROJECT_STATE.md for
-           the history of earlier attempts at this feature). The caption banner below it suggests
-           contacting the lister for photos, rather than the earlier "here's Todi" framing. #}
-        <div class="cover-slide" style="background-image:url('/static/dachshunds/todi_detective.jpg')"></div>
+           exactly like a real photo (same .cover-slide technique) — a static local asset, not a
+           per-listing variant (2026-09-02 request; see PROJECT_STATE.md for the history of
+           earlier attempts at this feature). The caption banner below it suggests contacting the
+           lister for photos, rather than the earlier "here's Todi" framing. #}
+        <img class="cover-slide" src="/static/dachshunds/todi_detective.jpg" loading="lazy" decoding="async" alt="">
       {% endif %}
     </div>
     <div class="top-left-badges">
