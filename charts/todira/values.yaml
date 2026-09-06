@@ -55,6 +55,18 @@
 #                             are sent with no description, exactly as before this feature shipped.)
 #   brightDataDescriptionField (optional — the field name in that scraper's own output schema
 #                             that holds the description text; defaults to "description" if unset.)
+#   takbullWebhookSecret     (optional — real payment-gateway checkout via Takbull, website/
+#                             takbull_client.py, 2026-09-06. A fixed secret WE generate — e.g.
+#                             `python -c "import secrets; print(secrets.token_urlsafe(24))"` — that
+#                             must also be the exact path segment used when registering Takbull's
+#                             one webhook URL in their dashboard (Settings > ממשקים > אוטומציה >
+#                             הוסף חדש, Event Trigger "עסקה חדשה"): https://<website.domain>/
+#                             webhooks/takbull/<this-same-secret>. Takbull has no signature scheme
+#                             of its own, so this is what stands in for one — see that module's own
+#                             docstring. Required alongside website.takbullPaymentPageUrl below for
+#                             /upgrade to offer this path; without it, /upgrade falls back to Grow
+#                             if configured, else the informal click-trust flow, exactly as before
+#                             this feature shipped.)
 
 # "true" (default) hits Grow's sandbox checkout endpoint instead of the real one — see
 # website/grow_client.py's module docstring for why (the integration is unverified against Grow's
@@ -91,6 +103,12 @@ website:
   # the PayBox app, if he has one — omit to just hide that option. Neither is secret.
   ownerBitPhone: ""
   ownerPayboxUrl: ""
+  # Takbull's one shared hosted payment page (2026-09-06) — lists all 3 plans (weekly/biweekly/
+  # monthly, matching website/main.py's PLAN_PRICES_ILS) as cart items the customer picks from; see
+  # website/takbull_client.py's module docstring. Not secret (it's a public checkout link the
+  # owner shares with anyone anyway) — takbullWebhookSecret above is the sensitive half. Empty
+  # hides this /upgrade path (falls back to Grow if configured, else the informal flow).
+  takbullPaymentPageUrl: "https://paypage.takbull.co.il/4BPyx"
 
 replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates pollers on one token
 
