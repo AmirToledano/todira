@@ -204,7 +204,7 @@ def test_account_shows_active_subscription_status_when_paid_until_is_future(clie
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
 
-    assert "👑 המנוי שלי" in resp.text
+    assert "המנוי שלי 👑" in resp.text
     assert "✅ פעיל, בתוקף עד" in resp.text
     assert paid_until.strftime("%d/%m/%Y") in resp.text
 
@@ -226,7 +226,7 @@ def test_account_shows_expired_subscription_status_when_no_trial_or_paid(client)
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
 
-    assert "⚠️ תקופת הניסיון הסתיימה" in resp.text
+    assert "תקופת הניסיון הסתיימה ⚠️" in resp.text
 
 
 def test_account_hides_subscription_card_for_the_owner(client):
@@ -238,8 +238,8 @@ def test_account_hides_subscription_card_for_the_owner(client):
     ):
         resp = client.get("/account", params={"uid": 222})
 
-    assert "👑 המנוי שלי" not in resp.text
-    assert "🔔 התראות" in resp.text  # notifications tile stays visible for the owner too
+    assert "המנוי שלי 👑" not in resp.text
+    assert "התראות 🔔" in resp.text  # notifications tile stays visible for the owner too
 
 
 def test_account_notifications_toggle_flips_and_redirects_with_uid(client):
@@ -284,7 +284,7 @@ def test_account_renders_payment_history_when_payments_exist(client):
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
 
-    assert "📄 היסטוריית תשלומים" in resp.text
+    assert "היסטוריית תשלומים 📄" in resp.text
     assert "חודשי — ₪40" in resp.text
     assert "₪40" in resp.text
     assert "01/08/2026" in resp.text
@@ -299,4 +299,4 @@ def test_account_hides_payment_history_section_when_no_payments(client):
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
 
-    assert "📄 היסטוריית תשלומים" not in resp.text
+    assert "היסטוריית תשלומים 📄" not in resp.text

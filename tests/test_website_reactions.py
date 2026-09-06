@@ -216,7 +216,7 @@ def test_hidden_page_lists_only_hidden_listings(client):
         resp = client.get("/hidden", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert "🙈 דירות מוסתרות" in resp.text
+    assert "דירות מוסתרות 🙈" in resp.text
 
 
 def test_hidden_page_empty_state(client):
