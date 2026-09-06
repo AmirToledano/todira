@@ -4079,3 +4079,43 @@ Kubernetes then rolls the Deployment for real, every time, unconditionally. This
 permanently: no future secret rotation (WhatsApp, Grow, Takbull, Bright Data, or anything added
 later) can silently fail to take effect again, whether it ships via a real commit, a workflow
 re-run, or (in principle) a future direct `helm upgrade` with no code change at all.
+
+## 2026-09-06 (still later): Real chat + live filter editing for already-onboarded users
+
+Owner compared side-by-side against the reference bot: he sent it "מה שלומך" twice and got two
+different, warm, contextual replies each time. He then sent our own already-onboarded WhatsApp
+account several different messages ("מה איתך יא ענק", "מה קורה יא מטורף", "מה נהיה יא חזיר"...)
+and got the EXACT SAME 3-message "here's how to edit your filter" block every single time,
+regardless of what he'd actually written. Checked the Telegram side too while investigating — it
+was arguably worse: `bot/handlers/onboarding.py`'s `/start` conversation just ends immediately for
+a user who already has a Filter, and no other handler picked up subsequent free text from them, so
+`bot/handlers/contact_fallback.py`'s catch-all replied with a generic "type /start" redirect that
+doesn't even acknowledge the user is already registered.
+
+Owner's explicit direction (asked before building, not guessed): build real chat, including live
+filter editing inline via chat (not just chit-chat) — confirmed this means every free-text message
+from an already-onboarded user now costs a Gemini call (previously free/instant on WhatsApp, and
+non-existent on Telegram), and confirmed OK given the existing free-tier Gemini key.
+
+**Shipped**: new `dorin_common/gemini_client.chat_with_existing_user(text, current_filter,
+known_cities, first_name)` — channel-agnostic (same home as `parse_onboarding_message`, same
+fail-soft-on-None/retry contract). One call does two things: (1) if the message asks to change
+something about the filter (city/price/rooms/deal type/keywords), returns the full updated field
+set to apply directly — no redirect to the website needed; (2) otherwise, a natural, varied,
+non-repetitive conversational reply. Known, accepted limitation: can't explicitly clear a field
+back to empty (e.g. "remove the room limit") — a field simply absent from the JSON response means
+"unchanged," not "clear it," matching `parse_onboarding_message`'s own pre-existing limitation by
+the same construction; rare in practice since users add/tighten criteria far more than they widen
+them, and `/filter` remains the fallback for that case and for fields outside chat's reach
+(parking/elevator/safe room/property type/neighborhoods) — the prompt itself nudges toward `/filter`
+by name when a request is outside what it can touch.
+
+Wired into BOTH channels: `website/whatsapp_webhook.py`'s already-has-a-filter branch (previously
+`_send_filter_edit_prompt` unconditionally) and `bot/handlers/contact_fallback.py`'s catch-all
+(previously a generic "type /start" with no DB lookup at all) — both now load the user's current
+Filter, call the new function, apply any `filter_changed` update directly to the row, and reply
+with the natural `response_message`. `looks_like_help_request` still checked FIRST on the Telegram
+side (unchanged precedence — a real support request still escalates to the owner, never routed
+through chat). 14 new/updated tests across `tests/test_whatsapp_webhook.py` and
+`tests/test_contact_fallback.py` (chat reply, live filter update, Gemini-failure hiccup, help-
+request-still-escalates precedence) — full suite (549 tests) green.
