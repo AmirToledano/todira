@@ -4,7 +4,7 @@
 
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>💳 השלמת התשלום</h1>
+    <h1>השלמת התשלום 💳</h1>
     <p>תוכנית {{ plan_label }} — לתשלום: <b>₪{{ amount }}</b></p>
   </div>
 </div>
@@ -31,13 +31,13 @@
 
   <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
     {% if already_paid %}
-      <p class="field-hint" style="text-align:center">✅ התשלום כבר אושר.</p>
+      <p class="field-hint" style="text-align:center">התשלום כבר אושר. ✅</p>
       <a class="btn gold block" href="/upgrade/success?payment_id={{ payment_id }}{{ '&uid=' ~ uid if uid else '' }}">המשך</a>
     {% else %}
       <form method="post" action="/upgrade/pay/confirm">
         <input type="hidden" name="payment_id" value="{{ payment_id }}">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        <button type="submit" class="btn gold block">✅ שילמתי, אשר/י את הגישה</button>
+        <button type="submit" class="btn gold block">שילמתי, אשר/י את הגישה ✅</button>
       </form>
       <p class="field-hint" style="text-align:center;margin-top:10px">
         לוחצים רק אחרי ששלחתם את התשלום בפועל.

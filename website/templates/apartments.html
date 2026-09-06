@@ -19,12 +19,12 @@
 {% if user and user.filter %}
 <div class="filter-bar">
   <span class="label">{{ t('apartments.filter_label') }}</span>
-  {% for c in user.filter.cities %}<span class="chip">📍 {{ c }}</span>{% endfor %}
+  {% for c in user.filter.cities %}<span class="chip">{{ c }} 📍</span>{% endfor %}
   {% if user.filter.rooms_min or user.filter.rooms_max %}
-    <span class="chip">🛏️ {{ user.filter.rooms_min or '?' }}–{{ user.filter.rooms_max or '?' }} {{ t('apartments.rooms_suffix') }}</span>
+    <span class="chip">{{ user.filter.rooms_min or '?' }}–{{ user.filter.rooms_max or '?' }} {{ t('apartments.rooms_suffix') }} 🛏️</span>
   {% endif %}
   {% if user.filter.price_min or user.filter.price_max %}
-    <span class="chip">💰 {{ user.filter.price_min or 0 }}–{{ user.filter.price_max or '∞' }} ₪</span>
+    <span class="chip">{{ user.filter.price_min or 0 }}–{{ user.filter.price_max or '∞' }} ₪ 💰</span>
   {% endif %}
   <form method="post" action="/apartments/no-brokers" style="display:inline">
     {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}

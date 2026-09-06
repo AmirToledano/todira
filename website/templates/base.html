@@ -55,14 +55,17 @@
   <a class="skip-link" href="#main-content">{{ t('a11y.skip_to_content') }}</a>
   {% if preview_as_free %}
   <div class="preview-banner">
-    🕵️ מצב תצוגה מקדימה פעיל — אתה רואה את האתר בדיוק כמו משתמש רגיל בלי מנוי.
+    מצב תצוגה מקדימה פעיל 🕵️ — אתה רואה את האתר בדיוק כמו משתמש רגיל בלי מנוי.
     <a href="/preview/toggle?next={{ request.url.path | urlencode }}">כבה תצוגה מקדימה וחזור לגישה מלאה</a>
   </div>
   {% endif %}
   <header class="site">
     <div class="header-inner">
-      <a class="brand" href="/"><span class="crown">👑</span> טודירה</a>
+      <a class="brand" href="/"><span class="crown">👑</span> טודירה <span class="brand-home-hint">{{ t('nav.brand_home_hint') }}</span></a>
       <div class="header-actions">
+        {% if not current_user and not uid %}
+        <a class="auth-login-toolbar" href="/login?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
+        {% endif %}
         <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ t('a11y.theme_toggle_label') }}">
           <span id="theme-toggle-icon" aria-hidden="true">🌙</span>
         </button>
@@ -74,13 +77,13 @@
     <div class="nav-panel" id="nav-panel">
       <div class="nav-panel-inner">
         <nav class="site-nav" aria-label="{{ t('a11y.main_nav_label') }}">
-          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">🏠 {{ t('nav.apartments') }}</a>
-          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">❤️ {{ t('nav.liked') }}</a>
-          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">⚙️ {{ t('nav.filter') }}</a>
+          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }} 🔑</a>
+          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }} ❤️</a>
+          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }} ⚙️</a>
           {% if uid or current_user %}
           <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
           {% endif %}
-          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">✉️ {{ t('nav.contact') }}</a>
+          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }} ✉️</a>
           {% if is_owner %}
           <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}">📬</a>
           <a href="/admin/users" class="{{ 'active' if active_page == 'admin_users' else '' }}">👥</a>
@@ -98,12 +101,12 @@
             <a class="auth-logout" href="/auth/logout">{{ t('auth.logout') }}</a>
             {% elif uid %}
             <a class="auth-login" href="/account?uid={{ uid }}">{{ t('auth.link_google') }}</a>
-            {% else %}
-            <a class="auth-login" href="/login?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
             {% endif %}
+            {# The anonymous-visitor login link lives on the always-visible toolbar now (see
+               header-actions above), not buried behind the hamburger — 2026-09-06 request. #}
             {% if is_real_owner %}
             <a class="auth-logout" href="/preview/toggle?next={{ request.url.path | urlencode }}">
-              {{ '👁️ בטל תצוגה מקדימה' if preview_as_free else '👁️ תצוגה מקדימה' }}
+              {{ 'בטל תצוגה מקדימה 👁️' if preview_as_free else 'תצוגה מקדימה 👁️' }}
             </a>
             {% endif %}
           </div>
