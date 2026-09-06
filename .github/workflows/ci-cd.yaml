@@ -137,6 +137,7 @@ jobs:
             --set growApiKey="${{ secrets.GROW_API_KEY }}" \
             --set brightDataApiKey="${{ secrets.BRIGHT_DATA_API_KEY }}" \
             --set brightDataDatasetId="${{ secrets.BRIGHT_DATA_DATASET_ID }}" \
+            --set brightDataDescriptionField="${{ secrets.BRIGHT_DATA_DESCRIPTION_FIELD }}" \
             --set takbullWebhookSecret="${{ secrets.TAKBULL_WEBHOOK_SECRET }}" \
             --namespace todira --create-namespace
 
