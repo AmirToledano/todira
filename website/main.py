@@ -55,6 +55,7 @@ from dorin_common.models import ContactMessage, Filter, Listing, Payment, User, 
 from fastapi import FastAPI, Form, Request
 
 import grow_client
+import takbull_client
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -1009,21 +1010,28 @@ def upgrade(request: Request, uid: int | None = None):
             "plan_prices": PLAN_PRICES_ILS,
             "plan_labels": PLAN_LABELS_HE,
             "grow_configured": grow_client.is_configured(),
+            "takbull_configured": takbull_client.is_configured(),
         },
     )
 
 
 @app.post("/upgrade")
 def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Form(None)):
-    """Plan selection. Real gateway (Grow/Meshulam, 2026-09-05) once GROW_PAGE_CODE/GROW_USER_ID/
-    GROW_API_KEY are all configured — creates a pending Payment row and redirects to Grow's hosted
-    checkout; access is granted only once /webhooks/grow below confirms a real charge (see
-    grow_client.py's own comment on why that confirmation logic is still provisional). Falls back
-    to the earlier informal click-trust model (2026-09-04 decision: the click itself IS the
-    payment signal, a Bit transfer happens outside this system) whenever Grow isn't configured
-    yet, so the site keeps working exactly as before until the owner's Grow account is ready. The
-    owner's /admin/users free-access toggle remains the remedy for a click/payment that turns out
-    not to have actually happened, under either model."""
+    """Plan selection. Tries real gateways in order, falling back one step at a time so the site
+    keeps working exactly as before until each is ready:
+    1. Takbull (2026-09-06) once TAKBULL_PAYMENT_PAGE_URL/TAKBULL_WEBHOOK_SECRET are both
+       configured — ₪0/month, chosen specifically over Grow for that reason (see
+       takbull_client.py's module docstring). Redirects to the owner's one shared Takbull payment
+       page; access is granted only once /webhooks/takbull below confirms a real charge.
+    2. Grow/Meshulam once GROW_PAGE_CODE/GROW_USER_ID/GROW_API_KEY are all configured — creates a
+       pending Payment row and redirects to Grow's hosted checkout; access is granted only once
+       /webhooks/grow below confirms a real charge (see grow_client.py's own comment on why that
+       confirmation logic is still provisional).
+    3. The earlier informal click-trust model (2026-09-04 decision: the click itself IS the
+       payment signal, a Bit transfer happens outside this system) whenever neither gateway is
+       configured yet.
+    The owner's /admin/users free-access toggle remains the remedy for a click/payment that turns
+    out not to have actually happened, under any of the three models."""
     if plan not in PLAN_PRICES_ILS:
         return _render(request, "auth_error.html", {}, status_code=400)
 
@@ -1033,6 +1041,19 @@ def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Fo
         user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "upgrade"})
+
+        if takbull_client.is_configured():
+            payment = Payment(
+                user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway="takbull"
+            )
+            session.add(payment)
+            session.commit()
+            checkout_url = takbull_client.build_checkout_url(payment_id=payment.id)
+            if checkout_url is not None:
+                return RedirectResponse(checkout_url, status_code=303)
+            payment.status = "failed"
+            session.commit()
+            return _render(request, "auth_error.html", {}, status_code=502)
 
         if not grow_client.is_configured():
             payment = Payment(
@@ -1199,6 +1220,102 @@ async def webhooks_grow(request: Request, token: str | None = None):
         payment.paid_at = dt.datetime.now(dt.timezone.utc)
         payment.gateway_transaction_id = str(
             body.get("transactionId") or body.get("asmachta") or body.get("processId") or payment.id
+        )
+        extend_paid_until(user, payment.plan)
+        session.commit()
+
+    return Response(status_code=200)
+
+
+def _looks_like_a_successful_takbull_payload(body: dict) -> bool:
+    """Per Takbull's own published Webhook guide's example payload for the order-success event
+    (Id/uniqId/OrderNumber/order_reference/CustomerFullName/CustomerEmail/CustomerPhone/
+    OrderStatus/StatusCode/StatusDescription/OrderTotalSum/Action/IsSubscriptionPayment) —
+    confirmed from their docs, not guessed. StatusDescription=="Success" is the clearest signal;
+    StatusCode==0 backs it up in case wording ever changes."""
+    status_description = str(body.get("StatusDescription", "")).strip().lower()
+    if status_description == "success":
+        return True
+    return body.get("StatusCode") == 0 and body.get("OrderStatus") is not None
+
+
+@app.post("/webhooks/takbull/{secret}")
+async def webhooks_takbull(request: Request, secret: str):
+    """Takbull's server-to-server payment confirmation. Takbull configures ONE static webhook URL
+    for all orders (unlike Grow's per-transaction notifyUrl) and has no signature/HMAC scheme (see
+    takbull_client.py's module docstring) — `secret` is a fixed, unguessable path segment standing
+    in for that missing authentication, checked against TAKBULL_WEBHOOK_SECRET below. Always
+    returns 200 so Takbull doesn't retry-storm this endpoint (matches whatsapp_webhook.py's and
+    /webhooks/grow's own documented always-200 contract), except for a bad secret — that's a 404,
+    not a 200, since it isn't a payload Takbull would ever legitimately retry."""
+    expected_secret = os.environ.get(takbull_client.WEBHOOK_SECRET_ENV_VAR, "").strip()
+    if not expected_secret or not hmac.compare_digest(secret, expected_secret):
+        return Response(status_code=404)
+
+    try:
+        body = dict(await request.json())
+    except Exception:
+        body = dict(await request.form())
+    logger.info("Takbull webhook raw payload: %r", body)
+
+    order_reference = body.get("order_reference")
+    try:
+        payment_id = int(order_reference)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Takbull webhook had no usable order_reference (got %r) — can't match it to a "
+            "payment; see the raw payload logged above for manual reconciliation",
+            order_reference,
+        )
+        return Response(status_code=200)
+
+    with get_session() as session:
+        payment = session.scalar(
+            select(Payment).where(
+                Payment.id == payment_id, Payment.gateway == "takbull", Payment.status == "pending"
+            )
+        )
+        if payment is None:
+            logger.warning(
+                "Takbull webhook order_reference=%s did not match any pending Takbull payment — "
+                "ignoring",
+                payment_id,
+            )
+            return Response(status_code=200)
+
+        if not _looks_like_a_successful_takbull_payload(body):
+            logger.warning(
+                "Takbull webhook for payment_id=%s had no recognizable success signal — left "
+                "pending, see the raw payload logged above",
+                payment.id,
+            )
+            return Response(status_code=200)
+
+        # The customer picks their item themselves on Takbull's one shared multi-plan page (see
+        # takbull_client.py) — nothing stops them from adding a different plan than the one they
+        # clicked on our own /upgrade first. OrderTotalSum is Takbull's own record of what was
+        # actually charged, so it's trusted over our own pre-recorded payment.amount_ils: if they
+        # don't match, grant nothing rather than risk crediting the wrong plan — left pending for
+        # manual reconciliation via /admin/users, same conservative stance as an unrecognized
+        # payload above.
+        order_total = body.get("OrderTotalSum")
+        if order_total is not None and int(order_total) != payment.amount_ils:
+            logger.warning(
+                "Takbull webhook for payment_id=%s reported OrderTotalSum=%r but the payment was "
+                "for ₪%s — leaving pending rather than guessing which plan to grant",
+                payment.id, order_total, payment.amount_ils,
+            )
+            return Response(status_code=200)
+
+        user = session.get(User, payment.user_id)
+        if user is None:
+            logger.error("Takbull webhook for payment_id=%s references a deleted user", payment.id)
+            return Response(status_code=200)
+
+        payment.status = "paid"
+        payment.paid_at = dt.datetime.now(dt.timezone.utc)
+        payment.gateway_transaction_id = str(
+            body.get("uniqId") or body.get("OrderNumber") or payment.id
         )
         extend_paid_until(user, payment.plan)
         session.commit()

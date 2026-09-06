@@ -141,6 +141,18 @@ spec:
               value: "{{ .Values.website.ownerBitPhone | default "" }}"
             - name: OWNER_PAYBOX_URL
               value: "{{ .Values.website.ownerPayboxUrl | default "" }}"
+            # Real payment-gateway checkout via Takbull (website/takbull_client.py, 2026-09-06) —
+            # tried BEFORE Grow above in /upgrade's fallback chain since it's ₪0/month. Not secret
+            # (a public checkout link); takbull-webhook-secret below is the sensitive half. Both
+            # optional/unset by default so a deploy before the owner has this ready doesn't break.
+            - name: TAKBULL_PAYMENT_PAGE_URL
+              value: "{{ .Values.website.takbullPaymentPageUrl | default "" }}"
+            - name: TAKBULL_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: takbull-webhook-secret
+                  optional: true
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}
