@@ -47,7 +47,8 @@
 #                             earlier informal click-trust flow (a Bit transfer outside this
 #                             system), exactly as before this feature shipped.)
 #   brightDataApiKey         (optional — on-demand listing-description enrichment for paying
-#   brightDataDatasetId       users, scraper/bright_data_client.py, 2026-09-05. Both required
+#   brightDataDatasetId       users, common/dorin_common/bright_data_client.py, 2026-09-05 (used by
+#                             both the scraper and website pods since 2026-09-07). Both required
 #                             together; brightDataDatasetId needs a Bright Data Scraper Studio
 #                             scraper the owner builds targeting Yad2 listing DETAIL pages — see
 #                             that module's own docstring for why this can't just reuse the

@@ -25,7 +25,7 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-import bright_data_client
+from dorin_common import bright_data_client
 from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.enums import NotificationReason
@@ -100,13 +100,15 @@ def _already_notified(session: Session, user_id: int, listing_id: int, reason: s
 
 
 async def _maybe_fetch_description(session: Session, listing: Listing, recipients: list[User]) -> None:
-    """Bright Data on-demand enrichment (2026-09-05, scraper/bright_data_client.py) — fetches and
-    caches the listing's real description, but ONLY when it's worth the cost: this is called after
-    matching is already done, with the actual list of users about to be notified, and does nothing
-    unless at least one of them is a PAYING user (has_access) who would actually see the result
-    (format_caption strips the description entirely for anyone else). This is the exact sequencing
-    difference the owner asked for — match first, then decide whether to spend a fetch — not
-    fetching speculatively for every scraped listing regardless of who it matches."""
+    """Bright Data on-demand enrichment (2026-09-05, common/dorin_common/bright_data_client.py) —
+    fetches and caches the listing's real description, but ONLY when it's worth the cost: this is
+    called after matching is already done, with the actual list of users about to be notified, and
+    does nothing unless at least one of them is a PAYING user (has_access) who would actually see
+    the result (format_caption strips the description entirely for anyone else). This is the exact
+    sequencing difference the owner asked for — match first, then decide whether to spend a fetch —
+    not fetching speculatively for every scraped listing regardless of who it matches. website/
+    main.py's _fill_missing_descriptions_in_background (2026-09-07) covers the complementary case
+    this discovery-time-only trigger can't: a listing whose paying match happens AFTER discovery."""
     if listing.description or not bright_data_client.is_configured():
         return
     if not any(_has_access_for(user) for user in recipients):

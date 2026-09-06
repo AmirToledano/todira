@@ -40,11 +40,13 @@ import hmac
 import logging
 import os
 import secrets
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
+from dorin_common import bright_data_client
 from dorin_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_access
 from dorin_common.channel_link import generate_link_code
 from dorin_common.cities import CITIES
@@ -693,6 +695,46 @@ def _listing_action_ids(session, user_id: int, action: str) -> set[int]:
 APARTMENTS_PAGE_SIZE = 24
 
 
+def _ensure_description_sync(listing_id: int, url: str) -> None:
+    description = bright_data_client.fetch_listing_description(url)
+    if not description:
+        return
+    with get_session() as session:
+        listing = session.get(Listing, listing_id)
+        # Re-check under a fresh session: another request for the same listing may have already
+        # filled this in while this fetch (up to ~45s, bright_data_client.py's own poll timeout)
+        # was in flight — never overwrite a description that showed up in the meantime.
+        if listing is not None and not listing.description:
+            listing.description = description
+            session.commit()
+
+
+def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
+    """2026-09-07: extends the on-demand Bright Data fetch (originally scraper/notifier.py only,
+    triggered once at the moment a listing first matches a PAYING user) to the website's own
+    /apartments and /liked views — covers a listing whose paying match happened AFTER discovery (a
+    filter edited later, a user who upgraded after the listing was scraped), which the
+    discovery-time trigger alone can never catch since it only ever runs once, right when a listing
+    is first found.
+
+    Fire-and-forget on its own thread per listing (mirrors whatsapp_webhook.py's own
+    _fire_typing_indicator pattern) — a real fetch can take up to ~45s, so this must never block the
+    page response. The page renders now with whatever descriptions already exist; a still-missing
+    one fills in for the NEXT view of that same listing, by any viewer, once the background fetch
+    finishes and caches it on Listing.description forever. Callers must only pass this the listings
+    actually being shown on THIS page (already capped — APARTMENTS_PAGE_SIZE for /apartments, the
+    liked list itself for /liked) so one page load can't fan out into an unbounded number of
+    concurrent Bright Data fetches."""
+    if not bright_data_client.is_configured():
+        return
+    for listing in listings:
+        if listing.description:
+            continue
+        threading.Thread(
+            target=_ensure_description_sync, args=(listing.id, listing.url), daemon=True
+        ).start()
+
+
 @app.get("/apartments")
 def apartments(request: Request, uid: int | None = None, offset: int = 0, fragment: bool = False):
     with get_session() as session:
@@ -733,6 +775,9 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
         via_session = request.session.get("user_id") == user.id
         has_access = _effective_access(request, user)
 
+    if has_access:
+        _fill_missing_descriptions_in_background(page_items)
+
     context = {
         "listings": page_items,
         "total_count": len(matches),
@@ -771,6 +816,9 @@ def liked(request: Request, uid: int | None = None):
             else []
         )
         has_access = _effective_access(request, user)
+
+    if has_access:
+        _fill_missing_descriptions_in_background(listings)
 
     return _render(
         request,
