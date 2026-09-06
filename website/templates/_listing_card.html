@@ -1,6 +1,9 @@
-{% macro listing_card(l, delay=0) %}
+{% macro listing_card(l, delay=0, animate=true) %}
 {% set _next = request.url.path ~ (('?' ~ request.url.query) if request.url.query else '') %}
-<div class="listing-card reveal" style="transition-delay:{{ delay }}ms">
+{# animate=false for cards fetched in later /apartments "load more" pages — the base.html
+   IntersectionObserver that adds .is-visible only runs once, at initial page load, so a card
+   appended afterward would never lose its .reveal opacity:0 and stay invisible forever. #}
+<div class="listing-card{{ ' reveal' if animate else '' }}" style="transition-delay:{{ delay }}ms">
   <div class="listing-cover-wrap">
     <div class="card-reactions">
       <form method="post" action="/react" class="card-reaction-form">

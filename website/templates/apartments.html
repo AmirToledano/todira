@@ -9,7 +9,7 @@
     <h1>{{ t('apartments.title') }}</h1>
     <p>{{ t('apartments.subtitle') }}</p>
   </div>
-  <div class="pb-count"><b>{{ listings|length }}</b><span>{{ t('apartments.results_label') }}</span></div>
+  <div class="pb-count"><b>{{ total_count }}</b><span>{{ t('apartments.results_label') }}</span></div>
 </div>
 
 {% if not via_session %}
@@ -43,8 +43,51 @@
     <p class="hint">{{ t('apartments.empty_hint') }}</p>
   </div>
 {% else %}
-  <div class="listing-grid">
+  <div class="listing-grid" id="listing-grid">
     {% for l in listings %}{{ listing_card(l, (loop.index0 % 6) * 60) }}{% endfor %}
+    {% if has_more %}
+    <div class="load-more-sentinel" data-next-offset="{{ next_offset }}"></div>
+    {% endif %}
   </div>
 {% endif %}
+
+<script>
+  (function () {
+    // Infinite scroll for /apartments — rendering all (up to 200) matches in one page was heavy
+    // enough to crash real mobile browsers (2026-09-06, see PROJECT_STATE.md), so the server now
+    // sends APARTMENTS_PAGE_SIZE at a time; this fetches the next batch as the sentinel (the grid's
+    // last child) scrolls into view, matching the reference bot dorin.app's own /apartments.
+    var grid = document.getElementById('listing-grid');
+    if (!grid || !('IntersectionObserver' in window)) { return; }
+
+    var loading = false;
+    var io = new IntersectionObserver(function (entries) {
+      var sentinel = grid.querySelector('.load-more-sentinel');
+      if (!sentinel || !entries.some(function (e) { return e.target === sentinel && e.isIntersecting; })) {
+        return;
+      }
+      if (loading) { return; }
+      loading = true;
+      var nextOffset = sentinel.dataset.nextOffset;
+      var url = new URL(window.location.href);
+      url.searchParams.set('offset', nextOffset);
+      url.searchParams.set('fragment', '1');
+      fetch(url.toString())
+        .then(function (resp) { return resp.ok ? resp.text() : null; })
+        .then(function (html) {
+          if (html === null) { return; } // request failed — leave the sentinel to retry later
+          io.unobserve(sentinel);
+          sentinel.insertAdjacentHTML('beforebegin', html);
+          sentinel.remove();
+          var newSentinel = grid.querySelector('.load-more-sentinel');
+          if (newSentinel) { io.observe(newSentinel); }
+        })
+        .catch(function () { /* network error — the sentinel is still there to retry later */ })
+        .finally(function () { loading = false; });
+    }, { rootMargin: '400px 0px' });
+
+    var initialSentinel = grid.querySelector('.load-more-sentinel');
+    if (initialSentinel) { io.observe(initialSentinel); }
+  })();
+</script>
 {% endblock %}

@@ -1,0 +1,9 @@
+{# AJAX response for /apartments' "load more" — no {% extends %}, this is the raw HTML the
+   client-side fetch() inserts into the page. See apartments.html's own script and main.py's
+   apartments() route (fragment=true branch). animate=false: see _listing_card.html's own
+   comment on why a lazily-appended card must not carry the .reveal class. #}
+{% from "_listing_card.html" import listing_card with context %}
+{% for l in listings %}{{ listing_card(l, 0, false) }}{% endfor %}
+{% if has_more %}
+<div class="load-more-sentinel" data-next-offset="{{ next_offset }}"></div>
+{% endif %}
