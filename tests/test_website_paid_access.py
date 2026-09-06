@@ -186,7 +186,8 @@ def test_upgrade_page_shows_plan_options_for_a_real_user():
         resp = c.get("/upgrade", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert "₪15" in resp.text
+    # TEMPORARY 2026-09-06: weekly is ₪1 during the real Takbull webhook test, see access.py.
+    assert "₪1" in resp.text
     assert "₪25" in resp.text
     assert "₪40" in resp.text
 
@@ -218,7 +219,7 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instruction
     payment = fake_session.added[0]
     assert payment.status == "pending"
     assert payment.gateway is None
-    assert payment.amount_ils == 15
+    assert payment.amount_ils == 1  # TEMPORARY 2026-09-06, see access.py
 
 
 def test_upgrade_submit_rejects_unknown_plan():
