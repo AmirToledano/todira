@@ -50,7 +50,12 @@
       </form>
     </div>
   </div>
-  {% if grow_configured %}
+  {% if takbull_configured %}
+  <p class="field-hint" style="text-align:center;margin-top:20px">
+    התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. בעמוד התשלום תראה/י את 3
+    התוכניות יחד — פשוט תוסיף/י לעגלה את זו שבחרת כאן (לפי המחיר) ותשלים/י תשלום. 🐾
+  </p>
+  {% elif grow_configured %}
   <p class="field-hint" style="text-align:center;margin-top:20px">
     התשלום מאובטח דרך Grow — ביט, פייבוקס, Apple Pay, Google Pay או כרטיס אשראי. 🐾
   </p>
