@@ -162,8 +162,15 @@ resources:
     requests: { cpu: "100m", memory: "256Mi" }
     limits: { cpu: "500m", memory: "512Mi" }
   website:
-    requests: { cpu: "50m", memory: "128Mi" }
-    limits: { cpu: "250m", memory: "256Mi" }
+    # 2026-09-06: bumped from 50m/250m — confirmed root cause of a live "technical hiccup" report
+    # was a genuine urllib3.ReadTimeoutError to generativelanguage.googleapis.com (Gemini itself
+    # slow to respond, both retry attempts timing out), NOT this pod's own CPU — but a quarter-core
+    # HARD ceiling is tight for a pod that's now making live outbound Gemini calls on ordinary chat
+    # messages (not just onboarding), where two requests landing close together could plausibly add
+    # cgroup CPU-throttling delay on top of Gemini's own latency. Cheap, safe precaution, not a
+    # proven fix for that specific incident.
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "500m", memory: "256Mi" }
   caddy:
     requests: { cpu: "25m", memory: "32Mi" }
     limits: { cpu: "100m", memory: "96Mi" }

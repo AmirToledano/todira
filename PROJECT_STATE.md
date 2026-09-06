@@ -4136,3 +4136,23 @@ reason to risk a behavior change there. Also added a "Diagnose website pod" step
 (mirroring the bot pod's existing one) since this pod — where the WhatsApp webhook and this whole
 feature live — had no log visibility at all before tonight, which is why the ORIGINAL "technical
 hiccup" the owner hit couldn't be root-caused from an exact exception.
+
+## 2026-09-06 (still later): Root-caused the "technical hiccup" via a read-only diagnostics run
+
+Owner asked directly whether the chat feature's occasional failure could be k8s-related, after
+noticing isolated messages reply fast but a message sent ~3s after another sometimes doesn't.
+Rather than guess, triggered the existing `diagnose-website-webhook.yaml` workflow (workflow_dispatch,
+read-only — no helm upgrade, so it doesn't restart the pod and wipe the very logs being sought,
+unlike checking via a real deploy's own diagnostics step, which is what actually lost the FIRST
+occurrence's logs earlier tonight). Found the exact, timestamped failure (07:13:16, matching the
+owner's own 10:13 Israel-time screenshot precisely): a genuine `urllib3.exceptions.ReadTimeoutError`
+to `generativelanguage.googleapis.com` — Gemini's own API not responding within the 10s window,
+on BOTH retry attempts. Confirmed NOT a bug in our own code and NOT a k8s scheduling/networking
+fault — Google's own endpoint was simply slow for that one request.
+
+Could not conclusively prove or rule out the owner's back-to-back-messages theory from a single
+data point, but as a cheap, safe precaution (not a proven fix) bumped `resources.website` from
+50m/250m to 100m/500m CPU (`charts/todira/values.yaml`) — the previous quarter-core hard ceiling
+was tight for a pod now making live outbound Gemini calls on ordinary chat messages (not just
+onboarding), where two close-together requests could plausibly add cgroup CPU-throttling delay on
+top of Gemini's own latency.
