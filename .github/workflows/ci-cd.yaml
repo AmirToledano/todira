@@ -154,6 +154,21 @@ jobs:
           echo "--- bot logs (previous container, if it restarted) ---"
           kubectl logs -n todira -l app=todira-bot --tail=150 --previous || true
 
+      - name: Diagnose website pod (WhatsApp webhook + Gemini chat live there)
+        # Added 2026-09-06 after the owner reported the new chat-with-existing-user feature
+        # ("technical hiccup") failing live with no way to see the actual Gemini exception behind
+        # it — this pod had no diagnostics step at all before, only the bot pod did.
+        if: always()
+        run: |
+          echo "--- pods ---"
+          kubectl get pods -n todira -o wide || true
+          echo "--- website describe ---"
+          kubectl describe pod -n todira -l app=todira-website || true
+          echo "--- website logs (current container) ---"
+          kubectl logs -n todira -l app=todira-website --tail=200 || true
+          echo "--- website logs (previous container, if it restarted) ---"
+          kubectl logs -n todira -l app=todira-website --tail=200 --previous || true
+
       - name: Diagnose Caddy (HTTPS rollout)
         if: always()
         run: |
