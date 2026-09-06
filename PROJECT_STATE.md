@@ -4044,3 +4044,38 @@ the webhook in Takbull's dashboard yet, so this path is built but dormant. The `
 round-trip is the one real unknown — first live transaction (even a real ₪15 one) is what actually
 proves or disproves it; the webhook logs the full raw payload unconditionally either way, so a
 failure to auto-match is always reconcilable by hand via `/admin/users`, never silent.
+
+## 2026-09-06 (later still): Root-caused why the WhatsApp number kept replying from the wrong number
+
+After tonight's WhatsApp production number setup, the bot intermittently replied to messages sent
+to the real number (052-498-3967) from the OLD test number (+1 555...) instead. Two rounds of
+"fix the stale secret, redeploy, still broken" happened before finding the REAL root cause — worth
+documenting in full since it's an infrastructure gap that silently affects EVERY secret this chart
+manages, not just WhatsApp's.
+
+**What actually happens**: `charts/todira/templates/website-deployment.yaml` (and `bot-deployment.
+yaml`) inject secrets as env vars via `valueFrom.secretKeyRef`. Kubernetes reads these ONCE, at
+container start — they are never live-refreshed into an already-running process. `helm upgrade`
+updating the underlying k8s `Secret` object's data does NOT, by itself, restart Pods that reference
+it; Kubernetes only rolls a Deployment's Pods when the Deployment's own **pod template** spec
+changes (most commonly: a new `image:` tag). Since `websiteImage.tag`/`botImage.tag` are set to
+`${{ github.sha }}` in `ci-cd.yaml`, a genuinely NEW commit does happen to force a real rollout as
+a side effect — which is exactly why this bug went unnoticed all the earlier times secrets were
+fixed tonight (each fix happened to land in the same push as other code changes). It broke visibly
+tonight specifically because: (1) a secret was fixed via a **re-run of an old, already-merged CI
+run** (same commit SHA → same image tag → Helm updated the Secret object but nothing forced a
+rollout → the already-running website Pod kept serving from its stale, original-boot-time env
+vars for 30+ minutes despite two separate "success" deploys reported in a row), and (2) the very
+first fix session-wide, the manual `set-whatsapp-secret.yaml` workflow, happens to include an
+explicit `kubectl rollout restart deployment/todira-website` step of its own — masking that the
+*regular* `ci-cd.yaml` pipeline has never had an equivalent mechanism for a secret-only change.
+
+**Real fix, not a workaround**: added the standard Helm "checksum annotation" idiom to both
+`bot-deployment.yaml` and `website-deployment.yaml`'s pod template metadata —
+`checksum/bot-secret: {{ include (print $.Template.BasePath "/bot-secret.yaml") . | sha256sum }}`.
+This makes the pod template's own spec change (a new annotation value) whenever ANY value baked
+into `bot-secret.yaml` changes via `--set`, regardless of whether the image tag also changed —
+Kubernetes then rolls the Deployment for real, every time, unconditionally. This closes the gap
+permanently: no future secret rotation (WhatsApp, Grow, Takbull, Bright Data, or anything added
+later) can silently fail to take effect again, whether it ships via a real commit, a workflow
+re-run, or (in principle) a future direct `helm upgrade` with no code change at all.

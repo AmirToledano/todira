@@ -13,6 +13,15 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}-website
+      annotations:
+        # See bot-deployment.yaml's identical annotation for the full explanation — this is the
+        # actual root cause of a real 2026-09-06 incident: this Deployment kept replying to
+        # WhatsApp messages from a stale phone number for 30+ minutes AFTER the underlying
+        # WHATSAPP_PHONE_NUMBER_ID secret was fixed and a CI run reported "success" twice, because
+        # neither run changed websiteImage.tag, so Kubernetes had no reason to restart the already
+        # -running Pod — it kept serving requests with whatever env vars it read at its ORIGINAL
+        # boot time, oblivious to the Secret object changing underneath it.
+        checksum/bot-secret: {{ include (print $.Template.BasePath "/bot-secret.yaml") . | sha256sum }}
     spec:
       containers:
         - name: website
