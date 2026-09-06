@@ -581,3 +581,113 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert send_text_mock.call_args_list[3][0][1] == whatsapp_webhook._FILTER_EDIT_FOLLOWUP_2
     send_cta_mock.assert_called_once()
     assert send_cta_mock.call_args[0][3] == f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000"
+
+
+# --- Help/support requests (2026-09-07) — checked before both the existing-filter chat branch and
+# onboarding parsing, mirroring bot/handlers/contact_fallback.py's own precedence on Telegram, so
+# "תמיכה" et al. never gets reinterpreted as apartment criteria or routed through the free-chat
+# reply that used to just describe the contact page in words with no real link. ---
+
+
+class _FakeHelpSession:
+    """Supports add/commit/get (ContactMessage lookups) on top of _FakeSession's scalar, since
+    _handle_help_request's own helpers each open their own `with get_session()` — all patched to
+    return this same instance."""
+
+    def __init__(self, existing_filter=None):
+        self._existing_filter = existing_filter
+        self.added: list = []
+        self.committed = False
+        self._next_id = 1
+
+    def scalar(self, stmt):
+        return self._existing_filter
+
+    def add(self, obj):
+        obj.id = self._next_id
+        self._next_id += 1
+        self.added.append(obj)
+
+    def commit(self):
+        self.committed = True
+
+    def get(self, model, pk):
+        for row in self.added:
+            if row.id == pk:
+                return row
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_help_request_saves_message_notifies_owner_and_sends_contact_button(monkeypatch):
+    monkeypatch.setattr(whatsapp_webhook, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(whatsapp_webhook, "OWNER_TELEGRAM_USER_ID", "999")
+
+    session = _FakeHelpSession(existing_filter=_FakeFilter())
+    user = _fake_user()
+
+    class _FakeResponse:
+        status_code = 200
+
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: user),
+        patch.object(whatsapp_webhook.httpx, "post", return_value=_FakeResponse()) as post_mock,
+        patch.object(whatsapp_webhook.gemini_client, "chat_with_existing_user") as chat_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_cta_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_text_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "אני צריך תמיכה טכנית")
+
+    # Never fell through to the free-chat reply that would otherwise fire for an already-onboarded
+    # user's free text.
+    chat_mock.assert_not_called()
+
+    assert len(session.added) == 1
+    saved = session.added[0]
+    assert saved.source == "whatsapp_bot"
+    assert "אני צריך תמיכה טכנית" in saved.message
+    assert "9725500000" in saved.message
+    assert saved.notified_owner is True
+
+    post_mock.assert_called_once()
+    assert post_mock.call_args[0][0] == "https://api.telegram.org/bottest-token/sendMessage"
+    assert post_mock.call_args[1]["json"]["chat_id"] == "999"
+
+    send_cta_mock.assert_called_once_with(
+        "9725500000",
+        whatsapp_webhook._HELP_REQUEST_BODY,
+        whatsapp_webhook._HELP_REQUEST_BUTTON_TEXT,
+        f"{whatsapp_webhook.WEBSITE_URL}/contact",
+    )
+    send_text_mock.assert_not_called()
+
+
+def test_help_request_checked_before_onboarding_too(monkeypatch):
+    """A not-yet-onboarded user (no Filter) typing a help request must also escalate — not get
+    reinterpreted as onboarding free text by parse_onboarding_message."""
+    monkeypatch.setattr(whatsapp_webhook, "TELEGRAM_BOT_TOKEN", None)
+    monkeypatch.setattr(whatsapp_webhook, "OWNER_TELEGRAM_USER_ID", None)
+
+    session = _FakeHelpSession(existing_filter=None)
+    user = _fake_user()
+
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: user),
+        patch.object(whatsapp_webhook.gemini_client, "parse_onboarding_message") as onboarding_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_cta_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", None, "אפשר לדבר עם נציג?")
+
+    onboarding_mock.assert_not_called()
+    assert len(session.added) == 1
+    # no TELEGRAM_BOT_TOKEN configured, so _mark_help_request_notified_sync never runs — the ORM
+    # column default (False) only applies on a real flush, so this stays unset (None) here.
+    assert session.added[0].notified_owner is not True
+    send_cta_mock.assert_called_once()
