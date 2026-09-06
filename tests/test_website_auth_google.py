@@ -400,7 +400,10 @@ def test_create_account_makes_a_standalone_user_with_a_blank_filter_and_logs_in(
         resp = website_main.auth_google_create_account(request, next="/apartments")
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/apartments"
+    # A brand-new account always lands on /filter first (with a welcome banner), regardless of
+    # `next` — landing straight on /apartments with an empty filter showed every listing in the
+    # country unfiltered, see main.py's own comment.
+    assert resp.headers["location"] == "/filter?welcome=1"
     assert len(fake_session.added) == 2
     new_user, new_filter = fake_session.added
     assert new_user.google_sub == "google-sub-new"

@@ -579,10 +579,14 @@ def auth_google_create_account(request: Request, next: str = "/apartments"):
     anyone claim an arbitrary Google identity by just POSTing here directly. Creates a real
     standalone user (no telegram_user_id/whatsapp_phone_number at all — both stay nullable, see
     User's own docstring) with a blank Filter (empty cities/no restrictions at all matches EVERY
-    listing per matching.py's own `if filter_row.cities:` check, so apartments show up immediately;
-    /filter already works as a pure session-based edit UI for narrowing it down, no separate
-    onboarding screen needed). Telegram/WhatsApp stay fully optional afterward, addable anytime via
-    /account's existing channel-link-code flow for whoever wants push notifications there too."""
+    listing per matching.py's own `if filter_row.cities:` check). Telegram/WhatsApp stay fully
+    optional afterward, addable anytime via /account's existing channel-link-code flow for whoever
+    wants push notifications there too.
+
+    2026-09-06: a brand-new account is sent to /filter?welcome=1 instead of `next` — landing
+    straight on /apartments showed every listing in the country unfiltered, which read as noise
+    rather than value on a real user's first visit (see PROJECT_STATE.md). An *existing* account
+    signing back in below still honors `next` as before; this only changes the true first-run."""
     pending_google_sub = request.session.pop("pending_google_sub", None)
     first_name = request.session.pop("pending_google_first_name", "")
     if not pending_google_sub:
@@ -605,7 +609,7 @@ def auth_google_create_account(request: Request, next: str = "/apartments"):
         user_pk = user.id
 
     request.session["user_id"] = user_pk
-    return RedirectResponse(_safe_next(next), status_code=303)
+    return RedirectResponse("/filter?welcome=1", status_code=303)
 
 
 @app.get("/auth/logout")
@@ -1425,7 +1429,9 @@ def _filter_redirect_url(uid: int | None, wid: str | None) -> str:
 
 
 @app.get("/filter")
-def filter_view(request: Request, uid: int | None = None, wid: str | None = None):
+def filter_view(
+    request: Request, uid: int | None = None, wid: str | None = None, welcome: bool = False
+):
     lang = get_lang(request)
     with get_session() as session:
         user = _resolve_user(request, session, uid, wid)
@@ -1439,6 +1445,7 @@ def filter_view(request: Request, uid: int | None = None, wid: str | None = None
             "filter.html",
             {
                 "f": filter_row,
+                "welcome": welcome,
                 "uid": user.telegram_user_id,
                 "wid": user.whatsapp_phone_number if user.telegram_user_id is None else None,
                 "user": user,
