@@ -13,10 +13,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 
 from dorin_common.db import get_session
 from dorin_common.models import ContactMessage
+from dorin_common.support import looks_like_help_request
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
@@ -26,15 +26,7 @@ logger = logging.getLogger(__name__)
 
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
-_HELP_PATTERN = re.compile(
-    r"support|customer service|(?:talk|speak) to (?:a )?(?:human|person|someone|representative)|"
-    r"נציג|תמיכה|עזרה מ|לדבר עם (?:מישהו|בנאדם|בן אדם|נציג|צוות)|שירות לקוחות|יש לי תלונה|בעיה טכנית",
-    re.IGNORECASE,
-)
-
-
-def looks_like_help_request(text: str) -> bool:
-    return bool(_HELP_PATTERN.search(text or ""))
+__all__ = ["escalate_to_owner", "looks_like_help_request", "looks_like_a_sentence"]
 
 
 def looks_like_a_sentence(text: str) -> bool:
