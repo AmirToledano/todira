@@ -3972,3 +3972,75 @@ whatever Meta's own form shows once Israel is selected as the business location 
 that live screen rather than this note, since document requirements are set by Meta and vary by
 country). This step does not block anything the bot already does — it only affects how the chat
 header looks and unlocks higher messaging limits.
+
+## 2026-09-06 (later): Takbull payment gateway — ₪0/month alternative to Grow, shipped
+
+Owner explicitly rejected any fixed monthly payment-gateway cost given Todira's genuinely
+uncertain revenue ("אף אחד לא מבטיח לנו שאהיה עסק שבכלל מכניס כסף... חייב למצוא אלטרנטיבות"),
+and separately rejected the existing informal Bit/PayBox flow's trust-based "click I paid" model
+as unprofessional, asking instead for pre-filled amount + auto-verified confirmation + a recorded
+reason/memo for tax purposes. Researched alternatives beyond Grow live with the owner, screenshot
+by screenshot through takbull.co.il's real site and the owner's own actual account (not guessed) —
+found Takbull's "עסקים מהיר – 50 מסמכים" plan: ₪0/month, 1.4% per transaction, 50 free
+transactions/month, includes card/Apple Pay/Google Pay/Bit — genuinely free until real revenue
+exists, unlike Grow's ₪29-69/month floor.
+
+**What was verified live, not guessed**, before writing any code:
+- API-key generation ("צור מפתחות חדשים") IS paywalled behind a "מוסף סליקת אשראי" add-on
+  (₪99 one-time, ₪0/month recurring — owner accepted this cost as worth it). Webhook/automation
+  configuration is NOT paywalled — confirmed by triggering the exact "modules required" popup only
+  on the API-key button, never on the Webhook "הוסף חדש" flow. This meant the ₪99 module wasn't
+  actually needed: payment pages are created by hand in the dashboard, not via API.
+- Owner created one shared hosted payment page (https://paypage.takbull.co.il/4BPyx) listing 3 cart
+  items with SKUs matching website/main.py's PLAN_PRICES_ILS keys exactly (todira-plan-weekly ₪15,
+  todira-plan-biweekly ₪25, todira-plan-monthly ₪40) — the customer picks/adds-to-cart the right
+  one themselves; there's no way found to preselect a specific item via URL.
+- Confirmed live that the payment page honors `?email=...` as a URL query param that pre-fills the
+  checkout form — this is the mechanism website/takbull_client.py uses to pass `order_reference`
+  through (documented in Takbull's own Webhook guide's example order-success payload), though
+  order_reference itself has no visible form field to visually confirm against like email did, so
+  this is confirmed-by-mechanism, not confirmed end-to-end — the first real payment settles it.
+- Full order-webhook JSON payload schema read directly from Takbull's own developer guide (Id,
+  uniqId, OrderNumber, order_reference, CustomerFullName, CustomerEmail, CustomerPhone, OrderStatus,
+  StatusCode, StatusDescription, OrderTotalSum, Token, Last4Digs, Cardtype, Action,
+  IsSubscriptionPayment) and their event-type dropdown (עסקה חדשה / עסקה נכשלה / חשבונית חדשה /
+  הזמנה חדשה-ממתין לתשלום / הזמנה ננטשה) — "עסקה חדשה" is the success event wired below.
+- **No HMAC/signature scheme exists on Takbull's webhook** — their own published security
+  recommendations say to validate sensitive actions server-side rather than trust the payload
+  alone, dedupe via uniqId, and use HTTPS — no mention of a shared-secret header. Unlike Grow
+  (whose notifyUrl is set per-transaction, letting a per-payment webhook_token ride along), Takbull
+  configures ONE static webhook URL for all orders in their dashboard, so a per-payment token
+  doesn't apply — used a single fixed secret baked into the URL PATH instead (TAKBULL_WEBHOOK_SECRET).
+
+**Shipped**: `website/takbull_client.py` (new, mirrors grow_client.py's role — `is_configured()`,
+`build_checkout_url(payment_id)`, pure string-building since there's no API call on this plan at
+all). `website/main.py`: `/upgrade` now tries Takbull first, then Grow, then the informal flow
+(Takbull chosen first specifically for its ₪0/month); new `POST /webhooks/takbull/{secret}` route —
+checks the path secret via `hmac.compare_digest` (404 on mismatch, not 200 — this isn't a payload
+Takbull would legitimately retry), matches `order_reference` back to a pending `Payment` row
+(`gateway="takbull"`), cross-checks the webhook's own `OrderTotalSum` against `payment.amount_ils`
+before granting anything (since the customer can add a different cart item than the one they
+clicked on our site — a mismatch is left pending for manual `/admin/users` reconciliation, not
+guessed at), dedupes naturally via the existing `status == "pending"` filter (same mechanism Grow's
+webhook already relies on). `Payment.gateway="takbull"` and `gateway_transaction_id` (holds
+Takbull's `uniqId`) needed no schema changes — the existing Grow-era columns already fit.
+`upgrade.html` explains the "you'll see all 3 plans on Takbull's page, add the one you picked here
+to cart" UX wrinkle from the shared multi-item page. Chart wiring follows the exact existing Grow/
+WhatsApp pattern: `website.takbullPaymentPageUrl` (plain value, not secret — a public checkout
+link, hardcoded to the owner's real page) and `takbullWebhookSecret` (real secret, optional
+`{{- if }}` k8s Secret key, wired through `ci-cd.yaml`'s `--set`) — owner still needs to generate
+that secret (`python -c "import secrets; print(secrets.token_urlsafe(24))"`), set it as the
+`TAKBULL_WEBHOOK_SECRET` GitHub repository secret, and register
+`https://todira.duckdns.org/webhooks/takbull/<that-same-secret>` as the "Hook Address" in
+Takbull's dashboard (event "עסקה חדשה") before this path actually activates — until then
+`takbull_client.is_configured()` is false and `/upgrade` falls straight through to Grow/the
+informal flow, exactly as before this feature shipped. New `tests/test_website_takbull_payments.py`
+(10 tests: Takbull-preferred-over-Grow, checkout-build failure, wrong/missing secret, missing/
+unknown/mismatched-amount order_reference, success grant, no-double-credit) — full suite (553
+tests) green.
+
+**Still open, not yet done**: the owner hasn't generated/set `TAKBULL_WEBHOOK_SECRET` or registered
+the webhook in Takbull's dashboard yet, so this path is built but dormant. The `order_reference`
+round-trip is the one real unknown — first live transaction (even a real ₪15 one) is what actually
+proves or disproves it; the webhook logs the full raw payload unconditionally either way, so a
+failure to auto-match is always reconcilable by hand via `/admin/users`, never silent.
