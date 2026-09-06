@@ -5,7 +5,7 @@
 
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>👥 ניהול משתמשים</h1>
+    <h1>ניהול משתמשים 👥</h1>
     <p>גישה חופשית ידנית, ללא קשר לתשלום — לא משנה דרך איזה ערוץ המשתמש נרשם.</p>
   </div>
   <div class="pb-count"><b>{{ rows|length }}</b><span>משתמשים</span></div>
@@ -24,9 +24,9 @@
         <span class="amc-source">{{ r.label }}</span>
         <span class="amc-date">{{ r.channel }}{% if r.has_google %} · 🔗 Google{% endif %}</span>
         {% if r.has_access %}
-          <span class="amc-status amc-status-ok">✅ יש גישה{% if r.in_trial %} (ניסיון){% endif %}</span>
+          <span class="amc-status amc-status-ok">יש גישה{% if r.in_trial %} (ניסיון){% endif %} ✅</span>
         {% else %}
-          <span class="amc-status amc-status-warn">⚠️ אין גישה</span>
+          <span class="amc-status amc-status-warn">אין גישה ⚠️</span>
         {% endif %}
       </div>
       <div class="amc-meta">

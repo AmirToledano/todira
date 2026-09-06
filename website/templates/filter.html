@@ -2,6 +2,9 @@
 {% set active_page = "filter" %}
 {% block title %}{{ t('meta.title_filter') }}{% endblock %}
 {% block content %}
+{% if welcome %}
+<div class="welcome-banner reveal">{{ t('filter.welcome_banner') }} 🎉</div>
+{% endif %}
 <div class="page-banner reveal">
   <div class="pb-text">
     <h1>{{ t('filter.title') }}</h1>

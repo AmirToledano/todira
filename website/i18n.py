@@ -121,6 +121,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav.apartments": {
         "he": "דירות", "en": "Apartments", "ru": "Квартиры", "fr": "Appartements", "ar": "الشقق",
     },
+    "nav.brand_home_hint": {
+        "he": "(לעמוד הבית)", "en": "(home page)", "ru": "(на главную)",
+        "fr": "(page d'accueil)", "ar": "(الصفحة الرئيسية)",
+    },
     "nav.liked": {
         "he": "שמורות", "en": "Saved", "ru": "Сохранённые", "fr": "Enregistrés", "ar": "المحفوظة",
     },
@@ -136,8 +140,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Nous contacter", "ar": "تواصل معنا",
     },
     "nav.account": {
-        "he": "👤 החשבון שלי", "en": "👤 My account", "ru": "👤 Мой аккаунт",
-        "fr": "👤 Mon compte", "ar": "👤 حسابي",
+        "he": "החשבון שלי 👤", "en": "My account 👤", "ru": "Мой аккаунт 👤",
+        "fr": "Mon compte 👤", "ar": "حسابي 👤",
     },
     "auth.you": {
         "he": "מחובר/ת", "en": "Logged in", "ru": "Вы вошли", "fr": "Connecté(e)", "ar": "تم تسجيل الدخول",
@@ -146,12 +150,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "התנתקות", "en": "Log out", "ru": "Выйти", "fr": "Se déconnecter", "ar": "تسجيل الخروج",
     },
     "auth.login": {
-        "he": "התחברות", "en": "Log in", "ru": "Войти",
-        "fr": "Se connecter", "ar": "تسجيل الدخول",
+        "he": "הרשמה / התחברות", "en": "Sign up / Log in", "ru": "Регистрация / Вход",
+        "fr": "Inscription / Connexion", "ar": "التسجيل / تسجيل الدخول",
     },
     "auth.link_google": {
-        "he": "🔗 קשר את Google לחשבון", "en": "🔗 Link your Google account", "ru": "🔗 Привязать аккаунт Google",
-        "fr": "🔗 Lier votre compte Google", "ar": "🔗 ربط حساب Google",
+        "he": "קשר את Google לחשבון 🔗", "en": "Link your Google account 🔗", "ru": "Привязать аккаунт Google 🔗",
+        "fr": "Lier votre compte Google 🔗", "ar": "ربط حساب Google 🔗",
     },
     "auth.error_body": {
         "he": "לא הצלחנו לאמת את ההתחברות. אפשר לנסות שוב.",
@@ -322,11 +326,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- home page ----------
     "home.eyebrow": {
-        "he": "👑 דירות בזמן אמת · דרך טלגרם",
-        "en": "👑 Real-time apartments · via Telegram",
-        "ru": "👑 Квартиры в реальном времени · через Telegram",
-        "fr": "👑 Appartements en temps réel · via Telegram",
-        "ar": "👑 شقق في الوقت الفعلي · عبر تيليجرام",
+        "he": "דירות בזמן אמת · דרך טלגרם 👑",
+        "en": "Real-time apartments · via Telegram 👑",
+        "ru": "Квартиры в реальном времени · через Telegram 👑",
+        "fr": "Appartements en temps réel · via Telegram 👑",
+        "ar": "شقق في الوقت الفعلي · عبر تيليجرام 👑",
     },
     "home.h1": {
         "he": "הדירה שלך מוצאת אותך",
@@ -343,20 +347,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "טودירה يفحص سوق الشقق بلا توقف، وينبهك خلال دقائق فور ظهور شقة تطابق تمامًا ما تبحث عنه — قبل أن يسبقك إليها شخص آخر.",
     },
     "home.cta_open_bot": {
-        "he": "🚀 פתח את הבוט בטלגרם",
-        "en": "🚀 Open the Telegram bot",
-        "ru": "🚀 Открыть бота в Telegram",
-        "fr": "🚀 Ouvrir le bot Telegram",
-        "ar": "🚀 افتح البوت على تيليجرام",
+        "he": "פתח את הבוט בטלגרם",
+        "en": "Open the Telegram bot",
+        "ru": "Открыть бота в Telegram",
+        "fr": "Ouvrir le bot Telegram",
+        "ar": "افتح البوت على تيليجرام",
     },
     "home.cta_how": {
         "he": "איך זה עובד?", "en": "How does it work?", "ru": "Как это работает?",
         "fr": "Comment ça marche ?", "ar": "كيف يعمل؟",
     },
     "home.cta_open_whatsapp": {
-        "he": "💬 המשך בווטסאפ", "en": "💬 Continue on WhatsApp",
-        "ru": "💬 Продолжить в WhatsApp", "fr": "💬 Continuer sur WhatsApp",
-        "ar": "💬 تابع عبر واتساب",
+        "he": "המשך בווטסאפ", "en": "Continue on WhatsApp",
+        "ru": "Продолжить в WhatsApp", "fr": "Continuer sur WhatsApp",
+        "ar": "تابع عبر واتساب",
     },
     "home.hero_img_alt": {
         "he": "טודי המלך — בוט חיפוש דירות טודירה",
@@ -415,8 +419,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Toutes les régions Yad2 réunies", "ar": "جميع مناطق يد2 في مكان واحد",
     },
     "home.live_badge": {
-        "he": "🔔 התראות בזמן אמת", "en": "🔔 Real-time alerts", "ru": "🔔 Уведомления в реальном времени",
-        "fr": "🔔 Alertes en temps réel", "ar": "🔔 تنبيهات فورية",
+        "he": "התראות בזמן אמת 🔔", "en": "Real-time alerts 🔔", "ru": "Уведомления в реальном времени 🔔",
+        "fr": "Alertes en temps réel 🔔", "ar": "تنبيهات فورية 🔔",
     },
     "home.example_badge_label": {
         "he": "לדוגמה", "en": "Example", "ru": "Пример", "fr": "Exemple", "ar": "مثال",
@@ -486,8 +490,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "لأنك مشغول، والشقق الجيدة تختفي خلال ساعات.",
     },
     "home.compare_without_title": {
-        "he": "😩 בלי טודירה", "en": "😩 Without Todira", "ru": "😩 Без Todira",
-        "fr": "😩 Sans Todira", "ar": "😩 بدون טודירה",
+        "he": "בלי טודירה 😩", "en": "Without Todira 😩", "ru": "Без Todira 😩",
+        "fr": "Sans Todira 😩", "ar": "بدون טודירה 😩",
     },
     "home.compare_without_1": {
         "he": "מרעננים כמה אתרים כל כמה שעות",
@@ -518,8 +522,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "نسيان شقة حفظتها في تبويب أغلقته",
     },
     "home.compare_with_title": {
-        "he": "👑 עם טודירה", "en": "👑 With Todira", "ru": "👑 С Todira",
-        "fr": "👑 Avec Todira", "ar": "👑 مع טודירה",
+        "he": "עם טודירה 👑", "en": "With Todira 👑", "ru": "С Todira 👑",
+        "fr": "Avec Todira 👑", "ar": "مع טודירה 👑",
     },
     "home.compare_with_1": {
         "he": "סריקה אוטומטית כל 10 דקות, ברקע",
@@ -672,8 +676,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- apartments page ----------
     "apartments.title": {
-        "he": "🏠 דירות תואמות", "en": "🏠 Matching apartments", "ru": "🏠 Подходящие квартиры",
-        "fr": "🏠 Appartements correspondants", "ar": "🏠 شقق مطابقة",
+        "he": "דירות תואמות 🏠", "en": "Matching apartments 🏠", "ru": "Подходящие квартиры 🏠",
+        "fr": "Appartements correspondants 🏠", "ar": "شقق مطابقة 🏠",
     },
     "apartments.subtitle": {
         "he": "כל דירה שעברה את הסינון שלך, ממוינת מהחדשה ביותר",
@@ -703,12 +707,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Modifier le filtre", "ar": "تعديل الفلتر",
     },
     "apartments.no_brokers_on": {
-        "he": "🚫 בלי תיווך", "en": "🚫 No brokers", "ru": "🚫 Без посредников",
-        "fr": "🚫 Sans agences", "ar": "🚫 بدون سماسرة",
+        "he": "בלי תיווך 🚫", "en": "No brokers 🚫", "ru": "Без посредников 🚫",
+        "fr": "Sans agences 🚫", "ar": "بدون سماسرة 🚫",
     },
     "apartments.no_brokers_off": {
-        "he": "🏢 כולל תיווך", "en": "🏢 Including brokers", "ru": "🏢 С посредниками",
-        "fr": "🏢 Avec agences", "ar": "🏢 يشمل السماسرة",
+        "he": "כולל תיווך 🏢", "en": "Including brokers 🏢", "ru": "С посредниками 🏢",
+        "fr": "Avec agences 🏢", "ar": "يشمل السماسرة 🏢",
     },
     "apartments.empty_title": {
         "he": "אין עדיין דירות תואמות להצגה.",
@@ -726,8 +730,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- liked page ----------
     "liked.title": {
-        "he": "❤️ דירות שמורות", "en": "❤️ Saved apartments", "ru": "❤️ Сохранённые квартиры",
-        "fr": "❤️ Appartements enregistrés", "ar": "❤️ شقق محفوظة",
+        "he": "דירות שמורות ❤️", "en": "Saved apartments ❤️", "ru": "Сохранённые квартиры ❤️",
+        "fr": "Appartements enregistrés ❤️", "ar": "شقق محفوظة ❤️",
     },
     "liked.subtitle": {
         "he": "דירות שסימנת כמעניינות — כאן ובבוט בטלגרם",
@@ -749,13 +753,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "بمجرد أن تعلّم شقة بـ\"أعجبتني\" في تيليجرام، ستظهر هنا.",
     },
     "liked.hidden_link": {
-        "he": "🙈 דירות מוסתרות", "en": "🙈 Hidden apartments", "ru": "🙈 Скрытые квартиры",
-        "fr": "🙈 Appartements masqués", "ar": "🙈 الشقق المخفية",
+        "he": "דירות מוסתרות 🙈", "en": "Hidden apartments 🙈", "ru": "Скрытые квартиры 🙈",
+        "fr": "Appartements masqués 🙈", "ar": "الشقق المخفية 🙈",
     },
     # ---------- hidden page ----------
     "hidden.title": {
-        "he": "🙈 דירות מוסתרות", "en": "🙈 Hidden apartments", "ru": "🙈 Скрытые квартиры",
-        "fr": "🙈 Appartements masqués", "ar": "🙈 شقق مخفية",
+        "he": "דירות מוסתרות 🙈", "en": "Hidden apartments 🙈", "ru": "Скрытые квартиры 🙈",
+        "fr": "Appartements masqués 🙈", "ar": "شقق مخفية 🙈",
     },
     "hidden.subtitle": {
         "he": "דירות שהסתרת מרשימת ההתאמות — לחיצה נוספת על 👀 מחזירה אותן",
@@ -777,8 +781,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "بمجرد أن تخفي شقة (🙈) هنا أو في تيليجرام، ستظهر هنا.",
     },
     "hidden.liked_link": {
-        "he": "❤️ דירות שמורות", "en": "❤️ Saved apartments", "ru": "❤️ Сохранённые квартиры",
-        "fr": "❤️ Appartements enregistrés", "ar": "❤️ الشقق المحفوظة",
+        "he": "דירות שמורות ❤️", "en": "Saved apartments ❤️", "ru": "Сохранённые квартиры ❤️",
+        "fr": "Appartements enregistrés ❤️", "ar": "الشقق المحفوظة ❤️",
     },
     # ---------- listing card ----------
     "card.like_btn": {
@@ -857,16 +861,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "תיווך", "en": "Broker", "ru": "Посредник", "fr": "Agence", "ar": "وسيط",
     },
     "card.no_image_caption": {
-        "he": "🕵️ דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!",
-        "en": "🕵️ This listing has no photos yet — it's worth contacting the lister to ask for some!",
-        "ru": "🕵️ У этого объявления пока нет фото — стоит написать автору и попросить!",
-        "fr": "🕵️ Cette annonce n'a pas encore de photos — ça vaut le coup de demander au contact !",
-        "ar": "🕵️ لا توجد صور لهذا العرض بعد — يستحق التواصل مع المعلن لطلبها!",
+        "he": "דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה! 🕵️",
+        "en": "This listing has no photos yet — it's worth contacting the lister to ask for some! 🕵️",
+        "ru": "У этого объявления пока нет фото — стоит написать автору и попросить! 🕵️",
+        "fr": "Cette annonce n'a pas encore de photos — ça vaut le coup de demander au contact ! 🕵️",
+        "ar": "لا توجد صور لهذا العرض بعد — يستحق التواصل مع المعلن لطلبها! 🕵️",
     },
     # ---------- filter page ----------
     "filter.title": {
-        "he": "⚙️ הסינון שלי", "en": "⚙️ My filter", "ru": "⚙️ Мой фильтр",
-        "fr": "⚙️ Mon filtre", "ar": "⚙️ فلتري",
+        "he": "הסינון שלי ⚙️", "en": "My filter ⚙️", "ru": "Мой фильтр ⚙️",
+        "fr": "Mon filtre ⚙️", "ar": "فلتري ⚙️",
+    },
+    "filter.welcome_banner": {
+        "he": "ברוך הבא לטודירה! בוא נגדיר את הסינון שלך כדי שנראה לך בדיוק את הדירות שמתאימות",
+        "en": "Welcome to Todira! Let's set up your filter so we can show you exactly the apartments that fit",
+        "ru": "Добро пожаловать в Todira! Давайте настроим ваш фильтр, чтобы показывать именно те квартиры, которые подходят",
+        "fr": "Bienvenue sur Todira ! Configurons votre filtre pour vous montrer exactement les appartements qui correspondent",
+        "ar": "مرحبًا بك في طوديرة! لنقم بإعداد الفلتر الخاص بك لنعرض لك بالضبط الشقق المناسبة",
     },
     "filter.subtitle": {
         "he": "עריכה מלאה כאן. לעריכה של שכונות/רחובות ספציפיים ותאריכי כניסה — ב-/filter בטלגרם",
@@ -954,33 +965,33 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "מאפיינים", "en": "Features", "ru": "Особенности", "fr": "Caractéristiques", "ar": "الميزات",
     },
     "filter.amenity_parking": {
-        "he": "🚗 חניה", "en": "🚗 Parking", "ru": "🚗 Парковка", "fr": "🚗 Parking", "ar": "🚗 موقف سيارات",
+        "he": "חניה 🚗", "en": "Parking 🚗", "ru": "Парковка 🚗", "fr": "Parking 🚗", "ar": "موقف سيارات 🚗",
     },
     "filter.amenity_elevator": {
-        "he": "🛗 מעלית", "en": "🛗 Elevator", "ru": "🛗 Лифт", "fr": "🛗 Ascenseur", "ar": "🛗 مصعد",
+        "he": "מעלית 🛗", "en": "Elevator 🛗", "ru": "Лифт 🛗", "fr": "Ascenseur 🛗", "ar": "مصعد 🛗",
     },
     "filter.amenity_balcony": {
-        "he": "🌇 מרפסת", "en": "🌇 Balcony", "ru": "🌇 Балкон", "fr": "🌇 Balcon", "ar": "🌇 شرفة",
+        "he": "מרפסת 🌇", "en": "Balcony 🌇", "ru": "Балкон 🌇", "fr": "Balcon 🌇", "ar": "شرفة 🌇",
     },
     "filter.amenity_pets": {
-        "he": "🐾 חיות מחמד מותרות", "en": "🐾 Pets allowed", "ru": "🐾 Можно с животными",
-        "fr": "🐾 Animaux autorisés", "ar": "🐾 يسمح بالحيوانات الأليفة",
+        "he": "חיות מחמד מותרות 🐾", "en": "Pets allowed 🐾", "ru": "Можно с животными 🐾",
+        "fr": "Animaux autorisés 🐾", "ar": "يسمح بالحيوانات الأليفة 🐾",
     },
     "filter.amenity_renovated": {
-        "he": "✨ משופצת", "en": "✨ Renovated", "ru": "✨ Отремонтирована",
-        "fr": "✨ Rénové", "ar": "✨ مجدّدة",
+        "he": "משופצת ✨", "en": "Renovated ✨", "ru": "Отремонтирована ✨",
+        "fr": "Rénové ✨", "ar": "مجدّدة ✨",
     },
     "filter.amenity_roommates": {
-        "he": "🧑‍🤝‍🧑 מתאימה לשותפים", "en": "🧑‍🤝‍🧑 Roommate friendly", "ru": "🧑‍🤝‍🧑 Подходит для соседей",
-        "fr": "🧑‍🤝‍🧑 Adapté à la colocation", "ar": "🧑‍🤝‍🧑 مناسبة للسكن المشترك",
+        "he": "מתאימה לשותפים 🧑‍🤝‍🧑", "en": "Roommate friendly 🧑‍🤝‍🧑", "ru": "Подходит для соседей 🧑‍🤝‍🧑",
+        "fr": "Adapté à la colocation 🧑‍🤝‍🧑", "ar": "مناسبة للسكن المشترك 🧑‍🤝‍🧑",
     },
     "filter.amenity_photos": {
-        "he": "🖼️ עם תמונות בלבד", "en": "🖼️ With photos only", "ru": "🖼️ Только с фото",
-        "fr": "🖼️ Avec photos uniquement", "ar": "🖼️ بصور فقط",
+        "he": "עם תמונות בלבד 🖼️", "en": "With photos only 🖼️", "ru": "Только с фото 🖼️",
+        "fr": "Avec photos uniquement 🖼️", "ar": "بصور فقط 🖼️",
     },
     "filter.amenity_no_brokers": {
-        "he": "🚫 בלי תיווך", "en": "🚫 No brokers", "ru": "🚫 Без посредников",
-        "fr": "🚫 Sans agence", "ar": "🚫 بدون وسطاء",
+        "he": "בלי תיווך 🚫", "en": "No brokers 🚫", "ru": "Без посредников 🚫",
+        "fr": "Sans agence 🚫", "ar": "بدون وسطاء 🚫",
     },
     "filter.safe_room_label": {
         "he": "ממ״ד", "en": "Safe room", "ru": "Бомбоубежище", "fr": "Abri (mamad)", "ar": "غرفة آمنة",
@@ -1014,8 +1025,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "تطابق مرن — عرض أيضًا الشقق التي تفتقد ميزة واحدة فقط",
     },
     "filter.save_btn": {
-        "he": "💾 שמור שינויים", "en": "💾 Save changes", "ru": "💾 Сохранить изменения",
-        "fr": "💾 Enregistrer les modifications", "ar": "💾 حفظ التغييرات",
+        "he": "שמור שינויים 💾", "en": "Save changes 💾", "ru": "Сохранить изменения 💾",
+        "fr": "Enregistrer les modifications 💾", "ar": "حفظ التغييرات 💾",
     },
     # ---------- empty states / small pages ----------
     "no_filter.body": {
@@ -1076,8 +1087,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- contact page ----------
     "contact.title": {
-        "he": "📬 צור קשר", "en": "📬 Contact us", "ru": "📬 Связаться с нами",
-        "fr": "📬 Nous contacter", "ar": "📬 تواصل معنا",
+        "he": "צור קשר 📬", "en": "Contact us 📬", "ru": "Связаться с нами 📬",
+        "fr": "Nous contacter 📬", "ar": "تواصل معنا 📬",
     },
     "contact.subtitle": {
         "he": "יש לך שאלה, בעיה או רעיון? נשמח לשמוע — נחזור אליך בהקדם.",
@@ -1106,22 +1117,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "اكتب هنا ما تود إخبارنا به...",
     },
     "contact.submit_btn": {
-        "he": "📨 שלח הודעה", "en": "📨 Send message", "ru": "📨 Отправить сообщение",
-        "fr": "📨 Envoyer le message", "ar": "📨 إرسال الرسالة",
+        "he": "שלח הודעה 📨", "en": "Send message 📨", "ru": "Отправить сообщение 📨",
+        "fr": "Envoyer le message 📨", "ar": "إرسال الرسالة 📨",
     },
     "contact.error_empty": {
-        "he": "⚠️ ההודעה לא יכולה להיות ריקה.",
-        "en": "⚠️ The message can't be empty.",
-        "ru": "⚠️ Сообщение не может быть пустым.",
-        "fr": "⚠️ Le message ne peut pas être vide.",
-        "ar": "⚠️ لا يمكن أن تكون الرسالة فارغة.",
+        "he": "ההודעה לא יכולה להיות ריקה. ⚠️",
+        "en": "The message can't be empty. ⚠️",
+        "ru": "Сообщение не может быть пустым. ⚠️",
+        "fr": "Le message ne peut pas être vide. ⚠️",
+        "ar": "لا يمكن أن تكون الرسالة فارغة. ⚠️",
     },
     "contact.success_title": {
-        "he": "✅ ההודעה נשלחה!",
-        "en": "✅ Message sent!",
-        "ru": "✅ Сообщение отправлено!",
-        "fr": "✅ Message envoyé !",
-        "ar": "✅ تم إرسال الرسالة!",
+        "he": "ההודעה נשלחה! ✅",
+        "en": "Message sent! ✅",
+        "ru": "Сообщение отправлено! ✅",
+        "fr": "Message envoyé ! ✅",
+        "ar": "تم إرسال الرسالة! ✅",
     },
     "contact.success_body": {
         "he": "תודה שפנית אלינו — נחזור אליך בהקדם האפשרי.",

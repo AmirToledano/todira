@@ -108,6 +108,9 @@ header.site {
   letter-spacing: .3px;
 }
 .brand .crown { font-size: 1.15rem; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); display: inline-block; animation: float 3.2s ease-in-out infinite; }
+/* Spells out that the logo is a "go home" control — a person less comfortable with web
+   conventions won't necessarily know a site's own name/logo is clickable (2026-09-06 request). */
+.brand-home-hint { font-size: .68rem; font-weight: 500; opacity: .75; }
 @keyframes float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-3px) rotate(-4deg); } }
 
 /* ---------- nav: single hamburger toggle, panel pushes the page down (no overlay) ----------
@@ -117,6 +120,14 @@ header.site {
    `.nav-panel` lives inside `header.site` itself (a normal-flow block, not `position: absolute`),
    so expanding it pushes `main` down the page rather than covering it. */
 .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* Anonymous-visitor login/signup — moved out of the hamburger onto the always-visible toolbar
+   (2026-09-06 request: it was too easy to miss buried in the menu on a first visit). */
+.auth-login-toolbar {
+  color: var(--teal-dark); background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  font-size: .82rem; font-weight: 700; text-decoration: none; white-space: nowrap;
+  padding: 8px 16px; border-radius: 999px; transition: filter .15s;
+}
+.auth-login-toolbar:hover { filter: brightness(1.06); }
 .nav-toggle {
   width: 38px; height: 38px; border-radius: 10px; border: none; cursor: pointer;
   background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center;
@@ -504,6 +515,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .notice {
   background: #fff3cd; border: 1px solid #ffe69c; color: #6b5200;
   padding: 10px 16px; border-radius: var(--radius-sm); font-size: .86rem; margin-bottom: 20px;
+}
+.welcome-banner {
+  background: var(--teal-tint); border: 1px solid var(--teal); color: var(--teal-dark);
+  padding: 12px 18px; border-radius: var(--radius-sm); font-size: .92rem; font-weight: 600;
+  margin-bottom: 20px; text-align: center;
 }
 
 /* ---------- /login — a dedicated screen, not a menu widget (2026-09-05) ---------- */
