@@ -164,3 +164,110 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
     if result.get("deal_type") not in ("rent", "sale", "sublet"):
         result["deal_type"] = None
     return result
+
+
+_CHAT_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "filter_changed": {"type": "BOOLEAN"},
+        "deal_type": {"type": "STRING", "enum": ["rent", "sale", "sublet"]},
+        "cities": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "rooms_min": {"type": "NUMBER"},
+        "rooms_max": {"type": "NUMBER"},
+        "price_min": {"type": "NUMBER"},
+        "price_max": {"type": "NUMBER"},
+        "keywords": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "response_message": {"type": "STRING"},
+    },
+    "required": ["filter_changed", "response_message"],
+}
+
+
+def chat_with_existing_user(
+    text: str, current_filter: dict, known_cities: list[str], first_name: str | None
+) -> dict | None:
+    """2026-09-06: replaces sending the same canned "here's how to edit your filter" block on
+    EVERY free-text message from an already-onboarded user, regardless of what they actually
+    wrote — found live by the owner comparing against the reference bot, whose already-onboarded
+    users get genuine, varied, contextual replies instead. Two things in one call: (1) if the
+    message asks to change something about the filter (city/price/rooms/deal type/keywords),
+    return the full updated field set (merged with what's already there — see the prompt) so the
+    caller can apply it directly, no redirect to the website needed; (2) otherwise, a natural,
+    non-repetitive conversational reply, the same "channel-agnostic" contract as
+    parse_onboarding_message (same fail-soft-on-None behavior, same retry policy).
+
+    Deliberately does NOT support explicitly clearing a field back to empty (e.g. "remove the room
+    limit") — same limitation parse_onboarding_message already has by construction: a field simply
+    absent from the model's JSON response is treated as "unchanged," not "clear it," since Gemini's
+    structured output here has no clean way to distinguish "didn't mention it" from "wants it
+    empty." Rare enough in practice (users add/tighten criteria far more often than they widen
+    them) that a future filter_changed reply still leaves /filter as the fallback for that case."""
+    client = _get_client()
+    if client is None:
+        return None
+
+    name_part = f"שם המשתמש: {first_name}. " if first_name else ""
+    prompt = (
+        "אתה עוזר צ'אט חם וטבעי בעברית עבור טודירה, בוט לחיפוש דירות. המשתמש שכותב לך כבר רשום "
+        "ויש לו סינון חיפוש פעיל — זו לא הרשמה ראשונית, זו שיחת המשך רגילה.\n\n"
+        f"{name_part}"
+        f"הסינון הנוכחי שלו (JSON): {json.dumps(current_filter, ensure_ascii=False)}\n"
+        f"רשימת הערים התקפות היחידה שהמערכת מכירה: {known_cities}\n\n"
+        f"ההודעה החדשה מהמשתמש: {text!r}\n\n"
+        "קודם תחליט: האם ההודעה הזו מבקשת לשנות משהו בסינון (עיר, מחיר, חדרים, סוג עסקה, מילות "
+        "מפתח)? אם כן — filter_changed=true, והחזר את כל שדות הסינון המלאים והמעודכנים יחד "
+        "(משלב את מה שכבר קיים עם השינוי המבוקש בלבד — אל תאבד או תשנה שדות שלא קשורים לבקשה). "
+        "cities חייב להכיל אך ורק ערים מהרשימה שלמעלה, בכתיב המדויק שלהן. ב-response_message כתוב "
+        "אישור חם וקצר שמסביר בדיוק מה השתנה.\n\n"
+        "שים לב: אתה יכול לעדכן רק deal_type/cities/rooms_min/rooms_max/price_min/price_max/"
+        "keywords. אם המשתמש מבקש שינוי בשדה שאתה לא יכול לעדכן (כמו חניה, מעלית, ממ\"ד, סוג "
+        "נכס, או שכונות ספציפיות) — filter_changed=false, וב-response_message תסביר בחום שלזה "
+        "הכי נוח להיכנס לעמוד הסינון המלא באתר (בלי לכתוב כתובת מדויקת — רק להזכיר שיש אפשרות "
+        "כזו).\n\n"
+        "אם ההודעה היא לא בקשת שינוי (שאלה כללית, סמול טוק, 'מה שלומך', בדיחה, סלנג, או כל דבר "
+        "אחר) — filter_changed=false (אל תחזיר שדות סינון בכלל במקרה הזה), וב-response_message "
+        "כתוב תגובה טבעית, חמה ומגוונת שמגיבה אמיתי למה שהמשתמש כתב — אל תחזור על אותה תשובה או "
+        "על אותו ניסוח בכל פעם, ואל תשלח מחדש את כל פרטי הסינון (זו שיחה, לא טופס; אפשר להזכיר "
+        "בעדינות עיר/תקציב מהסינון הקיים רק כשזה מתאים באופן טבעי לשיחה). תגובה קצרה (1-3 משפטים), "
+        "אימוג'י קליל אחד לכל היותר. אם ההודעה נשמעת כמו תלונה או בקשת עזרה אמיתית מאדם — הגב "
+        "באמפתיה והצע לפנות דרך עמוד יצירת הקשר באתר."
+    )
+
+    response = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            response = client.models.generate_content(
+                model=_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=_CHAT_SCHEMA,
+                    http_options=types.HttpOptions(timeout=10_000),
+                ),
+            )
+            break
+        except _RETRYABLE_ERRORS as exc:
+            if attempt < _MAX_ATTEMPTS:
+                logger.warning(
+                    "Gemini chat call failed (attempt %d/%d), retrying once: %s",
+                    attempt,
+                    _MAX_ATTEMPTS,
+                    exc,
+                )
+                time.sleep(_RETRY_DELAY_SECONDS)
+                continue
+            logger.exception("Gemini chat-with-existing-user call failed (retry budget exhausted)")
+            return None
+        except Exception:
+            logger.exception("Gemini chat-with-existing-user call failed")
+            return None
+
+    try:
+        result = json.loads(response.text)
+    except Exception:
+        logger.exception("Gemini chat-with-existing-user parse failed")
+        return None
+
+    if result.get("filter_changed") and "cities" in result:
+        result["cities"] = [c for c in (result.get("cities") or []) if c in known_cities]
+    return result
