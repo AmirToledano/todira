@@ -130,7 +130,7 @@ def test_upgrade_submit_prefers_takbull_over_grow_when_both_configured(client):
     payment = fake_session.added[0]
     assert payment.status == "pending"
     assert payment.gateway == "takbull"
-    assert payment.amount_ils == 15
+    assert payment.amount_ils == 1  # TEMPORARY 2026-09-06, see access.py
 
 
 def test_upgrade_submit_marks_payment_failed_and_502s_when_takbull_url_build_fails(client):

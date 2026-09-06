@@ -18,7 +18,10 @@ PLAN_DURATIONS: dict[str, dt.timedelta] = {
     "monthly": dt.timedelta(days=30),
 }
 PLAN_PRICES_ILS: dict[str, int] = {
-    "weekly": 15,
+    # TEMPORARY 2026-09-06: weekly dropped to 1 to end-to-end test the real Takbull webhook with a
+    # real ₪1 charge instead of a real ₪15 one (owner's own product price in Takbull was dropped to
+    # match). Revert both back to 15 once the test confirms the webhook marks the payment paid.
+    "weekly": 1,
     "biweekly": 25,
     "monthly": 40,
 }
