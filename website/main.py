@@ -690,8 +690,11 @@ def _listing_action_ids(session, user_id: int, action: str) -> set[int]:
     )
 
 
+APARTMENTS_PAGE_SIZE = 24
+
+
 @app.get("/apartments")
-def apartments(request: Request, uid: int | None = None):
+def apartments(request: Request, uid: int | None = None, offset: int = 0, fragment: bool = False):
     with get_session() as session:
         user = _resolve_user(request, session, uid)
         if user is None:
@@ -715,6 +718,14 @@ def apartments(request: Request, uid: int | None = None):
             for listing in listings
             if listing.id not in hidden_ids and evaluate(user.filter, listing).matched
         ]
+        # 2026-09-06: rendering all (up to 200) matches into one page crashed real visitors'
+        # browsers — up to 200 full card subtrees (carousel, reaction forms, badges) is too much
+        # DOM at once on a weak mobile device, independent of the backdrop-filter fix just above
+        # in git history. Paginated instead, matching the reference bot dorin.app's own /apartments
+        # (listings load in as you scroll, not all at once) — see PROJECT_STATE.md.
+        page_items = matches[offset : offset + APARTMENTS_PAGE_SIZE]
+        next_offset = offset + APARTMENTS_PAGE_SIZE
+        has_more = next_offset < len(matches)
         liked_ids = _listing_action_ids(session, user.id, "liked")
         # Only true when this page was actually reached via the real, signed session cookie — the
         # "insecure temporary access" notice below must not show for a real login just because a
@@ -722,18 +733,27 @@ def apartments(request: Request, uid: int | None = None):
         via_session = request.session.get("user_id") == user.id
         has_access = _effective_access(request, user)
 
+    context = {
+        "listings": page_items,
+        "total_count": len(matches),
+        "next_offset": next_offset,
+        "has_more": has_more,
+        "uid": user.telegram_user_id,
+        "user": user,
+        "via_session": via_session,
+        "has_access": has_access,
+        "liked_ids": liked_ids,
+        "hidden_ids": set(),
+    }
+    if fragment:
+        # AJAX "load more" request (see apartments.html's own script) — just the next batch of
+        # cards plus a fresh sentinel, no base.html layout at all.
+        return _render(request, "_listing_cards_fragment.html", context)
+
     return _render(
         request,
         "apartments.html",
-        {
-            "listings": matches,
-            "uid": user.telegram_user_id,
-            "user": user,
-            "via_session": via_session,
-            "has_access": has_access,
-            "liked_ids": liked_ids,
-            "hidden_ids": set(),
-        },
+        context,
     )
 
 
