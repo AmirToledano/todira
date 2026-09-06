@@ -4119,3 +4119,20 @@ side (unchanged precedence — a real support request still escalates to the own
 through chat). 14 new/updated tests across `tests/test_whatsapp_webhook.py` and
 `tests/test_contact_fallback.py` (chat reply, live filter update, Gemini-failure hiccup, help-
 request-still-escalates precedence) — full suite (549 tests) green.
+
+## 2026-09-06 (still later): Speed fix for the new chat feature — Gemini Flash-Lite
+
+Owner reported real, felt latency on the new chat_with_existing_user feature right after it
+shipped ("לוקח לו מלא זמן לענות") — a genuine cost of the design (every casual message now makes
+a live Gemini call, where a canned reply used to be instant). Verified via WebSearch (not
+guessed): Gemini 3.5 Flash-Lite (model id `gemini-3.5-flash-lite`) is Google's purpose-built
+low-latency tier — ~350 output tokens/sec, ~3.5x cheaper per token than 3.6 Flash — designed
+exactly for short structured-extraction-plus-short-reply tasks like this one, not deep reasoning.
+
+Switched only `chat_with_existing_user` to this model (new `_CHAT_MODEL` constant).
+`parse_onboarding_message` deliberately keeps `_MODEL` (`gemini-3.6-flash`) unchanged — that flow
+is already proven live in production and wasn't part of tonight's complaint, so there was no
+reason to risk a behavior change there. Also added a "Diagnose website pod" step to `ci-cd.yaml`
+(mirroring the bot pod's existing one) since this pod — where the WhatsApp webhook and this whole
+feature live — had no log visibility at all before tonight, which is why the ORIGINAL "technical
+hiccup" the owner hit couldn't be root-caused from an exact exception.
