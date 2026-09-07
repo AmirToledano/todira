@@ -47,7 +47,7 @@ APP_SECRET_ENV_VAR = "WHATSAPP_APP_SECRET"
 # Mirrors website/main.py's own WEBSITE_URL (and scraper/notifier.py's copy of the same pattern) —
 # needed here so the "you already have a filter" reply (below) can link straight to /filter?wid=
 # instead of just saying editing isn't available (2026-09-06 fix, see that reply's own comment).
-WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org").rstrip("/")
+WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
 
 # Same emoji base.html's own nav bar uses for the filter page (⚙️ {{ t('nav.filter') }}) —
 # 2026-09-06: a real tappable button (whatsapp_client.send_cta_url_message), not a bare link in the
