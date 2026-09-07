@@ -52,3 +52,22 @@ def test_home_hides_whatsapp_cta_when_not_configured(client):
     assert resp.status_code == 200
     assert "wa.me" not in resp.text
     assert "https://t.me/AmirDirotBot" in resp.text
+
+
+def test_home_page_has_valid_organization_and_website_json_ld(client):
+    # Found live 2026-09-07: nothing on the site told search engines what kind of thing "טודירה"
+    # IS (an Organization/WebSite, not just a page title) — no structured basis for a rich result.
+    import json
+    import re
+
+    resp = client.get("/")
+    match = re.search(
+        r'<script type="application/ld\+json">\s*(.*?)\s*</script>', resp.text, re.DOTALL
+    )
+    assert match is not None, "no JSON-LD script tag found on the home page"
+
+    data = json.loads(match.group(1))
+    types = {node["@type"] for node in data["@graph"]}
+    assert types == {"Organization", "WebSite"}
+    for node in data["@graph"]:
+        assert node["url"] == "http://testserver/"

@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 {% block title %}{{ t('meta.title_home') }}{% endblock %}
-{% block extra_head %}<link rel="preload" as="image" href="/static/todira-brand.webp?v=4">{% endblock %}
+{% block extra_head %}
+<link rel="preload" as="image" href="/static/todira-brand.webp?v=4">
+{# schema.org JSON-LD (2026-09-07 audit fix) — nothing on the site told search engines what
+   kind of thing "טודירה" IS (a named product/organization, not just a page title), so a search
+   result for the brand name had no structured basis for a rich result (logo, sitelinks
+   search box, knowledge-panel-style info). Organization + WebSite on the home page only —
+   schema.org's own guidance is to place site-identity markup once, not per-page. #}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "name": "טודירה",
+      "url": "{{ request.base_url }}",
+      "logo": "{{ request.base_url }}static/android-chrome-512x512.png",
+      "sameAs": ["https://t.me/AmirDirotBot"]
+    },
+    {
+      "@type": "WebSite",
+      "name": "טודירה",
+      "url": "{{ request.base_url }}",
+      "inLanguage": ["he", "en", "ru", "fr", "ar"]
+    }
+  ]
+}
+</script>
+{% endblock %}
 {% block content %}
 
 <section class="hero reveal">
