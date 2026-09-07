@@ -45,14 +45,18 @@
        treatment already proven on the Telegram bot's own avatar (see that update's own note: "a
        circular avatar can't legibly show a full tall poster at once"). Without this, browsers
        fall back to a generic auto-generated letter tile (a plain "T"), which is what prompted
-       this — see scripts/ for how the source crop was made if it ever needs regenerating from a
-       new brand image. -->
+       this. Background removed (rembg) so it also reads correctly in Chrome's New Tab shortcuts
+       tile, which clips favicons into a CIRCLE — an opaque square background looked visibly
+       mismatched there, a transparent one blends into whatever clips/colors it instead. See
+       scripts/generate_favicons.py to regenerate from a new brand image. -->
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/static/android-chrome-192x192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="/static/android-chrome-512x512.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="theme-color" content="#0e8a82">
   <title>{% block title %}{{ t('meta.title_home') }}{% endblock %}</title>
   <meta name="description" content="{{ t('meta.description') }}">
   <meta property="og:type" content="website">
