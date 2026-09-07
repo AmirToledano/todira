@@ -169,6 +169,12 @@
         <a href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.filter') }}</a>
         <a href="/contact{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.contact') }}</a>
         <a href="https://t.me/AmirDirotBot" target="_blank">{{ t('nav.bot') }}</a>
+        {% if whatsapp_public_number %}
+        {# Found live 2026-09-07: the footer had a Telegram link but no WhatsApp one, despite the
+           product having a WhatsApp bot since 2026-09-06 — home.html's own hero CTA already got
+           this fix, the footer (present on every page) was missed. #}
+        <a href="https://wa.me/{{ whatsapp_public_number }}?text={{ t('whatsapp.greeting') | urlencode }}" target="_blank">{{ t('nav.whatsapp') }}</a>
+        {% endif %}
         <a href="/terms">{{ t('footer.terms') }}</a>
         <a href="/privacy">{{ t('footer.privacy') }}</a>
         <a href="/accessibility">{{ t('footer.accessibility') }}</a>

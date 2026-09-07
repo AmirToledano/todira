@@ -246,6 +246,12 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "is_owner": is_real_owner and not _preview_as_free(request),
             "is_real_owner": is_real_owner,
             "preview_as_free": _preview_as_free(request),
+            # Site-wide (not per-route) so the footer's WhatsApp link (base.html) can show on
+            # every page, not just the ones that already happened to pass this in themselves for
+            # their own hero CTA (home.html, login.html) — found live 2026-09-07 auditing the
+            # footer, which had a Telegram link but no WhatsApp one despite the product having a
+            # WhatsApp bot since 2026-09-06 (same gap home.html's own CTA was fixed for already).
+            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
         },
         status_code=status_code,
     )
