@@ -52,7 +52,7 @@ def test_valid_token_links_google_sub_to_a_brand_new_user():
     assert outcome == "normal"
     assert reply.startswith(start_module.GOOGLE_LINKED_NOTE)
     assert start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.duckdns.org/account?uid=555"
+        name="Amir", account_url="https://todira.app/account?uid=555"
     ) in reply
     assert session.committed is True
 
@@ -90,7 +90,7 @@ def test_valid_token_does_not_overwrite_an_existing_different_google_link():
     assert user.google_sub == "already-linked-sub"  # untouched
     assert not reply.startswith(start_module.GOOGLE_LINKED_NOTE)
     assert reply == start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.duckdns.org/account?uid=555"
+        name="Amir", account_url="https://todira.app/account?uid=555"
     )
 
 
@@ -104,7 +104,7 @@ def test_expired_or_unknown_token_falls_through_with_no_note():
 
     assert outcome == "normal"
     assert reply == start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.duckdns.org/account?uid=555"
+        name="Amir", account_url="https://todira.app/account?uid=555"
     )
 
 
