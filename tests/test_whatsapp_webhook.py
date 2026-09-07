@@ -751,3 +751,47 @@ def test_help_request_checked_before_onboarding_too(monkeypatch):
     # column default (False) only applies on a real flush, so this stays unset (None) here.
     assert session.added[0].notified_owner is not True
     send_cta_mock.assert_called_once()
+
+
+def test_process_payload_sync_one_bad_message_does_not_abort_the_rest_of_the_batch():
+    # Found live 2026-09-07: the whole batch used to be wrapped in ONE try/except - a real webhook
+    # delivery can carry several senders' messages at once (Meta batches them), so one message
+    # that blew up aborted every OTHER message in the same batch too, silently dropping unrelated
+    # users' messages.
+    payload = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "contacts": [
+                                {"wa_id": "9725500001", "profile": {"name": "Bad"}},
+                                {"wa_id": "9725500002", "profile": {"name": "Good"}},
+                            ],
+                            "messages": [
+                                {"id": "m1", "from": "9725500001", "type": "text", "text": {"body": "boom"}},
+                                {"id": "m2", "from": "9725500002", "type": "text", "text": {"body": "hi"}},
+                            ],
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+    def _fake_handle(wa_id, name, text):
+        if wa_id == "9725500001":
+            raise RuntimeError("simulated failure processing this one message")
+        _fake_handle.calls.append(wa_id)
+
+    _fake_handle.calls = []
+
+    with (
+        patch.object(whatsapp_webhook, "_already_processed", return_value=False),
+        patch.object(whatsapp_webhook, "_fire_typing_indicator"),
+        patch.object(whatsapp_webhook, "_handle_incoming_text_sync", side_effect=_fake_handle),
+    ):
+        whatsapp_webhook._process_payload_sync(payload)
+
+    # The second (good) message still got processed despite the first one raising.
+    assert _fake_handle.calls == ["9725500002"]
