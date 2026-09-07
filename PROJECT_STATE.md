@@ -4435,3 +4435,67 @@ support directly (live chat if available, faster than email) with a specific, re
 report combining all three symptoms above plus the payment-page errors and the 06/09 setup-fee
 invoice as proof of payment — handed to the owner as ready-to-send text. **Still waiting on Takbull's
 side; nothing further to try from ours until they respond or fix the account.**
+
+## 2026-09-07: lazy on-demand description fetch shipped on the website too, then a second AI's cost
+## analysis was checked against this project's own history and its central premise turned out false
+
+Two real pieces of work back to back.
+
+**1. Shipped**: extended the on-demand Bright Data description fetch (previously only triggered by
+scraper/notifier.py at the moment a listing first matches a PAYING user) to website/main.py's
+`/apartments` and `/liked` — `_fill_missing_descriptions_in_background` fires a fire-and-forget
+background thread per shown listing still missing a description, for any signed-in viewer with
+`has_access`, caching on `Listing.description` forever so the cost is bounded by distinct listings
+an actual paying viewer ever looks at (never blocking the page, never repeated per viewer). Moved
+`bright_data_client.py` from `scraper/` into `common/dorin_common/` since the scraper, bot, and
+website pods are three separate Docker images (each copies only its own directory plus
+`dorin_common`) and this is now used by two of them. Also gave WhatsApp's real "תמיכה"/help-request
+messages a proper tappable CTA-URL button straight to `/contact` (previously fell through to
+`gemini_client.chat_with_existing_user` like any other free text and just described the contact
+page in words) — moved `looks_like_help_request` into `dorin_common/support.py` so both channels
+share one definition, checked before both the existing-filter chat branch and onboarding parsing.
+
+**2. The owner asked a sharper question**: why fetch content only lazily per-viewer at all, instead
+of getting it for every listing up front, "like Dorin" (screenshotted Dorin's own listing-detail
+page + its upgrade-wall modal for non-subscribers — which, note, already matches exactly what
+`_listing_card.html`'s existing `has_access` gate does: full content + original link for paying
+users, a locked 🔒 button to `/upgrade` for everyone else). He asked a second AI to analyze the
+cost architecture and got back a detailed document proposing: keep ZenRows for regional discovery,
+add a Delta-dedup step so only genuinely NEW listings get enriched, and fetch each new listing's
+full description via a **plain ZenRows `Raw HTTP GET` (js_render=false) at ~1 credit/request**
+instead of a JS-rendered request — landing on an estimated ~6,900 credits/month, comfortably inside
+the existing 45,000-credit/$19 ZenRows plan.
+
+**That document's central premise is factually wrong for this project's own Yad2/ZenRows setup —
+already disproven by this project's own prior diagnostic, not a matter of opinion.**
+`.github/workflows/diagnose-search-page-cheap-fetch.yaml` (2026-09-02, see that update above)
+already tested exactly this — dropping `js_render` against yad2.co.il gets an immediate `REQS002`
+rejection from ZenRows itself, confirmed live: **no cheaper fetch mode exists for this domain at
+all** ("every yad2.co.il request bills at their top rate, ~24-25 credits, due to how that domain is
+configured on ZenRows' end for anti-bot handling" — a domain-level classification on their account,
+not something that would differ between the search page and an individual listing's detail page).
+Re-costing the same proposal at the REAL, measured rate (~25 credits/request, not 1): ~150 new
+listings/day × 25 credits × 30 days ≈ **112,500 credits/month** for the enrichment step alone — 2.5x
+the entire monthly budget, on top of the existing ~2,400 credits/month regional discovery already
+consumes. This is not a rounding error; it would reproduce the exact incident already lived through
+once (2026-09-02: "217 requests consumed 5,285 of 5,000 monthly credits in under 2 days") and is
+precisely why `fetch_listing_detail`/`enrich_from_detail` (yad2_client.py/normalize.py — a real,
+already-built, already-tested per-listing detail fetch) were deliberately reversed out of the live
+scrape path that same day once the real per-request cost was understood. **Did not implement any
+part of the second AI's proposal** — the "only fetch genuinely new listings" instinct behind it is
+sound (and already exactly how `_upsert_listings`'s insert-vs-update branch already works — nothing
+new to build there), but the cost-per-request assumption it hangs everything on doesn't hold.
+
+**What DOES actually hold, from tonight's own real testing** (see the Bright Data entries above):
+the yad2.co.il Bright Data collector's Stage 2 already visits each listing individually as part of
+its OWN discovery mechanism (that's how `next_stage({url})` works) — so extracting the description
+from a visit that's already happening really is close to free, unlike ZenRows (whose current
+discovery fetch never visits an individual listing at all, so bolting one on is a genuine new cost,
+not a free byproduct). Making Bright Data (not ZenRows) the primary/supplementary discovery source
+for regions where full content matters is the one architecturally-sound way to get "every listing,
+full content, same cost as discovery" — but that's a real, separate re-architecture (a new
+ingestion module mapping Bright Data's own record shape into `Listing`/`normalize.py`, deciding
+region coverage and whether it replaces or supplements ZenRows, and still needs the real field
+names from a full — not head/tail-truncated — `__NEXT_DATA__` sample, not yet in hand), not a
+same-night change. **Still open**: get that full sample, then decide scope with the owner before
+building anything.
