@@ -63,12 +63,31 @@
   <meta property="og:site_name" content="טודירה">
   <meta property="og:title" content="{{ t('meta.title_home') }}">
   <meta property="og:description" content="{{ t('meta.description') }}">
-  <meta property="og:image" content="{{ request.base_url }}static/todira-brand.webp?v=4">
+  <!-- og-image.jpg (2026-09-07): a proper 1200x630 landscape crop, not the raw tall-portrait
+       todira-brand.webp — Facebook/WhatsApp/Twitter all crop link previews to ~1.91:1, so the
+       portrait source either got awkwardly sliced or letterboxed depending on the client. See
+       scripts/generate_favicons.py for how this is generated. -->
+  <meta property="og:image" content="{{ request.base_url }}static/og-image.jpg?v=1">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:url" content="{{ request.url }}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ t('meta.title_home') }}">
   <meta name="twitter:description" content="{{ t('meta.description') }}">
-  <meta name="twitter:image" content="{{ request.base_url }}static/todira-brand.webp?v=4">
+  <meta name="twitter:image" content="{{ request.base_url }}static/og-image.jpg?v=1">
+  <!-- canonical + hreflang (2026-09-07): language here is a ?lang= query param/cookie, not a
+       distinct URL path — without these, search engines had no signal that /apartments?lang=en
+       and /apartments (Hebrew) are the same page in different languages rather than duplicate
+       content, and no way to serve the right language variant to the right searcher. Only the
+       lang param carries through — any other query string (a per-visitor identifier, say) is
+       dropped, since that isn't a language variant and shouldn't be treated as its own indexable
+       page. -->
+  {% set _clean_path = request.url.path.lstrip('/') %}
+  <link rel="canonical" href="{{ request.base_url }}{{ _clean_path }}{% if lang != 'he' %}?lang={{ lang }}{% endif %}">
+  {% for _lang in ['he', 'en', 'ru', 'fr', 'ar'] %}
+  <link rel="alternate" hreflang="{{ _lang }}" href="{{ request.base_url }}{{ _clean_path }}{% if _lang != 'he' %}?lang={{ _lang }}{% endif %}">
+  {% endfor %}
+  <link rel="alternate" hreflang="x-default" href="{{ request.base_url }}{{ _clean_path }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&family=Heebo:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@500;700&display=swap" rel="stylesheet">

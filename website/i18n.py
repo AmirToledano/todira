@@ -860,6 +860,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "card.broker_badge": {
         "he": "תיווך", "en": "Broker", "ru": "Посредник", "fr": "Agence", "ar": "وسيط",
     },
+    # alt text for a listing's own real photos (2026-09-07 audit: every cover photo had alt="",
+    # the same treatment as a genuinely decorative image — a screen-reader user got zero
+    # information about what a card's actual photos showed). {city}/{rooms} are filled in from the
+    # listing itself; not the illustrated Todi fallback, which stays alt="" on purpose (that one
+    # really is decorative — the caption right below it already states there are no real photos).
+    "card.photo_alt": {
+        "he": "תמונה מהדירה ב{city}, {rooms} חדרים",
+        "en": "Photo of the apartment in {city}, {rooms} rooms",
+        "ru": "Фото квартиры в {city}, {rooms} комнат",
+        "fr": "Photo de l'appartement à {city}, {rooms} pièces",
+        "ar": "صورة الشقة في {city}، {rooms} غرف",
+    },
     "card.no_image_caption": {
         "he": "דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה! 🕵️",
         "en": "This listing has no photos yet — it's worth contacting the lister to ask for some! 🕵️",
