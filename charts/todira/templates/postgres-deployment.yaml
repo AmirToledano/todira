@@ -18,6 +18,13 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}-postgres
+      annotations:
+        # Forces a pod restart whenever postgres-secret.yaml's rendered content changes (e.g. a
+        # rotated POSTGRES_PASSWORD) — the image tag never changes between deploys on its own, so
+        # without this Kubernetes has no reason to recreate the pod, and it would silently keep
+        # running with the stale password. Same pattern as bot/website/caddy's own checksum
+        # annotations; found missing here 2026-09-07 during the audit that added those.
+        checksum/postgres-secret: {{ include (print $.Template.BasePath "/postgres-secret.yaml") . | sha256sum }}
     spec:
       containers:
         - name: postgres

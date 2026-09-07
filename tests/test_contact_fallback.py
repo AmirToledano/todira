@@ -115,6 +115,36 @@ def test_notifies_owner_and_marks_notified_when_configured(monkeypatch):
     update.message.reply_text.assert_called_once()
 
 
+def test_notify_owner_escapes_html_in_name_username_and_message(monkeypatch):
+    # Found live 2026-09-07: user.first_name/username and the message text are all attacker-
+    # controlled (any Telegram user can set their own name or type anything) and were going
+    # straight into a parse_mode=HTML owner notification unescaped.
+    monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", "999")
+    session = _FakeSession()
+
+    @contextmanager
+    def fake_get_session():
+        yield session
+
+    update = _make_update(
+        "בעיה טכנית <script>alert(1)</script> & תקלה",
+        first_name="<b>Amir</b>",
+        username="evil<i>name</i>",
+    )
+    context = _make_context()
+
+    with patch.object(support, "get_session", fake_get_session):
+        _run(contact_fallback.handle_stray_message(update, context))
+
+    text = context.bot.send_message.call_args.kwargs["text"]
+    assert "<script>" not in text
+    assert "&lt;script&gt;" in text
+    assert "<b>Amir</b>" not in text
+    assert "&lt;b&gt;Amir&lt;/b&gt;" in text
+    assert "evil<i>name</i>" not in text
+    assert "evil&lt;i&gt;name&lt;/i&gt;" in text
+
+
 def test_send_failure_does_not_crash_or_mark_notified(monkeypatch):
     monkeypatch.setattr(support, "OWNER_TELEGRAM_USER_ID", "999")
     session = _FakeSession()
