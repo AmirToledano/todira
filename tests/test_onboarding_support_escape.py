@@ -67,10 +67,18 @@ def test_normal_criteria_message_does_not_escalate():
         "needs_human_help": False,
     }
 
+    # asyncio.to_thread is used twice in this code path now (the Gemini call itself, then the
+    # match-count DB lookup further down) — a real to_thread dispatching by function, not a single
+    # canned return value, so each call gets the right result instead of the second call's stub
+    # accidentally answering the first.
+    async def fake_to_thread(func, *args, **kwargs):
+        if func is onboarding.gemini_client.parse_onboarding_message:
+            return gemini_result
+        return (0, [], True)
+
     with patch.object(onboarding.gemini_client, "parse_onboarding_message", return_value=gemini_result), \
          patch.object(onboarding, "escalate_to_owner", AsyncMock(return_value=True)) as mock_escalate, \
-         patch.object(onboarding, "asyncio") as mock_asyncio:
-        mock_asyncio.to_thread = AsyncMock(return_value=(0, [], True))
+         patch.object(onboarding.asyncio, "to_thread", fake_to_thread):
         asyncio.run(onboarding._handle_freetext(update, context))
 
     mock_escalate.assert_not_called()

@@ -150,6 +150,21 @@ def test_neighborhood_exclude_rejects_matching_pair():
     assert result.matched is True
 
 
+def test_neighborhood_include_with_no_listing_neighborhood_does_not_false_match():
+    # Found live 2026-09-07: with neighborhood=None the key used to render as the literal string
+    # "<city>:None" (an f-string embedding a Python None) instead of "<city>:" — happened to fail
+    # safely only because no real filter value coincidentally equals "None", but the very next
+    # value that could ever equal it (e.g. a filter typo) would have false-matched. Not reachable
+    # from any UI yet, same as the yud-spelling tests above, but worth locking down regardless.
+    f = make_filter(neighborhoods_include=["תל אביב:"])
+    result = evaluate(f, make_listing(city="תל אביב", neighborhood=None))
+    assert result.matched is True
+
+    f = make_filter(neighborhoods_include=["תל אביב:None"])
+    result = evaluate(f, make_listing(city="תל אביב", neighborhood=None))
+    assert "neighborhood_include" in result.failed_hard_filters
+
+
 def test_street_include_is_case_and_whitespace_insensitive():
     f = make_filter(streets_include=[" Dizengoff "])
     result = evaluate(f, make_listing(street="dizengoff"))
@@ -269,6 +284,19 @@ def test_keywords_none_present_fails():
     f = make_filter(keywords=["ממ״ד", "חניה"])
     result = evaluate(f, make_listing(description="דירה משופצת ושקטה"))
     assert "keywords" in result.failed_hard_filters
+
+
+def test_keywords_with_missing_description_gets_benefit_of_the_doubt():
+    # Found live 2026-09-07: the scraper's free feed enrichment never populates
+    # Listing.description, so this used to hard-fail every listing for any filter with a keyword
+    # set, always (the same "missing data treated as failure" bug class as property_type/amenities
+    # before it). An unknown description must never fail keyword matching.
+    f = make_filter(keywords=["ממ״ד"])
+    result = evaluate(f, make_listing(description=None))
+    assert result.matched is True
+
+    result = evaluate(f, make_listing(description=""))
+    assert result.matched is True
 
 
 def test_listing_with_no_move_in_date_always_passes_date_filter():

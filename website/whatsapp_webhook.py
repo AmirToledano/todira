@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import logging
 import os
 import threading
@@ -121,12 +122,15 @@ def _notify_owner_of_help_request(name: str | None, wa_id: str, text: str) -> bo
     message itself."""
     if not TELEGRAM_BOT_TOKEN or not OWNER_TELEGRAM_USER_ID:
         return False
+    # name/text are both attacker-controlled (any WhatsApp sender's profile name/message text) —
+    # escaped before going into an HTML-parsed Telegram message, same fix as website/main.py's
+    # _notify_owner_sync and bot/handlers/support.py's escalate_to_owner (found live 2026-09-07).
     lines = ["🙋 <b>בקשת תמיכה מ-WhatsApp (טודירה)</b>"]
     if name:
-        lines.append(f"שם: {name}")
+        lines.append(f"שם: {html.escape(name)}")
     lines.append(f"מספר WhatsApp: {wa_id}")
     lines.append("")
-    lines.append(text)
+    lines.append(html.escape(text))
     try:
         resp = httpx.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -188,9 +192,15 @@ _EMPTY_ONBOARDING_STATE = {
 def verify_webhook(request: Request) -> Response:
     expected_token = os.environ.get(WEBHOOK_VERIFY_TOKEN_ENV_VAR, "").strip()
     mode = request.query_params.get("hub.mode")
-    token = request.query_params.get("hub.verify_token")
+    token = request.query_params.get("hub.verify_token") or ""
     challenge = request.query_params.get("hub.challenge", "")
-    if expected_token and mode == "subscribe" and token == expected_token:
+    # hmac.compare_digest, not ==, for the same reason _verify_signature below already uses it:
+    # a plain string comparison on a secret token short-circuits on the first mismatched byte,
+    # letting a timing attack narrow it down one byte at a time. This endpoint is only ever called
+    # once by Meta during setup, so the practical risk is low, but there's no cost to doing it
+    # right and it matches this file's own POST-path precedent (found live 2026-09-07).
+    token_matches = bool(expected_token) and hmac.compare_digest(token, expected_token)
+    if token_matches and mode == "subscribe":
         return PlainTextResponse(challenge)
     logger.warning("WhatsApp webhook verification failed (mode=%r)", mode)
     return Response(status_code=403)

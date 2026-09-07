@@ -668,6 +668,39 @@ def test_help_request_saves_message_notifies_owner_and_sends_contact_button(monk
     send_text_mock.assert_not_called()
 
 
+def test_help_request_notification_escapes_html(monkeypatch):
+    # Found live 2026-09-07: the WhatsApp sender's profile name and message text are both
+    # attacker-controlled and were going straight into a parse_mode=HTML Telegram notification
+    # unescaped, same bug class fixed in bot/handlers/support.py and website/main.py.
+    monkeypatch.setattr(whatsapp_webhook, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(whatsapp_webhook, "OWNER_TELEGRAM_USER_ID", "999")
+
+    session = _FakeHelpSession(existing_filter=_FakeFilter())
+    user = _fake_user()
+
+    class _FakeResponse:
+        status_code = 200
+
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: user),
+        patch.object(whatsapp_webhook.httpx, "post", return_value=_FakeResponse()) as post_mock,
+        patch.object(whatsapp_webhook.gemini_client, "chat_with_existing_user") as chat_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message"),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+    ):
+        whatsapp_webhook._handle_incoming_text_sync(
+            "9725500000", "<b>Evil</b>", "תמיכה טכנית <script>alert(1)</script> & בעיה"
+        )
+
+    chat_mock.assert_not_called()
+    text = post_mock.call_args[1]["json"]["text"]
+    assert "<script>" not in text
+    assert "&lt;script&gt;" in text
+    assert "<b>Evil</b>" not in text
+    assert "&lt;b&gt;Evil&lt;/b&gt;" in text
+
+
 def test_help_request_checked_before_onboarding_too(monkeypatch):
     """A not-yet-onboarded user (no Filter) typing a help request must also escalate — not get
     reinterpreted as onboarding free text by parse_onboarding_message."""
