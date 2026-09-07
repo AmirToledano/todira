@@ -149,7 +149,7 @@ def test_cta_url_sends_correct_payload_on_success(monkeypatch):
     with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
         assert (
             whatsapp_client.send_cta_url_message(
-                "972550000000", "כבר יש לך פילטר", "✏️ עריכת הסינון", "https://todira.duckdns.org/filter?wid=972550000000"
+                "972550000000", "כבר יש לך פילטר", "✏️ עריכת הסינון", "https://todira.app/filter?wid=972550000000"
             )
             is True
         )
@@ -166,7 +166,7 @@ def test_cta_url_sends_correct_payload_on_success(monkeypatch):
                 "name": "cta_url",
                 "parameters": {
                     "display_text": "✏️ עריכת הסינון",
-                    "url": "https://todira.duckdns.org/filter?wid=972550000000",
+                    "url": "https://todira.app/filter?wid=972550000000",
                 },
             },
         },

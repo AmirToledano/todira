@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Mirrors website/main.py's WEBSITE_URL/_is_owner_id and bot/handlers/start.py's own copies — a
 # proactive push notification needs both to build the same "🔒 upgrade to see this" lock line the
 # bot's own on-demand handlers show (dorin_common.cards.format_caption, 2026-09-05).
-WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org").rstrip("/")
+WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
 
