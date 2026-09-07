@@ -276,9 +276,9 @@ def test_no_access_omits_the_real_listing_url():
 
 
 def test_no_access_shows_a_lock_line_with_the_upgrade_url():
-    caption = format_caption(make_listing(), has_access=False, upgrade_url="https://todira.duckdns.org/upgrade?uid=555")
+    caption = format_caption(make_listing(), has_access=False, upgrade_url="https://todira.app/upgrade?uid=555")
     assert "🔒" in caption
-    assert "https://todira.duckdns.org/upgrade?uid=555" in caption
+    assert "https://todira.app/upgrade?uid=555" in caption
 
 
 def test_no_access_without_an_upgrade_url_still_shows_a_generic_lock_line():
@@ -307,12 +307,12 @@ def test_has_access_true_is_unaffected_by_upgrade_url_being_set():
 def test_whatsapp_no_access_hides_description_and_url_shows_lock_line():
     listing = make_listing(description="תיאור סודי", url="https://www.yad2.co.il/item/secret456")
     caption = format_caption_whatsapp(
-        listing, has_access=False, upgrade_url="https://todira.duckdns.org/upgrade?uid=555"
+        listing, has_access=False, upgrade_url="https://todira.app/upgrade?uid=555"
     )
     assert "תיאור סודי" not in caption
     assert "secret456" not in caption
     assert "🔒" in caption
-    assert "https://todira.duckdns.org/upgrade?uid=555" in caption
+    assert "https://todira.app/upgrade?uid=555" in caption
 
 
 # --- send_listing_card (2026-09-02) — real Yad2 photos, added once the scraper started actually

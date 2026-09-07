@@ -88,9 +88,12 @@ websiteImage:
 website:
   nodePort: 30080 # http://<node public IP>:30080 — kept as a direct fallback even with HTTPS below
   # real HTTPS via Caddy (see caddy-deployment.yaml) — requires the EC2 security group to allow
-  # inbound 80+443, and this DNS name to already point at the node's public IP (it does, via
-  # DuckDNS)
-  domain: todira.duckdns.org
+  # inbound 80+443, and this DNS name to already point at the node's public IP (it does — a real
+  # owned root domain via Porkbun as of 2026-09-07, replacing the old todira.duckdns.org
+  # subdomain; the switch was needed because Meta's WhatsApp Business "Domain verification"
+  # option explicitly refuses to verify a subdomain of a shared free service like DuckDNS, only a
+  # root domain)
+  domain: todira.app
   # E.164 digits (no leading '+') of the actual WhatsApp number people message — builds the
   # /account page's wa.me channel-linking deep link. Not secret. Leave empty to hide that option
   # until it's known (it's a display value, not an API credential, so it's not the same as the

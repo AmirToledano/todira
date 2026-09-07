@@ -128,7 +128,7 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 # TLS in front of this pod and proxies plain HTTP internally, so trusting the request could produce
 # an `http://` redirect_uri that doesn't match what's registered in the Google Cloud Console
 # (redirect_uri must match EXACTLY, or Google rejects the whole flow).
-WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.duckdns.org")
+WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app")
 
 # Cross-channel linking (2026-09-05, /account below) — the actual displayable WhatsApp number
 # (E.164 digits, no leading '+') to build a `wa.me/<number>?text=ref_xxxxxx` deep link. Distinct

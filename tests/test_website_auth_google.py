@@ -94,7 +94,7 @@ class _FakeSession:
 def client():
     with patch.object(website_main, "GOOGLE_CLIENT_ID", _CLIENT_ID), patch.object(
         website_main, "GOOGLE_CLIENT_SECRET", _CLIENT_SECRET
-    ), patch.object(website_main, "WEBSITE_URL", "https://todira.duckdns.org"):
+    ), patch.object(website_main, "WEBSITE_URL", "https://todira.app"):
         yield TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
 
 
@@ -105,7 +105,7 @@ def test_start_redirects_to_google_with_expected_params(client):
     assert location.netloc == "accounts.google.com"
     params = parse_qs(location.query)
     assert params["client_id"] == [_CLIENT_ID]
-    assert params["redirect_uri"] == ["https://todira.duckdns.org/auth/google/callback"]
+    assert params["redirect_uri"] == ["https://todira.app/auth/google/callback"]
     assert params["response_type"] == ["code"]
     assert "state" in params
 
