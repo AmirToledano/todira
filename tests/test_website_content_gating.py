@@ -317,6 +317,25 @@ def test_apartments_listing_photos_have_real_alt_text(client):
     assert 'alt="' in resp.text
 
 
+def test_apartments_has_an_aria_live_region_for_infinite_scroll_announcements(client):
+    # Found live 2026-09-07: infinite scroll inserted new cards completely silently — a
+    # screen-reader user got no indication that more listings had appeared below the ones they'd
+    # already heard, since there's no page navigation to trigger a re-announcement.
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    fake_session = _FakeSession(user, listings=[_FakeListing(id=1)])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'id="apartments-live-region"' in resp.text
+    assert 'aria-live="polite"' in resp.text
+    assert 'role="status"' in resp.text
+
+
 def test_apartments_scopes_the_listings_query_by_filter_city_and_deal_type(client):
     # Found live 2026-09-07: /apartments used to look at only the 200 most-recently-scraped
     # listings across EVERY city/deal_type before filtering, so a narrow filter for one specific
