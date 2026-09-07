@@ -1,8 +1,18 @@
 """Bright Data Web Scraper API (datasets v3) client — fetches the full listing-detail page content
 (specifically the description text) for ONE listing at a time, ON DEMAND, only when it's worth the
-cost: scraper/notifier.py calls this only for a listing that just matched at least one PAYING
-user's filter (see that module's own comment), never for the full scrape volume — the exact
-sequencing Amir asked for (match first, THEN decide whether to spend a fetch on it).
+cost. Moved here from scraper/ (2026-09-07) so website/main.py can call it too — the scraper and
+website pods are separate Docker images (see their own Dockerfiles), each copying only
+common/dorin_common/ plus their own directory, so a module used by both has to live here.
+
+Two call sites, same "never speculative" principle, different trigger: scraper/notifier.py calls
+this only for a listing that just matched at least one PAYING user's filter at discovery time (see
+that module's own comment) — the exact sequencing Amir asked for (match first, THEN decide whether
+to spend a fetch on it). website/main.py's /apartments and /liked calls this lazily, in the
+background, for any already-matched listing a paying viewer is about to see whose description is
+still missing — covers listings whose paying match happened AFTER discovery (a filter edit, a new
+subscription) that the discovery-time trigger alone would otherwise never fetch. Either way the
+result caches on Listing.description forever, so the real cost is bounded by distinct listings ever
+actually seen by a paying user, never the full scrape volume and never repeated per viewer.
 
 ⚠️ PARTIALLY VERIFIED. The trigger/progress/snapshot flow below is read from Bright Data's own
 public GitHub reference (github.com/brightdata/skills, web-scraper-api.md — docs.brightdata.com
