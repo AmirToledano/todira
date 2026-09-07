@@ -282,13 +282,55 @@ def test_apartments_fragment_request_returns_only_the_next_batch_no_page_layout(
 class SimpleNamespaceFilter:
     """A minimal stand-in for dorin_common.models.Filter — /apartments only reads .cities off it
     in the template's filter-bar, and passes the whole object to evaluate() (mocked in these
-    tests, so its own fields never actually matter)."""
+    tests, so its own fields never actually matter for the matching itself)."""
 
-    cities: list[str] = []
+    def __init__(self, deal_type=None, cities=None):
+        self.deal_type = deal_type
+        self.cities = cities or []
+
     rooms_min = None
     rooms_max = None
     price_min = None
     price_max = None
+
+
+def test_apartments_scopes_the_listings_query_by_filter_city_and_deal_type(client):
+    # Found live 2026-09-07: /apartments used to look at only the 200 most-recently-scraped
+    # listings across EVERY city/deal_type before filtering, so a narrow filter for one specific
+    # (less active) city could have its own matching listings permanently pushed out of that
+    # window by newer listings scraped for every other city. Applying city/deal_type in the SQL
+    # WHERE clause itself (both already hard filters evaluate() enforces regardless) fixes this by
+    # construction — asserted here directly against the compiled statement rather than through
+    # observed behavior, since the fake session's scalars() doesn't otherwise care what it's given.
+    class _RecordingSession(_FakeSession):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.captured_stmts = []
+
+        def scalars(self, stmt):
+            self.captured_stmts.append(stmt)
+            return super().scalars(stmt)
+
+    user = _FakeUser(
+        id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(deal_type="rent", cities=["חיפה"])
+    )
+    fake_session = _RecordingSession(user, listings=[])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    # /apartments issues several scalars() queries per request (hidden-listing-ids, the listings
+    # query itself, liked-listing-ids) — find the one actually selecting from "listings".
+    listings_stmt = next(
+        stmt for stmt in fake_session.captured_stmts if "FROM listings" in str(stmt)
+    )
+    compiled_sql = str(listings_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "deal_type" in compiled_sql and "rent" in compiled_sql
+    assert "city" in compiled_sql and "חיפה" in compiled_sql
 
 
 class SimpleNamespaceMatch:

@@ -20,7 +20,7 @@ from dorin_common.enums import NotificationReason
 from dorin_common.matching import evaluate
 from dorin_common.models import Filter, Listing, SentNotification, User, UserListingAction
 
-RECENT_LISTINGS_SCANNED = 200  # how far back to look before filtering/matching
+RECENT_LISTINGS_SCANNED = 500  # how far back to look before filtering/matching
 RESULT_LIMIT = 10
 
 # Mirrors website/main.py's _is_owner_id / bot/handlers/start.py's own copy — same secret, same
@@ -38,12 +38,22 @@ def find_matching_listings(session: Session, user_id: int, filter_row: Filter, l
         )
     )
 
-    recent = session.scalars(
+    query = (
         select(Listing)
         .where(Listing.deal_type == filter_row.deal_type)
         .where(Listing.is_delisted.is_(False))
-        .order_by(Listing.scraped_at.desc())
-        .limit(RECENT_LISTINGS_SCANNED)
+    )
+    if filter_row.cities:
+        # Found live 2026-09-07: this only ever narrowed by deal_type, so a filter for one
+        # specific (usually less active) city could have its own matching listings permanently
+        # pushed out of the RECENT_LISTINGS_SCANNED window by newer listings scraped for every
+        # OTHER city — a real, live "silently show fewer/zero matches" bug for exactly the users a
+        # narrow filter is meant to serve well. cities is itself a hard filter (matching.py never
+        # lets a listing outside it through), so applying it here too only ever removes rows that
+        # would have failed evaluate() anyway — never changes which listings can match.
+        query = query.where(Listing.city.in_(filter_row.cities))
+    recent = session.scalars(
+        query.order_by(Listing.scraped_at.desc()).limit(RECENT_LISTINGS_SCANNED)
     )
 
     matches: list[Listing] = []

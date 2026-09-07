@@ -750,11 +750,21 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
             return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
 
         hidden_ids = _listing_action_ids(session, user.id, "hidden")
+        listings_query = select(Listing).where(Listing.is_delisted.is_(False))
+        if user.filter.deal_type:
+            listings_query = listings_query.where(Listing.deal_type == user.filter.deal_type)
+        if user.filter.cities:
+            # Found live 2026-09-07: this used to only ever look at the 200 most-recently-scraped
+            # listings across EVERY city/deal_type, THEN filter — so a narrow filter for one
+            # specific (usually less active) city could have its own matching listings permanently
+            # pushed out of that window by newer listings scraped for every other city, city and
+            # deal_type both being hard filters this evaluate() call below already enforces
+            # anyway, so applying them here too only ever removes rows that would have failed
+            # matching regardless — never changes which listings can actually match. Mirrors
+            # bot/handlers/apartments.py's find_matching_listings, which had the identical gap.
+            listings_query = listings_query.where(Listing.city.in_(user.filter.cities))
         listings = session.scalars(
-            select(Listing)
-            .where(Listing.is_delisted.is_(False))
-            .order_by(Listing.scraped_at.desc())
-            .limit(200)
+            listings_query.order_by(Listing.scraped_at.desc()).limit(500)
         ).all()
         # 2026-09-06: previously didn't exclude hidden listings at all (unlike the bot's own
         # /apartments, see find_matching_listings) — a listing hidden via the Telegram 🙈 button
