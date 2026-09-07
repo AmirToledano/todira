@@ -4625,3 +4625,184 @@ real open item** — see below.
   external account configs updated tonight. Fine to leave as a dormant fallback indefinitely, or
   let it lapse whenever DuckDNS's own free-tier inactivity rules would drop it (not urgent either
   way).
+
+## Update 2026-09-07: full-codebase "optimize everything" audit — 3 parallel reviews, ~15 real
+## fixes shipped across 6 merged PRs (#180–#185), all with new regression tests, full suite green
+
+Explicit owner request, verbatim: "אני רוצה שתמטב את כל מה שאפשר, בין אם זה האתר, בין אם זה
+הטלגרם, בין אם זה הווצאפ... קח מושכות ותעבוד אני סומך עליך... בסוף כשתסיים תספר לי מה עשית" (optimize
+everything possible — website, Telegram, WhatsApp; take the reins, I trust you; tell me what you
+did when you're done). Ran 3 background Explore agents in parallel (website; bot+WhatsApp;
+scraper+matching+payments+infra) to audit the whole codebase, then triaged and fixed the
+highest-value findings myself. Full list of what shipped, PR by PR:
+
+**PR #180 — recovered two "shipped" features that were never actually merged.** The bot/WhatsApp
+audit found that this file's own 2026-09-07 entry (above, from earlier the same day) claimed two
+features as "Shipped" whose commits only existed on an abandoned branch
+(`claude/project-state-update-9qzsco`), never merged to `main`: verified via `git log --oneline
+origin/main..origin/claude/project-state-update-9qzsco`. Cherry-picked both (`aa4596a` — WhatsApp
+support requests get a real tappable `/contact` button instead of a Gemini-described link;
+`756471f` — the website's own `/apartments`/`/liked` now also fetch missing Bright Data
+descriptions lazily, not just the scraper at discovery time) onto `main` for real, with a full
+green test run first. **Lesson for future sessions: a "Shipped" entry in this file is not proof of
+anything — verify against `git log origin/main` before building on top of one, as this incident
+itself proves.**
+
+**PR #181 — real bugs found across all 3 audits:**
+- **Keywords filter matched zero listings, always** (`dorin_common/matching.py`) — `Listing.
+  description` is unset for the free feed enrichment; the only code that ever populates it
+  (`notifier.py`) runs AFTER matching already happened. Same "missing data = failure" bug class as
+  the 2026-09-02 property_type/amenities incident, just undiscovered until now for this field. Now
+  gives an unset description the same benefit-of-the-doubt treatment.
+- **Studio listings couldn't match any room-count filter** (`scraper/yad2_client.py`) — a studio's
+  info line reads "סטודיו", never "N חדרים", so `rooms` stayed `None` and any filter with a room
+  range hard-failed every studio. Now maps "סטודיו" → 1 room.
+- **`neighborhoods_include`/`exclude` built a bogus `"<city>:None"` key** when a listing has no
+  neighborhood (an f-string embedding Python's literal `None`) — latent, not reachable from any UI
+  yet, fixed alongside the keywords fix in the same file.
+- **Telegram captions and owner-notification messages never escaped HTML** despite being sent
+  with `parse_mode=HTML` — `dorin_common/cards.py` (city/neighborhood/street/description/url, all
+  scraped from Yad2/Bright Data) and all three owner-notification paths (`bot/handlers/support.py`'s
+  `escalate_to_owner`, `website/main.py`'s `_notify_owner_sync`, `website/whatsapp_webhook.py`'s
+  `_notify_owner_of_help_request` — the last three carry fully attacker-controlled text: a contact-
+  form submission, a WhatsApp profile name, a Telegram username/message). All now `html.escape()`d.
+- **WhatsApp webhook GET verification used plain `==` instead of `hmac.compare_digest`** for the
+  `hub.verify_token` comparison, unlike the POST path's signature check two lines below it in the
+  same file. Fixed for consistency (low real risk — Meta only calls this once, at setup).
+- **`onboarding.py`'s Gemini call was awaited directly on the event loop**, not via
+  `asyncio.to_thread` like every other blocking call in this codebase (see the 2026-08-31 fix this
+  project already did for blocking DB calls) — with `max_concurrent_updates=1`, a slow Gemini
+  response froze every other user's bot interaction. `contact_fallback.py`'s equivalent call
+  already did this correctly; `onboarding.py`'s was missed when that pattern was established.
+- **The ❤️/🙈/🎉 reaction callback never called `query.answer()` on a DB failure**
+  (`bot/handlers/liked.py`) — left the tapped button's own loading spinner stuck on the user's
+  screen until Telegram's client-side timeout, indistinguishable from the bot being frozen. Now
+  always answers, with a generic error toast on failure.
+- **Takbull webhook could 500 on a non-integer `OrderTotalSum`** (e.g. `"40.00"`) instead of
+  failing safe like every other suspicious-payload case on that endpoint (`int("40.00")` raises
+  uncaught) — now wrapped in try/except, and a payload missing `OrderTotalSum` entirely is also
+  now treated as suspicious (left pending) rather than trusting our own pre-recorded amount
+  unconditionally.
+- **`postgres-secret.yaml` was never hashed into any Deployment's checksum annotation** — not even
+  the bot/website Deployments that already reference it for `DATABASE_URL` — the exact "Pod never
+  restarts when a mounted Secret's content changes" bug already fixed twice tonight (earlier
+  2026-09-07 entry, WhatsApp secrets + Caddy's Caddyfile) missed for the one secret that would
+  break DB auth for the whole app if it were ever rotated. Fixed in `postgres-deployment.yaml`,
+  `bot-deployment.yaml`, `website-deployment.yaml`. Added `tests/test_helm_checksum_annotations.py`
+  — a static check that every Deployment referencing a known Secret/ConfigMap by name also carries
+  a matching `checksum/*` annotation in the same file, so the next instance of this recurring
+  incident class fails CI instead of shipping silently again.
+
+**PR #182 — website audit findings:**
+- **`/apartments` (website + bot) permanently missed older matches for narrow filters** — both
+  `website/main.py`'s `/apartments` and `bot/handlers/apartments.py`'s `find_matching_listings`
+  only ever looked at the 200 most-recently-scraped listings across EVERY city/deal_type before
+  filtering. A filter narrow to one specific (less active) city could have its own matching
+  listings permanently pushed out of that window by newer listings scraped for every OTHER city —
+  a real, live, silent "fewer/zero matches than there should be" bug for exactly the users a
+  narrow filter is meant to serve well. Fixed by pushing `deal_type`/`city` into the SQL WHERE
+  clause itself (both already hard filters `matching.evaluate()` enforces regardless, so this only
+  removes rows that would have failed matching anyway) — also raised the scan window 200→500 as
+  headroom for city-agnostic filters.
+- **No `robots.txt` or `sitemap.xml` existed at all** — added both: `robots.txt` disallows
+  personalized/behind-auth routes (`/apartments`, `/account`, `/admin`, etc.) and points at the
+  sitemap; `sitemap.xml` lists the genuinely public pages (home, `/login`, `/contact`, `/terms`,
+  `/privacy`, `/accessibility`).
+- **No canonical/hreflang tags** — language on this site is a `?lang=` query param/cookie, not a
+  distinct URL path, so search engines had no signal that `/apartments?lang=en` and the Hebrew
+  default are the same page in different languages rather than duplicate content. Added to
+  `base.html`, site-wide, for all 5 languages + x-default.
+- **`og:image`/`twitter:image` pointed at the raw tall-portrait `todira-brand.webp`** — platforms
+  crop link previews to ~1.91:1, so the portrait source got awkwardly sliced/letterboxed. Extended
+  `scripts/generate_favicons.py` to also produce a proper 1200x630 landscape `og-image.jpg` (the
+  same cutout used for the favicons, flattened onto a branded teal-dark canvas), referenced from
+  `base.html` instead.
+- **Every listing photo had `alt=""`** — added real, translated alt text ("Photo of the apartment
+  in {city}, {rooms} rooms") to `_listing_card.html`'s real photos; the decorative Todi-
+  illustration fallback correctly keeps `alt=""` (it really is decorative — the caption right below
+  it already explains there are no real photos).
+- **The footer (every page) and `/contact` only offered a Telegram link**, despite the product
+  having a WhatsApp bot since 2026-09-06 (home.html's own hero CTA already had this fix; the
+  footer/contact were missed). `whatsapp_public_number` is now injected site-wide by `_render()`
+  instead of per-route.
+- **The WhatsApp deep-link's pre-filled greeting was hardcoded in Hebrew** in 3 templates
+  (home.html x2, login.html) instead of going through `t()` — now `whatsapp.greeting`, translated
+  into all 5 languages, reused everywhere including the new footer/contact links.
+- **17 Arabic translations had the Hebrew brand name "טודירה" pasted straight into otherwise-
+  Arabic text** (one had "טודי", the dog's name, mixed-script-garbled with an Arabic ي) instead of
+  a real transliteration — fixed to "توديرا"/"تودي" consistently. Added
+  `tests/test_i18n_translations.py`, a static check asserting no Hebrew characters ever leak into
+  an "ar" translation value, so the next instance of this exact copy-paste slip fails CI instead of
+  needing a native speaker to notice it live.
+
+**PR #183 — schema.org + accessibility:**
+- Added **Organization + WebSite JSON-LD** to the home page — nothing told search engines what
+  kind of thing "טודירה" is (a named product, not just a page title).
+- Added an **aria-live="polite" region on `/apartments`** announcing each infinite-scroll batch —
+  new cards were being inserted completely silently by JS, with no page navigation to trigger a
+  re-announcement for screen-reader users.
+- Restored a real **focus outline under `forced-colors`/Windows High Contrast mode** for form
+  fields, whose normal focus style relies purely on a custom `border-color` change with
+  `outline: none` — forced-colors mode ignores custom colors by design, leaving zero focus
+  indicator for high-contrast users without a `Highlight`-system-color fallback scoped to that
+  media query.
+
+**PR #184 — two more real bugs found on a second pass:**
+- **`/filter`'s MENU state silently swallowed stray text** (`filter_conversation.py`) — MENU only
+  ever had a `CallbackQueryHandler` for the inline buttons; a user who typed plain text there
+  instead of tapping a button matched nothing in the `ConversationHandler`'s states dict at all —
+  total silence. Added `menu_text_fallback`: escalates a genuine support request exactly like
+  elsewhere in this conversation, otherwise a friendly nudge back to the buttons.
+- **Chat-based filter edits could silently save an inverted min/max range** — both free-chat
+  filter-editing paths (`bot/handlers/contact_fallback.py`, `website/whatsapp_webhook.py`) let
+  Gemini set `rooms_min`/`rooms_max`/`price_min`/`price_max` directly from freeform text with no
+  validation that min ≤ max, unlike `filter_conversation.py`'s own menu-driven edits (which have
+  `FRIENDLY_VALIDATION_MESSAGES` catching exactly this). An inverted range hard-fails every listing
+  forever — same silent-zero-matches bug class as the keywords/studio fixes above, just reachable
+  from the chat-driven path instead of the menu. Added `dorin_common.matching.safe_range_update`,
+  shared by both call sites, which refuses to apply an update that would invert the range.
+
+**PR #185 — WhatsApp batch-message error isolation:**
+- `_process_payload_sync` wrapped its ENTIRE loop (every entry/change/message in one webhook
+  delivery) in a single try/except — a real webhook delivery can carry several senders' messages
+  at once (Meta batches them), so one message that blew up silently aborted every OTHER message in
+  the same batch too. Moved the try/except inside the per-message loop so a single failure only
+  ever costs that one message.
+
+**Verification discipline maintained throughout**: every fix above shipped with a new or updated
+regression test in the same PR; full suite (`/tmp/todira_test_venv/bin/python -m pytest tests/ -q`)
+stayed green the entire session, ending at **602 passed** (up from 560 at session start — 42 new
+tests). All 6 PRs (#180–#185) were opened and merged the same session, per the standing workflow
+(develop → PR → merge immediately, no waiting on manual review).
+
+**Explicitly triaged and deliberately NOT done this session** (real findings from the audit,
+judged lower-value-per-effort or higher-risk than the above — pick up whichever matters most next):
+- **Full i18n translation of the login/account/upgrade/payment funnel pages** into all 5
+  languages — a large amount of text across several templates; deferred rather than rushed, since
+  a wrong/awkward translation in a payment flow is worse than an English fallback.
+- **Duplicated filter-mutation logic between the Telegram and WhatsApp chat-editing paths**
+  (`contact_fallback.py`/`whatsapp_webhook.py` now share `safe_range_update`, but the rest of each
+  function is still a near-duplicate) — a real refactor opportunity, deferred as riskier than a
+  targeted bugfix given how central filter-editing is.
+- **`scraper/main.py`'s `_upsert_listings` SELECT-then-INSERT isn't atomic** — a genuine concurrent
+  run (a manual `docker compose run --rm scraper` overlapping the scheduled CronJob;
+  `concurrencyPolicy: Forbid` only protects against the CronJob racing itself) can raise
+  `IntegrityError` on the unique constraint, rolling back the WHOLE batch already upserted that
+  run, not just the collision. Real fix is `INSERT ... ON CONFLICT DO UPDATE` or a per-item
+  SAVEPOINT; deferred since it needs the existing fake-session test suite reworked too and the
+  practical trigger (manual + scheduled runs overlapping) is rare at this project's scale.
+- **Grow webhook never cross-checks the charged amount**, unlike Takbull's `OrderTotalSum` check —
+  deferred because Grow's real payload shape is still unverified (no live integration yet per this
+  file's own 2026-09-05/06 entries); add the check once the first real sandbox call reveals Grow's
+  actual field name for the charged sum.
+- **No `helm template`-based test for the Deployment/checksum pattern** — `test_helm_checksum_
+  annotations.py` (PR #180) is a static text-scan, not an actual `helm template` render (helm isn't
+  available in this test environment) — good enough to catch the exact incident class that's
+  recurred 3 times, but a real template-render snapshot test would be more thorough if helm is
+  ever added to the CI test image.
+- The original **Bright Data Stage 2 JSON-truncation investigation** (see the entry above this
+  one) — never resumed this session either; still exactly where it was left.
+- Older still-open items, unchanged since the entry above: **UPAY** documents/signature (owner
+  action), **Takbull real-payment test** (blocked on UPAY), the **TEMPORARY ₪1 weekly price**
+  (`common/dorin_common/access.py`) not yet reverted, and confirming **Meta's WhatsApp Business
+  Verification** review outcome.
