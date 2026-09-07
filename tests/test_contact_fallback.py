@@ -265,6 +265,40 @@ def test_onboarded_user_casual_message_gets_gemini_chat_reply_not_start_redirect
     assert session.committed is False
 
 
+def test_apply_filter_change_sync_rejects_an_inverted_rooms_range():
+    # Found live 2026-09-07: Gemini decides both sides of a min/max range from freeform chat text
+    # with no structured re-prompt available (unlike filter_conversation.py's menu) to catch a
+    # garbled range before it's saved - an inverted range hard-fails every listing forever.
+    filter_row = _FakeFilterRow(rooms_min=2, rooms_max=4)
+    session = _FakeFilterSession(existing_filter=filter_row)
+
+    with patch.object(contact_fallback, "get_session", lambda: session):
+        contact_fallback._apply_filter_change_sync(1, {"rooms_min": 5, "rooms_max": 3})
+
+    assert (filter_row.rooms_min, filter_row.rooms_max) == (2, 4)  # unchanged
+    assert session.committed is True
+
+
+def test_apply_filter_change_sync_rejects_an_inverted_price_range():
+    filter_row = _FakeFilterRow(price_min=3000, price_max=6000)
+    session = _FakeFilterSession(existing_filter=filter_row)
+
+    with patch.object(contact_fallback, "get_session", lambda: session):
+        contact_fallback._apply_filter_change_sync(1, {"price_min": 7000, "price_max": 4000})
+
+    assert (filter_row.price_min, filter_row.price_max) == (3000, 6000)  # unchanged
+
+
+def test_apply_filter_change_sync_applies_a_coherent_range():
+    filter_row = _FakeFilterRow(rooms_min=2, rooms_max=4)
+    session = _FakeFilterSession(existing_filter=filter_row)
+
+    with patch.object(contact_fallback, "get_session", lambda: session):
+        contact_fallback._apply_filter_change_sync(1, {"rooms_min": 3})
+
+    assert (filter_row.rooms_min, filter_row.rooms_max) == (3, 4)
+
+
 def test_onboarded_user_filter_change_message_updates_filter_directly():
     filter_row = _FakeFilterRow(cities=["תל אביב יפו"])
     session = _FakeFilterSession(existing_filter=filter_row)

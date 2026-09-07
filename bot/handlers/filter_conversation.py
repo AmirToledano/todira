@@ -451,6 +451,25 @@ async def _reply_parse_failure_or_escalate(
     return AWAIT_TEXT
 
 
+async def menu_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """MENU only ever had a CallbackQueryHandler for the inline buttons — a user who types plain
+    text while the menu is open (instead of tapping a button) matched nothing at all in the
+    ConversationHandler's states dict, so the message was silently swallowed with zero reply,
+    found live auditing this file 2026-09-07. A genuine support request typed at this point still
+    escalates exactly like it does everywhere else in this conversation; anything else gets a
+    friendly nudge back to the buttons rather than dead silence."""
+    raw = (update.message.text or "").strip()
+    if looks_like_help_request(raw):
+        await escalate_to_owner(update, context, raw)
+        await update.message.reply_text(
+            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n"
+            "כדי להמשיך לערוך את הסינון, יש להשתמש בכפתורים שלמעלה 👆"
+        )
+    else:
+        await update.message.reply_text("יש להשתמש בכפתורים שלמעלה כדי לערוך את הסינון 👆")
+    return MENU
+
+
 async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     draft = context.user_data.setdefault("draft", _default_draft())
     awaiting = context.user_data.pop("awaiting", None)
@@ -546,7 +565,10 @@ def build_filter_conversation_handler() -> ConversationHandler:
             CommandHandler("setfilter", filter_start),
         ],
         states={
-            MENU: [CallbackQueryHandler(menu_callback, pattern=r"^f:")],
+            MENU: [
+                CallbackQueryHandler(menu_callback, pattern=r"^f:"),
+                MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, menu_text_fallback),
+            ],
             AWAIT_TEXT: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, text_input)],
         },
         fallbacks=[CommandHandler("cancel", _cancel_command)],
