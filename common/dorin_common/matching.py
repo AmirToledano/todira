@@ -41,6 +41,34 @@ def _in_range(value, lo, hi) -> bool:
     return True
 
 
+def safe_range_update(current_min, current_max, proposed_min, proposed_max):
+    """Used by the free-chat filter-editing paths (bot/handlers/contact_fallback.py,
+    website/whatsapp_webhook.py's own equivalent) where Gemini, not a structured menu, decides
+    which of min/max to change from freeform text — unlike filter_conversation.py's own menu-
+    driven edits, there's no FRIENDLY_VALIDATION_MESSAGES-style re-prompt available here (Gemini's
+    response_message has already been written by the time this runs), so an inverted range
+    (min > max, e.g. a misread "not less than 4 but not more than 2") can't be caught by asking
+    again — it has to be caught before it's ever written to the DB.
+
+    An inverted range isn't just cosmetically wrong: `_in_range` above can never be satisfied by
+    ANY value once lo > hi, so it hard-fails every single listing forever, indistinguishable from
+    "no listings currently match" — the exact same silent-zero-matches bug class as the
+    2026-09-02 property_type/amenities incident and the 2026-09-07 keywords/studio fixes, just
+    reachable from a different (chat-driven, not menu-driven) edit path.
+
+    `proposed_min`/`proposed_max` are only the sides Gemini's result dict actually mentioned (None
+    for a side left unchanged); `current_min`/`current_max` are the filter's existing values.
+    Returns the (min, max) pair to actually store: the proposed values if the resulting range is
+    still coherent, or — refusing to apply a change that would break it — the ORIGINAL pair
+    unchanged, on the theory that a single garbled chat message shouldn't get to silently zero out
+    an otherwise-working filter."""
+    effective_min = proposed_min if proposed_min is not None else current_min
+    effective_max = proposed_max if proposed_max is not None else current_max
+    if effective_min is not None and effective_max is not None and effective_min > effective_max:
+        return current_min, current_max
+    return effective_min, effective_max
+
+
 def _check_hard_filters(filter_row, listing_row) -> list[str]:
     failed: list[str] = []
 

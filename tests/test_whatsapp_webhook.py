@@ -479,6 +479,33 @@ def test_existing_filter_user_message_that_changes_the_filter_updates_it_directl
     text_mock.assert_called_once_with("9725500000", "הוספתי גם את רמת גן לחיפוש! 🏠")
 
 
+def test_existing_filter_user_inverted_room_range_change_is_rejected():
+    # Found live 2026-09-07: Gemini decides both sides of a min/max range from freeform chat text
+    # with no structured re-prompt available to catch a garbled range before it's saved - an
+    # inverted range hard-fails every listing forever. Mirrors
+    # bot/handlers/contact_fallback.py's identical fix on the Telegram side.
+    filter_row = _FakeFilter(cities=["תל אביב יפו"], rooms_min=2, rooms_max=4)
+    session = _FakeSession(existing_filter=filter_row)
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
+        patch.object(
+            whatsapp_webhook.gemini_client,
+            "chat_with_existing_user",
+            return_value={
+                "filter_changed": True,
+                "rooms_min": 5,
+                "rooms_max": 3,
+                "response_message": "עדכנתי!",
+            },
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "רוצה בין 5 ל3 חדרים")
+
+    assert (filter_row.rooms_min, filter_row.rooms_max) == (2, 4)  # unchanged, not inverted
+
+
 def test_existing_filter_user_gemini_failure_sends_hiccup_message():
     session = _FakeSession(existing_filter=_FakeFilter())
     with (

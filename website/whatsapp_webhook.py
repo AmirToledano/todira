@@ -31,6 +31,7 @@ import httpx
 from dorin_common import cities, gemini_client
 from dorin_common.channel_link import resolve_link_code
 from dorin_common.db import get_session
+from dorin_common.matching import safe_range_update
 from dorin_common.models import ContactMessage, Filter, User
 from dorin_common.support import looks_like_help_request
 from dorin_common.users import get_or_create_whatsapp_user
@@ -303,16 +304,25 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
                 for key in ("deal_type", "cities", "keywords"):
                     if key in result:
                         setattr(existing_filter, key, result[key])
-                if "rooms_min" in result:
-                    existing_filter.rooms_min = result["rooms_min"]
-                if "rooms_max" in result:
-                    existing_filter.rooms_max = result["rooms_max"]
-                if "price_min" in result:
-                    price_min = result["price_min"]
-                    existing_filter.price_min = int(price_min) if price_min is not None else None
-                if "price_max" in result:
-                    price_max = result["price_max"]
-                    existing_filter.price_max = int(price_max) if price_max is not None else None
+                # safe_range_update refuses to write an inverted min>max range - Gemini decides
+                # both sides here from freeform text, not a structured menu, so there's no
+                # re-prompt available to catch a garbled range before it's saved (see that
+                # function's own docstring; found live 2026-09-07 - an inverted range hard-fails
+                # every listing forever, silently). Mirrors bot/handlers/contact_fallback.py's
+                # identical fix for the same code path on Telegram.
+                if "rooms_min" in result or "rooms_max" in result:
+                    existing_filter.rooms_min, existing_filter.rooms_max = safe_range_update(
+                        existing_filter.rooms_min, existing_filter.rooms_max,
+                        result.get("rooms_min"), result.get("rooms_max"),
+                    )
+                if "price_min" in result or "price_max" in result:
+                    price_min = result.get("price_min")
+                    price_max = result.get("price_max")
+                    existing_filter.price_min, existing_filter.price_max = safe_range_update(
+                        existing_filter.price_min, existing_filter.price_max,
+                        int(price_min) if price_min is not None else None,
+                        int(price_max) if price_max is not None else None,
+                    )
                 session.commit()
 
             whatsapp_client.send_text_message(wa_id, result.get("response_message") or "בסדר! 🙂")
