@@ -4156,3 +4156,346 @@ data point, but as a cheap, safe precaution (not a proven fix) bumped `resources
 was tight for a pod now making live outbound Gemini calls on ordinary chat messages (not just
 onboarding), where two close-together requests could plausibly add cgroup CPU-throttling delay on
 top of Gemini's own latency.
+
+## 2026-09-06 (still later): real crashes on `/apartments` — three-round root-cause, all three landed
+
+Reported independently by the owner's friend, then reproduced by the owner himself right after
+signup, and confirmed via Caddy logs as a recurring "stream closed" abort for other real visitors
+too. Took three separate fixes to actually close it — each one real and necessary, none alone
+sufficient, discovered in this order:
+
+1. **Lazy-load listing photos** (`6455847`). Each of up to 200 listings rendered up to 8 photo
+   slides as plain CSS `background-image` divs, which have no native lazy loading — every slide of
+   every card, including ones scrolled far off-screen, fired an eager image request the instant the
+   page rendered. On a weak mobile connection that's a burst of hundreds of concurrent fetches,
+   enough to crash the browser mid-load. Switched the cover-slide technique from
+   `background-image` divs to real `<img loading="lazy">` elements (same `object-fit: cover`
+   cropping). Owner tested — still crashed, this time triggered by an unrelated hamburger-menu
+   click well after the page had already finished loading, which ruled out images as the sole
+   cause and pointed at something compositor-side that didn't depend on load state at all.
+2. **Drop `backdrop-filter` from repeated per-card badges/buttons** (`f525aa7`). Root-caused via
+   the "crashes even after full load, on an unrelated click" clue: the photo-count badge and both
+   like/hide reaction buttons (2 per card) used `backdrop-filter: blur(3px)`. With up to 200 cards
+   that's up to ~600 simultaneous backdrop-filter compositor layers — a well-documented iOS
+   Safari/WebKit crasher, and every crash report so far had come from an iPhone Safari/Chrome-on-
+   iOS user agent, which matched exactly. Removed the blur, kept the same background color/
+   legibility. Owner: "זהו?" — tested again, still not fully stable.
+3. **Paginate with infinite scroll, matching the reference bot's own `/apartments`** (`3b5a589`).
+   The owner explicitly compared against dorin.app's own `/apartments`, which loads listings
+   progressively while scrolling rather than all at once — that comparison was the actual missing
+   piece. Up to 200 full listing-card subtrees (carousel, 2 reaction forms, meta/amenity rows) in
+   one page is simply too much DOM for a weak mobile browser to build in one shot, independent of
+   images or blur. `website/main.py`'s `apartments()` route now renders `APARTMENTS_PAGE_SIZE`
+   (24) listings at a time; a sentinel div at the end of `#listing-grid` is watched by an
+   `IntersectionObserver` (`apartments.html`'s own inline script) which fetches the next batch via
+   the same route (`?offset=N&fragment=1`, returning just the card markup via the new
+   `_listing_cards_fragment.html`, no page layout) as it scrolls into view, and appends it.
+   Newly-appended cards skip the `.reveal` fade-in class since the page's one-time
+   `IntersectionObserver` that adds `.is-visible` only runs at initial load. 3 new tests in
+   `tests/test_website_content_gating.py` cover first-page truncation + sentinel, the
+   no-sentinel-when-everything-fits case, and the fragment response having no page chrome. Owner,
+   after this one: "מעולה סוף סוף לא קורס" (finally, doesn't crash) — confirmed fixed.
+
+Between rounds 1 and 3 there was also a same-evening onboarding/nav/polish pass (`1e04c92`,
+unrelated to the crash): new Google signups now land on `/filter` (with a welcome banner) instead
+of `/apartments` — an empty filter previously showed every listing unfiltered on a brand-new
+user's first visit, which read as noise, not value; the anonymous-visitor login link moved from
+the hamburger menu onto the always-visible toolbar ("הרשמה / התחברות"); the header logo now spells
+out that it returns home, in words, next to the crown, freeing the 🏠 emoji from the `/apartments`
+nav link (now 🔑); homepage Telegram/WhatsApp CTA buttons got their real brand logos instead of a
+rocket/speech-bubble emoji; and emoji moved from before to after the label sitewide, per feedback
+that emoji-first reads worse than text-first.
+
+## 2026-09-06 (still later): Takbull real-payment test — UPAY terminal is live, account still not cleared for live charges
+
+Continuation of the `2026-09-06 (later): Takbull payment gateway` build above — that section shipped
+the *code* (webhook route, checkout flow, tests) but never verified it end-to-end against a real
+transaction. Tonight's session walked the owner live, screenshot-by-screenshot, through actually
+making that possible:
+
+- **UPAY credit-card terminal**: Takbull's checkout page can't charge a real card at all without
+  one — discovered live that the "מודול סליקה UPAY... ₪99 (₪116.82 with VAT)" the owner saw in his
+  cart was a **one-time setup fee** for the terminal itself (tier for עוסק פטור; ע.מ רגיל = ₪139,
+  חברה = ₪249), not a recurring subscription. Owner paid it and completed UPAY's own signup KYC
+  (name, ID issue date, birth date, business name matched to the owner's tax-authority filing,
+  business ID = the owner's own ת"ז since עוסק פטור has no separate ח.פ., plus a separate UPAY
+  dashboard login for tracking deposits) — confirmed "success" message from UPAY itself.
+- **Cheap real-money test, not ₪15**: rather than spend a full ₪15 to verify the webhook,
+  temporarily dropped the weekly plan's price to ₪1 both on Takbull's own product config and in
+  our own code (`common/dorin_common/access.py`'s amount check — the webhook route verifies the
+  paid amount matches what we expect, so both sides had to move together; commit `c6fafd8`, tagged
+  TEMPORARY, **still not reverted — revert both sides back to ₪15 once a real end-to-end payment is
+  confirmed working**). Also, at the owner's own explicit request, split product selection so a
+  plan chosen on our `/upgrade` page goes straight to that plan's own Takbull link instead of
+  making the customer choose again on Takbull's shared checkout page (owner: "הייתי מעדיף שיבחרו
+  תוכנית אצלנו ואז שיעבור ישירות לתשלום על התוכנית הספציפית שבחרו באתר שלנו... פשוט להגיד 3 לינקים
+  שונים, לא?") — not yet implemented, deferred until the ₪1 test actually completes since it needs
+  Takbull-side product/link setup first.
+- **Found a real bug in Takbull's own checkout page, not ours**: clicking "המשך לתשלום"
+  (continue to payment) silently did nothing. Chrome DevTools Console showed a genuine JS exception
+  in *their* bundle:
+  ```
+  ERROR TypeError: Cannot read properties of undefined (reading 'id')
+      at n.processOrder (main-MCLLIMFC.js:37:5465)
+  ```
+  Root cause found: the payment page's own "צורת תשלום" (payment method) settings had **both**
+  "כרטיסי אשראי" and "ביט" unchecked — with no payment method enabled at all, their own
+  `processOrder` apparently tries to read an `id` off an undefined selected-method object. Enabling
+  "כרטיסי אשראי" made the crash go away and surfaced Takbull's own real, explicit error messages
+  instead: **"לא קיים מספר סודר"** (no serial/terminal number exists) and, for Bit, **"אין לך
+  הרשאה לבצע פעולה זו"** (you don't have permission to do this) — i.e. Takbull itself saying the
+  account isn't cleared for live transactions yet, most likely because the owner has only opened a
+  business file (עוסק פטור) and doesn't have the final certificate yet, even though the UPAY setup
+  fee was paid (~20h before this write-up, confirmed NOT the same event as these errors — the
+  errors appeared well after the payment cleared, so paying alone wasn't sufficient to activate the
+  account). A support message describing the exact `processOrder` error was drafted and sent to
+  Takbull.
+- **Nothing left to do from our side** until either Takbull's support replies or their dashboard
+  shows an explicit "pending verification" banner (owner was asked to check for one, not yet
+  confirmed either way). No code is blocked on this — `website/main.py`'s Takbull path and
+  `POST /webhooks/takbull/{secret}` are both already built and dormant, exactly as documented above;
+  this is purely an account-activation wait on Takbull's end.
+
+## 2026-09-06 (still later, in progress): Bright Data `yad2.co.il` collector — Stage 2 debugging, live in Scraper Studio
+
+Live, screenshot/file-by-file debugging session (owner working directly in Bright Data's web
+Scraper Studio UI, which this sandbox's network egress cannot reach itself — see
+`scraper/bright_data_client.py`'s own docstring) picking up the collector referenced there as
+still-needed for the on-demand description fetch (`BRIGHT_DATA_DATASET_ID`, section 6 of the
+2026-09-04/05 entry above). The owner had already built a two-stage collector named `yad2.co.il`:
+**Stage 1** opens a Yad2 search-results page (by city/min-price) and collects every individual
+listing link (`a[href*="/realestate/item/"]`), calling `next_stage({url})` per link so **Stage 2**
+runs once per listing, navigating straight to that listing's own detail page.
+
+**Round 1 — Stage 2's "Interaction code" had a broken wait selector.** Its `wait(...)` call
+targeted a Yad2-generated CSS-module class hash (`.lobby-item-card-module-scss-module__KJNKSq__
+lobbyPageCard...`) — Yad2 regenerates that hash on every deploy of their own site, so the selector
+silently goes stale and the wait times out, which is exactly what was producing the collector's
+historical ~3.23% success rate. Replaced it with the stable `[data-testid="price"]` attribute
+selector (same fragile-CSS-module problem this project already solved once before for the ZenRows
+scraper itself, see the 2026-08-27 entries). Saved to development, then explicitly to production
+too (the collector's scheduled/manual runs read from production, not the draft), then ran a real
+manual test (city ירושלים, min-price 3000): **Success rate 100.00%, 20 records from 21 pages, 0
+failures** — up from 3.23%. Closed as fixed at the time.
+
+**Round 2 — the owner asked a sharper question**: if Stage 2 already opens each listing's own full
+detail page, doesn't it make sense that the *same* run could also give us the listing's full
+description — for free, in the same credits — rather than paying for a second, separate Bright
+Data fetch (`bright_data_client.py`'s per-listing on-demand call) just for content? His own
+reasoning: "אני בטוח שדורין עלתה על משהו אחר ולא משלמת גם על האיזורים וגם על התוכן מודעות... אולי
+היא מקבלת גם איזורים וגם תוכן באותם קרדיטים באותה ריצה" — Dorin almost certainly isn't paying
+twice for the same thing, so there's probably a way to get both region-discovery and content in one
+pass. That's a real, well-founded question, and led straight to a real second bug: Stage 2's
+**Parser code** (a separate script from the Interaction code fixed in Round 1) was still written for
+the OLD shape — a search-results page with many cards
+(`$('.lobby...lobbyPageCard').toArray().map(card => ...)`) — even though Stage 2 now actually lands
+on ONE listing's own detail page per run. Confirmed directly from the Round-1 "successful" run's
+own output (downloaded via Bright Data's own "Output" → "Quick view", saved by the owner as a local
+file and attached in-chat): **all 20 records came back with `"listings": []`** — completely empty.
+The "100% success" from Round 1 only meant the code ran without throwing, not that it extracted
+real data. `product_page_url` in that same output DID correctly show each listing's own detail-page
+URL (e.g. `.../realestate/item/tel-aviv-area/h7j95bzy`), proving Stage 2's navigation is fine —
+only the parser needs rewriting.
+
+**Round 3 — diagnose the real field names before writing a real parser blind.** This project
+already has a proven technique for Yad2 listing-detail pages: `scraper/yad2_client.py`'s
+`_NEXT_DATA_RE`/`fetch_listing_detail` read Yad2's own `<script id="__NEXT_DATA__">` JSON blob
+(`props.pageProps.dehydratedState.queries[].state.data`, the query whose `data` has a `token` key)
+rather than brittle CSS selectors — but the exact field names inside that ad record had never been
+captured from Bright Data's own rendering environment specifically. Replaced Stage 2's Parser with
+a diagnostic version that just dumps the raw `__NEXT_DATA__` script tag's text (`JSON.parse`'d) plus
+`product_page_url`, saved to development+production, ran again. Result (downloaded output attached
+in-chat): **almost every record came back `"raw": {"error": "SyntaxError: Unexpected end of JSON
+input"}`** — the `<script id="__NEXT_DATA__">` element itself was found, but its text content was
+empty at the moment the parser code ran (a Bright Data rendering/hydration-timing gap, not a
+problem with the extraction logic itself: the script tag exists in the DOM before Next.js has
+actually written its JSON text into it).
+
+**Proposed fix (given to the owner, not yet confirmed as of this write-up)**: read the
+already-parsed `window.__NEXT_DATA__` JS object directly instead of `JSON.parse`-ing the script
+tag's text — Next.js populates this global synchronously alongside the script tag and it isn't
+subject to the same text-content timing gap:
+```js
+let raw = null;
+try {
+  const nextData = window.__NEXT_DATA__;
+  const queries = nextData?.props?.pageProps?.dehydratedState?.queries || [];
+  for (const q of queries) {
+    const data = q?.state?.data;
+    if (data && typeof data === 'object' && 'token' in data) {
+      raw = data;
+      break;
+    }
+  }
+} catch (e) {
+  raw = { error: String(e) };
+}
+return { raw, product_page_url: new URL(location.href) };
+```
+Owner was asked to paste this in as Stage 2's Parser code, save to development AND production
+(the recurring "Save to production" step matters every time — the "Initiate manually" test run and
+any real scheduled run both read from production, not the draft, which tripped this same session up
+more than once), and re-run the same manual test. **Still waiting on that result.**
+
+**Still open**: (a) confirm the `window.__NEXT_DATA__` diagnostic actually returns a populated `raw`
+object (not `null`/another error) — if it does, the real field names become visible for the first
+time and Stage 2's Parser can be rewritten for real (description text at minimum, plus whatever
+else `dehydratedState` carries) instead of staying a raw-dump diagnostic; (b) decide what this
+collector is actually FOR once real data is visible — the original plan was narrowly
+`BRIGHT_DATA_DATASET_ID` for `bright_data_client.py`'s on-demand per-listing description fetch, but
+if it turns out to cheaply carry both region-discovery AND full content in one pass, it could also
+become a second bulk-scrape source alongside ZenRows (the owner's newer idea from Round 2) —
+credits/pricing permitting (Bright Data's Scraper Studio-tier billing is $-per-1,000-records, not
+yet compared apples-to-apples against ZenRows' $19/mo for 45,000 credits since the exact overage
+rate wasn't found yet); (c) once a real Parser ships, wire `BRIGHT_DATA_DATASET_ID` (and
+`BRIGHT_DATA_DESCRIPTION_FIELD`, matching whatever the real output schema calls the description
+field) into the actual deployment secrets — still unset today, so `bright_data_client.py` still
+no-ops exactly as before this whole investigation.
+
+## 2026-09-06 (still later, continued): Bright Data Stage 2 — `window.__NEXT_DATA__` guess was wrong, AND production was silently never updated
+
+Two separate findings from continuing the investigation above.
+
+**Finding 1 — `window` doesn't exist in Bright Data's Parser code context.** The
+`window.__NEXT_DATA__` fix (proposed above) was run for real and came back with a NEW, different
+error this time — `ReferenceError: window is not defined` — on every record. This proves Bright
+Data's **Parser code** step does NOT execute inside a live browser (unlike **Interaction code**,
+which does — it navigates, waits on selectors, etc.). Parser code runs against the page's already-
+*captured* content through a limited, cheerio/jQuery-style `$()` API (confirmed working: `$('script#
+__NEXT_DATA__')` DOES find the element) plus a bare `location` binding (confirmed working:
+`product_page_url` came out correct in every single run so far) — but no `window` wrapper object at
+all. Wrong guess on my part, corrected once the real error came back.
+
+This also reframes Round 3's original `SyntaxError: Unexpected end of JSON input` finding: since
+Parser code works on captured static content rather than a live, still-hydrating page, "hydration
+timing" was the wrong explanation. "Unexpected end of JSON input" is the textbook symptom of
+**truncated** JSON — so the more likely real cause is that Bright Data's page-capture step cuts off
+the `__NEXT_DATA__` script tag's content before its end, plausibly because a real Yad2 ad record's
+full `dehydratedState` (which can carry the whole search/recommendation payload, not just one ad) is
+simply large. Next step already handed to the owner: a new diagnostic Parser (back to reading
+`$('script#__NEXT_DATA__').html()`, no `window`) that reports `raw_length` plus the first/last 300
+characters of the captured text, to see directly whether it's cut off and where — not written yet as
+of this entry (see Finding 2, below, for why nothing had actually been tested yet).
+
+**Finding 2 — every one of tonight's "new" test results was actually the same stale production
+code, because Save to production silently never went through.** Real, avoidable time sink worth
+flagging for next time: the owner ran what looked like fresh tests **five separate times** across
+this session and kept getting byte-for-byte identical (confirmed via `md5sum`) or symptom-identical
+output, despite believing each time that new code had been saved and run. Root cause, only found by
+opening the collector's own **Changelog** (Code tab → the `⌄` next to "Draft" → Changelog →
+Versions): **Version 7, still marked "Production version" at the time of checking, was the
+`window.__NEXT_DATA__` code** — the newer raw-length diagnostic Parser existed ONLY as an
+**"Unpublished draft"**, never actually saved to development or production at all, despite multiple
+attempts. The likely trigger: a "Run test crawl" flow (opened via the same `⌄` dropdown as "Save to
+development") threw its own unrelated error ("Couldn't compare the cycles results because the
+template steps' inputs don't match") mid-attempt, and the "Save to production" button click that
+happened around/after that modal never actually completed.
+
+**Process fix for the rest of this investigation**: after every future "Save to production" claim,
+open **Changelog → Versions** and confirm a new version number is actually tagged "Production
+version" with the expected "Summary of changes" text, BEFORE spending a real "Initiate manually" run
+on it — this is now the one reliable way to know what code is actually live, since run *symptoms*
+alone had already produced three false leads tonight. Also learned along the way: "Run test crawl"
+(reached via that same `⌄` dropdown) can replay the exact page captures from a past run (pick one
+from a list of prior run IDs, e.g. `j_mtq7qj4a1lg0yvkp73`) against newly-saved Parser code **without
+spending fresh scrape credits** — worth using once the compare-mismatch issue above is sorted out,
+though tonight it kept erroring instead. Free-tier credits are not actually tight either way — 5,000
+total, only ~127 spent so far.
+
+## 2026-09-06 (still later): Takbull/UPAY — real evidence the account has no active terminal at all, likely needs their support to unstick
+
+Continuation of the UPAY walkthrough above (setup fee paid, `processOrder` bug fixed, then got
+Takbull's own explicit "לא קיים מספר סודר" (no serial/terminal number exists) and "אין לך הרשאה
+לבצע פעולה זו" errors on real checkout attempts). Tonight's session found concrete, converging
+evidence for WHY, rather than just waiting blind:
+
+- On `app.takbull.co.il/api-setting` (API key management, general tab), the **"מסוף" (terminal)
+  dropdown required to generate API keys is completely empty** ("אין נתונים להצגה" — no data to
+  display), and clicking "צור מפתחות חדשים" (create new keys) fails immediately with an alert:
+  **"יש לבחור מסוף"** (you must select a terminal). There is, literally, no terminal object to pick
+  from anywhere in the account — not a permissions issue, an actually-empty list.
+- On `app.takbull.co.il/credit-payment-settings` ("רשימת מסופים" / terminal list), the existing
+  "upay" row is only a **provider/gateway connection** (login credentials, 3DS toggle, Bit-payment
+  toggle — confirmed Bit IS enabled there — an Apple Pay domain-verification flow, and an
+  installment-fee schedule) — none of which is the same thing as a fully-provisioned, approved
+  terminal with a real serial number.
+- The owner tried deleting that upay connection and registering a fresh one: got **"החשבון כבר
+  קיים"** (the account already exists) blocking the new registration, proving Takbull's backend DOES
+  recognize this as an existing UPAY account — but a page refresh immediately un-did the delete
+  (the row reappeared exactly as before), suggesting the delete action itself may not even be a real
+  server-side operation, or is being rejected server-side while still rendering as if it succeeded
+  client-side.
+
+**Conclusion**: this is not something fixable by re-clicking things in Takbull's own UI — the
+account is stuck in a registered-but-not-fully-provisioned state on their backend (most likely
+pending the same document/KYC verification suspected earlier, now with much more concrete symptoms
+than "generic errors on checkout"). Advised the owner to stop trying delete/re-register (real risk
+of confusing their backend state further with no evidence it helps) and instead contact Takbull
+support directly (live chat if available, faster than email) with a specific, reproducible bug
+report combining all three symptoms above plus the payment-page errors and the 06/09 setup-fee
+invoice as proof of payment — handed to the owner as ready-to-send text. **Still waiting on Takbull's
+side; nothing further to try from ours until they respond or fix the account.**
+
+## 2026-09-07: lazy on-demand description fetch shipped on the website too, then a second AI's cost
+## analysis was checked against this project's own history and its central premise turned out false
+
+Two real pieces of work back to back.
+
+**1. Shipped**: extended the on-demand Bright Data description fetch (previously only triggered by
+scraper/notifier.py at the moment a listing first matches a PAYING user) to website/main.py's
+`/apartments` and `/liked` — `_fill_missing_descriptions_in_background` fires a fire-and-forget
+background thread per shown listing still missing a description, for any signed-in viewer with
+`has_access`, caching on `Listing.description` forever so the cost is bounded by distinct listings
+an actual paying viewer ever looks at (never blocking the page, never repeated per viewer). Moved
+`bright_data_client.py` from `scraper/` into `common/dorin_common/` since the scraper, bot, and
+website pods are three separate Docker images (each copies only its own directory plus
+`dorin_common`) and this is now used by two of them. Also gave WhatsApp's real "תמיכה"/help-request
+messages a proper tappable CTA-URL button straight to `/contact` (previously fell through to
+`gemini_client.chat_with_existing_user` like any other free text and just described the contact
+page in words) — moved `looks_like_help_request` into `dorin_common/support.py` so both channels
+share one definition, checked before both the existing-filter chat branch and onboarding parsing.
+
+**2. The owner asked a sharper question**: why fetch content only lazily per-viewer at all, instead
+of getting it for every listing up front, "like Dorin" (screenshotted Dorin's own listing-detail
+page + its upgrade-wall modal for non-subscribers — which, note, already matches exactly what
+`_listing_card.html`'s existing `has_access` gate does: full content + original link for paying
+users, a locked 🔒 button to `/upgrade` for everyone else). He asked a second AI to analyze the
+cost architecture and got back a detailed document proposing: keep ZenRows for regional discovery,
+add a Delta-dedup step so only genuinely NEW listings get enriched, and fetch each new listing's
+full description via a **plain ZenRows `Raw HTTP GET` (js_render=false) at ~1 credit/request**
+instead of a JS-rendered request — landing on an estimated ~6,900 credits/month, comfortably inside
+the existing 45,000-credit/$19 ZenRows plan.
+
+**That document's central premise is factually wrong for this project's own Yad2/ZenRows setup —
+already disproven by this project's own prior diagnostic, not a matter of opinion.**
+`.github/workflows/diagnose-search-page-cheap-fetch.yaml` (2026-09-02, see that update above)
+already tested exactly this — dropping `js_render` against yad2.co.il gets an immediate `REQS002`
+rejection from ZenRows itself, confirmed live: **no cheaper fetch mode exists for this domain at
+all** ("every yad2.co.il request bills at their top rate, ~24-25 credits, due to how that domain is
+configured on ZenRows' end for anti-bot handling" — a domain-level classification on their account,
+not something that would differ between the search page and an individual listing's detail page).
+Re-costing the same proposal at the REAL, measured rate (~25 credits/request, not 1): ~150 new
+listings/day × 25 credits × 30 days ≈ **112,500 credits/month** for the enrichment step alone — 2.5x
+the entire monthly budget, on top of the existing ~2,400 credits/month regional discovery already
+consumes. This is not a rounding error; it would reproduce the exact incident already lived through
+once (2026-09-02: "217 requests consumed 5,285 of 5,000 monthly credits in under 2 days") and is
+precisely why `fetch_listing_detail`/`enrich_from_detail` (yad2_client.py/normalize.py — a real,
+already-built, already-tested per-listing detail fetch) were deliberately reversed out of the live
+scrape path that same day once the real per-request cost was understood. **Did not implement any
+part of the second AI's proposal** — the "only fetch genuinely new listings" instinct behind it is
+sound (and already exactly how `_upsert_listings`'s insert-vs-update branch already works — nothing
+new to build there), but the cost-per-request assumption it hangs everything on doesn't hold.
+
+**What DOES actually hold, from tonight's own real testing** (see the Bright Data entries above):
+the yad2.co.il Bright Data collector's Stage 2 already visits each listing individually as part of
+its OWN discovery mechanism (that's how `next_stage({url})` works) — so extracting the description
+from a visit that's already happening really is close to free, unlike ZenRows (whose current
+discovery fetch never visits an individual listing at all, so bolting one on is a genuine new cost,
+not a free byproduct). Making Bright Data (not ZenRows) the primary/supplementary discovery source
+for regions where full content matters is the one architecturally-sound way to get "every listing,
+full content, same cost as discovery" — but that's a real, separate re-architecture (a new
+ingestion module mapping Bright Data's own record shape into `Listing`/`normalize.py`, deciding
+region coverage and whether it replaces or supplements ZenRows, and still needs the real field
+names from a full — not head/tail-truncated — `__NEXT_DATA__` sample, not yet in hand), not a
+same-night change. **Still open**: get that full sample, then decide scope with the owner before
+building anything.
