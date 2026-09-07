@@ -1,51 +1,49 @@
-"""One-off asset generator — NOT run at deploy/runtime, only when the favicon needs regenerating
-(e.g. `todira-brand.webp` itself is replaced with a new version some day).
+"""One-off asset generator — NOT run at deploy/runtime, only when the favicon needs regenerating.
 
-Generates `website/static/favicon.ico` + the PNG variants referenced in `base.html`'s <head>
-(2026-09-07 — before this, browsers fell back to a generic auto-generated letter tile, a plain
-"T", since no favicon existed at all) from the existing brand image
-(`website/static/todira-brand.webp`, 1184x1895 as of this writing).
+**Round 3, same day (2026-09-07)** — the actual final design, replacing both earlier approaches:
+1. A tight photographic crop of Todi's crown+face (from `todira-brand.webp`) — looked fine as a
+   plain square favicon, but read as "a square photo forced into a circle" against Chrome's New
+   Tab shortcuts tile, which clips favicons into a circle.
+2. The same crop with its background removed (`rembg`) — fixed the circle-clipping mismatch, but
+   the owner's own side-by-side screenshot against GitHub's tab favicon showed the real remaining
+   problem: a detailed, photographic, brown-toned dog face simply doesn't hold up at 16x16/32x32
+   the way a bold, high-contrast graphic mark (GitHub's Octocat silhouette, Drive's colored
+   triangle) does — fine detail and soft photo edges disappear or blur into mush at that scale,
+   which is exactly what a real favicon has to survive most of the time.
 
-Same crop logic already proven on the Telegram bot's own avatar (see PROJECT_STATE.md's
-2026-08-29 branding entry): a tight square crop of the top of the image — crown, face, and the
-top of the cape — reads clearly even at 16x16, unlike the full tall poster (crown+dog+cape+
-caption text), which a small square icon can't show legibly all at once.
+**The fix**: stop using a photograph at all. This script now draws a genuinely simple, flat
+GEOMETRIC crown icon from scratch (three bold triangular points + a band, in the site's own brand
+gold `--gold`/`--gold-light` on a solid `--teal` circle) — the same crown-as-icon idea the brand
+already leans on everywhere else (👑 in the bot's own branding), just rendered as clean vector
+shapes instead of extracted from a real photo. Vector shapes with strong color contrast survive
+downsampling to 16x16 the way fine photographic detail never can — rendered at 1024x1024 and
+downsampled with LANCZOS, verified legible at both 16x16 and 32x32 (crown shape clearly readable
+at both) before shipping.
 
-**Round 2, same day**: the first version kept the source photo's opaque beige studio background
-filling the whole square. That looked fine in an ordinary square favicon slot, but Chrome's New
-Tab "shortcuts" tiles clip favicons into a CIRCLE — against that circular mask, an opaque square
-background reads as "a square photo stuffed into a circle" (visibly mismatched corners), unlike
-the transparent-background logo marks other sites use there. Fixed by running the same square
-crop through `rembg` (background removal, u2net/bria model — same tool already used earlier in
-this project's own Todi-photo curation history) to strip the beige background entirely, leaving
-just the dog+crown+cape on a transparent background. Verified by compositing the result onto both
-a simulated circular Chrome tile and plain light/dark backgrounds at 16x16/32x32 before shipping —
-reads cleanly in all of them, since a transparent PNG naturally blends into whatever container
-clips or colors it, rather than fighting it with its own background color.
+Two output shapes, for two different real constraints:
+- The regular favicon/manifest icons keep the crown on a transparent-cornered CIRCLE — this reads
+  correctly however different contexts mask it (Chrome's circular shortcuts tile, a square browser
+  tab, Android's own adaptive-icon masking).
+- `apple-touch-icon.png` fills the ENTIRE square with solid teal (no transparency, no pre-baked
+  circle) — iOS applies its own rounded-square mask and is known to render a transparent
+  apple-touch-icon with an ugly solid-black fill, so this one deliberately doesn't pre-mask itself
+  at all and just trusts iOS's own masking, per Apple's own documented convention for this file.
 
-`apple-touch-icon.png` is the one exception, saved with an OPAQUE background (flattened onto the
-same beige tone as the original photo's own backdrop) rather than transparent: iOS has a
-long-standing quirk of filling a transparent apple-touch-icon with solid BLACK on the home screen
-instead of compositing it nicely, so a flattened, intentional-looking background is safer there
-than transparency.
-
-Requires Pillow + rembg (`pip install pillow rembg onnxruntime`) — not project dependencies, only
-needed to run this script. rembg's model (~1GB) downloads on first use.
+Requires only Pillow (`pip install pillow`) — no photo processing, no rembg/onnxruntime needed
+for this version.
 """
 
 from pathlib import Path
 
-from PIL import Image
-from rembg import remove
+from PIL import Image, ImageDraw
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "website" / "static"
-SOURCE = STATIC_DIR / "todira-brand.webp"
 
-# Background color to flatten the (iOS-only) opaque apple-touch-icon onto — matches the original
-# photo's own beige studio backdrop, so it still reads as intentional, not a black square.
-APPLE_TOUCH_ICON_BG = (230, 219, 201)
+TEAL = (14, 138, 130, 255)  # --teal
+GOLD = (217, 164, 65, 255)  # --gold
+GOLD_LIGHT = (236, 201, 120, 255)  # --gold-light
 
-# name -> pixel size (square), transparent background
+MASTER_SIZE = 1024
 TRANSPARENT_PNG_SIZES = {
     "favicon-16x16.png": 16,
     "favicon-32x32.png": 32,
@@ -56,22 +54,41 @@ ICO_SIZES = [(16, 16), (32, 32), (48, 48)]
 APPLE_TOUCH_ICON_SIZE = 180
 
 
+def _draw_crown(size: int, *, circular_bg: bool) -> Image.Image:
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    if circular_bg:
+        d.ellipse((0, 0, size, size), fill=TEAL)
+    else:
+        d.rectangle((0, 0, size, size), fill=TEAL)
+
+    s = size
+    band_top, band_bottom = s * 0.58, s * 0.72
+    band_left, band_right = s * 0.20, s * 0.80
+    d.rectangle([band_left, band_top, band_right, band_bottom], fill=GOLD)
+
+    points_base_y = band_top + 1
+    tip_y, mid_tip_y = s * 0.22, s * 0.12  # center point taller than the two side points
+    d.polygon([(band_left, points_base_y), (s * 0.34, points_base_y), (s * 0.27, tip_y)], fill=GOLD)
+    d.polygon([(s * 0.40, points_base_y), (s * 0.60, points_base_y), (s * 0.50, mid_tip_y)], fill=GOLD)
+    d.polygon([(s * 0.66, points_base_y), (band_right, points_base_y), (s * 0.73, tip_y)], fill=GOLD)
+
+    jewel_r = s * 0.045
+    for jx, jy in [(s * 0.27, tip_y), (s * 0.50, mid_tip_y), (s * 0.73, tip_y)]:
+        d.ellipse((jx - jewel_r, jy - jewel_r, jx + jewel_r, jy + jewel_r), fill=GOLD_LIGHT)
+
+    d.rectangle([band_left, band_top, band_right, band_top + (band_bottom - band_top) * 0.25], fill=GOLD_LIGHT)
+    return im
+
+
 def main() -> None:
-    im = Image.open(SOURCE)
-    width, _height = im.size
-    # Top square crop (full width) — crown + face + top of cape, no horizontal cropping needed
-    # since the dog is already centered in the source frame.
-    square = im.crop((0, 0, width, width))
-    cutout = remove(square).convert("RGBA")  # background removed, transparent
+    circular_master = _draw_crown(MASTER_SIZE, circular_bg=True)
+    for name, target_size in TRANSPARENT_PNG_SIZES.items():
+        circular_master.resize((target_size, target_size), Image.LANCZOS).save(STATIC_DIR / name)
+    circular_master.save(STATIC_DIR / "favicon.ico", sizes=ICO_SIZES)
 
-    for name, size in TRANSPARENT_PNG_SIZES.items():
-        cutout.resize((size, size), Image.LANCZOS).save(STATIC_DIR / name)
-
-    cutout.save(STATIC_DIR / "favicon.ico", sizes=ICO_SIZES)
-
-    apple_bg = Image.new("RGB", cutout.size, APPLE_TOUCH_ICON_BG)
-    apple_bg.paste(cutout, (0, 0), cutout)
-    apple_bg.resize((APPLE_TOUCH_ICON_SIZE, APPLE_TOUCH_ICON_SIZE), Image.LANCZOS).save(
+    square_master = _draw_crown(MASTER_SIZE, circular_bg=False).convert("RGB")  # opaque for iOS
+    square_master.resize((APPLE_TOUCH_ICON_SIZE, APPLE_TOUCH_ICON_SIZE), Image.LANCZOS).save(
         STATIC_DIR / "apple-touch-icon.png"
     )
 
