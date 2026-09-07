@@ -6,6 +6,7 @@ of which process originally sent the card.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 
 from sqlalchemy import delete, select
@@ -18,6 +19,8 @@ from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Listing, UserListingAction
 from dorin_common.users import get_or_create_user
+
+logger = logging.getLogger(__name__)
 
 LIKED_LIMIT = 10
 HIDDEN_LIMIT = 10
@@ -134,10 +137,27 @@ async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     action, _, raw_id = query.data.partition(":")
     listing_id = int(raw_id)
 
-    # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
-    # call directly on the event loop would freeze every other user's bot interaction too, not
-    # just this one, since PTB processes updates one at a time by default.
-    toast = await asyncio.to_thread(_apply_reaction_sync, update.effective_user, action, listing_id)
+    try:
+        # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
+        # call directly on the event loop would freeze every other user's bot interaction too, not
+        # just this one, since PTB processes updates one at a time by default.
+        toast = await asyncio.to_thread(
+            _apply_reaction_sync, update.effective_user, action, listing_id
+        )
+    except Exception:
+        # Found live 2026-09-07: on any DB error here, query.answer() was never reached, leaving
+        # the tapped button's own "loading" spinner stuck on the user's screen until Telegram's
+        # client-side timeout — a real error looked identical to the bot being frozen. Always
+        # answer, even on failure, so the user gets immediate feedback either way.
+        logger.exception(
+            "Failed to apply reaction action=%s listing_id=%s for user %s",
+            action,
+            listing_id,
+            update.effective_user.id,
+        )
+        await query.answer("משהו השתבש, נסה/י שוב 🙏")
+        return
+
     await query.answer(toast)
 
 

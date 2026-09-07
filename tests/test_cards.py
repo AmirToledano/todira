@@ -315,6 +315,36 @@ def test_whatsapp_no_access_hides_description_and_url_shows_lock_line():
     assert "https://todira.app/upgrade?uid=555" in caption
 
 
+def test_telegram_caption_escapes_html_in_scraped_fields():
+    # Found live 2026-09-07: city/neighborhood/street/description/url are all scraped from Yad2
+    # (and, for description, potentially Bright Data), not written by this project — with
+    # parse_mode=HTML, a raw "<"/"&"/">" in any of them could either break the caption's HTML
+    # parsing or let scraped text inject an arbitrary tag into a real-formatted message.
+    listing = make_listing(
+        city="<script>city</script>",
+        neighborhood="A & B <b>fake bold</b>",
+        street="Main <i>St</i>",
+        description="נכס עם <img src=x> תיאור & פרטים",
+        url="https://www.yad2.co.il/item/\"onmouseover=alert(1)",
+    )
+    caption = format_caption(listing, has_access=True)
+    assert "<script>" not in caption
+    assert "&lt;script&gt;" in caption
+    assert "<b>fake bold</b>" not in caption
+    assert "A &amp; B &lt;b&gt;fake bold&lt;/b&gt;" in caption
+    assert "<i>St</i>" not in caption
+    assert "<img" not in caption
+    assert '"onmouseover=alert(1)' not in caption
+
+
+def test_whatsapp_caption_does_not_html_escape_plain_text():
+    # WhatsApp captions are plain text, not HTML — raw "&"/"<" must pass through unescaped there.
+    listing = make_listing(city="A & B", neighborhood="C <D>")
+    caption = format_caption_whatsapp(listing, has_access=True)
+    assert "A & B" in caption
+    assert "C <D>" in caption
+
+
 # --- send_listing_card (2026-09-02) — real Yad2 photos, added once the scraper started actually
 # capturing them (see scraper/normalize.py's enrich_from_detail). Telegram's sendMediaGroup can't
 # carry an inline keyboard, so 2+ photos need a follow-up message for the ❤️/🙈/🎉 buttons - the

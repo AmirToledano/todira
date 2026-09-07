@@ -219,6 +219,50 @@ def test_webhook_ignores_unknown_order_reference(client, monkeypatch):
     assert fake_session.committed is False
 
 
+def test_webhook_leaves_payment_pending_on_non_integer_order_total_instead_of_crashing(
+    client, monkeypatch
+):
+    # Found live 2026-09-07: int("40.00") raises ValueError uncaught, so a decimal-string
+    # OrderTotalSum (plausible for a currency field even though every real example seen so far
+    # has been a clean int) used to 500 instead of failing safe like every other suspicious
+    # payload on this endpoint.
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    payment = _FakePayment(user_id=2, plan="weekly", amount_ils=40, status="pending", gateway="takbull")
+    fake_session = _FakeSession(scalar_results=[payment])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={
+                "order_reference": str(payment.id),
+                "StatusDescription": "Success",
+                "OrderTotalSum": "40.00",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert payment.status == "pending"
+    assert fake_session.committed is False
+
+
+def test_webhook_leaves_payment_pending_when_order_total_missing_entirely(client, monkeypatch):
+    # Takbull's own documented order-success payload always includes OrderTotalSum — a payload
+    # missing it is itself suspicious, not something to trust our own pre-recorded amount for.
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    payment = _FakePayment(user_id=2, plan="weekly", amount_ils=15, status="pending", gateway="takbull")
+    fake_session = _FakeSession(scalar_results=[payment])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={"order_reference": str(payment.id), "StatusDescription": "Success"},
+        )
+
+    assert resp.status_code == 200
+    assert payment.status == "pending"
+    assert fake_session.committed is False
+
+
 def test_webhook_leaves_payment_pending_when_no_success_signal_recognized(client, monkeypatch):
     monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
     payment = _FakePayment(user_id=2, plan="weekly", amount_ils=15, status="pending", gateway="takbull")

@@ -139,7 +139,16 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text("🔍 רגע, טודירה בודק את מה שכתבת...")
 
     state = context.user_data.setdefault("onboarding", dict(_EMPTY_STATE))
-    result = gemini_client.parse_onboarding_message(text, state, cities.CITIES)
+    # asyncio.to_thread — parse_onboarding_message is a synchronous, blocking Gemini API call
+    # (a real network round-trip that can take seconds, longer under load) that was being awaited
+    # directly on the event loop. With max_concurrent_updates=1 (see start.py/tests/
+    # test_bot_async_db_calls.py's module docstring for the same bug already fixed for blocking DB
+    # calls), that froze every other user's interaction with the bot for the full duration of this
+    # one call — found live 2026-09-07 auditing every gemini_client call site; contact_fallback.py's
+    # equivalent call already did this correctly.
+    result = await asyncio.to_thread(
+        gemini_client.parse_onboarding_message, text, state, cities.CITIES
+    )
 
     if result is None:
         await update.message.reply_text(

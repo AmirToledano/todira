@@ -57,6 +57,17 @@ def test_parse_info_line_2_half_room_and_missing_parts():
     assert size is None
 
 
+def test_parse_info_line_2_studio_gets_one_room_not_none():
+    # Found live 2026-09-07: a studio's info line reads "סטודיו", never "N חדרים", so rooms stayed
+    # None for every studio, and matching.py's rooms_range check hard-fails any listing with an
+    # unknown room count once a filter sets rooms_min/rooms_max — so studios could never match any
+    # room-count filter at all, even a range that should logically include one room.
+    rooms, floor, size = _parse_info_line_2('סטודיו • קומה 3 • 35 מ"ר')
+    assert rooms == 1.0
+    assert floor == 3
+    assert size == 35
+
+
 # --- _parse_location ---
 
 

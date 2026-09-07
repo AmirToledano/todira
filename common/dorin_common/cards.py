@@ -5,6 +5,7 @@ listing identically. See plan Section 4 for the card format this implements.
 from __future__ import annotations
 
 import asyncio
+import html
 import io
 import logging
 from pathlib import Path
@@ -170,13 +171,23 @@ def _deal_type_prefix_word(listing: Listing) -> str | None:
 
 
 def _build_body_lines(
-    listing: Listing, *, bold: Callable[[str], str], street_link: Callable[[str, str], str]
+    listing: Listing,
+    *,
+    bold: Callable[[str], str],
+    street_link: Callable[[str, str], str],
+    escape: Callable[[str], str],
 ) -> list[str]:
     """`bold` wraps label text in each platform's own emphasis syntax (<b> on Telegram, *asterisks*
     on WhatsApp). `street_link(text, url)` wraps the street name as a tappable link where the
     platform supports custom link text (Telegram); WhatsApp can't do that (its text messages only
     auto-link raw URLs, never custom anchor text) — its own caller passes an identity function and
-    appends the raw maps URL as a separate line instead, see format_caption_whatsapp."""
+    appends the raw maps URL as a separate line instead, see format_caption_whatsapp. `escape`
+    is applied to every field that comes from the listing itself (city/neighborhood/street) rather
+    than a hardcoded label — these are scraped from Yad2, not written by this project, so on
+    Telegram (parse_mode=HTML) a city/street name that happens to contain `<`/`&`/`>` would
+    otherwise either break the caption's HTML parsing or, worse, let scraped text inject an
+    arbitrary tag into a message rendered with real formatting. WhatsApp's caller passes an
+    identity function since its captions are plain text, not HTML."""
     lines = []
 
     prefix_word = _deal_type_prefix_word(listing)
@@ -185,13 +196,14 @@ def _build_body_lines(
 
     location_bits = []
     if listing.city:
-        location_bits.append(bold(listing.city))
+        location_bits.append(bold(escape(listing.city)))
     if listing.neighborhood:
-        location_bits.append(listing.neighborhood)
+        location_bits.append(escape(listing.neighborhood))
     location = " - ".join(location_bits)
     if listing.street:
+        street_display = escape(listing.street)
         maps_url = _google_maps_url(listing)
-        street_text = street_link(listing.street, maps_url) if maps_url else listing.street
+        street_text = street_link(street_display, maps_url) if maps_url else street_display
         location = f"{location} {street_text}" if location else street_text
     if location:
         lines.append(f"📍{location}")
@@ -273,19 +285,24 @@ def format_caption(
     do by just not passing the argument."""
     bold = lambda s: f"<b>{s}</b>"  # noqa: E731
     lines = _build_body_lines(
-        listing, bold=bold, street_link=lambda text, url: f'<a href="{url}">{text}</a>'
+        listing,
+        bold=bold,
+        street_link=lambda text, url: f'<a href="{url}">{text}</a>',
+        escape=html.escape,
     )
 
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold)
     if has_access:
-        footer = f'\n\n{_RTL_MARK}🔗 <a href="{listing.url}">לפרטי הדירה המלאים &gt;&gt;</a>'
+        # listing.url is scraped from Yad2, not written by this project — escaped defensively so
+        # a stray `"` in it could never break out of the href attribute.
+        footer = f'\n\n{_RTL_MARK}🔗 <a href="{html.escape(listing.url)}">לפרטי הדירה המלאים &gt;&gt;</a>'
     elif upgrade_url:
         footer = f'\n\n{_RTL_MARK}🔒 <a href="{upgrade_url}">לפרטים המלאים וקישור ישיר — שדרג/י את המנוי</a>'
     else:
         footer = f"\n\n{_RTL_MARK}🔒 לפרטים המלאים וקישור ישיר יש לשדרג את המנוי"
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
-    description = (listing.description or "").strip() if has_access else ""
+    description = html.escape((listing.description or "").strip()) if has_access else ""
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
@@ -315,7 +332,9 @@ def format_caption_whatsapp(
     `has_access`/`upgrade_url`: see format_caption's own docstring — same gating, same required-
     not-defaulted argument."""
     bold = lambda s: f"*{s}*"  # noqa: E731
-    lines = _build_body_lines(listing, bold=bold, street_link=lambda text, url: text)
+    lines = _build_body_lines(
+        listing, bold=bold, street_link=lambda text, url: text, escape=lambda s: s
+    )
     maps_url = _google_maps_url(listing)
     if maps_url:
         # Placed right after the location line, matching where it visually sits on Telegram. A

@@ -227,7 +227,15 @@ def _parse_price(raw: str) -> int | None:
 def _parse_info_line_2(raw: str) -> tuple[float | None, int | None, int | None]:
     text = _clean(raw)
     rooms = floor = size = None
-    if m := re.search(r"([\d.]+)\s*חדרים", text):
+    if "סטודיו" in text:
+        # A studio's info line reads "סטודיו", never "N חדרים", so the regex below never matches
+        # it — found live 2026-09-07: every studio listing got rooms=None, and matching.py's
+        # rooms_range check has no benefit-of-the-doubt for missing rooms (unlike most other
+        # fields), so ANY filter with a room-count range hard-failed every studio, even a range
+        # like rooms_min=1 that should logically include one. Treating a studio as 1 room is this
+        # project's own documented convention (see dorin_common.enums's STUDIO property type).
+        rooms = 1.0
+    elif m := re.search(r"([\d.]+)\s*חדרים", text):
         rooms = float(m.group(1))
     if m := re.search(r"קומה\s*([^\s•]+)", text):
         value = m.group(1)

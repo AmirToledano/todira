@@ -11,6 +11,7 @@ whatever state the user was in.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import os
 
@@ -65,13 +66,18 @@ async def escalate_to_owner(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if not OWNER_TELEGRAM_USER_ID:
         return False
     try:
-        username_part = f" (@{user.username})" if user.username else ""
+        # user.first_name/username and the message text itself are all attacker-controlled (any
+        # Telegram user can set their own name or type anything) — escaped before going into an
+        # HTML-parsed message so they can't break the owner notification's formatting or inject a
+        # fake link/tag into what the owner reads as trusted app text.
+        display_name = html.escape(user.first_name or "משתמש")
+        username_part = f" (@{html.escape(user.username)})" if user.username else ""
         await context.bot.send_message(
             chat_id=OWNER_TELEGRAM_USER_ID,
             text=(
                 f"🙋 <b>בקשת תמיכה תוך כדי שיחה עם הבוט</b>\n"
-                f"מאת: {user.first_name or 'משתמש'}{username_part} "
-                f"(Telegram user ID: {user.id})\n\n{text}"
+                f"מאת: {display_name}{username_part} "
+                f"(Telegram user ID: {user.id})\n\n{html.escape(text)}"
             ),
             parse_mode=ParseMode.HTML,
         )
