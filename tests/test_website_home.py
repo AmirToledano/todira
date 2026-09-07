@@ -40,7 +40,8 @@ def test_home_shows_whatsapp_cta_when_configured(client):
         resp = client.get("/")
 
     assert resp.status_code == 200
-    assert resp.text.count("wa.me/972500000000") == 2  # hero + footer-cta sections
+    # hero + footer-cta sections + the site-wide footer's own WhatsApp link (2026-09-07, base.html)
+    assert resp.text.count("wa.me/972500000000") == 3
     assert "https://t.me/AmirDirotBot" in resp.text  # Telegram CTA stays alongside it
 
 

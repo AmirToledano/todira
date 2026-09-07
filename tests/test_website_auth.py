@@ -231,7 +231,8 @@ def test_resolve_user_returns_none_when_nothing_matches():
 
 
 class _FakeFilter:
-    pass
+    deal_type = None
+    cities: list[str] = []
 
 
 def test_apartments_hides_insecure_notice_when_reached_via_real_session(client):

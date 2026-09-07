@@ -38,7 +38,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Todira — real-time apartment search",
         "ru": "Todira — поиск квартир в реальном времени",
         "fr": "Todira — recherche d'appartements en temps réel",
-        "ar": "טודירה — بحث عن شقق في الوقت الفعلي",
+        "ar": "توديرا — بحث عن شقق في الوقت الفعلي",
     },
     "meta.description": {
         "he": "בוט חיפוש דירות אישי שסורק את שוק הדירות ומתריע לך ברגע שמופיעה דירה שמתאימה בדיוק לסינון שלך.",
@@ -52,70 +52,70 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Matching apartments — Todira",
         "ru": "Подходящие квартиры — Todira",
         "fr": "Appartements correspondants — Todira",
-        "ar": "شقق مطابقة — טודירה",
+        "ar": "شقق مطابقة — توديرا",
     },
     "meta.title_liked": {
         "he": "דירות שמורות — טודירה",
         "en": "Saved apartments — Todira",
         "ru": "Сохранённые квартиры — Todira",
         "fr": "Appartements enregistrés — Todira",
-        "ar": "شقق محفوظة — טודירה",
+        "ar": "شقق محفوظة — توديرا",
     },
     "meta.title_hidden": {
         "he": "דירות מוסתרות — טודירה",
         "en": "Hidden apartments — Todira",
         "ru": "Скрытые квартиры — Todira",
         "fr": "Appartements masqués — Todira",
-        "ar": "شقق مخفية — טודירה",
+        "ar": "شقق مخفية — توديرا",
     },
     "meta.title_filter": {
         "he": "הסינון שלי — טודירה",
         "en": "My filter — Todira",
         "ru": "Мой фильтр — Todira",
         "fr": "Mon filtre — Todira",
-        "ar": "الفلتر الخاص بي — טודירה",
+        "ar": "الفلتر الخاص بي — توديرا",
     },
     "meta.title_404": {
         "he": "הדף לא נמצא — טודירה",
         "en": "Page not found — Todira",
         "ru": "Страница не найдена — Todira",
         "fr": "Page introuvable — Todira",
-        "ar": "الصفحة غير موجودة — טודירה",
+        "ar": "الصفحة غير موجودة — توديرا",
     },
     "meta.title_generic": {
         "he": "טודירה",
         "en": "Todira",
         "ru": "Todira",
         "fr": "Todira",
-        "ar": "טודירה",
+        "ar": "توديرا",
     },
     "meta.title_terms": {
         "he": "תנאי שימוש — טודירה",
         "en": "Terms of Use — Todira",
         "ru": "Условия использования — Todira",
         "fr": "Conditions d'utilisation — Todira",
-        "ar": "شروط الاستخدام — טודירה",
+        "ar": "شروط الاستخدام — توديرا",
     },
     "meta.title_privacy": {
         "he": "מדיניות פרטיות — טודירה",
         "en": "Privacy Policy — Todira",
         "ru": "Политика конфиденциальности — Todira",
         "fr": "Politique de confidentialité — Todira",
-        "ar": "سياسة الخصوصية — טודירה",
+        "ar": "سياسة الخصوصية — توديرا",
     },
     "meta.title_accessibility": {
         "he": "הצהרת נגישות — טודירה",
         "en": "Accessibility Statement — Todira",
         "ru": "Заявление о доступности — Todira",
         "fr": "Déclaration d'accessibilité — Todira",
-        "ar": "بيان إمكانية الوصول — טודירה",
+        "ar": "بيان إمكانية الوصول — توديرا",
     },
     "meta.title_contact": {
         "he": "צור קשר — טודירה",
         "en": "Contact us — Todira",
         "ru": "Связаться с нами — Todira",
         "fr": "Nous contacter — Todira",
-        "ar": "تواصل معنا — טודירה",
+        "ar": "تواصل معنا — توديرا",
     },
     # ---------- header / nav ----------
     "nav.apartments": {
@@ -134,6 +134,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav.bot": {
         "he": "הבוט בטלגרם", "en": "The Telegram bot", "ru": "Бот в Telegram",
         "fr": "Le bot Telegram", "ar": "بوت تيليجرام",
+    },
+    "nav.whatsapp": {
+        "he": "הבוט בוואטסאפ", "en": "The WhatsApp bot", "ru": "Бот в WhatsApp",
+        "fr": "Le bot WhatsApp", "ar": "بوت واتساب",
+    },
+    # The opening message pre-filled into a wa.me deep link's own text= param — found live
+    # 2026-09-07: this was hardcoded in Hebrew in 3 separate templates (home.html x2, login.html)
+    # instead of going through t(), so an English/Russian/French/Arabic visitor's WhatsApp CTA
+    # button opened a chat pre-filled with Hebrew text they may not have written themselves.
+    "whatsapp.greeting": {
+        "he": "היי! אני רוצה להתחיל לחפש דירה 🏠",
+        "en": "Hi! I'd like to start looking for an apartment 🏠",
+        "ru": "Привет! Я хочу начать искать квартиру 🏠",
+        "fr": "Salut ! Je voudrais commencer à chercher un appartement 🏠",
+        "ar": "مرحبًا! أريد أن أبدأ البحث عن شقة 🏠",
     },
     "nav.contact": {
         "he": "צור קשר", "en": "Contact us", "ru": "Связаться с нами",
@@ -207,7 +222,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "© 2026 Todira. All rights reserved.",
         "ru": "© 2026 Todira. Все права защищены.",
         "fr": "© 2026 Todira. Tous droits réservés.",
-        "ar": "© 2026 טודירה. جميع الحقوق محفوظة.",
+        "ar": "© 2026 توديرا. جميع الحقوق محفوظة.",
     },
     "footer.terms": {
         "he": "תנאי שימוש", "en": "Terms of Use", "ru": "Условия использования",
@@ -344,7 +359,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Todira scans the apartment market non-stop, and alerts you within minutes the moment a listing matches exactly what you're looking for — before someone else grabs it.",
         "ru": "Todira непрерывно сканирует рынок квартир и уведомляет вас в течение нескольких минут, как только появляется объявление, точно соответствующее вашему запросу — прежде чем его займёт кто-то другой.",
         "fr": "Todira scanne le marché des appartements sans interruption et vous alerte en quelques minutes dès qu'une annonce correspond exactement à ce que vous cherchez — avant que quelqu'un d'autre ne la prenne.",
-        "ar": "טودירה يفحص سوق الشقق بلا توقف، وينبهك خلال دقائق فور ظهور شقة تطابق تمامًا ما تبحث عنه — قبل أن يسبقك إليها شخص آخر.",
+        "ar": "توديرا يفحص سوق الشقق بلا توقف، وينبهك خلال دقائق فور ظهور شقة تطابق تمامًا ما تبحث عنه — قبل أن يسبقك إليها شخص آخر.",
     },
     "home.cta_open_bot": {
         "he": "פתח את הבוט בטלגרם",
@@ -367,7 +382,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "King Todi — the Todira apartment-search bot",
         "ru": "Король Тоди — бот поиска квартир Todira",
         "fr": "Le roi Todi — le bot de recherche d'appartements Todira",
-        "ar": "الملك טודي — بوت البحث عن شقق טודירה",
+        "ar": "الملك تودي — بوت البحث عن شقق توديرا",
     },
     "home.stat_scan_freq_value": {"he": "כל שעתיים", "en": "Every 2h", "ru": "Каждые 2 ч", "fr": "Toutes les 2h", "ar": "كل ساعتين"},
     "home.stat_scan_freq_label": {
@@ -491,7 +506,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "home.compare_without_title": {
         "he": "בלי טודירה 😩", "en": "Without Todira 😩", "ru": "Без Todira 😩",
-        "fr": "Sans Todira 😩", "ar": "بدون טודירה 😩",
+        "fr": "Sans Todira 😩", "ar": "بدون توديرا 😩",
     },
     "home.compare_without_1": {
         "he": "מרעננים כמה אתרים כל כמה שעות",
@@ -523,7 +538,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "home.compare_with_title": {
         "he": "עם טודירה 👑", "en": "With Todira 👑", "ru": "С Todira 👑",
-        "fr": "Avec Todira 👑", "ar": "مع טודירה 👑",
+        "fr": "Avec Todira 👑", "ar": "مع توديرا 👑",
     },
     "home.compare_with_1": {
         "he": "סריקה אוטומטית כל 10 דקות, ברקע",
@@ -562,7 +577,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Three minutes to get started, then Todira works for you in the background.",
         "ru": "Три минуты на старт — и дальше Todira работает за вас в фоне.",
         "fr": "Trois minutes pour démarrer, puis Todira travaille pour vous en arrière-plan.",
-        "ar": "ثلاث دقائق للبدء، ثم يعمل טודירה من أجلك في الخلفية.",
+        "ar": "ثلاث دقائق للبدء، ثم يعمل توديرا من أجلك في الخلفية.",
     },
     "home.step1_title": {
         "he": "מדברים עם הבוט", "en": "Talk to the bot", "ru": "Общайтесь с ботом",
@@ -625,7 +640,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Todira automatically scans the apartment market online every 2 hours and compares every new listing against your filter. More sources are being added gradually.",
         "ru": "Todira автоматически сканирует рынок квартир в сети каждые 2 часа и сравнивает каждое новое объявление с вашим фильтром. Постепенно добавляются новые источники.",
         "fr": "Todira scanne automatiquement le marché des appartements en ligne toutes les 2 heures et compare chaque nouvelle annonce à votre filtre. D'autres sources sont ajoutées progressivement.",
-        "ar": "يفحص טודירה سوق الشقق على الإنترنت تلقائيًا كل ساعتين ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا.",
+        "ar": "يفحص توديرا سوق الشقق على الإنترنت تلقائيًا كل ساعتين ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا.",
     },
     "home.faq3_q": {
         "he": "כמה זה עולה?", "en": "How much does it cost?", "ru": "Сколько это стоит?",
@@ -859,6 +874,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # property — independent of deal_type (rent or sale, doesn't matter), 2026-09-03 request.
     "card.broker_badge": {
         "he": "תיווך", "en": "Broker", "ru": "Посредник", "fr": "Agence", "ar": "وسيط",
+    },
+    # alt text for a listing's own real photos (2026-09-07 audit: every cover photo had alt="",
+    # the same treatment as a genuinely decorative image — a screen-reader user got zero
+    # information about what a card's actual photos showed). {city}/{rooms} are filled in from the
+    # listing itself; not the illustrated Todi fallback, which stays alt="" on purpose (that one
+    # really is decorative — the caption right below it already states there are no real photos).
+    "card.photo_alt": {
+        "he": "תמונה מהדירה ב{city}, {rooms} חדרים",
+        "en": "Photo of the apartment in {city}, {rooms} rooms",
+        "ru": "Фото квартиры в {city}, {rooms} комнат",
+        "fr": "Photo de l'appartement à {city}, {rooms} pièces",
+        "ar": "صورة الشقة في {city}، {rooms} غرف",
     },
     "card.no_image_caption": {
         "he": "דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה! 🕵️",
@@ -1150,6 +1177,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "טלגרם — כתוב/י ישירות לבוט", "en": "Telegram — message the bot directly",
         "ru": "Telegram — напишите боту напрямую", "fr": "Telegram — écrivez directement au bot",
         "ar": "تيليجرام — راسل البوت مباشرة",
+    },
+    # Added 2026-09-07 — /contact only offered a Telegram link under "other ways to reach us"
+    # despite the product having a WhatsApp bot since 2026-09-06 (same gap the footer/home hero
+    # CTA already got fixed for).
+    "contact.whatsapp_way": {
+        "he": "וואטסאפ — כתוב/י ישירות לבוט", "en": "WhatsApp — message the bot directly",
+        "ru": "WhatsApp — напишите боту напрямую", "fr": "WhatsApp — écrivez directement au bot",
+        "ar": "واتساب — راسل البوت مباشرة",
     },
     # ---------- legal pages ----------
     # Terms/Privacy only have full He+En copy (see terms.html/privacy.html) — legal text is exactly
