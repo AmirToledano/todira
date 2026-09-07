@@ -21,7 +21,7 @@
     {% for m in messages %}
     <div class="admin-message-card">
       <div class="amc-header">
-        <span class="amc-source">{{ '🌐 אתר' if m.source == 'website' else ('🤖 בוט' if m.source == 'telegram_bot' else '❔ לא ידוע') }}</span>
+        <span class="amc-source">{{ '🌐 אתר' if m.source == 'website' else ('🤖 בוט טלגרם' if m.source == 'telegram_bot' else ('🟢 וואטסאפ' if m.source == 'whatsapp_bot' else '❔ לא ידוע')) }}</span>
         <span class="amc-date">{{ m.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
         {% if m.notified_owner %}
           <span class="amc-status amc-status-ok" title="נשלחה התראה בטלגרם">נשלחה התראה ✅</span>

@@ -1,21 +1,14 @@
-"""Tests for scraper/bright_data_client.py — the (partially verified against Bright Data's public
-GitHub reference, see that module's own docstring) trigger/poll/snapshot flow, and
+"""Tests for common/dorin_common/bright_data_client.py — the (partially verified against Bright
+Data's public GitHub reference, see that module's own docstring) trigger/poll/snapshot flow, and
 fetch_listing_description()'s tolerant field-name parsing / failure modes.
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import httpx
 import pytest
-
-_SCRAPER_DIR = Path(__file__).resolve().parent.parent / "scraper"
-if str(_SCRAPER_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRAPER_DIR))
-
-import bright_data_client  # noqa: E402
+from dorin_common import bright_data_client
 
 
 @pytest.fixture(autouse=True)

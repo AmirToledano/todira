@@ -26,10 +26,12 @@ import os
 import threading
 from collections import OrderedDict
 
+import httpx
 from dorin_common import cities, gemini_client
 from dorin_common.channel_link import resolve_link_code
 from dorin_common.db import get_session
-from dorin_common.models import Filter, User
+from dorin_common.models import ContactMessage, Filter, User
+from dorin_common.support import looks_like_help_request
 from dorin_common.users import get_or_create_whatsapp_user
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -76,6 +78,75 @@ def _send_filter_edit_prompt(wa_id: str) -> None:
     )
     whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_1)
     whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_2)
+
+
+# 2026-09-07: a real "תמיכה" message used to fall straight into gemini_client.chat_with_existing_user
+# (for an already-onboarded user) same as any other free text, which produced a natural-sounding but
+# non-actionable reply ("...אני שולח עדכונים ברגע שיש שדירות חדשות...לפנות אלינו דרך עמוד יצירת הקשר
+# באתר") with no real link the owner could tap — found live by the owner testing "תמיכה" himself.
+# Mirrors bot/handlers/contact_fallback.py's own precedence on Telegram (looks_like_help_request
+# checked FIRST, before anything conversation-state-specific): here too it's checked before the
+# existing-filter chat branch AND before onboarding parsing, so a help request never gets
+# reinterpreted as apartment criteria or small talk on either channel. Owner notification mirrors
+# website/main.py's own _notify_owner_sync (same raw Telegram HTTP call) rather than importing that
+# private function directly — whatsapp_webhook.py and main.py are separate routers.
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
+
+_HELP_REQUEST_BODY = "תודה שכתבת! ההודעה שלך התקבלה ואנחנו נחזור אליך בהקדם 🙏\nאפשר גם לפנות ישירות דרך עמוד יצירת הקשר שלנו:"
+_HELP_REQUEST_BUTTON_TEXT = "✉️ יצירת קשר"
+
+
+def _save_help_request_sync(name: str | None, wa_id: str, message: str) -> int:
+    with get_session() as session:
+        row = ContactMessage(
+            name=name, message=f"[WhatsApp: {wa_id}]\n{message}", source="whatsapp_bot"
+        )
+        session.add(row)
+        session.commit()
+        return row.id
+
+
+def _mark_help_request_notified_sync(contact_message_id: int) -> None:
+    with get_session() as session:
+        row = session.get(ContactMessage, contact_message_id)
+        if row is not None:
+            row.notified_owner = True
+            session.commit()
+
+
+def _notify_owner_of_help_request(name: str | None, wa_id: str, text: str) -> bool:
+    """Best-effort, mirrors website/main.py's _notify_owner_sync. Never raises: the ContactMessage
+    is already committed by the caller before this runs, so a broken/missing token never loses the
+    message itself."""
+    if not TELEGRAM_BOT_TOKEN or not OWNER_TELEGRAM_USER_ID:
+        return False
+    lines = ["🙋 <b>בקשת תמיכה מ-WhatsApp (טודירה)</b>"]
+    if name:
+        lines.append(f"שם: {name}")
+    lines.append(f"מספר WhatsApp: {wa_id}")
+    lines.append("")
+    lines.append(text)
+    try:
+        resp = httpx.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": OWNER_TELEGRAM_USER_ID, "text": "\n".join(lines), "parse_mode": "HTML"},
+            timeout=10.0,
+        )
+        return resp.status_code == 200
+    except httpx.HTTPError:
+        logger.exception("Failed to push WhatsApp help-request to Telegram")
+        return False
+
+
+def _handle_help_request(wa_id: str, profile_name: str | None, text: str) -> None:
+    contact_message_id = _save_help_request_sync(profile_name, wa_id, text)
+    if _notify_owner_of_help_request(profile_name, wa_id, text):
+        _mark_help_request_notified_sync(contact_message_id)
+    whatsapp_client.send_cta_url_message(
+        wa_id, _HELP_REQUEST_BODY, _HELP_REQUEST_BUTTON_TEXT, f"{WEBSITE_URL}/contact"
+    )
+
 
 # Meta redelivers a webhook it didn't get a prompt 200 for — and used to, here: the whole
 # onboarding turn (DB roundtrip + a Gemini call that can legitimately take up to the 10s timeout
@@ -185,6 +256,10 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             return
 
         user = get_or_create_whatsapp_user(session, wa_id, profile_name)
+
+        if looks_like_help_request(text):
+            _handle_help_request(wa_id, profile_name, text)
+            return
 
         existing_filter = session.scalar(select(Filter).where(Filter.user_id == user.id))
         if existing_filter is not None:
