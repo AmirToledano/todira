@@ -2,6 +2,14 @@
 <html lang="{{ lang }}" dir="{{ dir }}">
 <head>
   <meta charset="utf-8">
+  <!-- Meta Business Manager domain verification (2026-09-07) — proves ownership of todira.app
+       for WhatsApp Business "Domain verification" (the whole reason todira.app was registered:
+       Meta refuses to verify a subdomain of a shared free service like the old
+       todira.duckdns.org, only a real root domain). Static, server-rendered, present on every
+       page (base.html) since Meta's own instructions only require it be found on the home page —
+       safe to leave here indefinitely, it's a public, non-secret verification string, not a
+       credential. -->
+  <meta name="facebook-domain-verification" content="7832ejaapelrogzi86941h7vjy1do8" />
   <script>
     // Apply any saved accessibility prefs before first paint, so a returning visitor never sees
     // a flash of the un-adjusted page (the full toggle logic lives in the script near the end of
