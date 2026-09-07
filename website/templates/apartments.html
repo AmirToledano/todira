@@ -43,6 +43,12 @@
     <p class="hint">{{ t('apartments.empty_hint') }}</p>
   </div>
 {% else %}
+  {# Announces each infinite-scroll batch to screen readers (2026-09-07 audit fix) — the new cards
+     below are otherwise inserted completely silently by JS, with no page navigation to trigger a
+     re-announcement the way a normal "next page" link would. role="status" + aria-live="polite"
+     means it's read out without interrupting whatever the user is doing, once they're idle. #}
+  <div id="apartments-live-region" class="visually-hidden" role="status" aria-live="polite"
+       data-announcement-template="{{ t('apartments.more_loaded_announcement', count='__COUNT__') }}"></div>
   <div class="listing-grid" id="listing-grid">
     {% for l in listings %}{{ listing_card(l, (loop.index0 % 6) * 60) }}{% endfor %}
     {% if has_more %}
@@ -77,8 +83,15 @@
         .then(function (html) {
           if (html === null) { return; } // request failed — leave the sentinel to retry later
           io.unobserve(sentinel);
+          var countBefore = grid.querySelectorAll('.listing-card').length;
           sentinel.insertAdjacentHTML('beforebegin', html);
           sentinel.remove();
+          var addedCount = grid.querySelectorAll('.listing-card').length - countBefore;
+          var liveRegion = document.getElementById('apartments-live-region');
+          if (liveRegion && addedCount > 0) {
+            var template = liveRegion.dataset.announcementTemplate || '';
+            liveRegion.textContent = template.replace('__COUNT__', addedCount);
+          }
           var newSentinel = grid.querySelector('.load-more-sentinel');
           if (newSentinel) { io.observe(newSentinel); }
         })
