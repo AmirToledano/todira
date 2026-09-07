@@ -27,6 +27,7 @@
         </button>
       </form>
     </div>
+    {% set _photo_alt = t('card.photo_alt', city=(l.city or t('card.no_city')), rooms=(l.rooms or '?')) %}
     <div class="listing-cover">
       {% if l.image_urls %}
         {% for img in l.image_urls[:8] %}
@@ -36,8 +37,14 @@
            fired an eager image request the instant the page rendered. On a weak mobile connection
            that's a burst of hundreds of concurrent image fetches, which is what was crashing real
            visitors' browsers mid-load on this exact page (2026-09-06, see PROJECT_STATE.md). A
-           real <img> is the only element the browser will actually defer. #}
-        <img class="cover-slide" src="{{ img }}" loading="lazy" decoding="async" alt="">
+           real <img> is the only element the browser will actually defer.
+
+           alt text (2026-09-07 audit fix): every slide shares the same city/room-count alt — this
+           is the listing's OWN photo gallery, not distinct photos worth describing individually
+           (there's no per-photo caption data at all — a real Yad2/scraper limitation, not a
+           choice), so a screen-reader user at least learns what apartment the gallery is of
+           instead of getting nothing. #}
+        <img class="cover-slide" src="{{ img }}" loading="lazy" decoding="async" alt="{{ _photo_alt }}">
         {% endfor %}
       {% else %}
         {# No real photos for this listing — a single branded illustration instead: Todi as a

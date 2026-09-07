@@ -70,6 +70,19 @@ TRANSPARENT_PNG_SIZES = {
 ICO_SIZES = [(16, 16), (32, 32), (48, 48)]
 APPLE_TOUCH_ICON_SIZE = 180
 
+# og:image/twitter:image (2026-09-07): base.html used to point these straight at
+# todira-brand.webp itself — the full 1184x1895 PORTRAIT source image. Facebook/WhatsApp/Twitter
+# all crop a link preview to a landscape ~1.91:1 box (1200x630 is the standard size every platform
+# documents), so a tall portrait image either got awkwardly cropped to a thin vertical sliver or
+# letterboxed with ugly platform-added bars, depending on the client — found live 2026-09-07
+# auditing the site's social-share metadata. Fixed the same way apple-touch-icon.png already
+# handles a transparent cutout needing an opaque background: flatten the SAME cropped/boosted
+# cutout used for the favicons onto a brand-colored landscape canvas instead of using the source
+# photo as-is.
+OG_IMAGE_SIZE = (1200, 630)
+OG_IMAGE_SUBJECT_SIZE = 560  # the cutout's own square size once placed on the canvas above
+OG_IMAGE_BG = (23, 60, 64)  # --teal-dark from style.css, for a branded (not beige) social card
+
 
 def _boosted_cutout() -> Image.Image:
     im = Image.open(SOURCE)
@@ -112,7 +125,16 @@ def main() -> None:
     apple_icon = apple_icon.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=2))
     apple_icon.save(STATIC_DIR / "apple-touch-icon.png")
 
-    print(f"Wrote favicon.ico + {len(TRANSPARENT_PNG_SIZES) + 1} PNG variants to {STATIC_DIR}")
+    # og:image/twitter:image — same cutout, flattened onto a branded landscape canvas instead of
+    # a beige square (see OG_IMAGE_SIZE's own comment above for why this exists at all).
+    og_subject = _resize_sharp(cutout, OG_IMAGE_SUBJECT_SIZE)
+    og_canvas = Image.new("RGB", OG_IMAGE_SIZE, OG_IMAGE_BG)
+    paste_x = (OG_IMAGE_SIZE[0] - OG_IMAGE_SUBJECT_SIZE) // 2
+    paste_y = (OG_IMAGE_SIZE[1] - OG_IMAGE_SUBJECT_SIZE) // 2
+    og_canvas.paste(og_subject, (paste_x, paste_y), og_subject)
+    og_canvas.save(STATIC_DIR / "og-image.jpg", format="JPEG", quality=90)
+
+    print(f"Wrote favicon.ico + {len(TRANSPARENT_PNG_SIZES) + 2} PNG/JPEG variants to {STATIC_DIR}")
 
 
 if __name__ == "__main__":

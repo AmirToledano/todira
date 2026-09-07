@@ -59,7 +59,7 @@ from fastapi import FastAPI, Form, Request
 
 import grow_client
 import takbull_client
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, select
@@ -246,6 +246,12 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "is_owner": is_real_owner and not _preview_as_free(request),
             "is_real_owner": is_real_owner,
             "preview_as_free": _preview_as_free(request),
+            # Site-wide (not per-route) so the footer's WhatsApp link (base.html) can show on
+            # every page, not just the ones that already happened to pass this in themselves for
+            # their own hero CTA (home.html, login.html) — found live 2026-09-07 auditing the
+            # footer, which had a Telegram link but no WhatsApp one despite the product having a
+            # WhatsApp bot since 2026-09-06 (same gap home.html's own CTA was fixed for already).
+            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
         },
         status_code=status_code,
     )
@@ -350,6 +356,51 @@ def home(request: Request):
     longer reflects the real entry points, found live by the owner comparing the page to the
     current product."""
     return _render(request, "home.html", {"whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER})
+
+
+@app.get("/robots.txt")
+def robots_txt(request: Request) -> PlainTextResponse:
+    """No robots.txt at all before this (2026-09-07 audit) meant crawlers had no signal to stay
+    out of personalized/behind-auth pages (a search result linking straight into someone's own
+    /apartments?uid=... would be both useless to searchers and a minor privacy smell) and no
+    pointer to sitemap.xml for the pages that ARE worth indexing."""
+    disallowed = (
+        "/admin",
+        "/account",
+        "/apartments",
+        "/liked",
+        "/hidden",
+        "/upgrade",
+        "/filter",
+        "/webhooks",
+        "/auth",
+        "/preview",
+        "/react",
+    )
+    lines = ["User-agent: *"]
+    lines += [f"Disallow: {path}" for path in disallowed]
+    lines.append("")
+    lines.append(f"Sitemap: {request.base_url}sitemap.xml")
+    return PlainTextResponse("\n".join(lines))
+
+
+# Public, unauthenticated, content pages worth a search engine indexing — kept in sync by hand
+# since the set of genuinely public marketing/legal pages changes rarely; every one of these
+# already renders in all 5 languages via base.html's own hreflang alternates (added alongside
+# this), so the sitemap itself only needs to list each page once, not once per language.
+_SITEMAP_PATHS = ("/", "/login", "/contact", "/terms", "/privacy", "/accessibility")
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml(request: Request) -> Response:
+    urls = "".join(
+        f"<url><loc>{request.base_url}{path.lstrip('/')}</loc></url>" for path in _SITEMAP_PATHS
+    )
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
+    )
+    return Response(content=body, media_type="application/xml")
 
 
 @app.get("/login")
@@ -750,11 +801,21 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
             return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
 
         hidden_ids = _listing_action_ids(session, user.id, "hidden")
+        listings_query = select(Listing).where(Listing.is_delisted.is_(False))
+        if user.filter.deal_type:
+            listings_query = listings_query.where(Listing.deal_type == user.filter.deal_type)
+        if user.filter.cities:
+            # Found live 2026-09-07: this used to only ever look at the 200 most-recently-scraped
+            # listings across EVERY city/deal_type, THEN filter — so a narrow filter for one
+            # specific (usually less active) city could have its own matching listings permanently
+            # pushed out of that window by newer listings scraped for every other city, city and
+            # deal_type both being hard filters this evaluate() call below already enforces
+            # anyway, so applying them here too only ever removes rows that would have failed
+            # matching regardless — never changes which listings can actually match. Mirrors
+            # bot/handlers/apartments.py's find_matching_listings, which had the identical gap.
+            listings_query = listings_query.where(Listing.city.in_(user.filter.cities))
         listings = session.scalars(
-            select(Listing)
-            .where(Listing.is_delisted.is_(False))
-            .order_by(Listing.scraped_at.desc())
-            .limit(200)
+            listings_query.order_by(Listing.scraped_at.desc()).limit(500)
         ).all()
         # 2026-09-06: previously didn't exclude hidden listings at all (unlike the bot's own
         # /apartments, see find_matching_listings) — a listing hidden via the Telegram 🙈 button
