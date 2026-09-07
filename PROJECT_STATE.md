@@ -4499,3 +4499,129 @@ region coverage and whether it replaces or supplements ZenRows, and still needs 
 names from a full — not head/tail-truncated — `__NEXT_DATA__` sample, not yet in hand), not a
 same-night change. **Still open**: get that full sample, then decide scope with the owner before
 building anything.
+
+## 2026-09-07 (later, cloud + local session): real domain purchased (todira.app), Business
+## Verification submitted — a long saga, but it ended in a real, durable fix
+
+Owner asked to continue the Bright Data Stage 2 investigation above, but got sidetracked — while
+poking at WhatsApp Business Verification's "Step 3" (optional but recommended: unlocks the
+display-name-instead-of-phone-number benefit, higher messaging limits, account-ban protection),
+hit a real structural wall worth documenting in full since it explains a purchase decision
+(`todira.app`, a real recurring cost) made mid-session.
+
+**The wall**: Meta's "Verify phone number" sub-step (triggered automatically once the automated
+name/address record lookup fails, which it always will for an עוסק פטור sole proprietor with no
+government business registry entry) requires a document showing BOTH the legal name entered AND
+the specific phone number, in one of a fixed few categories (Business registration/licence,
+Business tax document, Certificate of incorporation, Utility bill — no "bank statement" option
+here specifically, unlike the earlier name-verification step). The owner has **no bills or
+accounts of his own** — his phone line ([מספר טלפון הוסתר]) is registered to his father ([שם הוסתר]) at
+Pelephone, confirmed live via the actual bill PDF and a real Pelephone WhatsApp support chat: full
+"עברת בעלות" (ownership transfer) is the only path they offer, and it unconditionally requires the
+new owner's own payment method — no partial "keep dad's card as third-party billing" option was
+available on request. Explicitly refused, on his own initiative, to forge/edit the existing
+Pelephone bill to swap the name — real document fraud, both a permanent WhatsApp Business ban risk
+and a real legal exposure, regardless of how "minor" the edit felt to him.
+
+**The way out, found via Meta's own "Ask AI" assistant on the verification page** (after two
+follow-up prompts — the first answer was generic and about address verification, not phone):
+alongside the document-based methods, Meta also offers **Domain verification** — "Use your
+existing domain to verify your business," no document needed at all if the domain itself is
+verified in Business Manager first. Tried it immediately against the free `todira.duckdns.org` —
+**hard blocked**: "You can only verify the root domain (example.com), not a subdomain." DuckDNS's
+root domain (`duckdns.org`) is owned by DuckDNS itself, shared across thousands of free users — a
+subdomain under it, however long-lived, structurally can never qualify.
+
+**Decision, made live with the owner**: buy a real root domain specifically to unlock this path —
+`todira.app` via Porkbun, **$8.75 first year / $14.93/yr renewal** (chosen over `.dev`/`.org`/`.me`
+etc. after comparing renewal-year pricing, not just year-1 promos, and over `.org` specifically —
+$11.84/yr renewal, actually cheaper — because ".app" reads unambiguously as "this is an app" to a
+non-technical visitor, worth the ~$3/yr difference per the owner's own call: "3 דולר לשנה זה 9 שקל
+נראה לי אסחב את זה"). `todira.com` was checked first and found unavailable (expired, sitting in a
+Dynadot aftermarket auction, not simply purchasable). WHOIS privacy came free with the
+registration — the owner's real name/address/phone entered on Porkbun's signup form are not
+publicly exposed.
+
+**What shipped, in order** (all via the owner driving the browser, this session narrating +
+pushing the actual code):
+1. DNS: an A record for `todira.app` → `13.50.115.61` (the same EC2 public IP `todira.duckdns.org`
+   already pointed at) — added directly in Porkbun's own DNS panel after first **deleting all 6 of
+   Porkbun's own default parking-page records** (`192.0.79.x` A records + `_acme-challenge` TXT
+   records, none of which serve us) to avoid a stale-IP conflict. Propagated instantly (confirmed
+   via `getent hosts` from this sandbox).
+2. `charts/todira/values.yaml`'s `website.domain` → `todira.app` (PR #172) — the chart's one real
+   source of truth, templated into Caddy's Caddyfile and the bot/website/scraper pods'
+   `WEBSITE_URL` env var. Matching hardcoded fallback defaults updated in `bot/config.py`,
+   `website/main.py`, `website/whatsapp_webhook.py`, `scraper/notifier.py`, `.env.example`, and
+   test fixtures. 552 tests still passed.
+3. **Found and fixed a real, second infrastructure bug the moment the deploy above landed**:
+   `https://todira.app` came back `ERR_SSL_PROTOCOL_ERROR` — a diagnostic pull of Caddy's own logs
+   (`diagnose-website-webhook.yaml`, already built for a different incident, reused here) showed
+   zero mention of `todira.app` at all, only routine renewal chatter for the old domain. Root
+   cause, same bug CLASS as the 2026-09-06 `WHATSAPP_PHONE_NUMBER_ID` incident already documented
+   above: `caddy-deployment.yaml`'s pod template never changes between deploys (`caddy:2.8-alpine`
+   is a fixed tag, unlike the bot/website images tagged by git SHA), so Kubernetes had no reason to
+   recreate the Caddy Pod even though the mounted Caddyfile ConfigMap's *content* correctly
+   changed — kubelet does sync the new file onto disk inside the still-running container, but
+   `caddy run` doesn't watch/reload it on its own. **Fixed** (PR #173) with the same
+   `checksum/<template>` annotation pattern already proven on `bot-deployment.yaml`/
+   `website-deployment.yaml`, now also on `caddy-deployment.yaml`, hashing
+   `caddy-configmap.yaml`'s rendered content — closes this bug class for good, for any future
+   Caddyfile change, not just this one. Confirmed working immediately: the very next diagnostic
+   pull showed Caddy's Pod actually recreated (`Scaled up replica set todira-caddy-77b46c4749`)
+   and a real Let's Encrypt cert obtained on the spot (`"msg":"certificate obtained successfully",
+   "identifier":"todira.app"`). Owner confirmed `https://todira.app` loads correctly in a real
+   browser.
+4. Manual, account-level updates (owner's own hands, this session narrating each exact field):
+   Google Cloud Console OAuth Client — added `https://todira.app` (JS origin) and
+   `https://todira.app/auth/google/callback` (redirect URI) **alongside**, not replacing, the old
+   `todira.duckdns.org` entries (zero-risk transition — both keep working). Meta App Dashboard →
+   WhatsApp → Step 2 → Configure Webhooks — Callback URL updated to
+   `https://todira.app/webhook/whatsapp` (re-entering the existing Verify token, which Meta
+   requires on any Callback URL change — the owner had it saved). Meta App Settings → Basic →
+   Privacy policy URL updated to match. Takbull dashboard (`api-setting` → "אוטומציה" → Webhook,
+   **not** the unrelated, empty, per-payment-page "מתקדם" tab webhook section that looked similar
+   at a glance) — URL's domain swapped, the secret path token after it left untouched.
+5. **Added the `facebook-domain-verification` meta tag** (PR #174) to `website/templates/
+   base.html`'s `<head>`, site-wide (present on every page, satisfying Meta's "must be on the home
+   page" requirement) — the exact value Meta's own Business Settings → Domains → "Add a meta-tag"
+   flow generated for `todira.app`. Verified live via `view-source:` before telling the owner to
+   click Verify. **`todira.app` is now a Verified domain in Meta Business Manager.**
+6. Returned to WhatsApp Business Verification Step 3, resubmitted, chose "Domain verification" —
+   Meta's own dialog confirmed "The domain below has been verified" with `todira.app` pre-checked.
+   Submitted. **Status: "Thanks for submitting your info... about two working days to review."**
+   Business Verification itself is NOT yet approved — that's Meta's own review queue now, not
+   blocked on anything from our side.
+
+**Also fixed in passing, unrelated to the domain saga**: while looking at Takbull's webhook config
+tonight, the owner reached UPAY (the underlying card-processing module Takbull uses) via their own
+support chat about the earlier-paid ₪99 setup fee — UPAY confirmed **no further payment is
+needed** (the ₪99 already covers it), but still need the owner to send them his עוסק פטור
+document plus a signature/form to actually activate the processing terminal. **Not done yet, a
+real open item** — see below.
+
+**Explicitly NOT done tonight, real remaining open items for whoever picks this up next**:
+- **UPAY**: owner still needs to send them documents + a signature (עוסק פטור certificate at
+  minimum, whatever else their form asks for) via the same WhatsApp support chat, to actually
+  activate Takbull's payment terminal. Nothing code-side is blocked on this — `website/main.py`'s
+  Takbull path is already built and dormant exactly as documented in the 2026-09-06 entry above.
+- **Takbull real-payment test**: still blocked on the above (UPAY terminal not active) — the
+  `processOrder` JS crash / "לא קיים מספר סודר" errors documented in the 2026-09-06 entries above
+  are a direct symptom of this same missing-terminal state, not a separate bug.
+- **The TEMPORARY ₪1 weekly-plan price** (`common/dorin_common/access.py`, commit `c6fafd8`,
+  flagged repeatedly in the 2026-09-06 entries) is STILL live and STILL not reverted — revert both
+  the code and Takbull's own product config back to ₪15 once a real end-to-end payment actually
+  completes through the now-fixed webhook.
+- **Meta WhatsApp Business Verification**: submitted, pending Meta's own review (~2 business days
+  per their own estimate as of this writing) — check back on it, no action needed from this side
+  unless it's rejected.
+- **Bright Data Stage 2 investigation** (see the entry directly above this one): still exactly
+  where it was left — the `window.__NEXT_DATA__` Parser-code fix was proven wrong (no `window` in
+  that execution context), the next diagnostic (report `raw_length` + first/last 300 chars of the
+  captured `__NEXT_DATA__` script tag, to confirm/rule out truncation) was written up but never
+  actually run due to the domain saga taking over the rest of the session. Pick this back up next.
+- A stray, harmless loose end: `todira.duckdns.org` itself was never touched (DNS still resolves,
+  nothing points AWAY from it) — it's simply no longer referenced anywhere in code or in any of the
+  external account configs updated tonight. Fine to leave as a dormant fallback indefinitely, or
+  let it lapse whenever DuckDNS's own free-tier inactivity rules would drop it (not urgent either
+  way).
