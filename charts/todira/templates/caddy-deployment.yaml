@@ -27,6 +27,18 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}-caddy
+      annotations:
+        # Same class of bug as bot-deployment.yaml/website-deployment.yaml's own checksum
+        # annotation (see those files' comments for the full incident writeup) — found live
+        # 2026-09-07 while switching website.domain from todira.duckdns.org to todira.app: this
+        # Deployment's own container image tag (caddy:2.8-alpine) never changes between deploys,
+        # so Kubernetes had no reason to recreate the Pod even though the mounted Caddyfile
+        # ConfigMap's CONTENT changed underneath it — kubelet does sync the new file onto disk
+        # inside the still-running container, but `caddy run` never watches/reloads it on its
+        # own, so the process kept serving the OLD Caddyfile (old domain only) indefinitely. This
+        # annotation forces a real Pod recreation any time the Caddyfile's rendered content
+        # changes, not just when the image tag does.
+        checksum/caddy-config: {{ include (print $.Template.BasePath "/caddy-configmap.yaml") . | sha256sum }}
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
