@@ -294,6 +294,29 @@ class SimpleNamespaceFilter:
     price_max = None
 
 
+def test_apartments_listing_photos_have_real_alt_text(client):
+    # Found live 2026-09-07: every cover photo had alt="" regardless of whether it was a real
+    # Yad2 photo or the decorative Todi-illustration fallback — a screen-reader user got zero
+    # information about what a card's actual photos showed.
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listing = _FakeListing(id=1)
+    listing.image_urls = ["https://img.example/1.jpg"]
+    listing.city = "חיפה"
+    listing.rooms = 3
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'alt=""' not in resp.text
+    assert "חיפה" in resp.text
+    assert 'alt="' in resp.text
+
+
 def test_apartments_scopes_the_listings_query_by_filter_city_and_deal_type(client):
     # Found live 2026-09-07: /apartments used to look at only the 200 most-recently-scraped
     # listings across EVERY city/deal_type before filtering, so a narrow filter for one specific

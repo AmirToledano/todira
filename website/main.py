@@ -59,7 +59,7 @@ from fastapi import FastAPI, Form, Request
 
 import grow_client
 import takbull_client
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, select
@@ -350,6 +350,51 @@ def home(request: Request):
     longer reflects the real entry points, found live by the owner comparing the page to the
     current product."""
     return _render(request, "home.html", {"whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER})
+
+
+@app.get("/robots.txt")
+def robots_txt(request: Request) -> PlainTextResponse:
+    """No robots.txt at all before this (2026-09-07 audit) meant crawlers had no signal to stay
+    out of personalized/behind-auth pages (a search result linking straight into someone's own
+    /apartments?uid=... would be both useless to searchers and a minor privacy smell) and no
+    pointer to sitemap.xml for the pages that ARE worth indexing."""
+    disallowed = (
+        "/admin",
+        "/account",
+        "/apartments",
+        "/liked",
+        "/hidden",
+        "/upgrade",
+        "/filter",
+        "/webhooks",
+        "/auth",
+        "/preview",
+        "/react",
+    )
+    lines = ["User-agent: *"]
+    lines += [f"Disallow: {path}" for path in disallowed]
+    lines.append("")
+    lines.append(f"Sitemap: {request.base_url}sitemap.xml")
+    return PlainTextResponse("\n".join(lines))
+
+
+# Public, unauthenticated, content pages worth a search engine indexing — kept in sync by hand
+# since the set of genuinely public marketing/legal pages changes rarely; every one of these
+# already renders in all 5 languages via base.html's own hreflang alternates (added alongside
+# this), so the sitemap itself only needs to list each page once, not once per language.
+_SITEMAP_PATHS = ("/", "/login", "/contact", "/terms", "/privacy", "/accessibility")
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml(request: Request) -> Response:
+    urls = "".join(
+        f"<url><loc>{request.base_url}{path.lstrip('/')}</loc></url>" for path in _SITEMAP_PATHS
+    )
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
+    )
+    return Response(content=body, media_type="application/xml")
 
 
 @app.get("/login")
