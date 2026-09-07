@@ -47,6 +47,9 @@ class _FakeUser:
 
 
 class _FakeFilter:
+    deal_type = None
+    cities: list[str] = []
+
     def __init__(self, no_brokers=False):
         self.no_brokers = no_brokers
 
