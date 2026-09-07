@@ -27,6 +27,7 @@ import asyncio
 
 from dorin_common import cities, gemini_client
 from dorin_common.db import get_session
+from dorin_common.matching import safe_range_update
 from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
 from handlers.support import escalate_to_owner, looks_like_help_request
@@ -62,16 +63,23 @@ def _apply_filter_change_sync(user_id: int, result: dict) -> None:
         for key in ("deal_type", "cities", "keywords"):
             if key in result:
                 setattr(filter_row, key, result[key])
-        if "rooms_min" in result:
-            filter_row.rooms_min = result["rooms_min"]
-        if "rooms_max" in result:
-            filter_row.rooms_max = result["rooms_max"]
-        if "price_min" in result:
-            price_min = result["price_min"]
-            filter_row.price_min = int(price_min) if price_min is not None else None
-        if "price_max" in result:
-            price_max = result["price_max"]
-            filter_row.price_max = int(price_max) if price_max is not None else None
+        # safe_range_update refuses to write an inverted min>max range — Gemini decides both
+        # sides here from freeform text, not a structured menu, so there's no re-prompt available
+        # to catch a garbled range before it's saved (see that function's own docstring; found
+        # live 2026-09-07 — an inverted range hard-fails every listing forever, silently).
+        if "rooms_min" in result or "rooms_max" in result:
+            filter_row.rooms_min, filter_row.rooms_max = safe_range_update(
+                filter_row.rooms_min, filter_row.rooms_max,
+                result.get("rooms_min"), result.get("rooms_max"),
+            )
+        if "price_min" in result or "price_max" in result:
+            price_min = result.get("price_min")
+            price_max = result.get("price_max")
+            filter_row.price_min, filter_row.price_max = safe_range_update(
+                filter_row.price_min, filter_row.price_max,
+                int(price_min) if price_min is not None else None,
+                int(price_max) if price_max is not None else None,
+            )
         session.commit()
 
 

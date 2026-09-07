@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dorin_common.matching import evaluate
+from dorin_common.matching import evaluate, safe_range_update
 
 
 def make_filter(**overrides):
@@ -526,3 +526,32 @@ def test_flexible_match_true_still_rejects_two_mandatory_failures():
     )
     assert result.matched is False
     assert set(result.failed_mandatory_criteria) == {"elevator", "balcony"}
+
+
+# --- safe_range_update (2026-09-07) — used by the free-chat filter-editing paths
+# (bot/handlers/contact_fallback.py, website/whatsapp_webhook.py) where Gemini decides both sides
+# of a min/max range from freeform text with no structured re-prompt available to catch a garbled
+# range before it's saved.
+
+
+def test_safe_range_update_applies_a_coherent_new_range():
+    assert safe_range_update(1, 3, 2, 4) == (2, 4)
+
+
+def test_safe_range_update_rejects_an_inverted_new_range_keeps_old_values():
+    # An inverted range would hard-fail every listing forever (matching._in_range can never be
+    # satisfied once lo > hi) - refusing it entirely, not applying either side, is the safe choice.
+    assert safe_range_update(1, 5, 6, 2) == (1, 5)
+
+
+def test_safe_range_update_checks_against_the_existing_unchanged_side():
+    # Only rooms_max is being updated here; rooms_min (2) stays as-is - a proposed max of 1 would
+    # make the EFFECTIVE range (2, 1) invalid even though the max update alone "looks" plausible.
+    assert safe_range_update(2, 4, None, 1) == (2, 4)
+    # ...but a proposed max of 3 is still >= the untouched min of 2, so it's applied.
+    assert safe_range_update(2, 4, None, 3) == (2, 3)
+
+
+def test_safe_range_update_allows_one_sided_range():
+    assert safe_range_update(None, None, 5, None) == (5, None)
+    assert safe_range_update(None, None, None, 10) == (None, 10)
