@@ -375,17 +375,29 @@ def _process_payload_sync(payload: dict) -> None:
     receive_webhook is the fix for the slow-reply/duplicate-reply bug: Meta's own retry no longer
     has anything to race, because the ack no longer waits on any of this."""
     try:
-        for entry in payload.get("entry", []):
-            for change in entry.get("changes", []):
-                value = change.get("value", {})
-                messages = value.get("messages")
-                if not messages:
-                    continue  # a delivery/read status update, not an incoming message
-                contacts = {
-                    c.get("wa_id"): (c.get("profile") or {}).get("name")
-                    for c in value.get("contacts", [])
-                }
-                for message in messages:
+        entries = payload.get("entry", [])
+    except AttributeError:
+        logger.exception("Malformed WhatsApp webhook payload shape")
+        return
+
+    for entry in entries:
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            messages = value.get("messages")
+            if not messages:
+                continue  # a delivery/read status update, not an incoming message
+            contacts = {
+                c.get("wa_id"): (c.get("profile") or {}).get("name")
+                for c in value.get("contacts", [])
+            }
+            for message in messages:
+                # Found live 2026-09-07: this used to be ONE try/except around the entire batch —
+                # a real webhook delivery can carry several senders' messages at once (Meta
+                # batches them), so one message that happens to blow up (a malformed shape, a
+                # DB hiccup for that one user) aborted every OTHER message in the same batch too,
+                # silently dropping unrelated users' messages. Scoped per-message so a single
+                # failure only ever costs that one message.
+                try:
                     wa_id = message.get("from")
                     if not wa_id:
                         continue
@@ -401,8 +413,12 @@ def _process_payload_sync(payload: dict) -> None:
                         _fire_typing_indicator(message["id"])
                     text = (message.get("text") or {}).get("body", "")
                     _handle_incoming_text_sync(wa_id, contacts.get(wa_id), text)
-    except Exception:
-        logger.exception("Error processing WhatsApp webhook payload")
+                except Exception:
+                    logger.exception(
+                        "Error processing one WhatsApp message in the batch (id=%s) — "
+                        "continuing with the rest of the batch",
+                        message.get("id"),
+                    )
 
 
 @router.post("/webhook/whatsapp")
