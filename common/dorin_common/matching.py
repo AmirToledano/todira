@@ -71,12 +71,12 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
     # way regardless, since it's a one-line cost and the whole point is not re-discovering this bug
     # per field.
     if filter_row.neighborhoods_include:
-        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood}")
+        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood or ''}")
         wanted = {normalize_spelling(s) for s in filter_row.neighborhoods_include}
         if key not in wanted:
             failed.append("neighborhood_include")
     if filter_row.neighborhoods_exclude:
-        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood}")
+        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood or ''}")
         excluded = {normalize_spelling(s) for s in filter_row.neighborhoods_exclude}
         if key in excluded:
             failed.append("neighborhood_exclude")
@@ -119,8 +119,15 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
         if listing_row.size_sqm is None or listing_row.size_sqm < filter_row.min_area_sqm:
             failed.append("min_area_sqm")
 
-    if filter_row.keywords:
-        description = (listing_row.description or "").lower()
+    if filter_row.keywords and listing_row.description:
+        # An unpopulated description gets the benefit of the doubt (never fails), same treatment
+        # as property_type/amenities elsewhere in this file — found live 2026-09-07: the free
+        # "photos-for-free" feed enrichment doesn't carry a description at all, and the only place
+        # that ever sets Listing.description (scraper/notifier.py) runs AFTER evaluate() is called
+        # on that same listing, so it can never rescue a keyword match either. Without this, any
+        # filter with a keyword set matched zero listings, always — the exact same bug class as
+        # the 2026-09-02 property_type/amenities incident, just for a field nobody had audited yet.
+        description = listing_row.description.lower()
         # "match any" interpretation of keyword search — a documented v1 choice
         if not any(kw.lower() in description for kw in filter_row.keywords):
             failed.append("keywords")

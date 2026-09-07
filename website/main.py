@@ -37,6 +37,7 @@ import asyncio
 import datetime as dt
 import hashlib
 import hmac
+import html
 import logging
 import os
 import secrets
@@ -156,15 +157,19 @@ def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: in
     the caller before this runs)."""
     if not TELEGRAM_BOT_TOKEN or not OWNER_TELEGRAM_USER_ID:
         return False
+    # name/email/message are all attacker-controlled (anyone can submit the /contact form) —
+    # escaped before going into an HTML-parsed Telegram message so they can't break the owner
+    # notification's formatting or inject a fake link/tag into what the owner reads as trusted
+    # app text. Found live 2026-09-07, same bug class fixed in whatsapp_webhook.py/support.py.
     lines = ["📬 <b>הודעה חדשה מהאתר (טודירה)</b>"]
     if name:
-        lines.append(f"שם: {name}")
+        lines.append(f"שם: {html.escape(name)}")
     if email:
-        lines.append(f"אימייל: {email}")
+        lines.append(f"אימייל: {html.escape(email)}")
     if telegram_user_id:
         lines.append(f"Telegram user ID: {telegram_user_id}")
     lines.append("")
-    lines.append(message)
+    lines.append(html.escape(message))
     try:
         resp = httpx.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -1371,11 +1376,31 @@ async def webhooks_takbull(request: Request, secret: str):
         # manual reconciliation via /admin/users, same conservative stance as an unrecognized
         # payload above.
         order_total = body.get("OrderTotalSum")
-        if order_total is not None and int(order_total) != payment.amount_ils:
+        try:
+            # OrderTotalSum can plausibly arrive as a decimal string (e.g. "40.00") even though
+            # every example seen so far has been a clean int — int("40.00") raises ValueError, and
+            # this used to crash unhandled here (a real 500) instead of failing safe like every
+            # other suspicious-payload case on this endpoint. A field that's present but can't be
+            # parsed is treated the same as one that doesn't match: leave pending.
+            order_total_matches = order_total is not None and int(order_total) == payment.amount_ils
+        except (TypeError, ValueError):
+            order_total_matches = False
+        if order_total is not None and not order_total_matches:
             logger.warning(
                 "Takbull webhook for payment_id=%s reported OrderTotalSum=%r but the payment was "
                 "for ₪%s — leaving pending rather than guessing which plan to grant",
                 payment.id, order_total, payment.amount_ils,
+            )
+            return Response(status_code=200)
+        if order_total is None:
+            # Takbull's own documented order-success payload always includes OrderTotalSum (see
+            # this function's own docstring) — a payload missing it entirely is itself suspicious
+            # rather than something to silently trust our own pre-recorded amount for, same
+            # conservative stance as a mismatched amount above.
+            logger.warning(
+                "Takbull webhook for payment_id=%s had no OrderTotalSum at all — leaving pending "
+                "rather than trusting our own pre-recorded amount unconditionally",
+                payment.id,
             )
             return Response(status_code=200)
 

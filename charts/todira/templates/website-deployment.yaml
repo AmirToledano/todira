@@ -22,6 +22,11 @@ spec:
         # -running Pod — it kept serving requests with whatever env vars it read at its ORIGINAL
         # boot time, oblivious to the Secret object changing underneath it.
         checksum/bot-secret: {{ include (print $.Template.BasePath "/bot-secret.yaml") . | sha256sum }}
+        # DATABASE_URL below also comes from a secretKeyRef, but from postgres-secret.yaml, not
+        # bot-secret.yaml — the annotation above never covers it, so a rotated postgres password
+        # would hit the exact same "Pod never restarts" bug this comment describes. Found missing
+        # 2026-09-07; fixed here and in postgres-deployment.yaml itself.
+        checksum/postgres-secret: {{ include (print $.Template.BasePath "/postgres-secret.yaml") . | sha256sum }}
     spec:
       containers:
         - name: website

@@ -40,6 +40,11 @@ spec:
         # kept replying from the OLD number for another 30+ minutes, because its running Pod was
         # never actually restarted despite Helm reporting success both times.
         checksum/bot-secret: {{ include (print $.Template.BasePath "/bot-secret.yaml") . | sha256sum }}
+        # DATABASE_URL below also comes from a secretKeyRef, but from postgres-secret.yaml, not
+        # bot-secret.yaml — the annotation above never covers it, so a rotated postgres password
+        # would hit the exact same "Pod never restarts" bug this comment describes. Found missing
+        # 2026-09-07; fixed here and in postgres-deployment.yaml itself.
+        checksum/postgres-secret: {{ include (print $.Template.BasePath "/postgres-secret.yaml") . | sha256sum }}
     spec:
       containers:
         - name: bot

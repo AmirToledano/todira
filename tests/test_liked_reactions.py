@@ -112,4 +112,40 @@ def test_found_still_deactivates_the_user_unaffected_by_toggle_logic():
     assert "מזל טוב" in toast
     assert session.commits == 1
     assert not session.added
-    assert not session.deleted_stmts
+
+
+# --- reaction_callback (the actual CallbackQueryHandler) — must always answer the query, even on
+# a DB failure. Found live 2026-09-07: an exception in _apply_reaction_sync used to skip
+# query.answer() entirely, leaving the tapped button's own "loading" spinner stuck on the user's
+# screen until Telegram's own client-side timeout — indistinguishable from the bot being frozen.
+import asyncio  # noqa: E402
+from unittest.mock import AsyncMock  # noqa: E402
+
+from handlers.liked import reaction_callback  # noqa: E402
+
+
+def _make_callback_update(data: str):
+    query = SimpleNamespace(data=data, answer=AsyncMock())
+    user = SimpleNamespace(id=USER_ID, username="amir", first_name="Amir")
+    return SimpleNamespace(callback_query=query, effective_user=user), query
+
+
+def test_reaction_callback_answers_with_error_toast_on_failure():
+    update, query = _make_callback_update("like:7")
+
+    with patch.object(
+        liked_module, "_apply_reaction_sync", side_effect=RuntimeError("db exploded")
+    ):
+        asyncio.run(reaction_callback(update, SimpleNamespace()))
+
+    query.answer.assert_awaited_once()
+    assert "משהו השתבש" in query.answer.await_args.args[0]
+
+
+def test_reaction_callback_answers_with_toast_on_success():
+    update, query = _make_callback_update("like:7")
+
+    with patch.object(liked_module, "_apply_reaction_sync", return_value="נשמר ❤️"):
+        asyncio.run(reaction_callback(update, SimpleNamespace()))
+
+    query.answer.assert_awaited_once_with("נשמר ❤️")

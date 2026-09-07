@@ -143,6 +143,25 @@ def test_notify_owner_sync_posts_to_telegram_when_configured():
     assert "hi" in call_kwargs["json"]["text"]
 
 
+def test_notify_owner_sync_escapes_html_in_submitted_fields():
+    # Found live 2026-09-07: name/email/message are all attacker-controlled (anyone can submit
+    # /contact) and were going straight into a parse_mode=HTML Telegram message unescaped.
+    class _FakeResponse:
+        status_code = 200
+
+    with patch.object(website_main, "TELEGRAM_BOT_TOKEN", "fake-token"), patch.object(
+        website_main, "OWNER_TELEGRAM_USER_ID", "999"
+    ), patch.object(website_main.httpx, "post", return_value=_FakeResponse()) as post:
+        website_main._notify_owner_sync(
+            "<b>Amir</b>", "a@b.com", "hello <script>alert(1)</script> & bye", 1
+        )
+
+    text = post.call_args.kwargs["json"]["text"]
+    assert "<script>" not in text
+    assert "&lt;script&gt;" in text
+    assert "&lt;b&gt;Amir&lt;/b&gt;" in text
+
+
 def test_notify_owner_sync_never_raises_on_network_error():
     import httpx
 
