@@ -743,6 +743,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Si cela semble étrange — c'est très probablement parce que la collecte des annonces est encore en construction, pas un problème avec votre filtre. Réessayez bientôt.",
         "ar": "إذا بدا هذا غريبًا — فالسبب على الأرجح أن جمع الإعلانات ما زال قيد الإنشاء، وليس مشكلة في فلترك. حاول مجددًا قريبًا.",
     },
+    # Announced via an aria-live region when infinite scroll loads another batch (2026-09-07 audit
+    # fix) — without this, a screen-reader user got zero indication that new listings had appeared
+    # below the ones they'd already heard, since the new cards are inserted silently by JS with no
+    # page navigation to re-announce anything.
+    "apartments.more_loaded_announcement": {
+        "he": "{count} דירות נוספות נטענו",
+        "en": "{count} more apartments loaded",
+        "ru": "Загружено ещё {count} квартир",
+        "fr": "{count} appartements supplémentaires chargés",
+        "ar": "تم تحميل {count} شقق إضافية",
+    },
     # ---------- liked page ----------
     "liked.title": {
         "he": "דירות שמורות ❤️", "en": "Saved apartments ❤️", "ru": "Сохранённые квартиры ❤️",
