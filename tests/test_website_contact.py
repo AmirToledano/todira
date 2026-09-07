@@ -85,6 +85,25 @@ def test_contact_get_renders_form(client):
     assert 'action="/contact"' in resp.text
 
 
+def test_contact_page_offers_whatsapp_alongside_telegram_when_configured(client):
+    # Found live 2026-09-07: /contact's "other ways to reach us" section only offered Telegram,
+    # despite the product having a WhatsApp bot since 2026-09-06.
+    with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", "972500000000"):
+        resp = client.get("/contact")
+
+    assert resp.status_code == 200
+    assert "https://t.me/AmirDirotBot" in resp.text
+    assert "wa.me/972500000000" in resp.text
+
+
+def test_contact_page_hides_whatsapp_link_when_not_configured(client):
+    with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", ""):
+        resp = client.get("/contact")
+
+    assert resp.status_code == 200
+    assert "wa.me/" not in resp.text
+
+
 def test_contact_post_saves_message_and_redirects(client, fake_session):
     with patch.object(website_main, "_notify_owner_sync", return_value=True) as notify:
         resp = client.post(
