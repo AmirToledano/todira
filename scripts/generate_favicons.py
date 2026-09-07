@@ -1,49 +1,66 @@
 """One-off asset generator — NOT run at deploy/runtime, only when the favicon needs regenerating.
 
-**Round 3, same day (2026-09-07)** — the actual final design, replacing both earlier approaches:
-1. A tight photographic crop of Todi's crown+face (from `todira-brand.webp`) — looked fine as a
-   plain square favicon, but read as "a square photo forced into a circle" against Chrome's New
-   Tab shortcuts tile, which clips favicons into a circle.
-2. The same crop with its background removed (`rembg`) — fixed the circle-clipping mismatch, but
-   the owner's own side-by-side screenshot against GitHub's tab favicon showed the real remaining
-   problem: a detailed, photographic, brown-toned dog face simply doesn't hold up at 16x16/32x32
-   the way a bold, high-contrast graphic mark (GitHub's Octocat silhouette, Drive's colored
-   triangle) does — fine detail and soft photo edges disappear or blur into mush at that scale,
-   which is exactly what a real favicon has to survive most of the time.
+**Round 4, same day (2026-09-07) — back to the real photo, done properly this time.** The full
+history, so nobody re-litigates it from scratch:
+1. A loose photographic crop (crown+face+cape) with the source photo's own opaque beige
+   background — looked fine as a plain square favicon, but read as "a square photo forced into a
+   circle" against Chrome's New Tab shortcuts tile, which clips favicons into a circle.
+2. Same crop, background removed (rembg) — fixed the circle-clipping mismatch, but the owner's own
+   side-by-side screenshot against GitHub's tab favicon showed a real remaining problem: the crop
+   was too LOOSE (lots of ear/cape/dead space diluting the subject) and too soft after a plain
+   LANCZOS downsample — fine photographic detail and low local contrast just doesn't survive
+   getting shrunk to 16-32px the way a bold graphic mark does.
+3. A simplified flat geometric crown icon (no photo at all) — legible at every size, but the owner
+   flatly didn't like the result ("הכתר לא משהו בכלל") and asked to go back to the real photo,
+   just made to actually look good this time — not defaulting to a generic icon because the photo
+   is hard to get right.
+4. **This version**: same idea as round 2 (photo, background removed) but with three real fixes,
+   not just a redo:
+   - **Tighter crop** — crown-to-collar only, cropped in from the SIDES too (not just top/bottom),
+     so the ears touch the frame edges and there's no dead background space diluting the subject
+     at small size. Confirmed by simulating both a plain square favicon and a circular Chrome tile
+     with this crop before committing to it — the crown no longer gets crowded/cut and the ears
+     fill the circle's sides naturally instead of floating in empty space.
+   - **Contrast + saturation boost** (`ImageEnhance`, +15% contrast / +25% saturation) — real
+     photographic tonal transitions are subtle by design (a professional pet-photography shoot),
+     which reads as ideal at full size but turns to indistinct mush once shrunk to 16px; boosting
+     both before downsampling gives the resize algorithm more separated tones to preserve.
+   - **Unsharp-mask sharpening AFTER each resize**, not before — LANCZOS downsampling has a
+     softening effect on its own that boosting the source alone doesn't fix; sharpening applied at
+     the FINAL small size (not the large source) is what actually recovers crisp edges at 16x16/
+     32x32. Verified by comparing sharpened vs. unsharpened 16px/32px output side by side on both
+     light and dark backgrounds before shipping — the sharpened version reads noticeably clearer
+     in both.
 
-**The fix**: stop using a photograph at all. This script now draws a genuinely simple, flat
-GEOMETRIC crown icon from scratch (three bold triangular points + a band, in the site's own brand
-gold `--gold`/`--gold-light` on a solid `--teal` circle) — the same crown-as-icon idea the brand
-already leans on everywhere else (👑 in the bot's own branding), just rendered as clean vector
-shapes instead of extracted from a real photo. Vector shapes with strong color contrast survive
-downsampling to 16x16 the way fine photographic detail never can — rendered at 1024x1024 and
-downsampled with LANCZOS, verified legible at both 16x16 and 32x32 (crown shape clearly readable
-at both) before shipping.
+`apple-touch-icon.png` again gets its own opaque-background treatment (flattened onto the same
+beige as the original photo's own backdrop) rather than transparency, since iOS is known to render
+a transparent apple-touch-icon with an ugly solid-black fill on the home screen instead of
+compositing it properly.
 
-Two output shapes, for two different real constraints:
-- The regular favicon/manifest icons keep the crown on a transparent-cornered CIRCLE — this reads
-  correctly however different contexts mask it (Chrome's circular shortcuts tile, a square browser
-  tab, Android's own adaptive-icon masking).
-- `apple-touch-icon.png` fills the ENTIRE square with solid teal (no transparency, no pre-baked
-  circle) — iOS applies its own rounded-square mask and is known to render a transparent
-  apple-touch-icon with an ugly solid-black fill, so this one deliberately doesn't pre-mask itself
-  at all and just trusts iOS's own masking, per Apple's own documented convention for this file.
-
-Requires only Pillow (`pip install pillow`) — no photo processing, no rembg/onnxruntime needed
-for this version.
+Requires Pillow + rembg (`pip install pillow rembg onnxruntime`) — not project dependencies, only
+needed to run this script. rembg's model (~1GB) downloads on first use.
 """
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageEnhance, ImageFilter
+from rembg import remove
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "website" / "static"
+SOURCE = STATIC_DIR / "todira-brand.webp"
 
-TEAL = (14, 138, 130, 255)  # --teal
-GOLD = (217, 164, 65, 255)  # --gold
-GOLD_LIGHT = (236, 201, 120, 255)  # --gold-light
+# Tight crop box (left, top, right, bottom) on the 1184x1895 source — crown through collar, in
+# from the sides too so the ears touch the frame edges (see the module docstring's "Tighter crop"
+# note for why this matters at small favicon sizes).
+CROP_BOX = (100, 0, 1100, 1000)
 
-MASTER_SIZE = 1024
+CONTRAST_FACTOR = 1.15
+SATURATION_FACTOR = 1.25
+
+# Background color to flatten the (iOS-only) opaque apple-touch-icon onto — matches the original
+# photo's own beige studio backdrop, so it still reads as intentional, not a black square.
+APPLE_TOUCH_ICON_BG = (230, 219, 201)
+
 TRANSPARENT_PNG_SIZES = {
     "favicon-16x16.png": 16,
     "favicon-32x32.png": 32,
@@ -54,43 +71,46 @@ ICO_SIZES = [(16, 16), (32, 32), (48, 48)]
 APPLE_TOUCH_ICON_SIZE = 180
 
 
-def _draw_crown(size: int, *, circular_bg: bool) -> Image.Image:
-    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    if circular_bg:
-        d.ellipse((0, 0, size, size), fill=TEAL)
-    else:
-        d.rectangle((0, 0, size, size), fill=TEAL)
+def _boosted_cutout() -> Image.Image:
+    im = Image.open(SOURCE)
+    crop = im.crop(CROP_BOX)
+    cutout = remove(crop).convert("RGBA")
 
-    s = size
-    band_top, band_bottom = s * 0.58, s * 0.72
-    band_left, band_right = s * 0.20, s * 0.80
-    d.rectangle([band_left, band_top, band_right, band_bottom], fill=GOLD)
+    rgb = ImageEnhance.Contrast(cutout.convert("RGB")).enhance(CONTRAST_FACTOR)
+    rgb = ImageEnhance.Color(rgb).enhance(SATURATION_FACTOR)
+    r, g, b = rgb.split()
+    _, _, _, a = cutout.split()
+    return Image.merge("RGBA", (r, g, b, a))
 
-    points_base_y = band_top + 1
-    tip_y, mid_tip_y = s * 0.22, s * 0.12  # center point taller than the two side points
-    d.polygon([(band_left, points_base_y), (s * 0.34, points_base_y), (s * 0.27, tip_y)], fill=GOLD)
-    d.polygon([(s * 0.40, points_base_y), (s * 0.60, points_base_y), (s * 0.50, mid_tip_y)], fill=GOLD)
-    d.polygon([(s * 0.66, points_base_y), (band_right, points_base_y), (s * 0.73, tip_y)], fill=GOLD)
 
-    jewel_r = s * 0.045
-    for jx, jy in [(s * 0.27, tip_y), (s * 0.50, mid_tip_y), (s * 0.73, tip_y)]:
-        d.ellipse((jx - jewel_r, jy - jewel_r, jx + jewel_r, jy + jewel_r), fill=GOLD_LIGHT)
-
-    d.rectangle([band_left, band_top, band_right, band_top + (band_bottom - band_top) * 0.25], fill=GOLD_LIGHT)
-    return im
+def _resize_sharp(im: Image.Image, size: int) -> Image.Image:
+    # Sharpen AFTER resizing — this is what actually recovers crispness at the final small size,
+    # not sharpening the large source beforehand (LANCZOS's own softening happens during the
+    # resize itself, so there's nothing yet to sharpen until after it).
+    small = im.resize((size, size), Image.LANCZOS)
+    return small.filter(ImageFilter.UnsharpMask(radius=1, percent=150, threshold=2))
 
 
 def main() -> None:
-    circular_master = _draw_crown(MASTER_SIZE, circular_bg=True)
-    for name, target_size in TRANSPARENT_PNG_SIZES.items():
-        circular_master.resize((target_size, target_size), Image.LANCZOS).save(STATIC_DIR / name)
-    circular_master.save(STATIC_DIR / "favicon.ico", sizes=ICO_SIZES)
+    cutout = _boosted_cutout()
 
-    square_master = _draw_crown(MASTER_SIZE, circular_bg=False).convert("RGB")  # opaque for iOS
-    square_master.resize((APPLE_TOUCH_ICON_SIZE, APPLE_TOUCH_ICON_SIZE), Image.LANCZOS).save(
-        STATIC_DIR / "apple-touch-icon.png"
-    )
+    for name, size in TRANSPARENT_PNG_SIZES.items():
+        _resize_sharp(cutout, size).save(STATIC_DIR / name)
+
+    # ICO container: Pillow's multi-size .ico writer only downsamples FROM the single image
+    # passed to .save() — it can't upscale a smaller frame to fill a larger requested size (an
+    # earlier version of this script tried passing separately-sharpened per-size frames via
+    # append_images and silently ended up with only one usable size in the file, caught by
+    # actually loading each size back out and checking before shipping). Feed it our largest ICO
+    # size (already sharpened) and let it derive the smaller ones itself.
+    ico_source = _resize_sharp(cutout, max(s for s, _ in ICO_SIZES))
+    ico_source.save(STATIC_DIR / "favicon.ico", sizes=ICO_SIZES)
+
+    apple_bg = Image.new("RGB", cutout.size, APPLE_TOUCH_ICON_BG)
+    apple_bg.paste(cutout, (0, 0), cutout)
+    apple_icon = apple_bg.resize((APPLE_TOUCH_ICON_SIZE, APPLE_TOUCH_ICON_SIZE), Image.LANCZOS)
+    apple_icon = apple_icon.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=2))
+    apple_icon.save(STATIC_DIR / "apple-touch-icon.png")
 
     print(f"Wrote favicon.ico + {len(TRANSPARENT_PNG_SIZES) + 1} PNG variants to {STATIC_DIR}")
 
