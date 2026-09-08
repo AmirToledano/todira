@@ -348,6 +348,25 @@ def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
     return time.time() - auth_date <= 60 * 60 * 24
 
 
+@app.get("/healthz")
+def healthz() -> Response:
+    """Kubernetes liveness/readiness probe target (see website-deployment.yaml) — added 2026-09-08
+    as part of a pre-launch reliability pass. Before this, NO Deployment in this chart had any
+    probe at all, meaning a hung-but-still-running process (an event loop deadlock, a lost DB
+    connection that never recovers) would sit "Running" forever with zero automatic recovery, and
+    a still-starting pod could receive traffic before it was actually ready. Checks a real DB
+    round-trip, not just "the process is up" — a website that's running but can't reach Postgres
+    is not actually healthy, and this is exactly the kind of failure a liveness probe exists to
+    catch and restart out of."""
+    try:
+        with get_session() as session:
+            session.execute(select(1))
+    except Exception:
+        logger.exception("Healthcheck failed: could not query the database")
+        return Response(status_code=503, content="db unreachable")
+    return Response(status_code=200, content="ok")
+
+
 @app.get("/")
 def home(request: Request):
     """2026-09-06: hero/footer CTAs now also offer WhatsApp (when WHATSAPP_PUBLIC_NUMBER is

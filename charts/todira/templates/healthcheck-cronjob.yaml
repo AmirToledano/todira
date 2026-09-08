@@ -1,0 +1,74 @@
+# Self-hosted watchdog — DMs the owner on Telegram when /healthz fails. Added 2026-09-08
+# (pre-launch reliability pass). See values.yaml's own healthcheck comment for the real scope
+# limit: this runs inside the same cluster/node it's checking, so it CANNOT detect the node
+# itself going down — only an external uptime monitor covers that failure mode.
+#
+# Uses curlimages/curl (a small, public, well-known image) rather than one of this project's own
+# built images — a watchdog this simple doesn't need Python/the app's own dependencies, and using
+# a public image means no new Dockerfile/CI build step to maintain just for this.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-healthcheck
+  labels:
+    app: {{ .Release.Name }}-healthcheck
+spec:
+  schedule: {{ .Values.healthcheck.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 60
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-healthcheck
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: healthcheck
+              image: curlimages/curl:8.10.1
+              env:
+                - name: WEBSITE_URL
+                  value: "https://{{ .Values.website.domain }}"
+                - name: TELEGRAM_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: telegram-bot-token
+                - name: OWNER_TELEGRAM_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: owner-telegram-user-id
+                      optional: true
+              command: ["sh", "-c"]
+              args:
+                # -f: curl itself fails (nonzero exit) on a non-2xx response, not just a network
+                # error — a 503 from /healthz's own DB-check failure must trip this exactly like a
+                # connection timeout does. Alerts via a raw sendMessage call, not this project's
+                # own bot code (no Python/dependencies needed for something this small) — mirrors
+                # website/whatsapp_webhook.py's own _notify_owner_of_help_request pattern (a
+                # direct api.telegram.org call, best-effort, never allowed to crash the check
+                # itself even if the alert send also fails).
+                - |
+                  if curl -fsS --max-time 10 "$WEBSITE_URL/healthz" > /dev/null; then
+                    echo "OK: $WEBSITE_URL/healthz"
+                  else
+                    echo "FAILED: $WEBSITE_URL/healthz did not return a healthy response" >&2
+                    if [ -n "$OWNER_TELEGRAM_USER_ID" ]; then
+                      curl -fsS --max-time 10 \
+                        "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+                        --data-urlencode "chat_id=$OWNER_TELEGRAM_USER_ID" \
+                        --data-urlencode "text=🚨 טודירה: $WEBSITE_URL/healthz לא הגיב תקין. כדאי לבדוק את השרת." \
+                        > /dev/null || echo "also failed to send the Telegram alert" >&2
+                    fi
+                    exit 1
+                  fi
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.healthcheck.requests.cpu }}
+                  memory: {{ .Values.resources.healthcheck.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.healthcheck.limits.cpu }}
+                  memory: {{ .Values.resources.healthcheck.limits.memory }}
