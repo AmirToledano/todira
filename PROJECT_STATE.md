@@ -5074,3 +5074,11 @@ today), including new coverage for `_whatsapp_eligible`, the template-send paylo
    on flag) was designed to satisfy exactly that requirement regardless of which category Meta
    ultimately assigned, so nothing else needs to change in the code. Once Meta approves it, steps
    2-3 above still apply as written (set `scraper.whatsappMatchTemplateName`, push).
+
+## Working convention (owner's explicit request, 2026-09-08): always report deploy success too
+
+Past practice was to only message the owner about a post-merge deploy when it FAILED, and stay
+silent (just re-arm the check-in) when it succeeded — meant to avoid noise, but the owner said
+directly he'd rather hear about the green ones too. So: after merging a PR and watching its
+CI/CD run, report the outcome either way — a short "✅ run #NNN passed" is enough for a success,
+not just silence. Applies to every future session working this repo, not just tonight's.
