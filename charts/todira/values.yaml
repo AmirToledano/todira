@@ -181,6 +181,9 @@ resources:
   healthcheck:
     requests: { cpu: "10m", memory: "16Mi" }
     limits: { cpu: "50m", memory: "32Mi" }
+  backup:
+    requests: { cpu: "50m", memory: "64Mi" }
+    limits: { cpu: "250m", memory: "256Mi" }
 
 # healthcheck-cronjob.yaml — a self-hosted watchdog that DMs the owner on Telegram when
 # /healthz fails, added 2026-09-08 (pre-launch reliability pass). Complements the new liveness
@@ -194,3 +197,19 @@ resources:
 # signup only the owner can do, not something deployable from here.
 healthcheck:
   schedule: "*/15 * * * *"
+
+# backup-cronjob.yaml — daily off-node Postgres backup to S3, added 2026-09-08 closing the single
+# biggest operational risk this project had (see RUNBOOK.md's top warning): the DB lives on the
+# node's own local-path-provisioner disk with NO backup of any kind before this, so a lost/
+# terminated EC2 instance meant permanent, total data loss. s3Bucket/s3Region are NOT secret (the
+# bucket has "Block all public access" on and a least-privilege IAM policy scoped to it alone
+# guards the actual data) - only awsAccessKeyId/awsSecretAccessKey (bot-secret.yaml) are.
+# Retention: set a 30-day S3 Lifecycle expiration rule on the bucket itself (console: bucket →
+# Management → Lifecycle rules → Create — expire objects after 30 days) rather than scripting
+# deletion into this CronJob - a bug in a hand-rolled prune script could delete backups it
+# shouldn't; a server-side Lifecycle rule can't do that by construction, and doesn't need any
+# extra IAM permission beyond what the bucket owner already has by being the bucket owner.
+backup:
+  schedule: "0 3 * * *" # 03:00 Israel time daily — low-traffic window, mirrors scraper's own timeZone
+  s3Bucket: "todira-db-backups-404813130046-eu-north-1-an"
+  s3Region: "eu-north-1"
