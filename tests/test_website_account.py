@@ -373,3 +373,39 @@ def test_account_whatsapp_notifications_toggle_falls_back_to_wid_when_no_uid(cli
     assert resp.status_code == 303
     assert resp.headers["location"] == "/account?wid=9725500000"
     assert user.whatsapp_notifications_opted_in is False
+
+
+# --- i18n (2026-09-08 fix): this whole page was hardcoded Hebrew-only, unlike every other
+# customer-facing page, so a non-Hebrew visitor saw a fully-Hebrew /account regardless of their
+# own language setting. Confirms the fix actually renders translated content, not just that the
+# Hebrew default (every other test above) is unchanged.
+
+
+def test_account_renders_in_english_when_lang_param_is_set(client):
+    user = _FakeUser(
+        id=2, telegram_user_id=222, whatsapp_phone_number="9725500000",
+        trial_ends_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2),
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222, "lang": "en"})
+
+    assert resp.status_code == 200
+    assert "My Account" in resp.text
+    assert "Notifications" in resp.text
+    assert "Connected Channels" in resp.text
+    assert "Trial period, until" in resp.text
+    # the old hardcoded Hebrew strings must not leak through regardless of the chosen language
+    assert "החשבון שלי" not in resp.text
+    assert "התראות 🔔" not in resp.text
+
+
+def test_account_renders_in_arabic_when_lang_param_is_set(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222, "lang": "ar"})
+
+    assert resp.status_code == 200
+    assert "حسابي" in resp.text
+    assert "القنوات المرتبطة" in resp.text

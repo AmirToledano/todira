@@ -117,6 +117,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Nous contacter — Todira",
         "ar": "تواصل معنا — توديرا",
     },
+    "meta.title_account": {
+        "he": "החשבון שלי — טודירה",
+        "en": "My Account — Todira",
+        "ru": "Мой аккаунт — Todira",
+        "fr": "Mon compte — Todira",
+        "ar": "حسابي — توديرا",
+    },
     # ---------- header / nav ----------
     "nav.apartments": {
         "he": "דירות", "en": "Apartments", "ru": "Квартиры", "fr": "Appartements", "ar": "الشقق",
@@ -1210,6 +1217,160 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Этот документ пока доступен только на иврите и английском. Ниже показана английская версия.",
         "fr": "Ce document n'est pour l'instant disponible qu'en hébreu et en anglais. La version anglaise est affichée ci-dessous.",
         "ar": "هذا المستند متاح حاليًا بالعبرية والإنجليزية فقط. تُعرض أدناه النسخة الإنجليزية.",
+    },
+    # ---------- account page ----------
+    # 2026-09-08 fix: this whole page was hardcoded Hebrew-only (unlike every other customer-
+    # facing page), so a non-Hebrew visitor saw a fully-Hebrew /account regardless of their own
+    # language setting — found while auditing the WhatsApp-notifications toggle added tonight,
+    # which just followed the page's own (pre-existing, unrelated to that feature) pattern.
+    "account.h1": {
+        "he": "החשבון שלי 👤", "en": "My Account 👤", "ru": "Мой аккаунт 👤",
+        "fr": "Mon compte 👤", "ar": "حسابي 👤",
+    },
+    "account.subtitle": {
+        "he": "המנוי, ההתראות, היסטוריית התשלומים, וחיבור הערוצים — טלגרם, ווטסאפ וגוגל, כולם אותו חשבון אחד.",
+        "en": "Your subscription, notifications, payment history, and connected channels — Telegram, WhatsApp and Google, all one account.",
+        "ru": "Подписка, уведомления, история платежей и подключённые каналы — Telegram, WhatsApp и Google, всё в одном аккаунте.",
+        "fr": "Votre abonnement, vos notifications, votre historique de paiements et vos canaux connectés — Telegram, WhatsApp et Google, tout dans un seul compte.",
+        "ar": "اشتراكك، إشعاراتك، سجل مدفوعاتك، والقنوات المرتبطة — تيليجرام وواتساب وجوجل، كلها في حساب واحد.",
+    },
+    "account.subscription_title": {
+        "he": "המנוי שלי 👑", "en": "My Subscription 👑", "ru": "Моя подписка 👑",
+        "fr": "Mon abonnement 👑", "ar": "اشتراكي 👑",
+    },
+    "account.subscription_active": {
+        "he": "✅ פעיל, בתוקף עד {date}", "en": "✅ Active, valid until {date}",
+        "ru": "✅ Активна, действует до {date}", "fr": "✅ Actif, valable jusqu'au {date}",
+        "ar": "✅ نشط، ساري حتى {date}",
+    },
+    "account.subscription_trial": {
+        "he": "⏳ תקופת ניסיון, עד {date}", "en": "⏳ Trial period, until {date}",
+        "ru": "⏳ Пробный период, до {date}", "fr": "⏳ Période d'essai, jusqu'au {date}",
+        "ar": "⏳ فترة تجريبية، حتى {date}",
+    },
+    "account.subscription_expired": {
+        "he": "תקופת הניסיון הסתיימה ⚠️", "en": "Trial period ended ⚠️",
+        "ru": "Пробный период закончился ⚠️", "fr": "Période d'essai terminée ⚠️",
+        "ar": "انتهت الفترة التجريبية ⚠️",
+    },
+    "account.upgrade_cta_renew": {
+        "he": "שדרג/י מנוי", "en": "Upgrade subscription", "ru": "Улучшить подписку",
+        "fr": "Améliorer l'abonnement", "ar": "ترقية الاشتراك",
+    },
+    "account.upgrade_cta_start": {
+        "he": "לשדרוג המנוי", "en": "Upgrade now", "ru": "Оформить подписку",
+        "fr": "Passer à l'abonnement", "ar": "الترقية الآن",
+    },
+    "account.notifications_title": {
+        "he": "התראות 🔔", "en": "Notifications 🔔", "ru": "Уведомления 🔔",
+        "fr": "Notifications 🔔", "ar": "الإشعارات 🔔",
+    },
+    "account.status_on": {
+        "he": "🔔 מופעלות", "en": "🔔 On", "ru": "🔔 Включены", "fr": "🔔 Activées", "ar": "🔔 مفعّلة",
+    },
+    "account.status_off": {
+        "he": "🔕 כבויות", "en": "🔕 Off", "ru": "🔕 Выключены", "fr": "🔕 Désactivées", "ar": "🔕 معطّلة",
+    },
+    "account.notifications_toggle_off": {
+        "he": "כבה התראות", "en": "Turn off notifications", "ru": "Выключить уведомления",
+        "fr": "Désactiver les notifications", "ar": "إيقاف الإشعارات",
+    },
+    "account.notifications_toggle_on": {
+        "he": "הפעל התראות", "en": "Turn on notifications", "ru": "Включить уведомления",
+        "fr": "Activer les notifications", "ar": "تفعيل الإشعارات",
+    },
+    "account.whatsapp_notifications_title": {
+        "he": "התראות בווטסאפ 💬", "en": "WhatsApp Notifications 💬", "ru": "Уведомления в WhatsApp 💬",
+        "fr": "Notifications WhatsApp 💬", "ar": "إشعارات واتساب 💬",
+    },
+    "account.whatsapp_notifications_toggle_off": {
+        "he": "כבה התראות בווטסאפ", "en": "Turn off WhatsApp notifications",
+        "ru": "Выключить уведомления WhatsApp", "fr": "Désactiver les notifications WhatsApp",
+        "ar": "إيقاف إشعارات واتساب",
+    },
+    "account.whatsapp_notifications_toggle_on": {
+        "he": "הפעל התראות בווטסאפ", "en": "Turn on WhatsApp notifications",
+        "ru": "Включить уведомления WhatsApp", "fr": "Activer les notifications WhatsApp",
+        "ar": "تفعيل إشعارات واتساب",
+    },
+    "account.whatsapp_notifications_hint": {
+        "he": "הודעת ווטסאפ ברגע שעולה דירה חדשה שמתאימה לך, בנוסף לאתר/טלגרם.",
+        "en": "A WhatsApp message the moment a new listing matches you, in addition to the website/Telegram.",
+        "ru": "Сообщение в WhatsApp, как только появится подходящее объявление — в дополнение к сайту/Telegram.",
+        "fr": "Un message WhatsApp dès qu'une nouvelle annonce vous correspond, en plus du site/Telegram.",
+        "ar": "رسالة واتساب فور ظهور شقة جديدة تناسبك، بالإضافة إلى الموقع/تيليجرام.",
+    },
+    "account.channels_title": {
+        "he": "חיבור ערוצים 🔗", "en": "Connected Channels 🔗", "ru": "Подключённые каналы 🔗",
+        "fr": "Canaux connectés 🔗", "ar": "القنوات المرتبطة 🔗",
+    },
+    "account.channel_connected": {
+        "he": "מחובר ✅", "en": "Connected ✅", "ru": "Подключено ✅", "fr": "Connecté ✅", "ar": "متصل ✅",
+    },
+    "account.telegram_connect_cta": {
+        "he": "פתח/י את הבוט לחיבור", "en": "Open the bot to connect",
+        "ru": "Открыть бота для подключения", "fr": "Ouvrir le bot pour vous connecter",
+        "ar": "افتح البوت للربط",
+    },
+    "account.telegram_connect_hint": {
+        "he": "לוחצים על הכפתור והחיבור קורה אוטומטית 🎉",
+        "en": "Tap the button and the connection happens automatically 🎉",
+        "ru": "Нажмите на кнопку — подключение произойдёт автоматически 🎉",
+        "fr": "Appuyez sur le bouton, la connexion se fait automatiquement 🎉",
+        "ar": "اضغط على الزر وسيتم الربط تلقائيًا 🎉",
+    },
+    "account.no_active_code": {
+        "he": "אין קוד חיבור פעיל כרגע", "en": "No active connection code right now",
+        "ru": "Сейчас нет активного кода подключения", "fr": "Aucun code de connexion actif pour le moment",
+        "ar": "لا يوجد رمز ربط نشط حاليًا",
+    },
+    "account.whatsapp_connect_cta": {
+        "he": "שלח/י הודעה לחיבור", "en": "Send a message to connect",
+        "ru": "Отправьте сообщение для подключения", "fr": "Envoyez un message pour vous connecter",
+        "ar": "أرسل رسالة للربط",
+    },
+    "account.whatsapp_connect_hint": {
+        "he": "ההודעה עם הקוד תישלח אוטומטית — רק צריך ללחוץ שליחה 🎉",
+        "en": "The message with the code will be sent automatically — just tap send 🎉",
+        "ru": "Сообщение с кодом отправится автоматически — просто нажмите «отправить» 🎉",
+        "fr": "Le message avec le code sera envoyé automatiquement — il suffit d'appuyer sur envoyer 🎉",
+        "ar": "ستُرسل الرسالة مع الرمز تلقائيًا — فقط اضغط إرسال 🎉",
+    },
+    "account.whatsapp_connect_unavailable": {
+        "he": "חיבור ווטסאפ עוד לא זמין כרגע", "en": "WhatsApp connection isn't available yet",
+        "ru": "Подключение WhatsApp пока недоступно", "fr": "La connexion WhatsApp n'est pas encore disponible",
+        "ar": "الربط عبر واتساب غير متاح بعد",
+    },
+    "account.google_connect_cta": {
+        "he": "קשר את Google לחשבון", "en": "Link Google to your account",
+        "ru": "Привязать Google к аккаунту", "fr": "Lier Google à votre compte",
+        "ar": "اربط Google بحسابك",
+    },
+    "account.code_hint_prefix": {
+        "he": "הקוד שלך:", "en": "Your code:", "ru": "Ваш код:", "fr": "Votre code :", "ar": "رمزك:",
+    },
+    "account.code_hint_suffix": {
+        "he": "— בתוקף ל-15 דקות. אפשר גם לשלוח אותו ידנית מהערוץ שרוצים לחבר, במקום ללחוץ על הכפתור.",
+        "en": "— valid for 15 minutes. You can also send it manually from the channel you want to connect, instead of tapping the button.",
+        "ru": "— действителен 15 минут. Можно также отправить его вручную из канала, который хотите подключить, вместо нажатия кнопки.",
+        "fr": "— valable 15 minutes. Vous pouvez aussi l'envoyer manuellement depuis le canal que vous souhaitez connecter, au lieu d'appuyer sur le bouton.",
+        "ar": "— صالح لمدة 15 دقيقة. يمكنك أيضًا إرساله يدويًا من القناة التي تريد ربطها، بدلاً من الضغط على الزر.",
+    },
+    "account.payment_history_title": {
+        "he": "היסטוריית תשלומים 📄", "en": "Payment History 📄", "ru": "История платежей 📄",
+        "fr": "Historique des paiements 📄", "ar": "سجل المدفوعات 📄",
+    },
+    "account.payment_status_paid": {
+        "he": "✅ שולם", "en": "✅ Paid", "ru": "✅ Оплачено", "fr": "✅ Payé", "ar": "✅ مدفوع",
+    },
+    "account.payment_status_pending": {
+        "he": "⏳ ממתין", "en": "⏳ Pending", "ru": "⏳ В ожидании", "fr": "⏳ En attente", "ar": "⏳ قيد الانتظار",
+    },
+    "account.payment_status_failed": {
+        "he": "❌ נכשל", "en": "❌ Failed", "ru": "❌ Не удалось", "fr": "❌ Échoué", "ar": "❌ فشل",
+    },
+    "account.payment_status_cancelled": {
+        "he": "✋ בוטל", "en": "✋ Cancelled", "ru": "✋ Отменено", "fr": "✋ Annulé", "ar": "✋ ألغي",
     },
 }
 
