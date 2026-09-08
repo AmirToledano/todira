@@ -1,23 +1,19 @@
-"""Tests for website/whatsapp_client.py's send_text_message — the fail-soft contract (never
+"""Tests for dorin_common/whatsapp_client.py's send_text_message — the fail-soft contract (never
 raises, returns False on any failure) matching dorin_common/gemini_client.py's pattern.
+
+Moved from website/whatsapp_client.py 2026-09-08 (now shared with scraper/notifier.py — see that
+module's own docstring); conftest.py already puts `common/` on sys.path for every test.
 """
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import httpx
 import pytest
+from dorin_common import whatsapp_client
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
-
-_WEBSITE_DIR = Path(__file__).resolve().parent.parent / "website"
-if str(_WEBSITE_DIR) not in sys.path:
-    sys.path.insert(0, str(_WEBSITE_DIR))
-
-import whatsapp_client  # noqa: E402
 
 
 def test_returns_false_when_credentials_not_configured(monkeypatch):
@@ -181,5 +177,78 @@ def test_cta_url_returns_false_on_http_error(monkeypatch):
     with patch.object(whatsapp_client._http_client, "post", side_effect=httpx.ConnectError("boom")):
         assert (
             whatsapp_client.send_cta_url_message("972550000000", "body", "כפתור", "https://x.test")
+            is False
+        )
+
+
+# --- send_template_message (2026-09-08 proactive-notification feature) ---
+
+
+def test_template_returns_false_when_credentials_not_configured(monkeypatch):
+    monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
+    assert (
+        whatsapp_client.send_template_message(
+            "972550000000", template_name="new_listing_match", language_code="he", body_params=["x"]
+        )
+        is False
+    )
+
+
+def test_template_sends_correct_payload_on_success(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
+
+    class _FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
+        assert (
+            whatsapp_client.send_template_message(
+                "972550000000",
+                template_name="new_listing_match",
+                language_code="he",
+                body_params=["רוטשילד, תל אביב", "3", "5,500", "https://todira.app/apartments"],
+            )
+            is True
+        )
+
+    call_kwargs = post_mock.call_args.kwargs
+    assert call_kwargs["json"] == {
+        "messaging_product": "whatsapp",
+        "to": "972550000000",
+        "type": "template",
+        "template": {
+            "name": "new_listing_match",
+            "language": {"code": "he"},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": "רוטשילד, תל אביב"},
+                        {"type": "text", "text": "3"},
+                        {"type": "text", "text": "5,500"},
+                        {"type": "text", "text": "https://todira.app/apartments"},
+                    ],
+                }
+            ],
+        },
+    }
+    assert call_kwargs["headers"]["Authorization"] == "Bearer test-token"
+    assert "123456" in post_mock.call_args.args[0]
+
+
+def test_template_returns_false_on_http_error(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
+
+    with patch.object(whatsapp_client._http_client, "post", side_effect=httpx.ConnectError("boom")):
+        assert (
+            whatsapp_client.send_template_message(
+                "972550000000", template_name="new_listing_match", language_code="he", body_params=["x"]
+            )
             is False
         )

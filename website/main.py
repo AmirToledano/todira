@@ -1529,6 +1529,7 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
 
         access = _effective_access(request, user)
         notifications_enabled = user.notifications_enabled
+        whatsapp_notifications_opted_in = user.whatsapp_notifications_opted_in
         payments = list(
             session.scalars(
                 select(Payment)
@@ -1561,6 +1562,7 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
             "trial_ends_at": user.trial_ends_at,
             "paid_until": user.paid_until,
             "notifications_enabled": notifications_enabled,
+            "whatsapp_notifications_opted_in": whatsapp_notifications_opted_in,
             "payments": payments,
             "plan_labels": PLAN_LABELS_HE,
         },
@@ -1580,6 +1582,27 @@ def account_notifications_toggle(
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
         user.notifications_enabled = not user.notifications_enabled
+        session.commit()
+
+    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+
+
+@app.post("/account/whatsapp-notifications")
+def account_whatsapp_notifications_toggle(
+    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+):
+    """Flips User.whatsapp_notifications_opted_in — the explicit opt-in for proactive WhatsApp
+    Message Template pushes (2026-09-08), kept separate from /account/notifications above on
+    purpose (see models.py's own docstring: notifications_enabled has always meant "Telegram
+    push," and Meta's Utility-template review expects a genuine, channel-specific opt-in, not an
+    existing generic flag silently repurposed). account.html only renders this toggle for a user
+    with has_whatsapp True, but this route doesn't re-check that itself — flipping the field on a
+    user with no whatsapp_phone_number is harmless, see scraper/notifier.py's _whatsapp_eligible."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "account"})
+        user.whatsapp_notifications_opted_in = not user.whatsapp_notifications_opted_in
         session.commit()
 
     return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)

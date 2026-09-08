@@ -606,8 +606,13 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert "נרשמת" in send_text_mock.call_args_list[1][0][1]
     assert send_text_mock.call_args_list[2][0][1] == whatsapp_webhook._FILTER_EDIT_FOLLOWUP_1
     assert send_text_mock.call_args_list[3][0][1] == whatsapp_webhook._FILTER_EDIT_FOLLOWUP_2
-    send_cta_mock.assert_called_once()
-    assert send_cta_mock.call_args[0][3] == f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000"
+    # 2026-09-08: a second CTA button now follows the filter-edit prompt, asking the user to opt
+    # in to proactive WhatsApp Message Template notifications on /account — see
+    # _send_notifications_optin_prompt's own docstring for why this is collected as a real button
+    # tap rather than parsed from a free-text reply.
+    assert send_cta_mock.call_count == 2
+    assert send_cta_mock.call_args_list[0][0][3] == f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000"
+    assert send_cta_mock.call_args_list[1][0][3] == f"{whatsapp_webhook.WEBSITE_URL}/account?wid=9725500000"
 
 
 # --- Help/support requests (2026-09-07) — checked before both the existing-filter chat branch and
