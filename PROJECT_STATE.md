@@ -5082,3 +5082,41 @@ silent (just re-arm the check-in) when it succeeded — meant to avoid noise, bu
 directly he'd rather hear about the green ones too. So: after merging a PR and watching its
 CI/CD run, report the outcome either way — a short "✅ run #NNN passed" is enough for a success,
 not just silence. Applies to every future session working this repo, not just tonight's.
+
+## Update 2026-09-08 (still later): two live UX reports fixed, then an autonomous i18n audit while the owner stepped away
+
+**Two things the owner reported live, fixed and shipped same session:**
+- `/filter`'s "שמור שינויים" used to redirect back to `/filter` itself on a successful save — no
+  visible sign anything happened. Now redirects to `/apartments`, showing the actual result of
+  the change (PR #194).
+- Home page hero polish (PR #196): `home.eyebrow` said "via Telegram" specifically, inaccurate
+  now that WhatsApp is an equal channel — changed to "Telegram + WhatsApp" across all 5
+  languages. The caption strip under the hero CTA buttons (`.live-badge`/`.ai-pill`) was styled
+  close enough to a real `.btn` (same pill shape/shadow, `.ai-pill` even reused `.btn.gold`'s
+  exact gradient) that it read as more clickable buttons — pushed down and restyled flat. The
+  example-card's "לדוגמה" badge now sits to the right of "דירה חדשה!" instead of the left.
+
+**Owner then said "go do stuff yourself" while on his phone.** Found and fixed a real, large,
+pre-existing gap while double-checking tonight's own WhatsApp-notifications toggle addition:
+**every authenticated/payment page was hardcoded Hebrew-only**, unlike every public-facing page
+(home, apartments, filter, contact, etc.), which have used `i18n.py`'s `t()` all along. Fixed in
+two PRs:
+- PR #197: `/account` — 34 new keys, full page rewired to `t()`.
+- PR #198: `login.html`, `google_pending.html`, `upgrade.html`, `upgrade_pay.html`,
+  `upgrade_success.html` — ~50 more keys, same treatment. (PR #198 hit a real squash-merge
+  conflict on first attempt — the known pitfall of continuing to commit on the same long-lived
+  branch across sequential squash-merged PRs, see this file's own git-history entries for the
+  established recovery: restart the branch from the fresh `main`, reapply the accumulated diff,
+  recommit, force-push.)
+
+Deliberately NOT touched: `admin_messages.html`/`admin_users.html` — owner-only pages, a
+non-Hebrew-speaker never sees them, so translating them has ~zero real value.
+
+**Known remaining gap, not fixed**: `PLAN_LABELS_HE` (`website/main.py`) — the plan name shown on
+`/upgrade/pay` (e.g. "שבועי") still comes from a Hebrew-only dict server-side, not a template
+string — a deeper gap than what this pass covered. Revisit if it matters.
+
+Every Hebrew value was kept byte-identical to the previous hardcoded text, so no existing test
+needed changes — confirmed live, not assumed. New regression tests added per page confirming
+`?lang=en`/`?lang=ar` actually render translated content. Full suite: 653 passed (was 647 at the
+top of this update).
