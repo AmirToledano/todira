@@ -237,20 +237,25 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 95%, transparent 100%);
 }
 
-/* ---------- "look, it's alive" strip right under the hero CTAs ---------- */
-.fresh-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: center; margin-top: 22px; }
+/* ---------- "look, it's alive" strip right under the hero CTAs ----------
+   2026-09-08 fix (owner's own report): this row used to sit close enough under the real .btn
+   CTAs, and .live-badge/.ai-pill were styled close enough to a button (same pill shape, same
+   shadow, .ai-pill even reused .btn.gold's exact gradient) that the whole strip read as more
+   clickable buttons, not captions. Pushed further down (margin-top) and restyled both as flat,
+   unshadowed tags — same visual language as .example-card's own .ec-badge, which never had this
+   problem — so the real CTA row stays the only thing that looks pressable. */
+.fresh-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: center; margin-top: 34px; }
 .live-badge {
   display: inline-flex; align-items: center; gap: 7px;
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;
   padding: 7px 15px; font-size: .8rem; font-weight: 700; color: var(--heading);
-  box-shadow: var(--shadow-sm);
 }
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: live-pulse 1.7s ease-in-out infinite; }
 @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .ai-pill {
   display: inline-flex; align-items: center; gap: 6px;
-  background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark);
-  font-weight: 700; font-size: .8rem; padding: 8px 16px; border-radius: 999px;
+  background: var(--teal-tint); color: var(--heading);
+  font-weight: 700; font-size: .8rem; padding: 7px 16px; border-radius: 999px;
 }
 .example-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);

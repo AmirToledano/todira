@@ -341,11 +341,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- home page ----------
     "home.eyebrow": {
-        "he": "דירות בזמן אמת · דרך טלגרם 👑",
-        "en": "Real-time apartments · via Telegram 👑",
-        "ru": "Квартиры в реальном времени · через Telegram 👑",
-        "fr": "Appartements en temps réel · via Telegram 👑",
-        "ar": "شقق في الوقت الفعلي · عبر تيليجرام 👑",
+        # 2026-09-08 fix (owner's own report): used to say "via Telegram" specifically, which
+        # became inaccurate once WhatsApp shipped as an equal channel (see the WhatsApp CTA
+        # button right below this) — channel-neutral now instead of naming just one.
+        "he": "דירות בזמן אמת · טלגרם + ווטסאפ 👑",
+        "en": "Real-time apartments · Telegram + WhatsApp 👑",
+        "ru": "Квартиры в реальном времени · Telegram + WhatsApp 👑",
+        "fr": "Appartements en temps réel · Telegram + WhatsApp 👑",
+        "ar": "شقق في الوقت الفعلي · تيليجرام + واتساب 👑",
     },
     "home.h1": {
         "he": "הדירה שלך מוצאת אותך",
