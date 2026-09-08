@@ -10,12 +10,13 @@ PicklePersistence like the bot has), so in-progress onboarding state is persiste
 User.pending_onboarding_state (JSONB) between turns instead of living in memory — see migration
 0003_whatsapp_users.
 
-NOT built yet, deliberately: proactive "a new listing matches your filter" pushes. WhatsApp only
-allows free-form replies within 24 hours of the user's last message (the "customer service
-window") — fine for this webhook's own replies (always responding to something just received),
-but a proactive push from scraper/notifier.py outside that window needs a pre-approved message
-template (a separate Meta review process). scraper/notifier.py still only sends via Telegram;
-extending it is a follow-up, not silently promised here.
+Proactive "a new listing matches your filter" pushes (2026-09-08): WhatsApp only allows free-form
+replies within 24 hours of the user's last message (the "customer service window") — fine for
+this webhook's own replies (always responding to something just received), but a proactive push
+outside that window needs a pre-approved Message Template, which is what
+dorin_common.whatsapp_client.send_template_message + scraper/notifier.py use, gated on the user's
+own explicit User.whatsapp_notifications_opted_in — collected right here, at the end of
+onboarding (_send_notifications_optin_prompt below), not assumed.
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ import threading
 from collections import OrderedDict
 
 import httpx
-from dorin_common import cities, gemini_client
+from dorin_common import cities, gemini_client, whatsapp_client
 from dorin_common.channel_link import resolve_link_code
 from dorin_common.db import get_session
 from dorin_common.matching import safe_range_update
@@ -38,8 +39,6 @@ from dorin_common.users import get_or_create_whatsapp_user
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
-
-import whatsapp_client
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +79,25 @@ def _send_filter_edit_prompt(wa_id: str) -> None:
     )
     whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_1)
     whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_2)
+
+
+# 2026-09-08: proactive WhatsApp Message Template pushes (a new listing matches your filter,
+# outside the 24h customer-service window) need the user's own explicit opt-in — see
+# User.whatsapp_notifications_opted_in's own docstring for why this can't just default to on.
+# This is where that opt-in is actually collected: a real button tap on a website toggle, right
+# after registration — not a free-text "כן"/"yes" reply this webhook would have to interpret,
+# which is a worse consent record and an easy source of a wrong read on a one-word reply.
+_NOTIFICATIONS_OPTIN_BODY = (
+    "רוצה שאני אשלח לך הודעה כאן בווטסאפ (בנוסף לאתר) ברגע שעולה דירה חדשה שמתאימה לך? "
+    "אפשר להפעיל את זה בעמוד החשבון שלך:"
+)
+_NOTIFICATIONS_OPTIN_BUTTON_TEXT = "🔔 הפעלת התראות"
+
+
+def _send_notifications_optin_prompt(wa_id: str) -> None:
+    whatsapp_client.send_cta_url_message(
+        wa_id, _NOTIFICATIONS_OPTIN_BODY, _NOTIFICATIONS_OPTIN_BUTTON_TEXT, f"{WEBSITE_URL}/account?wid={wa_id}"
+    )
 
 
 # 2026-09-07: a real "תמיכה" message used to fall straight into gemini_client.chat_with_existing_user
@@ -364,9 +382,10 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         session.commit()
 
         whatsapp_client.send_text_message(
-            wa_id, "מעולה, נרשמת! אני אתריע ברגע שתעלה דירה מתאימה 🏠"
+            wa_id, "מעולה, נרשמת! אני כבר עוקב אחרי דירות חדשות שמתאימות לך 🏠"
         )
         _send_filter_edit_prompt(wa_id)
+        _send_notifications_optin_prompt(wa_id)
 
 
 def _process_payload_sync(payload: dict) -> None:

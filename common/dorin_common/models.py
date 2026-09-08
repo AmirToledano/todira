@@ -57,6 +57,20 @@ class User(Base):
     notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
+    # Proactive WhatsApp Message Template opt-in (2026-09-08) — deliberately separate from
+    # notifications_enabled above, which has meant "Telegram push" ever since Telegram was the
+    # only channel that could push at all (scraper/notifier.py). A WhatsApp Message Template is
+    # Meta's own mechanism for business-initiated messages outside the 24h customer-service
+    # window, and Meta's Utility-category review expects a genuine, specific opt-in for it —
+    # auto-flipping this on for every existing whatsapp_phone_number row the day this shipped
+    # would be exactly the unconsented enrollment that review looks for, so this defaults to
+    # False regardless of notifications_enabled's own value and is collected explicitly (website's
+    # /account/whatsapp-notifications toggle, offered right after WhatsApp onboarding completes —
+    # see website/whatsapp_webhook.py's _send_notifications_optin_prompt). See
+    # scraper/notifier.py's _whatsapp_eligible for where this is actually checked.
+    whatsapp_notifications_opted_in: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     # In-progress WhatsApp onboarding state across stateless webhook calls — see migration
     # 0003_whatsapp_users. None once no onboarding is in progress (not started, or completed).
     pending_onboarding_state: Mapped[dict | None] = mapped_column(JSONB)

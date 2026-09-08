@@ -84,6 +84,27 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: bright-data-description-field
                       optional: true
+                # Proactive WhatsApp Message Template push (2026-09-08, dorin_common/
+                # whatsapp_client.py + notifier.py's _whatsapp_eligible/_send_whatsapp_match_
+                # template) — same access-token/phone-number-id secret website-deployment.yaml
+                # already uses for the webhook's own replies, both optional here the same way.
+                - name: WHATSAPP_ACCESS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: whatsapp-access-token
+                      optional: true
+                - name: WHATSAPP_PHONE_NUMBER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: whatsapp-phone-number-id
+                      optional: true
+                # Not secret — see values.yaml's own comment on scraper.whatsappMatchTemplateName.
+                - name: WHATSAPP_MATCH_TEMPLATE_NAME
+                  value: {{ .Values.scraper.whatsappMatchTemplateName | default "" | quote }}
+                - name: WHATSAPP_MATCH_TEMPLATE_LANGUAGE
+                  value: {{ .Values.scraper.whatsappMatchTemplateLanguage | default "he" | quote }}
               resources:
                 requests:
                   cpu: {{ .Values.resources.scraper.requests.cpu }}
