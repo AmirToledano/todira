@@ -7,8 +7,10 @@ pydantic>=2.5,<3.0
 google-genai>=0.3,<1.0
 # python-telegram-bot: needed by tests/test_filter_conversation_reentry.py, which drives real
 # ConversationHandler objects directly (no network) to regression-test the allow_reentry fix -
-# pinned to match bot/requirements.txt so test behavior matches production.
-python-telegram-bot>=21,<22
+# pinned to match bot/requirements.txt so test behavior matches production. [job-queue] extra
+# (APScheduler) added 2026-09-08 alongside bot/requirements.txt's own identical change, needed by
+# tests/test_bot_heartbeat.py to exercise the real JobQueue-based liveness heartbeat.
+python-telegram-bot[job-queue]>=21,<22
 # sqlalchemy: see the file-level comment above - pinned to match bot/website/scraper's own pin.
 sqlalchemy>=2.0,<3.0
 # fastapi/httpx/jinja2/python-multipart/itsdangerous: test_website_contact.py and

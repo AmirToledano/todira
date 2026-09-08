@@ -178,3 +178,19 @@ resources:
   caddy:
     requests: { cpu: "25m", memory: "32Mi" }
     limits: { cpu: "100m", memory: "96Mi" }
+  healthcheck:
+    requests: { cpu: "10m", memory: "16Mi" }
+    limits: { cpu: "50m", memory: "32Mi" }
+
+# healthcheck-cronjob.yaml — a self-hosted watchdog that DMs the owner on Telegram when
+# /healthz fails, added 2026-09-08 (pre-launch reliability pass). Complements the new liveness
+# probes (website/bot/postgres/caddy Deployments): those auto-restart a broken Pod, but silently
+# — the owner would never know the site was flapping unless this tells them. IMPORTANT SCOPE
+# LIMIT: this runs AS A JOB INSIDE THE SAME CLUSTER/NODE it's checking, so it cannot detect the
+# one failure mode that matters most for a true single-point-of-failure box — the whole node
+# going down. If the node is dead, this CronJob doesn't run either, so no alert ever fires. Real
+# coverage for that requires an EXTERNAL uptime monitor (a free UptimeRobot/Better Uptime check
+# hitting https://<domain>/healthz from outside this infrastructure entirely) — that's an account
+# signup only the owner can do, not something deployable from here.
+healthcheck:
+  schedule: "*/15 * * * *"

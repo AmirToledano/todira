@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from handlers.apartments import build_apartments_handler
 from handlers.contact_fallback import build_contact_fallback_handler
@@ -26,6 +27,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("bot.main")
 
+# Liveness-probe heartbeat (added 2026-09-08, pre-launch reliability pass — see
+# charts/todira/templates/bot-deployment.yaml's own new livenessProbe comment). Unlike a plain
+# background thread, a JobQueue job runs ON THE SAME asyncio event loop that processes every
+# incoming Telegram update — if that loop ever deadlocks (a real handler bug, a library hang),
+# this job stops firing right along with real message handling, so the file genuinely goes stale
+# instead of a naive "the process technically still exists" thread happily ticking forever
+# regardless of whether the bot can do anything. No user activity ever makes this file stale on
+# its own — the job runs on a fixed interval independent of whether anyone messages the bot, so an
+# idle-but-healthy bot never gets mistaken for a hung one.
+HEARTBEAT_PATH = os.environ.get("BOT_HEARTBEAT_PATH", "/tmp/bot_heartbeat")
+HEARTBEAT_INTERVAL_S = 15
+
 # Persists user_data/chat_data and ConversationHandler state (see build_onboarding_handler and
 # build_filter_conversation_handler, both persistent=True) across pod restarts - mounted on a PVC
 # (see charts/todira/templates/bot-pvc.yaml), not the container's ephemeral filesystem, since a
@@ -46,8 +59,27 @@ BOT_COMMANDS = [
 ]
 
 
+async def _heartbeat_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    Path(HEARTBEAT_PATH).touch()
+
+
 async def _post_init(application: Application) -> None:
     await application.bot.set_my_commands(BOT_COMMANDS)
+    if application.job_queue is not None:
+        # first=0 so the file exists immediately, not only after the first interval elapses —
+        # otherwise a liveness probe that starts checking right at container boot could see a
+        # missing file and wrongly treat a perfectly healthy, just-started bot as failed.
+        application.job_queue.run_repeating(_heartbeat_job, interval=HEARTBEAT_INTERVAL_S, first=0)
+    else:
+        # Defensive only — requirements.txt pins python-telegram-bot[job-queue], so this should
+        # never actually be None in a real deploy; logged loudly rather than silently skipped in
+        # case that pin is ever accidentally dropped, since it would silently disable the
+        # liveness probe's actual signal (see bot-deployment.yaml's own livenessProbe comment).
+        logger.error(
+            "JobQueue unavailable — the liveness-probe heartbeat will never update, so the bot "
+            "Pod will eventually be killed as unhealthy even while running fine. Check that "
+            "python-telegram-bot is installed with the [job-queue] extra."
+        )
 
 
 async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

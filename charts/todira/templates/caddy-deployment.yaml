@@ -56,6 +56,19 @@ spec:
               mountPath: /etc/caddy
             - name: caddy-data
               mountPath: /data
+          # Added 2026-09-08 (pre-launch reliability pass) — a plain TCP check on :80, not an
+          # httpGet: Caddy proxies every request straight to the website Pod (see
+          # caddy-configmap.yaml), so an httpGet probe here would fail whenever the WEBSITE is
+          # briefly unhealthy/restarting too — restarting Caddy on top of that makes an existing
+          # outage worse, not better, and duplicates what website-deployment.yaml's own probe
+          # already covers. A TCP check only asks "is Caddy itself listening," independent of
+          # whatever it's proxying to.
+          livenessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
           resources:
             requests:
               cpu: {{ .Values.resources.caddy.requests.cpu }}
