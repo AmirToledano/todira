@@ -5060,7 +5060,17 @@ today), including new coverage for `_whatsapp_eligible`, the template-send paylo
    matching the template's language above) and push — the next scraper run (once
    `scraper.suspended` is flipped back to `false`, see the 2026-09-03 freeze — still deliberately
    on hold) will start actually sending to opted-in users.
-4. If Meta's own review recategorizes this as Marketing instead of Utility (a real possibility —
-   flagged honestly, not guaranteed): Marketing templates need stricter pacing/opt-out handling
-   Meta enforces on the API side automatically; the code here doesn't need to change, but it's
-   worth knowing before assuming the category is locked in.
+4. **Update, same evening**: did all of the above live with the owner, step by step, screenshot by
+   screenshot. Category #1 (Utility) is exactly what happened: WhatsApp Manager's own submit-time
+   check blocked it outright — "Category does not match... This message template will be
+   rejected" — and recommended Marketing instead. Didn't fight it (an appeal has no guaranteed
+   outcome and a rejection is a worse look on the account than never having tried Utility);
+   switched the category to Marketing right there and resubmitted. `new_listing_match` is now
+   sitting with Meta as **Category: Marketing, Language: Hebrew, Status: In review** (submitted
+   2026-09-08). Nothing about the template's own copy, variables, or button changed — same exact
+   content, just a different Meta-side classification. Marketing costs more per conversation than
+   Utility would have, and Meta enforces stricter pacing/opt-out expectations on it — but the
+   consent mechanism this session already built (the real `/account` opt-in toggle, not a default-
+   on flag) was designed to satisfy exactly that requirement regardless of which category Meta
+   ultimately assigned, so nothing else needs to change in the code. Once Meta approves it, steps
+   2-3 above still apply as written (set `scraper.whatsappMatchTemplateName`, push).
