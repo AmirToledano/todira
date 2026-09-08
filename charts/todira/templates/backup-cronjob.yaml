@@ -1,0 +1,123 @@
+# Daily off-node Postgres backup to S3 — see values.yaml's own `backup:` comment for why this
+# exists (closing the single biggest operational risk this project had: no backup of any kind for
+# a DB living on the node's own local disk). Two containers, deliberately not one custom image:
+# - initContainer (postgres:16-alpine, the SAME image already used to run Postgres itself in this
+#   chart — a known-good, already-pulled image, not a new dependency) runs pg_dump and writes a
+#   compressed dump to a shared emptyDir volume. Runs to completion before the main container
+#   starts, so there's no race between "dump written" and "upload begins."
+# - main container (amazon/aws-cli, official public image) uploads that file to S3.
+# KNOWN GAP: a pg_dump failure (the initContainer) is visible via `kubectl get pods` (stuck in
+# Init:Error) but does NOT trigger the Telegram alert below — that only covers the upload step,
+# since an alert script running in the main container never executes if the initContainer itself
+# never completes. Accepted for now rather than merging both steps into one container image with
+# an at-runtime package install this sandbox can't test; revisit if pg_dump failures ever go
+# unnoticed in practice.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-backup
+  labels:
+    app: {{ .Release.Name }}-backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: "Asia/Jerusalem"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-backup
+        spec:
+          restartPolicy: Never
+          initContainers:
+            - name: pg-dump
+              image: {{ .Values.postgres.image }}
+              env:
+                - name: PGHOST
+                  value: "{{ .Release.Name }}-postgres"
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  value: {{ .Values.postgres.user | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.postgres.dbname | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: postgres-password
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  pg_dump --format=plain --no-owner --no-privileges | gzip > /shared/backup.sql.gz
+                  echo "pg_dump wrote $(du -h /shared/backup.sql.gz | cut -f1) to /shared/backup.sql.gz"
+              volumeMounts:
+                - name: shared
+                  mountPath: /shared
+          containers:
+            - name: upload-to-s3
+              image: amazon/aws-cli:2.17.62
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: aws-access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: aws-secret-access-key
+                - name: AWS_DEFAULT_REGION
+                  value: {{ .Values.backup.s3Region | quote }}
+                - name: S3_BUCKET
+                  value: {{ .Values.backup.s3Bucket | quote }}
+                - name: TELEGRAM_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: telegram-bot-token
+                - name: OWNER_TELEGRAM_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: owner-telegram-user-id
+                      optional: true
+              # aws-cli's own entrypoint expects to run its args as an `aws ...` invocation
+              # directly, so a multi-step shell script needs --entrypoint overridden to a plain
+              # shell — command below does that.
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -eu
+                  KEY="todira-backup-$(date -u +%Y-%m-%dT%H-%M-%SZ).sql.gz"
+                  if aws s3 cp /shared/backup.sql.gz "s3://$S3_BUCKET/$KEY"; then
+                    echo "Uploaded $KEY to s3://$S3_BUCKET"
+                  else
+                    echo "FAILED to upload backup to S3" >&2
+                    if [ -n "${OWNER_TELEGRAM_USER_ID:-}" ]; then
+                      curl -fsS --max-time 10 \
+                        "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+                        --data-urlencode "chat_id=$OWNER_TELEGRAM_USER_ID" \
+                        --data-urlencode "text=🚨 טודירה: גיבוי הדאטהבייס ל-S3 נכשל היום. כדאי לבדוק (kubectl logs on the {{ .Release.Name }}-backup CronJob)." \
+                        > /dev/null || echo "also failed to send the Telegram alert" >&2
+                    fi
+                    exit 1
+                  fi
+              volumeMounts:
+                - name: shared
+                  mountPath: /shared
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.backup.requests.cpu }}
+                  memory: {{ .Values.resources.backup.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.backup.limits.cpu }}
+                  memory: {{ .Values.resources.backup.limits.memory }}
+          volumes:
+            - name: shared
+              emptyDir: {}

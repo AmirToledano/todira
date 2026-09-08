@@ -139,6 +139,8 @@ jobs:
             --set brightDataDatasetId="${{ secrets.BRIGHT_DATA_DATASET_ID }}" \
             --set brightDataDescriptionField="${{ secrets.BRIGHT_DATA_DESCRIPTION_FIELD }}" \
             --set takbullWebhookSecret="${{ secrets.TAKBULL_WEBHOOK_SECRET }}" \
+            --set awsAccessKeyId="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --set awsSecretAccessKey="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
             --namespace todira --create-namespace
 
       - name: Diagnose bot pod (owner reported it's not responding)
