@@ -4904,3 +4904,58 @@ owner's own Telegram account, not something a coding session can do. Found the h
 in 8 real source files (`website/main.py`, 5 templates, plus test fixtures) — **waiting on the
 owner to actually rename it via BotFather and report the new handle**, then this session updates
 every hardcoded reference in one pass and re-runs the full suite before pushing.
+**RESOLVED (same day)**: it turns out a bot's username can't be changed at all, ever, via
+BotFather — confirmed live (the `/mybots` → Edit menu has Name/About/Description/Botpic/Commands/
+Privacy Policy, no username option anywhere) after this file's own guess that `/setusername`
+existed turned out wrong. Decision: keep `@AmirDirotBot` — the DISPLAY name ("טודירה - דירות בזמן
+אמת", independently editable via Edit Name) is what users actually see; renaming would mean a
+brand-new bot with zero migration path for existing users, not worth it for a handle almost nobody
+looks at.
+
+## Update 2026-09-08 (later same day): S3 database backups fully live, one more real scraping source confirmed
+
+**Closed the backup gap from earlier today, end to end.** Walked the owner through the whole AWS
+side live, screenshot by screenshot (S3 bucket with Account Regional namespace + Versioning
+enabled + Block Public Access on, a least-privilege IAM user/policy scoped to that one bucket,
+access keys, a 30-day S3 Lifecycle expiration rule) while building `backup-cronjob.yaml` in
+parallel — see PR #189 (merged) for the actual mechanism (nightly `pg_dump` via an initContainer
++ upload via `amazon/aws-cli`, Telegram alert on upload failure). Owner then added the
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` GitHub repo secrets himself and confirmed it. **The
+backup CronJob's Secret keys were empty in the deploy that auto-ran right after PR #189 merged**
+(that deploy predates the owner adding the GitHub secrets) — the commit that carries this entry
+is what actually triggers the first deploy with real AWS credentials wired in; confirm the
+`{{ .Release.Name }}-backup` CronJob actually succeeds on its next scheduled run (03:00 Israel
+time) or trigger one manually (`kubectl create job --from=cronjob/todira-backup manual-test-1 -n
+todira`) to verify end to end rather than assuming.
+
+**A real, honest debate the owner raised and got a straight answer on**: whether to move the EC2
+node from Stockholm (`eu-north-1`) to the real AWS Israel region (`il-central-1`) for lower
+end-user latency, prompted by noticing a different region on an unrelated company's AWS setup.
+Answered directly: not worth it now — a full region migration (new node, k3s reinstall, DNS/
+kubeconfig updates, real downtime) for a likely-marginal latency gain, right when the priority is
+stability before launch, not another moving part. Revisit later, once the S3 backup above makes a
+future migration meaningfully safer (restore from backup + redeploy the whole chart from git,
+rather than a from-scratch rebuild).
+
+**Also investigated properly, not guessed**: the owner found dorin.app (reference product)
+announcing its own WhatsApp notification service shutting down Sep 30 2026, citing a Meta policy
+change, and asked whether Todira is exposed to the same risk. Checked the actual code
+(`whatsapp_client.py`, `scraper/notifier.py`) and real 2026 Meta policy changes via websearch:
+Todira sends ZERO proactive/automated WhatsApp notifications today (every message is a reply
+within the 24h window, the compliant case) — the "new listing matches" push only exists on
+Telegram — so the specific unsolicited-bulk-messaging crackdown dorin.app cited doesn't apply
+here. No action needed now; the one real, verified upcoming change (Meta starts charging for
+in-window service/utility messages from Oct 1 2026) is worth revisiting once it's actually in
+effect, not before.
+
+**One more real scraping source, confirmed via evidence not guesswork**: the owner sent
+screenshots of dorin.app's own listing cards, each showing a small per-card source badge — Yad2,
+Facebook, קומו (Komo), and הומלס (Homeless, homeless.co.il — a real, well-known Israeli
+classifieds board, confirmed via websearch). Added `Source.HOMELESS = "homeless"` to
+`dorin_common/enums.py` (schema-only, no scraper yet — same pattern Komo/Facebook already had).
+**Komo/Homeless/Facebook scraping is still blocked on the exact same thing as every prior entry
+on this**: this coding session's own network egress blocks direct access to all three sites AND
+to `api.zenrows.com` itself, so nothing can be fetched or tested from here — genuinely unchanged,
+not re-investigated today. What's still needed, concretely: real page source (View Source, not a
+screenshot) from 2-3 Komo/Homeless listing pages from the owner's own device; a dedicated
+throwaway Facebook account + exported session cookies for Marketplace/Groups.
