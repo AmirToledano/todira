@@ -4959,3 +4959,108 @@ to `api.zenrows.com` itself, so nothing can be fetched or tested from here — g
 not re-investigated today. What's still needed, concretely: real page source (View Source, not a
 screenshot) from 2-3 Komo/Homeless listing pages from the owner's own device; a dedicated
 throwaway Facebook account + exported session cookies for Marketplace/Groups.
+
+## Update 2026-09-08 (later still): built the proactive WhatsApp Message Template notification
+## feature — Utility category, ready to submit for Meta review
+
+Owner's explicit ask: "run with the WhatsApp thing, do what's needed, aim for Utility category,
+no embarrassments." Built end to end; **not live yet** — needs the owner to submit the template
+below to Meta for review and get it approved before anything actually sends (see "What the owner
+still needs to do" at the end).
+
+**Why this needed real design, not just wiring**: the whole point of "no embarrassments" is
+avoiding a template rejection or, worse, an account-level warning for unsolicited messaging.
+Every choice below was made defensively with that in mind, not just to make the feature "work":
+
+1. **A brand-new, separate opt-in field** — `User.whatsapp_notifications_opted_in` (migration
+   `0010_whatsapp_notifications_optin`, default `False` for every row, including every existing
+   WhatsApp user). Deliberately NOT reusing the existing `notifications_enabled` field: that one
+   has meant "Telegram push" ever since Telegram was the only channel that could push at all, and
+   silently switching its meaning to "also proactively WhatsApp you" for users who already have it
+   on (the default) would be exactly the kind of unconsented enrollment Meta's Utility-template
+   review looks for. Consent has to be genuine and specific to the new channel.
+
+2. **Consent is collected as a real button tap, not a parsed "כן"/"yes" reply.** Right after
+   WhatsApp onboarding finishes, the bot now sends a CTA button ("🔔 הפעלת התראות") straight to
+   `/account?wid=...`, where a new toggle (mirroring the existing Telegram-notifications toggle,
+   only shown once WhatsApp is linked) flips the field via a plain form POST
+   (`/account/whatsapp-notifications`, `website/main.py`). A real UI toggle is both a better
+   consent record and immune to misreading a one-word freeform reply.
+
+3. **`website/whatsapp_client.py` moved to `dorin_common/whatsapp_client.py`** (used by both
+   `website/whatsapp_webhook.py` and now `scraper/notifier.py`, same pattern as `cards.py`/
+   `bright_data_client.py` already being shared) and gained `send_template_message()` — the Cloud
+   API's `type: "template"` payload shape, separate from the existing free-form
+   `send_text_message()` (templates are the ONLY way to message someone outside the 24h
+   customer-service window, which a proactive "new listing" push always is).
+
+4. **`scraper/notifier.py`'s `_notify_new_matches` now sends on BOTH channels a user is eligible
+   for**, not just Telegram — `_whatsapp_eligible(user)` requires all three: a linked
+   `whatsapp_phone_number`, `whatsapp_notifications_opted_in=True`, AND
+   `WHATSAPP_MATCH_TEMPLATE_NAME` actually configured. That last condition means the whole
+   WhatsApp send path stays completely dormant — no send even attempted — until the owner has a
+   real Meta-APPROVED template name to point at (same "optional secret, safe until set"
+   convention as every other optional integration in this chart, e.g. `brightDataApiKey`). One
+   `SentNotification` row per user per listing regardless of how many channels fired (matches the
+   existing reason-only, not channel-specific, dedup key) — a user linked on both channels who's
+   opted into WhatsApp gets both pushes the first time a listing matches, never re-notified later
+   on either channel for the same listing.
+   **Price-change (drop/increase) re-notifications stay Telegram-only, deliberately** — that's
+   different enough content ("the price on a listing you were already shown just changed") from
+   "a new listing matches your saved search" that the same template copy can't honestly cover
+   both; a second template is a real follow-up once this first one is approved and actually
+   proves out, not silently promised here.
+
+5. **The template body has only 3 variables (location, rooms, price), no URL variable at all.**
+   The "view listings" link is a fully STATIC website button baked into the template itself in
+   Meta's WhatsApp Manager (`https://todira.app/apartments`, no per-user query string) — needs no
+   runtime parameter, so `send_template_message` doesn't even touch it. Two reasons: Meta has
+   historically been strict about a variable sitting at the very start/end of a template body, so
+   keeping every variable mid-sentence, flanked by static text on both sides, sidesteps that risk
+   entirely instead of betting on current behavior being lenient; and a dynamic per-user URL would
+   have added rejection-surface for zero real gain, since `/apartments` already does its own
+   access-gating server-side regardless of which link got someone there.
+
+**What actually ships dormant today** (nothing sends until the owner configures the template
+name): `charts/todira/values.yaml` gained `scraper.whatsappMatchTemplateName` (empty by default)
+and `scraper.whatsappMatchTemplateLanguage` (defaults `"he"`), wired into
+`scraper-cronjob.yaml` as plain (non-secret) env vars — plus `WHATSAPP_ACCESS_TOKEN`/
+`WHATSAPP_PHONE_NUMBER_ID` secret refs the scraper CronJob was actually missing entirely until
+now (it already needed them for this feature to work at all; website-deployment.yaml already had
+them for the webhook's own replies). Full test suite: 626 passed (up from 607 at the top of
+today), including new coverage for `_whatsapp_eligible`, the template-send payload shape, the
+`/account` toggle, and the onboarding opt-in prompt.
+
+**What the owner still needs to do** — none of this is buildable from a coding session:
+
+1. In Meta's WhatsApp Manager (business.facebook.com → WhatsApp Manager → Message Templates →
+   Create Template), create a template with these EXACT values:
+   - **Category**: Utility
+   - **Name**: `new_listing_match`
+   - **Language**: Hebrew
+   - **Body** (paste exactly — `{{1}}`/`{{2}}`/`{{3}}` are the literal placeholder syntax Meta's
+     editor expects):
+     ```
+     🏠 טודירה: נמצאה התאמה חדשה לחיפוש השמור שלך — {{1}}, {{2}} חדרים, {{3}} ₪ לחודש. לצפייה בכל ההתאמות שלך, היכנסו לאתר.
+     ```
+   - **Sample values** (Meta's editor asks for one example per variable, for its own preview —
+     not sent to real users):
+     - `{{1}}` → `רוטשילד, תל אביב`
+     - `{{2}}` → `3`
+     - `{{3}}` → `5,500`
+   - **Buttons**: add one — type "Visit Website", STATIC (not dynamic), button text
+     `צפייה בדירות`, URL:
+     ```
+     https://todira.app/apartments
+     ```
+2. Submit for review. Meta's own stated turnaround is usually minutes to ~24h, occasionally
+   longer for a brand-new WhatsApp Business Account.
+3. Once approved, set `scraper.whatsappMatchTemplateName: "new_listing_match"` in
+   `charts/todira/values.yaml` (already defaults `whatsappMatchTemplateLanguage` to `"he"`,
+   matching the template's language above) and push — the next scraper run (once
+   `scraper.suspended` is flipped back to `false`, see the 2026-09-03 freeze — still deliberately
+   on hold) will start actually sending to opted-in users.
+4. If Meta's own review recategorizes this as Marketing instead of Utility (a real possibility —
+   flagged honestly, not guaranteed): Marketing templates need stricter pacing/opt-out handling
+   Meta enforces on the API side automatically; the code here doesn't need to change, but it's
+   worth knowing before assuming the category is locked in.

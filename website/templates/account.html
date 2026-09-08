@@ -40,6 +40,20 @@
         <button type="submit" class="btn outline block">{{ 'כבה התראות' if notifications_enabled else 'הפעל התראות' }}</button>
       </form>
     </div>
+    {% if has_whatsapp %}
+    <div class="field" style="text-align:center">
+      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">התראות בווטסאפ 💬</div>
+      <p class="channel-status {{ 'connected' if whatsapp_notifications_opted_in else '' }}">
+        {{ '🔔 מופעלות' if whatsapp_notifications_opted_in else '🔕 כבויות' }}
+      </p>
+      <form method="post" action="/account/whatsapp-notifications" style="margin-top:10px">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
+        <button type="submit" class="btn outline block">{{ 'כבה התראות בווטסאפ' if whatsapp_notifications_opted_in else 'הפעל התראות בווטסאפ' }}</button>
+      </form>
+      <p class="field-hint" style="margin-top:10px">הודעת ווטסאפ ברגע שעולה דירה חדשה שמתאימה לך, בנוסף לאתר/טלגרם.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 

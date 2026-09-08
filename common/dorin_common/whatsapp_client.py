@@ -1,16 +1,25 @@
-"""Thin wrapper around the WhatsApp Cloud API (Meta) for sending free-form text messages.
+"""Thin wrapper around the WhatsApp Cloud API (Meta) for sending messages.
 
 Fails soft, same contract as bot/gemini_client.py: if WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID
-aren't set, or the API call fails for any reason, send_text_message returns False and logs — never
-raises. Callers (whatsapp_webhook.py) treat a False return as "the reply didn't go out" without
-crashing the whole request.
+aren't set, or the API call fails for any reason, every send_* function returns False and logs —
+never raises. Callers (whatsapp_webhook.py, scraper/notifier.py) treat a False return as "the
+message didn't go out" without crashing the whole request/run.
 
-Only free-form text is implemented (no message templates). WhatsApp only allows free-form replies
-within 24 hours of the user's last message (the "customer service window") — fine for the
-onboarding conversation itself (always a direct reply to something the user just sent), but NOT
-enough for proactive "a new listing matches your filter" pushes outside that window, which need a
-pre-approved message template (a separate Meta review process — see PROJECT_STATE.md). Not built
-yet; scraper/notifier.py still only sends via Telegram.
+Lives in dorin_common (moved here 2026-09-08, was website/whatsapp_client.py) because it's no
+longer website-only: send_template_message below is used by scraper/notifier.py for proactive
+pushes, the same way dorin_common/cards.py and bright_data_client.py are already shared between
+the bot and the scraper.
+
+Two message-sending regimes:
+- Free-form text/interactive messages (send_text_message, send_cta_url_message,
+  mark_as_read_with_typing_indicator) only work within 24 hours of the user's own last message
+  (WhatsApp's "customer service window") — fine for direct replies in an active conversation
+  (whatsapp_webhook.py's onboarding/chat), never for a proactive push out of nowhere.
+- send_template_message uses a pre-approved WhatsApp Message Template, Meta's only mechanism for
+  business-initiated messages outside that window — this is what a proactive "a new listing
+  matches your filter" push (scraper/notifier.py) actually needs, and it requires the recipient's
+  own opt-in plus a template Meta has already reviewed and approved (see PROJECT_STATE.md for the
+  submitted template copy and the User.whatsapp_notifications_opted_in field this is gated on).
 """
 from __future__ import annotations
 
@@ -99,6 +108,37 @@ def send_cta_url_message(to: str, body: str, button_text: str, url: str) -> bool
         },
     }
     return _post_message(payload, to=to, action_desc="send WhatsApp CTA button message")
+
+
+def send_template_message(
+    to: str, *, template_name: str, language_code: str, body_params: list[str]
+) -> bool:
+    """Sends a pre-approved WhatsApp Message Template — see this module's own docstring for why
+    this is the only way to message a user proactively, outside a conversation they started.
+
+    `template_name`/`language_code` must exactly match a template Meta has already APPROVED in
+    WhatsApp Manager (see PROJECT_STATE.md for the exact copy submitted) — an unapproved or
+    misspelled name fails the whole send, same fail-soft contract as every other function here
+    (logged, returns False, never raises). `body_params` are substituted into the template's
+    {{1}}, {{2}}, ... placeholders in order. Meta rejects a param containing a newline or 4+
+    consecutive spaces — callers must pre-sanitize (scraper/notifier.py's own
+    _whatsapp_template_param does this before calling in)."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": language_code},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": param} for param in body_params],
+                }
+            ],
+        },
+    }
+    return _post_message(payload, to=to, action_desc=f"send WhatsApp template '{template_name}'")
 
 
 def mark_as_read_with_typing_indicator(message_id: str) -> bool:

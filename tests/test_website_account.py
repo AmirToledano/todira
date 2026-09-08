@@ -43,6 +43,7 @@ class _FakeUser:
         trial_ends_at=None,
         paid_until=None,
         notifications_enabled=True,
+        whatsapp_notifications_opted_in=False,
     ):
         self.id = id
         self.telegram_user_id = telegram_user_id
@@ -52,6 +53,7 @@ class _FakeUser:
         self.trial_ends_at = trial_ends_at
         self.paid_until = paid_until
         self.notifications_enabled = notifications_enabled
+        self.whatsapp_notifications_opted_in = whatsapp_notifications_opted_in
 
 
 class _FakeSession:
@@ -300,3 +302,74 @@ def test_account_hides_payment_history_section_when_no_payments(client):
         resp = client.get("/account", params={"uid": 222})
 
     assert "היסטוריית תשלומים 📄" not in resp.text
+
+
+# --- WhatsApp Message Template notification opt-in (2026-09-08) ---
+
+
+def test_account_hides_whatsapp_notifications_toggle_when_whatsapp_not_linked(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "התראות בווטסאפ" not in resp.text
+    assert "/account/whatsapp-notifications" not in resp.text
+
+
+def test_account_shows_whatsapp_notifications_toggle_off_by_default_when_whatsapp_linked(client):
+    """Default False on a brand-new whatsapp_phone_number row — see models.py's own docstring on
+    why this can't just inherit notifications_enabled's default-True."""
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "התראות בווטסאפ 💬" in resp.text
+    assert "🔕 כבויות" in resp.text
+    assert "הפעל התראות בווטסאפ" in resp.text
+
+
+def test_account_shows_whatsapp_notifications_toggle_on_when_opted_in(client):
+    user = _FakeUser(
+        id=2, telegram_user_id=222, whatsapp_phone_number="9725500000",
+        whatsapp_notifications_opted_in=True,
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert "🔔 מופעלות" in resp.text
+    assert "כבה התראות בווטסאפ" in resp.text
+
+
+def test_account_whatsapp_notifications_toggle_flips_and_redirects_with_uid(client):
+    user = _FakeUser(
+        id=2, telegram_user_id=222, whatsapp_phone_number="9725500000",
+        whatsapp_notifications_opted_in=False,
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post("/account/whatsapp-notifications", data={"uid": 222})
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/account?uid=222"
+    assert user.whatsapp_notifications_opted_in is True
+    assert fake_session.committed is True
+
+
+def test_account_whatsapp_notifications_toggle_falls_back_to_wid_when_no_uid(client):
+    user = _FakeUser(id=2, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
+
+    class _WidSession(_FakeSession):
+        def scalar(self, stmt):
+            return None
+
+    fake_session = _WidSession()
+    with patch.object(website_main, "_get_user_by_wid", lambda session, wid: user):
+        with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+            resp = client.post("/account/whatsapp-notifications", data={"wid": "9725500000"})
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/account?wid=9725500000"
+    assert user.whatsapp_notifications_opted_in is False

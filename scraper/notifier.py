@@ -1,4 +1,6 @@
-"""Matches listings against active user filters and sends Telegram notifications. Two cases:
+"""Matches listings against active user filters and sends notifications — Telegram always, plus
+(2026-09-08) a proactive WhatsApp Message Template push for users who linked WhatsApp AND opted
+in (see _whatsapp_eligible, User.whatsapp_notifications_opted_in). Two notification cases:
 
 1. A brand-new listing (or an existing listing whose price just changed into someone's budget)
    gets the normal "new match" notification, once per user, ever (reason='new').
@@ -25,7 +27,7 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from dorin_common import bright_data_client
+from dorin_common import bright_data_client, whatsapp_client
 from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.enums import NotificationReason
@@ -39,6 +41,21 @@ logger = logging.getLogger(__name__)
 # bot's own on-demand handlers show (dorin_common.cards.format_caption, 2026-09-05).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
+
+# Proactive WhatsApp Message Template push (2026-09-08) — see dorin_common/whatsapp_client.py's
+# module docstring for why a template (not free-form text) is required outside the 24h window.
+# Both unset by default, matching this project's "optional secret, safe until set" convention
+# (bot-secret.yaml): with no template name configured, _whatsapp_eligible below is never true and
+# this whole code path stays fully dormant — no WhatsApp send is even attempted — until the owner
+# has a real Meta-APPROVED template to point at. See PROJECT_STATE.md for the exact copy
+# submitted for review; the name/language here must match it exactly.
+WHATSAPP_MATCH_TEMPLATE_NAME = os.environ.get("WHATSAPP_MATCH_TEMPLATE_NAME")
+WHATSAPP_MATCH_TEMPLATE_LANGUAGE = os.environ.get("WHATSAPP_MATCH_TEMPLATE_LANGUAGE", "he")
+
+# WhatsApp sends aren't subject to Telegram's same-chat flood control (SEND_DELAY_SECONDS exists
+# specifically for that), but a short pause between API calls is still cheap insurance against
+# tripping the Cloud API's own per-number rate limit during a burst of matches.
+WHATSAPP_SEND_DELAY_SECONDS = 0.3
 
 
 def _has_access_for(user: User) -> bool:
@@ -99,6 +116,61 @@ def _already_notified(session: Session, user_id: int, listing_id: int, reason: s
     )
 
 
+def _whatsapp_eligible(user: User) -> bool:
+    """Whether `user` should get the proactive WhatsApp Message Template send below — needs a
+    linked number, the user's own explicit opt-in (see models.py's User.whatsapp_notifications_
+    opted_in docstring for why that's separate from notifications_enabled), AND an actually-
+    configured/approved template name. All three, every time — this is deliberately NOT cached
+    per-run, since it's cheap and a mid-run env change should never matter (it can't happen in
+    practice; a pod's env is fixed at start, this is just not assuming that)."""
+    return bool(
+        WHATSAPP_MATCH_TEMPLATE_NAME
+        and user.whatsapp_phone_number
+        and user.whatsapp_notifications_opted_in
+    )
+
+
+def _whatsapp_template_param(value: str, *, max_length: int = 300) -> str:
+    """WhatsApp template params can't contain a newline or 4+ consecutive spaces (Meta rejects
+    the whole send if one does) — collapse whitespace defensively since this runs on scraped
+    listing data this project didn't write itself, not a hardcoded string. Also length-capped:
+    Meta's own per-parameter limit is generous, but a listing field is never expected to need it,
+    so a long one is far more likely mis-scraped junk than genuine content worth showing in full."""
+    collapsed = " ".join(value.split())
+    if len(collapsed) > max_length:
+        return collapsed[: max_length - 1] + "…"
+    return collapsed
+
+
+def _send_whatsapp_match_template(user: User, listing: Listing) -> bool:
+    """The proactive "new match" WhatsApp push — see WHATSAPP_MATCH_TEMPLATE_NAME's own comment
+    and PROJECT_STATE.md for the exact template copy this must match. Only 3 body variables
+    (location, rooms, price), each flanked by static text on both sides — no URL variable in the
+    body. The "view listings" link is instead a fully STATIC website button baked into the
+    template itself at creation time in Meta's WhatsApp Manager (https://todira.app/apartments,
+    no per-user query string), which needs no runtime parameter here at all. Two deliberate
+    reasons: (1) Meta has historically been stricter about a variable sitting at the very start or
+    end of a template body — keeping every variable mid-sentence sidesteps that risk entirely
+    rather than betting on current behavior; (2) unlike format_caption's Telegram card, this can't
+    do real access-gating (has_access + upgrade_url) on the content anyway — a static link to
+    /apartments (whose own access gating already hides full details behind the paywall
+    server-side) is exactly as useful as a per-user one here, so there's nothing to gain from a
+    dynamic URL variable that would only add rejection risk."""
+    location = listing.street or listing.neighborhood or listing.city or "דירה"
+    rooms = f"{float(listing.rooms):g}" if listing.rooms is not None else "-"
+    price = f"{listing.price:,}" if listing.price is not None else "-"
+    return whatsapp_client.send_template_message(
+        user.whatsapp_phone_number,
+        template_name=WHATSAPP_MATCH_TEMPLATE_NAME,
+        language_code=WHATSAPP_MATCH_TEMPLATE_LANGUAGE,
+        body_params=[
+            _whatsapp_template_param(location),
+            _whatsapp_template_param(rooms),
+            _whatsapp_template_param(price),
+        ],
+    )
+
+
 async def _maybe_fetch_description(session: Session, listing: Listing, recipients: list[User]) -> None:
     """Bright Data on-demand enrichment (2026-09-05, common/dorin_common/bright_data_client.py) —
     fetches and caches the listing's real description, but ONLY when it's worth the cost: this is
@@ -136,27 +208,41 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
         user = session.get(User, filter_row.user_id)
         if user is None:
             continue
-        if user.telegram_user_id is None:
-            # Push notifications are Telegram-only today (see this module's own docstring — no
-            # WhatsApp send path exists yet). A Google-only standalone account (2026-09-05) or a
-            # WhatsApp-only account both legitimately have no telegram_user_id — they check the
-            # website manually, or can link Telegram via /account for push, but there is
-            # nothing to send to right now. Skipping here (rather than letting send_listing_card
-            # fail on chat_id=None every single time) avoids repeated wasted API calls/log noise
-            # for the exact same listing on every future scrape run, since a failed send never
-            # writes a SentNotification row to remember "already tried."
+        if user.telegram_user_id is None and not _whatsapp_eligible(user):
+            # No channel to actually push through. A Google-only standalone account (2026-09-05)
+            # legitimately has neither; a WhatsApp-only or -linked account has a channel to send
+            # to but hasn't opted in yet (see _whatsapp_eligible). Either way they can still check
+            # the website manually, or link Telegram / opt in via /account for a push. Skipping
+            # here (rather than letting a send fail on a missing/ineligible destination every
+            # single time) avoids repeated wasted API calls/log noise for the exact same listing
+            # on every future scrape run, since a failed send never writes a SentNotification row
+            # to remember "already tried."
             continue
         to_notify.append((filter_row, user))
 
     await _maybe_fetch_description(session, listing, [user for _f, user in to_notify])
 
     for filter_row, user in to_notify:
-        caption = format_caption(
-            listing,
-            has_access=_has_access_for(user),
-            upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
-        )
-        if await send_listing_card(bot, user.telegram_user_id, listing, caption):
+        sent_on_any_channel = False
+        if user.telegram_user_id is not None:
+            caption = format_caption(
+                listing,
+                has_access=_has_access_for(user),
+                upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
+            )
+            if await send_listing_card(bot, user.telegram_user_id, listing, caption):
+                sent_on_any_channel = True
+            await asyncio.sleep(SEND_DELAY_SECONDS)
+        if _whatsapp_eligible(user):
+            if _send_whatsapp_match_template(user, listing):
+                sent_on_any_channel = True
+            await asyncio.sleep(WHATSAPP_SEND_DELAY_SECONDS)
+        if sent_on_any_channel:
+            # One row per user per listing regardless of how many channels it went out on — this
+            # only ever means "has this user already been told about this listing," matching
+            # _already_notified's own reason-only (not channel-specific) lookup key. A user linked
+            # on both channels who's opted into WhatsApp alerts gets both pushes the first time a
+            # listing matches, but is never re-notified on a later run either way.
             session.add(
                 SentNotification(
                     user_id=filter_row.user_id,
@@ -166,7 +252,6 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
             )
             session.commit()
             sent += 1
-        await asyncio.sleep(SEND_DELAY_SECONDS)
     return matched, sent
 
 
@@ -177,7 +262,13 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
     NotificationReasons, so a listing that drops and later rises again can still notify for the
     increase even though its drop notification already went out — and vice versa. One
     notification per user per listing PER DIRECTION in v1 — if the same listing drops twice in a
-    row, that's a documented simplification, not a bug (revisit if it matters)."""
+    row, that's a documented simplification, not a bug (revisit if it matters).
+
+    Telegram-only, deliberately, unlike _notify_new_matches (2026-09-08): a price-change WhatsApp
+    push would need its own separate Meta-approved template — "your saved search matched" and
+    "the price on a listing you were already shown just changed" are different enough content
+    that the same template copy can't honestly cover both. Not built until there's a second
+    approved template to point at; revisit then."""
     sent = 0
     reason = (
         NotificationReason.PRICE_DROP
@@ -200,7 +291,8 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
         if user is None or not user.is_active or not user.notifications_enabled:
             continue
         if user.telegram_user_id is None:
-            # See _notify_new_matches' own comment on why this is skipped, not attempted.
+            # Price-change re-notifications are Telegram-only — see this function's own
+            # docstring for why (no WhatsApp template covers this content yet).
             continue
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user_id))
         if filter_row is None or not evaluate(filter_row, listing).matched:

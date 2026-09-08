@@ -154,6 +154,16 @@ scraper:
   # new runs entirely — a currently-running job, if any, still finishes, but no new one starts.
   # Flip back to `false` (or delete this line) when ready to resume automatic scraping.
   suspended: true
+  # Proactive WhatsApp Message Template push (2026-09-08, scraper/notifier.py's own
+  # _whatsapp_eligible) — the APPROVED template's exact name/language in Meta's WhatsApp Manager.
+  # Not secret (a template name isn't a credential — whatsappAccessToken/whatsappPhoneNumberId
+  # above are what actually authorize sending). Empty by default: with no name set, every
+  # WhatsApp push is skipped (fully dormant, see _whatsapp_eligible), same "optional, safe until
+  # set" convention as brightDataApiKey etc above. See PROJECT_STATE.md for the exact copy
+  # submitted for Meta's review — this must match that template's real name/language exactly, or
+  # every send just fails (logged, not fatal).
+  whatsappMatchTemplateName: ""
+  whatsappMatchTemplateLanguage: "he"
 
 resources:
   bot:
