@@ -51,7 +51,10 @@
     <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>{{ t('home.live_badge') }}</span>
     <span class="ai-pill">{{ t('home.stat_ai_label') }} ✨</span>
     <div class="example-card">
-      <div class="ec-top"><span class="ec-title">{{ t('home.example_card_title') }}</span><span class="ec-badge">{{ t('home.example_badge_label') }}</span></div>
+      {# 2026-09-08 fix (owner's own report): "לדוגמה" now sits to the right of the title itself
+         instead of the left — badge first in source order, since this is an RTL page and the
+         first flex child lands on the right (main-start follows the page's own writing direction). #}
+      <div class="ec-top"><span class="ec-badge">{{ t('home.example_badge_label') }}</span><span class="ec-title">{{ t('home.example_card_title') }}</span></div>
       <span class="ec-sub">{{ t('home.example_card_sub') }}</span>
     </div>
   </div>
