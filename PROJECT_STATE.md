@@ -4806,3 +4806,101 @@ judged lower-value-per-effort or higher-risk than the above — pick up whicheve
   action), **Takbull real-payment test** (blocked on UPAY), the **TEMPORARY ₪1 weekly price**
   (`common/dorin_common/access.py`) not yet reverted, and confirming **Meta's WhatsApp Business
   Verification** review outcome.
+
+## Update 2026-09-08: pre-launch reliability pass, a WhatsApp policy scare that turned out fine, and a 4th confirmed scraping source
+
+**Reliability roadmap (owner asked "what would it take to actually launch," then "build the path
+and do it")** — landed as a single PR. No Deployment in this chart had ANY liveness/readiness
+probe before this: a hung-but-still-running process would sit "Running" forever with zero
+automatic recovery. Added:
+- `/healthz` on the website (a real DB round-trip check, not just "the process answers HTTP"),
+  wired into new liveness+readiness probes on `website-deployment.yaml`.
+- A JobQueue-based heartbeat on the bot (`main.py` touches a file on every tick) — deliberately
+  NOT a plain background thread, since a JobQueue job runs on the SAME asyncio event loop that
+  processes real Telegram updates, so a deadlocked loop stops the heartbeat too. Needed adding the
+  `[job-queue]` extra (APScheduler) to `bot/requirements.txt` and `requirements-test.txt`. Wired
+  into a new exec liveness probe on `bot-deployment.yaml`.
+- `pg_isready`-based probes on postgres; a plain TCP check (not httpGet, deliberately — see that
+  file's own comment on why an HTTP check would cascade-restart Caddy whenever the website pod
+  it's proxying to is briefly unhealthy) on caddy.
+- A new self-hosted watchdog CronJob (`healthcheck-cronjob.yaml`, `curlimages/curl`, no new image
+  to build) that DMs the owner on Telegram when `/healthz` fails, every 15 minutes.
+- A new `RUNBOOK.md` — step-by-step disaster recovery. **Surfaced the single most important
+  operational fact in the whole project while writing it**: Postgres's PVC has no
+  `storageClassName` set, so it uses the cluster's only StorageClass (`local-path-provisioner` —
+  a plain directory on the node's own local disk, not networked storage). Data survives an EC2
+  stop/start but is **permanently, unrecoverably lost** on instance termination or an EBS failure
+  — and as of this writing **there is no backup of any kind**. Explicitly flagged as the top risk
+  before any real launch.
+- **In progress, not yet built**: automated off-node DB backups to S3. Owner chose S3 over a
+  zero-cost "DM the dump to Telegram" alternative after an honest cost/tradeoff discussion (S3:
+  ~$0.01-0.05/month for this DB's current size even with daily backups + 30-day retention, likely
+  staying under $1/month for a long time even as the app grows; Telegram: free but worse on
+  privacy — a DB dump sitting in chat history rather than access-controlled storage — no easy
+  automatic retention/rotation, and more manual friction to restore during an actual emergency,
+  exactly when friction is least wanted). Walked the owner through creating a scoped IAM user (not
+  root) + an S3 bucket with a least-privilege policy (PutObject/GetObject/DeleteObject/ListBucket
+  on that one bucket only) — **waiting on the owner to send back the bucket name, region, and the
+  IAM access key/secret** before the actual backup CronJob (daily `pg_dump` + upload + prune
+  anything older than 30 days) can be built. Once it exists, update `RUNBOOK.md`'s backup section
+  with the real restore steps.
+- **Also explicitly out of scope, needs the owner's own action, not buildable from a coding
+  session**: an external uptime monitor (e.g. a free UptimeRobot/Better Uptime account) pointed at
+  `https://todira.app/healthz` from OUTSIDE this infrastructure — the only thing that can actually
+  detect the node itself dying, since the in-cluster watchdog above runs on that same node and
+  can't report on its own host's death.
+
+**A competitor's WhatsApp shutdown notice, investigated, turned out not to apply here.** The owner
+found dorin.app (the reference product) announcing it's shutting down its own WhatsApp
+notification service Sep 30 2026, blaming a Meta policy change, and asked whether this is a real
+risk to Todira. Checked properly rather than guessing: (1) confirmed via `website/whatsapp_client.py`
+and `scraper/notifier.py` that Todira's WhatsApp integration sends ZERO proactive/automated
+notifications today — every WhatsApp message is a reply within the 24h customer-service window
+(the safe, compliant case); the "new listing matches" push only exists on Telegram. (2) Web-
+searched Meta's actual 2026 WhatsApp Business Platform changes: a January 2026 ban on
+general-purpose chatbots (doesn't apply — Todira is a structured, purpose-built bot, explicitly
+still allowed), a real Oct 1 2026 pricing change (service/utility messages inside the 24h window,
+previously free, start being charged — worth revisiting once in effect, not urgent now), and a
+real, well-documented crackdown specifically on UNSOLICITED bulk real-estate messaging to cold
+lists without consent (large EU fines cited) — which is exactly what dorin.app's own proactive
+push-to-non-consenting-numbers model was doing, and exactly what Todira structurally is NOT doing
+(every message is either a reply, or — the day proactive WhatsApp pushes are ever built — will
+need a pre-approved message template + explicit opt-in, already noted as a requirement in
+`whatsapp_client.py`'s own docstring). **Conclusion: no action needed now**; revisit the Oct 1
+pricing change once it takes effect, and remember the template+consent requirement if/when
+WhatsApp ever gets its own proactive "new match" push built.
+
+**4th scraping source confirmed via real evidence, not a guess: homeless.co.il.** The owner sent
+screenshots of dorin.app's own listing cards, each showing a small per-card source badge — Yad2,
+Facebook, קומו (Komo), and הומלס (Homeless), confirming all four as real, currently-live sources
+dorin.app aggregates from. Added `Source.HOMELESS = "homeless"` to `dorin_common/enums.py`
+(`Source.ALL` now includes it) — schema-only, no scraper built yet, same "source-agnostic by
+design" pattern Komo/Facebook already had reserved. homeless.co.il's own URL shape looks similarly
+scrapeable to Komo's (query-param-driven, e.g. `homeless.co.il/rent/city=<name>`, confirmed via
+websearch, not fetched — same EGRESS_BLOCKED restriction as Komo/Facebook, see below).
+
+**Komo/Facebook/Homeless scraping — same real blocker as documented in the 2026-08-30/09-05
+entries above, re-confirmed today, not new.** Tried both `WebFetch` and a direct `curl` (through
+this session's own egress proxy) against `komo.co.il`, `www.facebook.com`, and would hit the same
+wall for `homeless.co.il` — all return `EGRESS_BLOCKED` (this session's network policy, not a
+site-side block). `api.zenrows.com` is ALSO blocked from this sandbox and `ZENROWS_API_KEY` isn't
+present here either — so there's no way to reach any of these three sources' real HTML from
+inside a coding session, full stop. **What's actually needed to unblock each, concretely**:
+1. **Komo + Homeless**: the owner opening a couple of real listing-search URLs himself (a
+   browser with real internet access, e.g. his phone/laptop) and sending back the actual page
+   source (View Source / Ctrl+U — NOT a screenshot, screenshots don't show HTML structure/CSS
+   selectors) for 2-3 real listing cards each. Once real markup is in hand, build against
+   `zenrows` the exact same way `scraper/yad2_client.py` already does — don't guess at selectors
+   blind, that's the exact mistake that cost Yad2's first 8 attempts (2026-08-30 entry).
+2. **Facebook Marketplace/Groups**: per the 2026-08-30/09-05 entries above — needs a dedicated
+   throwaway account (never the owner's real one, permanent-ban risk) with some history (photo,
+   friends, joined relevant Groups manually first), then real session cookies exported from a
+   normal browser login (not a scripted username+password flow). **Still waiting** on the owner
+   to confirm the account and send the cookies — unchanged status since 09-05.
+
+**Bot username change**: owner asked about renaming the Telegram bot from `@AmirDirotBot` to
+something on-brand (e.g. `@TodiraBot`) — this is a `@BotFather` `/setusername` action on the
+owner's own Telegram account, not something a coding session can do. Found the handle hardcoded
+in 8 real source files (`website/main.py`, 5 templates, plus test fixtures) — **waiting on the
+owner to actually rename it via BotFather and report the new handle**, then this session updates
+every hardcoded reference in one pass and re-runs the full suite before pushing.
