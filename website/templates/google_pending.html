@@ -1,32 +1,31 @@
 {% extends "base.html" %}
-{% block title %}כמעט שם — טודירה{% endblock %}
+{% block title %}{{ t('meta.title_google_pending') }}{% endblock %}
 {% block content %}
 <div class="login-card reveal">
   <div class="login-head">
     <span class="crown" aria-hidden="true">🔗</span>
-    <h1>ההתחברות עם Google הצליחה</h1>
-    <p>זו הפעם הראשונה שאנחנו רואים את החשבון הזה — איך תרצה/י להמשיך?</p>
+    <h1>{{ t('google_pending.h1') }}</h1>
+    <p>{{ t('google_pending.subtitle') }}</p>
   </div>
 
   <form method="post" action="/auth/google/create-account">
-    <button type="submit" class="btn gold block">זה חשבון חדש — תתחיל/י ישר כאן באתר ✨</button>
+    <button type="submit" class="btn gold block">{{ t('google_pending.new_account_cta') }}</button>
   </form>
   <p class="login-hint" style="margin-top:0">
-    ניצור לך חשבון וסינון פתוח שמתאים לכל הדירות — תוכל/י לצמצם אותו בכל רגע ב"סינון". טלגרם
-    וווטסאפ יישארו זמינים תמיד כאופציה נוספת לקבלת התראות, בלי חובה להשתמש בהם.
+    {{ t('google_pending.new_account_hint') }}
   </p>
 
-  <div class="login-divider"><span>או</span></div>
+  <div class="login-divider"><span>{{ t('google_pending.divider') }}</span></div>
 
-  <p class="field-hint" style="margin-top:0">כבר יש לך חשבון דרך טלגרם או ווטסאפ?</p>
+  <p class="field-hint" style="margin-top:0">{{ t('google_pending.existing_account_prompt') }}</p>
   <a class="btn outline block" href="https://t.me/AmirDirotBot{{ '?start=' ~ google_link_token if google_link_token else '' }}" target="_blank">
-    🔗 קשר לחשבון הקיים שלי
+    {{ t('google_pending.link_existing_cta') }}
   </a>
   <p class="login-hint">
     {% if google_link_token %}
-    שלח/י /start בבוט — החיבור יושלם מיד שם, בלי קשר לאיזה דפדפן תשתמש/י בהמשך.
+    {{ t('google_pending.link_hint_with_token') }}
     {% else %}
-    פתח/י את הבוט פעם אחת — כשתחזור/י לאתר מאותו דפדפן, נשלים את החיבור אוטומטית.
+    {{ t('google_pending.link_hint_no_token') }}
     {% endif %}
   </p>
 </div>

@@ -91,3 +91,17 @@ def test_login_page_google_button_has_no_uid_param_when_none_given(client):
     assert resp.status_code == 200
     assert 'href="/auth/google/start?next=/apartments"' in resp.text
     assert "uid=" not in resp.text
+
+
+def test_login_page_renders_in_english_when_lang_param_is_set(client):
+    """2026-09-08 fix: this whole page was hardcoded Hebrew-only, unlike every other
+    customer-facing page — confirms the fix actually renders translated content."""
+    with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", "972500000000"):
+        resp = client.get("/login", params={"lang": "en"})
+
+    assert resp.status_code == 200
+    assert "Log in to Todira" in resp.text
+    assert "Quick login with Google" in resp.text
+    assert "Continue on Telegram" in resp.text
+    assert "Continue on WhatsApp" in resp.text
+    assert "התחברות לטודירה" not in resp.text
