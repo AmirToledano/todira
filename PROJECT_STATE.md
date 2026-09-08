@@ -4973,7 +4973,7 @@ avoiding a template rejection or, worse, an account-level warning for unsolicite
 Every choice below was made defensively with that in mind, not just to make the feature "work":
 
 1. **A brand-new, separate opt-in field** — `User.whatsapp_notifications_opted_in` (migration
-   `0010_whatsapp_notifications_optin`, default `False` for every row, including every existing
+   `0010_whatsapp_notif_optin`, default `False` for every row, including every existing
    WhatsApp user). Deliberately NOT reusing the existing `notifications_enabled` field: that one
    has meant "Telegram push" ever since Telegram was the only channel that could push at all, and
    silently switching its meaning to "also proactively WhatsApp you" for users who already have it
