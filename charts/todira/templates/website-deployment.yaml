@@ -191,6 +191,29 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: takbull-webhook-secret
                   optional: true
+          # Added 2026-09-08 (pre-launch reliability pass) — this Deployment had NO probe at all
+          # before this, so a hung-but-still-running process (an event loop deadlock, a DB
+          # connection that dies and never recovers) would sit "Running" forever with zero
+          # automatic recovery, and a still-starting pod could receive real user traffic before it
+          # was actually able to serve it. /healthz (website/main.py) does a real DB round-trip,
+          # not just "the process answers HTTP" — matches what the probe is actually meant to
+          # protect against. initialDelaySeconds gives the app a moment to import/connect on a
+          # cold start before the probe can fail it; periodSeconds/failureThreshold together mean
+          # a real outage takes ~30s to trip, not a single slow request.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
           resources:
             requests:
               cpu: {{ .Values.resources.website.requests.cpu }}

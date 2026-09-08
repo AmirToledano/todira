@@ -80,6 +80,22 @@ spec:
           volumeMounts:
             - name: bot-data
               mountPath: /data
+          # Added 2026-09-08 (pre-launch reliability pass) — this Deployment had NO probe at all
+          # before this. Unlike website (a real HTTP server), the bot is a long-running polling
+          # process with nothing to httpGet — main.py writes a heartbeat file on every JobQueue
+          # tick (same asyncio event loop that processes real updates, so a deadlocked loop stops
+          # the file updating too, not just "the process exists"). find -mmin -1 checks the file
+          # was touched in the last 60s — generous headroom over the 15s heartbeat interval (4
+          # missed ticks) so one slow tick doesn't trip a restart.
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - 'test -n "$(find /tmp/bot_heartbeat -mmin -1 2>/dev/null)"'
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
           resources:
             requests:
               cpu: {{ .Values.resources.bot.requests.cpu }}

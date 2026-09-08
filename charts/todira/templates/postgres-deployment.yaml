@@ -49,6 +49,24 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+          # Added 2026-09-08 (pre-launch reliability pass, same as website/bot's own new probes) —
+          # pg_isready ships in every postgres:*-alpine image, so no extra tooling needed. A
+          # readiness failure alone (DB still starting up / recovering from a crash) takes this
+          # pod out of Service rotation without killing it; a SUSTAINED failure (failureThreshold)
+          # also trips the liveness probe, which actually restarts the container — the two
+          # together mean "briefly busy" doesn't get treated the same as "actually stuck."
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
           resources:
             requests:
               cpu: {{ .Values.resources.postgres.requests.cpu }}
