@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}תשלום — טודירה{% endblock %}
+{% block title %}{{ t('meta.title_upgrade_pay') }}{% endblock %}
 {% block content %}
 
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>השלמת התשלום 💳</h1>
-    <p>תוכנית {{ plan_label }} — לתשלום: <b>₪{{ amount }}</b></p>
+    <h1>{{ t('upgrade_pay.h1') }}</h1>
+    <p>{{ t('upgrade_pay.plan_prefix', plan=plan_label) }} <b>₪{{ amount }}</b></p>
   </div>
 </div>
 
@@ -13,7 +13,7 @@
   {% if bit_phone %}
   <div class="field">
     <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">Bit</div>
-    <p class="field-hint">פתח/י את אפליקציית Bit, חפש/י את המספר הבא ושלח/י ₪{{ amount }}:</p>
+    <p class="field-hint">{{ t('upgrade_pay.bit_instruction', amount=amount) }}</p>
     <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.6rem;color:var(--teal);margin:8px 0" dir="ltr">{{ bit_phone }}</p>
   </div>
   {% endif %}
@@ -21,26 +21,26 @@
   {% if paybox_url %}
   <div class="field" style="margin-top:16px">
     <div class="field-section-title">PayBox</div>
-    <a class="btn outline block" href="{{ paybox_url }}" target="_blank">פתח/י את דף התשלום ב-PayBox</a>
+    <a class="btn outline block" href="{{ paybox_url }}" target="_blank">{{ t('upgrade_pay.paybox_cta') }}</a>
   </div>
   {% endif %}
 
   {% if not bit_phone and not paybox_url %}
-  <p class="field-hint">שלח/י ₪{{ amount }} בביט — פרטים יישלחו אליך בנפרד. 🐾</p>
+  <p class="field-hint">{{ t('upgrade_pay.manual_bit_hint', amount=amount) }}</p>
   {% endif %}
 
   <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
     {% if already_paid %}
-      <p class="field-hint" style="text-align:center">התשלום כבר אושר. ✅</p>
-      <a class="btn gold block" href="/upgrade/success?payment_id={{ payment_id }}{{ '&uid=' ~ uid if uid else '' }}">המשך</a>
+      <p class="field-hint" style="text-align:center">{{ t('upgrade_pay.already_paid') }}</p>
+      <a class="btn gold block" href="/upgrade/success?payment_id={{ payment_id }}{{ '&uid=' ~ uid if uid else '' }}">{{ t('upgrade_pay.continue_cta') }}</a>
     {% else %}
       <form method="post" action="/upgrade/pay/confirm">
         <input type="hidden" name="payment_id" value="{{ payment_id }}">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        <button type="submit" class="btn gold block">שילמתי, אשר/י את הגישה ✅</button>
+        <button type="submit" class="btn gold block">{{ t('upgrade_pay.confirm_paid_cta') }}</button>
       </form>
       <p class="field-hint" style="text-align:center;margin-top:10px">
-        לוחצים רק אחרי ששלחתם את התשלום בפועל.
+        {{ t('upgrade_pay.confirm_hint') }}
       </p>
     {% endif %}
   </div>

@@ -192,6 +192,27 @@ def test_upgrade_page_shows_plan_options_for_a_real_user():
     assert "₪40" in resp.text
 
 
+def test_upgrade_page_renders_in_english_when_lang_param_is_set():
+    """2026-09-08 fix: /upgrade was hardcoded Hebrew-only, unlike every other customer-facing
+    page — confirms the fix actually renders translated content."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = c.get("/upgrade", params={"uid": 222, "lang": "en"})
+
+    assert resp.status_code == 200
+    assert "Upgrade subscription" in resp.text
+    assert "Weekly" in resp.text
+    assert "Choose Weekly" in resp.text
+    assert "שדרוג המנוי" not in resp.text
+
+
 def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instructions():
     """Grow isn't configured in these tests (no GROW_* env vars set) — /upgrade falls back to the
     informal Bit/PayBox flow: a pending Payment, then a redirect to the instructions page.

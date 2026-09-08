@@ -124,6 +124,27 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Mon compte — Todira",
         "ar": "حسابي — توديرا",
     },
+    "meta.title_login": {
+        "he": "התחברות — טודירה", "en": "Login — Todira", "ru": "Вход — Todira",
+        "fr": "Connexion — Todira", "ar": "تسجيل الدخول — توديرا",
+    },
+    "meta.title_google_pending": {
+        "he": "כמעט שם — טודירה", "en": "Almost there — Todira", "ru": "Почти готово — Todira",
+        "fr": "Presque terminé — Todira", "ar": "أوشكنا على الانتهاء — توديرا",
+    },
+    "meta.title_upgrade": {
+        "he": "שדרוג המנוי — טודירה", "en": "Upgrade subscription — Todira",
+        "ru": "Улучшение подписки — Todira", "fr": "Mise à niveau de l'abonnement — Todira",
+        "ar": "ترقية الاشتراك — توديرا",
+    },
+    "meta.title_upgrade_pay": {
+        "he": "תשלום — טודירה", "en": "Payment — Todira", "ru": "Оплата — Todira",
+        "fr": "Paiement — Todira", "ar": "الدفع — توديرا",
+    },
+    "meta.title_upgrade_success": {
+        "he": "תודה — טודירה", "en": "Thank you — Todira", "ru": "Спасибо — Todira",
+        "fr": "Merci — Todira", "ar": "شكرًا — توديرا",
+    },
     # ---------- header / nav ----------
     "nav.apartments": {
         "he": "דירות", "en": "Apartments", "ru": "Квартиры", "fr": "Appartements", "ar": "الشقق",
@@ -1371,6 +1392,229 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "account.payment_status_cancelled": {
         "he": "✋ בוטל", "en": "✋ Cancelled", "ru": "✋ Отменено", "fr": "✋ Annulé", "ar": "✋ ألغي",
+    },
+    # ---------- login / google-pending / upgrade / upgrade_pay / upgrade_success pages ----------
+    # 2026-09-08, same audit as the account-page section above: the whole auth+payment funnel was
+    # hardcoded Hebrew-only too. Not fixed here: PLAN_LABELS_HE (website/main.py) — the plan name
+    # shown on /upgrade/pay still comes from a Hebrew-only dict server-side, a deeper gap than a
+    # template string; left as a known follow-up rather than silently declaring this fully done.
+    "login.h1": {
+        "he": "התחברות לטודירה", "en": "Log in to Todira", "ru": "Войти в Todira",
+        "fr": "Connexion à Todira", "ar": "تسجيل الدخول إلى توديرا",
+    },
+    "login.subtitle": {
+        "he": "בחר/י איך להתחבר — כל האפשרויות מובילות לאותו חשבון.",
+        "en": "Choose how to log in — every option leads to the same account.",
+        "ru": "Выберите способ входа — все варианты ведут к одному и тому же аккаунту.",
+        "fr": "Choisissez comment vous connecter — toutes les options mènent au même compte.",
+        "ar": "اختر طريقة تسجيل الدخول — كل الخيارات تؤدي إلى نفس الحساب.",
+    },
+    "login.google_cta": {
+        "he": "התחברות מהירה עם Google", "en": "Quick login with Google",
+        "ru": "Быстрый вход через Google", "fr": "Connexion rapide avec Google",
+        "ar": "تسجيل دخول سريع عبر Google",
+    },
+    "login.divider": {
+        "he": "או המשך ישירות דרך האפליקציה", "en": "Or continue directly through the app",
+        "ru": "Или продолжите прямо через приложение", "fr": "Ou continuez directement via l'application",
+        "ar": "أو تابع مباشرة عبر التطبيق",
+    },
+    "login.telegram_cta": {
+        "he": "המשך בטלגרם", "en": "Continue on Telegram", "ru": "Продолжить в Telegram",
+        "fr": "Continuer sur Telegram", "ar": "تابع عبر تيليجرام",
+    },
+    "login.hint": {
+        "he": "כבר רשום/ה דרך טלגרם או ווטסאפ, אבל עדיין לא קישרת Google? לחיצה על \"{telegram_cta}\" למעלה תפתח את הבוט — שם תמצא/י קישור לחשבון שלך (🔗) שמחזיר אותך לכאן, לאותו דפדפן, מזוהה. משם, החיבור עם Google יעבוד ישר על החשבון הקיים שלך.",
+        "en": "Already registered via Telegram or WhatsApp, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot — you'll find your account link there (🔗) that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
+        "ru": "Уже зарегистрированы через Telegram или WhatsApp, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота — там вы найдёте ссылку на свой аккаунт (🔗), которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
+        "fr": "Déjà inscrit via Telegram ou WhatsApp, mais pas encore lié à Google ? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot — vous y trouverez le lien de votre compte (🔗) qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
+        "ar": "مسجّل بالفعل عبر تيليجرام أو واتساب، لكن لم تربط Google بعد؟ الضغط على \"{telegram_cta}\" أعلاه يفتح البوت — ستجد هناك رابط حسابك (🔗) الذي يعيدك إلى هنا، في نفس المتصفح، معروفًا. من هناك، سيعمل الربط مع Google مباشرة على حسابك الحالي.",
+    },
+    "google_pending.h1": {
+        "he": "ההתחברות עם Google הצליחה", "en": "Google login successful",
+        "ru": "Вход через Google выполнен успешно", "fr": "Connexion Google réussie",
+        "ar": "تم تسجيل الدخول عبر Google بنجاح",
+    },
+    "google_pending.subtitle": {
+        "he": "זו הפעם הראשונה שאנחנו רואים את החשבון הזה — איך תרצה/י להמשיך?",
+        "en": "This is the first time we've seen this account — how would you like to continue?",
+        "ru": "Мы впервые видим этот аккаунт — как вы хотите продолжить?",
+        "fr": "C'est la première fois que nous voyons ce compte — comment souhaitez-vous continuer ?",
+        "ar": "هذه أول مرة نرى فيها هذا الحساب — كيف تريد المتابعة؟",
+    },
+    "google_pending.new_account_cta": {
+        "he": "זה חשבון חדש — תתחיל/י ישר כאן באתר ✨",
+        "en": "This is a new account — start right here on the site ✨",
+        "ru": "Это новый аккаунт — начните прямо здесь, на сайте ✨",
+        "fr": "C'est un nouveau compte — commencez directement ici sur le site ✨",
+        "ar": "هذا حساب جديد — ابدأ مباشرة هنا في الموقع ✨",
+    },
+    "google_pending.new_account_hint": {
+        "he": "ניצור לך חשבון וסינון פתוח שמתאים לכל הדירות — תוכל/י לצמצם אותו בכל רגע ב\"סינון\". טלגרם וווטסאפ יישארו זמינים תמיד כאופציה נוספת לקבלת התראות, בלי חובה להשתמש בהם.",
+        "en": "We'll create an account for you with an open filter that matches every listing — you can narrow it down anytime in \"Filter\". Telegram and WhatsApp will always stay available as an extra way to get notified, with no obligation to use them.",
+        "ru": "Мы создадим для вас аккаунт с открытым фильтром, который подходит под все объявления — вы можете сузить его в любой момент в разделе «Фильтр». Telegram и WhatsApp всегда будут доступны как дополнительный способ получать уведомления, без обязательства ими пользоваться.",
+        "fr": "Nous créerons pour vous un compte avec un filtre ouvert qui correspond à toutes les annonces — vous pourrez le restreindre à tout moment dans « Filtre ». Telegram et WhatsApp resteront toujours disponibles comme moyen supplémentaire de recevoir des notifications, sans obligation de les utiliser.",
+        "ar": "سننشئ لك حسابًا مع فلتر مفتوح يطابق كل الشقق — يمكنك تضييقه في أي وقت من \"الفلتر\". سيبقى تيليجرام وواتساب متاحين دائمًا كوسيلة إضافية لتلقي الإشعارات، دون إلزام باستخدامهما.",
+    },
+    "google_pending.divider": {
+        "he": "או", "en": "Or", "ru": "Или", "fr": "Ou", "ar": "أو",
+    },
+    "google_pending.existing_account_prompt": {
+        "he": "כבר יש לך חשבון דרך טלגרם או ווטסאפ?",
+        "en": "Already have an account via Telegram or WhatsApp?",
+        "ru": "У вас уже есть аккаунт через Telegram или WhatsApp?",
+        "fr": "Vous avez déjà un compte via Telegram ou WhatsApp ?",
+        "ar": "هل لديك حساب بالفعل عبر تيليجرام أو واتساب؟",
+    },
+    "google_pending.link_existing_cta": {
+        "he": "🔗 קשר לחשבון הקיים שלי", "en": "🔗 Link to my existing account",
+        "ru": "🔗 Привязать к существующему аккаунту", "fr": "🔗 Lier à mon compte existant",
+        "ar": "🔗 اربط بحسابي الحالي",
+    },
+    "google_pending.link_hint_with_token": {
+        "he": "שלח/י /start בבוט — החיבור יושלם מיד שם, בלי קשר לאיזה דפדפן תשתמש/י בהמשך.",
+        "en": "Send /start to the bot — the connection completes right there, regardless of which browser you use afterward.",
+        "ru": "Отправьте /start боту — подключение завершится сразу там, независимо от того, каким браузером вы будете пользоваться дальше.",
+        "fr": "Envoyez /start au bot — la connexion se termine immédiatement là-bas, quel que soit le navigateur que vous utiliserez ensuite.",
+        "ar": "أرسل /start للبوت — سيكتمل الربط هناك فورًا، بغض النظر عن المتصفح الذي ستستخدمه لاحقًا.",
+    },
+    "google_pending.link_hint_no_token": {
+        "he": "פתח/י את הבוט פעם אחת — כשתחזור/י לאתר מאותו דפדפן, נשלים את החיבור אוטומטית.",
+        "en": "Open the bot once — when you return to the site from the same browser, we'll complete the connection automatically.",
+        "ru": "Откройте бота один раз — когда вы вернётесь на сайт из того же браузера, мы автоматически завершим подключение.",
+        "fr": "Ouvrez le bot une fois — lorsque vous reviendrez sur le site depuis le même navigateur, nous terminerons la connexion automatiquement.",
+        "ar": "افتح البوت مرة واحدة — عند عودتك إلى الموقع من نفس المتصفح، سنكمل الربط تلقائيًا.",
+    },
+    "upgrade.h1": {
+        "he": "שדרוג המנוי 👑", "en": "Upgrade subscription 👑", "ru": "Улучшение подписки 👑",
+        "fr": "Mise à niveau de l'abonnement 👑", "ar": "ترقية الاشتراك 👑",
+    },
+    "upgrade.owner_notice": {
+        "he": "אתה הבעלים של השירות — יש לך גישה מלאה תמיד, בלי קשר לתשלום.",
+        "en": "You're the service owner — you always have full access, regardless of payment.",
+        "ru": "Вы владелец сервиса — у вас всегда есть полный доступ, независимо от оплаты.",
+        "fr": "Vous êtes le propriétaire du service — vous avez toujours un accès complet, indépendamment du paiement.",
+        "ar": "أنت مالك الخدمة — لديك دائمًا وصول كامل، بغض النظر عن الدفع.",
+    },
+    "upgrade.access_active": {
+        "he": "יש לך גישה מלאה, בתוקף עד {date}.", "en": "You have full access, valid until {date}.",
+        "ru": "У вас есть полный доступ, действует до {date}.",
+        "fr": "Vous avez un accès complet, valable jusqu'au {date}.",
+        "ar": "لديك وصول كامل، ساري حتى {date}.",
+    },
+    "upgrade.access_trial": {
+        "he": "אתה בתקופת הניסיון, עד {date}.", "en": "You're in the trial period, until {date}.",
+        "ru": "Вы находитесь в пробном периоде, до {date}.",
+        "fr": "Vous êtes en période d'essai, jusqu'au {date}.",
+        "ar": "أنت في الفترة التجريبية، حتى {date}.",
+    },
+    "upgrade.access_expired": {
+        "he": "תקופת הניסיון הסתיימה. כדי להמשיך לקבל את המודעה המלאה + קישור ישיר, בחר תוכנית למטה.",
+        "en": "Your trial period has ended. To keep getting the full listing + direct link, choose a plan below.",
+        "ru": "Ваш пробный период закончился. Чтобы продолжать получать полное объявление + прямую ссылку, выберите план ниже.",
+        "fr": "Votre période d'essai est terminée. Pour continuer à recevoir l'annonce complète + le lien direct, choisissez un forfait ci-dessous.",
+        "ar": "انتهت فترتك التجريبية. لمواصلة الحصول على الإعلان الكامل + الرابط المباشر، اختر خطة أدناه.",
+    },
+    "upgrade.plan_weekly": {
+        "he": "שבועי", "en": "Weekly", "ru": "Недельный", "fr": "Hebdomadaire", "ar": "أسبوعي",
+    },
+    "upgrade.plan_biweekly": {
+        "he": "שבועיים", "en": "Bi-weekly", "ru": "Двухнедельный", "fr": "Bihebdomadaire", "ar": "كل أسبوعين",
+    },
+    "upgrade.plan_monthly": {
+        "he": "חודשי", "en": "Monthly", "ru": "Ежемесячный", "fr": "Mensuel", "ar": "شهري",
+    },
+    "upgrade.choose_plan_cta": {
+        "he": "בחר {plan}", "en": "Choose {plan}", "ru": "Выбрать {plan}", "fr": "Choisir {plan}",
+        "ar": "اختر {plan}",
+    },
+    "upgrade.payment_hint_takbull": {
+        "he": "התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. בעמוד התשלום תראה/י את 3 התוכניות יחד — פשוט תוסיף/י לעגלה את זו שבחרת כאן (לפי המחיר) ותשלים/י תשלום. 🐾",
+        "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. On the payment page you'll see all 3 plans together — just add the one you chose here (by price) to the cart and complete payment. 🐾",
+        "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. На странице оплаты вы увидите все 3 плана вместе — просто добавьте выбранный здесь план (по цене) в корзину и завершите оплату. 🐾",
+        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Sur la page de paiement, vous verrez les 3 forfaits ensemble — ajoutez simplement celui choisi ici (selon le prix) au panier et finalisez le paiement. 🐾",
+        "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. في صفحة الدفع سترى الخطط الثلاث معًا — فقط أضف الخطة التي اخترتها هنا (حسب السعر) إلى السلة وأكمل الدفع. 🐾",
+    },
+    "upgrade.payment_hint_grow": {
+        "he": "התשלום מאובטח דרך Grow — ביט, פייבוקס, Apple Pay, Google Pay או כרטיס אשראי. 🐾",
+        "en": "Payment is secured through Grow — Bit, PayBox, Apple Pay, Google Pay or credit card. 🐾",
+        "ru": "Оплата защищена через Grow — Bit, PayBox, Apple Pay, Google Pay или банковская карта. 🐾",
+        "fr": "Le paiement est sécurisé via Grow — Bit, PayBox, Apple Pay, Google Pay ou carte de crédit. 🐾",
+        "ar": "الدفع مؤمّن عبر Grow — Bit أو PayBox أو Apple Pay أو Google Pay أو بطاقة ائتمان. 🐾",
+    },
+    "upgrade.payment_hint_manual": {
+        "he": "התשלום מתבצע ידנית בביט/PayBox — אחרי הלחיצה תועבר/י לעמוד עם כל פרטי התשלום. 🐾",
+        "en": "Payment is done manually via Bit/PayBox — after clicking you'll be taken to a page with all the payment details. 🐾",
+        "ru": "Оплата производится вручную через Bit/PayBox — после нажатия вы перейдёте на страницу со всеми деталями оплаты. 🐾",
+        "fr": "Le paiement se fait manuellement via Bit/PayBox — après avoir cliqué, vous serez redirigé vers une page avec tous les détails de paiement. 🐾",
+        "ar": "يتم الدفع يدويًا عبر Bit/PayBox — بعد الضغط ستنتقل إلى صفحة تحتوي على كل تفاصيل الدفع. 🐾",
+    },
+    "upgrade_pay.h1": {
+        "he": "השלמת התשלום 💳", "en": "Complete payment 💳", "ru": "Завершение оплаты 💳",
+        "fr": "Finaliser le paiement 💳", "ar": "إتمام الدفع 💳",
+    },
+    "upgrade_pay.plan_prefix": {
+        "he": "תוכנית {plan} — לתשלום:", "en": "Plan: {plan} — to pay:", "ru": "План: {plan} — к оплате:",
+        "fr": "Forfait : {plan} — à payer :", "ar": "الخطة: {plan} — للدفع:",
+    },
+    "upgrade_pay.bit_instruction": {
+        "he": "פתח/י את אפליקציית Bit, חפש/י את המספר הבא ושלח/י ₪{amount}:",
+        "en": "Open the Bit app, search for the following number and send ₪{amount}:",
+        "ru": "Откройте приложение Bit, найдите следующий номер и отправьте ₪{amount}:",
+        "fr": "Ouvrez l'application Bit, recherchez le numéro suivant et envoyez ₪{amount} :",
+        "ar": "افتح تطبيق Bit، ابحث عن الرقم التالي وأرسل ₪{amount}:",
+    },
+    "upgrade_pay.paybox_cta": {
+        "he": "פתח/י את דף התשלום ב-PayBox", "en": "Open the PayBox payment page",
+        "ru": "Открыть страницу оплаты PayBox", "fr": "Ouvrir la page de paiement PayBox",
+        "ar": "افتح صفحة الدفع في PayBox",
+    },
+    "upgrade_pay.manual_bit_hint": {
+        "he": "שלח/י ₪{amount} בביט — פרטים יישלחו אליך בנפרד. 🐾",
+        "en": "Send ₪{amount} via Bit — details will be sent to you separately. 🐾",
+        "ru": "Отправьте ₪{amount} через Bit — детали будут отправлены вам отдельно. 🐾",
+        "fr": "Envoyez ₪{amount} via Bit — les détails vous seront envoyés séparément. 🐾",
+        "ar": "أرسل ₪{amount} عبر Bit — سيتم إرسال التفاصيل إليك بشكل منفصل. 🐾",
+    },
+    "upgrade_pay.already_paid": {
+        "he": "התשלום כבר אושר. ✅", "en": "Payment already confirmed. ✅",
+        "ru": "Оплата уже подтверждена. ✅", "fr": "Paiement déjà confirmé. ✅",
+        "ar": "تم تأكيد الدفع بالفعل. ✅",
+    },
+    "upgrade_pay.continue_cta": {
+        "he": "המשך", "en": "Continue", "ru": "Продолжить", "fr": "Continuer", "ar": "متابعة",
+    },
+    "upgrade_pay.confirm_paid_cta": {
+        "he": "שילמתי, אשר/י את הגישה ✅", "en": "I've paid, confirm access ✅",
+        "ru": "Я оплатил(а), подтвердите доступ ✅", "fr": "J'ai payé, confirmez l'accès ✅",
+        "ar": "لقد دفعت، أكّد الوصول ✅",
+    },
+    "upgrade_pay.confirm_hint": {
+        "he": "לוחצים רק אחרי ששלחתם את התשלום בפועל.",
+        "en": "Only click after you've actually sent the payment.",
+        "ru": "Нажимайте только после того, как действительно отправили платёж.",
+        "fr": "Cliquez uniquement après avoir réellement envoyé le paiement.",
+        "ar": "اضغط فقط بعد إرسال الدفعة فعليًا.",
+    },
+    "upgrade_success.paid_message": {
+        "he": "התשלום התקבל, הגישה שלך פעילה! 🎉", "en": "Payment received, your access is active! 🎉",
+        "ru": "Оплата получена, ваш доступ активен! 🎉", "fr": "Paiement reçu, votre accès est actif ! 🎉",
+        "ar": "تم استلام الدفع، وصولك نشط! 🎉",
+    },
+    "upgrade_success.view_apartments_cta": {
+        "he": "לצפייה בדירות", "en": "View apartments", "ru": "Просмотр квартир",
+        "fr": "Voir les appartements", "ar": "لعرض الشقق",
+    },
+    "upgrade_success.processing_message": {
+        "he": "מעבדים את התשלום... הדף יתעדכן אוטומטית בעוד כמה שניות.",
+        "en": "Processing payment... the page will update automatically in a few seconds.",
+        "ru": "Обрабатываем платёж... страница обновится автоматически через несколько секунд.",
+        "fr": "Traitement du paiement... la page se mettra à jour automatiquement dans quelques secondes.",
+        "ar": "جارٍ معالجة الدفع... سيتم تحديث الصفحة تلقائيًا خلال ثوانٍ.",
+    },
+    "upgrade_success.back_to_upgrade_cta": {
+        "he": "חזרה לדף השדרוג", "en": "Back to upgrade page", "ru": "Вернуться на страницу улучшения",
+        "fr": "Retour à la page de mise à niveau", "ar": "العودة إلى صفحة الترقية",
     },
 }
 

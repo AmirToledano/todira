@@ -177,6 +177,21 @@ def test_upgrade_success_page_reports_still_pending(client):
     assert "מעבדים את התשלום" in resp.text
 
 
+def test_upgrade_success_page_renders_in_english_when_lang_param_is_set(client):
+    """2026-09-08 fix: /upgrade/success was hardcoded Hebrew-only, unlike every other
+    customer-facing page — confirms the fix actually renders translated content."""
+    payment = _FakePayment(status="paid")
+    fake_session = _FakeSession(get_map={(website_main.Payment, payment.id): payment})
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/upgrade/success", params={"payment_id": payment.id, "lang": "en"})
+
+    assert resp.status_code == 200
+    assert "Payment received, your access is active" in resp.text
+    assert "View apartments" in resp.text
+    assert "התשלום התקבל" not in resp.text
+
+
 # --- /webhooks/grow ---
 
 

@@ -106,6 +106,29 @@ def test_upgrade_pay_shows_amount_and_bit_details(client):
     assert "0501234567" in resp.text
 
 
+def test_upgrade_pay_renders_in_english_when_lang_param_is_set(client):
+    """2026-09-08 fix: /upgrade/pay was hardcoded Hebrew-only, unlike every other customer-facing
+    page — confirms the fix actually renders translated content."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    payment = _FakePayment(id=9, user_id=2, plan="weekly", amount_ils=15)
+    fake_session = _FakeSession(
+        users_by_telegram_id={222: user},
+        get_map={(website_main.Payment, 9): payment},
+    )
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "OWNER_BIT_PHONE", "0501234567"),
+    ):
+        resp = client.get("/upgrade/pay", params={"payment_id": 9, "uid": 222, "lang": "en"})
+
+    assert resp.status_code == 200
+    assert "Complete payment" in resp.text
+    assert "Open the Bit app" in resp.text
+    assert "confirm access" in resp.text  # "I've" renders as "I&#39;ve" once Jinja autoescapes it
+    assert "השלמת התשלום" not in resp.text
+
+
 def test_upgrade_pay_404s_for_someone_elses_payment(client):
     user = _FakeUser(id=2, telegram_user_id=222)
     payment = _FakePayment(id=9, user_id=999, plan="weekly")  # belongs to a DIFFERENT user
