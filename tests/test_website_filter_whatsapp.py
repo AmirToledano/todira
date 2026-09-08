@@ -160,7 +160,9 @@ def test_post_filter_update_resolves_via_wid_and_saves(whatsapp_only_user):
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/filter?wid=972501234567"
+    # 2026-09-08: a successful save now lands on /apartments (see main.py's own comment) — shows
+    # the results of what was just changed instead of leaving the visitor on the same form.
+    assert resp.headers["location"] == "/apartments?wid=972501234567"
     assert whatsapp_only_user.filter.cities == ["חיפה"]
     assert whatsapp_only_user.filter.price_max == 6000
     assert session.committed is True

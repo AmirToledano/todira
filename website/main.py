@@ -1718,4 +1718,9 @@ def filter_update(
         f.flexible_match = flexible_match is not None
         session.commit()
 
-    return RedirectResponse(_filter_redirect_url(uid, wid), status_code=303)
+    # 2026-09-08 UX fix (owner's own report): a successful save used to redirect back to /filter
+    # itself, leaving the visitor staring at the same form with no visible feedback that anything
+    # happened. Sending them to /apartments instead shows the results of what they just changed —
+    # exactly the payoff of editing a filter. The error-recovery branch above (no resolvable user/
+    # filter) still goes back to /filter, since there's nothing on /apartments to show them either.
+    return RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)

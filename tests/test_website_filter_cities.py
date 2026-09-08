@@ -126,6 +126,15 @@ def test_no_cities_checked_means_empty_list_not_error(client, fake_user):
     assert fake_user.filter.cities == []
 
 
+def test_successful_save_redirects_to_apartments_not_back_to_filter(client, fake_user):
+    """2026-09-08 UX fix (owner's own report): saving used to redirect back to /filter itself,
+    leaving the visitor on the same form with no visible sign anything happened. A successful
+    save now lands on /apartments — showing the results of the change just made."""
+    resp = client.post("/filter", data=_base_form(fake_user.telegram_user_id))
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/apartments?uid=555"
+
+
 def test_filter_page_renders_every_bundled_city_as_a_checkbox(client, fake_user):
     from dorin_common.cities import CITIES
 
