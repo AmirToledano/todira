@@ -15,11 +15,13 @@ plain directory on that same node's own root EBS volume, not a separate/networke
 - **Stop → Start the same EC2 instance**: the EBS volume survives, Postgres data survives. This
   already happened once (see `PROJECT_STATE.md`'s 2026-08-30 entry) — the only real issue was a
   changed public IP breaking `KUBECONFIG_B64` (fix: below).
-- **Terminate the instance, lose the EBS volume, or a hardware/AZ failure**: **the database is
-  gone. Permanently.** Every user, every saved filter, every payment record — gone, with no way
-  to get it back, **unless a backup exists somewhere else.**
-- As of 2026-09-08, **there is no automated backup of any kind.** This is the single biggest
-  operational risk in the whole project — worth fixing before real paying customers rely on this.
+- **Terminate the instance, lose the EBS volume, or a hardware/AZ failure**: without the backup
+  described below, the database would be gone permanently. As of 2026-09-08, `backup-cronjob.yaml`
+  runs `pg_dump` nightly (03:00 Israel time) and uploads a compressed dump to a private, least-
+  privilege S3 bucket (`todira-db-backups-404813130046-eu-north-1-an` — see `values.yaml`'s own
+  `backup:` block if this ever changes) — restore steps are in **"Restoring the database from an
+  S3 backup"** below. Worst case, this loses at most the hours between the last nightly run and
+  the failure.
 
 ## Step 1 — confirm what's actually broken
 
@@ -32,8 +34,8 @@ plain directory on that same node's own root EBS volume, not a separate/networke
    2026-09-08 — see `charts/todira/templates/healthcheck-cronjob.yaml`), a 🚨 message from the bot
    itself is usually the first sign, ~15 minutes after something breaks. **Remember its real
    limit**: it runs INSIDE this same node, so if the node itself is dead, this alert never fires —
-   don't wait for it to confirm a total outage. See "Set up real external monitoring" at the
-   bottom for the piece that actually covers that case.
+   don't wait for it to confirm a total outage. See "Still open" at the bottom for the piece that
+   actually covers that case.
 
 ## Step 2 — the whole node is down
 
@@ -60,12 +62,8 @@ plain directory on that same node's own root EBS volume, not a separate/networke
    - Re-run the GitHub Actions deploy (or push any commit to `main` — CI/CD runs `helm upgrade`
      automatically) — this rebuilds every Deployment/Service/CronJob from the chart in
      `charts/todira/` exactly as it's checked into git. Code and infra config come back instantly.
-   - **The database does not.** A fresh Postgres pod starts with an EMPTY database. This is the
-     scenario a backup is for — if one exists, restore it now (see whatever backup mechanism is in
-     place at the time you're reading this — check `charts/todira/templates/` for a
-     `*backup*` CronJob and `PROJECT_STATE.md`'s most recent entries for how it's configured).
-     **If no backup exists, this data is unrecoverable — every user has to sign up again from
-     zero.**
+   - **The database does not.** A fresh Postgres pod starts with an EMPTY database. Restore it
+     from the latest S3 backup now — see **"Restoring the database from an S3 backup"** below.
 
 ## Step 3 — website is up, Postgres specifically isn't
 
@@ -93,6 +91,43 @@ a few minutes:
 2. Check the bot's own Telegram-side status: is `TELEGRAM_BOT_TOKEN` still valid (the owner didn't
    revoke it via @BotFather)? A revoked/wrong token makes the bot silently unable to poll at all.
 
+## Restoring the database from an S3 backup
+
+1. List available backups (needs the AWS CLI installed locally, and credentials with read access
+   to the bucket — the same `todira-backup-bot` IAM user `backup-cronjob.yaml` itself uses, or
+   your own AWS login if it has S3 access):
+   ```
+   aws s3 ls s3://todira-db-backups-404813130046-eu-north-1-an/
+   ```
+   Filenames are `todira-backup-<UTC timestamp>.sql.gz` — pick the most recent one before the
+   incident.
+2. Download it:
+   ```
+   aws s3 cp s3://todira-db-backups-404813130046-eu-north-1-an/todira-backup-<timestamp>.sql.gz .
+   ```
+3. Make sure a Postgres pod is up and reachable first (a fresh empty one from Step 2 above is
+   fine). Get a shell into it, or port-forward:
+   ```
+   kubectl port-forward svc/todira-postgres 5432:5432
+   ```
+4. Restore (run from wherever the downloaded file and a `psql` client both are — decompress and
+   pipe straight in; the dump was taken with `--no-owner --no-privileges` so it applies cleanly to
+   a fresh database regardless of exact role names):
+   ```
+   gunzip -c todira-backup-<timestamp>.sql.gz | psql "postgresql://<user>:<password>@localhost:5432/<dbname>"
+   ```
+   (`user`/`password`/`dbname` are `postgres.user`/`postgres.password`/`postgres.dbname` from
+   `values.yaml`/the `todira-postgres-secret` Secret — get the live password with
+   `kubectl get secret todira-postgres-secret -o jsonpath='{.data.postgres-password}' | base64 -d`
+   if it's not already at hand.)
+5. Verify: `psql ... -c "select count(*) from users;"` (or any table you expect real rows in)
+   should return a real, non-zero count, not an error.
+
+If the CronJob itself needs debugging instead (e.g. the Telegram alert said the upload failed):
+`kubectl get pods -l app=todira-backup` to find the most recent run's pod (including failed/
+completed ones — CronJob pods aren't cleaned up immediately), then `kubectl logs <pod> -c pg-dump`
+and `kubectl logs <pod> -c upload-to-s3` for each container's own output separately.
+
 ## After any recovery — verify, don't assume
 
 1. Load `https://todira.app` in an actual browser, not just `/healthz` (confirms Caddy's cert +
@@ -103,14 +138,20 @@ a few minutes:
    whatever you're debugging from — rules out a purely local DNS-cache issue looking like a real
    outage).
 
-## The two things this runbook can't fix by itself — set these up
+## One more thing to set up once, manually — S3 backup retention
 
-1. **Automated off-node database backups.** Nothing in this repo does this as of 2026-09-08 — see
-   the warning at the top. Needs a decision on where backups go (S3, or something simpler) before
-   it can be built; once it exists, this section should be updated with exactly how to restore
-   from one.
-2. **External uptime monitoring.** The in-cluster `healthcheck` CronJob (see Step 1) cannot detect
-   the node itself going down — only a monitor running OUTSIDE this infrastructure entirely can.
-   A free tier of UptimeRobot / Better Uptime / similar, pointed at `https://todira.app/healthz`
-   on a 1-5 minute interval with a Telegram or email alert, closes this gap. This needs an account
-   signup — not something deployable from a coding session.
+`backup-cronjob.yaml` only uploads; it deliberately does NOT delete old backups itself (a bug in a
+hand-rolled prune script could delete backups it shouldn't — a server-side rule can't do that by
+construction). Set a Lifecycle rule on the bucket once, via the AWS Console:
+S3 → `todira-db-backups-404813130046-eu-north-1-an` → **Management** tab → **Create lifecycle
+rule** → apply to all objects → under "Lifecycle rule actions" check **Expire current versions of
+objects** → **Number of days after object creation**: `30` → Create rule. Without this, the bucket
+just grows forever (still cheap — a few cents/month even after a year of daily backups — but tidy
+it up anyway).
+
+## Still open — needs the owner's own action, not deployable from a coding session
+
+**External uptime monitoring.** The in-cluster `healthcheck` CronJob (see Step 1) cannot detect
+the node itself going down — only a monitor running OUTSIDE this infrastructure entirely can. A
+free tier of UptimeRobot / Better Uptime / similar, pointed at `https://todira.app/healthz` on a
+1-5 minute interval with a Telegram or email alert, closes this gap. This needs an account signup.
