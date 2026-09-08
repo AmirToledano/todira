@@ -6,7 +6,14 @@ Explicit opt-in for proactive WhatsApp Message Template pushes, separate from th
 common/dorin_common/models.py's User.whatsapp_notifications_opted_in docstring for why this can't
 just reuse notifications_enabled or default to True.
 
-Revision ID: 0010_whatsapp_notifications_optin
+Revision id kept short deliberately (25 chars, not the full field name) — found live, the hard
+way, 2026-09-08: alembic's own bookkeeping table (`alembic_version.version_num`) is a plain
+VARCHAR(32), and the original id here ("0010_whatsapp_notifications_optin", 33 chars) overflowed
+it — DataError: value too long for type character varying(32). Every one of this project's prior
+revision ids happens to fit under 32 chars, so this had never come up before; it's worth staying
+under that limit for every future one too.
+
+Revision ID: 0010_whatsapp_notif_optin
 Revises: 0009_pending_google_links
 """
 from __future__ import annotations
@@ -14,7 +21,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0010_whatsapp_notifications_optin"
+revision = "0010_whatsapp_notif_optin"
 down_revision = "0009_pending_google_links"
 branch_labels = None
 depends_on = None
