@@ -92,18 +92,28 @@ spec:
               # shell — command below does that.
               command: ["/bin/bash", "-c"]
               args:
+                # 2026-09-09 fix: the alert used to just say "it failed, go check kubectl logs" —
+                # the FIRST real production run failed and the owner (woken by the Telegram alert
+                # at 3am) had no way to see why without cluster access. Now captures the AWS CLI's
+                # own stderr and puts the first line of it right in the alert — "Access Denied" /
+                # "NoSuchBucket" / a network error is now visible from the phone that got woken up,
+                # not just "something failed, go find a kubectl session."
                 - |
                   set -eu
                   KEY="todira-backup-$(date -u +%Y-%m-%dT%H-%M-%SZ).sql.gz"
-                  if aws s3 cp /shared/backup.sql.gz "s3://$S3_BUCKET/$KEY"; then
+                  if ERROR_OUTPUT=$(aws s3 cp /shared/backup.sql.gz "s3://$S3_BUCKET/$KEY" 2>&1); then
                     echo "Uploaded $KEY to s3://$S3_BUCKET"
                   else
-                    echo "FAILED to upload backup to S3" >&2
+                    echo "FAILED to upload backup to S3:" >&2
+                    echo "$ERROR_OUTPUT" >&2
                     if [ -n "${OWNER_TELEGRAM_USER_ID:-}" ]; then
+                      ERROR_SUMMARY=$(echo "$ERROR_OUTPUT" | head -c 300)
                       curl -fsS --max-time 10 \
                         "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
                         --data-urlencode "chat_id=$OWNER_TELEGRAM_USER_ID" \
-                        --data-urlencode "text=🚨 טודירה: גיבוי הדאטהבייס ל-S3 נכשל היום. כדאי לבדוק (kubectl logs on the {{ .Release.Name }}-backup CronJob)." \
+                        --data-urlencode "text=🚨 טודירה: גיבוי הדאטהבייס ל-S3 נכשל היום.
+שגיאה: $ERROR_SUMMARY
+כדאי לבדוק (kubectl logs on the {{ .Release.Name }}-backup CronJob)." \
                         > /dev/null || echo "also failed to send the Telegram alert" >&2
                     fi
                     exit 1

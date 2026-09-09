@@ -182,3 +182,15 @@ jobs:
           echo "--- caddy logs ---"
           kubectl logs -n todira -l app=todira-caddy --tail=150 || true
 
+      - name: Diagnose backup CronJob (nightly S3 pg_dump — no diagnostics existed until the
+          owner's Telegram alert fired at 3am 2026-09-09 with no way to see the actual AWS CLI
+          error from a phone)
+        if: always()
+        run: |
+          echo "--- backup job pods (including completed/failed ones — not cleaned up immediately) ---"
+          kubectl get pods -n todira -l app=todira-backup -o wide || true
+          echo "--- most recent backup pod's pg-dump (init) container ---"
+          kubectl logs -n todira -l app=todira-backup -c pg-dump --tail=100 || true
+          echo "--- most recent backup pod's upload-to-s3 container ---"
+          kubectl logs -n todira -l app=todira-backup -c upload-to-s3 --tail=100 || true
+
