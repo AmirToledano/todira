@@ -105,6 +105,22 @@
   <header class="site">
     <div class="header-inner">
       <a class="brand" href="/"><span class="crown">👑</span> טודירה <span class="brand-home-hint">{{ t('nav.brand_home_hint') }}</span></a>
+      <!-- 2026-09-09 (owner's own report): the hamburger-only header, at every screen width
+           including a wide desktop monitor, was a big part of why the site read as "a phone app
+           build" rather than a real website — real sites show their nav, they don't hide it
+           behind a menu button by default. This duplicates the same primary links from
+           .nav-panel below as an always-visible row, shown only at >=900px (see style.css); the
+           hamburger panel is untouched and still covers mobile plus the secondary items (language
+           switcher, login/logout, admin links) at every width. -->
+      <nav class="site-nav-desktop" aria-label="{{ t('a11y.main_nav_label') }}">
+        <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }} 🔑</a>
+        <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }} ❤️</a>
+        <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }} ⚙️</a>
+        {% if uid or current_user %}
+        <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
+        {% endif %}
+        <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }} ✉️</a>
+      </nav>
       <div class="header-actions">
         {% if not current_user and not uid %}
         <a class="auth-login-toolbar" href="/login?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>

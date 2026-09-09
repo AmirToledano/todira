@@ -146,6 +146,20 @@ header.site {
 .nav-toggle.open .nav-toggle-lines span:nth-child(2) { opacity: 0; }
 .nav-toggle.open .nav-toggle-lines span:nth-child(3) { top: 5.5px; transform: rotate(-45deg); }
 
+/* Desktop nav row — hidden below 900px (mobile keeps the hamburger-only header exactly as
+   before); shown as an always-visible inline row above that, so the site's own primary pages
+   read as a real navigable website at a glance instead of hiding behind a menu button. See this
+   nav's own template comment in base.html for the full reasoning (2026-09-09). */
+.site-nav-desktop { display: none; }
+@media (min-width: 900px) {
+  .site-nav-desktop { display: flex; align-items: center; justify-content: center; flex: 1; gap: 2px; }
+  .site-nav-desktop a {
+    color: rgba(255,255,255,.85); text-decoration: none; font-weight: 600; font-size: .88rem;
+    padding: 9px 16px; border-radius: 999px; white-space: nowrap; transition: background .15s, color .15s;
+  }
+  .site-nav-desktop a:hover, .site-nav-desktop a.active { background: rgba(255,255,255,.16); color: #fff; }
+}
+
 .nav-panel { max-height: 0; overflow: hidden; transition: max-height .32s ease; }
 .nav-panel.open { max-height: 70vh; overflow-y: auto; }
 .nav-panel-inner {
@@ -162,6 +176,14 @@ nav.site-nav a {
 nav.site-nav a:hover, nav.site-nav a.active { background: var(--teal-tint); color: var(--heading); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+
+/* A wide monitor (>=1300px) still had 1100px of content marooned in the middle with huge bare
+   margins on both sides — part of the "phone app floating in the browser" look (owner's own
+   report, 2026-09-09). Only widens the shared containers on genuinely large screens; every
+   narrower viewport (including every mobile/tablet width already tuned) is untouched. */
+@media (min-width: 1300px) {
+  .header-inner, main, .nav-panel-inner, .footer-inner { max-width: 1280px; }
+}
 
 /* ---------- buttons ---------- */
 .btn {
@@ -226,6 +248,23 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 @media (min-width: 700px) {
   .hero-image-full { display: flex; justify-content: center; background: var(--bg); }
   .hero-image-full img { width: auto; max-width: 100%; height: 560px; }
+}
+
+/* Side-by-side hero on wide viewports — see home.html's own comment on .hero-split for why
+   (2026-09-09, owner's own report: the old stacked-and-centered layout read as a phone screen
+   floating in the middle of the browser). Below 900px this rule doesn't apply at all — .hero and
+   .hero-image-full stay exactly as they were, a plain block stack. */
+@media (min-width: 900px) {
+  .hero-split { display: flex; align-items: center; gap: 40px; }
+  .hero-split .hero { flex: 1 1 54%; text-align: start; }
+  .hero-split .hero .lead { margin-inline: 0; }
+  .hero-split .hero .eyebrow { margin-inline-start: 0; }
+  .hero-split .hero .cta-row { justify-content: flex-start; }
+  .hero-split .hero .fresh-row { justify-content: flex-start; }
+  .hero-split .hero-image-full {
+    flex: 1 1 42%; width: auto; margin: 0; display: flex; justify-content: center; background: none;
+  }
+  .hero-split .hero-image-full img { height: 480px; width: auto; max-width: 100%; }
 }
 /* Blend the brand image's flat-color top/bottom margins into the page background instead of a
    hard rectangle edge (2026-09-03 request, inspired by dorin.app's illustration melting into its

@@ -30,6 +30,13 @@
 {% endblock %}
 {% block content %}
 
+<!-- 2026-09-09 (owner's own report): on a wide desktop viewport this used to be one narrow
+     centered column (hero text, then the full-bleed image, stacked) with huge empty margins on
+     both sides — read as a phone-app screen floating in the middle of the browser, not a real
+     website. .hero-split puts the hero text and the brand image side by side at >=900px (see
+     the matching @media block below); below that width it's a plain block wrapper and the two
+     children stack exactly as before — mobile layout is untouched by this. -->
+<div class="hero-split">
 <section class="hero reveal">
   <span class="eyebrow">{{ t('home.eyebrow') }}</span>
   <h1>{{ t('home.h1') }}</h1>
@@ -62,6 +69,7 @@
 
 <div class="hero-image-full reveal">
   <img class="brand-blend" src="/static/todira-brand.webp?v=4" alt="{{ t('home.hero_img_alt') }}" width="1184" height="1895" fetchpriority="high">
+</div>
 </div>
 
 <div class="hero-float-stats momentum-row reveal">
