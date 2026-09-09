@@ -28,3 +28,7 @@ Pillow>=10.0,<12.0
 # requests: dorin_common/gemini_client.py (2026-09-06) imports it directly to catch
 # requests.exceptions.Timeout by name - pinned to match bot/website's own pin.
 requests>=2.31,<3.0
+# PyYAML: test_helm_template_yaml_validity.py (2026-09-09) parses every chart template as YAML
+# (after crudely stripping Helm's own {{ }} syntax) - the only static check this project has for
+# real YAML structural validity, since helm itself isn't installable in this test environment.
+PyYAML>=6.0,<7.0
