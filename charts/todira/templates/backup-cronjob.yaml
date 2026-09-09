@@ -107,13 +107,16 @@ spec:
                     echo "FAILED to upload backup to S3:" >&2
                     echo "$ERROR_OUTPUT" >&2
                     if [ -n "${OWNER_TELEGRAM_USER_ID:-}" ]; then
+                      # NL as its own variable (not a literal embedded newline in this string)
+                      # deliberately — a literal newline here breaks out of this YAML block
+                      # scalar; found live 2026-09-09, see this step's own regression test.
+                      NL=$'\n'
                       ERROR_SUMMARY=$(echo "$ERROR_OUTPUT" | head -c 300)
+                      ALERT_TEXT="🚨 טודירה: גיבוי הדאטהבייס ל-S3 נכשל היום.${NL}שגיאה: ${ERROR_SUMMARY}${NL}כדאי לבדוק (kubectl logs on the {{ .Release.Name }}-backup CronJob)."
                       curl -fsS --max-time 10 \
                         "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
                         --data-urlencode "chat_id=$OWNER_TELEGRAM_USER_ID" \
-                        --data-urlencode "text=🚨 טודירה: גיבוי הדאטהבייס ל-S3 נכשל היום.
-שגיאה: $ERROR_SUMMARY
-כדאי לבדוק (kubectl logs on the {{ .Release.Name }}-backup CronJob)." \
+                        --data-urlencode "text=$ALERT_TEXT" \
                         > /dev/null || echo "also failed to send the Telegram alert" >&2
                     fi
                     exit 1
