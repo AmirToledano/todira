@@ -192,6 +192,25 @@ def test_upgrade_page_shows_plan_options_for_a_real_user():
     assert "₪40" in resp.text
 
 
+def test_upgrade_page_shows_value_anchor_below_plan_cards():
+    """2026-09-10 addition: a price-context callout under the plan cards, reframing the
+    subscription price against what people already know a broker fee costs."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = c.get("/upgrade", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "פחות מכוס קפה ביום" in resp.text
+    assert "עמלת תיווך" in resp.text
+
+
 def test_upgrade_page_renders_in_english_when_lang_param_is_set():
     """2026-09-08 fix: /upgrade was hardcoded Hebrew-only, unlike every other customer-facing
     page — confirms the fix actually renders translated content."""
@@ -211,6 +230,9 @@ def test_upgrade_page_renders_in_english_when_lang_param_is_set():
     assert "Weekly" in resp.text
     assert "Choose Weekly" in resp.text
     assert "שדרוג המנוי" not in resp.text
+    # value-anchor callout (2026-09-10) must translate too, not just the plan cards above it
+    assert "Less than a daily coffee" in resp.text
+    assert "פחות מכוס קפה" not in resp.text
 
 
 def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instructions():
