@@ -1554,6 +1554,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Le paiement se fait manuellement via Bit/PayBox — après avoir cliqué, vous serez redirigé vers une page avec tous les détails de paiement. 🐾",
         "ar": "يتم الدفع يدويًا عبر Bit/PayBox — بعد الضغط ستنتقل إلى صفحة تحتوي على كل تفاصيل الدفع. 🐾",
     },
+    # 2026-09-10 addition: a small value-anchor box under the plan cards, right where price
+    # sensitivity is highest — reframes the price against what people already know a broker
+    # costs, instead of leaving ₪15-40 sitting there with no context. Deliberately does NOT claim
+    # "cancel anytime" (a phrase that implies an auto-renewing subscription) — each plan is a
+    # one-time purchase for a fixed period (PLAN_DURATIONS), nothing auto-renews, so the honest
+    # framing is "no commitment to keep paying," not "cancel."
+    "upgrade.value_anchor_title": {
+        "he": "40 ₪ לחודש? פחות מכוס קפה ביום.",
+        "en": "₪40 a month? Less than a daily coffee.",
+        "ru": "40 ₪ в месяц? Меньше чашки кофе в день.",
+        "fr": "40 ₪ par mois ? Moins qu'un café par jour.",
+        "ar": "40 ₪ شهريًا؟ أقل من فنجان قهوة يوميًا.",
+    },
+    "upgrade.value_anchor_body": {
+        "he": "עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי, ואין התחייבות להמשך אחרי שהתקופה נגמרת.",
+        "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token amount, with no commitment to keep paying after the period ends.",
+        "ru": "Комиссия риелтора обычно составляет тысячи шекелей, один раз. У нас это символическая сумма, без обязательства продолжать платить после окончания периода.",
+        "fr": "Les frais d'agence coûtent généralement des milliers de shekels, une seule fois. Chez nous, c'est une somme symbolique, sans engagement à continuer de payer une fois la période terminée.",
+        "ar": "عمولة الوسيط عادة ما تكلف آلاف الشواقل، مرة واحدة. عندنا هو مبلغ رمزي، دون التزام بالاستمرار في الدفع بعد انتهاء الفترة.",
+    },
     "upgrade_pay.h1": {
         "he": "השלמת התשלום 💳", "en": "Complete payment 💳", "ru": "Завершение оплаты 💳",
         "fr": "Finaliser le paiement 💳", "ar": "إتمام الدفع 💳",
