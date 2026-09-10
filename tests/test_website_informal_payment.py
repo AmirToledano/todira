@@ -127,6 +127,11 @@ def test_upgrade_pay_renders_in_english_when_lang_param_is_set(client):
     assert "Open the Bit app" in resp.text
     assert "confirm access" in resp.text  # "I've" renders as "I&#39;ve" once Jinja autoescapes it
     assert "השלמת התשלום" not in resp.text
+    # 2026-09-10 fix: the plan name itself (payment.plan == "weekly") used to come from a
+    # Hebrew-only backend dict (PLAN_LABELS_HE) regardless of ?lang= — a real leak this test never
+    # actually caught. Now goes through the same i18n.py keys as everything else on this page.
+    assert "Weekly" in resp.text
+    assert "שבועי" not in resp.text
 
 
 def test_upgrade_pay_404s_for_someone_elses_payment(client):
