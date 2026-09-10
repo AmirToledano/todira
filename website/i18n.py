@@ -571,12 +571,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "עם טודירה 👑", "en": "With Todira 👑", "ru": "С Todira 👑",
         "fr": "Avec Todira 👑", "ar": "مع توديرا 👑",
     },
+    # 2026-09-10 fix: said "every 10 minutes" — stale copy from before the 2026-09-03 schedule
+    # change (charts/todira/values.yaml's scraper.schedule is actually every 2 hours, 8:00-22:00
+    # Israel time) and directly contradicted home.stat_scan_freq_value below it on the same page,
+    # which already said the correct "כל שעתיים"/"Every 2h". Found by cross-checking the page's
+    # own claims against each other, then against the real CronJob schedule.
     "home.compare_with_1": {
-        "he": "סריקה אוטומטית כל 10 דקות, ברקע",
-        "en": "Automatic scanning every 10 minutes, in the background",
-        "ru": "Автоматическое сканирование каждые 10 минут в фоне",
-        "fr": "Scan automatique toutes les 10 minutes, en arrière-plan",
-        "ar": "فحص تلقائي كل 10 دقائق في الخلفية",
+        "he": "סריקה אוטומטית כל שעתיים, ברקע",
+        "en": "Automatic scanning every 2 hours, in the background",
+        "ru": "Автоматическое сканирование каждые 2 часа в фоне",
+        "fr": "Scan automatique toutes les 2 heures, en arrière-plan",
+        "ar": "فحص تلقائي كل ساعتين في الخلفية",
     },
     "home.compare_with_2": {
         "he": "התראה מיידית בטלגרם ברגע שיש התאמה",
