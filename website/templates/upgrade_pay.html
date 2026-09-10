@@ -5,7 +5,10 @@
 <div class="page-banner reveal">
   <div class="pb-text">
     <h1>{{ t('upgrade_pay.h1') }}</h1>
-    <p>{{ t('upgrade_pay.plan_prefix', plan=plan_label) }} <b>₪{{ amount }}</b></p>
+    {# plan is the raw key ("weekly"/"biweekly"/"monthly") — looked up through the same
+       upgrade.plan_* keys /upgrade itself uses, so this renders in the visitor's own language
+       instead of the old Hebrew-only PLAN_LABELS_HE (2026-09-10 fix). #}
+    <p>{{ t('upgrade_pay.plan_prefix', plan=t('upgrade.plan_' ~ plan)) }} <b>₪{{ amount }}</b></p>
   </div>
 </div>
 

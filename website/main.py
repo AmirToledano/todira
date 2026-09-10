@@ -1136,6 +1136,13 @@ def admin_toggle_free_access(request: Request, user_id: int):
     return RedirectResponse("/admin/users", status_code=303)
 
 
+# 2026-09-10 fix: this used to also feed /upgrade, /upgrade/pay, and /account's payment history
+# table — a real i18n gap, since those pages render in the visitor's own language everywhere else
+# (see i18n.py's upgrade.plan_weekly/biweekly/monthly) but always showed this Hebrew-only string.
+# Narrowed to its one legitimate remaining use below: the checkout description sent to Grow's own
+# hosted payment page, which is the merchant's (owner's) side of the transaction, not something
+# the visitor's browser ever renders — that one stays Hebrew on purpose, matching the rest of the
+# Grow integration's own account-side text.
 PLAN_LABELS_HE = {
     "weekly": "שבועי — ₪15",
     "biweekly": "שבועיים — ₪25",
@@ -1165,7 +1172,6 @@ def upgrade(request: Request, uid: int | None = None):
             "trial_ends_at": user.trial_ends_at,
             "paid_until": user.paid_until,
             "plan_prices": PLAN_PRICES_ILS,
-            "plan_labels": PLAN_LABELS_HE,
             "grow_configured": grow_client.is_configured(),
             "takbull_configured": takbull_client.is_configured(),
         },
@@ -1292,7 +1298,7 @@ def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
             "uid": redirect_uid,
             "payment_id": payment.id,
             "amount": payment.amount_ils,
-            "plan_label": PLAN_LABELS_HE.get(payment.plan, payment.plan),
+            "plan": payment.plan,
             "already_paid": payment.status == "paid",
             "bit_phone": OWNER_BIT_PHONE,
             "paybox_url": OWNER_PAYBOX_URL,
@@ -1564,7 +1570,6 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
             "notifications_enabled": notifications_enabled,
             "whatsapp_notifications_opted_in": whatsapp_notifications_opted_in,
             "payments": payments,
-            "plan_labels": PLAN_LABELS_HE,
         },
     )
 

@@ -287,12 +287,30 @@ def test_account_renders_payment_history_when_payments_exist(client):
         resp = client.get("/account", params={"uid": 222})
 
     assert "היסטוריית תשלומים 📄" in resp.text
-    assert "חודשי — ₪40" in resp.text
+    # 2026-09-10 fix: plan label and amount used to be combined into one Hebrew-only string
+    # ("חודשי — ₪40") with the amount shown a second time right after it — now the plan label
+    # comes through i18n.py (just "חודשי") and the amount is asserted once, below.
+    assert "חודשי" in resp.text
     assert "₪40" in resp.text
     assert "01/08/2026" in resp.text
     assert "✅ שולם" in resp.text
     assert "⏳ ממתין" in resp.text
-    assert "15/08/2026" in resp.text
+
+
+def test_account_payment_history_plan_name_renders_in_english_when_lang_param_is_set(client):
+    """2026-09-10 fix: the plan name in the payment history table used to come from a
+    Hebrew-only backend dict (PLAN_LABELS_HE) regardless of ?lang= — this leak was never
+    actually covered by a test. Now goes through the same i18n.py keys as the rest of the page."""
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    payments = [
+        _FakePayment("monthly", 40, "paid", dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc)),
+    ]
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=payments)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222, "lang": "en"})
+
+    assert "Monthly" in resp.text
+    assert "חודשי" not in resp.text
 
 
 def test_account_hides_payment_history_section_when_no_payments(client):

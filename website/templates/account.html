@@ -115,7 +115,10 @@
   <div class="payment-history">
     {% for payment in payments %}
     <div class="payment-row">
-      <span class="payment-plan">{{ plan_labels.get(payment.plan, payment.plan) }}</span>
+      {# 2026-09-10 fix: was plan_labels.get(...), a Hebrew-only backend dict — same pattern as
+         the payment-status dict on the next line, but built from the real i18n keys so this
+         renders in the visitor's own language. #}
+      <span class="payment-plan">{{ {'weekly': t('upgrade.plan_weekly'), 'biweekly': t('upgrade.plan_biweekly'), 'monthly': t('upgrade.plan_monthly')}.get(payment.plan, payment.plan) }}</span>
       <span class="payment-amount">₪{{ payment.amount_ils }}</span>
       <span class="payment-date">{{ (payment.paid_at or payment.created_at).strftime('%d/%m/%Y') }}</span>
       <span class="amc-status {{ 'amc-status-ok' if payment.status == 'paid' else ('amc-status-warn' if payment.status == 'pending' else 'amc-status-bad') }}">
