@@ -5284,3 +5284,58 @@ the description-field question become answerable — no point re-running the fie
 Net effect on the "combine ZenRows + Bright Data" conversation with the owner: still open, gated on
 this reliability question first. Stopped here for the night (02:31 local) — real progress, not a
 dead end, just not finished.
+
+## Update 2026-09-11 (very late night, still later): FOUND IT — the description IS in the
+## individual listing's `__NEXT_DATA__`, under `searchText`, not a field called "description"
+
+Direct follow-up to the entry immediately above. Once a clean (non-empty) capture of an
+individual listing page (`yad2.co.il/realestate/item/tel-aviv-area/<token>`) was obtained (fixed
+by waiting on `[data-testid="price"]` instead of bare `body` before parsing — same fix pattern as
+the search page's own Interaction code), the `item` query's data object has these top-level keys:
+```
+token, orderId, adNumber, adType, categoryId, subcategoryId, priority, statusId, price,
+additionalDetails, inProperty, searchText, customer, packages, address, metaData, dates,
+abovePrice, paymentsInYear
+```
+**`searchText` is the full free-text listing description** — confirmed by reading its actual
+value tonight: a complete, real, multi-sentence Hebrew ad description (room layout, condition,
+location, lease terms, agency info), not a summary or a truncated snippet. Never called
+"description" anywhere — that's exactly why the earlier field-name guesses (`description`,
+`text`, `content` — see `bright_data_client.py`'s own fallback list) never matched. **Update that
+client's fallback list to also try `searchText`** if this Bright Data Web Scraper API dataset
+route is ever actually configured (it currently isn't — `BRIGHT_DATA_DATASET_ID` unset, see that
+file's own docstring).
+
+**This corrects/refines the two entries above tonight, doesn't contradict them**: the
+search-results feed (`realestate-rent-feed`) genuinely has no description field — that finding
+stands. The individual listing's OWN page's `__NEXT_DATA__` does, under `searchText`, and that's
+exactly the page Bright Data's `next_stage` already visits per listing during Stage 2 discovery.
+So the "get full content close to free from a visit that's already happening" premise from the
+2026-09-07 entry is now actually validated with real field-level evidence, not just an inference
+from pricing model — contingent on fixing the capture-reliability problem (documented directly
+above: ~2 of 3 attempts got an empty capture with the naive `wait('body')`; switching to
+`wait('[data-testid="price"]')` got a clean capture on the one retry tried tonight, but this needs
+several more repeated runs before calling it reliably fixed, not just lucky twice).
+
+**Net result for the owner's "combine ZenRows + Bright Data" question**: real, positive answer.
+A concrete, evidence-backed path exists: keep ZenRows for regional search-page discovery
+(unchanged), and use Bright Data's own Stage 2 (`navigate` → `wait('[data-testid="price"]')` →
+`collect(parse())`) to visit each *new* listing (the existing `(source, external_id)` Postgres
+dedup, already built, decides what's new) and pull `searchText` from its `__NEXT_DATA__` — no
+separate per-listing Web Scraper API dataset call needed at all, since Scraper Studio's own
+per-record pricing already covers the visit. This would let `fetch_listing_description`'s current
+on-demand-per-matched-user design be replaced with getting the description at discovery time,
+for free, for every new listing (not just ones that later match a paying user) — a genuinely
+different and arguably better tradeoff than today's lazy design, worth discussing with the owner
+explicitly since it changes the cost/completeness balance (pay to have descriptions for ALL new
+listings up front, vs. today's pay-only-for-what-a-paying-user-actually-sees).
+
+**Still not built, real scoping work remains** before writing any ingestion code: (1) confirm the
+capture-reliability fix holds over many more runs, not just one; (2) design how a Bright-Data-
+sourced listing record maps into the existing `Listing`/`normalize.py` shape (field names differ
+completely from Yad2's HTML/ZenRows-scraped shape: `additionalDetails.roomsCount` vs `rooms`,
+`additionalDetails.property.text` vs `property_type`, etc.); (3) decide the actual trigger
+mechanism — does the scraper call Bright Data's trigger API per new listing found by ZenRows
+discovery, passing that listing's own URL as input to a single-listing Scraper Studio run? That's
+architecturally different from the `next_stage`-driven multi-page crawl this collector currently
+does, and needs its own design pass, not assumed to just work as-is.
