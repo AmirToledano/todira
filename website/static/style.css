@@ -365,6 +365,20 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .feature-card h3 { font-size: 1.08rem; margin-bottom: 6px; }
 .feature-card p { color: var(--text-muted); font-size: .92rem; margin: 0; }
 
+/* Static before/after mini-demo under feature1 (2026-09-10) — deliberately no animation/JS, see
+   this block's own template comment for why. */
+.ai-demo { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); }
+.ai-demo-query {
+  font-size: .82rem; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px; display: inline-block;
+}
+.ai-demo-arrow { color: var(--text-muted); font-size: .85rem; margin: 6px 0; }
+.ai-demo-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-demo-chip {
+  font-size: .78rem; font-weight: 600; color: var(--teal-dark); background: var(--teal-tint);
+  border-radius: 999px; padding: 5px 11px;
+}
+
 .steps {
   counter-reset: step; position: relative;
   max-width: 480px; margin: 44px auto; display: flex; flex-direction: column; gap: 32px;
