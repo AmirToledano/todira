@@ -5120,3 +5120,94 @@ Every Hebrew value was kept byte-identical to the previous hardcoded text, so no
 needed changes — confirmed live, not assumed. New regression tests added per page confirming
 `?lang=en`/`?lang=ar` actually render translated content. Full suite: 653 passed (was 647 at the
 top of this update).
+
+## Update 2026-09-11: closes the 2026-09-06 Bright Data truncation question — confirmed NOT
+## truncated, real query name found, plus a security note and a long list of Bright Data UI gotchas
+
+**Context for how this started, worth recording.** Mid-session, the owner relayed a message he
+said was drafted by "an AI architect he works with" (Gemini w/ Deep Research) proposing a "Zero-
+Extra-Requests" scraper redesign: pull full listing data (descriptions included) straight from
+Yad2's `__NEXT_DATA__` JSON on the search page, paired with an `aiosqlite` local cache for the
+Telegram bot (working around Telegram's 64-byte `callback_data` limit). The voice/register was a
+sharp break from the owner's own usual messages, arriving mid-turn and attributed to relaying
+another AI — flagged this to the owner directly as worth a second look before acting on it, per
+this file's own established pattern of taking unusual requests at face value being a real risk
+(see e.g. any of this file's own history of catching false "Shipped" claims). The owner confirmed
+genuine intent. **One request in that same exchange was refused outright and stays refused going
+forward regardless of rephrasing**: a script making a **direct HTTP request to yad2.co.il** using
+`curl_cffi` explicitly "to bypass basic WAF" — declined as detection evasion against a third
+party's own anti-bot protection, full stop, not something to reconsider "just this once" or "just
+for testing." The owner immediately agreed to stay entirely inside the existing, already-paid
+Bright Data infrastructure instead, and everything below happened exclusively through Bright
+Data's own hosted Scraper Studio UI (Interaction code + Parser code editors) — no local script,
+no direct request, nothing added to this repo except this entry.
+
+**The actual finding — this directly resolves the open item from the 2026-09-06 entries above
+("Bright Data Stage 2 investigation... still exactly where it was left").** Built a diagnostic
+Parser (Cheerio-style `$()`, no `window` — confirmed once again, same constraint as 2026-09-06)
+that does `JSON.parse($('script#__NEXT_DATA__').html())` and reports `raw_length` + `parse_error`
++ real query-key names, run via Bright Data's own "Play"/preview against **a real filtered search
+URL** (`yad2.co.il/realestate/rent/tel-aviv-area?area=1&city=5000&minRooms=2&maxRooms=3` — not
+just the generic no-params fallback page):
+
+- **`parse_error: null`, `raw_length` up to ~486,000 characters, repeatedly, across many runs.**
+  `JSON.parse` succeeds every time. **No truncation** — the 2026-09-06 `Unexpected end of JSON
+  input` symptom does not reproduce on this page type. (Filtered search pages did trip Yad2's own
+  anti-bot/CAPTCHA challenge a couple of times inside Bright Data's headless browser — handled by
+  simply retrying and raising the Interaction code's `wait()` timeout to 120s, both legitimate,
+  no evasion involved; not investigated further since it self-resolved.)
+- **Real query key found**: `dehydratedState.queries[]` contains one whose `queryKey[0] ===
+  "realestate-rent-feed"` (NOT `"realestate-feed"` or `"items"` as guessed at first — easy to
+  misread in a small screenshot, cost real time; confirmed by dumping the literal key string back
+  out of the code rather than eyeballing a screenshot a second time).
+- **Real data shape, also not what was guessed**: that query's `state.data` is NOT a flat `items`/
+  `groupedOffers` array. Its actual keys: `private`, `agency`, `yad1`, `platinum`, `kingOfTheHar`,
+  `trio`, `booster`, `leadingBroker`, `pagination`, `lookalike` — i.e. listings are pre-split by
+  seller type (`private` = private sellers, `agency` = brokers) and several paid-promotion tiers,
+  not one uniform list.
+
+**Still open, not yet checked**: whether an individual record inside e.g. `data.private[0]`
+actually contains a full description field (the original point of this whole investigation) —
+the session ended before that last drill-down. Next step for whoever picks this up: same Parser-
+code pattern, just read `feedQuery.state.data.private[0]` (or `.agency[0]`) and dump
+`Object.keys(...)` on it.
+
+**No production code changed.** `scraper.suspended` remains `true` (deliberate hold from an
+earlier session, untouched here) — this was purely a Bright Data-side diagnostic to answer a
+feasibility question before any real architecture decision. The original PILLAR 1 (`__NEXT_DATA__`
+extraction) / PILLAR 2 (`aiosqlite` bot cache) proposal has NOT been implemented or even
+scoped into a real plan yet — tonight only answered "is the data actually there, uncut." Whoever
+picks this up next should decide scope with the owner (region coverage, whether this
+supplements or replaces the existing Bright Data Stage 2 per-listing visit / ZenRows discovery
+path — see the 2026-09-07 entry above on why Bright Data's existing per-listing visit is close to
+free while ZenRows' is not) before writing any real ingestion code.
+
+**Bright Data Scraper Studio UI gotchas, worth recording verbatim since they cost most of
+tonight's real time** (owner has zero coding background, worked through all of this live via
+screenshots — if a future session guides someone through this UI again, expect every one of
+these):
+- **"Save to production" can silently no-op** — same finding as 2026-09-06, still true. The only
+  reliable check is Changelog → Versions, confirming a new version is tagged "Production version"
+  with a current timestamp.
+- **A locked, collector-wide "Output schema"** rejects any save whose returned fields don't match
+  it exactly (type mismatches like a plain string being typed `Text` where the schema expects
+  `URL`, or genuinely new/renamed fields) with a **silent, non-fatal "Last step's data format
+  should exactly match output schema" toast** — the run still completes and results still exist,
+  just unreachable through the normal Output panel until you explicitly click "Update schema" in
+  the popup and then **Save to development a second time** (the schema update and the code save
+  are two separate persisted actions — doing only the first leaves the code change unsaved,
+  produced several rounds of "why didn't my fix do anything" before this was caught).
+- **Clicking "Save to development" can auto-switch the visible pane to a completely different,
+  unrelated Interaction/Parser group** in the sidebar (this collector has two independent
+  "ide-automation template" groups — one actively developed, one a leftover from an earlier
+  session) — easy to mistake the OLD group's stale/different output for a fresh result from the
+  group actually being edited. Always re-check the sidebar highlight after any save before
+  reading Output.
+- The **"Play" (▶) button and "Run test crawl"** are the same underlying action (tooltip:
+  "Ctrl-Enter — Run the crawl code"); it runs live inside the Code tab itself — never navigate to
+  "Initiate manually" for a test run, that starts a real, separately-billed production crawl.
+- A `catch (e) {}` that swallows errors silently is actively harmful for this kind of remote,
+  screenshot-mediated debugging — capturing `String(e.message)` into a returned field (plus a
+  throwaway `canary: 'v'+Date.now()` field to independently confirm new code actually ran, not a
+  stale cached result) is what actually broke the last stuck point tonight, worth reaching for
+  immediately next time instead of iterating blind.
