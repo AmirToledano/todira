@@ -5241,3 +5241,46 @@ project documentation).
 zero-extra-requests description extraction) — not viable as specified, closed. Pillar 2 (`aiosqlite`
 local cache for the Telegram bot's `callback_data` size limit) — untouched by tonight's findings,
 still open, unrelated technical question if the owner wants to pursue it separately.
+
+## Update 2026-09-11 (late night, still later): tested an individual LISTING page too — the
+## original 2026-09-06 truncation/timing symptom reproduces there, unlike the search page
+
+Follow-up prompted by the owner wanting to combine Bright Data with ZenRows (add, not replace —
+see the exchange above about `_upsert_listings`'s existing `(source, external_id)` dedup already
+covering the "delta" idea, and `fetch_listing_description`'s already-tighter-than-proposed gating).
+Before scoping that further, tested the one page type never actually checked tonight: an
+individual listing's own detail page (`yad2.co.il/realestate/item/tel-aviv-area/<token>`) —
+this is the page type `next_stage` actually visits, and where the original 2026-09-06 truncation
+symptom was found; everything earlier tonight was the search-results page, a different, and
+frankly less interesting, question (of course a result-card feed doesn't carry full descriptions).
+
+**Result: inconsistent.** Same diagnostic Parser, same exact listing URL, run 3 times:
+- Run 1: `raw_length: 4970`, `parse_error: null` — clean, real content, one query key
+  (`["item","<token>"]`).
+- Runs 2 and 3 (immediately after, same URL, code unchanged): `raw_length: 0`,
+  `parse_error: "Unexpected end of JSON input"`.
+
+This is the exact symptom the 2026-09-06 entries already named and diagnosed: Bright Data's page-
+capture step racing the page's own hydration on individual listing pages specifically — sometimes
+winning (full content), sometimes losing (empty `<script id="__NEXT_DATA__">` at capture time).
+**Not reproduced even once on the search-results page tonight** (5+ runs, always clean,
+`raw_length` 250k–486k) — this flakiness appears specific to the listing-detail page type, not a
+general Bright Data problem with this site.
+
+**Not yet answered**: whether the one clean 4970-char capture actually contains a description
+field, because that capture happened before `item_debug` (the code that would dump the item
+query's own field names) was added — by the time that code was ready, only the flaky empty
+captures came back. Still don't know if the individual listing's own `__NEXT_DATA__` has a
+description at all, only that reading it reliably is itself an open problem.
+
+**Next step for whoever picks this up**: before trying the field-name question again, first fix
+the reliability problem — likely needs the Interaction code to `wait()` on something more specific
+than `'body'` (e.g. a selector that only appears after the page's own data has hydrated, similar to
+how the search-page Interaction code waits on `'a[href*="/realestate/item/"]'`) or a short retry
+loop that re-checks `raw_length > 0` before returning. Only once a capture reliably has content does
+the description-field question become answerable — no point re-running the field-check against a
+50%-of-the-time-empty capture.
+
+Net effect on the "combine ZenRows + Bright Data" conversation with the owner: still open, gated on
+this reliability question first. Stopped here for the night (02:31 local) — real progress, not a
+dead end, just not finished.
