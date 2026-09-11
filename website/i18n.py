@@ -496,6 +496,25 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Décrivez simplement ce que vous cherchez en hébreu — par ex. « 2-3 pièces à Tel-Aviv, jusqu'à 6 000 ILS » — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
         "ar": "فقط اكتب ما تبحث عنه بالعبرية — مثلاً \"2-3 غرف في تل أبيب حتى 6000 شيكل\" — ويفهم الذكاء الاصطناعي طلبك ويضبط الفلتر نيابة عنك، بدون نماذج معقدة.",
     },
+    # 2026-09-10 addition: a concrete before/after visual under feature1 — the same example
+    # already quoted in feature1_body's own text, shown as an actual mini-demo (typed query ->
+    # parsed chips) instead of only described in a sentence. Only the parsed-chip labels below are
+    # real translation keys — the query text itself is a fixed Hebrew example (a real visitor
+    # writes to the bot in Hebrew regardless of the UI language they're browsing in, matching
+    # feature1_body's own "in Hebrew" framing above), hardcoded directly in home.html rather than
+    # given its own key here: an identical-Hebrew-in-every-language entry would trip
+    # test_no_hebrew_characters_leak_into_arabic_translations, a guard that exists specifically to
+    # catch real accidental leaks — better to not fight it than to special-case around it.
+    "home.feature1_example_city": {
+        "he": "תל אביב", "en": "Tel Aviv", "ru": "Тель-Авив", "fr": "Tel-Aviv", "ar": "تل أبيب",
+    },
+    "home.feature1_example_rooms": {
+        "he": "2-3 חדרים", "en": "2-3 rooms", "ru": "2-3 комнаты", "fr": "2-3 pièces", "ar": "2-3 غرف",
+    },
+    "home.feature1_example_price": {
+        "he": "עד 6,000 ₪", "en": "Up to ₪6,000", "ru": "До 6 000 ₪", "fr": "Jusqu'à 6 000 ₪",
+        "ar": "حتى 6,000 ₪",
+    },
     "home.feature2_title": {
         "he": "התראות בזמן אמת", "en": "Real-time alerts", "ru": "Уведомления в реальном времени",
         "fr": "Alertes en temps réel", "ar": "تنبيهات فورية",

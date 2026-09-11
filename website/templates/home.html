@@ -90,6 +90,20 @@
     <div class="icon" aria-hidden="true">🧠</div>
     <h3>{{ t('home.feature1_title') }}</h3>
     <p>{{ t('home.feature1_body') }}</p>
+    {# 2026-09-10 addition: a concrete before/after visual instead of only describing this in the
+       sentence above — static (no JS, no animation) so it's safe regardless of motion prefs and
+       needs no visual QA beyond reading the CSS. #}
+    <div class="ai-demo" aria-hidden="true">
+      {# Fixed Hebrew example, not a translation key — see i18n.py's own comment on this
+         section for why (a real visitor always writes to the bot in Hebrew). #}
+      <div class="ai-demo-query">"2-3 חדרים בתל אביב עד 6000 שקל"</div>
+      <div class="ai-demo-arrow">↓</div>
+      <div class="ai-demo-chips">
+        <span class="ai-demo-chip">🏙️ {{ t('home.feature1_example_city') }}</span>
+        <span class="ai-demo-chip">🛏️ {{ t('home.feature1_example_rooms') }}</span>
+        <span class="ai-demo-chip">💰 {{ t('home.feature1_example_price') }}</span>
+      </div>
+    </div>
   </div>
   <div class="feature-card reveal" style="transition-delay:90ms">
     <div class="icon" aria-hidden="true">⚡</div>

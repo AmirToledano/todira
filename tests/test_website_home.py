@@ -54,6 +54,19 @@ def test_home_hides_whatsapp_cta_when_not_configured(client):
     assert "https://t.me/AmirDirotBot" in resp.text
 
 
+def test_home_page_shows_ai_understanding_demo(client):
+    """2026-09-10 addition: a static before/after visual under feature1 (typed query -> parsed
+    chips). The query text is a fixed Hebrew example (matches feature1_body's own "in Hebrew"
+    framing) and stays Hebrew regardless of ?lang=; only the chip labels translate."""
+    resp = client.get("/", params={"lang": "en"})
+
+    assert resp.status_code == 200
+    assert "2-3 חדרים בתל אביב עד 6000 שקל" in resp.text
+    assert "Tel Aviv" in resp.text
+    assert "2-3 rooms" in resp.text
+    assert "Up to ₪6,000" in resp.text
+
+
 def test_home_page_has_valid_organization_and_website_json_ld(client):
     # Found live 2026-09-07: nothing on the site told search engines what kind of thing "טודירה"
     # IS (an Organization/WebSite, not just a page title) — no structured basis for a rich result.
