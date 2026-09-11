@@ -5211,3 +5211,33 @@ these):
   throwaway `canary: 'v'+Date.now()` field to independently confirm new code actually ran, not a
   stale cached result) is what actually broke the last stuck point tonight, worth reaching for
   immediately next time instead of iterating blind.
+
+## Update 2026-09-11 (later, same night): closes the "still open" item above — no description
+## field exists anywhere in the search-page JSON; Pillar 1 as proposed is not feasible
+
+Follow-up to the entry directly above. Drilled one level further into `data.private[0]` /
+`data.agency[0]` (the actual listing records inside the `realestate-rent-feed` query found
+tonight). Full field list on a real record:
+```
+address, subcategoryId, categoryId, adType, price, token,
+additionalDetails: { property, roomsCount, squareMeter, propertyCondition, promotions },
+metaData: { coverImage, images, squareMeterBuild },
+tags, orderId, priority  (agency records also add: customer, priceBeforeTag, packages)
+```
+**No free-text description field anywhere** — not at the top level, not in `additionalDetails`,
+not in `metaData`. Every field is structured metadata (address, price, room count, sqm, property
+type/condition, image URLs). This settles the question this whole investigation was chasing: it's
+not a truncation problem, not a wrong-query-name problem — Yad2's search-results JSON simply does
+not embed listing descriptions, at any size, regardless of how cleanly it parses. Getting a
+listing's description still requires visiting that listing's own detail page, exactly like the
+existing Bright Data Stage 2 discovery already does today (`next_stage` per listing) — so this
+finding doesn't strand any existing capability, it just rules out the specific "skip the per-
+listing visit entirely" premise of the owner's "architect"-relayed proposal. Wrote up the full
+investigation (method + all three findings + this conclusion) as a standalone report and sent it
+to the owner to relay externally — not committed to this repo (external-facing document, not
+project documentation).
+
+**Net effect on the two-pillar proposal from the top of this investigation**: Pillar 1 (`__NEXT_DATA__`
+zero-extra-requests description extraction) — not viable as specified, closed. Pillar 2 (`aiosqlite`
+local cache for the Telegram bot's `callback_data` size limit) — untouched by tonight's findings,
+still open, unrelated technical question if the owner wants to pursue it separately.
