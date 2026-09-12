@@ -55,4 +55,5 @@ jobs:
             echo
           }
           check_one "komo_rent_plain" "https://www.komo.co.il/code/rent/"
+          check_one "komo_rent_jsonly" "https://www.komo.co.il/code/rent/" --data-urlencode "js_render=true"
           check_one "homeless_rent_plain" "https://www.homeless.co.il/rent/"
