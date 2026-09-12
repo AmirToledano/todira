@@ -5545,3 +5545,35 @@ Once that's live, the cost/completeness tradeoff already discussed and agreed wi
 (pay ~$0.0015/page-load — confirmed exact real rate, see the entry above — to get a full
 description on every new listing at discovery time, not just ones a paying user later sees) takes
 effect automatically, with zero further code changes.
+
+## Update 2026-09-12 (final, this session): Bright Data enrichment merged and deployed live —
+## PR #208, CI/CD run #257 green end to end (test → build x3 → helm upgrade), owner's secrets in
+
+Closes out this entire session's Bright Data investigation/build. `claude/todira-project-status-
+7c3o7w` had drifted behind `main` (several other PRs #201-207 already squash-merged since this
+branch was cut) — rebuilt it as 10 fresh commits on top of current `main` (no content lost, git
+history confirms the old base commits were byte-identical to already-merged PRs) rather than
+fighting a stale-branch merge. PR: https://github.com/AmirToledano/todira/pull/208.
+
+Owner added the two real GitHub secrets (`BRIGHT_DATA_API_KEY`, `BRIGHT_DATA_COLLECTOR_ID=
+c_mtyf4w2z1ag3eu3n1u`) live during this session, then said "do what's needed" — merged (squash)
+into `main`, watched the resulting CI/CD run (#257) through every stage: `test` (684 passing),
+`build-and-push` for all three images, then `deploy`'s `helm upgrade` — all green, no manual
+intervention needed. **This feature is now actually live**, not just merged code sitting inert:
+the next real scrape run (`scraper.suspended` is still `true` from an earlier, unrelated hold —
+still the one remaining gate on the scraper actually RUNNING at all, unrelated to this feature)
+will call Bright Data for every genuinely-new listing and enrich it with a full description,
+property type, amenities, and real photos, at the confirmed real cost of ~$0.0015/page-load.
+
+**What to check once the scraper actually runs again** (after `scraper.suspended` is eventually
+flipped back — a separate, deliberate decision already documented above, not touched tonight):
+the run summary's new `bright_data_enriched` key (added to `run_once()`'s returned dict this
+session) should be > 0 whenever new listings were found. If it's consistently 0 with real new
+listings present, check the scraper pod's own logs for `Bright Data DCA trigger call failed` /
+`... trigger response ... had no recognizable job id` — the one intentionally-unverified detail
+left in `bright_data_client.py` is the exact JSON key name Bright Data's `/dca/trigger` response
+actually uses for the job id (tried defensively against a few plausible names, never confirmed
+against a real response body since this session never had `BRIGHT_DATA_API_KEY`/
+`BRIGHT_DATA_COLLECTOR_ID` set locally to test against) — the raw response is logged either way if
+none of the guessed keys match, so a real production log line will settle it immediately if this
+ever needs adjusting.
