@@ -5339,3 +5339,75 @@ mechanism — does the scraper call Bright Data's trigger API per new listing fo
 discovery, passing that listing's own URL as input to a single-listing Scraper Studio run? That's
 architecturally different from the `next_stage`-driven multi-page crawl this collector currently
 does, and needs its own design pass, not assumed to just work as-is.
+
+## Update 2026-09-12 (continuing straight from the night before): reliability confirmed 100%
+## (12/12), both description fields are real and different, and the mapping code is now written
+
+Direct continuation of the "combine ZenRows + Bright Data" plan the owner laid out after the
+`searchText` discovery. Three things done, in order:
+
+**1. Reliability, confirmed.** Looped the diagnostic over 12 fresh, real, currently-live listings
+(tokens pulled live from the search feed itself, not reused stale ones) using the
+`wait('[data-testid="price"]')` fix from the entry above. **12 of 12 succeeded** — every single one
+had `raw_length` between 3099 and 4562 (never 0), `parse_error: null`. Combined with the earlier
+single successful run, that's 13/13 clean captures with this fix, vs. 1/3 with the naive
+`wait('body')`. Reliability problem: solved, not just lucky twice.
+
+**2. `metaData.description` and `searchText` are BOTH real, BOTH different — no bug, verified not
+assumed.** Worth recording precisely since the entry above briefly floated the wrong theory (that
+`enrich_from_detail`'s `metaData.description` read might be a live bug, since the 2026-09-02
+diagnostic that "confirmed" it only dumped raw HTML text windows, never walked real keys the way
+tonight's Bright Data testing did). Checked directly on the same 12 listings: **every one** had
+`has_search_text: true` AND `has_meta_description: true`, and `same_text: false` on all 12.
+Reading the actual previews: `metaData.description` is the clean, human-written ad text (what
+`enrich_from_detail` already correctly extracts); `searchText` is a different, more mechanical
+string (starts "שם מוכר X נכס להשכרה מסוג Y עם מספר חדרים... בכתובת..." — looks like a
+search-indexing concatenation of structured facts, not prose). **No code was broken; nothing here
+needed fixing.**
+
+**3. Mapping code: written, tested, no translation layer needed.** The real insight: ZenRows'
+existing (unused-by-default) `fetch_listing_detail` and Bright Data's collector both ultimately
+read the same underlying Yad2 `__NEXT_DATA__` — just via different scraping infrastructure — so
+`scraper/normalize.py`'s existing `enrich_from_detail(item, detail)` already expects exactly Bright
+Data's shape. Confirmed this with a real-shaped test
+(`test_enrich_from_detail_consumes_a_real_bright_data_record_unchanged`, tests/test_normalize.py)
+built from tonight's actual confirmed field names/values (token `dgne1po1`) — passes with zero
+changes to `enrich_from_detail` itself.
+
+What WAS added (`common/dorin_common/bright_data_client.py`):
+- Refactored `fetch_listing_description`'s trigger/poll/snapshot mechanics into a shared
+  `_trigger_and_fetch_first_row(url) -> dict | None` helper.
+- New `fetch_listing_detail_via_bright_data(url) -> dict | None` — same helper, but returns the
+  WHOLE record instead of extracting just the description string, so it can be passed straight
+  into `enrich_from_detail`. Same "never raises, blocking/sync, None on any failure" contract as
+  the existing function. **Not yet called from anywhere** — no scrape-path wiring yet, see below.
+- Added `searchText` to `fetch_listing_description`'s own field-fallback chain too (defensive,
+  not a fix — `description`/`metaData.description` still tried first, since it's the cleaner text).
+- Docstrings updated: the module's own "PARTIALLY VERIFIED" disclaimer now correctly says the
+  RECORD SHAPE is confirmed live (not guessed) — only the account-specific `dataset_id` remains
+  unset, since that Scraper Studio collector isn't published to production yet.
+- Tests: `tests/test_bright_data_client.py` (+4 tests for the new function and the searchText
+  fallback), `tests/test_normalize.py` (+1 real-shaped integration test as above). Full suite:
+  **678 passed** (was 653 before tonight's session — some of that delta is other work; this
+  entry's own additions are 5 new tests). Committed as `bd17048`.
+
+**Still genuinely not built** — this is code that CAN be called, not a working pipeline yet:
+1. **Trigger mechanism**: nothing in `scraper/main.py` calls `fetch_listing_detail_via_bright_data`
+   yet. The owner's stated design (from the entry above): call it once per genuinely-new
+   `external_id` at discovery time (the existing `_upsert_listings` insert-vs-update split already
+   identifies "new" — just needs a call added on that branch), then `enrich_from_detail` the result
+   before the initial insert, caching forever.
+2. **No production `dataset_id` exists yet** — the Scraper Studio collector used for all of
+   tonight's diagnostics is still a personal draft/development-only collector in the owner's Bright
+   Data account, never "Save to production"'d in a way that stuck (see the many entries above about
+   that button's own unreliability) — and even if it were, its current Parser code returns
+   diagnostic/debug fields (`canary`, `item_debug`, etc.), not the clean full record shape
+   `fetch_listing_detail_via_bright_data` expects back from the snapshot API. **The Parser code
+   needs a final, non-diagnostic version** that just returns the raw item object (or the specific
+   fields `enrich_from_detail` reads) before this is usable for real, then that collector needs an
+   actual production dataset_id set into `BRIGHT_DATA_DATASET_ID`.
+3. **Cost/completeness decision still not made explicit with the owner**: wiring this in changes
+   the tradeoff from today's "only fetch a description for a listing a paying user has actually
+   seen" to "fetch every new listing's full detail at discovery time, whether or not it ever
+   matches anyone" — more complete, but not free, and nobody has explicitly signed off on that
+   specific tradeoff yet (only on "combine ZenRows + Bright Data" at a conceptual level).
