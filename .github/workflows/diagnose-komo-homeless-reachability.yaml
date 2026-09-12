@@ -104,9 +104,10 @@ jobs:
           flat = re.sub(r'>\s+<', '><', html)  # collapse inter-tag whitespace only, keep tag text
           for label, pattern in [
               ("price (7,000 / ₪)", r'.{0,150}(?:7,000|₪).{0,150}'),
-              ("rooms (חדרים)", r'.{0,120}חדרים.{0,120}'),
-              ("floor (קומה)", r'.{0,120}קומה.{0,120}'),
-              ("size (מ\"ר / מ״ר)", r'.{0,120}מ["״]ר.{0,120}'),
+              # 2026-09-12 run found a repeating "firstInfoBlockWrap" stat family (floor + "mr"/size
+              # confirmed so far) — widening this one to see ALL of that family's blocks in one hit,
+              # to learn the rooms/total-floors class names too instead of another round-trip.
+              ("stat blocks (firstInfoBlockWrap family)", r'.{0,50}firstInfoBlockWrap.{0,900}'),
               ("address (שערי ירושלים)", r'.{0,150}שערי ירושלים.{0,150}'),
           ]:
               hits = re.findall(pattern, flat)
@@ -126,6 +127,9 @@ jobs:
             -o /tmp/homeless.html \
             -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
             --max-time 100
+          echo "--- raw body (in case of a non-200 / ZenRows error) ---"
+          cat /tmp/homeless.html
+          echo
           python3 - << 'PYEOF'
           import re
           with open('/tmp/homeless.html', encoding='utf-8', errors='replace') as f:
