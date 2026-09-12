@@ -208,3 +208,86 @@ def test_returns_none_when_no_recognizable_field(monkeypatch):
         result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
 
     assert result is None
+
+
+def test_falls_back_to_searchtext_when_description_missing(monkeypatch):
+    # 2026-09-12: searchText confirmed live as a second, real free-text field on a Yad2 listing
+    # detail page, distinct from metaData.description (see PROJECT_STATE.md) — a defensive
+    # fallback, tried after the other common keys since description is the cleaner field when
+    # both are present (test_full_happy_path_ready_on_first_poll already covers that case).
+    _configure(monkeypatch)
+
+    def fake_post(url, **kw):
+        return _resp(url, {"snapshot_id": "snap_1"})
+
+    def fake_get(url, **kw):
+        if "progress" in url:
+            return _resp(url, {"status": "ready"})
+        return _resp(url, [{"searchText": "טקסט חיפוש עם פרטי הנכס"}])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
+
+    assert result == "טקסט חיפוש עם פרטי הנכס"
+
+
+# --- fetch_listing_detail_via_bright_data (2026-09-12) ---
+
+
+def test_detail_returns_none_when_not_configured():
+    assert bright_data_client.fetch_listing_detail_via_bright_data("https://yad2.co.il/item/1") is None
+
+
+def test_detail_returns_full_row_not_just_description(monkeypatch):
+    _configure(monkeypatch)
+    real_row = {
+        "token": "rccfe1nk",
+        "price": 7500,
+        "additionalDetails": {"roomsCount": 2.5, "buildingTopFloor": 4},
+        "inProperty": {"includeElevator": True},
+        "metaData": {"description": "דירה יפה", "images": ["https://img.yad2.co.il/1.jpeg"]},
+        "customer": {"agencyName": "דאון גרוף"},
+        "searchText": "טקסט חיפוש ארוך יותר",
+    }
+
+    def fake_post(url, **kw):
+        return _resp(url, {"snapshot_id": "snap_1"})
+
+    def fake_get(url, **kw):
+        if "progress" in url:
+            return _resp(url, {"status": "ready"})
+        return _resp(url, [real_row])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_detail_via_bright_data("https://yad2.co.il/item/1")
+
+    assert result == real_row  # the WHOLE record, not narrowed down to one field
+
+
+def test_detail_returns_none_on_failure_same_as_description_fetch(monkeypatch):
+    _configure(monkeypatch)
+
+    def fake_post(url, **kw):
+        raise httpx.ConnectError("boom", request=httpx.Request("POST", url))
+
+    with patch.object(httpx, "post", fake_post):
+        result = bright_data_client.fetch_listing_detail_via_bright_data("https://yad2.co.il/item/1")
+
+    assert result is None
+
+
+def test_detail_returns_none_for_non_dict_row(monkeypatch):
+    _configure(monkeypatch)
+
+    def fake_post(url, **kw):
+        return _resp(url, {"snapshot_id": "snap_1"})
+
+    def fake_get(url, **kw):
+        if "progress" in url:
+            return _resp(url, {"status": "ready"})
+        return _resp(url, ["not a dict"])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_detail_via_bright_data("https://yad2.co.il/item/1")
+
+    assert result is None
