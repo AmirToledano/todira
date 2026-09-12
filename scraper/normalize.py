@@ -215,16 +215,14 @@ _PROPERTY_TYPE_MAP = {
 }
 
 
-def enrich_from_detail(item: NormalizedListing, detail: dict[str, Any]) -> NormalizedListing:
-    """Fills in fields Yad2's search-results cards never carry at all — property type, amenity
-    booleans, safe-room presence, a real description, real multi-photo image URLs, floor_total,
-    move-in date, and broker status — from one listing's own detail-page data (see
-    yad2_client.fetch_listing_detail). Purely additive and defensive: `detail`'s exact shape was
-    confirmed against exactly one real listing (2026-09-02), so every read here is a `.get()` with
-    a type check, never a blind index — a field this can't confidently read is simply left at
-    whatever `item` already had (usually None) rather than guessed. Only ever called for a listing
-    genuinely new to the DB this run (see scraper/main.py) — never re-fetched for one already
-    known, since each call is a real, separate ZenRows request."""
+def _compute_detail_updates(detail: dict[str, Any]) -> dict[str, Any]:
+    """The actual field-extraction logic behind enrich_from_detail, split out (2026-09-12) so
+    scraper/main.py can apply the same updates straight onto an ORM `Listing` row (via
+    `Listing.__table__.update().values(**updates)`) without a wasteful round-trip through a
+    NormalizedListing built from the ORM row's own current values — this function's output never
+    actually depends on `item`'s existing fields (see enrich_from_detail's own note below), only on
+    `detail`, so there was nothing for that round-trip to buy. Returns {} when `detail` yields
+    nothing usable, same "purely additive" contract as before."""
     updates: dict[str, Any] = {}
 
     additional = detail.get("additionalDetails")
@@ -262,7 +260,11 @@ def enrich_from_detail(item: NormalizedListing, detail: dict[str, Any]) -> Norma
     if entrance_date is not None:
         updates["move_in_date"] = entrance_date.date()
 
-    description = meta.get("description")
+    # searchText added 2026-09-12 as a fallback (not the primary source — metaData.description is
+    # the cleaner, human-written text; searchText is a different, real field too, more like a
+    # search-indexing concatenation of facts — see PROJECT_STATE.md's 2026-09-11/12 entries for how
+    # both were confirmed live, distinct, on the same real listings).
+    description = meta.get("description") or detail.get("searchText")
     if isinstance(description, str) and description.strip():
         updates["description"] = description.strip()
 
@@ -279,6 +281,25 @@ def enrich_from_detail(item: NormalizedListing, detail: dict[str, Any]) -> Norma
     if customer.get("agencyName"):
         updates["is_broker_listing"] = True
 
+    return updates
+
+
+def enrich_from_detail(item: NormalizedListing, detail: dict[str, Any]) -> NormalizedListing:
+    """Fills in fields Yad2's search-results cards never carry at all — property type, amenity
+    booleans, safe-room presence, a real description, real multi-photo image URLs, floor_total,
+    move-in date, and broker status — from one listing's own detail-page data (see
+    yad2_client.fetch_listing_detail, or common/dorin_common/bright_data_client.py's
+    fetch_listing_detail_via_bright_data — both read the same underlying Yad2 __NEXT_DATA__, just
+    via different scraping infrastructure, confirmed 2026-09-12). Purely additive and defensive:
+    `detail`'s exact shape was confirmed against real listings (2026-09-02 via ZenRows,
+    2026-09-11/12 via Bright Data), so every read is a `.get()` with a type check, never a blind
+    index — a field this can't confidently read is simply left at whatever `item` already had
+    (usually None) rather than guessed. The actual extraction logic lives in
+    `_compute_detail_updates` (only depends on `detail`, not `item` — this function's `item`
+    argument is purely the base being updated). Only ever called for a listing genuinely new to the
+    DB this run (see scraper/main.py) — never re-fetched for one already known, since each call is
+    a real, separate cost (ZenRows credits or a Bright Data page load)."""
+    updates = _compute_detail_updates(detail)
     if not updates:
         return item
     return item.model_copy(update=updates)
