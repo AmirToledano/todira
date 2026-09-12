@@ -18,9 +18,17 @@ name: Diagnose Komo + Homeless — reachability and page shape (read-only)
 #      owner was looking at live.
 #   2. api/modaotservice/adscoordinates/list/ — cheap JSON [{id, uid, lat, lng}, ...] per listing.
 #      Confirmed via the owner's own DevTools Payload tab: POST form data `iska=1` +
-#      `sessionToken=<value>`. The token is almost certainly embedded in the search-results page's
-#      own (plain, server-rendered) HTML/JS, generated per page-load — this step checks for it
-#      there, so the whole pipeline stays two cheap plain fetches, no JS rendering anywhere.
+#      `sessionToken=<value>`. The token IS embedded in the search-results page's own plain HTML —
+#      confirmed live (`window.sessionToken = "E327BE43D5B24F55A3AD23AA35FF5F2D"`), so the whole
+#      pipeline is fully automatable end-to-end with zero DevTools/manual steps: two plain fetches
+#      (search page -> token; details page -> data) + one plain POST (token -> id list), all at the
+#      cheapest 1-credit ZenRows tier, no JS rendering anywhere.
+#
+# Added below: a step to dump the ACTUAL price/rooms/floor/size markup around the details page's
+# known-real listing (modaaNum=4471462, already confirmed to contain "7,000" and "שערי ירושלים")
+# — before writing komo_client.py's parser, see the real HTML structure surrounding those values
+# instead of guessing CSS classes/regex shapes the way _parse_cards's Yad2 patterns were built off
+# a real fetched page, not assumption.
 on:
   workflow_dispatch: {}
 
@@ -78,3 +86,60 @@ jobs:
             --max-time 100
           echo "--- body (first 1500 chars) ---"
           head -c 1500 /tmp/coords2.json
+
+      - name: Dump the real markup around price/rooms/floor/size on Komo's details page (real listing, already confirmed)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.komo.co.il/code/nadlan/details/?modaaNum=4471462" \
+            -o /tmp/details.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/details.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)  # collapse inter-tag whitespace only, keep tag text
+          for label, pattern in [
+              ("price (7,000 / ₪)", r'.{0,150}(?:7,000|₪).{0,150}'),
+              ("rooms (חדרים)", r'.{0,120}חדרים.{0,120}'),
+              ("floor (קומה)", r'.{0,120}קומה.{0,120}'),
+              ("size (מ\"ר / מ״ר)", r'.{0,120}מ["״]ר.{0,120}'),
+              ("address (שערי ירושלים)", r'.{0,150}שערי ירושלים.{0,150}'),
+          ]:
+              hits = re.findall(pattern, flat)
+              print(f"=== {label}: {len(hits)} hit(s) ===")
+              for h in hits[:4]:
+                  print("  ", h)
+              print()
+          PYEOF
+
+      - name: Dump the real markup around price on Homeless's /rent/ page (already confirmed plain-fetchable, prices in initial HTML)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            -o /tmp/homeless.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/homeless.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+          hits = re.findall(r'.{0,200}₪.{0,200}', flat)
+          print(f"'₪' contexts: {len(hits)}")
+          for h in hits[:5]:
+              print("  ", h)
+          print()
+          # Look for one full repeating listing-card block (a real <a href=".../rent/..."> wrapper)
+          # to see what real per-listing fields (rooms/floor/size/address) live alongside price.
+          card = re.search(r'<a[^>]+href="[^"]*/rent/[^"]*"[^>]*>.{0,600}', flat)
+          if card:
+              print("=== first candidate listing-card block ===")
+              print(card.group(0))
+          PYEOF
