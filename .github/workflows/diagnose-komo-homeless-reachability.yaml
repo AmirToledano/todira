@@ -24,6 +24,35 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
+      - name: Fetch Komo homepage and extract real nav links to the rental section
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.komo.co.il/" \
+            -o /tmp/komo_home.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/komo_home.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          # Every href, deduped, filtered to ones that look rental-related (Hebrew "השכרה"/
+          # "להשכיר" or English "rent") — real evidence of the site's own nav structure instead
+          # of guessing more candidate paths blind.
+          hrefs = set(re.findall(r'href="([^"]+)"', html))
+          rentish = sorted(h for h in hrefs if re.search(r'rent|שכיר|השכר', h, re.I))
+          print(f"total unique hrefs on homepage: {len(hrefs)}")
+          print(f"rent-looking hrefs ({len(rentish)}):")
+          for h in rentish:
+              print(" ", h)
+          if not rentish:
+              print("--- none matched; dumping first 40 hrefs for manual inspection ---")
+              for h in sorted(hrefs)[:40]:
+                  print(" ", h)
+          PYEOF
+
       - name: Cost comparison across fetch configs on the two confirmed-real URLs from run 1
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
