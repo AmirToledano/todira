@@ -84,18 +84,24 @@
       {% if l.furniture == 'furnished' %}<span class="amenity">{{ t('card.amenity_furnished') }} 🛋️</span>{% endif %}
     </div>
     {% endif %}
-    {% if has_access %}
-      {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
-      <div class="listing-footer">
-        {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
+    {# 2026-09-12 policy change: the description itself is shown to EVERY viewer, paying or not —
+       only the outbound link to the listing's original source (Yad2/Komo/Homeless/Facebook/etc)
+       stays gated. This reverses the 2026-09-05 decision (see dorin_common/cards.py's
+       format_caption docstring for that history) of hiding the description too; the owner's own
+       later call was that content should be free, the original listing/its poster's own contact
+       details are the paid part. Nothing here ever renders the poster's own contact info (agent
+       name/phone/agency) — this project's Listing model doesn't store that at all (see
+       normalize.py's enrich_from_detail; only a derived is_broker_listing boolean is kept), so
+       there's nothing to accidentally leak by widening this gate. #}
+    {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
+    <div class="listing-footer">
+      {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
+      {% if has_access %}
         <a class="view-btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.view_btn') }}</a>
-      </div>
-    {% else %}
-      <div class="listing-footer">
-        {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
+      {% else %}
         <a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t('card.locked_btn') }} 🔒</a>
-      </div>
-    {% endif %}
+      {% endif %}
+    </div>
   </div>
 </div>
 {% endmacro %}

@@ -932,9 +932,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "לצפייה במודעה ←", "en": "View listing →", "ru": "Смотреть объявление →",
         "fr": "Voir l'annonce →", "ar": "عرض الإعلان ←",
     },
+    # 2026-09-12: reworded from "Upgrade to view" — the description/photos are now shown to every
+    # viewer regardless of subscription (see _listing_card.html); this button now gates only the
+    # outbound link to the listing's original source (Yad2/etc), so the copy says that instead.
     "card.locked_btn": {
-        "he": "שדרג/י לצפייה", "en": "Upgrade to view", "ru": "Обновить, чтобы посмотреть",
-        "fr": "Mettre à niveau pour voir", "ar": "الترقية للعرض",
+        "he": "שדרג/י לקישור למקור", "en": "Upgrade for original link",
+        "ru": "Обновите для перехода к источнику", "fr": "Mettre à niveau pour le lien d'origine",
+        "ar": "الترقية للرابط الأصلي",
     },
     # Badge shown on the cover photo (top-left, see .broker-badge in style.css) for a broker-listed
     # property — independent of deal_type (rent or sale, doesn't matter), 2026-09-03 request.
