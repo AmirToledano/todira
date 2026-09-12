@@ -13,11 +13,11 @@ name: Diagnose Komo + Homeless — reachability and page shape (read-only)
 # in this project. GitHub Actions runners have full outbound internet access, so this workflow is
 # the diagnostic vehicle, exactly like every prior "diagnose-*" workflow in this repo.
 #
-# Trimmed 2026-09-12 (same day): earlier revisions of this file guessed several candidate URLs per
-# site blind — all wrong except the ones kept below, which were instead found from real evidence
-# (Homeless: guessed correctly early and confirmed; Komo: found via its own homepage's real nav
-# links, see git history on this file). Kept lean now that both real URLs are confirmed, so a
-# re-run only costs a handful of cheap requests, not a couple of minutes of dead-end guesses.
+# Credit-saving principle applied throughout (owner's explicit instruction, 2026-09-12): a site's
+# own static JS/CSS bundle files are almost never behind the same bot-protection as its HTML page
+# — they're static assets, often CDN-served. Fetching them with a PLAIN curl (no ZenRows at all)
+# costs zero credits, vs. routing everything through ZenRows. Only the actual HTML page fetch
+# (and, if truly needed, a real listing-data API call) should ever cost a credit.
 on:
   workflow_dispatch: {}
 
@@ -25,7 +25,7 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify both confirmed real URLs + real per-config credit cost
+      - name: Confirm both real URLs still work + real per-config cost (baseline, unchanged)
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
@@ -40,20 +40,69 @@ jobs:
               -o "/tmp/out/${label}.html" \
               -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
               --max-time 100 || echo "curl failed for $label"
-            echo "--- cost headers ---"
-            grep -i -E "cost|credit" "/tmp/out/${label}.headers" 2>/dev/null || echo "(none found)"
-            python3 - "$label" << 'PYEOF'
-          import re, sys
-          label = sys.argv[1]
-          with open(f'/tmp/out/{label}.html', encoding='utf-8', errors='replace') as f:
-              html = f.read()
-          print(f"length={len(html)}")
-          print(f"'₪' occurrences: {len(re.findall(r'₪', html))}")
-          print(f"__NEXT_DATA__ present: {bool(re.search(r'__NEXT_DATA__', html))}")
-          print(f"__NUXT__ present: {bool(re.search(r'window.__NUXT__', html))}")
-          PYEOF
+            grep -i -E "cost|credit" "/tmp/out/${label}.headers" 2>/dev/null || echo "(no cost headers)"
             echo
           }
-          check_one "komo_rent_plain" "https://www.komo.co.il/code/rent/"
-          check_one "komo_rent_jsonly" "https://www.komo.co.il/code/rent/" --data-urlencode "js_render=true"
-          check_one "homeless_rent_plain" "https://www.homeless.co.il/rent/"
+          check_one "komo_rent" "https://www.komo.co.il/code/rent/"
+          check_one "homeless_rent" "https://www.homeless.co.il/rent/"
+
+      - name: Look for a Komo map-view link on the rent page (owner's tip — map APIs are often
+          cheap/unprotected JSON, same pattern as Yad2's own map)
+        run: |
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/out/komo_rent.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          hrefs = set(re.findall(r'href="([^"]+)"', html))
+          mapish = sorted(h for h in hrefs if re.search(r'map|מפה|geo', h, re.I))
+          print(f"map-looking hrefs ({len(mapish)}):")
+          for h in mapish:
+              print(" ", h)
+          PYEOF
+
+      - name: Extract Komo's JS bundle URLs from the page, fetch them DIRECTLY (no ZenRows, $0),
+          and search for the real listing-data API endpoint (including map/geo endpoints)
+        run: |
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/out/komo_rent.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          # Every <script src="...">, resolved to absolute URLs — these are almost always static
+          # assets servable with a plain request, not behind Komo's own anti-bot config.
+          srcs = re.findall(r'<script[^>]+src="([^"]+)"', html)
+          abs_srcs = []
+          for s in srcs:
+              if s.startswith('http'):
+                  abs_srcs.append(s)
+              elif s.startswith('//'):
+                  abs_srcs.append('https:' + s)
+              elif s.startswith('/'):
+                  abs_srcs.append('https://www.komo.co.il' + s)
+          # Keep the app's own bundles (skip obvious third-party analytics/font/ad scripts to save
+          # both fetch time and noise) — Komo's own domain, or a same-brand CDN.
+          own = [s for s in abs_srcs if 'komo.co.il' in s]
+          print(f"total script srcs: {len(srcs)}, own-domain: {len(own)}")
+          with open('/tmp/js_urls.txt', 'w') as f:
+              f.write('\n'.join(own))
+          for s in own:
+              print(" ", s)
+          PYEOF
+
+      - name: Fetch each JS bundle directly (plain curl, zero ZenRows credits) and grep for API hints
+        run: |
+          mkdir -p /tmp/js
+          i=0
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            i=$((i+1))
+            echo "=== bundle $i: $url ==="
+            curl -sS -o "/tmp/js/bundle_$i.js" -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+              --max-time 30 "$url" || echo "plain fetch failed for $url"
+          done < /tmp/js_urls.txt
+          echo
+          echo "=== grepping all fetched bundles for API-endpoint-shaped strings (incl. map/geo) ==="
+          grep -oE '"(/[a-zA-Z0-9_/-]*(api|map|geo|marker|pin)[a-zA-Z0-9_/-]*)"' /tmp/js/*.js 2>/dev/null | sort -u | head -60
+          echo "--- fetch/axios/XHR call sites (context) ---"
+          grep -oE '.{0,40}(fetch\(|axios\.(get|post)\(|XMLHttpRequest).{0,80}' /tmp/js/*.js 2>/dev/null | head -40
+          echo "--- any absolute URL literals pointing at komo's own domain, other than the bundles themselves ---"
+          grep -oE 'https?://[a-zA-Z0-9_.-]*komo\.co\.il/[a-zA-Z0-9_/.-]*' /tmp/js/*.js 2>/dev/null | sort -u | head -40
