@@ -17,6 +17,7 @@ from yad2_client import (
     Yad2FetchError,
     fetch_all_listings,
     fetch_listing_detail,
+    fetch_region_pages,
     fetch_search_results,
 )
 from yad2_client import _extract_feed_records as extract_feed_records
@@ -202,6 +203,133 @@ def test_fetch_all_listings_accepts_a_custom_region_subset(monkeypatch):
 
     assert len(items) == 1
     assert captured_urls == ["https://www.yad2.co.il/realestate/rent/tel-aviv-area"]
+
+
+# --- fetch_region_pages (2026-09-12 — see its module comment in yad2_client.py) — pages a
+# region's feed past page 1 until caught up to already-known listings, instead of assuming one
+# page always holds everything new. Real page=2 URL shape (`?page=2`, no other params) confirmed
+# live by the owner clicking Yad2's own page-2 control.
+
+
+def _card_html_for_id(item_id: str) -> str:
+    return (
+        f'<a class="itemLink" data-nagish="feed-item-layout-link" href="/item/{item_id}">'
+        '<span data-testid="price">5,000 ₪</span>'
+        '<span data-testid="street-name">רחוב כלשהו</span>'
+        '<span data-testid="item-info-line-1st">דירה, תל אביב יפו</span>'
+        '<span data-testid="item-info-line-2nd">2 חדרים</span>'
+        "</a>"
+    )
+
+
+def test_fetch_region_pages_quiet_run_stops_after_one_page(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+    page1_html = _card_html_for_id("a") + _card_html_for_id("b")
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        return httpx.Response(200, text=page1_html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_region_pages("tel-aviv-area", known_ids={"a", "b"}))
+
+    # Every card on page 1 was already known -> stop immediately, exactly one request, matching
+    # fetch_all_listings' own cost for a quiet run.
+    assert captured_urls == ["https://www.yad2.co.il/realestate/rent/tel-aviv-area"]
+    assert [item["id"] for item in items] == ["a", "b"]
+
+
+def test_fetch_region_pages_pages_forward_past_new_listings(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+    pages = {
+        "https://www.yad2.co.il/realestate/rent/tel-aviv-area": (
+            _card_html_for_id("new-1") + _card_html_for_id("new-2")
+        ),
+        "https://www.yad2.co.il/realestate/rent/tel-aviv-area?page=2": (
+            _card_html_for_id("known-1") + _card_html_for_id("known-2")
+        ),
+    }
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        return httpx.Response(200, text=pages[params["url"]], request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_region_pages("tel-aviv-area", known_ids={"known-1", "known-2"}))
+
+    # Page 1 has genuinely new ids -> must keep going; page 2 is all-known -> stop there.
+    assert captured_urls == [
+        "https://www.yad2.co.il/realestate/rent/tel-aviv-area",
+        "https://www.yad2.co.il/realestate/rent/tel-aviv-area?page=2",
+    ]
+    assert [item["id"] for item in items] == ["new-1", "new-2", "known-1", "known-2"]
+
+
+def test_fetch_region_pages_stops_when_a_page_runs_out_of_cards(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+    page1_html = _card_html_for_id("new-1")
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        # Real end of the feed reached on page 2 — an empty page, never all-known.
+        text = page1_html if params["url"].endswith("tel-aviv-area") else ""
+        return httpx.Response(200, text=text, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = list(fetch_region_pages("tel-aviv-area", known_ids=set()))
+
+    assert len(captured_urls) == 2  # page 1 (new card), page 2 (empty -> stop, no page 3)
+    assert [item["id"] for item in items] == ["new-1"]
+
+
+def test_fetch_region_pages_hits_max_pages_and_logs_a_warning(monkeypatch, caplog):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    call_count = {"n": 0}
+
+    def fake_get(url, params, timeout):
+        call_count["n"] += 1
+        # Every page has a genuinely new, never-known id — never catches up, never runs empty.
+        return httpx.Response(
+            200,
+            text=_card_html_for_id(f"never-known-{call_count['n']}"),
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with caplog.at_level("WARNING"):
+        items = list(fetch_region_pages("tel-aviv-area", known_ids=set(), max_pages=3))
+
+    assert call_count["n"] == 3  # capped, not infinite
+    assert len(items) == 3
+    assert "hit max_pages=3" in caplog.text
+
+
+def test_fetch_region_pages_page_urls_use_page_query_param_from_page_2_onward(monkeypatch):
+    # Real shape confirmed live 2026-09-12 by the owner clicking Yad2's own page-2 control.
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured_urls = []
+
+    def fake_get(url, params, timeout):
+        captured_urls.append(params["url"])
+        if len(captured_urls) >= 3:
+            return httpx.Response(200, text="", request=httpx.Request("GET", url))
+        return httpx.Response(
+            200, text=_card_html_for_id(f"x{len(captured_urls)}"), request=httpx.Request("GET", url)
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    list(fetch_region_pages("jerusalem-area", known_ids=set()))
+
+    assert captured_urls[0] == "https://www.yad2.co.il/realestate/rent/jerusalem-area"
+    assert captured_urls[1] == "https://www.yad2.co.il/realestate/rent/jerusalem-area?page=2"
 
 
 # --- fetch_listing_detail (2026-09-02) — reads the __NEXT_DATA__ blob embedded in a listing's
