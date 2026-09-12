@@ -13,10 +13,11 @@ name: Diagnose Komo + Homeless — reachability and page shape (read-only)
 # in this project. GitHub Actions runners have full outbound internet access, so this workflow is
 # the diagnostic vehicle, exactly like every prior "diagnose-*" workflow in this repo.
 #
-# For each site, tries a small set of plausible candidate URLs for a Tel Aviv rental search (no
-# single correct URL confirmed yet) and reports, per candidate: HTTP status, byte size, and a
-# short snippet — so the real one can be picked from evidence instead of guessed. Writes nothing,
-# costs a handful of ZenRows requests only.
+# Trimmed 2026-09-12 (same day): earlier revisions of this file guessed several candidate URLs per
+# site blind — all wrong except the ones kept below, which were instead found from real evidence
+# (Homeless: guessed correctly early and confirmed; Komo: found via its own homepage's real nav
+# links, see git history on this file). Kept lean now that both real URLs are confirmed, so a
+# re-run only costs a handful of cheap requests, not a couple of minutes of dead-end guesses.
 on:
   workflow_dispatch: {}
 
@@ -24,172 +25,34 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify Komo's real rental URL (/code/rent/, found via its own homepage nav)
+      - name: Verify both confirmed real URLs + real per-config credit cost
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
-          curl -sS -D /tmp/komo_rent.headers -G "https://api.zenrows.com/v1/" \
-            --data-urlencode "apikey=$ZENROWS_API_KEY" \
-            --data-urlencode "url=https://www.komo.co.il/code/rent/" \
-            -o /tmp/komo_rent.html \
-            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-            --max-time 100
-          echo "--- cost headers ---"
-          grep -i -E "cost|credit" /tmp/komo_rent.headers || echo "(none found)"
-          python3 - << 'PYEOF'
-          import re
-          with open('/tmp/komo_rent.html', encoding='utf-8', errors='replace') as f:
+          mkdir -p /tmp/out
+          check_one () {
+            label="$1"; url="$2"; shift 2
+            echo "=== $label ($url) [$*] ==="
+            curl -sS -D "/tmp/out/${label}.headers" -G "https://api.zenrows.com/v1/" \
+              --data-urlencode "apikey=$ZENROWS_API_KEY" \
+              --data-urlencode "url=$url" \
+              "$@" \
+              -o "/tmp/out/${label}.html" \
+              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+              --max-time 100 || echo "curl failed for $label"
+            echo "--- cost headers ---"
+            grep -i -E "cost|credit" "/tmp/out/${label}.headers" 2>/dev/null || echo "(none found)"
+            python3 - "$label" << 'PYEOF'
+          import re, sys
+          label = sys.argv[1]
+          with open(f'/tmp/out/{label}.html', encoding='utf-8', errors='replace') as f:
               html = f.read()
           print(f"length={len(html)}")
           print(f"'₪' occurrences: {len(re.findall(r'₪', html))}")
           print(f"__NEXT_DATA__ present: {bool(re.search(r'__NEXT_DATA__', html))}")
           print(f"__NUXT__ present: {bool(re.search(r'window.__NUXT__', html))}")
-          snippet = re.sub(r'\s+', ' ', html)[:800]
-          print(f"snippet: {snippet}")
           PYEOF
-
-      - name: Fetch Komo homepage and extract real nav links to the rental section
-        env:
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-        run: |
-          curl -sS -G "https://api.zenrows.com/v1/" \
-            --data-urlencode "apikey=$ZENROWS_API_KEY" \
-            --data-urlencode "url=https://www.komo.co.il/" \
-            -o /tmp/komo_home.html \
-            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-            --max-time 100
-          python3 - << 'PYEOF'
-          import re
-          with open('/tmp/komo_home.html', encoding='utf-8', errors='replace') as f:
-              html = f.read()
-          # Every href, deduped, filtered to ones that look rental-related (Hebrew "השכרה"/
-          # "להשכיר" or English "rent") — real evidence of the site's own nav structure instead
-          # of guessing more candidate paths blind.
-          hrefs = set(re.findall(r'href="([^"]+)"', html))
-          rentish = sorted(h for h in hrefs if re.search(r'rent|שכיר|השכר', h, re.I))
-          print(f"total unique hrefs on homepage: {len(hrefs)}")
-          print(f"rent-looking hrefs ({len(rentish)}):")
-          for h in rentish:
-              print(" ", h)
-          if not rentish:
-              print("--- none matched; dumping first 40 hrefs for manual inspection ---")
-              for h in sorted(hrefs)[:40]:
-                  print(" ", h)
-          PYEOF
-
-      - name: Cost comparison across fetch configs on the two confirmed-real URLs from run 1
-        env:
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-        run: |
-          mkdir -p /tmp/cost
-          test_one () {
-            label="$1"; url="$2"; shift 2
-            echo "=== $label ($url) [$*] ==="
-            curl -sS -D "/tmp/cost/${label}.headers" -G "https://api.zenrows.com/v1/" \
-              --data-urlencode "apikey=$ZENROWS_API_KEY" \
-              --data-urlencode "url=$url" \
-              "$@" \
-              -o "/tmp/cost/${label}.html" \
-              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-              --max-time 100 || echo "curl failed for $label"
-            echo "--- response headers ---"
-            cat "/tmp/cost/${label}.headers" 2>/dev/null | grep -i -E "zenrows|cost|credit|concurrency" || echo "(no zenrows/cost headers found)"
             echo
           }
-          test_one "homeless_plain" "https://www.homeless.co.il/rent/"
-          test_one "homeless_premium" "https://www.homeless.co.il/rent/" --data-urlencode "premium_proxy=true"
-          test_one "homeless_full" "https://www.homeless.co.il/rent/" --data-urlencode "premium_proxy=true" --data-urlencode "js_render=true"
-          test_one "komo_plain" "https://www.komo.co.il/"
-          test_one "komo_premium" "https://www.komo.co.il/" --data-urlencode "premium_proxy=true"
-          test_one "komo_full" "https://www.komo.co.il/" --data-urlencode "premium_proxy=true" --data-urlencode "js_render=true"
-
-      - name: Try candidate Komo rental-search URLs
-        env:
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-        run: |
-          mkdir -p /tmp/komo
-          i=0
-          for url in \
-            "https://www.komo.co.il/for-rent" \
-            "https://www.komo.co.il/nadlan/for-rent" \
-            "https://www.komo.co.il/code/nadlan-search-results.aspx?type=2" \
-            "https://www.komo.co.il/"; do
-            i=$((i+1))
-            echo "=== candidate $i: $url ==="
-            curl -sS -G "https://api.zenrows.com/v1/" \
-              --data-urlencode "apikey=$ZENROWS_API_KEY" \
-              --data-urlencode "url=$url" \
-              --data-urlencode "js_render=true" \
-              --data-urlencode "premium_proxy=true" \
-              --data-urlencode "block_resources=image,stylesheet,font,media" \
-              -o "/tmp/komo/candidate_$i.html" \
-              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-              --max-time 100 || echo "curl failed for candidate $i"
-          done
-
-      - name: Analyze Komo candidates
-        run: |
-          python3 - << 'PYEOF'
-          import re, glob
-
-          for path in sorted(glob.glob('/tmp/komo/candidate_*.html')):
-              with open(path, encoding='utf-8', errors='replace') as f:
-                  html = f.read()
-              print(f"--- {path} ---")
-              print(f"length={len(html)}")
-              # Any obvious listing-card signal: price-like strings with ₪, or repeated anchor blocks
-              price_hits = len(re.findall(r'₪', html))
-              print(f"'₪' occurrences: {price_hits}")
-              m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
-              print(f"__NEXT_DATA__ present: {bool(m)}")
-              nuxt = re.search(r'window\.__NUXT__\s*=', html)
-              print(f"__NUXT__ present: {bool(nuxt)}")
-              snippet = re.sub(r'\s+', ' ', html)[:600]
-              print(f"snippet: {snippet}")
-              print()
-          PYEOF
-
-      - name: Try candidate Homeless rental-search URLs
-        env:
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-        run: |
-          mkdir -p /tmp/homeless
-          i=0
-          for url in \
-            "https://www.homeless.co.il/rent/" \
-            "https://www.homeless.co.il/rent" \
-            "https://www.homeless.co.il/nadlanmain.php" \
-            "https://www.homeless.co.il/"; do
-            i=$((i+1))
-            echo "=== candidate $i: $url ==="
-            curl -sS -G "https://api.zenrows.com/v1/" \
-              --data-urlencode "apikey=$ZENROWS_API_KEY" \
-              --data-urlencode "url=$url" \
-              --data-urlencode "js_render=true" \
-              --data-urlencode "premium_proxy=true" \
-              --data-urlencode "block_resources=image,stylesheet,font,media" \
-              -o "/tmp/homeless/candidate_$i.html" \
-              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-              --max-time 100 || echo "curl failed for candidate $i"
-          done
-
-      - name: Analyze Homeless candidates
-        run: |
-          python3 - << 'PYEOF'
-          import re, glob
-
-          for path in sorted(glob.glob('/tmp/homeless/candidate_*.html')):
-              with open(path, encoding='utf-8', errors='replace') as f:
-                  html = f.read()
-              print(f"--- {path} ---")
-              print(f"length={len(html)}")
-              price_hits = len(re.findall(r'₪', html))
-              print(f"'₪' occurrences: {price_hits}")
-              m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
-              print(f"__NEXT_DATA__ present: {bool(m)}")
-              nuxt = re.search(r'window\.__NUXT__\s*=', html)
-              print(f"__NUXT__ present: {bool(nuxt)}")
-              snippet = re.sub(r'\s+', ' ', html)[:600]
-              print(f"snippet: {snippet}")
-              print()
-          PYEOF
+          check_one "komo_rent_plain" "https://www.komo.co.il/code/rent/"
+          check_one "homeless_rent_plain" "https://www.homeless.co.il/rent/"
