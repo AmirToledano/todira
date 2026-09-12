@@ -9,26 +9,18 @@ name: Diagnose Komo + Homeless — reachability and page shape (read-only)
 # code), and read what actually comes back, before writing a single line of parser code.
 #
 # This sandbox's own network egress cannot reach either site directly (org policy blocks arbitrary
-# outbound hosts) — same reachability gap documented for Bright Data's Scraper Studio UI earlier
-# in this project. GitHub Actions runners have full outbound internet access, so this workflow is
+# outbound hosts) — GitHub Actions runners have full outbound internet access, so this workflow is
 # the diagnostic vehicle, exactly like every prior "diagnose-*" workflow in this repo.
 #
-# Credit-saving principle applied throughout (owner's explicit instruction, 2026-09-12): a site's
-# own static JS/CSS bundle files are almost never behind the same bot-protection as its HTML page
-# — plain curl, zero ZenRows credits. Only the actual HTML page fetch should ever cost a credit.
-#
-# 2026-09-12, resolved with the owner's own live DevTools help: Komo's search-results page
-# (/code/nadlan/apartments-for-rent.asp?...) is genuinely client-rendered — listing cards are NOT
-# in the server HTML at all (confirmed via View Source, zero matches for a known visible price).
-# BUT the owner found the real pipeline by inspecting Network requests directly:
-#   1. A "list/" XHR (fired by the map) returns cheap JSON: [{id, uid, lat, lng}, ...] per listing
-#      — no price/rooms/etc, just identifiers + coordinates.
-#   2. Clicking an actual listing card navigates to
-#      /code/nadlan/details/?modaaNum=<id> — a real per-listing detail page, confirmed (by the
-#      owner's own screenshot) to contain the FULL data: price, rooms, size, floor, address,
-#      photos, description — the same two-stage shape as Yad2 (cheap list -> per-listing detail).
-# This step verifies the details page is fetchable plain (no JS render) and cheap, using the real
-# modaaNum the owner found live (4471462).
+# 2026-09-12, resolved with the owner's own live DevTools help: Komo's real two-stage pipeline —
+#   1. code/nadlan/details/?modaaNum=<id> — a real per-listing detail page. CONFIRMED plain-
+#      fetchable (no JS render) at 1 credit, containing the exact real data (price/address) the
+#      owner was looking at live.
+#   2. api/modaotservice/adscoordinates/list/ — cheap JSON [{id, uid, lat, lng}, ...] per listing.
+#      Confirmed via the owner's own DevTools Payload tab: POST form data `iska=1` +
+#      `sessionToken=<value>`. The token is almost certainly embedded in the search-results page's
+#      own (plain, server-rendered) HTML/JS, generated per page-load — this step checks for it
+#      there, so the whole pipeline stays two cheap plain fetches, no JS rendering anywhere.
 on:
   workflow_dispatch: {}
 
@@ -36,51 +28,53 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify Komo's per-listing details page (modaaNum) is real, plain-fetchable, and cheap
+      - name: Fetch the search page plain and hunt for an embedded sessionToken
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
-          check_one () {
-            label="$1"; url="$2"; shift 2
-            echo "=== $label ($url) [$*] ==="
-            curl -sS -D "/tmp/${label}.headers" -G "https://api.zenrows.com/v1/" \
-              --data-urlencode "apikey=$ZENROWS_API_KEY" \
-              --data-urlencode "url=$url" \
-              "$@" \
-              -o "/tmp/${label}.html" \
-              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-              --max-time 100 || echo "curl failed for $label"
-            grep -i -E "cost|credit" "/tmp/${label}.headers" 2>/dev/null || echo "(no cost headers)"
-            python3 - "$label" << 'PYEOF'
-          import re, sys
-          label = sys.argv[1]
-          with open(f'/tmp/{label}.html', encoding='utf-8', errors='replace') as f:
-              html = f.read()
-          print(f"length={len(html)}")
-          print(f"'₪' occurrences: {len(re.findall(r'₪', html))}")
-          # Real, specific evidence this is THE listing the owner showed us, not a generic shell:
-          print(f"contains '7,000' or '7000': {('7,000' in html) or ('7000' in html)}")
-          print(f"contains 'שערי ירושלים': {'שערי ירושלים' in html}")
-          snippet = re.sub(r'\s+', ' ', html)[:1000]
-          print(f"snippet: {snippet}")
-          PYEOF
-            echo
-          }
-          check_one "komo_details_plain" "https://www.komo.co.il/code/nadlan/details/?modaaNum=4471462"
-
-      - name: Verify the map-pins API (adscoordinates/list/, owner's own DevTools find) as a plain
-          GET with the same search params as the results page
-        env:
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-        run: |
-          curl -sS -D /tmp/coords.headers -G "https://api.zenrows.com/v1/" \
+          curl -sS -G "https://api.zenrows.com/v1/" \
             --data-urlencode "apikey=$ZENROWS_API_KEY" \
-            --data-urlencode "url=https://www.komo.co.il/api/modaotservice/adscoordinates/list/?nehes=1&cityName=ירושלים" \
-            -o /tmp/coords.json \
+            --data-urlencode "url=https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes=1&cityName=ירושלים" \
+            -o /tmp/search.html \
             -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
             --max-time 100
-          echo "--- cost headers ---"
-          grep -i -E "cost|credit" /tmp/coords.headers 2>/dev/null || echo "(none found)"
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/search.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          # Look for anything that looks like a session token: a hex/base64-ish string near the
+          # literal word "sessionToken", in a JS var, hidden input, or data attribute.
+          hits = re.findall(r'.{0,60}sessionToken.{0,80}', html, re.I)
+          print(f"'sessionToken' mentions: {len(hits)}")
+          for h in hits[:10]:
+              print("  ", re.sub(r'\s+', ' ', h))
+          PYEOF
+
+      - name: If a token was found, try the adscoordinates/list/ POST with it (real iska=1 form)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          TOKEN=$(python3 - << 'PYEOF'
+          import re
+          with open('/tmp/search.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          m = re.search(r'sessionToken["\']?\s*[:=]\s*["\']?([A-Za-z0-9]{16,64})', html)
+          print(m.group(1) if m else '')
+          PYEOF
+          )
+          echo "extracted token: ${TOKEN:-<none found>}"
+          if [ -z "$TOKEN" ]; then
+            echo "No token found in plain HTML — the two-stage flow needs a different source for it (real answer, not a guess)."
+            exit 0
+          fi
+          # POST (not -G): ZenRows forwards the method + body you send them straight to the target
+          # URL. apikey/url go in the query string of ZenRows' own endpoint; the real target POST
+          # body (iska=1&sessionToken=...) goes as this request's own -d body.
+          TARGET_ENC=$(python3 -c "import urllib.parse; print(urllib.parse.quote('https://www.komo.co.il/api/modaotservice/adscoordinates/list/', safe=''))")
+          curl -sS "https://api.zenrows.com/v1/?apikey=${ZENROWS_API_KEY}&url=${TARGET_ENC}" \
+            -d "iska=1&sessionToken=${TOKEN}" \
+            -o /tmp/coords2.json \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
           echo "--- body (first 1500 chars) ---"
-          head -c 1500 /tmp/coords.json
-          echo
+          head -c 1500 /tmp/coords2.json
