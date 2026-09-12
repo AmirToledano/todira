@@ -5577,3 +5577,63 @@ against a real response body since this session never had `BRIGHT_DATA_API_KEY`/
 `BRIGHT_DATA_COLLECTOR_ID` set locally to test against) — the raw response is logged either way if
 none of the guessed keys match, so a real production log line will settle it immediately if this
 ever needs adjusting.
+
+## Update 2026-09-12 (later): reversed the 2026-09-05 content-gating decision — description now
+## free for everyone, only the outbound original-listing link stays paid (PR #210)
+
+Direct owner request, verbatim intent: show full listing content (description, photos, price,
+rooms, amenities — everything already scraped/enriched) to every viewer regardless of
+subscription; gate ONLY the outbound click-through to the listing's actual source (Yad2/Komo/
+Homeless/Facebook/wherever it came from) behind a paid subscription. Explicitly also confirmed:
+never show the poster's own contact details (agent name/phone/agency) on our own site — not a new
+constraint in practice, since this project has never stored that on `Listing` at all (`normalize.
+py`'s `enrich_from_detail` only ever derives a boolean `is_broker_listing`, never the raw
+`customer` block Bright Data/Yad2 actually returns).
+
+This directly **reverses** the 2026-09-05 decision quoted verbatim in `cards.py`'s own docstring
+("אני רוצה שזה יהיה סגור למשתמש... כל האינטרס של מנוי פרימיום זה שהפרטים יהיו מוחבאים ללא
+המנוי") — worth noting explicitly since that comment is now historical rationale for a policy no
+longer in effect, not a description of current behavior. Left the old quote in place (rather than
+deleting it) with a note that it's superseded, matching this file's own convention of preserving
+decision history rather than erasing it.
+
+**Changed, consistently, everywhere a listing renders** (PR #210, merged, CI/CD run #259):
+- `common/dorin_common/cards.py` — both `format_caption` (Telegram) and `format_caption_whatsapp`:
+  the description is now built unconditionally (previously `if has_access else ""`); only the
+  footer (the actual link, or the lock-line replacing it) still checks `has_access`. Footer copy
+  reworded since "full details AND direct link" was no longer accurate once details became free —
+  now says just "link to the original listing" ("קישור למודעה המקורית") instead of "פרטים מלאים
+  וקישור ישיר".
+- `website/templates/_listing_card.html` — same split: the description `<p>` now renders
+  unconditionally; only the view/locked button toggles on `has_access`.
+- `website/i18n.py` — `card.locked_btn` reworded across all 5 languages ("Upgrade to view" →
+  "Upgrade for original link" / "שדרג/י לצפייה" → "שדרג/י לקישור למקור") to match — the button no
+  longer gates viewing anything, just the outbound link.
+- `has_access` itself is untouched everywhere (`dorin_common/access.py`'s `has_full_access`,
+  every call site computing it) — still exactly the same trial/paid/owner check as before; only
+  what it's allowed to hide got narrower.
+
+7 existing tests updated (in `test_cards.py` and `test_website_content_gating.py`) to assert the
+new behavior — description present, real URL still absent, for a lite/expired user. Full suite:
+684 passed, unchanged count (net zero new/removed tests, only reworded assertions).
+
+**Not touched, still exactly as before**: `_maybe_fetch_description`'s own separate cost-control
+policy (`scraper/notifier.py` — only trigger an on-demand Bright Data fetch when at least one
+notification recipient is actually paying) is a different decision (about spending money to FETCH
+a description at all) from today's change (about who's allowed to SEE one already fetched) — left
+alone. In practice this matters less than it used to now that `_enrich_new_listings_via_bright_data`
+(see the entries above) fetches a description for every genuinely-new listing at discovery time
+regardless of who'll see it, once that feature is actually live (still gated on `scraper.suspended`
+being flipped back, a separate unrelated hold).
+
+**A real mistake caught and fixed mid-session, worth flagging**: while committing this entry, a
+stale local `main` git branch ref (pointing at a `main` from many commits/PRs ago — #170) got
+confused with `origin/main` via `git checkout main -- .`, which silently reverted ~70 unrelated
+files in the working tree to that ancient state before this entry got committed on top of it —
+almost creating a commit that would have reintroduced dozens of already-fixed bugs and deleted
+files if pushed. Caught by checking `git show --stat HEAD` on the resulting commit before pushing
+(the file count was an obvious red flag) — never pushed anywhere. Fixed by discarding that commit
+entirely and re-checking out from `origin/main` explicitly (never a bare local branch name) instead.
+Lesson for future sessions: always operate against `origin/main` explicitly by name, never a bare
+local `main` (or any other local branch ref) that might be stale from earlier in a long session or
+a previous one.
