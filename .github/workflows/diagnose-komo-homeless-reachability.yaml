@@ -15,16 +15,20 @@ name: Diagnose Komo + Homeless — reachability and page shape (read-only)
 #
 # Credit-saving principle applied throughout (owner's explicit instruction, 2026-09-12): a site's
 # own static JS/CSS bundle files are almost never behind the same bot-protection as its HTML page
-# — they're static assets, often CDN-served. Fetching them with a PLAIN curl (no ZenRows at all)
-# costs zero credits, vs. routing everything through ZenRows. Only the actual HTML page fetch
-# should ever cost a credit.
+# — plain curl, zero ZenRows credits. Only the actual HTML page fetch should ever cost a credit.
 #
-# 2026-09-12, continued: Komo turned out to be an old-style ASP/jQuery server-rendered site (not a
-# modern JS-framework SPA) — no __NEXT_DATA__/__NUXT__, no map link, no obvious client-side fetch()
-# call for listings. The likely explanation for zero results on a bare /code/rent/ fetch is that
-# it's an empty search-results shell awaiting real query parameters (city/region), mirroring Yad2's
-# own ?city=<id> pattern — not a JS-rendering problem at all. This step inspects the page's own
-# <form> for real input/select names instead of guessing param names blind.
+# 2026-09-12, resolved with the owner's own live DevTools help: Komo's search-results page
+# (/code/nadlan/apartments-for-rent.asp?...) is genuinely client-rendered — listing cards are NOT
+# in the server HTML at all (confirmed via View Source, zero matches for a known visible price).
+# BUT the owner found the real pipeline by inspecting Network requests directly:
+#   1. A "list/" XHR (fired by the map) returns cheap JSON: [{id, uid, lat, lng}, ...] per listing
+#      — no price/rooms/etc, just identifiers + coordinates.
+#   2. Clicking an actual listing card navigates to
+#      /code/nadlan/details/?modaaNum=<id> — a real per-listing detail page, confirmed (by the
+#      owner's own screenshot) to contain the FULL data: price, rooms, size, floor, address,
+#      photos, description — the same two-stage shape as Yad2 (cheap list -> per-listing detail).
+# This step verifies the details page is fetchable plain (no JS render) and cheap, using the real
+# modaaNum the owner found live (4471462).
 on:
   workflow_dispatch: {}
 
@@ -32,50 +36,7 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Komo's rent page (1 credit, already-confirmed-cheap) and inspect its own
-          search form for real query-parameter names
-        env:
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-        run: |
-          curl -sS -G "https://api.zenrows.com/v1/" \
-            --data-urlencode "apikey=$ZENROWS_API_KEY" \
-            --data-urlencode "url=https://www.komo.co.il/code/rent/" \
-            -o /tmp/komo_rent.html \
-            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-            --max-time 100
-          python3 - << 'PYEOF'
-          import re
-          with open('/tmp/komo_rent.html', encoding='utf-8', errors='replace') as f:
-              html = f.read()
-
-          # Every <form ...> block, with its action/method, and every named input/select inside it
-          # — the real, authoritative list of query-parameter names this page's own search actually
-          # submits, instead of guessing city=/ir=/azor=/etc. blind.
-          forms = re.findall(r'<form\b[^>]*>.*?</form>', html, re.S | re.I)
-          print(f"forms found: {len(forms)}")
-          for i, form in enumerate(forms, 1):
-              action = re.search(r'action="([^"]*)"', form)
-              method = re.search(r'method="([^"]*)"', form, re.I)
-              print(f"--- form {i}: action={action.group(1) if action else None} method={method.group(1) if method else 'GET'} ---")
-              names = re.findall(r'<(?:input|select)\b[^>]*\bname="([^"]+)"[^>]*>', form, re.I)
-              for n in names:
-                  print("   field:", n)
-
-          if not forms:
-              print("--- no <form> tags at all; dumping any <select>/<input> with a name= anywhere on the page ---")
-              names = re.findall(r'<(?:input|select)\b[^>]*\bname="([^"]+)"[^>]*>', html, re.I)
-              for n in sorted(set(names)):
-                  print("   field:", n)
-
-          # Also look for any hardcoded city/region ID lists (e.g. <option value="5000">תל אביב</option>)
-          options = re.findall(r'<option[^>]*value="([^"]+)"[^>]*>([^<]{0,30})</option>', html, re.I)
-          print(f"\noption value/label pairs found: {len(options)} (first 30)")
-          for v, label in options[:30]:
-              print(f"   {v!r} -> {label.strip()!r}")
-          PYEOF
-
-      - name: Verify the real results page the owner found live (nadlan/apartments-for-rent.asp
-          with real query params) at the cheapest tier first
+      - name: Verify Komo's per-listing details page (modaaNum) is real, plain-fetchable, and cheap
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
@@ -97,9 +58,29 @@ jobs:
               html = f.read()
           print(f"length={len(html)}")
           print(f"'₪' occurrences: {len(re.findall(r'₪', html))}")
-          snippet = re.sub(r'\s+', ' ', html)[:1200]
+          # Real, specific evidence this is THE listing the owner showed us, not a generic shell:
+          print(f"contains '7,000' or '7000': {('7,000' in html) or ('7000' in html)}")
+          print(f"contains 'שערי ירושלים': {'שערי ירושלים' in html}")
+          snippet = re.sub(r'\s+', ' ', html)[:1000]
           print(f"snippet: {snippet}")
           PYEOF
             echo
           }
-          check_one "komo_real_plain" "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes=1&cityName=ירושלים"
+          check_one "komo_details_plain" "https://www.komo.co.il/code/nadlan/details/?modaaNum=4471462"
+
+      - name: Verify the map-pins API (adscoordinates/list/, owner's own DevTools find) as a plain
+          GET with the same search params as the results page
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -D /tmp/coords.headers -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.komo.co.il/api/modaotservice/adscoordinates/list/?nehes=1&cityName=ירושלים" \
+            -o /tmp/coords.json \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          echo "--- cost headers ---"
+          grep -i -E "cost|credit" /tmp/coords.headers 2>/dev/null || echo "(none found)"
+          echo "--- body (first 1500 chars) ---"
+          head -c 1500 /tmp/coords.json
+          echo
