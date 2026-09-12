@@ -5486,3 +5486,62 @@ from that list is now done, these two remain):
    doing. Nothing further blocks this one; it's the previous item (production collector +
    dataset_id) that's the actual remaining gate before this whole feature does anything in
    production.
+
+## Update 2026-09-12 (continued, afternoon): the endless save loop was the WORKER SETTING all
+## along, a fresh collector fixed it in minutes, AND the API guessed at earlier tonight was wrong
+
+Two real, decisive findings from continuing the "get the collector into production" work.
+
+**1. Root cause of the entire all-night "Save to development"/"Save to production" loop, found**:
+a brand-new collector, built from scratch with the exact same Interaction+Parser code that kept
+failing on the old one, hit a **"Incompatible worker"** dialog immediately: the collector defaults
+to a lightweight **`code` worker**, but the code uses `wait()`, which only the **`browser` worker**
+supports. Switching to `browser` worker fixed it completely — the very next "Finish editing" landed
+as **Version 1, tagged BOTH "Production version" and "Currently editing"**, on the first try, no
+schema-error loop, nothing. This is almost certainly what was actually wrong on the OLD collector
+too (all of last night's "Update schema" / "Save to production" loop) — never confirmed after the
+fact since a fresh collector was faster than diagnosing the old one further, but the symptom match
+is exact and this fix is now the first thing to check if this ever happens again on any collector.
+**New collector's ID**: `c_mtyf4w2z1ag3eu3n1u` (visible in its own "Initiate by API" tab).
+
+**2. The actual Bright Data API in use is NOT what tonight's earlier `bright_data_client.py`
+rewrite guessed.** That rewrite (see the entry above, "found the description field") assumed the
+"Web Scraper API" (`datasets/v3/trigger` + `/progress/{id}` + `/snapshot/{id}`) based on Bright
+Data's public GitHub reference — reasonable given this sandbox can't reach docs.brightdata.com to
+check, but **wrong for this specific collector type**. Confirmed directly off the new collector's
+own "Initiate by API" tab (real curl examples, not a doc guess): this is the older **Data Collector
+API** instead —
+```
+POST https://api.brightdata.com/dca/trigger?collector={COLLECTOR_ID}&queue_next=1
+     body: [{"url": ...}]   (not {"input": [...]})
+GET  https://api.brightdata.com/dca/dataset?id={JOB_ID}
+```
+No separate "dataset_id" concept at all — the identifier is the collector's own `c_...` id, and the
+job id returned by the trigger call's exact JSON field name wasn't independently confirmed (only
+seen in the curl example), so the fix tries several plausible key names defensively
+(`collection_id`/`response_id`/`job_id`/`id`) rather than guess one blind — same hedging pattern
+this file already used for the description field name.
+
+**Fixed for real** (`common/dorin_common/bright_data_client.py`, commit `ec69f99`): rewrote
+`_trigger_and_fetch_first_row` to use the real `/dca/...` endpoints. Renamed
+`BRIGHT_DATA_DATASET_ID` → `BRIGHT_DATA_COLLECTOR_ID` everywhere it appeared (Helm `values.yaml`/
+templates, CI/CD workflow, `.env.example`) since "dataset_id" no longer describes what this is —
+a safe rename since the old var was never actually set in production (`is_configured()` was always
+false until now). Public function signatures unchanged, so no call site elsewhere needed touching.
+684 tests passing.
+
+**Now genuinely ready for the owner to flip on for real** — the one remaining step is purely
+configuration, no more code or Bright Data UI work needed:
+1. Set `BRIGHT_DATA_API_KEY` (the account's existing API key/token) and
+   `BRIGHT_DATA_COLLECTOR_ID=c_mtyf4w2z1ag3eu3n1u` as GitHub repo secrets (`Settings → Secrets and
+   variables → Actions`) — matching how `BRIGHT_DATA_DESCRIPTION_FIELD` and other optional secrets
+   are already set up per `.github/workflows/ci-cd.yaml`.
+2. Push (or re-run the existing CI/CD workflow) so the new secrets actually reach the scraper and
+   website pods — no code change needed to trigger this, any deploy picks it up.
+3. Watch the next real scrape run's summary log for `bright_data_enriched` (a new key added to
+   `run_once()`'s summary dict tonight) to confirm real listings are actually getting enriched, not
+   just that the config is present.
+Once that's live, the cost/completeness tradeoff already discussed and agreed with the owner tonight
+(pay ~$0.0015/page-load — confirmed exact real rate, see the entry above — to get a full
+description on every new listing at discovery time, not just ones a paying user later sees) takes
+effect automatically, with zero further code changes.
