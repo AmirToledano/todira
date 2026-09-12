@@ -257,16 +257,17 @@ def test_whatsapp_footer_has_no_source_tag():
     assert "🏷️" not in caption
 
 
-# --- has_access gating (2026-09-05) — a lite/expired user must not get the description or a
-# working link out to the actual listing, only paying/trial/owner users do. See
-# dorin_common/cards.py's format_caption docstring for why has_access has no default value.
+# --- has_access gating — a lite/expired user must not get a working link out to the actual
+# listing; the description IS shown to everyone as of 2026-09-12 (reversing the original
+# 2026-09-05 decision). See dorin_common/cards.py's format_caption docstring for that history and
+# why has_access has no default value.
 
 
-def test_no_access_hides_the_description():
+def test_no_access_still_shows_the_description():
     listing = make_listing(description="דירה מדהימה עם נוף לים")
     caption = format_caption(listing, has_access=False)
-    assert "דירה מדהימה" not in caption
-    assert "📝" not in caption
+    assert "דירה מדהימה" in caption
+    assert "📝" in caption
 
 
 def test_no_access_omits_the_real_listing_url():
@@ -287,8 +288,8 @@ def test_no_access_without_an_upgrade_url_still_shows_a_generic_lock_line():
 
 
 def test_no_access_still_shows_the_basic_teaser_fields():
-    # Price/rooms/city/amenities are NOT gated — only the description + real link are, so a lite
-    # user still knows a match exists and roughly what it looks like.
+    # Price/rooms/city/amenities/description are NOT gated — only the real link is, so a lite
+    # user still sees everything about the match except where to actually go for it.
     listing = make_listing(has_parking=True)
     caption = format_caption(listing, has_access=False)
     assert "💰 <b>מחיר:</b> 16,000₪" in caption
@@ -304,12 +305,12 @@ def test_has_access_true_is_unaffected_by_upgrade_url_being_set():
     assert "https://x/upgrade" not in caption
 
 
-def test_whatsapp_no_access_hides_description_and_url_shows_lock_line():
+def test_whatsapp_no_access_still_shows_description_but_hides_url_shows_lock_line():
     listing = make_listing(description="תיאור סודי", url="https://www.yad2.co.il/item/secret456")
     caption = format_caption_whatsapp(
         listing, has_access=False, upgrade_url="https://todira.app/upgrade?uid=555"
     )
-    assert "תיאור סודי" not in caption
+    assert "תיאור סודי" in caption
     assert "secret456" not in caption
     assert "🔒" in caption
     assert "https://todira.app/upgrade?uid=555" in caption

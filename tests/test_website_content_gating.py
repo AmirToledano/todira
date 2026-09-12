@@ -1,8 +1,9 @@
-"""Tests for the 2026-09-05 free/paid listing-card content gating on the website: /apartments and
-/liked must pass has_access through to _listing_card.html, which then hides the description and
-the real listing URL (replacing it with a locked "upgrade" button) for a lite/expired user. See
-tests/test_cards.py for the equivalent bot-side (Telegram/WhatsApp caption) gating, and
-common/dorin_common/cards.py's format_caption docstring for the underlying decision.
+"""Tests for the free/paid listing-card content gating on the website: /apartments and /liked must
+pass has_access through to _listing_card.html, which then replaces the real listing URL with a
+locked "upgrade" button for a lite/expired user. The description itself is shown to everyone as of
+2026-09-12 (reversing the original 2026-09-05 decision to hide it too) — see tests/test_cards.py
+for the equivalent bot-side (Telegram/WhatsApp caption) gating, and
+common/dorin_common/cards.py's format_caption docstring for that history.
 
 Same importlib-loading approach as the other website test files (see test_website_paid_access.py's
 own comment) — website/main.py shares a basename with scraper/main.py so it can't go through a
@@ -126,7 +127,7 @@ def client():
     return TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
 
 
-def test_apartments_hides_description_and_url_for_an_expired_user(client):
+def test_apartments_shows_description_but_hides_url_for_an_expired_user(client):
     user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
     listing = _FakeListing(id=1)
     fake_session = _FakeSession(user, listings=[listing])
@@ -138,7 +139,7 @@ def test_apartments_hides_description_and_url_for_an_expired_user(client):
         resp = client.get("/apartments", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert "תיאור סודי" not in resp.text
+    assert "תיאור סודי" in resp.text
     assert "secret999" not in resp.text
 
 
@@ -190,7 +191,7 @@ def test_apartments_edit_filter_link_omits_uid_for_a_session_only_standalone_use
     assert 'href="/filter"' in body
 
 
-def test_liked_hides_description_and_url_for_an_expired_user(client):
+def test_liked_shows_description_but_hides_url_for_an_expired_user(client):
     user = _FakeUser(id=2, telegram_user_id=222)
     listing = _FakeListing(id=1)
     fake_session = _FakeSession(user, listings=[listing])
@@ -199,7 +200,7 @@ def test_liked_hides_description_and_url_for_an_expired_user(client):
         resp = client.get("/liked", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert "תיאור סודי" not in resp.text
+    assert "תיאור סודי" in resp.text
     assert "secret999" not in resp.text
 
 
