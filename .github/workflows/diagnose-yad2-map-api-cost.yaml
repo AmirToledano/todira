@@ -1,0 +1,87 @@
+name: Diagnose Yad2's gw.yad2.co.il map API — real cost tier (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-12.
+#
+# The owner found this live in his own browser's Network tab (Fetch/XHR, filtered on "bbox") while
+# panning/zooming Yad2's own results map: a request to a DIFFERENT SUBDOMAIN than the one this
+# project's whole Yad2 cost investigation has been about so far —
+#   https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=<south>,<west>,<north>,<east>&zoom=<n>
+# — returning real, rich per-listing JSON (address incl. city/street/house number/floor, exact
+# lat/lon, price, the same "token" id __NEXT_DATA__ already uses, additionalDetails.roomsCount,
+# adType) for every marker on the map's current viewport. This is the SAME underlying ad data
+# _extract_feed_records already pulls out of the search page's own __NEXT_DATA__ blob — just
+# reachable here via a plain bounding-box query instead of a full rendered page load.
+#
+# Everything this project already knows about Yad2 being expensive on ZenRows (REQS002,
+# whole-domain classification forcing premium_proxy+js_render, ~25 credits/request — see
+# PROJECT_STATE.md and yad2_client.py's own module docstring) was tested against yad2.co.il /
+# www.yad2.co.il specifically. gw.yad2.co.il is a DIFFERENT hostname — ZenRows' own cost/risk
+# classification has repeatedly turned out to be per-exact-hostname, not per-parent-domain (see
+# Komo/Homeless both being cheap while www.yad2.co.il is forced expensive, all on ZenRows) — so
+# there is real reason to check this fresh rather than assume it inherits www.yad2.co.il's tier.
+#
+# This tests the exact real URL (bbox/zoom copied verbatim from the owner's own live request) at
+# increasing ZenRows cost tiers, stopping at the first one that returns real listing JSON (not a
+# ZenRows rejection, not an empty/error body) — same "cheapest that works" discipline as every
+# prior diagnose-*.yaml in this repo. A GET only — this is a read-only public map-data endpoint the
+# owner's own browser already calls unauthenticated; no cookies/session were sent by his browser
+# for this specific request (confirmed live), so none are used here either.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Real request URL, copied verbatim from the owner's own live DevTools Network tab
+        run: |
+          echo "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11" > /tmp/target_url.txt
+          cat /tmp/target_url.txt
+
+      - name: Tier 1 — plain fetch (1 credit if it works)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          TARGET=$(cat /tmp/target_url.txt)
+          curl -sS -D /tmp/tier1.headers -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=$TARGET" \
+            -o /tmp/tier1.json \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60
+          echo "--- cost headers ---"
+          grep -i -E "cost|credit" /tmp/tier1.headers 2>/dev/null || echo "(none found)"
+          echo "--- body (first 2000 chars) ---"
+          head -c 2000 /tmp/tier1.json
+          echo
+          echo "--- real-data check ---"
+          python3 -c "
+          import json
+          try:
+              data = json.load(open('/tmp/tier1.json', encoding='utf-8'))
+              markers = data.get('data', {}).get('markers', [])
+              print(f'Parsed OK. markers count: {len(markers)}')
+              if markers:
+                  print('First marker price:', markers[0].get('price'))
+                  print('First marker token:', markers[0].get('token'))
+          except Exception as e:
+              print(f'Not valid/expected JSON: {e}')
+          "
+
+      - name: Tier 2 — premium_proxy alone (10 credits) — only informative if tier 1 failed
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          TARGET=$(cat /tmp/target_url.txt)
+          curl -sS -D /tmp/tier2.headers -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=$TARGET" \
+            --data-urlencode "premium_proxy=true" \
+            -o /tmp/tier2.json \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60
+          echo "--- cost headers ---"
+          grep -i -E "cost|credit" /tmp/tier2.headers 2>/dev/null || echo "(none found)"
+          echo "--- body (first 1000 chars) ---"
+          head -c 1000 /tmp/tier2.json
+          echo
