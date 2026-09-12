@@ -24,6 +24,32 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
+      - name: Cost comparison across fetch configs on the two confirmed-real URLs from run 1
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          mkdir -p /tmp/cost
+          test_one () {
+            label="$1"; url="$2"; shift 2
+            echo "=== $label ($url) [$*] ==="
+            curl -sS -D "/tmp/cost/${label}.headers" -G "https://api.zenrows.com/v1/" \
+              --data-urlencode "apikey=$ZENROWS_API_KEY" \
+              --data-urlencode "url=$url" \
+              "$@" \
+              -o "/tmp/cost/${label}.html" \
+              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+              --max-time 100 || echo "curl failed for $label"
+            echo "--- response headers ---"
+            cat "/tmp/cost/${label}.headers" 2>/dev/null | grep -i -E "zenrows|cost|credit|concurrency" || echo "(no zenrows/cost headers found)"
+            echo
+          }
+          test_one "homeless_plain" "https://www.homeless.co.il/rent/"
+          test_one "homeless_premium" "https://www.homeless.co.il/rent/" --data-urlencode "premium_proxy=true"
+          test_one "homeless_full" "https://www.homeless.co.il/rent/" --data-urlencode "premium_proxy=true" --data-urlencode "js_render=true"
+          test_one "komo_plain" "https://www.komo.co.il/"
+          test_one "komo_premium" "https://www.komo.co.il/" --data-urlencode "premium_proxy=true"
+          test_one "komo_full" "https://www.komo.co.il/" --data-urlencode "premium_proxy=true" --data-urlencode "js_render=true"
+
       - name: Try candidate Komo rental-search URLs
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
