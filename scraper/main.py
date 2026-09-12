@@ -16,7 +16,7 @@ from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
 from normalize import _compute_detail_updates, normalize
 from notifier import run_notifications
-from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_all_listings
+from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_region_pages
 
 # 2026-09-12: how many fetch_listing_detail_via_bright_data calls run concurrently when enriching
 # a batch of newly-discovered listings. Each call is a real blocking trigger->poll->snapshot round
@@ -199,6 +199,24 @@ def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set
     return len(newly_delisted)
 
 
+def _fetch_known_yad2_external_ids() -> set[str]:
+    """Every Yad2 external_id this project already has, regardless of region/city — read once at
+    the start of a run and handed to fetch_region_pages for every region (see that function's own
+    docstring for why: it isn't scoped per-region, a listing's region isn't tracked separately).
+
+    2026-09-12: added alongside the switch to fetch_region_pages (see that function's module
+    comment in yad2_client.py) — a short-lived read-only session, separate from the write session
+    the rest of run_once() opens later, since this needs to happen BEFORE the (potentially long,
+    all-network) fetch loop rather than interleaved with it."""
+    table = Listing.__table__
+    with get_session() as session:
+        return set(
+            session.scalars(
+                select(table.c.external_id).where(table.c.source == Source.YAD2)
+            )
+        )
+
+
 def run_once() -> dict[str, int]:
     logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
     fetched = 0
@@ -207,10 +225,16 @@ def run_once() -> dict[str, int]:
     seen_external_ids: set[str] = set()
     all_regions_succeeded = True
 
+    # 2026-09-12: fetch_region_pages (not fetch_all_listings) — keeps paging a region's feed past
+    # page 1 until it's caught up to everything already known, instead of assuming one page always
+    # holds every listing posted since the last run. See that function's own module comment in
+    # yad2_client.py for the full reasoning/cost tradeoffs.
+    known_ids = _fetch_known_yad2_external_ids()
+
     for region in REGION_SLUGS:
         logger.info("Fetching Yad2 listings for region=%s", region)
         try:
-            for raw_item in fetch_all_listings(regions=(region,)):
+            for raw_item in fetch_region_pages(region, known_ids):
                 fetched += 1
                 normalized = normalize(raw_item, deal_type=DealType.RENT)
                 if normalized is not None:

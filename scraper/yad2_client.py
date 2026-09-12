@@ -479,15 +479,91 @@ REGION_SLUGS = (
 def fetch_all_listings(regions: tuple[str, ...] = REGION_SLUGS) -> Iterator[dict[str, Any]]:
     """Yields raw listing dicts from Yad2's broad-region rental searches — REGION_SLUGS by
     default, 7 requests covering the whole country instead of 42 (one per city). Each region
-    returns whatever's on its first results page (same "rely on scan frequency, not deep
-    pagination" design as fetch_search_results above) spanning many cities at once — a listing's
-    own city still comes from parsing its own card via _parse_cards, not from which region was
-    queried."""
+    returns whatever's on its first results page only — see fetch_region_pages below (added
+    2026-09-12) for the version that actually keeps paging when there's more new volume than one
+    page holds; scraper/main.py's run_once() uses that one now, not this function directly. Kept
+    as-is (unchanged single-page behavior) since it's still a reasonable plain building block and
+    existing tests pin its exact request-building behavior."""
     for region in regions:
         html = _fetch_search_html(
             f"https://www.yad2.co.il/realestate/rent/{region}", context_label=f"region={region!r}"
         )
         yield from _parse_cards(html)
+
+
+def _region_url(region: str, page: int) -> str:
+    """Builds one region's rental-feed URL for a given page number. Confirmed live 2026-09-12 (the
+    owner clicked Yad2's own "2" page-number control and read the resulting URL back):
+    `?page=<n>` appended to a region URL — page 1 has no query param at all (matches what
+    fetch_all_listings above already sends unchanged)."""
+    base = f"https://www.yad2.co.il/realestate/rent/{region}"
+    return base if page <= 1 else f"{base}?page={page}"
+
+
+# 2026-09-12: fetch_all_listings above only ever reads ONE results page per region (43-46 real
+# cards, confirmed live) — fine exactly as long as fewer new listings appear between two scrape
+# runs than one page holds, but the owner found live (via Yad2's own page-number UI) that
+# tel-aviv-area alone has ~175 total pages of listings. There is no way to know "one page is
+# always enough" is actually true without either checking real posting velocity, or removing the
+# assumption entirely — this function does the latter.
+#
+# fetch_region_pages pages forward (page=1, 2, 3, ... via _region_url above) until a FULL page's
+# listings are all already-known (source, external_id) pairs this project's own database already
+# has — not a fixed page count, not a guessed "typical" posting rate. A quiet run between scrapes
+# still costs exactly one ZenRows request per region (unchanged from fetch_all_listings); a busy
+# one costs however many pages it actually took to catch up, and no more. This directly answers
+# the owner's real requirement ("אני רוצה שכל ה-500 יהיו אצלי בבוט", 2026-09-12) without hardcoding
+# any assumed volume threshold.
+#
+# Deliberately stops only when EVERY card on a page is already known, not on the FIRST known card
+# seen: Yad2's feed interleaves paid-promotion categories (platinum/booster — see
+# _FEED_CATEGORY_IS_BROKER) that can resurface an older, already-known ad ahead of genuinely new
+# organic listings in that same page's ordering (this project has not independently re-verified
+# that resurfacing live, this reasoning is inferred from _parse_cards/_extract_feed_records'
+# own module comments about those categories — but stopping on "all known" costs nothing extra
+# when it happens not to apply, and meaningfully reduces the risk when it does, so there's no
+# reason to take the cheaper-but-riskier "first known" shortcut). This is NOT a mathematical
+# guarantee against every possible reordering — genuine certainty would mean walking all ~175
+# pages every run, rejected outright as financially unworkable (175 requests × 25 ZenRows credits
+# each, for ONE region, versus this project's entire 45,000-credit monthly plan). Documented here
+# as a known, accepted limitation rather than a solved problem.
+#
+# max_pages is a hard safety cap, not an expected value — hitting it logs a warning (real, unusual
+# posting volume, or the catch-up check itself misbehaving, e.g. known_ids not actually covering
+# this region) rather than silently looping forever or silently stopping short with no signal
+# either way.
+def fetch_region_pages(
+    region: str, known_ids: set[str], *, max_pages: int = 15
+) -> Iterator[dict[str, Any]]:
+    """Yields every raw listing dict found while paging through `region`'s rental feed (page 1,
+    2, 3, ...) until a full page's listings are all already in `known_ids`, or there are no more
+    pages. `known_ids` should be every external_id this project already has for Yad2 (across all
+    regions/cities — a listing's region isn't tracked separately, so this isn't scoped per-region)
+    — the caller (scraper/main.py) owns fetching that from the database; this module has no DB
+    access of its own, same separation as everywhere else in this file.
+
+    Costs exactly one real ZenRows request per page actually fetched: 1 on a quiet run (identical
+    cost to fetch_all_listings before this function existed), more only when there's genuinely new
+    volume to catch up on. max_pages caps the worst case at `max_pages` requests for this one
+    region — see the module comment above for the full reasoning."""
+    for page in range(1, max_pages + 1):
+        html = _fetch_search_html(
+            _region_url(region, page), context_label=f"region={region!r} page={page}"
+        )
+        cards = list(_parse_cards(html))
+        if not cards:
+            break  # ran out of real pages before max_pages — nothing left to catch up on
+        yield from cards
+        if all(card["id"] in known_ids for card in cards):
+            break  # caught up: every listing on this page was already known
+    else:
+        logger.warning(
+            "region=%r hit max_pages=%d while paginating without catching up to already-known "
+            "listings — either genuinely unusual posting volume, or the catch-up check itself "
+            "isn't working right for this region (e.g. known_ids not covering it). Consider "
+            "raising max_pages or investigating live before assuming this is fine.",
+            region, max_pages,
+        )
 
 
 # Yad2's own listing DETAIL page (one specific apartment, not the search-results list) uses the
