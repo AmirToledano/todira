@@ -47,13 +47,17 @@
 #                             earlier informal click-trust flow (a Bit transfer outside this
 #                             system), exactly as before this feature shipped.)
 #   brightDataApiKey         (optional — on-demand listing-description enrichment for paying
-#   brightDataDatasetId       users, common/dorin_common/bright_data_client.py, 2026-09-05 (used by
-#                             both the scraper and website pods since 2026-09-07). Both required
-#                             together; brightDataDatasetId needs a Bright Data Scraper Studio
-#                             scraper the owner builds targeting Yad2 listing DETAIL pages — see
-#                             that module's own docstring for why this can't just reuse the
-#                             existing (broken) search-results scraper. Without these, listings
-#                             are sent with no description, exactly as before this feature shipped.)
+#   brightDataCollectorId     users, common/dorin_common/bright_data_client.py, 2026-09-05 (used by
+#                             both the scraper and website pods since 2026-09-07; renamed from
+#                             brightDataDatasetId 2026-09-12 once the real Bright Data API in use
+#                             was confirmed — Data Collector API `/dca/...`, not the "Web Scraper
+#                             API"/datasets-v3 originally guessed). Both required together;
+#                             brightDataCollectorId needs a Bright Data Scraper Studio collector
+#                             (its `c_...` id, from that collector's own "Initiate by API" tab) the
+#                             owner builds targeting Yad2 listing DETAIL pages — see that module's
+#                             own docstring for why this can't just reuse the existing (broken)
+#                             search-results scraper. Without these, listings are sent with no
+#                             description, exactly as before this feature shipped.)
 #   brightDataDescriptionField (optional — the field name in that scraper's own output schema
 #                             that holds the description text; defaults to "description" if unset.)
 #   takbullWebhookSecret     (optional — real payment-gateway checkout via Takbull, website/

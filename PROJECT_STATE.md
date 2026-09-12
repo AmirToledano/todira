@@ -5120,3 +5120,428 @@ Every Hebrew value was kept byte-identical to the previous hardcoded text, so no
 needed changes — confirmed live, not assumed. New regression tests added per page confirming
 `?lang=en`/`?lang=ar` actually render translated content. Full suite: 653 passed (was 647 at the
 top of this update).
+
+## Update 2026-09-11: closes the 2026-09-06 Bright Data truncation question — confirmed NOT
+## truncated, real query name found, plus a security note and a long list of Bright Data UI gotchas
+
+**Context for how this started, worth recording.** Mid-session, the owner relayed a message he
+said was drafted by "an AI architect he works with" (Gemini w/ Deep Research) proposing a "Zero-
+Extra-Requests" scraper redesign: pull full listing data (descriptions included) straight from
+Yad2's `__NEXT_DATA__` JSON on the search page, paired with an `aiosqlite` local cache for the
+Telegram bot (working around Telegram's 64-byte `callback_data` limit). The voice/register was a
+sharp break from the owner's own usual messages, arriving mid-turn and attributed to relaying
+another AI — flagged this to the owner directly as worth a second look before acting on it, per
+this file's own established pattern of taking unusual requests at face value being a real risk
+(see e.g. any of this file's own history of catching false "Shipped" claims). The owner confirmed
+genuine intent. **One request in that same exchange was refused outright and stays refused going
+forward regardless of rephrasing**: a script making a **direct HTTP request to yad2.co.il** using
+`curl_cffi` explicitly "to bypass basic WAF" — declined as detection evasion against a third
+party's own anti-bot protection, full stop, not something to reconsider "just this once" or "just
+for testing." The owner immediately agreed to stay entirely inside the existing, already-paid
+Bright Data infrastructure instead, and everything below happened exclusively through Bright
+Data's own hosted Scraper Studio UI (Interaction code + Parser code editors) — no local script,
+no direct request, nothing added to this repo except this entry.
+
+**The actual finding — this directly resolves the open item from the 2026-09-06 entries above
+("Bright Data Stage 2 investigation... still exactly where it was left").** Built a diagnostic
+Parser (Cheerio-style `$()`, no `window` — confirmed once again, same constraint as 2026-09-06)
+that does `JSON.parse($('script#__NEXT_DATA__').html())` and reports `raw_length` + `parse_error`
++ real query-key names, run via Bright Data's own "Play"/preview against **a real filtered search
+URL** (`yad2.co.il/realestate/rent/tel-aviv-area?area=1&city=5000&minRooms=2&maxRooms=3` — not
+just the generic no-params fallback page):
+
+- **`parse_error: null`, `raw_length` up to ~486,000 characters, repeatedly, across many runs.**
+  `JSON.parse` succeeds every time. **No truncation** — the 2026-09-06 `Unexpected end of JSON
+  input` symptom does not reproduce on this page type. (Filtered search pages did trip Yad2's own
+  anti-bot/CAPTCHA challenge a couple of times inside Bright Data's headless browser — handled by
+  simply retrying and raising the Interaction code's `wait()` timeout to 120s, both legitimate,
+  no evasion involved; not investigated further since it self-resolved.)
+- **Real query key found**: `dehydratedState.queries[]` contains one whose `queryKey[0] ===
+  "realestate-rent-feed"` (NOT `"realestate-feed"` or `"items"` as guessed at first — easy to
+  misread in a small screenshot, cost real time; confirmed by dumping the literal key string back
+  out of the code rather than eyeballing a screenshot a second time).
+- **Real data shape, also not what was guessed**: that query's `state.data` is NOT a flat `items`/
+  `groupedOffers` array. Its actual keys: `private`, `agency`, `yad1`, `platinum`, `kingOfTheHar`,
+  `trio`, `booster`, `leadingBroker`, `pagination`, `lookalike` — i.e. listings are pre-split by
+  seller type (`private` = private sellers, `agency` = brokers) and several paid-promotion tiers,
+  not one uniform list.
+
+**Still open, not yet checked**: whether an individual record inside e.g. `data.private[0]`
+actually contains a full description field (the original point of this whole investigation) —
+the session ended before that last drill-down. Next step for whoever picks this up: same Parser-
+code pattern, just read `feedQuery.state.data.private[0]` (or `.agency[0]`) and dump
+`Object.keys(...)` on it.
+
+**No production code changed.** `scraper.suspended` remains `true` (deliberate hold from an
+earlier session, untouched here) — this was purely a Bright Data-side diagnostic to answer a
+feasibility question before any real architecture decision. The original PILLAR 1 (`__NEXT_DATA__`
+extraction) / PILLAR 2 (`aiosqlite` bot cache) proposal has NOT been implemented or even
+scoped into a real plan yet — tonight only answered "is the data actually there, uncut." Whoever
+picks this up next should decide scope with the owner (region coverage, whether this
+supplements or replaces the existing Bright Data Stage 2 per-listing visit / ZenRows discovery
+path — see the 2026-09-07 entry above on why Bright Data's existing per-listing visit is close to
+free while ZenRows' is not) before writing any real ingestion code.
+
+**Bright Data Scraper Studio UI gotchas, worth recording verbatim since they cost most of
+tonight's real time** (owner has zero coding background, worked through all of this live via
+screenshots — if a future session guides someone through this UI again, expect every one of
+these):
+- **"Save to production" can silently no-op** — same finding as 2026-09-06, still true. The only
+  reliable check is Changelog → Versions, confirming a new version is tagged "Production version"
+  with a current timestamp.
+- **A locked, collector-wide "Output schema"** rejects any save whose returned fields don't match
+  it exactly (type mismatches like a plain string being typed `Text` where the schema expects
+  `URL`, or genuinely new/renamed fields) with a **silent, non-fatal "Last step's data format
+  should exactly match output schema" toast** — the run still completes and results still exist,
+  just unreachable through the normal Output panel until you explicitly click "Update schema" in
+  the popup and then **Save to development a second time** (the schema update and the code save
+  are two separate persisted actions — doing only the first leaves the code change unsaved,
+  produced several rounds of "why didn't my fix do anything" before this was caught).
+- **Clicking "Save to development" can auto-switch the visible pane to a completely different,
+  unrelated Interaction/Parser group** in the sidebar (this collector has two independent
+  "ide-automation template" groups — one actively developed, one a leftover from an earlier
+  session) — easy to mistake the OLD group's stale/different output for a fresh result from the
+  group actually being edited. Always re-check the sidebar highlight after any save before
+  reading Output.
+- The **"Play" (▶) button and "Run test crawl"** are the same underlying action (tooltip:
+  "Ctrl-Enter — Run the crawl code"); it runs live inside the Code tab itself — never navigate to
+  "Initiate manually" for a test run, that starts a real, separately-billed production crawl.
+- A `catch (e) {}` that swallows errors silently is actively harmful for this kind of remote,
+  screenshot-mediated debugging — capturing `String(e.message)` into a returned field (plus a
+  throwaway `canary: 'v'+Date.now()` field to independently confirm new code actually ran, not a
+  stale cached result) is what actually broke the last stuck point tonight, worth reaching for
+  immediately next time instead of iterating blind.
+
+## Update 2026-09-11 (later, same night): closes the "still open" item above — no description
+## field exists anywhere in the search-page JSON; Pillar 1 as proposed is not feasible
+
+Follow-up to the entry directly above. Drilled one level further into `data.private[0]` /
+`data.agency[0]` (the actual listing records inside the `realestate-rent-feed` query found
+tonight). Full field list on a real record:
+```
+address, subcategoryId, categoryId, adType, price, token,
+additionalDetails: { property, roomsCount, squareMeter, propertyCondition, promotions },
+metaData: { coverImage, images, squareMeterBuild },
+tags, orderId, priority  (agency records also add: customer, priceBeforeTag, packages)
+```
+**No free-text description field anywhere** — not at the top level, not in `additionalDetails`,
+not in `metaData`. Every field is structured metadata (address, price, room count, sqm, property
+type/condition, image URLs). This settles the question this whole investigation was chasing: it's
+not a truncation problem, not a wrong-query-name problem — Yad2's search-results JSON simply does
+not embed listing descriptions, at any size, regardless of how cleanly it parses. Getting a
+listing's description still requires visiting that listing's own detail page, exactly like the
+existing Bright Data Stage 2 discovery already does today (`next_stage` per listing) — so this
+finding doesn't strand any existing capability, it just rules out the specific "skip the per-
+listing visit entirely" premise of the owner's "architect"-relayed proposal. Wrote up the full
+investigation (method + all three findings + this conclusion) as a standalone report and sent it
+to the owner to relay externally — not committed to this repo (external-facing document, not
+project documentation).
+
+**Net effect on the two-pillar proposal from the top of this investigation**: Pillar 1 (`__NEXT_DATA__`
+zero-extra-requests description extraction) — not viable as specified, closed. Pillar 2 (`aiosqlite`
+local cache for the Telegram bot's `callback_data` size limit) — untouched by tonight's findings,
+still open, unrelated technical question if the owner wants to pursue it separately.
+
+## Update 2026-09-11 (late night, still later): tested an individual LISTING page too — the
+## original 2026-09-06 truncation/timing symptom reproduces there, unlike the search page
+
+Follow-up prompted by the owner wanting to combine Bright Data with ZenRows (add, not replace —
+see the exchange above about `_upsert_listings`'s existing `(source, external_id)` dedup already
+covering the "delta" idea, and `fetch_listing_description`'s already-tighter-than-proposed gating).
+Before scoping that further, tested the one page type never actually checked tonight: an
+individual listing's own detail page (`yad2.co.il/realestate/item/tel-aviv-area/<token>`) —
+this is the page type `next_stage` actually visits, and where the original 2026-09-06 truncation
+symptom was found; everything earlier tonight was the search-results page, a different, and
+frankly less interesting, question (of course a result-card feed doesn't carry full descriptions).
+
+**Result: inconsistent.** Same diagnostic Parser, same exact listing URL, run 3 times:
+- Run 1: `raw_length: 4970`, `parse_error: null` — clean, real content, one query key
+  (`["item","<token>"]`).
+- Runs 2 and 3 (immediately after, same URL, code unchanged): `raw_length: 0`,
+  `parse_error: "Unexpected end of JSON input"`.
+
+This is the exact symptom the 2026-09-06 entries already named and diagnosed: Bright Data's page-
+capture step racing the page's own hydration on individual listing pages specifically — sometimes
+winning (full content), sometimes losing (empty `<script id="__NEXT_DATA__">` at capture time).
+**Not reproduced even once on the search-results page tonight** (5+ runs, always clean,
+`raw_length` 250k–486k) — this flakiness appears specific to the listing-detail page type, not a
+general Bright Data problem with this site.
+
+**Not yet answered**: whether the one clean 4970-char capture actually contains a description
+field, because that capture happened before `item_debug` (the code that would dump the item
+query's own field names) was added — by the time that code was ready, only the flaky empty
+captures came back. Still don't know if the individual listing's own `__NEXT_DATA__` has a
+description at all, only that reading it reliably is itself an open problem.
+
+**Next step for whoever picks this up**: before trying the field-name question again, first fix
+the reliability problem — likely needs the Interaction code to `wait()` on something more specific
+than `'body'` (e.g. a selector that only appears after the page's own data has hydrated, similar to
+how the search-page Interaction code waits on `'a[href*="/realestate/item/"]'`) or a short retry
+loop that re-checks `raw_length > 0` before returning. Only once a capture reliably has content does
+the description-field question become answerable — no point re-running the field-check against a
+50%-of-the-time-empty capture.
+
+Net effect on the "combine ZenRows + Bright Data" conversation with the owner: still open, gated on
+this reliability question first. Stopped here for the night (02:31 local) — real progress, not a
+dead end, just not finished.
+
+## Update 2026-09-11 (very late night, still later): FOUND IT — the description IS in the
+## individual listing's `__NEXT_DATA__`, under `searchText`, not a field called "description"
+
+Direct follow-up to the entry immediately above. Once a clean (non-empty) capture of an
+individual listing page (`yad2.co.il/realestate/item/tel-aviv-area/<token>`) was obtained (fixed
+by waiting on `[data-testid="price"]` instead of bare `body` before parsing — same fix pattern as
+the search page's own Interaction code), the `item` query's data object has these top-level keys:
+```
+token, orderId, adNumber, adType, categoryId, subcategoryId, priority, statusId, price,
+additionalDetails, inProperty, searchText, customer, packages, address, metaData, dates,
+abovePrice, paymentsInYear
+```
+**`searchText` is the full free-text listing description** — confirmed by reading its actual
+value tonight: a complete, real, multi-sentence Hebrew ad description (room layout, condition,
+location, lease terms, agency info), not a summary or a truncated snippet. Never called
+"description" anywhere — that's exactly why the earlier field-name guesses (`description`,
+`text`, `content` — see `bright_data_client.py`'s own fallback list) never matched. **Update that
+client's fallback list to also try `searchText`** if this Bright Data Web Scraper API dataset
+route is ever actually configured (it currently isn't — `BRIGHT_DATA_DATASET_ID` unset, see that
+file's own docstring).
+
+**This corrects/refines the two entries above tonight, doesn't contradict them**: the
+search-results feed (`realestate-rent-feed`) genuinely has no description field — that finding
+stands. The individual listing's OWN page's `__NEXT_DATA__` does, under `searchText`, and that's
+exactly the page Bright Data's `next_stage` already visits per listing during Stage 2 discovery.
+So the "get full content close to free from a visit that's already happening" premise from the
+2026-09-07 entry is now actually validated with real field-level evidence, not just an inference
+from pricing model — contingent on fixing the capture-reliability problem (documented directly
+above: ~2 of 3 attempts got an empty capture with the naive `wait('body')`; switching to
+`wait('[data-testid="price"]')` got a clean capture on the one retry tried tonight, but this needs
+several more repeated runs before calling it reliably fixed, not just lucky twice).
+
+**Net result for the owner's "combine ZenRows + Bright Data" question**: real, positive answer.
+A concrete, evidence-backed path exists: keep ZenRows for regional search-page discovery
+(unchanged), and use Bright Data's own Stage 2 (`navigate` → `wait('[data-testid="price"]')` →
+`collect(parse())`) to visit each *new* listing (the existing `(source, external_id)` Postgres
+dedup, already built, decides what's new) and pull `searchText` from its `__NEXT_DATA__` — no
+separate per-listing Web Scraper API dataset call needed at all, since Scraper Studio's own
+per-record pricing already covers the visit. This would let `fetch_listing_description`'s current
+on-demand-per-matched-user design be replaced with getting the description at discovery time,
+for free, for every new listing (not just ones that later match a paying user) — a genuinely
+different and arguably better tradeoff than today's lazy design, worth discussing with the owner
+explicitly since it changes the cost/completeness balance (pay to have descriptions for ALL new
+listings up front, vs. today's pay-only-for-what-a-paying-user-actually-sees).
+
+**Still not built, real scoping work remains** before writing any ingestion code: (1) confirm the
+capture-reliability fix holds over many more runs, not just one; (2) design how a Bright-Data-
+sourced listing record maps into the existing `Listing`/`normalize.py` shape (field names differ
+completely from Yad2's HTML/ZenRows-scraped shape: `additionalDetails.roomsCount` vs `rooms`,
+`additionalDetails.property.text` vs `property_type`, etc.); (3) decide the actual trigger
+mechanism — does the scraper call Bright Data's trigger API per new listing found by ZenRows
+discovery, passing that listing's own URL as input to a single-listing Scraper Studio run? That's
+architecturally different from the `next_stage`-driven multi-page crawl this collector currently
+does, and needs its own design pass, not assumed to just work as-is.
+
+## Update 2026-09-12 (continuing straight from the night before): reliability confirmed 100%
+## (12/12), both description fields are real and different, and the mapping code is now written
+
+Direct continuation of the "combine ZenRows + Bright Data" plan the owner laid out after the
+`searchText` discovery. Three things done, in order:
+
+**1. Reliability, confirmed.** Looped the diagnostic over 12 fresh, real, currently-live listings
+(tokens pulled live from the search feed itself, not reused stale ones) using the
+`wait('[data-testid="price"]')` fix from the entry above. **12 of 12 succeeded** — every single one
+had `raw_length` between 3099 and 4562 (never 0), `parse_error: null`. Combined with the earlier
+single successful run, that's 13/13 clean captures with this fix, vs. 1/3 with the naive
+`wait('body')`. Reliability problem: solved, not just lucky twice.
+
+**2. `metaData.description` and `searchText` are BOTH real, BOTH different — no bug, verified not
+assumed.** Worth recording precisely since the entry above briefly floated the wrong theory (that
+`enrich_from_detail`'s `metaData.description` read might be a live bug, since the 2026-09-02
+diagnostic that "confirmed" it only dumped raw HTML text windows, never walked real keys the way
+tonight's Bright Data testing did). Checked directly on the same 12 listings: **every one** had
+`has_search_text: true` AND `has_meta_description: true`, and `same_text: false` on all 12.
+Reading the actual previews: `metaData.description` is the clean, human-written ad text (what
+`enrich_from_detail` already correctly extracts); `searchText` is a different, more mechanical
+string (starts "שם מוכר X נכס להשכרה מסוג Y עם מספר חדרים... בכתובת..." — looks like a
+search-indexing concatenation of structured facts, not prose). **No code was broken; nothing here
+needed fixing.**
+
+**3. Mapping code: written, tested, no translation layer needed.** The real insight: ZenRows'
+existing (unused-by-default) `fetch_listing_detail` and Bright Data's collector both ultimately
+read the same underlying Yad2 `__NEXT_DATA__` — just via different scraping infrastructure — so
+`scraper/normalize.py`'s existing `enrich_from_detail(item, detail)` already expects exactly Bright
+Data's shape. Confirmed this with a real-shaped test
+(`test_enrich_from_detail_consumes_a_real_bright_data_record_unchanged`, tests/test_normalize.py)
+built from tonight's actual confirmed field names/values (token `dgne1po1`) — passes with zero
+changes to `enrich_from_detail` itself.
+
+What WAS added (`common/dorin_common/bright_data_client.py`):
+- Refactored `fetch_listing_description`'s trigger/poll/snapshot mechanics into a shared
+  `_trigger_and_fetch_first_row(url) -> dict | None` helper.
+- New `fetch_listing_detail_via_bright_data(url) -> dict | None` — same helper, but returns the
+  WHOLE record instead of extracting just the description string, so it can be passed straight
+  into `enrich_from_detail`. Same "never raises, blocking/sync, None on any failure" contract as
+  the existing function. **Not yet called from anywhere** — no scrape-path wiring yet, see below.
+- Added `searchText` to `fetch_listing_description`'s own field-fallback chain too (defensive,
+  not a fix — `description`/`metaData.description` still tried first, since it's the cleaner text).
+- Docstrings updated: the module's own "PARTIALLY VERIFIED" disclaimer now correctly says the
+  RECORD SHAPE is confirmed live (not guessed) — only the account-specific `dataset_id` remains
+  unset, since that Scraper Studio collector isn't published to production yet.
+- Tests: `tests/test_bright_data_client.py` (+4 tests for the new function and the searchText
+  fallback), `tests/test_normalize.py` (+1 real-shaped integration test as above). Full suite:
+  **678 passed** (was 653 before tonight's session — some of that delta is other work; this
+  entry's own additions are 5 new tests). Committed as `bd17048`.
+
+**Still genuinely not built** — this is code that CAN be called, not a working pipeline yet:
+1. **Trigger mechanism**: nothing in `scraper/main.py` calls `fetch_listing_detail_via_bright_data`
+   yet. The owner's stated design (from the entry above): call it once per genuinely-new
+   `external_id` at discovery time (the existing `_upsert_listings` insert-vs-update split already
+   identifies "new" — just needs a call added on that branch), then `enrich_from_detail` the result
+   before the initial insert, caching forever.
+2. **No production `dataset_id` exists yet** — the Scraper Studio collector used for all of
+   tonight's diagnostics is still a personal draft/development-only collector in the owner's Bright
+   Data account, never "Save to production"'d in a way that stuck (see the many entries above about
+   that button's own unreliability) — and even if it were, its current Parser code returns
+   diagnostic/debug fields (`canary`, `item_debug`, etc.), not the clean full record shape
+   `fetch_listing_detail_via_bright_data` expects back from the snapshot API. **The Parser code
+   needs a final, non-diagnostic version** that just returns the raw item object (or the specific
+   fields `enrich_from_detail` reads) before this is usable for real, then that collector needs an
+   actual production dataset_id set into `BRIGHT_DATA_DATASET_ID`.
+3. **Cost/completeness decision still not made explicit with the owner**: wiring this in changes
+   the tradeoff from today's "only fetch a description for a listing a paying user has actually
+   seen" to "fetch every new listing's full detail at discovery time, whether or not it ever
+   matches anyone" — more complete, but not free, and nobody has explicitly signed off on that
+   specific tradeoff yet (only on "combine ZenRows + Bright Data" at a conceptual level).
+
+## Update 2026-09-12 (continued): the Bright Data enrichment code is now WIRED IN — item 2 of
+## the "still not built" list from the entry above is done; items 1 and 3 remain
+
+Direct continuation. `scraper/main.py`'s `run_once()` now actually calls
+`fetch_listing_detail_via_bright_data` for every genuinely-new listing, right after
+`_upsert_listings`, before the notification step reads those listings back out — so once this is
+live, a brand-new listing's first notification already carries its real description/photos/
+amenities, not just the search-card fields.
+
+**Caught a real bug before it ever ran, worth flagging for future sessions touching this file**:
+this project's session factory is `expire_on_commit=False` (`dorin_common/db.py`) — a first draft
+that pre-loaded ORM `Listing` objects inside the new enrichment function, then updated the DB via
+Core `table.update()`, would have silently handed `run_once()`'s later notification query back the
+STALE pre-enrichment ORM objects from the session's identity map (Core-level updates don't touch
+ORM identity-map state, and nothing here calls `session.expire_all()`). Fixed by fetching plain
+`(id, url)` tuples via Core `select()` instead of ORM objects — the same reason `_upsert_listings`/
+`_mark_delisted` already avoid the ORM for exactly this kind of write. Added a dedicated regression
+test whose fake session has no `scalars()` method at all, so any future edit that reintroduces ORM
+objects here fails loudly (`AttributeError`) instead of silently reintroducing the staleness bug.
+
+Also refactored `normalize.py`: `enrich_from_detail`'s actual field-extraction logic is now
+`_compute_detail_updates(detail) -> dict`, a pure function of `detail` alone (it never actually
+read `item`'s existing fields to begin with — `item` was only ever the base for `.model_copy()`).
+`scraper/main.py` calls `_compute_detail_updates` directly to build the values dict for the ORM
+row's `table.update()`, instead of doing a wasteful (and, per the bug above, actively wrong)
+round-trip through a `NormalizedListing` rebuilt from the row's current values.
+
+Design specifics: bounded concurrency (`_BRIGHT_DATA_ENRICH_CONCURRENCY = 5`, via
+`asyncio.gather` + `asyncio.to_thread`, since `fetch_listing_detail_via_bright_data` is a blocking
+trigger/poll/snapshot round trip up to ~45s worst-case) — sequential per-listing calls would make a
+scrape run with many new listings unacceptably slow; unbounded parallelism risks hammering Bright
+Data's API. Best-effort per listing (`return_exceptions=True` on the gather): one listing whose
+fetch fails, times out, or raises is logged and skipped, never aborts the batch or the run. A
+complete no-op (0 network calls) while `bright_data_client.is_configured()` is false — exactly the
+state today, so this ships live with zero behavior change until the two items below are also done.
+New file `tests/test_scraper_bright_data_enrichment.py` (4 tests) + the normalize.py refactor kept
+all existing tests green. Full suite: **683 passed** (was 678). Committed as `4dd3fe1`.
+
+**Also resolved tonight, worth noting**: the credits-vs-dollars confusion from earlier in this
+session. Bright Data's "Free credits" (4,833/5,000 shown in their UI) are a **separate unit from
+real dollars**, NOT literally $4,833 as this session briefly and wrongly assumed out loud. Checked
+the account's own numbers directly: **1 credit = 1 page load = $0.0015** (confirmed via Bright
+Data's own "Free credits breakdown": 167 credits consumed exactly equals 167 page loads logged
+against the `scraper yad2.co.il` collector). So tonight's ENTIRE testing session cost about
+**25 cents** in real terms, and the ~4,833 remaining free credits are worth about **$7.25**, not
+$4,833. Real pricing for this exact collector type (Bright Data's own pricing page, Scraper Studio
+row, current Pay-as-you-go plan, no monthly commitment): **$1.50 per 1,000 page loads**. At the
+~150 new-listings/day estimate from the 2026-09-07 entry, that's roughly **$6-7/month** for the
+whole enrichment feature — compared favorably against ZenRows' own real per-request cost for this
+exact site (~$10.56/1,000, since yad2.co.il bills at ZenRows' expensive ~25-credit anti-bot tier
+regardless of settings — see the 2026-09-02 diagnostic referenced repeatedly above) and against
+Zyte/ScrapingBee/ScraperAPI/Oxylabs' comparable JS-rendering-plus-anti-bot tiers (checked live via
+web search — Bright Data's no-commitment rate here is already competitive with or cheaper than all
+of them at this project's actual, low volume). **Decision: stay on Bright Data** — chasing a
+possibly-marginal saving elsewhere isn't worth re-doing tonight's reliability validation from
+scratch on an unproven provider.
+
+**What's still not built** (unchanged from the two items the entry above already flagged — item 2
+from that list is now done, these two remain):
+1. **No production `dataset_id` exists yet.** The Scraper Studio collector used for every
+   diagnostic tonight is still a personal development-only draft in the owner's Bright Data
+   account — "Save to production" was never confirmed to stick (see the many entries above about
+   that button's own unreliability this session). Even once it does, its CURRENT Parser code
+   returns diagnostic/debug fields (`canary`, `item_debug`, `query_keys`, etc.), not the clean
+   item-record shape `fetch_listing_detail_via_bright_data` actually needs back from the snapshot
+   API (address, additionalDetails, inProperty, metaData, customer, price, token, searchText —
+   directly, no wrapper object). **The Parser code needs a final, non-diagnostic version** — just
+   `return $('script#__NEXT_DATA__')`'s parsed item query's `state.data` directly (or the specific
+   subset of it) — before `BRIGHT_DATA_DATASET_ID` can be set to anything real.
+2. **The cost/completeness tradeoff decision itself**: confirmed live with the owner tonight this
+   session (per the exchange above — real numbers now in hand: ~$6-7/month) that this is worth
+   doing. Nothing further blocks this one; it's the previous item (production collector +
+   dataset_id) that's the actual remaining gate before this whole feature does anything in
+   production.
+
+## Update 2026-09-12 (continued, afternoon): the endless save loop was the WORKER SETTING all
+## along, a fresh collector fixed it in minutes, AND the API guessed at earlier tonight was wrong
+
+Two real, decisive findings from continuing the "get the collector into production" work.
+
+**1. Root cause of the entire all-night "Save to development"/"Save to production" loop, found**:
+a brand-new collector, built from scratch with the exact same Interaction+Parser code that kept
+failing on the old one, hit a **"Incompatible worker"** dialog immediately: the collector defaults
+to a lightweight **`code` worker**, but the code uses `wait()`, which only the **`browser` worker**
+supports. Switching to `browser` worker fixed it completely — the very next "Finish editing" landed
+as **Version 1, tagged BOTH "Production version" and "Currently editing"**, on the first try, no
+schema-error loop, nothing. This is almost certainly what was actually wrong on the OLD collector
+too (all of last night's "Update schema" / "Save to production" loop) — never confirmed after the
+fact since a fresh collector was faster than diagnosing the old one further, but the symptom match
+is exact and this fix is now the first thing to check if this ever happens again on any collector.
+**New collector's ID**: `c_mtyf4w2z1ag3eu3n1u` (visible in its own "Initiate by API" tab).
+
+**2. The actual Bright Data API in use is NOT what tonight's earlier `bright_data_client.py`
+rewrite guessed.** That rewrite (see the entry above, "found the description field") assumed the
+"Web Scraper API" (`datasets/v3/trigger` + `/progress/{id}` + `/snapshot/{id}`) based on Bright
+Data's public GitHub reference — reasonable given this sandbox can't reach docs.brightdata.com to
+check, but **wrong for this specific collector type**. Confirmed directly off the new collector's
+own "Initiate by API" tab (real curl examples, not a doc guess): this is the older **Data Collector
+API** instead —
+```
+POST https://api.brightdata.com/dca/trigger?collector={COLLECTOR_ID}&queue_next=1
+     body: [{"url": ...}]   (not {"input": [...]})
+GET  https://api.brightdata.com/dca/dataset?id={JOB_ID}
+```
+No separate "dataset_id" concept at all — the identifier is the collector's own `c_...` id, and the
+job id returned by the trigger call's exact JSON field name wasn't independently confirmed (only
+seen in the curl example), so the fix tries several plausible key names defensively
+(`collection_id`/`response_id`/`job_id`/`id`) rather than guess one blind — same hedging pattern
+this file already used for the description field name.
+
+**Fixed for real** (`common/dorin_common/bright_data_client.py`, commit `ec69f99`): rewrote
+`_trigger_and_fetch_first_row` to use the real `/dca/...` endpoints. Renamed
+`BRIGHT_DATA_DATASET_ID` → `BRIGHT_DATA_COLLECTOR_ID` everywhere it appeared (Helm `values.yaml`/
+templates, CI/CD workflow, `.env.example`) since "dataset_id" no longer describes what this is —
+a safe rename since the old var was never actually set in production (`is_configured()` was always
+false until now). Public function signatures unchanged, so no call site elsewhere needed touching.
+684 tests passing.
+
+**Now genuinely ready for the owner to flip on for real** — the one remaining step is purely
+configuration, no more code or Bright Data UI work needed:
+1. Set `BRIGHT_DATA_API_KEY` (the account's existing API key/token) and
+   `BRIGHT_DATA_COLLECTOR_ID=c_mtyf4w2z1ag3eu3n1u` as GitHub repo secrets (`Settings → Secrets and
+   variables → Actions`) — matching how `BRIGHT_DATA_DESCRIPTION_FIELD` and other optional secrets
+   are already set up per `.github/workflows/ci-cd.yaml`.
+2. Push (or re-run the existing CI/CD workflow) so the new secrets actually reach the scraper and
+   website pods — no code change needed to trigger this, any deploy picks it up.
+3. Watch the next real scrape run's summary log for `bright_data_enriched` (a new key added to
+   `run_once()`'s summary dict tonight) to confirm real listings are actually getting enriched, not
+   just that the config is present.
+Once that's live, the cost/completeness tradeoff already discussed and agreed with the owner tonight
+(pay ~$0.0015/page-load — confirmed exact real rate, see the entry above — to get a full
+description on every new listing at discovery time, not just ones a paying user later sees) takes
+effect automatically, with zero further code changes.

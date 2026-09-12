@@ -10,12 +10,22 @@ import sys
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from dorin_common import bright_data_client
 from dorin_common.db import get_session
 from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
-from normalize import normalize
+from normalize import _compute_detail_updates, normalize
 from notifier import run_notifications
 from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_all_listings
+
+# 2026-09-12: how many fetch_listing_detail_via_bright_data calls run concurrently when enriching
+# a batch of newly-discovered listings. Each call is a real blocking trigger->poll->snapshot round
+# trip (up to _POLL_TIMEOUT_SECONDS ~45s in the worst case, see bright_data_client.py) — running
+# them one at a time would make a scrape run with many new listings unacceptably slow; running ALL
+# of them at once risks hammering Bright Data's API with an unbounded burst. 5 is a starting guess
+# at "meaningfully parallel but not abusive", not a documented Bright Data rate limit — revisit if
+# real usage shows it's too low (slow runs) or too high (errors/throttling).
+_BRIGHT_DATA_ENRICH_CONCURRENCY = 5
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 # httpx's own "httpx" logger emits an INFO line per request with the FULL request URL — including
@@ -74,6 +84,74 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
 
     session.commit()
     return new_ids, price_change_events
+
+
+async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> int:
+    """For every listing genuinely new to the DB this run (never for one already known — an
+    already-known listing already got this exactly once, on the run it first appeared, and the
+    result is cached on Listing.description/etc forever), fetches the full listing-detail record
+    from Bright Data's Scraper Studio collector and applies normalize._compute_detail_updates'
+    fields (description, property type, amenities, floor_total, move-in date, real photos, broker
+    status) straight onto that row.
+
+    A no-op (returns 0 immediately, no network calls) when Bright Data isn't configured
+    (BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID unset) — see bright_data_client.is_configured() —
+    so this is always safe to call regardless of whether the feature is actually turned on yet.
+
+    Runs the actual per-listing fetches concurrently (bounded by _BRIGHT_DATA_ENRICH_CONCURRENCY)
+    via asyncio.to_thread, since fetch_listing_detail_via_bright_data is blocking/synchronous (real
+    network calls + a polling wait, same contract as fetch_listing_description elsewhere in this
+    codebase) — see that function's own docstring. Deliberately best-effort per listing: one whose
+    fetch fails, times out, or returns nothing usable simply keeps its already-normalized
+    (search-card-only) fields, exactly as every listing always could before this feature existed —
+    never blocks or fails the whole run over one bad fetch.
+
+    Returns how many listings were actually enriched (Bright Data returned usable data for)."""
+    if not new_ids or not bright_data_client.is_configured():
+        return 0
+
+    table = Listing.__table__
+    # Plain (id, url) rows via Core, NOT ORM `Listing` objects — this session's factory is
+    # expire_on_commit=False (see dorin_common/db.py), so an ORM object loaded here would sit in
+    # the identity map with its PRE-enrichment values and get handed back as-is to run_once()'s own
+    # later `select(Listing)` for the same ids, silently undoing this whole function's work. Same
+    # reason _upsert_listings/_mark_delisted already operate at the Core `table` level instead of
+    # through the ORM.
+    id_url_pairs = session.execute(
+        select(table.c.id, table.c.url).where(table.c.id.in_(new_ids))
+    ).all()
+    semaphore = asyncio.Semaphore(_BRIGHT_DATA_ENRICH_CONCURRENCY)
+
+    async def _fetch_one(listing_id: int, url: str) -> tuple[int, dict] | None:
+        async with semaphore:
+            detail = await asyncio.to_thread(
+                bright_data_client.fetch_listing_detail_via_bright_data, url
+            )
+        if detail is None:
+            return None
+        updates = _compute_detail_updates(detail)
+        return (listing_id, updates) if updates else None
+
+    results = await asyncio.gather(
+        *(_fetch_one(listing_id, url) for listing_id, url in id_url_pairs), return_exceptions=True
+    )
+
+    enriched_count = 0
+    for (listing_id, url), result in zip(id_url_pairs, results):
+        if isinstance(result, BaseException):
+            logger.exception(
+                "Bright Data enrichment failed for listing id=%s url=%s", listing_id, url,
+                exc_info=result,
+            )
+            continue
+        if result is None:
+            continue
+        _enriched_id, updates = result
+        session.execute(table.update().where(table.c.id == listing_id).values(**updates))
+        enriched_count += 1
+
+    session.commit()
+    return enriched_count
 
 
 def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
@@ -150,6 +228,12 @@ def run_once() -> dict[str, int]:
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, normalized_items)
 
+        # Before anything reads the new listings back out (delisting check doesn't touch them, but
+        # the notification step below does) — enriching first means notifications already carry
+        # the real description/photos/amenities instead of only the search-card fields. A no-op,
+        # fast, if Bright Data isn't configured yet (see that function's own docstring).
+        enriched_count = asyncio.run(_enrich_new_listings_via_bright_data(session, new_ids))
+
         delisted_count = 0
         if all_regions_succeeded and seen_external_ids:
             scraped_city_names = {item.city for item in normalized_items if item.city}
@@ -183,6 +267,7 @@ def run_once() -> dict[str, int]:
         summary = {
             "fetched": fetched,
             "new": len(new_listings),
+            "bright_data_enriched": enriched_count,
             "price_changes": len(price_change_events),
             "delisted": delisted_count,
             "errors": errors,

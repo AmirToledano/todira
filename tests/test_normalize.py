@@ -268,6 +268,52 @@ def test_enrich_missing_or_malformed_sections_degrade_gracefully_not_raise():
     assert result2.image_urls == []
 
 
+# Real record shape from Bright Data's Scraper Studio collector (2026-09-11/12, see
+# PROJECT_STATE.md) — field names (`additionalDetails`, `inProperty`, `metaData`, `customer`,
+# `searchText`) confirmed live against real Yad2 listing detail pages via that collector's own
+# Parser code, not invented. Same top-level shape as ZenRows' _REAL_DETAIL above (both read Yad2's
+# own __NEXT_DATA__, just via different scraping infrastructure) — this test is the concrete proof
+# that `enrich_from_detail` needs no translation layer to consume a Bright-Data-sourced record.
+_REAL_BRIGHT_DATA_DETAIL = {
+    "token": "dgne1po1",
+    "price": 9000,
+    "adType": "private",
+    "additionalDetails": {
+        "balconiesCount": 1,
+        "entranceDate": "2026-08-26T00:00:00",
+        "squareMeter": 65,
+        "roomsCount": 2.5,
+        "property": {"id": 43, "text": "סאבלט", "textEng": "sublet"},
+        "propertyCondition": {"id": 3, "text": "במצב שמור"},
+        "buildingTopFloor": 4,
+    },
+    "inProperty": {"includeAirconditioner": True, "includeElevator": True, "includeParking": False},
+    "customer": {"name": "פרטי"},
+    "searchText": "שם מוכר מירי נכס להשכרה מסוג דירה עם מספר חדרים 2 בקומה 4 בכתובת בורמה 38 קרית שלום",
+    "metaData": {
+        "coverImage": "https://img.yad2.co.il/Pic/1.jpeg",
+        "images": ["https://img.yad2.co.il/Pic/1.jpeg"],
+        "description": "דירת 2 חדרים מקסימה בקריית שלום! מוארת, מסודרת ונעימה באזור שקט ומבוקש",
+    },
+}
+
+
+def test_enrich_from_detail_consumes_a_real_bright_data_record_unchanged():
+    """Confirms enrich_from_detail needs no adapter/translation layer for a Bright-Data-sourced
+    record — the whole point of reusing it instead of writing a new mapping function (see
+    PROJECT_STATE.md's 2026-09-12 entry)."""
+    result = enrich_from_detail(_base_item(), _REAL_BRIGHT_DATA_DETAIL)
+    assert result.description.startswith("דירת 2 חדרים מקסימה")
+    assert result.floor_total == 4
+    assert result.has_elevator is True
+    assert result.has_parking is False
+    assert result.move_in_date.isoformat() == "2026-08-26"
+    assert result.image_urls == ["https://img.yad2.co.il/Pic/1.jpeg"]
+    # "sublet" isn't in _PROPERTY_TYPE_MAP (only "penthouse" is confirmed so far) — correctly
+    # stays None rather than guessed, same benefit-of-the-doubt policy as everywhere else.
+    assert result.property_type is None
+
+
 # --- _enrich_from_feed_record / normalize()'s automatic feed-record enrichment (2026-09-02) ---
 # Shape below is trimmed from a real fetched Jerusalem search page (see
 # .github/workflows/diagnose-search-page-feed-shape.yaml's confirmed output), not invented.
