@@ -95,7 +95,7 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     status) straight onto that row.
 
     A no-op (returns 0 immediately, no network calls) when Bright Data isn't configured
-    (BRIGHT_DATA_API_KEY/BRIGHT_DATA_DATASET_ID unset) — see bright_data_client.is_configured() —
+    (BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID unset) — see bright_data_client.is_configured() —
     so this is always safe to call regardless of whether the feature is actually turned on yet.
 
     Runs the actual per-listing fetches concurrently (bounded by _BRIGHT_DATA_ENRICH_CONCURRENCY)

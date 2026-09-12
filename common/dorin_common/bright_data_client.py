@@ -1,10 +1,10 @@
-"""Bright Data Web Scraper API (datasets v3) client — fetches a Yad2 listing's own detail-page data
-for ONE listing at a time, ON DEMAND, only when it's worth the cost. Moved here from scraper/
-(2026-09-07) so website/main.py can call it too — the scraper and website pods are separate Docker
-images (see their own Dockerfiles), each copying only common/dorin_common/ plus their own
-directory, so a module used by both has to live here.
+"""Bright Data **Data Collector API** (`/dca/...`) client — fetches a Yad2 listing's own detail-
+page data for ONE listing at a time, ON DEMAND, only when it's worth the cost. Moved here from
+scraper/ (2026-09-07) so website/main.py can call it too — the scraper and website pods are
+separate Docker images (see their own Dockerfiles), each copying only common/dorin_common/ plus
+their own directory, so a module used by both has to live here.
 
-Two functions, same underlying trigger/poll/snapshot mechanics (`_trigger_and_fetch_first_row`):
+Two functions, same underlying trigger/poll mechanics (`_trigger_and_fetch_first_row`):
 `fetch_listing_description` (original) extracts just the free-text description string.
 `fetch_listing_detail_via_bright_data` (2026-09-12) returns the WHOLE raw record, for callers that
 want everything `normalize.enrich_from_detail` can use (property type, amenities, floor_total,
@@ -21,23 +21,35 @@ by a paying user, never the full scrape volume and never repeated per viewer.
 (`fetch_listing_detail_via_bright_data` isn't wired into either call site yet — see its own
 docstring and PROJECT_STATE.md for the different, discovery-time trigger it's meant for instead.)
 
-⚠️ PARTIALLY VERIFIED. The trigger/progress/snapshot flow below is read from Bright Data's own
-public GitHub reference (github.com/brightdata/skills, web-scraper-api.md — docs.brightdata.com
-itself is blocked by this sandbox's network egress, same restriction hit with Grow/Meshulam, see
-website/grow_client.py's own docstring), so the ENDPOINTS/REQUEST SHAPE are real, not guessed.
-The snapshot RECORD SHAPE, on the other hand, is now real and confirmed — not guessed — for a Yad2
-listing detail page specifically: field names like `additionalDetails`, `inProperty`, `metaData`,
-`customer`, `searchText` were read live off real listings via a Bright Data Scraper Studio
-collector's own Parser code, not invented (see PROJECT_STATE.md's 2026-09-11/12 entries). What's
-still genuinely unknown here is only account-specific, not shape-specific:
-  - BRIGHT_DATA_DATASET_ID has no value here on purpose — the Web Scraper API is dataset/scraper-
-    specific, not a generic "fetch any URL" endpoint. Needs that Scraper Studio collector actually
-    published to production with a real dataset_id, which goes in this env var.
+⚠️ CORRECTED 2026-09-12, now REAL not guessed. An earlier version of this file (same date) guessed
+at the "Web Scraper API" (`datasets/v3/...`) based on Bright Data's public GitHub reference —
+**wrong product**. The actual collector built and tested live tonight (a Scraper Studio "custom
+code" collector) uses the older **Data Collector API** instead, confirmed directly off that
+collector's own "Initiate by API" tab (not a doc guess):
+  - Trigger: `POST https://api.brightdata.com/dca/trigger?collector={COLLECTOR_ID}&queue_next=1`,
+    body `[{"url": ...}]`, header `Authorization: Bearer {API_KEY}` — starts a job, returns some
+    job/collection id in the response body (exact key name not yet independently confirmed against
+    real JSON, only seen in a curl example — tried defensively below against a few plausible names,
+    same hedge-with-fallback-keys approach as the description field already uses).
+  - Retrieve: `GET https://api.brightdata.com/dca/dataset?id={JOB_ID}` — returns the result once
+    the job (a real browser page visit) has finished; empty/absent while still running, so this is
+    polled the same way the old snapshot-status endpoint was.
+The collector's RECORD SHAPE, unlike the endpoints, was already real and confirmed before this
+correction — not guessed — for a Yad2 listing detail page specifically: field names like
+`additionalDetails`, `inProperty`, `metaData`, `customer`, `searchText` were read live off real
+listings via that collector's own Parser code (see PROJECT_STATE.md's 2026-09-11/12 entries).
+
+What's still genuinely unknown here is account-specific, not shape-specific:
+  - BRIGHT_DATA_COLLECTOR_ID has no value here on purpose — needs the owner's own collector id
+    (`c_...`, visible on its "Initiate by API" tab) filled in.
+  - The trigger response's real job-id field name, if it turns out not to be one of the fallback
+    keys tried — the first real trigger call's raw response is logged either way, so that's easy to
+    add once seen.
   - The snapshot JSON's field name for the description text, if it differs from the confirmed
     `description`/`searchText` (e.g. a custom Parser output schema uses another name) —
     BRIGHT_DATA_DESCRIPTION_FIELD lets the owner override it; this also tries the confirmed
     fallback keys either way.
-Both BRIGHT_DATA_API_KEY and BRIGHT_DATA_DATASET_ID are required together; unset (the default) =
+Both BRIGHT_DATA_API_KEY and BRIGHT_DATA_COLLECTOR_ID are required together; unset (the default) =
 both functions always return None immediately, same as before this feature existed.
 """
 from __future__ import annotations
@@ -51,37 +63,54 @@ import httpx
 logger = logging.getLogger(__name__)
 
 API_KEY_ENV_VAR = "BRIGHT_DATA_API_KEY"
-DATASET_ID_ENV_VAR = "BRIGHT_DATA_DATASET_ID"
+COLLECTOR_ID_ENV_VAR = "BRIGHT_DATA_COLLECTOR_ID"
 DESCRIPTION_FIELD_ENV_VAR = "BRIGHT_DATA_DESCRIPTION_FIELD"
 
-_TRIGGER_URL = "https://api.brightdata.com/datasets/v3/trigger"
-_PROGRESS_URL = "https://api.brightdata.com/datasets/v3/progress/{snapshot_id}"
-_SNAPSHOT_URL = "https://api.brightdata.com/datasets/v3/snapshot/{snapshot_id}"
+_TRIGGER_URL = "https://api.brightdata.com/dca/trigger"
+_RESULT_URL = "https://api.brightdata.com/dca/dataset"
 _REQUEST_TIMEOUT_SECONDS = 15.0
 _POLL_INTERVAL_SECONDS = 3.0
-# A scrape run shouldn't hang indefinitely on one slow fetch — 45s is a guess at "generous but
-# bounded", not a documented Bright Data SLA (async jobs have "no stated limit" per the reference
-# above). Times out to None (same as any other failure) rather than blocking the run forever.
-_POLL_TIMEOUT_SECONDS = 45.0
+# A scrape run shouldn't hang indefinitely on one slow fetch — 60s is a guess at "generous but
+# bounded" for a job that does a real browser page visit (confirmed live tonight to reliably take
+# well under this), not a documented Bright Data SLA. Times out to None (same as any other
+# failure) rather than blocking the run forever.
+_POLL_TIMEOUT_SECONDS = 60.0
 
 
 def is_configured() -> bool:
     return bool(
         os.environ.get(API_KEY_ENV_VAR, "").strip()
-        and os.environ.get(DATASET_ID_ENV_VAR, "").strip()
+        and os.environ.get(COLLECTOR_ID_ENV_VAR, "").strip()
     )
 
 
+def _extract_job_id(body: object) -> str | None:
+    """The trigger response's real job/collection-id field name wasn't independently confirmed
+    against actual JSON (only seen in Bright Data's own curl example on the collector's "Initiate
+    by API" tab) — tries the plausible candidates rather than guess a single one blind, same hedge
+    this file already applies to the description field name."""
+    candidate = body
+    if isinstance(candidate, list) and candidate:
+        candidate = candidate[0]
+    if not isinstance(candidate, dict):
+        return None
+    for key in ("collection_id", "response_id", "job_id", "id"):
+        value = candidate.get(key)
+        if value:
+            return str(value)
+    return None
+
+
 def _trigger_and_fetch_first_row(url: str) -> dict | None:
-    """Shared trigger -> poll -> snapshot mechanics for both fetch_listing_description and
-    fetch_listing_detail_via_bright_data (2026-09-12 addition) — same Bright Data datasets/v3 API,
-    same blocking/synchronous contract, same "never raises" guarantee. Returns the first row of the
-    snapshot as a plain dict, or None on missing config, any request failure, a "failed" snapshot,
-    a poll timeout, an empty snapshot, or a non-dict row — every failure mode collapses to None so
-    callers never need their own separate error handling."""
+    """Shared trigger -> poll mechanics for both fetch_listing_description and
+    fetch_listing_detail_via_bright_data (2026-09-12 addition) — same Bright Data Data Collector
+    API, same blocking/synchronous contract, same "never raises" guarantee. Returns the first row
+    of the result as a plain dict, or None on missing config, any request failure, an
+    unrecognizable trigger response, a poll timeout, an empty result, or a non-dict row — every
+    failure mode collapses to None so callers never need their own separate error handling."""
     api_key = os.environ.get(API_KEY_ENV_VAR, "").strip()
-    dataset_id = os.environ.get(DATASET_ID_ENV_VAR, "").strip()
-    if not (api_key and dataset_id):
+    collector_id = os.environ.get(COLLECTOR_ID_ENV_VAR, "").strip()
+    if not (api_key and collector_id):
         return None
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -89,57 +118,48 @@ def _trigger_and_fetch_first_row(url: str) -> dict | None:
     try:
         trigger_resp = httpx.post(
             _TRIGGER_URL,
-            params={"dataset_id": dataset_id, "format": "json"},
-            json={"input": [{"url": url}]},
+            params={"collector": collector_id, "queue_next": "1"},
+            json=[{"url": url}],
             headers=headers,
             timeout=_REQUEST_TIMEOUT_SECONDS,
         )
         trigger_resp.raise_for_status()
-        snapshot_id = trigger_resp.json()["snapshot_id"]
-    except (httpx.HTTPError, KeyError, ValueError):
-        logger.exception("Bright Data trigger call failed for %s", url)
+        job_id = _extract_job_id(trigger_resp.json())
+    except (httpx.HTTPError, ValueError):
+        logger.exception("Bright Data DCA trigger call failed for %s", url)
+        return None
+
+    if job_id is None:
+        logger.error(
+            "Bright Data DCA trigger response for %s had no recognizable job id: %r",
+            url, trigger_resp.text,
+        )
         return None
 
     deadline = time.monotonic() + _POLL_TIMEOUT_SECONDS
-    status = None
+    rows = None
     while time.monotonic() < deadline:
         try:
-            progress_resp = httpx.get(
-                _PROGRESS_URL.format(snapshot_id=snapshot_id), headers=headers,
+            result_resp = httpx.get(
+                _RESULT_URL, params={"id": job_id}, headers=headers,
                 timeout=_REQUEST_TIMEOUT_SECONDS,
             )
-            progress_resp.raise_for_status()
-            status = progress_resp.json().get("status")
+            result_resp.raise_for_status()
+            rows = result_resp.json()
         except (httpx.HTTPError, ValueError):
-            logger.exception("Bright Data progress poll failed for snapshot %s (%s)", snapshot_id, url)
+            logger.exception("Bright Data DCA result poll failed for job %s (%s)", job_id, url)
             return None
-        if status in ("ready", "failed"):
+        if rows:
             break
         time.sleep(_POLL_INTERVAL_SECONDS)
 
-    if status != "ready":
-        logger.error(
-            "Bright Data snapshot %s for %s did not become ready in time (last status=%s)",
-            snapshot_id, url, status,
-        )
-        return None
-
-    try:
-        snapshot_resp = httpx.get(
-            _SNAPSHOT_URL.format(snapshot_id=snapshot_id),
-            params={"format": "json"},
-            headers=headers,
-            timeout=_REQUEST_TIMEOUT_SECONDS,
-        )
-        snapshot_resp.raise_for_status()
-        rows = snapshot_resp.json()
-    except (httpx.HTTPError, ValueError):
-        logger.exception("Bright Data snapshot fetch failed for %s (%s)", snapshot_id, url)
-        return None
-
-    logger.info("Bright Data raw snapshot for %s: %r", url, rows)
     if not rows:
+        logger.error(
+            "Bright Data DCA job %s for %s did not produce a result in time", job_id, url,
+        )
         return None
+
+    logger.info("Bright Data DCA raw result for %s: %r", url, rows)
     row = rows[0] if isinstance(rows, list) else rows
     return row if isinstance(row, dict) else None
 
@@ -148,9 +168,9 @@ def fetch_listing_description(url: str) -> str | None:
     """Synchronous and BLOCKING (real network calls + a polling wait) — callers on an event loop
     MUST run this via asyncio.to_thread, same as every other blocking call in this codebase (see
     e.g. dorin_common/cards.py's _build_collage_sync docstring for why). Returns None on missing
-    config, any request failure, a "failed" snapshot, or a poll timeout — never raises, and a
-    listing is always still sent without a description exactly as it always could before this
-    feature existed, never blocked on this call succeeding."""
+    config, any request failure, or a poll timeout — never raises, and a listing is always still
+    sent without a description exactly as it always could before this feature existed, never
+    blocked on this call succeeding."""
     row = _trigger_and_fetch_first_row(url)
     if row is None:
         return None

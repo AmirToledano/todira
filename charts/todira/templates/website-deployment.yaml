@@ -135,11 +135,11 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: bright-data-api-key
                   optional: true
-            - name: BRIGHT_DATA_DATASET_ID
+            - name: BRIGHT_DATA_COLLECTOR_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ .Release.Name }}-bot-secret
-                  key: bright-data-dataset-id
+                  key: bright-data-collector-id
                   optional: true
             - name: BRIGHT_DATA_DESCRIPTION_FIELD
               valueFrom:
