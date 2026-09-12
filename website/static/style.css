@@ -851,6 +851,13 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
   position: absolute; bottom: 64px; left: 0; width: 280px; max-width: calc(100vw - 32px);
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg); padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  /* 2026-09-12 fix: with ~16 toggle chips plus the font/reset/statement rows, the panel's own
+     content is taller than a phone viewport with the toggle button + some breathing room left
+     above/below it — with no cap here the panel simply grew past the top of the screen, and the
+     chips that scrolled off were completely unreachable (no scrollbar, nothing to grab). Capping
+     height and scrolling internally means every control stays reachable at any viewport height,
+     not just tall ones. */
+  max-height: calc(100vh - 96px); overflow-y: auto;
 }
 /* `display: flex` above (an author style) always beats the browser's own default
    `[hidden] { display: none }` UA rule, regardless of specificity — the SAME bug this project
@@ -915,6 +922,13 @@ html.a11y-no-motion *, html.a11y-no-motion *::before, html.a11y-no-motion *::aft
   background: rgba(217, 164, 65, .28); border-top: 2px solid var(--gold); border-bottom: 2px solid var(--gold);
   pointer-events: none; z-index: 199;
 }
+/* 2026-09-12 fix: base.html's mousemove handler only STOPS MOVING this element once the toggle
+   is off (`if (!root.classList.contains('a11y-reading-guide')) return;`) — it never hides or
+   removes the element itself, which base.html creates lazily on first use and never destroys. With
+   no rule tying this element's visibility to the toggle class, turning the feature off left the
+   bar frozen in place, fully visible, forever. Same bug, same fix shape, as the reading-mask rule
+   below. */
+html:not(.a11y-reading-guide) #a11y-reading-guide-bar { display: none; }
 
 /* 2026-09-06: the 9 rules below match a competitor's (Takbull) own accessibility toolbar, screenshot
    by the owner — filling real gaps between what we had and what theirs offers. */
@@ -952,6 +966,11 @@ html.a11y-big-cursor, html.a11y-big-cursor * {
 }
 #a11y-reading-mask-top { top: 0; }
 #a11y-reading-mask-bottom { bottom: 0; }
+/* 2026-09-12 fix: same bug as the reading-guide bar above — base.html's mousemove handler only
+   stops repositioning these two panels once the toggle is off, it never hides/removes them, so
+   with no rule tying visibility to the toggle class they stayed frozen on screen (whatever band
+   the pointer was last over) even after the user turned the mask off. */
+html:not(.a11y-reading-mask) .a11y-reading-mask-part { display: none; }
 
 html.a11y-justify-text main :where(p, li, blockquote) { text-align: justify; text-justify: inter-word; }
 
@@ -961,7 +980,11 @@ html.a11y-keyboard-nav *:focus {
 
 @media (max-width: 480px) {
   #a11y-widget { left: 10px; bottom: 10px; }
-  #a11y-panel { width: calc(100vw - 20px); }
+  /* Same overflow problem as the base #a11y-panel rule above, worse on a small phone: less room
+     above the toggle button to begin with, so the height cap needs to be tighter here too — plus
+     shrinking the chips themselves a bit so fewer of them actually need scrolling to reach. */
+  #a11y-panel { width: calc(100vw - 20px); max-height: calc(100vh - 80px); gap: 6px; padding: 10px; }
+  .a11y-toggle-chip { padding: 7px 10px; font-size: .82rem; }
 }
 
 /* ---------- dark-mode header toggle ---------- */
