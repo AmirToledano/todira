@@ -73,3 +73,33 @@ jobs:
           for v, label in options[:30]:
               print(f"   {v!r} -> {label.strip()!r}")
           PYEOF
+
+      - name: Verify the real results page the owner found live (nadlan/apartments-for-rent.asp
+          with real query params) at the cheapest tier first
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          check_one () {
+            label="$1"; url="$2"; shift 2
+            echo "=== $label ($url) [$*] ==="
+            curl -sS -D "/tmp/${label}.headers" -G "https://api.zenrows.com/v1/" \
+              --data-urlencode "apikey=$ZENROWS_API_KEY" \
+              --data-urlencode "url=$url" \
+              "$@" \
+              -o "/tmp/${label}.html" \
+              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+              --max-time 100 || echo "curl failed for $label"
+            grep -i -E "cost|credit" "/tmp/${label}.headers" 2>/dev/null || echo "(no cost headers)"
+            python3 - "$label" << 'PYEOF'
+          import re, sys
+          label = sys.argv[1]
+          with open(f'/tmp/{label}.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f"length={len(html)}")
+          print(f"'₪' occurrences: {len(re.findall(r'₪', html))}")
+          snippet = re.sub(r'\s+', ' ', html)[:1200]
+          print(f"snippet: {snippet}")
+          PYEOF
+            echo
+          }
+          check_one "komo_real_plain" "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes=1&cityName=ירושלים"
