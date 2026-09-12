@@ -17,7 +17,14 @@ name: Diagnose Komo + Homeless — reachability and page shape (read-only)
 # own static JS/CSS bundle files are almost never behind the same bot-protection as its HTML page
 # — they're static assets, often CDN-served. Fetching them with a PLAIN curl (no ZenRows at all)
 # costs zero credits, vs. routing everything through ZenRows. Only the actual HTML page fetch
-# (and, if truly needed, a real listing-data API call) should ever cost a credit.
+# should ever cost a credit.
+#
+# 2026-09-12, continued: Komo turned out to be an old-style ASP/jQuery server-rendered site (not a
+# modern JS-framework SPA) — no __NEXT_DATA__/__NUXT__, no map link, no obvious client-side fetch()
+# call for listings. The likely explanation for zero results on a bare /code/rent/ fetch is that
+# it's an empty search-results shell awaiting real query parameters (city/region), mirroring Yad2's
+# own ?city=<id> pattern — not a JS-rendering problem at all. This step inspects the page's own
+# <form> for real input/select names instead of guessing param names blind.
 on:
   workflow_dispatch: {}
 
@@ -25,84 +32,44 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Confirm both real URLs still work + real per-config cost (baseline, unchanged)
+      - name: Fetch Komo's rent page (1 credit, already-confirmed-cheap) and inspect its own
+          search form for real query-parameter names
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
-          mkdir -p /tmp/out
-          check_one () {
-            label="$1"; url="$2"; shift 2
-            echo "=== $label ($url) [$*] ==="
-            curl -sS -D "/tmp/out/${label}.headers" -G "https://api.zenrows.com/v1/" \
-              --data-urlencode "apikey=$ZENROWS_API_KEY" \
-              --data-urlencode "url=$url" \
-              "$@" \
-              -o "/tmp/out/${label}.html" \
-              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-              --max-time 100 || echo "curl failed for $label"
-            grep -i -E "cost|credit" "/tmp/out/${label}.headers" 2>/dev/null || echo "(no cost headers)"
-            echo
-          }
-          check_one "komo_rent" "https://www.komo.co.il/code/rent/"
-          check_one "homeless_rent" "https://www.homeless.co.il/rent/"
-
-      - name: Look for a Komo map-view link on the rent page (owner's tip — map APIs are often
-          cheap/unprotected JSON, same pattern as Yad2's own map)
-        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.komo.co.il/code/rent/" \
+            -o /tmp/komo_rent.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
           python3 - << 'PYEOF'
           import re
-          with open('/tmp/out/komo_rent.html', encoding='utf-8', errors='replace') as f:
+          with open('/tmp/komo_rent.html', encoding='utf-8', errors='replace') as f:
               html = f.read()
-          hrefs = set(re.findall(r'href="([^"]+)"', html))
-          mapish = sorted(h for h in hrefs if re.search(r'map|מפה|geo', h, re.I))
-          print(f"map-looking hrefs ({len(mapish)}):")
-          for h in mapish:
-              print(" ", h)
-          PYEOF
 
-      - name: Extract Komo's JS bundle URLs from the page, fetch them DIRECTLY (no ZenRows, $0),
-          and search for the real listing-data API endpoint (including map/geo endpoints)
-        run: |
-          python3 - << 'PYEOF'
-          import re
-          with open('/tmp/out/komo_rent.html', encoding='utf-8', errors='replace') as f:
-              html = f.read()
-          # Every <script src="...">, resolved to absolute URLs — these are almost always static
-          # assets servable with a plain request, not behind Komo's own anti-bot config.
-          srcs = re.findall(r'<script[^>]+src="([^"]+)"', html)
-          abs_srcs = []
-          for s in srcs:
-              if s.startswith('http'):
-                  abs_srcs.append(s)
-              elif s.startswith('//'):
-                  abs_srcs.append('https:' + s)
-              elif s.startswith('/'):
-                  abs_srcs.append('https://www.komo.co.il' + s)
-          # Keep the app's own bundles (skip obvious third-party analytics/font/ad scripts to save
-          # both fetch time and noise) — Komo's own domain, or a same-brand CDN.
-          own = [s for s in abs_srcs if 'komo.co.il' in s]
-          print(f"total script srcs: {len(srcs)}, own-domain: {len(own)}")
-          with open('/tmp/js_urls.txt', 'w') as f:
-              f.write('\n'.join(own))
-          for s in own:
-              print(" ", s)
-          PYEOF
+          # Every <form ...> block, with its action/method, and every named input/select inside it
+          # — the real, authoritative list of query-parameter names this page's own search actually
+          # submits, instead of guessing city=/ir=/azor=/etc. blind.
+          forms = re.findall(r'<form\b[^>]*>.*?</form>', html, re.S | re.I)
+          print(f"forms found: {len(forms)}")
+          for i, form in enumerate(forms, 1):
+              action = re.search(r'action="([^"]*)"', form)
+              method = re.search(r'method="([^"]*)"', form, re.I)
+              print(f"--- form {i}: action={action.group(1) if action else None} method={method.group(1) if method else 'GET'} ---")
+              names = re.findall(r'<(?:input|select)\b[^>]*\bname="([^"]+)"[^>]*>', form, re.I)
+              for n in names:
+                  print("   field:", n)
 
-      - name: Fetch each JS bundle directly (plain curl, zero ZenRows credits) and grep for API hints
-        run: |
-          mkdir -p /tmp/js
-          i=0
-          while IFS= read -r url; do
-            [ -z "$url" ] && continue
-            i=$((i+1))
-            echo "=== bundle $i: $url ==="
-            curl -sS -o "/tmp/js/bundle_$i.js" -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-              --max-time 30 "$url" || echo "plain fetch failed for $url"
-          done < /tmp/js_urls.txt
-          echo
-          echo "=== grepping all fetched bundles for API-endpoint-shaped strings (incl. map/geo) ==="
-          grep -oE '"(/[a-zA-Z0-9_/-]*(api|map|geo|marker|pin)[a-zA-Z0-9_/-]*)"' /tmp/js/*.js 2>/dev/null | sort -u | head -60
-          echo "--- fetch/axios/XHR call sites (context) ---"
-          grep -oE '.{0,40}(fetch\(|axios\.(get|post)\(|XMLHttpRequest).{0,80}' /tmp/js/*.js 2>/dev/null | head -40
-          echo "--- any absolute URL literals pointing at komo's own domain, other than the bundles themselves ---"
-          grep -oE 'https?://[a-zA-Z0-9_.-]*komo\.co\.il/[a-zA-Z0-9_/.-]*' /tmp/js/*.js 2>/dev/null | sort -u | head -40
+          if not forms:
+              print("--- no <form> tags at all; dumping any <select>/<input> with a name= anywhere on the page ---")
+              names = re.findall(r'<(?:input|select)\b[^>]*\bname="([^"]+)"[^>]*>', html, re.I)
+              for n in sorted(set(names)):
+                  print("   field:", n)
+
+          # Also look for any hardcoded city/region ID lists (e.g. <option value="5000">תל אביב</option>)
+          options = re.findall(r'<option[^>]*value="([^"]+)"[^>]*>([^<]{0,30})</option>', html, re.I)
+          print(f"\noption value/label pairs found: {len(options)} (first 30)")
+          for v, label in options[:30]:
+              print(f"   {v!r} -> {label.strip()!r}")
+          PYEOF
