@@ -5411,3 +5411,78 @@ What WAS added (`common/dorin_common/bright_data_client.py`):
    seen" to "fetch every new listing's full detail at discovery time, whether or not it ever
    matches anyone" — more complete, but not free, and nobody has explicitly signed off on that
    specific tradeoff yet (only on "combine ZenRows + Bright Data" at a conceptual level).
+
+## Update 2026-09-12 (continued): the Bright Data enrichment code is now WIRED IN — item 2 of
+## the "still not built" list from the entry above is done; items 1 and 3 remain
+
+Direct continuation. `scraper/main.py`'s `run_once()` now actually calls
+`fetch_listing_detail_via_bright_data` for every genuinely-new listing, right after
+`_upsert_listings`, before the notification step reads those listings back out — so once this is
+live, a brand-new listing's first notification already carries its real description/photos/
+amenities, not just the search-card fields.
+
+**Caught a real bug before it ever ran, worth flagging for future sessions touching this file**:
+this project's session factory is `expire_on_commit=False` (`dorin_common/db.py`) — a first draft
+that pre-loaded ORM `Listing` objects inside the new enrichment function, then updated the DB via
+Core `table.update()`, would have silently handed `run_once()`'s later notification query back the
+STALE pre-enrichment ORM objects from the session's identity map (Core-level updates don't touch
+ORM identity-map state, and nothing here calls `session.expire_all()`). Fixed by fetching plain
+`(id, url)` tuples via Core `select()` instead of ORM objects — the same reason `_upsert_listings`/
+`_mark_delisted` already avoid the ORM for exactly this kind of write. Added a dedicated regression
+test whose fake session has no `scalars()` method at all, so any future edit that reintroduces ORM
+objects here fails loudly (`AttributeError`) instead of silently reintroducing the staleness bug.
+
+Also refactored `normalize.py`: `enrich_from_detail`'s actual field-extraction logic is now
+`_compute_detail_updates(detail) -> dict`, a pure function of `detail` alone (it never actually
+read `item`'s existing fields to begin with — `item` was only ever the base for `.model_copy()`).
+`scraper/main.py` calls `_compute_detail_updates` directly to build the values dict for the ORM
+row's `table.update()`, instead of doing a wasteful (and, per the bug above, actively wrong)
+round-trip through a `NormalizedListing` rebuilt from the row's current values.
+
+Design specifics: bounded concurrency (`_BRIGHT_DATA_ENRICH_CONCURRENCY = 5`, via
+`asyncio.gather` + `asyncio.to_thread`, since `fetch_listing_detail_via_bright_data` is a blocking
+trigger/poll/snapshot round trip up to ~45s worst-case) — sequential per-listing calls would make a
+scrape run with many new listings unacceptably slow; unbounded parallelism risks hammering Bright
+Data's API. Best-effort per listing (`return_exceptions=True` on the gather): one listing whose
+fetch fails, times out, or raises is logged and skipped, never aborts the batch or the run. A
+complete no-op (0 network calls) while `bright_data_client.is_configured()` is false — exactly the
+state today, so this ships live with zero behavior change until the two items below are also done.
+New file `tests/test_scraper_bright_data_enrichment.py` (4 tests) + the normalize.py refactor kept
+all existing tests green. Full suite: **683 passed** (was 678). Committed as `4dd3fe1`.
+
+**Also resolved tonight, worth noting**: the credits-vs-dollars confusion from earlier in this
+session. Bright Data's "Free credits" (4,833/5,000 shown in their UI) are a **separate unit from
+real dollars**, NOT literally $4,833 as this session briefly and wrongly assumed out loud. Checked
+the account's own numbers directly: **1 credit = 1 page load = $0.0015** (confirmed via Bright
+Data's own "Free credits breakdown": 167 credits consumed exactly equals 167 page loads logged
+against the `scraper yad2.co.il` collector). So tonight's ENTIRE testing session cost about
+**25 cents** in real terms, and the ~4,833 remaining free credits are worth about **$7.25**, not
+$4,833. Real pricing for this exact collector type (Bright Data's own pricing page, Scraper Studio
+row, current Pay-as-you-go plan, no monthly commitment): **$1.50 per 1,000 page loads**. At the
+~150 new-listings/day estimate from the 2026-09-07 entry, that's roughly **$6-7/month** for the
+whole enrichment feature — compared favorably against ZenRows' own real per-request cost for this
+exact site (~$10.56/1,000, since yad2.co.il bills at ZenRows' expensive ~25-credit anti-bot tier
+regardless of settings — see the 2026-09-02 diagnostic referenced repeatedly above) and against
+Zyte/ScrapingBee/ScraperAPI/Oxylabs' comparable JS-rendering-plus-anti-bot tiers (checked live via
+web search — Bright Data's no-commitment rate here is already competitive with or cheaper than all
+of them at this project's actual, low volume). **Decision: stay on Bright Data** — chasing a
+possibly-marginal saving elsewhere isn't worth re-doing tonight's reliability validation from
+scratch on an unproven provider.
+
+**What's still not built** (unchanged from the two items the entry above already flagged — item 2
+from that list is now done, these two remain):
+1. **No production `dataset_id` exists yet.** The Scraper Studio collector used for every
+   diagnostic tonight is still a personal development-only draft in the owner's Bright Data
+   account — "Save to production" was never confirmed to stick (see the many entries above about
+   that button's own unreliability this session). Even once it does, its CURRENT Parser code
+   returns diagnostic/debug fields (`canary`, `item_debug`, `query_keys`, etc.), not the clean
+   item-record shape `fetch_listing_detail_via_bright_data` actually needs back from the snapshot
+   API (address, additionalDetails, inProperty, metaData, customer, price, token, searchText —
+   directly, no wrapper object). **The Parser code needs a final, non-diagnostic version** — just
+   `return $('script#__NEXT_DATA__')`'s parsed item query's `state.data` directly (or the specific
+   subset of it) — before `BRIGHT_DATA_DATASET_ID` can be set to anything real.
+2. **The cost/completeness tradeoff decision itself**: confirmed live with the owner tonight this
+   session (per the exchange above — real numbers now in hand: ~$6-7/month) that this is worth
+   doing. Nothing further blocks this one; it's the previous item (production collector +
+   dataset_id) that's the actual remaining gate before this whole feature does anything in
+   production.
