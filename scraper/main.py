@@ -11,6 +11,7 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from dedup import find_duplicate_listing
 from dorin_common import bright_data_client
 from dorin_common.db import get_session
 from dorin_common.enums import DealType, Source
@@ -62,7 +63,17 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
     bonus from the search page already being fetched, not a separate cost this function has to
     manage. An earlier version fetched a full per-listing detail page here for every genuinely new
     item (~25 ZenRows credits each, real recurring cost) — rejected once that cost was understood;
-    see PROJECT_STATE.md, 2026-09-02."""
+    see PROJECT_STATE.md, 2026-09-02.
+
+    2026-09-13: a genuinely new (source, external_id) pair is now also checked against
+    dedup.find_duplicate_listing before being inserted — see that module's own docstring for the
+    matching heuristic. A match sets duplicate_of_id on the new row (so it's excluded from
+    every "active listings" view query, see models.py's own docstring) and, deliberately, does
+    NOT add it to new_ids — no notification and no Bright Data enrichment for a row the user is
+    never shown as its own listing. Within one call, an EARLIER item in the same `normalized_items`
+    list that was just inserted (not yet committed) is still visible to a LATER item's duplicate
+    check — same session, same open transaction, no isolation gap — so cross-source duplicates
+    introduced in the same scrape run are still caught, not just ones from a previous run."""
     table = Listing.__table__
     new_ids: list[int] = []
     price_change_events: list[tuple[int, int]] = []
@@ -75,10 +86,13 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
         ).first()
 
         if existing is None:
-            row = session.execute(
-                pg_insert(table).values(**item.model_dump()).returning(table.c.id)
-            ).first()
-            new_ids.append(row[0])
+            duplicate_of_id = find_duplicate_listing(session, item)
+            values = item.model_dump()
+            if duplicate_of_id is not None:
+                values["duplicate_of_id"] = duplicate_of_id
+            row = session.execute(pg_insert(table).values(**values).returning(table.c.id)).first()
+            if duplicate_of_id is None:
+                new_ids.append(row[0])
             continue
 
         existing_id, old_price = existing

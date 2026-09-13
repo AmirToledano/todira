@@ -44,6 +44,11 @@ def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[bool, lis
             .where(UserListingAction.user_id == user.id)
             .where(UserListingAction.action == db_action)
             .where(Listing.is_delisted.is_(False))
+            # 2026-09-13 cross-source dedup — shouldn't be reachable in practice (a duplicate row
+            # is never shown as its own card to like in the first place, see apartments.py's own
+            # same filter), kept here too for defense in depth / consistency with every other
+            # "active listings" query. See models.py's Listing.duplicate_of_id docstring.
+            .where(Listing.duplicate_of_id.is_(None))
             .order_by(UserListingAction.created_at.desc())
             .limit(limit)
         )
