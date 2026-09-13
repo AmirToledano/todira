@@ -122,6 +122,18 @@ _OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]+)"')
 # about Komo's own page structure made it unavailable, unlike Yad2's search-results feed (which
 # genuinely has no description field at all, see normalize.py's own history).
 _DESCRIPTION_RE = re.compile(r'<meta name="Description" content="([^"]*)"', re.I)
+# Confirmed live 2026-09-13 (diagnose-komo-detail-images.yaml): the SAME sample listing
+# (modaaNum=4471462) really does have a real photo — `<meta property="og:image" content="/api/
+# modaot/tmunot/showPic/list/?picSize=b&picNum=25352812&luachNum=2">`, a relative path (needs
+# urljoin against DETAILS_PAGE_URL). The full page also has a `desktopPics`/`tmunotDesktop`
+# gallery with MORE real `<img>` tags for this same listing, but the live capture couldn't tell
+# apart genuine additional photos from desktop/mobile duplicates of the SAME picNum, or reliably
+# rule out a later "same ads" (recommended listings) carousel's own unrelated photos bleeding into
+# a naive page-wide <img> scrape — deliberately not attempted here. og:image alone is unambiguous
+# (a page's own og:image always describes ITSELF, never a sidebar recommendation) and turns every
+# Komo listing from 0 real photos to (at least) 1 — real, not a guess, just not yet the full
+# gallery. A real follow-up, not silently assumed complete.
+_OG_IMAGE_RE = re.compile(r'<meta property="og:image" content="([^"]+)"')
 _ROOMS_RE = re.compile(r"([\d.]+)\s*חדרים")
 # Matches the city name right after "חדרים" and Hebrew's own "ב" (=\"in\") prefix, up to the
 # comma that separates it from the street — e.g. "...2 חדרים  בירושלים, שערי ירושלים 5" ->
@@ -336,6 +348,13 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
     description_match = _DESCRIPTION_RE.search(page_html)
     description = html.unescape(description_match.group(1)).strip() if description_match else None
 
+    og_image_match = _OG_IMAGE_RE.search(page_html)
+    images = (
+        [urljoin(DETAILS_PAGE_URL, html.unescape(og_image_match.group(1)))]
+        if og_image_match
+        else []
+    )
+
     return {
         "id": modaa_num,
         "url": urljoin(DETAILS_PAGE_URL, f"?modaaNum={modaa_num}"),
@@ -344,6 +363,7 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
         "floor": floor,
         "square_meters": square_meters,
         "description": description,
+        "images": images,
         "street": street,
         "neighborhood": None,  # not present anywhere on Komo's own details page — see docstring
         "city": city,
