@@ -189,11 +189,12 @@ scraper:
   #   they were already meant as a safety margin, not a tight prediction.
   komoMaxNewDetailFetchesPerRun: 300
   yad2MaxPagesPerRegion: 5
-  # 2026-09-13: resumed after being suspended since 2026-09-03 (see the credit-budget comment
-  # above for the real numbers this resume is calibrated against). Flip back to `true` if the
-  # product needs to go dark again for any reason — a currently-running job, if any, still
-  # finishes, but no new one starts.
-  suspended: false
+  # 2026-09-13 EMERGENCY RE-SUSPEND: real users got Telegram notifications they should not have
+  # right after the resume above went live — the owner-only NOTIFICATIONS_SUSPENDED restriction
+  # did not behave as intended (or something else triggered a full-notification run). Re-suspended
+  # immediately pending investigation — do NOT flip back to `false` until the actual root cause is
+  # found and fixed, not just assumed fixed.
+  suspended: true
   # 2026-09-13: a resume after this long a pause would otherwise find many genuinely-new listings
   # on its very first run(s) and fire a real notification burst to every matching user's phone in
   # one shot, regardless of time of day — set true for the initial catch-up period. The scraper
