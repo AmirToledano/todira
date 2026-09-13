@@ -140,10 +140,28 @@ jobs:
           for h in hits[:5]:
               print("  ", h)
           print()
-          # Look for one full repeating listing-card block (a real <a href=".../rent/..."> wrapper)
-          # to see what real per-listing fields (rooms/floor/size/address) live alongside price.
-          card = re.search(r'<a[^>]+href="[^"]*/rent/[^"]*"[^>]*>.{0,600}', flat)
-          if card:
-              print("=== first candidate listing-card block ===")
-              print(card.group(0))
+          # 2026-09-13: the earlier "nearest /rent/ href" attempt matched nav/footer links, not a
+          # real listing card — a listing's own price text is likely wrapped in a card whose OWN
+          # link isn't necessarily to /rent/ itself (could be /rent/<id>/ or something else this
+          # project hasn't seen yet). Real approach: for each real price occurrence, walk BACKWARD
+          # to the nearest preceding <a href="..."> — that's almost certainly the card's own link,
+          # whatever its real URL shape turns out to be — and print from there through the price,
+          # so the actual repeating card structure (class names, id, rooms/floor/address fields) is
+          # visible instead of guessed.
+          price_matches = list(re.finditer(r'[\d,]{3,7}\s*₪', flat))
+          print(f"numeric price-like occurrences: {len(price_matches)}")
+          for m in price_matches[:3]:
+              window_start = max(0, m.start() - 1200)
+              window = flat[window_start:m.end() + 150]
+              hrefs = list(re.finditer(r'<a\b[^>]*href="([^"]*)"[^>]*>', window))
+              print("=== price occurrence ===")
+              if hrefs:
+                  last = hrefs[-1]
+                  print(f"  nearest preceding <a href>: {last.group(1)!r}")
+                  print("  markup from that link to the price:")
+                  print("   ", window[last.start():])
+              else:
+                  print("  no preceding <a href> found within 1200 chars — printing raw window:")
+                  print("   ", window)
+              print()
           PYEOF
