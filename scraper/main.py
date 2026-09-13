@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from typing import Callable
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -14,9 +15,13 @@ from dorin_common import bright_data_client
 from dorin_common.db import get_session
 from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
+from homeless_client import HomelessFetchError
+from homeless_client import fetch_search_results as fetch_homeless_results
+from komo_client import KomoFetchError, fetch_coordinate_ids
+from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import _compute_detail_updates, normalize
 from notifier import run_notifications
-from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_region_pages
+from yad2_client import CITY_SLUG_TO_HEBREW_NAME, REGION_SLUGS, Yad2FetchError, fetch_region_pages
 
 # 2026-09-12: how many fetch_listing_detail_via_bright_data calls run concurrently when enriching
 # a batch of newly-discovered listings. Each call is a real blocking trigger->poll->snapshot round
@@ -98,6 +103,13 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     (BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID unset) — see bright_data_client.is_configured() —
     so this is always safe to call regardless of whether the feature is actually turned on yet.
 
+    2026-09-13: scoped to source == Source.YAD2 only (now that `new_ids` can include Komo/Homeless
+    rows too — see run_once) — the Bright Data collector this calls is tied to one Scraper Studio
+    collector built specifically to parse a YAD2 listing detail page's DOM (see
+    bright_data_client.py's own module docstring); pointing it at a komo.co.il/homeless.co.il URL
+    would get nonsense or a hard failure, not real enrichment. Komo/Homeless don't need this
+    anyway — their own scrapers already get everything they support in one fetch.
+
     Runs the actual per-listing fetches concurrently (bounded by _BRIGHT_DATA_ENRICH_CONCURRENCY)
     via asyncio.to_thread, since fetch_listing_detail_via_bright_data is blocking/synchronous (real
     network calls + a polling wait, same contract as fetch_listing_description elsewhere in this
@@ -118,7 +130,9 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     # reason _upsert_listings/_mark_delisted already operate at the Core `table` level instead of
     # through the ORM.
     id_url_pairs = session.execute(
-        select(table.c.id, table.c.url).where(table.c.id.in_(new_ids))
+        select(table.c.id, table.c.url).where(
+            table.c.id.in_(new_ids), table.c.source == Source.YAD2
+        )
     ).all()
     semaphore = asyncio.Semaphore(_BRIGHT_DATA_ENRICH_CONCURRENCY)
 
@@ -154,11 +168,18 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     return enriched_count
 
 
-def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
-    """Mark previously-active listings that weren't seen in this (complete) run as delisted, and
-    un-delist any that reappeared. Scoped to `scraped_city_names` — the canonical Hebrew names
-    (see cities.canonicalize_city) of the cities actually REPRESENTED among this run's fetched
-    listings, NOT globally across every city this project tracks.
+def _mark_delisted(
+    session, source: str, seen_external_ids: set[str], scraped_city_names: set[str]
+) -> int:
+    """Mark previously-active listings FROM `source` that weren't seen in this (complete) run as
+    delisted, and un-delist any that reappeared. Scoped to `scraped_city_names` — the canonical
+    Hebrew names (see cities.canonicalize_city) of the cities actually REPRESENTED among this
+    run's fetched listings, NOT globally across every city this project tracks.
+
+    2026-09-13: generalized from Yad2-only to take an explicit `source` — Komo/Homeless each get
+    their own independent delisting pass (see run_once), never each other's or Yad2's, since a
+    listing "not seen" in Komo's own run says nothing about whether it's still active on Yad2 or
+    Homeless (their own scrapes are separate requests entirely, not a shared crawl).
 
     Since 2026-09-03 (see yad2_client.py's REGION_SLUGS/fetch_all_listings), a run no longer picks
     cities in advance — it fetches 7 broad regions and only learns which cities actually showed up
@@ -170,14 +191,14 @@ def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set
     scoping was still per-scraped-city): running delisting globally, or against cities the run
     didn't actually observe, wrongly delists everything elsewhere — found live via a production
     query showing literally every non-delisted listing in the whole table belonged to the one city
-    just scraped. Still only called when every region ATTEMPTED this run succeeded (see
-    run_once) — a partial fetch failure within that observed set must never be mistaken for
-    "everything in these cities disappeared"."""
+    just scraped. Still only called when every region/city ATTEMPTED this run for `source`
+    succeeded (see run_once) — a partial fetch failure within that observed set must never be
+    mistaken for "everything in these cities disappeared"."""
     table = Listing.__table__
     newly_delisted = session.execute(
         table.update()
         .where(
-            table.c.source == Source.YAD2,
+            table.c.source == source,
             table.c.is_delisted.is_(False),
             table.c.city.in_(scraped_city_names),
             table.c.external_id.notin_(seen_external_ids),
@@ -188,7 +209,7 @@ def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set
     session.execute(
         table.update()
         .where(
-            table.c.source == Source.YAD2,
+            table.c.source == source,
             table.c.is_delisted.is_(True),
             table.c.city.in_(scraped_city_names),
             table.c.external_id.in_(seen_external_ids),
@@ -199,44 +220,41 @@ def _mark_delisted(session, seen_external_ids: set[str], scraped_city_names: set
     return len(newly_delisted)
 
 
-def _fetch_known_yad2_external_ids() -> set[str]:
-    """Every Yad2 external_id this project already has, regardless of region/city — read once at
-    the start of a run and handed to fetch_region_pages for every region (see that function's own
-    docstring for why: it isn't scoped per-region, a listing's region isn't tracked separately).
+def _fetch_known_external_ids(source: str) -> set[str]:
+    """Every external_id this project already has FOR ONE SOURCE — read once at the start of a
+    run and handed to that source's own fetch loop, so it knows which ids are genuinely new vs.
+    already known (see fetch_region_pages'/each per-source scrape function's own docstring for why
+    each needs this). A short-lived read-only session, separate from the write session the rest of
+    run_once() opens later, since this needs to happen BEFORE the (potentially long, all-network)
+    fetch loop rather than interleaved with it.
 
-    2026-09-12: added alongside the switch to fetch_region_pages (see that function's module
-    comment in yad2_client.py) — a short-lived read-only session, separate from the write session
-    the rest of run_once() opens later, since this needs to happen BEFORE the (potentially long,
-    all-network) fetch loop rather than interleaved with it."""
+    2026-09-13: generalized from Yad2-only (added 2026-09-12 as _fetch_known_yad2_external_ids
+    alongside fetch_region_pages) to take an explicit `source`, for Komo/Homeless's own equivalent
+    needs."""
     table = Listing.__table__
     with get_session() as session:
-        return set(
-            session.scalars(
-                select(table.c.external_id).where(table.c.source == Source.YAD2)
-            )
-        )
+        return set(session.scalars(select(table.c.external_id).where(table.c.source == source)))
 
 
-def run_once() -> dict[str, int]:
-    logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
+def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
+    """Returns (normalized_items, seen_external_ids, fetched_count, error_count, all_succeeded) —
+    same shape every _scrape_* function returns, so run_once() can treat all three sources
+    uniformly. See fetch_region_pages' own docstring in yad2_client.py for the pagination/cost
+    reasoning."""
     fetched = 0
-    normalized_items = []
     errors = 0
+    normalized_items = []
     seen_external_ids: set[str] = set()
-    all_regions_succeeded = True
+    all_succeeded = True
 
-    # 2026-09-12: fetch_region_pages (not fetch_all_listings) — keeps paging a region's feed past
-    # page 1 until it's caught up to everything already known, instead of assuming one page always
-    # holds every listing posted since the last run. See that function's own module comment in
-    # yad2_client.py for the full reasoning/cost tradeoffs.
-    known_ids = _fetch_known_yad2_external_ids()
-
+    known_ids = _fetch_known_external_ids(Source.YAD2)
+    logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
     for region in REGION_SLUGS:
         logger.info("Fetching Yad2 listings for region=%s", region)
         try:
             for raw_item in fetch_region_pages(region, known_ids):
                 fetched += 1
-                normalized = normalize(raw_item, deal_type=DealType.RENT)
+                normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.RENT)
                 if normalized is not None:
                     normalized_items.append(normalized)
                     seen_external_ids.add(normalized.external_id)
@@ -247,26 +265,173 @@ def run_once() -> dict[str, int]:
                 "Failed to fetch Yad2 results for region=%s — skipping this region", region
             )
             errors += 1
-            all_regions_succeeded = False
+            all_succeeded = False
+
+    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
+
+
+def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
+    """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
+    shape as _scrape_yad2 — see that function and run_once() for how it's used.
+
+    Loops over EVERY city in CITY_SLUG_TO_HEBREW_NAME (cheap: 2 credits discovery per city,
+    confirmed live — see komo_client.py's own module docstring), not just a curated subset —
+    komo_client.fetch_coordinate_ids' own docstring flags a REAL, still-unconfirmed possibility
+    that Komo's coordinates endpoint returns nationwide results regardless of which city was
+    queried (one live sample spanned both Jerusalem- and Tel-Aviv-area coordinates for a
+    Jerusalem-only query). This function doesn't need to resolve that uncertainty to be correct
+    either way: `processed_this_run` (below) guards against re-fetching (and re-paying for) the
+    SAME listing's detail page more than once even if every city's coordinate list turns out to
+    be identical/overlapping — the only cost of looping over all 42 cities regardless is the cheap
+    2-credit discovery step repeated 42 times (~84 credits/run), not repeated detail fetches.
+
+    Unlike Yad2, a Komo listing's price/rooms/floor/etc. are NEVER refreshed for an
+    already-known external_id (the coordinates list carries no price at all — see
+    fetch_listing_detail's own module-docstring cost note) — only genuinely new ids get a detail
+    fetch. This means an existing Komo listing's price change is NOT currently detected by this
+    scraper (a real, documented gap — re-fetching every known listing's detail page each run would
+    cost 1 credit per already-known listing per run, rejected as wasteful without a real reason to
+    believe Komo prices change often enough to justify it; revisit if that assumption turns out
+    wrong). `seen_external_ids` still includes already-known ids (from the coordinates list, not a
+    detail fetch) so delisting stays correct regardless of this gap."""
+    fetched = 0
+    errors = 0
+    normalized_items = []
+    seen_external_ids: set[str] = set()
+    all_succeeded = True
+
+    known_ids = _fetch_known_external_ids(Source.KOMO)
+    processed_this_run: set[str] = set(known_ids)
+
+    logger.info("Scraping %d Komo cities this run", len(CITY_SLUG_TO_HEBREW_NAME))
+    for city in CITY_SLUG_TO_HEBREW_NAME:
+        logger.info("Fetching Komo coordinates for city=%s", city)
+        try:
+            coordinates = fetch_coordinate_ids(city)
+        except KomoFetchError:
+            logger.exception(
+                "Failed to fetch Komo coordinates for city=%s — skipping this city", city
+            )
+            errors += 1
+            all_succeeded = False
+            continue
+
+        for coordinate in coordinates:
+            modaa_num = coordinate.get("id")
+            if not modaa_num:
+                continue
+            modaa_num = str(modaa_num)
+            seen_external_ids.add(modaa_num)
+            if modaa_num in processed_this_run:
+                continue  # already known from a prior run, or already handled earlier this run
+            processed_this_run.add(modaa_num)
+
+            fetched += 1
+            detail = fetch_komo_listing_detail(modaa_num)
+            if detail is None:
+                errors += 1
+                continue
+            normalized = normalize(detail, source=Source.KOMO, deal_type=DealType.RENT)
+            if normalized is not None:
+                normalized_items.append(normalized)
+            else:
+                errors += 1
+
+    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
+
+
+def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
+    """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
+    shape as _scrape_yad2. Unlike Yad2/Komo, Homeless doesn't need a `known_ids` set at all — its
+    one plain fetch already returns full data (price/rooms/floor/street/city, all confirmed in the
+    same request — see homeless_client.py's own module docstring) for every listing currently on
+    the page, so an already-known listing's price gets refreshed for free every run, same as Yad2.
+
+    NOT yet confirmed (see homeless_client.py's own module docstring): whether homeless.co.il/rent/
+    paginates beyond what one fetch returns. If it does, this function currently only sees
+    whatever's on that one page — a real, documented open question, not a silent assumption of
+    full coverage."""
+    fetched = 0
+    errors = 0
+    normalized_items = []
+    seen_external_ids: set[str] = set()
+    all_succeeded = True
+
+    logger.info("Fetching Homeless listings")
+    try:
+        for raw_item in fetch_homeless_results():
+            fetched += 1
+            seen_external_ids.add(raw_item["id"])
+            normalized = normalize(raw_item, source=Source.HOMELESS, deal_type=DealType.RENT)
+            if normalized is not None:
+                normalized_items.append(normalized)
+            else:
+                errors += 1
+    except HomelessFetchError:
+        logger.exception("Failed to fetch Homeless listings — skipping this source this run")
+        errors += 1
+        all_succeeded = False
+
+    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
+
+
+# 2026-09-13: one entry per source this project scrapes — each a (source, scrape_fn) pair, where
+# scrape_fn takes no arguments and returns _scrape_yad2's own (normalized_items, seen_external_ids,
+# fetched, errors, all_succeeded) shape. run_once() below loops over this list generically instead
+# of three copy-pasted blocks, so adding a fourth source later means one line here, not editing
+# run_once() itself. Order doesn't matter (each source's upsert/delisting is independent; only
+# notifications run once at the end, over ALL sources' new listings/price changes combined).
+_SOURCE_SCRAPERS: tuple[tuple[str, Callable[[], tuple]], ...] = (
+    (Source.YAD2, _scrape_yad2),
+    (Source.KOMO, _scrape_komo),
+    (Source.HOMELESS, _scrape_homeless),
+)
+
+
+def run_once() -> dict[str, int]:
+    fetched = 0
+    errors = 0
+    all_normalized_items = []
+    # Per-source (seen_external_ids, scraped_city_names, all_succeeded) — delisting runs once per
+    # source, right after that source's own upsert, using ONLY that source's own results (see
+    # _mark_delisted's own docstring for why Komo/Homeless/Yad2 must never share each other's
+    # "seen" sets — a listing "not seen" in Komo's run says nothing about Yad2/Homeless).
+    per_source_delisting_input: dict[str, tuple[set[str], set[str], bool]] = {}
+
+    for source, scrape_fn in _SOURCE_SCRAPERS:
+        logger.info("Scraping source=%s", source)
+        normalized_items, seen_external_ids, source_fetched, source_errors, all_succeeded = (
+            scrape_fn()
+        )
+        fetched += source_fetched
+        errors += source_errors
+        all_normalized_items.extend(normalized_items)
+        scraped_city_names = {item.city for item in normalized_items if item.city}
+        per_source_delisting_input[source] = (seen_external_ids, scraped_city_names, all_succeeded)
 
     with get_session() as session:
-        new_ids, price_change_pairs = _upsert_listings(session, normalized_items)
+        new_ids, price_change_pairs = _upsert_listings(session, all_normalized_items)
 
         # Before anything reads the new listings back out (delisting check doesn't touch them, but
         # the notification step below does) — enriching first means notifications already carry
         # the real description/photos/amenities instead of only the search-card fields. A no-op,
-        # fast, if Bright Data isn't configured yet (see that function's own docstring).
+        # fast, if Bright Data isn't configured yet, or for any Komo/Homeless-sourced new_ids (see
+        # that function's own docstring — it filters to source == Source.YAD2 internally).
         enriched_count = asyncio.run(_enrich_new_listings_via_bright_data(session, new_ids))
 
         delisted_count = 0
-        if all_regions_succeeded and seen_external_ids:
-            scraped_city_names = {item.city for item in normalized_items if item.city}
-            delisted_count = _mark_delisted(session, seen_external_ids, scraped_city_names)
-        elif not all_regions_succeeded:
-            logger.warning(
-                "Skipping delisting check this run — at least one region failed to fetch, so the "
-                "seen-listings set is incomplete and can't be trusted for delisting."
-            )
+        for source, (seen_external_ids, scraped_city_names, all_succeeded) in (
+            per_source_delisting_input.items()
+        ):
+            if all_succeeded and seen_external_ids:
+                delisted_count += _mark_delisted(session, source, seen_external_ids, scraped_city_names)
+            elif not all_succeeded:
+                logger.warning(
+                    "Skipping delisting check this run for source=%s — at least one region/city "
+                    "failed to fetch, so the seen-listings set is incomplete and can't be trusted "
+                    "for delisting.",
+                    source,
+                )
 
         new_listings = (
             list(session.scalars(select(Listing).where(Listing.id.in_(new_ids))))
