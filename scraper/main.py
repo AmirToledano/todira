@@ -503,7 +503,7 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
             if external_id not in known_ids:
                 if new_description_fetches_this_run < max_new_description_fetches:
                     new_description_fetches_this_run += 1
-                    raw_item["description"] = fetch_homeless_description(external_id)
+                    raw_item["description"] = fetch_homeless_description(raw_item["url"])
                 elif not cap_logged:
                     logger.warning(
                         "Homeless hit its per-run new-description-fetch safety cap (%s=%d) — "

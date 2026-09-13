@@ -183,8 +183,12 @@ def test_scrape_homeless_fetches_description_only_for_genuinely_new_listings(mon
 
     description_calls = []
 
-    def _fake_fetch_description(external_id):
-        description_calls.append(external_id)
+    # 2026-09-13: scraper/main.py now passes the listing's own real url (raw_item["url"]), not
+    # the bare external_id — a bare id can no longer be reconstructed into the right detail-page
+    # URL (brokered "Tivuch" listings use a different path prefix). See homeless_client.py's own
+    # module docstring and _ROW_RE's comment for the real bug this fixed.
+    def _fake_fetch_description(url):
+        description_calls.append(url)
         return "תיאור אמיתי"
 
     monkeypatch.setattr(scraper_main, "fetch_homeless_description", _fake_fetch_description)
@@ -193,7 +197,8 @@ def test_scrape_homeless_fetches_description_only_for_genuinely_new_listings(mon
         scraper_main._scrape_homeless()
     )
 
-    assert description_calls == ["2"]  # only the genuinely-new one, never the already-known "1"
+    # only the genuinely-new one's URL, never the already-known "1"'s
+    assert description_calls == ["https://www.homeless.co.il/rent/viewad,2.aspx"]
     assert seen_external_ids == {"1", "2"}
     assert fetched == 2
     assert all_succeeded is True
@@ -215,8 +220,8 @@ def test_scrape_homeless_stops_new_description_fetches_at_the_cap(monkeypatch):
 
     description_calls = []
 
-    def _fake_fetch_description(external_id):
-        description_calls.append(external_id)
+    def _fake_fetch_description(url):
+        description_calls.append(url)
         return "תיאור אמיתי"
 
     monkeypatch.setattr(scraper_main, "fetch_homeless_description", _fake_fetch_description)
@@ -225,7 +230,11 @@ def test_scrape_homeless_stops_new_description_fetches_at_the_cap(monkeypatch):
         scraper_main._scrape_homeless()
     )
 
-    assert description_calls == ["1", "2"]  # capped at 2, never fetched the 3rd
+    # capped at 2, never fetched the 3rd
+    assert description_calls == [
+        "https://www.homeless.co.il/rent/viewad,1.aspx",
+        "https://www.homeless.co.il/rent/viewad,2.aspx",
+    ]
     assert seen_external_ids == {"1", "2", "3"}
     assert len(normalized_items) == 3
     assert all_succeeded is True

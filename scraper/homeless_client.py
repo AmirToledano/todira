@@ -77,15 +77,14 @@ import logging
 import os
 import re
 from typing import Any, Iterator
+from urllib.parse import urljoin
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 SEARCH_PAGE_URL = "https://www.homeless.co.il/rent/"
-# Confirmed live 2026-09-13 (diagnose-komo-gallery-and-homeless-description.yaml) — the same
-# real per-listing URL shape fetch_search_results already builds for each row's own "url" field.
-DETAIL_PAGE_URL_TEMPLATE = "https://www.homeless.co.il/rent/viewad,{external_id}.aspx"
+_DETAIL_PAGE_BASE = "https://www.homeless.co.il"
 
 ZENROWS_API_KEY_ENV_VAR = "ZENROWS_API_KEY"
 ZENROWS_FETCH_API_URL = "https://api.zenrows.com/v1/"
@@ -113,6 +112,29 @@ _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 # (https://uploads.homeless.co.il/rent/202609/300/nvFile5386664.jpg, see this module's own test
 # fixtures) that this regex simply threw away every single time. `[^"]*` (not `[^<]*`) since a src
 # URL can't contain `<` but the group must stop at the closing quote, not at some later `<`.
+#
+# 2026-09-13, same night, a SECOND real bug found the hard way (a real Telegram click that landed
+# on Homeless's own homepage instead of the listing): this project always built each listing's own
+# "url" field itself, as f"https://www.homeless.co.il/rent/viewad,{id}.aspx" — correct for the one
+# sample row ever tested (746758, a plain private listing) but WRONG for a real brokered listing
+# (confirmed live, diagnose-homeless-real-url-for-new-ids.yaml, id=83480): that row's own real
+# details link is `/RentTivuch/viewad,83480.aspx` — a DIFFERENT path prefix ("RentTivuch" =
+# rental-brokerage) than plain `/rent/`. Homeless's search results table interleaves both kinds of
+# listings, and there was never a way to tell them apart from the id alone. Fixed by capturing the
+# row's OWN real href (whatever prefix it actually uses) via `(?P<detail_path>[^"]+)` instead of
+# reconstructing it — `.*?` (non-greedy, DOTALL) between price and the href so this doesn't depend
+# on how many more columns (entry-date, update-date) sit in between, which may itself differ
+# between plain and Tivuch rows (see the docstring note below on that still-open question).
+#
+# KNOWN, CONFIRMED, NOT YET FIXED: that same real Tivuch row (id=83480) has NO floor column at all
+# between rooms and price (מרכז/וייצמן/4/50,000 ₪/מיידי/14-09-2026 — city, area, street, rooms,
+# PRICE directly, no floor) — a genuinely different column layout from the plain-listing shape this
+# regex still assumes. This means a Tivuch row's own floor/price fields, as extracted below, are
+# almost certainly WRONG (floor would capture the price string, price would capture the next
+# column's text) — a real, confirmed, separate gap from the URL bug just fixed, needing its own
+# dedicated investigation (telling Tivuch rows apart from plain ones, then a second column-order
+# regex for them) before it can be trusted. Not attempted in this pass — flagged here rather than
+# silently assumed away, matching this project's own "verify, don't guess" standard.
 _ROW_RE = re.compile(
     r'<tr[^>]*\bid="ad_(?P<id>\d+)"[^>]*>'
     r'<td[^>]*class="selectionarea"[^>]*>.*?</td>'
@@ -123,7 +145,8 @@ _ROW_RE = re.compile(
     r'<td[^>]*>(?P<street>[^<]*)</td>'
     r'<td[^>]*>(?P<rooms>[^<]*)</td>'
     r'<td[^>]*>(?P<floor>[^<]*)</td>'
-    r'<td[^>]*>(?P<price>[^<]*)</td>',
+    r'<td[^>]*>(?P<price>[^<]*)</td>'
+    r'.*?href="(?P<detail_path>[^"]+)"',
     re.S,
 )
 
@@ -220,10 +243,13 @@ def _parse_rows(search_html: str) -> Iterator[dict[str, Any]]:
         floor = _parse_int(match.group("floor"))
         neighborhood = _clean(match.group("neighborhood")) or None
         image_url = html.unescape(match.group("image_url")).strip()
+        # The row's own real href — /rent/ for a plain listing, /RentTivuch/ for a brokered one
+        # (confirmed live, see _ROW_RE's own comment) — never reconstructed from the id anymore.
+        detail_url = urljoin(_DETAIL_PAGE_BASE, html.unescape(match.group("detail_path")).strip())
 
         yield {
             "id": external_id,
-            "url": f"https://www.homeless.co.il/rent/viewad,{external_id}.aspx",
+            "url": detail_url,
             "price": _parse_price(match.group("price")),
             "rooms": rooms,
             "floor": floor,
@@ -244,20 +270,20 @@ def fetch_search_results() -> Iterator[dict[str, Any]]:
     yield from _parse_rows(search_html)
 
 
-def fetch_listing_description(external_id: str) -> str | None:
-    """Fetches ONE listing's own detail page and returns its real free-text description, or None
-    on ANY failure (missing API key, network error, non-200, no description found) — never raises,
-    same defensive contract as komo_client.fetch_listing_detail. This is genuinely OPTIONAL
-    enrichment, unlike Komo's price (see that module's own cost note): Homeless's search-results
-    row already has everything else this project needs, so a failed description fetch simply means
-    a listing without a description, exactly as before this feature existed."""
+def fetch_listing_description(url: str) -> str | None:
+    """Fetches ONE listing's own detail page (its real url, as returned by fetch_search_results —
+    see _ROW_RE's own comment on why this can no longer be reconstructed from the id alone: a
+    brokered listing's real path is /RentTivuch/, not /rent/) and returns its real free-text
+    description, or None on ANY failure (missing API key, network error, non-200, no description
+    found) — never raises, same defensive contract as komo_client.fetch_listing_detail. This is
+    genuinely OPTIONAL enrichment, unlike Komo's price (see that module's own cost note):
+    Homeless's search-results row already has everything else this project needs, so a failed
+    description fetch simply means a listing without a description, exactly as before this
+    feature existed."""
     try:
-        page_html = _zenrows_get(
-            DETAIL_PAGE_URL_TEMPLATE.format(external_id=external_id),
-            context_label=f"Homeless details id={external_id!r}",
-        )
+        page_html = _zenrows_get(url, context_label=f"Homeless details url={url!r}")
     except HomelessFetchError:
-        logger.exception("Failed to fetch Homeless listing detail page: id=%s", external_id)
+        logger.exception("Failed to fetch Homeless listing detail page: url=%s", url)
         return None
 
     match = _DESCRIPTION_RE.search(page_html) or _OG_DESCRIPTION_RE.search(page_html)
