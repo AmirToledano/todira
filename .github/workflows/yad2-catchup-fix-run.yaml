@@ -1,0 +1,157 @@
+name: Yad2 catch-up fix run — owner-only, un-caps Yad2 pages to self-heal wrong delistings
+
+# ONE-OFF, manual-only — added 2026-09-13, same night as safe-single-test-run.yaml.
+#
+# That workflow's YAD2_MAX_PAGES_PER_REGION=1 override (deliberately tiny, for the smallest
+# possible first test) had a real side effect: any real, still-active Yad2 listing beyond page 1
+# of its region wasn't in that run's seen_external_ids, so scraper/main.py's _mark_delisted marked
+# it (and 986 others) as delisted — hiding real active listings from real users. This is NOT
+# permanent (_mark_delisted un-delists any listing seen again on a later run — see its own
+# docstring), but nothing self-heals it automatically anymore now that the CronJob stays
+# permanently suspended (no more automatic runs) — a deliberate full-coverage Yad2 pass is needed.
+#
+# Real cost: Yad2 goes through Bright Data's ISP proxy — a flat $2/month, NOT metered per request
+# (see bright_data_client.py's own docstring) — so an uncapped pass costs NOTHING extra in
+# ZenRows/Bright Data credits, only time. Komo/Homeless stay capped at their normal safe defaults
+# (5 new-detail/description fetches) since they were never affected by this bug and don't need
+# touching, but the full pipeline still runs (no per-source skip mechanism exists, and there's no
+# real cost reason to add one just for this).
+#
+# Same two independent safety gates as safe-single-test-run.yaml (never touches spec.suspend, an
+# exact-phrase confirmation input, and a hard pre-check that OWNER_TELEGRAM_USER_ID's real secret
+# value is non-empty before creating anything) — copied rather than parameterizing that workflow,
+# so each one-off's real intent stays legible from its own file rather than a shared script with
+# conditional behavior.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >-
+          Type EXACTLY: I APPROVE THE YAD2 CATCHUP FIX RUN
+        required: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse unless the exact confirmation phrase was given
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "I APPROVE THE YAD2 CATCHUP FIX RUN" ]; then
+            echo "Confirmation phrase did not match exactly — refusing to run anything."
+            exit 1
+          fi
+          echo "Confirmation accepted."
+
+  run:
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Confirm the CronJob's OWN schedule is still suspended (informational — this workflow never changes it)
+        run: |
+          SUSPEND=$(kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}')
+          echo "todira-scraper CronJob spec.suspend = $SUSPEND (this workflow does not touch this field)"
+
+      - name: HARD GATE — refuse to proceed unless OWNER_TELEGRAM_USER_ID actually resolves to a real, non-empty value
+        run: |
+          OWNER_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' 2>/dev/null | base64 -d || echo "")
+          if [ -z "$OWNER_ID" ]; then
+            echo "REFUSING: owner-telegram-user-id is empty or missing in the live secret."
+            exit 1
+          fi
+          echo "owner-telegram-user-id resolves to a real, non-empty value — proceeding."
+
+      - name: Build a standalone Job from the CronJob's own template — Yad2 UNCAPPED, Komo/Homeless stay at their normal safe caps
+        run: |
+          JOB_NAME="todira-scraper-yad2-fix-$(date +%s)"
+          echo "JOB_NAME=$JOB_NAME" >> "$GITHUB_ENV"
+          kubectl create job "$JOB_NAME" --from=cronjob/todira-scraper -n todira --dry-run=client -o json > /tmp/job.json
+          python3 - /tmp/job.json << 'PYEOF'
+          import json, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              job = json.load(f)
+          env = job["spec"]["template"]["spec"]["containers"][0]["env"]
+
+          def force(name, value):
+              for entry in env:
+                  if entry["name"] == name:
+                      entry["value"] = value
+                      entry.pop("valueFrom", None)
+                      return
+              env.append({"name": name, "value": value})
+
+          force("NOTIFICATIONS_SUSPENDED", "true")
+          # 15 = fetch_region_pages' own built-in default (full real catch-up coverage per region),
+          # spelled out explicitly here rather than omitted, so this workflow's real intent doesn't
+          # depend on silently matching main.py's current default if that ever changes.
+          force("YAD2_MAX_PAGES_PER_REGION", "15")
+          force("KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN", "5")
+          force("HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN", "5")
+
+          with open(path, "w") as f:
+              json.dump(job, f)
+          print("Forced env overrides applied:", [e for e in env if e["name"] in (
+              "NOTIFICATIONS_SUSPENDED", "YAD2_MAX_PAGES_PER_REGION",
+              "KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN", "HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN",
+          )])
+          PYEOF
+          kubectl apply -f /tmp/job.json
+
+      - name: Wait for the pod to exist, then tail its logs in the background (survives pod deletion)
+        run: |
+          for i in $(seq 1 30); do
+            POD=$(kubectl get pods -n todira -l job-name="$JOB_NAME" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            [ -n "$POD" ] && break
+            sleep 1
+          done
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          if [ -n "$POD" ]; then
+            nohup bash -c '
+              for i in $(seq 1 60); do
+                kubectl logs -n todira "'"$POD"'" --timestamps -f >> /tmp/pod.log 2>&1 && break
+                sleep 1
+              done
+            ' > /tmp/tail_wrapper.log 2>&1 &
+          fi
+
+      - name: Poll the Job's own status until it reaches a real terminal condition (max 20 min — a full, uncapped Yad2 pass can take longer)
+        run: |
+          for i in $(seq 1 240); do
+            STATUS=$(kubectl get job "$JOB_NAME" -n todira -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null || echo "")
+            echo "poll $i: conditions=[$STATUS]"
+            if echo "$STATUS" | grep -qE "Complete|Failed"; then
+              echo "Reached terminal condition: $STATUS"
+              break
+            fi
+            sleep 5
+          done
+          sleep 3
+          echo "--- final job status ---"
+          kubectl get job "$JOB_NAME" -n todira -o wide
+
+      - name: Real captured logs — including main.py's own run-summary line (delisted count is the one to check)
+        run: |
+          echo "--- captured logs ---"
+          cat /tmp/pod.log 2>/dev/null || echo "(no logs captured)"
+          echo ""
+          echo "--- run-summary / notification-restriction lines specifically ---"
+          grep -iE "summary|notification|restricting|owner|bright_data_enriched|delisted" /tmp/pod.log 2>/dev/null || echo "(none found)"
+
+      - name: Confirm the CronJob's own schedule is STILL suspended after this run (this workflow must never change it)
+        if: always()
+        run: |
+          SUSPEND=$(kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}')
+          echo "todira-scraper CronJob spec.suspend = $SUSPEND"
+          if [ "$SUSPEND" != "true" ]; then
+            echo "::error::CronJob is NOT suspended after this run — this should be impossible, this workflow never touches that field. Investigate immediately."
+            exit 1
+          fi
