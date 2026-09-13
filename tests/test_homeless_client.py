@@ -80,6 +80,7 @@ def test_parse_rows_extracts_the_real_confirmed_row_without_neighborhood():
         "street": "דרך השלום",
         "neighborhood": None,
         "city": "תל אביב",
+        "images": ["https://uploads.homeless.co.il/rent/202609/300/nvFile5386664.jpg"],
     }
 
 
@@ -96,7 +97,29 @@ def test_parse_rows_extracts_the_real_confirmed_row_with_neighborhood():
         "street": "האלונים 4",
         "neighborhood": "כפר גנים",
         "city": "פתח תקווה",
+        "images": ["x.jpg"],
     }
+
+
+def test_parse_rows_empty_src_yields_no_images_not_a_placeholder():
+    # A blank src="" (a real possible shape — e.g. a listing with no uploaded photo yet) must
+    # degrade to an empty list, not a list containing an empty string.
+    row = (
+        '<tr onclick="openPopup(\'/rent/ViewDetails,1.aspx\');" id="ad_1" type="ad" '
+        'class="light" rel="boldad">'
+        '<td class="selectionarea"><input type="checkbox" /></td>'
+        '<td style="width:150px" ><div><img class="PictureDisplayOnBoard" src="" alt="" />'
+        '</div></td>'
+        '<td style="width:100px" >דירה</td>'
+        '<td style="width:100px" >חיפה</td>'
+        '<td style="width:100px" ></td>'
+        '<td style="width:100px" >הרצל</td>'
+        '<td style="width:80px" >3</td>'
+        '<td style="width:80px" >1</td>'
+        '<td style="width:100px" >4,000 ₪</td>'
+    )
+    items = list(_parse_rows(row))
+    assert items[0]["images"] == []
 
 
 def test_parse_rows_multiple_real_rows_in_one_page():
