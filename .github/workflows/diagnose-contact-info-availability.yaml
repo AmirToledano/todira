@@ -1,0 +1,109 @@
+name: Diagnose — is poster contact info (name/phone) already present in fetches we already do? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# Real owner question: building a real "contact person" section (name + WhatsApp/phone) in a new
+# website listing-detail drawer, matching dorin.app's own UX — but does it cost EXTRA fetches, or
+# is the contact info already sitting in pages this project already fetches for other reasons
+# (Yad2: Bright Data DCA description enrichment; Komo/Homeless: the mandatory per-new-listing
+# detail-page fetch)? Checks all three sources' ALREADY-FETCHED pages specifically for name/phone
+# markup, before deciding whether this feature needs any new per-listing cost at all.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  yad2-bright-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger + poll the SAME Bright Data DCA collector already used for descriptions, dump the FULL raw record
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
+        run: |
+          curl -sS -X POST "https://api.brightdata.com/dca/trigger?collector=${BRIGHT_DATA_COLLECTOR_ID}" \
+            -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '[{"url": "https://www.yad2.co.il/realestate/item/center-and-sharon/etfkmgb5"}]' \
+            -o /tmp/trigger.json -w "trigger http_status=%{http_code}\n" --max-time 30
+          cat /tmp/trigger.json
+          JOB_ID=$(python3 -c "import json; print(json.load(open('/tmp/trigger.json'))['collection_id'])")
+          echo "job_id=$JOB_ID"
+          for i in $(seq 1 20); do
+            curl -sS "https://api.brightdata.com/dca/dataset?id=${JOB_ID}" \
+              -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+              -o /tmp/result.json -w "poll $i http_status=%{http_code}\n" --max-time 30
+            SIZE=$(wc -c < /tmp/result.json)
+            echo "  result size: $SIZE bytes"
+            if [ "$SIZE" -gt 5 ]; then break; fi
+            sleep 3
+          done
+          echo "--- full raw record (searching for contact-ish fields) ---"
+          python3 - << 'PYEOF'
+          import json
+          with open('/tmp/result.json') as f:
+              data = json.load(f)
+          row = data[0] if isinstance(data, list) and data else data
+          print("Top-level keys:", list(row.keys()) if isinstance(row, dict) else type(row))
+          def hunt(obj, path=""):
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      lk = k.lower()
+                      if any(h in lk for h in ("phone", "contact", "customer", "agent", "name", "mobile", "tel")):
+                          print(f"  MATCH {path}.{k} = {v!r}"[:300])
+                      hunt(v, f"{path}.{k}")
+              elif isinstance(obj, list):
+                  for i, v in enumerate(obj[:3]):
+                      hunt(v, f"{path}[{i}]")
+          hunt(row)
+          PYEOF
+
+  komo-and-homeless:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Komo detail page — search for phone/agent-name markup in the ALREADY-fetched page
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.komo.co.il/code/nadlan/details/?modaaNum=4471462" \
+            -o /tmp/komo.html --max-time 60
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/komo.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+          # phone-number-shaped strings
+          phones = re.findall(r'0[\d\-\s]{8,12}\d', flat)
+          print(f"phone-shaped strings found: {len(set(phones))}")
+          for p in list(set(phones))[:10]:
+              print("  ", p)
+          # the "mefarsem" (publisher/poster) block already spotted in an earlier diagnostic
+          hits = re.findall(r'.{0,80}mefarsem.{0,400}', flat, re.I)
+          print(f"\n'mefarsem' (publisher) context hits: {len(hits)}")
+          for h in hits[:5]:
+              print("  ", h)
+          PYEOF
+
+      - name: Homeless detail page — search for phone/agent-name markup in the ALREADY-fetched page
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/viewad,746758.aspx" \
+            -o /tmp/homeless.html --max-time 60
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/homeless.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+          phones = re.findall(r'0[\d\-\s]{8,12}\d', flat)
+          print(f"phone-shaped strings found: {len(set(phones))}")
+          for p in list(set(phones))[:10]:
+              print("  ", p)
+          hits = re.findall(r'.{0,60}(?:מפרסם|בעל הנכס|איש קשר|contact|agent).{0,200}', flat, re.I)
+          print(f"\ncontact-label-ish hits: {len(hits)}")
+          for h in hits[:8]:
+              print("  ", h)
+          PYEOF
