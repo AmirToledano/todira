@@ -13,17 +13,22 @@ run delisted every listing from every OTHER city (their external_ids are never i
 run's seen_external_ids) — found live via a production query showing literally every non-delisted
 listing in the whole table belonged to the one city just scraped. The fix (scoping to
 scraped_city_names) still holds after the switch to region sweeps: run_once() now derives that set
-from the cities actually represented in a run's fetched listings, not from a fixed slug list, but
-_mark_delisted itself is unchanged — it just takes whatever city-name set it's given. No live DB is
-available in CI, so this doesn't execute against a real database - it inspects the *compiled SQL*
-of both UPDATE statements _mark_delisted builds, via a fake session that just records what it's
-asked to execute, and asserts each one's `city IN (...)` parameter is exactly the given set - never
-empty, never "everything"."""
+from the cities actually represented in a run's fetched listings, not from a fixed slug list.
+
+2026-09-13: _mark_delisted also now takes an explicit `source` (Komo/Homeless going live alongside
+Yad2 — see run_once()'s own _SOURCE_SCRAPERS list) — each source's delisting pass must never touch
+another source's rows, same reasoning as the city-scoping fix above, just one more dimension. No
+live DB is available in CI, so this doesn't execute against a real database - it inspects the
+*compiled SQL* of both UPDATE statements _mark_delisted builds, via a fake session that just
+records what it's asked to execute, and asserts each one's `city IN (...)` AND `source = ...`
+parameters are exactly what was passed - never empty, never "everything", never another source."""
 from __future__ import annotations
 
 import importlib.util
 import os
 from pathlib import Path
+
+from dorin_common.enums import Source
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
@@ -58,19 +63,30 @@ class _RecordingSession:
 
 def test_mark_delisted_scopes_both_updates_to_the_scraped_cities_only():
     session = _RecordingSession()
-    _mark_delisted(session, {"ext-1"}, {"קריית מוצקין"})
+    _mark_delisted(session, Source.YAD2, {"ext-1"}, {"קריית מוצקין"})
 
     assert len(session.executed) == 2  # delist pass + un-delist pass
     for stmt in session.executed:
         params = stmt.compile().params
         assert params["city_1"] == ["קריית מוצקין"]
+        assert params["source_1"] == Source.YAD2
 
 
 def test_mark_delisted_never_scopes_to_a_different_city_than_asked():
     session = _RecordingSession()
-    _mark_delisted(session, {"ext-1"}, {"תל אביב יפו", "רמת גן"})
+    _mark_delisted(session, Source.YAD2, {"ext-1"}, {"תל אביב יפו", "רמת גן"})
 
     for stmt in session.executed:
         params = stmt.compile().params
         assert set(params["city_1"]) == {"תל אביב יפו", "רמת גן"}
         assert "קריית מוצקין" not in params["city_1"]
+
+
+def test_mark_delisted_scopes_updates_to_the_given_source_only():
+    session = _RecordingSession()
+    _mark_delisted(session, Source.KOMO, {"ext-1"}, {"תל אביב יפו"})
+
+    assert len(session.executed) == 2
+    for stmt in session.executed:
+        params = stmt.compile().params
+        assert params["source_1"] == Source.KOMO
