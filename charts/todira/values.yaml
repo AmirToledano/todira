@@ -151,13 +151,50 @@ scraper:
   # ZenRows Build plan's 45,000/month with margin, no upgrade. Owner explicitly chose to stay on
   # the current $19/mo plan rather than spend more for a tighter interval (Launch, $58/mo, would
   # allow every 30 min — see PROJECT_STATE.md for the full frequency/cost table if that changes).
-  schedule: "0 8,10,12,14,16,18,20,22 * * *"
-  # 2026-09-03: frozen at the owner's explicit, urgent request — the product isn't ready to be
-  # live yet and every scheduled run spends real ZenRows credits regardless of whether anyone is
-  # actually using the site/bot. `suspend: true` on the CronJob (below) means k8s stops scheduling
-  # new runs entirely — a currently-running job, if any, still finishes, but no new one starts.
-  # Flip back to `false` (or delete this line) when ready to resume automatic scraping.
-  suspended: true
+  # 2026-09-13: temporarily cut from 8 runs/day to 1 (see the credit-budget block below for why) —
+  # the moment either the ZenRows plan renews, more credits are bought, or Yad2 fully moves off
+  # ZenRows onto Bright Data's ISP proxy, this should go back to
+  # "0 8,10,12,14,16,18,20,22 * * *" (kept here in this comment so restoring it doesn't mean
+  # reconstructing the original schedule from memory).
+  schedule: "0 8 * * *"
+  # 2026-09-13: real ZenRows dashboard check (owner's own screenshot) found only 7,218 credits
+  # left on the Build 45k plan, renewing 2026-10-01 (~18 days away) — 87% of the plan already used.
+  # At the schedule/sources active before tonight (8 runs/day, full 7-region Yad2 sweep + all-42-
+  # city Komo discovery every run, ~260 credits/run in steady state) that remaining balance would
+  # have lasted only ~3.5 days, not 18 — and that's BEFORE Komo's own first-ever production run,
+  # where every currently-active Komo listing nationwide looks "new" (no prior run ever populated
+  # known_ids for source=komo) and would each cost a real paid detail fetch with NO cap at all
+  # before tonight. This resume ships with real, permanent (not one-off) safety mechanisms in
+  # scraper/main.py to make the remaining budget actually last:
+  #   - komoMaxNewDetailFetchesPerRun below spreads Komo's national backlog across several runs
+  #     instead of paying for all of it in run #1.
+  #   - yad2MaxPagesPerRegion below temporarily tightens Yad2's own existing per-region catch-up
+  #     cap (fetch_region_pages' built-in default is 15 pages/region — up to 105 requests/2,625
+  #     credits worst case for a 7-region sweep) for the same reason.
+  #   - The schedule cut above (8/day -> 1/day) is the other big lever: 1x/day x 18 days at a
+  #     worst-case ~1,260-credit first run (see the two caps' own real math) plus a conservative
+  #     ~300-credit/day average after that is roughly 6,360 credits total — fits under 7,218 with
+  #     real margin, but is an ESTIMATE (Komo's true nationwide listing count and Yad2's true
+  #     10-day backlog size are both genuinely unknown) — watch the real ZenRows dashboard over the
+  #     next few days rather than trusting this number blindly, same "verify, don't assume"
+  #     standard as everywhere else in this project. Revert this schedule once safe to.
+  komoMaxNewDetailFetchesPerRun: 300
+  yad2MaxPagesPerRegion: 5
+  # 2026-09-13: resumed after being suspended since 2026-09-03 (see the credit-budget comment
+  # above for the real numbers this resume is calibrated against). Flip back to `true` if the
+  # product needs to go dark again for any reason — a currently-running job, if any, still
+  # finishes, but no new one starts.
+  suspended: false
+  # 2026-09-13: a resume after this long a pause would otherwise find many genuinely-new listings
+  # on its very first run(s) and fire a real notification burst to every matching user's phone in
+  # one shot, regardless of time of day — set true for the initial catch-up period. The scraper
+  # still does everything else exactly as normal (scrape/upsert/delist all run in full — see
+  # scraper/main.py's _notifications_suspended docstring) so the DB genuinely catches up to real
+  # current state; only the final notify step is skipped. Flip back to `false` once satisfied
+  # (check the scraper pod's own logs for the "skipping notifications for N new listing(s)" line to
+  # see how big each run's backlog actually was) that the catch-up is done and real-time
+  # notifications should resume.
+  notificationsSuspended: true
   # Proactive WhatsApp Message Template push (2026-09-08, scraper/notifier.py's own
   # _whatsapp_eligible) — the APPROVED template's exact name/language in Meta's WhatsApp Manager.
   # Not secret (a template name isn't a credential — whatsappAccessToken/whatsappPhoneNumberId
