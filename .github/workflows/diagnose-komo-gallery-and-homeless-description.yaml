@@ -1,0 +1,106 @@
+name: Diagnose — Komo's real photo gallery (vs same-ads) + Homeless's detail page description (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# Two independent, unrelated-to-Yad2/Bright-Data-ISP-proxy checks (safe to run any time, no
+# interaction with the currently-flagged Yad2 IP):
+#
+# 1. Komo (og:image already wired, PR #254) — the earlier live capture found MORE real <img> tags
+#    beyond og:image (in a desktopPics/tmunotDesktop block) but also a LATER "sameads-swiper" /
+#    cItemWrap block showing OTHER listings' own photos — a naive page-wide <img> scrape would
+#    pull in photos that don't belong to this listing at all. This isolates the real gallery block
+#    specifically (bounded by its own container markers) so a safe multi-photo extraction can
+#    actually be written, instead of guessed.
+# 2. Homeless (fetch_search_results has no description at all — confirmed, see
+#    homeless_client.py's own module docstring) — but each listing's OWN detail page
+#    (/rent/viewad,<id>.aspx, linked from the search table) has never been fetched or looked at.
+#    Checks whether IT carries a real free-text description, same discipline as everywhere else in
+#    this project (verify, don't assume it's simply unavailable).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Komo — isolate the real photo-gallery block vs the later same-ads block
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.komo.co.il/code/nadlan/details/?modaaNum=4471462" \
+            -o /tmp/komo.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          python3 - /tmp/komo.html << 'PYEOF'
+          import re, sys
+          with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+
+          # Where does the real gallery end and the same-ads carousel begin? Print the whole
+          # region from the listing's own container id through the first "sameads"/cItemWrap hit,
+          # so the real boundary is visible instead of guessed.
+          start = flat.find('modaaRow4471462')
+          sameads_idx = flat.find('sameads')
+          if sameads_idx == -1:
+              sameads_idx = flat.find('cItemWrap')
+          print(f"modaaRow4471462 at {start}, sameads/cItemWrap at {sameads_idx}")
+          if start != -1 and sameads_idx != -1 and sameads_idx > start:
+              region = flat[start:sameads_idx]
+              pics = re.findall(r'picNum=(\d+)', region)
+              print(f"picNum values between the listing's own container and the same-ads block: {sorted(set(pics))}")
+          elif start != -1:
+              region = flat[start:start + 4000]
+              pics = re.findall(r'picNum=(\d+)', region)
+              print(f"(no sameads/cItemWrap marker found after the container — first 4000 chars) picNum values: {sorted(set(pics))}")
+
+          # Full picture: EVERY picNum on the page, in order of first appearance, with a short
+          # marker of which named block each occurs in (desktopPics/tmunotDesktop vs
+          # sameads/cItemWrap vs neither) — settles which ids are really this listing's own.
+          for m in re.finditer(r'picNum=(\d+)', flat):
+              window_start = max(0, m.start() - 300)
+              context = flat[window_start:m.start()]
+              if 'sameads' in context or 'cItemWrap' in context:
+                  block = 'SAME-ADS (not this listing)'
+              elif 'desktopPics' in context or 'tmunotDesktop' in context:
+                  block = 'gallery (this listing)'
+              else:
+                  block = '(unclear block)'
+              print(f"  picNum={m.group(1)} -> {block}")
+          PYEOF
+
+      - name: Homeless — does the per-listing detail page (viewad,<id>.aspx) have a real description?
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/viewad,746758.aspx" \
+            -o /tmp/homeless_detail.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          python3 - /tmp/homeless_detail.html << 'PYEOF'
+          import re, sys
+          with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+
+          meta_desc = re.findall(r'<meta name="[Dd]escription" content="([^"]*)"', flat)
+          print(f"<meta name=Description> tags: {len(meta_desc)}")
+          for d in meta_desc[:3]:
+              print("  ", d[:200])
+
+          og_desc = re.findall(r'<meta property="og:description" content="([^"]*)"', flat)
+          print(f"<meta og:description> tags: {len(og_desc)}")
+          for d in og_desc[:3]:
+              print("  ", d[:200])
+
+          # A real free-text ad description block would likely sit in its own labeled div/section
+          # (e.g. "תיאור המודעה" / "פרטים נוספים" / "הערות") - loose search, real check.
+          label_hits = re.findall(r'.{0,60}(?:תיאור|פרטים נוספים|הערות).{0,300}', flat)
+          print(f"תיאור/פרטים נוספים/הערות label-ish hits: {len(label_hits)}")
+          for h in label_hits[:6]:
+              print("  ", h)
+          PYEOF
