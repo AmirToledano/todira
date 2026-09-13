@@ -1,0 +1,34 @@
+name: EMERGENCY — kill any running scraper Job right now
+
+# Manual-only (workflow_dispatch). Real incident 2026-09-13: users started receiving Telegram
+# notifications they should not have (NOTIFICATIONS_SUSPENDED/owner-only restriction not behaving
+# as intended, or an unexpected trigger) — this kills the currently-running scraper Job/Pod
+# immediately to stop further sends mid-run, before investigating the root cause.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  kill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v3.16.4"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Show current scraper jobs/pods before killing anything (real state, not assumed)
+        run: |
+          kubectl get jobs -n todira -l app=todira-scraper -o wide || true
+          echo "---"
+          kubectl get pods -n todira -l app=todira-scraper -o wide || true
+
+      - name: Delete every scraper Job (cascades to its Pod(s), stopping any in-progress run)
+        run: |
+          kubectl delete job -n todira -l app=todira-scraper --wait=true || true
+          echo "--- after delete ---"
+          kubectl get jobs -n todira -l app=todira-scraper -o wide || true
+          kubectl get pods -n todira -l app=todira-scraper -o wide || true
