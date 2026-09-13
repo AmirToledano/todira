@@ -1,0 +1,106 @@
+name: Diagnose Komo — does adscoordinates/list/ actually filter by city? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# komo_client.py's own module docstring already flags a real, unconfirmed observation: the one
+# live adscoordinates/list/ sample pulled during Komo's original build had lat/lng spanning BOTH
+# the Jerusalem area AND the Tel Aviv area despite the search page being requested with
+# cityName=ירושלים — suggesting this endpoint may not filter by city at all, and cityName might
+# only matter for issuing a fresh sessionToken (step 1), not for what step 2 actually returns.
+#
+# scraper/main.py's _scrape_komo() currently loops over all 42 tracked cities every run (2 real
+# ZenRows credits each just for discovery, ~84 credits/run) specifically BECAUSE this was never
+# deliberately tested — real question, asked explicitly by the owner tonight (2026-09-13): if one
+# city's query already returns the whole country's coordinates, querying 42 is pure waste; if Komo
+# genuinely filters by city, this loop is real cost, not error.
+#
+# Tests this directly: fetch a fresh sessionToken + coordinate id set for TWO cities on opposite
+# ends of the country (Jerusalem and Tel Aviv), then compare the two id SETS. If they're identical
+# or heavily overlapping, cityName doesn't meaningfully filter this endpoint. If they're disjoint
+# (or only lightly overlapping), it does. 4 real ZenRows credits total (2 search pages + 2
+# adscoordinates POSTs) — cheap, one-off, real answer either way.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch coordinate id sets for Jerusalem and Tel Aviv, compare them
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+          import re
+          import urllib.parse
+          import urllib.request
+
+          API_KEY = os.environ["ZENROWS_API_KEY"]
+          FETCH_URL = "https://api.zenrows.com/v1/"
+          SEARCH_URL = "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp"
+          COORDS_URL = "https://www.komo.co.il/api/modaotservice/adscoordinates/list/"
+
+          def zenrows_get(target_url, params=None):
+              qs = {"apikey": API_KEY, "url": target_url}
+              full = f"{FETCH_URL}?{urllib.parse.urlencode(qs)}"
+              req = urllib.request.Request(full, method="GET")
+              with urllib.request.urlopen(req, timeout=100) as resp:
+                  return resp.status, resp.read().decode("utf-8", errors="replace")
+
+          def zenrows_post(target_url, body):
+              qs = {"apikey": API_KEY, "url": target_url}
+              full = f"{FETCH_URL}?{urllib.parse.urlencode(qs)}"
+              data = urllib.parse.urlencode(body).encode()
+              req = urllib.request.Request(full, data=data, method="POST")
+              with urllib.request.urlopen(req, timeout=100) as resp:
+                  return resp.status, resp.read().decode("utf-8", errors="replace")
+
+          def fetch_coordinate_ids(city_hebrew):
+              search_target = f"{SEARCH_URL}?nehes=1&cityName={urllib.parse.quote(city_hebrew)}"
+              status, html = zenrows_get(search_target)
+              print(f"[{city_hebrew}] search page status={status} len={len(html)}")
+              m = re.search(r'sessionToken["\']?\s*[:=]\s*["\']?([A-Za-z0-9]{16,64})', html)
+              if not m:
+                  print(f"[{city_hebrew}] NO sessionToken found - real failure, not simulated")
+                  return None
+              token = m.group(1)
+              print(f"[{city_hebrew}] token={token}")
+              status, body = zenrows_post(COORDS_URL, {"iska": "1", "sessionToken": token})
+              print(f"[{city_hebrew}] coords POST status={status} len={len(body)}")
+              try:
+                  payload = json.loads(body)
+              except json.JSONDecodeError as e:
+                  print(f"[{city_hebrew}] not parseable JSON: {e}; first 300 chars: {body[:300]!r}")
+                  return None
+              items = payload.get("list") if isinstance(payload, dict) else None
+              if not isinstance(items, list):
+                  print(f"[{city_hebrew}] unexpected shape: {str(payload)[:300]!r}")
+                  return None
+              ids = {str(item.get("id")) for item in items if isinstance(item, dict) and item.get("id")}
+              print(f"[{city_hebrew}] real coordinate count={len(items)} unique ids={len(ids)}")
+              return ids
+
+          jerusalem_ids = fetch_coordinate_ids("ירושלים")
+          tel_aviv_ids = fetch_coordinate_ids("תל אביב יפו")
+
+          print("\n--- COMPARISON ---")
+          if jerusalem_ids is None or tel_aviv_ids is None:
+              print("Could not compare - at least one fetch failed for real (see above).")
+          else:
+              overlap = jerusalem_ids & tel_aviv_ids
+              only_jerusalem = jerusalem_ids - tel_aviv_ids
+              only_tel_aviv = tel_aviv_ids - jerusalem_ids
+              print(f"Jerusalem ids: {len(jerusalem_ids)}")
+              print(f"Tel Aviv ids: {len(tel_aviv_ids)}")
+              print(f"Overlap: {len(overlap)}")
+              print(f"Only in Jerusalem query: {len(only_jerusalem)}")
+              print(f"Only in Tel Aviv query: {len(only_tel_aviv)}")
+              if jerusalem_ids == tel_aviv_ids:
+                  print("VERDICT: IDENTICAL sets - cityName does NOT filter this endpoint at all.")
+              elif len(overlap) > 0.5 * min(len(jerusalem_ids), len(tel_aviv_ids)):
+                  print("VERDICT: heavy overlap - cityName likely does NOT meaningfully filter this endpoint.")
+              else:
+                  print("VERDICT: mostly disjoint - cityName DOES filter this endpoint for real.")
+          PYEOF

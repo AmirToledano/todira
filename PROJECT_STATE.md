@@ -5637,3 +5637,170 @@ entirely and re-checking out from `origin/main` explicitly (never a bare local b
 Lesson for future sessions: always operate against `origin/main` explicitly by name, never a bare
 local `main` (or any other local branch ref) that might be stale from earlier in a long session or
 a previous one.
+
+## Update 2026-09-13: Komo + Homeless wired into production, Yad2 pagination fixed, cross-source
+## dedup shipped, real ZenRows credit crisis found and mitigated, scraper RESUMED — and the real,
+## still-open state of the Yad2-onto-Bright-Data migration (owner explicitly asked this survive a
+## context compact — read this section first if picking that specific thread back up)
+
+A long, dense session. In order:
+
+**1. Komo (PR #226) and Homeless (PR #235) scrapers went live in scraper/main.py's run_once()**
+(PR #239) — previously built and merged as standalone, tested-but-unwired modules, now actually
+running every scrape. run_once() loops over a `_SOURCE_SCRAPERS = ((YAD2, _scrape_yad2), (KOMO,
+_scrape_komo), (HOMELESS, _scrape_homeless))` list; each returns the same (normalized_items,
+seen_external_ids, fetched, errors, all_succeeded) shape; `_mark_delisted` now takes an explicit
+`source` param so one source's delisting pass never touches another's rows. `_scrape_komo` loops
+ALL 42 tracked cities every run (cheap 2-credit discovery each; a `processed_this_run` set guards
+against double-paying for a detail fetch even if Komo's coordinates endpoint turns out to be
+nationwide regardless of queried city — still unconfirmed, see komo_client.py's own docstring).
+
+**2. Yad2's real pagination gap fixed** (already done in an earlier session, confirmed still
+correct here) — `fetch_region_pages` pages forward until a full page's cards are all already-known,
+not just reading page 1 forever.
+
+**3. Cross-source dedup shipped** (PR #242) — the original, long-standing explicit ask ("שלא יהיו
+כפילויות... שיזהה אם יש אותה דירה ואותו פרסום ויבחר מאיפה לקחת") finally addressed. New
+`Listing.duplicate_of_id` (migration 0011), set at INSERT time by `scraper/dedup.
+find_duplicate_listing`: same city + same normalized street + same rooms + same floor + price
+within 5%/150₪ tolerance, only against a DIFFERENT source's still-active still-canonical rows.
+Tie-break: whichever source's row exists first wins as canonical. A duplicate row still gets
+upserted/delisted normally but is excluded from `new_ids` (no notification, no Bright Data
+enrichment) and from every "active listings" view query (website/main.py, bot/handlers/
+apartments.py, bot/handlers/liked.py). **Known, deliberately unsolved gap**: if the canonical row
+later gets delisted while a still-live duplicate sibling exists, the sibling isn't promoted back
+to canonical — it stays hidden too. A real follow-up, not attempted (would need touching
+_mark_delisted's UPDATE logic to find-and-promote).
+
+**4. A real ZenRows credit crisis, found live, not assumed**: owner checked app.zenrows.com's own
+dashboard (real screenshot) — only **7,218 credits remain** on the Build 45k plan, renewing
+**2026-10-01** (~18 days away), 87% of the plan already used. The schedule/sources active before
+tonight (8 runs/day, full 7-region Yad2 sweep + all-42-city Komo discovery every run, ~260
+credits/run steady state) would have burned that remaining balance in **~3.5 days, not 18** — and
+that's BEFORE Komo's own first-ever production run, where every currently-active Komo listing
+nationwide looks "new" (no prior run ever populated known_ids for source=komo) and would each cost
+a real, previously-uncapped paid detail fetch.
+
+**5. Real, permanent safety mechanisms shipped in response** (PR #243), not a one-off workaround:
+- `KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN` (default 300, set via values.yaml
+  `komoMaxNewDetailFetchesPerRun`): caps Komo's new-listing detail fetches per run; a capped-out id
+  is simply retried next run (still counted in `seen_external_ids` so delisting stays correct).
+- `YAD2_MAX_PAGES_PER_REGION` (set to 5 via values.yaml `yad2MaxPagesPerRegion`, temporarily
+  tightening `fetch_region_pages`' own built-in default of 15) — caps Yad2's own catch-up cost per
+  region per run.
+- `NOTIFICATIONS_SUSPENDED` (values.yaml `notificationsSuspended: true`) — scrape/upsert/delist
+  still run in full every run (the DB genuinely catches up to real current state); only the actual
+  notification step is restricted.
+- Cron schedule cut from 8 runs/day to 1 (`schedule: "0 8 * * *"` — was
+  `"0 8,10,12,14,16,18,20,22 * * *"`, kept in the values.yaml comment for easy restoration).
+- Estimated real cost for the 18-day window under these settings: ~6,360 credits (worst-case
+  ~1,260-credit first run + a conservative ~300/day average after) — fits under 7,218 with margin,
+  but is a genuine ESTIMATE, not a guarantee (Komo's true nationwide listing count and Yad2's true
+  10-day backlog size are both unknown) — **watch the real ZenRows dashboard over the next few
+  days**, don't just trust this number.
+
+**6. Owner-only notification restriction** (PR #244, a same-night follow-up fix): the owner
+explicitly did NOT want a full notification skip during catch-up — he wants real Telegram pushes
+to keep landing on his OWN phone (to keep verifying the pipeline actually works end to end) while
+every other real user stays untouched. `run_notifications`/`_notify_new_matches`/
+`_notify_price_change` (scraper/notifier.py) now take an optional `only_telegram_user_id` kwarg;
+`run_once()` passes `OWNER_TELEGRAM_USER_ID` (already wired into the scraper pod's env) when
+`NOTIFICATIONS_SUSPENDED` is set, falling back to a full skip only if that env var isn't configured
+at all (since `only_telegram_user_id=None` means "no restriction", the opposite of intent).
+
+**7. scraper.suspended flipped back to `false`** — the scraper had been frozen since 2026-09-03
+(owner's own deliberate hold, "the product isn't ready to be live yet"). It is **live again now**,
+with the safety nets above, at 1 run/day (08:00 Israel time). Next real run: 2026-09-14 08:00 IL.
+
+---
+
+**8. THE YAD2-ONTO-BRIGHT-DATA MIGRATION — REAL CURRENT STATE (owner: "אל תשכח" — read this
+before touching this thread again, compact or no compact)**
+
+**Goal**: move Yad2 off ZenRows (expensive: ~25 credits/request, forced js_render+premium_proxy
+tier) onto Bright Data's ISP proxy (flat $2/month, confirmed genuinely unlimited bandwidth at the
+"Shared Unlimited" tier, zero per-request cost) via Yad2's own map-markers API
+(`gw.yad2.co.il/realestate-feed/rent/map`) instead of the HTML search-results page. This is the
+single biggest lever available for the ZenRows credit problem (section 4 above) — Yad2 alone is
+~175 of the ~260 credits/run steady-state cost.
+
+**What's CONFIRMED working, real, live-tested** (not guessed):
+- The map API returns rich per-listing JSON in one call: price, full address (street/house
+  number/floor), exact lat/lon, roomsCount, squareMeter, real photo URLs, `token` as external id.
+  `yad2_client.py`'s `fetch_map_markers`/`_marker_to_raw_item`/`_build_map_url` already implement
+  parsing this into the same flat shape `_parse_cards` yields — a REAL, TESTED, ready building
+  block (18+ tests), just not wired into `_scrape_yad2` yet.
+- Bright Data's ISP proxy (`bright_data_client.fetch_via_isp_proxy`, needs
+  BRIGHT_DATA_ISP_HOST/USER/PASS secrets — already set as real GitHub secrets) successfully
+  fetched this exact map API ONCE, live, with the EXACT request `area=1&region=3&bBox=
+  31.987679,34.732856,32.146966,34.857736&zoom=11` (Tel-Aviv-area, confirmed real values from the
+  owner's own DevTools) — 200 real markers, real prices, no block at all
+  (diagnose-yad2-isp-proxy.yaml, run 2026-09-13 ~00:55).
+- ZenRows REFUSES this endpoint outright at every tier (REQS002) — confirmed live, not a config
+  issue. Bright Data's Web Unlocker (`fetch_via_web_unlocker`) hit a real "no KYC" wall for every
+  bbox EXCEPT that one lucky exact one — full KYC needs a company email the owner doesn't have
+  (Gmail rejected as the domain, checked, doesn't matter which "business" category Gmail's own
+  onboarding flow is told it's for).
+- The response, at a wide-enough bbox/low-enough zoom, ALSO returns a `clusters` array alongside
+  (capped at 200) `markers` — each cluster carries a REAL per-city `docCount` (not capped), e.g.
+  `{"docCount": 4972, "key": "5000", "center": [34.797374, 32.087667], "regionId": 3, "areaId": 1,
+  "cityId": "5000"}` for Tel Aviv. `center` is `[lon, lat]` (GeoJSON order). `bBox` format is
+  `"south_lat,west_lon,north_lat,east_lon"` (confirmed by matching known Tel Aviv coordinates
+  against the one real working request). This means one wide, low-zoom query's `clusters` field
+  could in principle give a real per-city total-listing-count map for the whole country in one
+  call — genuinely promising for a country-wide discovery step, but NOT yet confirmed at true
+  country scale (see below, this is exactly where testing got blocked).
+
+**What went WRONG tonight, the real, live, unresolved finding**: built a recursive-drill-down
+feasibility diagnostic (`diagnose-yad2-map-recursive-coverage.yaml`) to test 4 real questions (does
+a whole-country bbox with no area/region return country-wide clusters; is area/region actually
+required; does a tight bbox around an over-cap city's cluster center return real markers; does a
+plain `city=<id>` filter work) — ALL FOUR requests, plus a REGRESSION CHECK re-fetching the exact
+already-proven-working request, came back `http_status=302` with a Radware/Incapsula-style
+challenge body (a `__uzdbm_*` fingerprinting script), not real JSON. This happened on the SECOND
+diagnostic run (11 real requests fired within ~2 minutes total across both runs, all through the
+same single static ISP proxy IP) — including the regression check using the EXACT params that
+worked cleanly just ~20 minutes earlier. This strongly suggests a **rate/velocity-triggered
+challenge specific to that one IP**, not "the map API can't be queried this way" or "the IP is
+permanently burned" — but this is a hypothesis, not yet confirmed either way.
+
+**What was explicitly NOT done, on purpose, and why**: did not keep hammering the same IP to
+gather more data points once the pattern became clear (would just prolong/worsen whatever
+cooldown or reputation state it's now in). Did not buy a second ISP proxy IP as a workaround —
+explicitly discussed with the owner and rejected for now: a second IP would very plausibly get
+rate-limited just as fast if hit with the same burst pattern, since the evidence points at
+velocity, not at "this specific IP is uniquely bad." The real, free, correct fix is REAL PACING
+between requests (seconds, not milliseconds) — not evasion, not more IPs, not spoofing anything —
+matching this project's own standing constraint against writing bot-detection-bypass code.
+
+**Owner's explicit instructions for continuing this** (2026-09-13, verbatim intent, survive any
+compact): (a) he will personally retest the SAME known-good exact request tomorrow morning
+himself/with Claude ("מחר בבוקר נכה על ה-IP") — enough real elapsed time to tell apart a temporary
+rate-limit (recovers) from a lasting block (doesn't); (b) whatever gets built for real country
+coverage after that must use generous, deliberately-conservative spacing between calls — his own
+words: "תעשה מרווחים שלדעתך הם מספיקים ונורמלים... אין לי בעיה אפילו לקחת ריזיקה ולעשות מרווחים
+קצת יותר ארוכים, עד שנסיים ושהכל יעמוד" (make whatever margins you think are sufficient and normal
+— I don't mind even taking the risk of somewhat longer margins, until we're done and everything is
+stable). Prioritize NOT re-triggering the block over speed.
+
+**Also raised, not yet investigated**: owner asked a good, legitimate question — why does Komo need
+looping over 42 individual cities (42 × 2 = 84 credits/run) instead of a broader region-level query
+like Yad2's own REGION_SLUGS discovery (7 × 2 = 14 credits/run, his own back-of-envelope math)?
+Real answer unknown — never checked whether komo.co.il's own search page/API exposes a
+region-equivalent to Yad2's `/rent/<region-slug>` URLs, or whether Komo's own area taxonomy only
+goes down to the city level. Worth a real, live diagnostic (same "check via a workflow_dispatch,
+don't guess" pattern as everything else in this file) before dismissing or building it — NOT
+investigated yet as of this entry.
+
+**Next concrete steps for whoever (or whichever future-compacted version of this session) picks
+this back up**: (1) once real elapsed time has passed, re-fetch the ONE known-good exact request
+(area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11) via the ISP proxy, ALONE,
+not alongside other test variations in the same run — a clean single data point. (2) If it works:
+proceed to test the 4 real open questions ONE AT A TIME with real delays between them (minutes, not
+seconds) — do not batch them into one workflow run again. (3) If it works cleanly: design and wire
+a real recursive-drill-down fetch_all_map_markers() into yad2_client.py, replacing (or running
+alongside, TBD) fetch_region_pages/_scrape_yad2's ZenRows dependency — this is THE fix for the
+credit crisis in section 4, not just a nice-to-have. (4) If the block persists even after a real
+cooldown: that's a different, harder problem (the ISP proxy may not be viable for aggressive
+country-wide use at all, even with spacing) — escalate back to the owner with that real finding
+rather than assuming a way around it.
