@@ -19,11 +19,11 @@ from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
 from homeless_client import HomelessFetchError
 from homeless_client import fetch_search_results as fetch_homeless_results
-from komo_client import KomoFetchError, fetch_coordinate_ids
+from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import _compute_detail_updates, normalize
 from notifier import run_notifications
-from yad2_client import CITY_SLUG_TO_HEBREW_NAME, REGION_SLUGS, Yad2FetchError, fetch_region_pages
+from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_region_pages
 
 # 2026-09-12: how many fetch_listing_detail_via_bright_data calls run concurrently when enriching
 # a batch of newly-discovered listings. Each call is a real blocking trigger->poll->snapshot round
@@ -359,16 +359,14 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
     shape as _scrape_yad2 — see that function and run_once() for how it's used.
 
-    Loops over EVERY city in CITY_SLUG_TO_HEBREW_NAME (cheap: 2 credits discovery per city,
-    confirmed live — see komo_client.py's own module docstring), not just a curated subset —
-    komo_client.fetch_coordinate_ids' own docstring flags a REAL, still-unconfirmed possibility
-    that Komo's coordinates endpoint returns nationwide results regardless of which city was
-    queried (one live sample spanned both Jerusalem- and Tel-Aviv-area coordinates for a
-    Jerusalem-only query). This function doesn't need to resolve that uncertainty to be correct
-    either way: `processed_this_run` (below) guards against re-fetching (and re-paying for) the
-    SAME listing's detail page more than once even if every city's coordinate list turns out to
-    be identical/overlapping — the only cost of looping over all 42 cities regardless is the cheap
-    2-credit discovery step repeated 42 times (~84 credits/run), not repeated detail fetches.
+    2026-09-13: fetches Komo's coordinate list via ONE call, fetch_all_coordinate_ids() — not once
+    per tracked city as this used to. CONFIRMED live (diagnose-komo-region-coverage.yaml, prompted
+    by an owner question: "why 42 cities when Yad2 needs only 7 regions?") that Komo's coordinates
+    endpoint is genuinely NATIONWIDE regardless of which city is queried: a real side-by-side test
+    queried Jerusalem and Tel Aviv and got back byte-identical 11,976-id sets. The old 42-city loop
+    was paying 84 credits/run (2 credits × 42 cities) for the exact same data every single time —
+    this fixes that down to 2 credits/run total, a real, direct answer to the ZenRows credit
+    crisis (see PROJECT_STATE.md 2026-09-13), not just Yad2/Komo's own per-run cap.
 
     Unlike Yad2, a Komo listing's price/rooms/floor/etc. are NEVER refreshed for an
     already-known external_id (the coordinates list carries no price at all — see
@@ -380,18 +378,14 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     wrong). `seen_external_ids` still includes already-known ids (from the coordinates list, not a
     detail fetch) so delisting stays correct regardless of this gap.
 
-    2026-09-13: also enforces _komo_max_new_detail_fetches_per_run() — a real, temporary credit-
-    budget safety cap (see that function's own comment) on how many NEW detail fetches (the only
-    part of this function with an actual per-listing ZenRows cost) happen in ONE run. Only the paid
-    detail fetch is skipped once the cap is hit for the rest of this run — coordinate discovery
-    keeps running for every remaining city regardless (cheap, and still needed so
-    seen_external_ids stays complete for delisting), and a capped-out id is simply picked up by a
-    LATER run instead (processed_this_run doesn't mark it as done, so it's retried next time)."""
+    Also enforces _komo_max_new_detail_fetches_per_run() — a real, temporary credit-budget safety
+    cap (see that function's own comment) on how many NEW detail fetches (the only part of this
+    function with an actual per-listing ZenRows cost) happen in ONE run. A capped-out id is simply
+    picked up by a LATER run instead (processed_this_run doesn't mark it as done, so it's retried
+    next time)."""
     fetched = 0
-    errors = 0
     normalized_items = []
     seen_external_ids: set[str] = set()
-    all_succeeded = True
 
     known_ids = _fetch_known_external_ids(Source.KOMO)
     processed_this_run: set[str] = set(known_ids)
@@ -399,53 +393,48 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     new_detail_fetches_this_run = 0
     cap_logged = False
 
-    logger.info("Scraping %d Komo cities this run", len(CITY_SLUG_TO_HEBREW_NAME))
-    for city in CITY_SLUG_TO_HEBREW_NAME:
-        logger.info("Fetching Komo coordinates for city=%s", city)
-        try:
-            coordinates = fetch_coordinate_ids(city)
-        except KomoFetchError:
-            logger.exception(
-                "Failed to fetch Komo coordinates for city=%s — skipping this city", city
-            )
-            errors += 1
-            all_succeeded = False
+    logger.info("Fetching Komo's nationwide coordinate list (one call, confirmed city-independent)")
+    try:
+        coordinates = fetch_all_coordinate_ids()
+    except KomoFetchError:
+        logger.exception("Failed to fetch Komo's coordinate list — skipping Komo entirely this run")
+        return normalized_items, seen_external_ids, fetched, 1, False
+
+    errors = 0
+    for coordinate in coordinates:
+        modaa_num = coordinate.get("id")
+        if not modaa_num:
+            continue
+        modaa_num = str(modaa_num)
+        seen_external_ids.add(modaa_num)
+        if modaa_num in processed_this_run:
+            continue  # already known from a prior run, or already handled earlier this run
+        processed_this_run.add(modaa_num)
+
+        if new_detail_fetches_this_run >= max_new_detail_fetches:
+            if not cap_logged:
+                logger.warning(
+                    "Komo hit its per-run new-detail-fetch safety cap (%s=%d) — remaining new "
+                    "listings this run are skipped and will be picked up in a later run "
+                    "instead of spending unbounded ZenRows credits in one shot.",
+                    _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
+                )
+                cap_logged = True
             continue
 
-        for coordinate in coordinates:
-            modaa_num = coordinate.get("id")
-            if not modaa_num:
-                continue
-            modaa_num = str(modaa_num)
-            seen_external_ids.add(modaa_num)
-            if modaa_num in processed_this_run:
-                continue  # already known from a prior run, or already handled earlier this run
-            processed_this_run.add(modaa_num)
+        new_detail_fetches_this_run += 1
+        fetched += 1
+        detail = fetch_komo_listing_detail(modaa_num)
+        if detail is None:
+            errors += 1
+            continue
+        normalized = normalize(detail, source=Source.KOMO, deal_type=DealType.RENT)
+        if normalized is not None:
+            normalized_items.append(normalized)
+        else:
+            errors += 1
 
-            if new_detail_fetches_this_run >= max_new_detail_fetches:
-                if not cap_logged:
-                    logger.warning(
-                        "Komo hit its per-run new-detail-fetch safety cap (%s=%d) — remaining new "
-                        "listings this run are skipped and will be picked up in a later run "
-                        "instead of spending unbounded ZenRows credits in one shot.",
-                        _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
-                    )
-                    cap_logged = True
-                continue
-
-            new_detail_fetches_this_run += 1
-            fetched += 1
-            detail = fetch_komo_listing_detail(modaa_num)
-            if detail is None:
-                errors += 1
-                continue
-            normalized = normalize(detail, source=Source.KOMO, deal_type=DealType.RENT)
-            if normalized is not None:
-                normalized_items.append(normalized)
-            else:
-                errors += 1
-
-    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
+    return normalized_items, seen_external_ids, fetched, errors, True
 
 
 def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:

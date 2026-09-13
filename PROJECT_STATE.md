@@ -5804,3 +5804,31 @@ credit crisis in section 4, not just a nice-to-have. (4) If the block persists e
 cooldown: that's a different, harder problem (the ISP proxy may not be viable for aggressive
 country-wide use at all, even with spacing) — escalate back to the owner with that real finding
 rather than assuming a way around it.
+
+## Update 2026-09-13 (same night, follow-up): Komo's region question ANSWERED and FIXED —
+## 84 credits/run down to 2
+
+The question raised in the entry above ("why does Komo loop 42 cities instead of a region-level
+query like Yad2?") got a real, live, definitive answer within the same session, not left open.
+`diagnose-komo-region-coverage.yaml` fetched real coordinate id sets for Jerusalem and Tel Aviv
+(opposite ends of the country) and compared them: **byte-identical, 11,976 ids each**. Komo's
+`adscoordinates/list/` endpoint is genuinely nationwide regardless of which city is queried —
+`cityName` only affects step 1's own sessionToken issuance, nothing about what step 2 returns.
+This was actually already flagged as a real, unconfirmed suspicion in `komo_client.py`'s own
+original module docstring (2026-09-12: "the one live sample pulled had lat/lng spanning both the
+Jerusalem area AND the Tel Aviv area") — tonight is just the first time anyone deliberately tested
+it side-by-side instead of leaving it as an open question `processed_this_run` merely worked around
+safely.
+
+Fixed immediately: `komo_client.py` gains `fetch_all_coordinate_ids()` (calls
+`fetch_coordinate_ids` ONCE, against an arbitrary-but-fixed valid city slug — any city works
+identically now). `scraper/main.py`'s `_scrape_komo()` rewritten to call this once instead of
+looping `CITY_SLUG_TO_HEBREW_NAME`'s 42 entries — cuts Komo's discovery cost from **84 credits/run
+to 2**, a real, direct, immediate improvement to the exact credit crisis the previous entry
+describes (not just the temporary caps/schedule cut — an actual structural cost reduction). A
+discovery failure is now all-or-nothing for Komo this run (previously partial-per-city) — returns
+`all_succeeded=False` with empty `seen_external_ids`, so `run_once()`'s existing "skip delisting on
+incomplete data" logic already handles it correctly, unchanged.
+
+775 tests pass (3 new: `fetch_all_coordinate_ids`'s delegation, `_scrape_komo`'s single-call cap
+enforcement updated, a new discovery-failure test); ruff clean.

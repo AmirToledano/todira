@@ -6,6 +6,7 @@ real ZenRows credits spent by running this suite, same reasoning as test_yad2_cl
 import httpx
 import pytest
 
+import komo_client
 from komo_client import (
     ADSCOORDINATES_URL,
     DETAILS_PAGE_URL,
@@ -14,6 +15,7 @@ from komo_client import (
     KomoFetchError,
     _extract_session_token,
     _parse_details_html,
+    fetch_all_coordinate_ids,
     fetch_coordinate_ids,
     fetch_listing_detail,
     fetch_search_results,
@@ -180,6 +182,25 @@ def test_fetch_coordinate_ids_zenrows_error_body_raises_with_code(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
     with pytest.raises(KomoFetchError, match="AUTH004"):
         fetch_coordinate_ids("jerusalem")
+
+
+# --- fetch_all_coordinate_ids (2026-09-13: the correct way to call the above now — see its own
+# docstring for the confirmed live finding that cityName doesn't filter this endpoint at all) ---
+
+
+def test_fetch_all_coordinate_ids_delegates_to_a_fixed_valid_city_slug(monkeypatch):
+    captured = {}
+
+    def fake_fetch_coordinate_ids(city):
+        captured["city"] = city
+        return [{"id": "123"}]
+
+    monkeypatch.setattr(komo_client, "fetch_coordinate_ids", fake_fetch_coordinate_ids)
+
+    result = fetch_all_coordinate_ids()
+
+    assert captured["city"] == komo_client._NATIONWIDE_COVERAGE_CITY_SLUG
+    assert result == [{"id": "123"}]
 
 
 # --- fetch_listing_detail (stage 3) ---
