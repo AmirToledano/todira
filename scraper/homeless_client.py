@@ -25,9 +25,20 @@ listing's own real anchor link elsewhere on the page, `/rent/viewad,<id>.aspx` �
 carry the same numeric id; this module uses the row id since it needs no extra parsing).
 
 NOT present anywhere in this table: square meters (no מ"ר column exists in the header row at
-all — confirmed live, not an extraction miss). square_meters is therefore always None from this
-source; getting it would need a separate per-listing detail-page fetch, not yet built (see Komo's
-own fetch_listing_detail for the equivalent pattern on that source, if this is ever wanted here).
+all — confirmed live, not an extraction miss) — square_meters is therefore always None from this
+source; getting it would need a separate per-listing detail-page fetch, not built (not worth the
+extra per-listing cost for a field that's a rarely-filtered nice-to-have, unlike description below).
+
+DESCRIPTION (added 2026-09-13): the search-results table above has no description column either,
+but each listing's own detail page (/rent/viewad,<id>.aspx) DOES carry a real, free-text Hebrew ad
+description — confirmed live (diagnose-komo-gallery-and-homeless-description.yaml) against a real
+row (id=746758): `<meta name="Description" content="דירה להשכרה בתל אביב, דרך השלום מודעה 746758
+-  הכניסה מרחוב הורודצקי...">` (also duplicated in `<meta property="og:description">`, same
+text). fetch_listing_description below fetches that one extra page — same confirmed-plain, 1-
+credit ZenRows tier as everything else in this module — and scraper/main.py's _scrape_homeless
+calls it ONLY for genuinely new listings (never for one already known — same "enrich once, cache
+forever" policy as komo_client.fetch_listing_detail and Yad2's Bright Data enrichment), so the
+real per-run cost is bounded by new listings, not total listings shown.
 
 NOT yet confirmed: whether /rent/ paginates for more listings beyond what one fetch returns (Komo
 turned out to have ~175 pages behind its own single-page HTML view, Yad2 too — Homeless has not
@@ -39,6 +50,7 @@ silent assumption that it's already complete coverage.
 Requires ZENROWS_API_KEY (same account/key as yad2_client.py and komo_client.py)."""
 from __future__ import annotations
 
+import html
 import logging
 import os
 import re
@@ -49,6 +61,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 SEARCH_PAGE_URL = "https://www.homeless.co.il/rent/"
+# Confirmed live 2026-09-13 (diagnose-komo-gallery-and-homeless-description.yaml) — the same
+# real per-listing URL shape fetch_search_results already builds for each row's own "url" field.
+DETAIL_PAGE_URL_TEMPLATE = "https://www.homeless.co.il/rent/viewad,{external_id}.aspx"
 
 ZENROWS_API_KEY_ENV_VAR = "ZENROWS_API_KEY"
 ZENROWS_FETCH_API_URL = "https://api.zenrows.com/v1/"
@@ -82,6 +97,13 @@ _ROW_RE = re.compile(
     r'<td[^>]*>(?P<price>[^<]*)</td>',
     re.S,
 )
+
+# Confirmed live 2026-09-13 (diagnose-komo-gallery-and-homeless-description.yaml) against a real
+# listing's own detail page (id=746758) — a real free-text Hebrew ad description, byte-identical
+# in both tags (og:description tried second only as a defensive fallback, not because it's ever
+# been seen to differ here).
+_DESCRIPTION_RE = re.compile(r'<meta name="Description" content="([^"]*)"', re.I)
+_OG_DESCRIPTION_RE = re.compile(r'<meta property="og:description" content="([^"]*)"')
 
 
 class HomelessFetchError(RuntimeError):
@@ -123,36 +145,46 @@ def _get_zenrows_api_key() -> str:
     return api_key
 
 
-def _fetch_search_html() -> str:
+def _zenrows_get(url: str, *, context_label: str) -> str:
+    """Shared plain-fetch-through-ZenRows mechanics for both the search page and a per-listing
+    detail page — same confirmed-plain, 1-credit tier either way (see module docstring)."""
     api_key = _get_zenrows_api_key()
 
     try:
         response = httpx.get(
             ZENROWS_FETCH_API_URL,
-            params={"apikey": api_key, "url": SEARCH_PAGE_URL},
+            params={"apikey": api_key, "url": url},
             timeout=PAGE_LOAD_TIMEOUT_S,
         )
     except httpx.HTTPError as exc:
-        raise HomelessFetchError(f"ZenRows Fetch API request failed for Homeless: {exc}") from exc
-
-    html = response.text
-    looks_like_zenrows_error = len(html) < 1000 and _ZENROWS_ERROR_CODE_RE.search(html) is not None
-    if response.status_code != 200 or looks_like_zenrows_error:
-        code_match = _ZENROWS_ERROR_CODE_RE.search(html)
-        title_match = _ZENROWS_ERROR_TITLE_RE.search(html)
         raise HomelessFetchError(
-            f"ZenRows returned an error instead of the Homeless page: "
+            f"ZenRows Fetch API request failed for {context_label}: {exc}"
+        ) from exc
+
+    body = response.text
+    looks_like_zenrows_error = len(body) < 1000 and _ZENROWS_ERROR_CODE_RE.search(body) is not None
+    if response.status_code != 200 or looks_like_zenrows_error:
+        code_match = _ZENROWS_ERROR_CODE_RE.search(body)
+        title_match = _ZENROWS_ERROR_TITLE_RE.search(body)
+        raise HomelessFetchError(
+            f"ZenRows returned an error instead of the Homeless page for {context_label}: "
             f"http_status={response.status_code} "
             f"code={code_match.group('code') if code_match else '?'!r} "
             f"title={title_match.group('title') if title_match else '?'!r} — check the ZenRows "
             "dashboard for usage/plan/auth issues."
         )
 
-    return html
+    return body
 
 
-def _parse_rows(html: str) -> Iterator[dict[str, Any]]:
-    flat = re.sub(r">\s+<", "><", html)  # collapse inter-tag whitespace only, keep tag text
+def _fetch_search_html() -> str:
+    return _zenrows_get(SEARCH_PAGE_URL, context_label="Homeless search page")
+
+
+def _parse_rows(search_html: str) -> Iterator[dict[str, Any]]:
+    # Parameter named `search_html`, not `html` — this module imports the stdlib `html` module
+    # (for `html.unescape` on the description field below); a same-named parameter would shadow it.
+    flat = re.sub(r">\s+<", "><", search_html)  # collapse inter-tag whitespace only, keep tag text
     for match in _ROW_RE.finditer(flat):
         external_id = match.group("id")
         rooms = _parse_rooms(match.group("rooms"))
@@ -177,5 +209,28 @@ def fetch_search_results() -> Iterator[dict[str, Any]]:
     for every real listing row found on ONE plain fetch of homeless.co.il/rent/ — confirmed live at
     1 ZenRows credit. See module docstring for the real, still-open question of whether this single
     fetch already covers every current listing or whether the site paginates beyond it."""
-    html = _fetch_search_html()
-    yield from _parse_rows(html)
+    search_html = _fetch_search_html()
+    yield from _parse_rows(search_html)
+
+
+def fetch_listing_description(external_id: str) -> str | None:
+    """Fetches ONE listing's own detail page and returns its real free-text description, or None
+    on ANY failure (missing API key, network error, non-200, no description found) — never raises,
+    same defensive contract as komo_client.fetch_listing_detail. This is genuinely OPTIONAL
+    enrichment, unlike Komo's price (see that module's own cost note): Homeless's search-results
+    row already has everything else this project needs, so a failed description fetch simply means
+    a listing without a description, exactly as before this feature existed."""
+    try:
+        page_html = _zenrows_get(
+            DETAIL_PAGE_URL_TEMPLATE.format(external_id=external_id),
+            context_label=f"Homeless details id={external_id!r}",
+        )
+    except HomelessFetchError:
+        logger.exception("Failed to fetch Homeless listing detail page: id=%s", external_id)
+        return None
+
+    match = _DESCRIPTION_RE.search(page_html) or _OG_DESCRIPTION_RE.search(page_html)
+    if match is None:
+        return None
+    description = html.unescape(match.group(1)).strip()
+    return description or None

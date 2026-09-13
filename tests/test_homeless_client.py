@@ -12,7 +12,17 @@ from homeless_client import (
     ZENROWS_API_KEY_ENV_VAR,
     HomelessFetchError,
     _parse_rows,
+    fetch_listing_description,
     fetch_search_results,
+)
+
+# Confirmed live 2026-09-13 (diagnose-komo-gallery-and-homeless-description.yaml) against a real
+# listing's own detail page (id=746758) — not invented.
+_REAL_DETAIL_PAGE_HTML = (
+    '<meta name="Description" content="דירה להשכרה בתל אביב, דרך השלום מודעה 746758 -  '
+    'הכניסה מרחוב הורודצקי. זו הכניסה השקטה של הבניין.">'
+    '<meta property="og:description" content="דירה להשכרה בתל אביב, דרך השלום מודעה 746758 -  '
+    'הכניסה מרחוב הורודצקי. זו הכניסה השקטה של הבניין.">'
 )
 
 # --- real confirmed rows (see module docstring) ---
@@ -167,3 +177,56 @@ def test_network_failure_fails_soft_as_homeless_fetch_error(monkeypatch):
 
     with pytest.raises(HomelessFetchError):
         list(fetch_search_results())
+
+
+# --- fetch_listing_description (2026-09-13) ---
+
+
+def test_fetch_listing_description_extracts_the_real_confirmed_description(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    captured = {}
+
+    def fake_get(url, params, timeout):
+        captured["params"] = params
+        return httpx.Response(
+            200, text=_REAL_DETAIL_PAGE_HTML, request=httpx.Request("GET", url)
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    description = fetch_listing_description("746758")
+
+    assert description == (
+        "דירה להשכרה בתל אביב, דרך השלום מודעה 746758 -  הכניסה מרחוב הורודצקי. "
+        "זו הכניסה השקטה של הבניין."
+    )
+    assert captured["params"]["url"] == "https://www.homeless.co.il/rent/viewad,746758.aspx"
+
+
+def test_fetch_listing_description_missing_meta_tags_returns_none(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text="<html><body>no meta here</body></html>", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    assert fetch_listing_description("746758") is None
+
+
+def test_fetch_listing_description_missing_api_key_returns_none_not_raises(monkeypatch):
+    # Unlike fetch_search_results (which raises), this is genuinely optional enrichment — never
+    # raises, same defensive contract as komo_client.fetch_listing_detail.
+    monkeypatch.delenv(ZENROWS_API_KEY_ENV_VAR, raising=False)
+    assert fetch_listing_description("746758") is None
+
+
+def test_fetch_listing_description_network_failure_returns_none_not_raises(monkeypatch):
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+
+    def fake_get(url, params, timeout):
+        raise httpx.ConnectTimeout("timed out")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    assert fetch_listing_description("746758") is None

@@ -1,0 +1,169 @@
+name: SAFE single test run — owner-only, minimal scope, never touches the CronJob's own schedule
+
+# Built 2026-09-13 per explicit owner instruction after the notification-flood incident: "שים לב
+# שלא קורות יותר ריצות בלי האישור שלי לעולם" (no more runs without my explicit approval, ever)
+# and "הכי חשוב בעולם! שהריצה תהיה רק עבור הOWNER!" (the run must be owner-only, no exceptions).
+#
+# This workflow is the SAFE replacement for the old resume-scraper-1city-test.yaml pattern (kept
+# in this repo's history, not deleted, but never use it again — it patches the CronJob's own
+# `suspend` field to false, which is EXACTLY the mechanism that caused this incident: Kubernetes'
+# own CronJob controller fires an immediate "catch-up" Job the instant `suspend` flips false after
+# a long pause, regardless of the `schedule` field). This workflow NEVER touches
+# `spec.suspend` on the live CronJob at all — the CronJob stays suspended (git-level and live)
+# forever until the owner decides to launch for real; this only ever creates ONE standalone,
+# manually-triggered Job from its template, with hard-forced safety overrides on TOP of whatever
+# is already in values.yaml (belt AND suspenders, not a replacement for keeping suspended: true).
+#
+# Two independent gates before anything real happens:
+#   1. `confirm` input must be the exact phrase below — a workflow_dispatch input the owner (or
+#      Claude acting on the owner's explicit go-ahead, never on its own judgment) must type/pass
+#      deliberately. This can't fire by an accidental click or a stale schedule.
+#   2. The actual OWNER_TELEGRAM_USER_ID secret VALUE is read and checked non-empty BEFORE any Job
+#      is created — not just "is the env var wired in" (main.py's own code already falls back to a
+#      full skip if this is empty, which is safe, but this workflow refuses to even start rather
+#      than rely on that fallback silently doing the right thing).
+#
+# Minimal scope, hard-forced regardless of values.yaml's own current settings: YAD2_MAX_PAGES_PER_
+# REGION=1, KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN=5, HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN=5,
+# NOTIFICATIONS_SUSPENDED=true (which — see main.py's run_once() — means real Telegram pushes go
+# ONLY to OWNER_TELEGRAM_USER_ID, every other real user is silently, safely skipped this run).
+#
+# Full real log output (including main.py's own run-summary line — new/bright_data_enriched/
+# notifications_sent counts) is printed at the end so the result is visible immediately, not
+# something to take on faith.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >-
+          Type EXACTLY: I APPROVE THIS SINGLE OWNER-ONLY TEST RUN
+        required: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse unless the exact confirmation phrase was given
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "I APPROVE THIS SINGLE OWNER-ONLY TEST RUN" ]; then
+            echo "Confirmation phrase did not match exactly — refusing to run anything."
+            echo "This is deliberate: this workflow must never fire from a stray click or a copy-paste mistake."
+            exit 1
+          fi
+          echo "Confirmation accepted."
+
+  run:
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Confirm the CronJob's OWN schedule is still suspended (informational — this workflow never changes it)
+        run: |
+          SUSPEND=$(kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}')
+          echo "todira-scraper CronJob spec.suspend = $SUSPEND (this workflow does not touch this field)"
+
+      - name: HARD GATE — refuse to proceed unless OWNER_TELEGRAM_USER_ID actually resolves to a real, non-empty value
+        run: |
+          OWNER_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' 2>/dev/null | base64 -d || echo "")
+          if [ -z "$OWNER_ID" ]; then
+            echo "REFUSING: owner-telegram-user-id is empty or missing in the live secret."
+            echo "Without a real owner id, main.py's own code already falls back to a full notification"
+            echo "skip (safe) rather than sending to everyone — but this workflow does not rely on that"
+            echo "fallback silently doing the right thing. Set the secret first, then re-run."
+            exit 1
+          fi
+          echo "owner-telegram-user-id resolves to a real, non-empty value — proceeding."
+
+      - name: Build a standalone Job from the CronJob's own template, with hard-forced minimal/safe overrides
+        run: |
+          JOB_NAME="todira-scraper-safe-test-$(date +%s)"
+          echo "JOB_NAME=$JOB_NAME" >> "$GITHUB_ENV"
+          kubectl create job "$JOB_NAME" --from=cronjob/todira-scraper -n todira --dry-run=client -o json > /tmp/job.json
+          python3 - /tmp/job.json << 'PYEOF'
+          import json, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              job = json.load(f)
+          env = job["spec"]["template"]["spec"]["containers"][0]["env"]
+
+          def force(name, value):
+              for entry in env:
+                  if entry["name"] == name:
+                      entry["value"] = value
+                      entry.pop("valueFrom", None)
+                      return
+              env.append({"name": name, "value": value})
+
+          # Hard-forced regardless of whatever values.yaml currently has — belt AND suspenders,
+          # not a replacement for values.yaml's own scraper.suspended: true / notificationsSuspended.
+          force("NOTIFICATIONS_SUSPENDED", "true")
+          force("YAD2_MAX_PAGES_PER_REGION", "1")
+          force("KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN", "5")
+          force("HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN", "5")
+
+          with open(path, "w") as f:
+              json.dump(job, f)
+          print("Forced env overrides applied:", [e for e in env if e["name"] in (
+              "NOTIFICATIONS_SUSPENDED", "YAD2_MAX_PAGES_PER_REGION",
+              "KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN", "HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN",
+          )])
+          PYEOF
+          kubectl apply -f /tmp/job.json
+
+      - name: Wait for the pod to exist, then tail its logs in the background (survives pod deletion)
+        run: |
+          for i in $(seq 1 30); do
+            POD=$(kubectl get pods -n todira -l job-name="$JOB_NAME" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            [ -n "$POD" ] && break
+            sleep 1
+          done
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          if [ -n "$POD" ]; then
+            nohup bash -c '
+              for i in $(seq 1 60); do
+                kubectl logs -n todira "'"$POD"'" --timestamps -f >> /tmp/pod.log 2>&1 && break
+                sleep 1
+              done
+            ' > /tmp/tail_wrapper.log 2>&1 &
+          fi
+
+      - name: Poll the Job's own status until it reaches a real terminal condition (max 10 min)
+        run: |
+          for i in $(seq 1 120); do
+            STATUS=$(kubectl get job "$JOB_NAME" -n todira -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null || echo "")
+            echo "poll $i: conditions=[$STATUS]"
+            if echo "$STATUS" | grep -qE "Complete|Failed"; then
+              echo "Reached terminal condition: $STATUS"
+              break
+            fi
+            sleep 5
+          done
+          sleep 3
+          echo "--- final job status ---"
+          kubectl get job "$JOB_NAME" -n todira -o wide
+
+      - name: Real captured logs — including main.py's own run-summary line (new/enriched/notifications_sent)
+        run: |
+          echo "--- captured logs ---"
+          cat /tmp/pod.log 2>/dev/null || echo "(no logs captured)"
+          echo ""
+          echo "--- run-summary / notification-restriction lines specifically ---"
+          grep -iE "summary|notification|restricting|owner|bright_data_enriched" /tmp/pod.log 2>/dev/null || echo "(none found)"
+
+      - name: Confirm the CronJob's own schedule is STILL suspended after this run (this workflow must never change it)
+        if: always()
+        run: |
+          SUSPEND=$(kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}')
+          echo "todira-scraper CronJob spec.suspend = $SUSPEND"
+          if [ "$SUSPEND" != "true" ]; then
+            echo "::error::CronJob is NOT suspended after this run — this should be impossible, this workflow never touches that field. Investigate immediately."
+            exit 1
+          fi

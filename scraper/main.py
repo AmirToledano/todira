@@ -18,6 +18,7 @@ from dorin_common.db import get_session
 from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
 from homeless_client import HomelessFetchError
+from homeless_client import fetch_listing_description as fetch_homeless_description
 from homeless_client import fetch_search_results as fetch_homeless_results
 from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
@@ -62,6 +63,28 @@ _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR = "KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN"
 _DEFAULT_KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN = 300
 _YAD2_MAX_PAGES_ENV_VAR = "YAD2_MAX_PAGES_PER_REGION"
 _NOTIFICATIONS_SUSPENDED_ENV_VAR = "NOTIFICATIONS_SUSPENDED"
+# 2026-09-13: same real-money-per-fetch reasoning as Komo's own cap above, one order of magnitude
+# smaller — Homeless is a much lower-volume site than Komo's nationwide coverage (see
+# homeless_client.py's own module docstring), so a first-ever run's genuinely-new backlog is
+# expected to be far smaller too, but this is still a real per-listing ZenRows cost with no cap
+# otherwise — never assume a site is "small enough" without a real safety net.
+_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR = "HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN"
+_DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN = 50
+
+
+def _homeless_max_new_description_fetches_per_run() -> int:
+    raw = os.environ.get(_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR, "").strip()
+    if not raw:
+        return _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r (not an int) — using default %d",
+            _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR, raw,
+            _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN,
+        )
+        return _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
 
 
 def _komo_max_new_detail_fetches_per_run() -> int:
@@ -439,10 +462,21 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
 
 def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
-    shape as _scrape_yad2. Unlike Yad2/Komo, Homeless doesn't need a `known_ids` set at all — its
-    one plain fetch already returns full data (price/rooms/floor/street/city, all confirmed in the
-    same request — see homeless_client.py's own module docstring) for every listing currently on
-    the page, so an already-known listing's price gets refreshed for free every run, same as Yad2.
+    shape as _scrape_yad2. Unlike Yad2/Komo, Homeless doesn't need a `known_ids` set for its core
+    fields — its one plain fetch already returns full data (price/rooms/floor/street/city, all
+    confirmed in the same request — see homeless_client.py's own module docstring) for every
+    listing currently on the page, so an already-known listing's price gets refreshed for free
+    every run, same as Yad2.
+
+    2026-09-13: `known_ids` IS used now, for one thing only — deciding whether a listing is
+    genuinely new to this project, in which case (and only then) its own detail page gets an
+    extra fetch for a real free-text description (see homeless_client.fetch_listing_description's
+    own docstring) — same "enrich once, cache forever" policy as Komo's mandatory price fetch and
+    Yad2's Bright Data enrichment. Enforces
+    _homeless_max_new_description_fetches_per_run() the same way Komo's own per-run cap works: a
+    capped-out listing simply keeps no description this run and is picked up on a later one (it's
+    still fully upserted otherwise — this only skips the EXTRA description fetch, never the
+    listing itself).
 
     NOT yet confirmed (see homeless_client.py's own module docstring): whether homeless.co.il/rent/
     paginates beyond what one fetch returns. If it does, this function currently only sees
@@ -454,11 +488,33 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     seen_external_ids: set[str] = set()
     all_succeeded = True
 
+    known_ids = _fetch_known_external_ids(Source.HOMELESS)
+    max_new_description_fetches = _homeless_max_new_description_fetches_per_run()
+    new_description_fetches_this_run = 0
+    cap_logged = False
+
     logger.info("Fetching Homeless listings")
     try:
         for raw_item in fetch_homeless_results():
             fetched += 1
-            seen_external_ids.add(raw_item["id"])
+            external_id = raw_item["id"]
+            seen_external_ids.add(external_id)
+
+            if external_id not in known_ids:
+                if new_description_fetches_this_run < max_new_description_fetches:
+                    new_description_fetches_this_run += 1
+                    raw_item["description"] = fetch_homeless_description(external_id)
+                elif not cap_logged:
+                    logger.warning(
+                        "Homeless hit its per-run new-description-fetch safety cap (%s=%d) — "
+                        "remaining new listings this run get no description and will be picked "
+                        "up in a later run instead of spending unbounded ZenRows credits in one "
+                        "shot.",
+                        _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR,
+                        max_new_description_fetches,
+                    )
+                    cap_logged = True
+
             normalized = normalize(raw_item, source=Source.HOMELESS, deal_type=DealType.RENT)
             if normalized is not None:
                 normalized_items.append(normalized)
