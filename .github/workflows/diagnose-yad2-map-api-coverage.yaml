@@ -1,0 +1,133 @@
+name: Diagnose Yad2 map API — country coverage, pagination, area/region requirement (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# fetch_map_markers (yad2_client.py, merged same day) was built against ONE real bbox the owner's
+# browser happened to show (Tel Aviv area, area=1&region=3) — confirmed live to return 200 markers
+# in one request. Before wiring this into scraper/main.py's run_once() for real country-wide use,
+# several real unknowns need real answers, not assumptions:
+#
+#   1. Is 200 a hard cap on this endpoint (meaning a bbox with more actual listings than that would
+#      silently truncate, the same "page capacity" risk fetch_region_pages was built to solve for
+#      the HTML feed) or did this one bbox just happen to have exactly/fewer-than 200 listings?
+#      Tested by re-fetching the EXACT same real bbox+area+region and inspecting the full response
+#      shape (not just the first 1500 chars previously looked at) for any total-count/pagination
+#      field alongside "markers", AND by trying a much larger bbox (covering a wide swath of
+#      central Israel) to see if the count exceeds 200 or gets capped there too.
+#   2. Are `area`/`region` real required filters, or just contextual metadata Yad2's own frontend
+#      happens to send alongside the bbox (with bbox alone doing the real geographic filtering)?
+#      Tested by re-fetching the SAME real bbox with area/region OMITTED, and with obviously-wrong
+#      values, to see whether results change/disappear or stay identical.
+#   3. Does a bbox over a DIFFERENT part of the country (Jerusalem-ish coordinates, not derived
+#      from any live DevTools session — approximate, real error tolerance expected) return real
+#      Jerusalem-area listings regardless of area/region being Tel-Aviv-specific values? This
+#      tells us whether bbox alone can drive a country-wide sweep without needing to first
+#      discover every region's own numeric area/region id.
+#
+# All via Bright Data's Web Unlocker (ZenRows refuses this endpoint outright — see
+# diagnose-yad2-map-api-cost.yaml) — same zone ("web_unlocker1") confirmed live earlier today.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1) Re-fetch the known-good bbox, dump the FULL response's top-level shape (not just markers)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          curl -sS -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $BRIGHT_DATA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11","format":"raw"}' \
+            -o /tmp/known.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 90
+          python3 -c "
+          import json
+          with open('/tmp/known.json', encoding='utf-8') as f:
+              payload = json.load(f)
+          print('top-level keys:', list(payload.keys()))
+          data = payload.get('data', {})
+          print('data keys:', list(data.keys()) if isinstance(data, dict) else type(data))
+          markers = data.get('markers', []) if isinstance(data, dict) else []
+          print('markers count:', len(markers))
+          # Any key alongside markers that looks like a total/count/cursor
+          for k, v in (data.items() if isinstance(data, dict) else []):
+              if k != 'markers':
+                  print(f'  other data field: {k} = {v!r}'[:200])
+          "
+
+      - name: 2) Same bbox, area/region OMITTED entirely — does it still return the same real data?
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          curl -sS -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $BRIGHT_DATA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?bBox=31.987679,34.732856,32.146966,34.857736&zoom=11","format":"raw"}' \
+            -o /tmp/noareas.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 90
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/noareas.json
+          echo
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/noareas.json', encoding='utf-8') as f:
+                  payload = json.load(f)
+              markers = payload.get('data', {}).get('markers', [])
+              print(f'markers count: {len(markers)}')
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
+
+      - name: 3) MUCH larger bbox (wide swath of central Israel) — does marker count exceed 200?
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          # Roughly Netanya in the north to Ashdod in the south, sea to the Samaria hills - a much
+          # bigger area than the known Tel-Aviv-only bbox, same area/region values (real
+          # ones we don't have for this bigger footprint, kept as a real, labeled unknown below).
+          curl -sS -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $BRIGHT_DATA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.7,34.5,32.5,35.2&zoom=9","format":"raw"}' \
+            -o /tmp/wide.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 90
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/wide.json', encoding='utf-8') as f:
+                  payload = json.load(f)
+              markers = payload.get('data', {}).get('markers', [])
+              print(f'markers count: {len(markers)}')
+              cities = sorted({m.get('address', {}).get('city', {}).get('text') for m in markers if isinstance(m, dict)})
+              print('distinct cities seen:', cities)
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
+
+      - name: 4) Jerusalem-area bbox (approximate, NOT from live DevTools) with Tel-Aviv's area/region values
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          # Approximate Jerusalem bounding box (~31.72-31.85 lat, ~35.13-35.28 lon) - deliberately
+          # NOT verified live; real error tolerance expected. Testing whether bbox alone (even with
+          # area=1&region=3, which are Tel-Aviv-area's real known values) still returns real
+          # Jerusalem listings, or whether area/region actually override/constrain the geography.
+          curl -sS -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $BRIGHT_DATA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.72,35.13,31.85,35.28&zoom=12","format":"raw"}' \
+            -o /tmp/jlm.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 90
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/jlm.json', encoding='utf-8') as f:
+                  payload = json.load(f)
+              markers = payload.get('data', {}).get('markers', [])
+              print(f'markers count: {len(markers)}')
+              cities = sorted({m.get('address', {}).get('city', {}).get('text') for m in markers if isinstance(m, dict)})
+              print('distinct cities seen:', cities)
+              print(f\"contains ירושלים: {'ירושלים' in cities}\")
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
