@@ -1,0 +1,32 @@
+name: Diagnose — read-only check of the live CronJob's real current state
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13. Reads
+# ONLY — no patch, no job creation, nothing that could trigger a run. Used to confirm the live
+# cluster's actual suspend state matches what's tracked in git/values.yaml, rather than assuming
+# it (this project has already been bitten once by suspend/schedule drift between git and the
+# live object — see the notification-flood incident's own root-cause trail).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real live CronJob spec (suspend, schedule) + any known jobs/pods right now
+        run: |
+          echo "--- spec.suspend + spec.schedule ---"
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='suspend={.spec.suspend} schedule={.spec.schedule}{"\n"}'
+          echo "--- last scheduled/successful run times ---"
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='lastScheduleTime={.status.lastScheduleTime} lastSuccessfulTime={.status.lastSuccessfulTime}{"\n"}'
+          echo "--- any jobs/pods right now (should be none while suspended) ---"
+          kubectl get jobs -n todira -l app=todira-scraper -o wide
+          kubectl get pods -n todira -l app=todira-scraper -o wide
