@@ -240,6 +240,29 @@ class Listing(Base):
     is_delisted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     delisted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # 2026-09-13: cross-source dedup — the same real-world apartment posted on more than one
+    # source (e.g. Yad2 AND Komo) used to create a fully separate row per source, each notified
+    # independently. Set (only at INSERT time, by scraper/dedup.find_duplicate_listing — see its
+    # own docstring for the actual city/street/rooms/floor/price-tolerance matching heuristic) to
+    # the id of the OTHER-source row this one is believed to be a duplicate of; NULL means this
+    # row is either unique or is itself the canonical one other duplicates point to. A duplicate
+    # row is still fully upserted/price-refreshed/delisted like any other (see
+    # scraper/main.py's _upsert_listings/_mark_delisted — neither treats this column specially on
+    # the UPDATE path) — only kept OUT of new_ids (no notification, no Bright Data enrichment —
+    # see run_once) and out of every "active listings" view query (/apartments,
+    # bot/handlers/apartments.py, bot/handlers/liked.py all add duplicate_of_id.is_(None)) so the
+    # user only ever sees/gets notified about ONE row per real apartment.
+    #
+    # KNOWN, DELIBERATELY UNSOLVED GAP (not fixed in this pass): if the CANONICAL row later gets
+    # delisted (e.g. removed from Yad2) while a duplicate sibling (e.g. still-live on Komo) is not,
+    # the sibling stays hidden too — nothing here "promotes" a duplicate back to canonical when its
+    # canonical row disappears. Documented rather than silently assumed away; a real follow-up, not
+    # attempted here given the added complexity (would need touching _mark_delisted's UPDATE logic
+    # to find and promote one live duplicate per newly-delisted canonical row).
+    duplicate_of_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("listings.id", ondelete="SET NULL"), index=True
+    )
+
     # original source JSON/HTML snapshot — cheap insurance for debugging/re-normalizing without
     # re-scraping, while the scraper is still immature
     raw_payload: Mapped[dict | None] = mapped_column(JSONB)

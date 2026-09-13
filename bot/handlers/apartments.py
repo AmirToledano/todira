@@ -42,6 +42,10 @@ def find_matching_listings(session: Session, user_id: int, filter_row: Filter, l
         select(Listing)
         .where(Listing.deal_type == filter_row.deal_type)
         .where(Listing.is_delisted.is_(False))
+        # 2026-09-13 cross-source dedup — a duplicate row is a real DB row (still upserted/
+        # price-refreshed every run) but never its own visible listing, see models.py's
+        # Listing.duplicate_of_id docstring.
+        .where(Listing.duplicate_of_id.is_(None))
     )
     if filter_row.cities:
         # Found live 2026-09-07: this only ever narrowed by deal_type, so a filter for one

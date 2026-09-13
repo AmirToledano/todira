@@ -820,7 +820,12 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
             return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
 
         hidden_ids = _listing_action_ids(session, user.id, "hidden")
-        listings_query = select(Listing).where(Listing.is_delisted.is_(False))
+        # duplicate_of_id.is_(None): 2026-09-13 cross-source dedup — a duplicate row is a real
+        # DB row (still upserted/price-refreshed every run) but never its own visible listing, see
+        # models.py's Listing.duplicate_of_id docstring.
+        listings_query = select(Listing).where(
+            Listing.is_delisted.is_(False), Listing.duplicate_of_id.is_(None)
+        )
         if user.filter.deal_type:
             listings_query = listings_query.where(Listing.deal_type == user.filter.deal_type)
         if user.filter.cities:
