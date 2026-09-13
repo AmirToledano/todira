@@ -78,7 +78,10 @@ def test_full_happy_path_ready_on_first_poll(monkeypatch):
     assert result == "דירה מדהימה עם נוף"
     post_url, post_kwargs = calls["post"][0]
     assert post_url == bright_data_client._TRIGGER_URL
-    assert post_kwargs["params"] == {"collector": "c_abc123", "queue_next": "1"}
+    # 2026-09-13: queue_next removed — a trial-tier collector rejects it outright
+    # ({"error":"Trial collectors don't support queuing jobs"}, confirmed live), and it was never
+    # actually needed (one URL per call, not a batch).
+    assert post_kwargs["params"] == {"collector": "c_abc123"}
     assert post_kwargs["json"] == [{"url": "https://yad2.co.il/item/1"}]
     assert post_kwargs["headers"]["Authorization"] == "Bearer key123"
 
@@ -126,6 +129,29 @@ def test_returns_none_when_trigger_call_fails(monkeypatch):
         result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
 
     assert result is None
+
+
+def test_returns_none_when_trigger_returns_a_non_2xx_status_and_logs_the_real_body(monkeypatch, caplog):
+    # 2026-09-13: real production incident — a trial-collector 400 was silently swallowed with no
+    # response body ever logged (see bright_data_client.py's own module docstring), so the actual
+    # rejection reason ("Trial collectors don't support queuing jobs") went unnoticed until a live
+    # replay outside this codebase found it. The except clause must always surface the body now.
+    _configure(monkeypatch)
+
+    def fake_post(url, **kw):
+        return _resp(
+            url, None, status=400, text='{"error":"Trial collectors don\'t support queuing jobs"}'
+        )
+
+    with patch.object(httpx, "post", fake_post), caplog.at_level("ERROR"):
+        result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
+
+    assert result is None
+    # %r-repr'd in the log line, so an embedded apostrophe comes out backslash-escaped —
+    # asserting substrings either side of it rather than the literal unescaped sentence.
+    assert "Trial collectors don" in caplog.text
+    assert "support queuing jobs" in caplog.text
+    assert "http_status=400" in caplog.text
 
 
 def test_returns_none_when_trigger_response_has_no_recognizable_job_id(monkeypatch):

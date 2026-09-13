@@ -40,6 +40,28 @@ calls it ONLY for genuinely new listings (never for one already known — same "
 forever" policy as komo_client.fetch_listing_detail and Yad2's Bright Data enrichment), so the
 real per-run cost is bounded by new listings, not total listings shown.
 
+IMAGES (fixed 2026-09-13): the search-results table's own photo cell (`<td><div><img src="..."/>
+</div></td>`) has ALWAYS carried a real photo URL — confirmed against the same row(s) already in
+this module's own test fixtures (`https://uploads.homeless.co.il/rent/202609/300/nvFile5386664.jpg`
+for id=746758) — but `_ROW_RE` only ever matched that cell to skip past it, discarding the URL on
+every single run. Fixed: now captured into the row's own `images` list (normalize() already reads
+this generically for every source, see PR #236/#254 for Komo's equivalent).
+
+OUTBOUND LINK (found 2026-09-13, NOT fixed — not fixable in this codebase): a real user report
+after the first real production Telegram send — clicking a Homeless listing's own "לפרטי הדירה
+המלאים" link (e.g. https://www.homeless.co.il/rent/viewad,83480.aspx, this module's own confirmed
+URL shape) redirected to Homeless's homepage instead of the listing. Investigated with a real
+headless browser (diagnose-homeless-detail-url-and-images.yaml): BOTH the reported-broken id AND
+the previously-confirmed-working one (746758) hit a Cloudflare-style "Just a moment..." bot-
+challenge page (HTTP 403) — a plain ZenRows fetch bypasses this (that's the whole point of ZenRows,
+and how this module already reads real content for description/price/etc.), but an ordinary end
+user's own browser clicking the link gets no such help from this project at all. This is Homeless's
+own bot-protection on direct/deep-linked access to a listing page, not a URL-construction bug here
+— genuinely nothing to change in this module for it. Real challenge pages like this usually resolve
+automatically for a genuine (non-automated) browser within a few seconds, so this may simply work
+fine for an actual user despite failing in an automated headless-browser test — unconfirmed either
+way without a real, non-automated click to compare against.
+
 NOT yet confirmed: whether /rent/ paginates for more listings beyond what one fetch returns (Komo
 turned out to have ~175 pages behind its own single-page HTML view, Yad2 too — Homeless has not
 been checked for the same real "how many total listings does this site actually have vs. how many
@@ -84,10 +106,17 @@ _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 # with its own id/name attributes) isn't needed and its exact attribute order isn't worth pinning
 # down. Column order after that is fixed (photo, property type, city, neighborhood, street, rooms,
 # floor, price) per the table's own real header row.
+#
+# 2026-09-13: the photo cell's own <img src="..."> is now CAPTURED, not just matched-and-discarded
+# — a real bug found the hard way (a real Telegram send with zero photos): the confirmed real
+# sample row for id=746758 has always carried a real photo URL here
+# (https://uploads.homeless.co.il/rent/202609/300/nvFile5386664.jpg, see this module's own test
+# fixtures) that this regex simply threw away every single time. `[^"]*` (not `[^<]*`) since a src
+# URL can't contain `<` but the group must stop at the closing quote, not at some later `<`.
 _ROW_RE = re.compile(
     r'<tr[^>]*\bid="ad_(?P<id>\d+)"[^>]*>'
     r'<td[^>]*class="selectionarea"[^>]*>.*?</td>'
-    r'<td[^>]*><div><img[^>]*/?></div></td>'
+    r'<td[^>]*><div><img[^>]*\bsrc="(?P<image_url>[^"]*)"[^>]*/?></div></td>'
     r'<td[^>]*>(?P<property_type>[^<]*)</td>'
     r'<td[^>]*>(?P<city>[^<]*)</td>'
     r'<td[^>]*>(?P<neighborhood>[^<]*)</td>'
@@ -190,6 +219,7 @@ def _parse_rows(search_html: str) -> Iterator[dict[str, Any]]:
         rooms = _parse_rooms(match.group("rooms"))
         floor = _parse_int(match.group("floor"))
         neighborhood = _clean(match.group("neighborhood")) or None
+        image_url = html.unescape(match.group("image_url")).strip()
 
         yield {
             "id": external_id,
@@ -201,6 +231,7 @@ def _parse_rows(search_html: str) -> Iterator[dict[str, Any]]:
             "street": _clean(match.group("street")) or None,
             "neighborhood": neighborhood,
             "city": _clean(match.group("city")) or None,
+            "images": [image_url] if image_url else [],
         }
 
 

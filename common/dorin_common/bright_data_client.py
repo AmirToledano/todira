@@ -26,11 +26,13 @@ at the "Web Scraper API" (`datasets/v3/...`) based on Bright Data's public GitHu
 **wrong product**. The actual collector built and tested live tonight (a Scraper Studio "custom
 code" collector) uses the older **Data Collector API** instead, confirmed directly off that
 collector's own "Initiate by API" tab (not a doc guess):
-  - Trigger: `POST https://api.brightdata.com/dca/trigger?collector={COLLECTOR_ID}&queue_next=1`,
-    body `[{"url": ...}]`, header `Authorization: Bearer {API_KEY}` — starts a job, returns some
-    job/collection id in the response body (exact key name not yet independently confirmed against
-    real JSON, only seen in a curl example — tried defensively below against a few plausible names,
-    same hedge-with-fallback-keys approach as the description field already uses).
+  - Trigger: `POST https://api.brightdata.com/dca/trigger?collector={COLLECTOR_ID}`,
+    body `[{"url": ...}]`, header `Authorization: Bearer {API_KEY}` — starts a job, returns
+    `{"collection_id": "...", "start_eta": "..."}` (confirmed live 2026-09-13, see below — the
+    other fallback key names in `_extract_job_id` are kept as defensive hedges, not because any
+    have actually been seen). The curl example this was originally copied from also included
+    `&queue_next=1`; REMOVED 2026-09-13 after it turned out to be exactly why every trigger call
+    was failing — see the "trial collectors" entry further down.
   - Retrieve: `GET https://api.brightdata.com/dca/dataset?id={JOB_ID}` — returns the result once
     the job (a real browser page visit) has finished; empty/absent while still running, so this is
     polled the same way the old snapshot-status endpoint was.
@@ -92,6 +94,21 @@ dashboard, the cheapest of every option this project has tried for Yad2 by a wid
 THREE new env vars (a proxy's own host/user/pass, not an API key): BRIGHT_DATA_ISP_HOST (e.g.
 "brd.superproxy.io:44445"), BRIGHT_DATA_ISP_USER, BRIGHT_DATA_ISP_PASS — all set together or this
 function is unconfigured (returns None immediately, same contract as every other function here).
+
+2026-09-13: the DCA trigger call (fetch_listing_detail_via_bright_data, and therefore every real
+Yad2 description) had been silently failing 100% of the time in production — the first real scrape
+run since this was wired in (safe-single-test-run.yaml) logged `bright_data_enriched: 0` out of 85
+new listings, every single trigger call raising an httpx.HTTPStatusError that was logged WITHOUT
+its response body (see _trigger_and_fetch_first_row's old except clause), so the real reason was
+never actually visible. Replaying the exact same request directly (diagnose-bright-data-dca-400.yaml)
+found it immediately: `{"error":"Trial collectors don't support queuing jobs"}` — this account's
+collector is still on Bright Data's trial tier, which flatly rejects the `queue_next=1` param the
+trigger URL was sending (a leftover from the curl example this was originally copied from, never
+actually needed — one URL per call, not a batch). Removing it confirmed live: real 200,
+`{"collection_id": "j_...", "start_eta": "..."}`. Fixed in both places: the param is gone, and the
+except clause now always logs the response body on a 4xx/5xx, so a future rejection reason (e.g.
+if the collector is ever upgraded off the trial tier and something else changes) is visible from
+the next real production log line instead of needing another live replay to discover.
 """
 from __future__ import annotations
 
@@ -180,17 +197,39 @@ def _trigger_and_fetch_first_row(url: str) -> dict | None:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     try:
+        # 2026-09-13: `queue_next` REMOVED — confirmed live (diagnose-bright-data-dca-400.yaml)
+        # that this account's collector is on Bright Data's trial tier, which rejects it outright:
+        # {"error":"Trial collectors don't support queuing jobs"} (a real 400 on every single
+        # trigger call, silently swallowed until this response body was actually looked at — see
+        # the except clause below, which now always logs it). Was only ever a hedge against a
+        # curl example that happened to include it, never load-bearing for anything this project
+        # actually needs (one URL per trigger call, not a batch).
         trigger_resp = httpx.post(
             _TRIGGER_URL,
-            params={"collector": collector_id, "queue_next": "1"},
+            params={"collector": collector_id},
             json=[{"url": url}],
             headers=headers,
             timeout=_REQUEST_TIMEOUT_SECONDS,
         )
         trigger_resp.raise_for_status()
-        job_id = _extract_job_id(trigger_resp.json())
-    except (httpx.HTTPError, ValueError):
+    except httpx.HTTPStatusError as exc:
+        # The response BODY is where Bright Data actually explains a 4xx (see the queue_next
+        # story above) — logging only the exception's own summary, as this used to, hides that
+        # entirely. Always include it now so a future rejection reason is visible immediately
+        # instead of needing a separate live replay to discover.
+        logger.error(
+            "Bright Data DCA trigger call failed for %s: http_status=%d body=%r",
+            url, exc.response.status_code, exc.response.text[:1000],
+        )
+        return None
+    except httpx.HTTPError:
         logger.exception("Bright Data DCA trigger call failed for %s", url)
+        return None
+
+    try:
+        job_id = _extract_job_id(trigger_resp.json())
+    except ValueError:
+        logger.exception("Bright Data DCA trigger response for %s was not valid JSON: %r", url, trigger_resp.text[:1000])
         return None
 
     if job_id is None:
