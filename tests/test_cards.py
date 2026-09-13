@@ -89,7 +89,9 @@ def test_broker_prefix_wins_over_sublet_if_somehow_both():
 def test_location_street_is_a_google_maps_link_on_telegram():
     caption = format_caption(make_listing(street="דיזנגוף 10"), has_access=True)
     assert '📍<b>ירושלים</b> - ניות <a href="https://www.google.com/maps/search/' in caption
-    assert ">דיזנגוף 10</a>" in caption
+    # 2026-09-13: the link's own visible text gets a second, reinforcing RTL mark right before it
+    # (see _build_body_lines' own comment) — asserting ">‏דיזנגוף 10</a>", not the bare text.
+    assert ">‏דיזנגוף 10</a>" in caption
     assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
 
 
@@ -232,7 +234,10 @@ def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
     # Telegram's HTML <a> tag — same underlying Google Maps URL, just on its own tappable line
     # right after the location line instead of inline.
     caption = format_caption_whatsapp(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
+    # 2026-09-13: street text now carries its own reinforcing RTL mark too (see
+    # _build_body_lines' own comment) — WhatsApp's street_link is an identity function, so the
+    # mark added right before the street text lands here just like on Telegram.
+    assert "📍*ירושלים* - ניות ‏דיזנגוף 10" in caption
     assert "<a href" not in caption
     lines = caption.split("\n")
     # Every line carries its own leading RTL mark (see _build_body_lines) right before its emoji,

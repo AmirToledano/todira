@@ -31,6 +31,11 @@ _REAL_DETAILS_HTML = (
     '<span class="ModaaWDetailsValue md_f_23" >7,000&nbsp;&#8362;</span></div></div>'
     '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;2 חדרים  '
     '&nbsp;בירושלים, שערי ירושלים 5" />'
+    # Confirmed live (diagnose-komo-homeless-reachability.yaml run #12, re-read 2026-09-13 while
+    # investigating why Komo listings never carry a description) — same real listing's actual
+    # <meta name="Description"> content, truncated here (the real page's text runs on longer).
+    '<meta name="Description" content="דירה יוקרתית מושקעת ברמה גבוהה עם מיזוג '
+    'מרכזי וחימום תת רצפתי">'
     '<div class="floor firstInfoBlockWrap" style="width:25%;" >'
     '<div class="firstInfo" > 1 </div><div class="firstInfoTitle" > קומה</div></div>'
     '<div class="mr firstInfoBlockWrap" style="width:25%;" >'
@@ -66,10 +71,36 @@ def test_parse_details_html_extracts_the_real_confirmed_listing():
         "rooms": 2.0,
         "floor": 1,
         "square_meters": 38,
+        "description": "דירה יוקרתית מושקעת ברמה גבוהה עם מיזוג מרכזי וחימום תת רצפתי",
         "street": "שערי ירושלים 5",
         "neighborhood": None,
         "city": "ירושלים",
     }
+
+
+def test_parse_details_html_missing_description_leaves_it_none():
+    # No <meta name="Description"> at all — must degrade to None, not raise (same benefit-of-the-
+    # doubt policy as every other optional field here).
+    html = (
+        '<div class="price modaaWPrice"><span>7,000</span></div>'
+        '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;2 חדרים '
+        '&nbsp;בירושלים, שערי ירושלים 5" />'
+    )
+    item = _parse_details_html(html, modaa_num="4471462")
+    assert item["description"] is None
+
+
+def test_parse_details_html_description_html_entities_unescaped():
+    html = (
+        '<div class="price modaaWPrice"><span>7,000</span></div>'
+        '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;2 חדרים '
+        '&nbsp;בירושלים, שערי ירושלים 5" />'
+        '<meta name="Description" content="דירה &amp; מרפסת &nbsp;גדולה">'
+    )
+    item = _parse_details_html(html, modaa_num="4471462")
+    # html.unescape("&nbsp;") is U+00A0 (a real non-breaking space), not a plain " " — asserting
+    # the exact character rather than a plain space, since that's genuinely what unescape returns.
+    assert item["description"] == "דירה & מרפסת  גדולה"
 
 
 def test_parse_details_html_missing_price_returns_none():

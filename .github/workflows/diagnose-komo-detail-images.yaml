@@ -1,0 +1,51 @@
+name: Diagnose Komo — is there a real photo on its details page? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# komo_client.py's _parse_details_html has never extracted an image field at all — every Komo
+# listing this project shows currently has zero photos (falls back to the Todi mascot card, see
+# common/dorin_common/cards.py's _NO_PHOTOS_PREFIX_HE), and this was never actually checked
+# against a real fetched page before now (the earlier diagnostic runs #9-#13, 2026-09-12, only
+# ever grepped for price/rooms/floor/size/address — never img/photo/gallery). Reuses the SAME
+# already-confirmed real listing (modaaNum=4471462) — zero new ZenRows cost beyond the one 1-
+# credit detail fetch this already needs for price anyway.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the same already-confirmed Komo details page and hunt for a real photo
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.komo.co.il/code/nadlan/details/?modaaNum=4471462" \
+            -o /tmp/details.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          python3 - /tmp/details.html << 'PYEOF'
+          import re, sys
+          with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+
+          og_image = re.findall(r'<meta property="og:image"[^>]*content="([^"]+)"', flat)
+          print(f"og:image meta tags: {len(og_image)}")
+          for u in og_image[:5]:
+              print("  ", u)
+
+          # A real photo gallery would be a repeating <img src="..."> block somewhere in the
+          # listing's own content area, likely under a class hinting at gallery/slider/photo.
+          gallery_hits = re.findall(r'.{0,120}(?:gallery|slider|swiper|photo)[^>]*>.{0,200}', flat, re.I)
+          print(f"gallery/slider/swiper/photo-ish context hits: {len(gallery_hits)}")
+          for h in gallery_hits[:8]:
+              print("  ", h)
+
+          all_imgs = re.findall(r'<img[^>]+src="([^"]+)"', flat)
+          print(f"ALL <img src=...> tags on the page: {len(all_imgs)}")
+          for u in all_imgs[:20]:
+              print("  ", u)
+          PYEOF
