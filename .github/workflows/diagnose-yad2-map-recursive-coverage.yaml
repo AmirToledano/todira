@@ -1,0 +1,167 @@
+name: Diagnose Yad2 map API — recursive drill-down feasibility (read-only, via ISP proxy)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# fetch_map_markers (yad2_client.py) is confirmed live to work via Bright Data's ISP proxy (no KYC
+# gate, unlike Web Unlocker which blocked every bbox but one lucky exact one — see
+# diagnose-yad2-map-api-coverage.yaml, run entirely through Web Unlocker and therefore only able to
+# answer its OWN first question before hitting that KYC wall on every other test). This project's
+# real goal (owner, 2026-09-13: "נדאג שהריצות יגיעו מבחטדאטה ולא מזנרואוז") is to replace the
+# expensive ZenRows-based region sweep (fetch_region_pages, ~25 credits/request) with the map API
+# end to end, at the ISP proxy's flat $2/month with zero per-request cost — but that first needs
+# real answers, not assumptions, about how to get FULL COUNTRY coverage past the map API's own
+# real ~200-marker-per-request cap (already confirmed: the one known Tel-Aviv bbox returns exactly
+# 200 markers AND a `clusters` array alongside them, e.g. `{"docCount": 4972, "key": "5000",
+# "center": [34.797374, 32.087667], "cityId": "5000"}` for Tel Aviv itself — so docCount is a real
+# per-city TOTAL, not capped at 200, and center is [lon, lat] going by that example).
+#
+# Real unknowns this checks, all via the ISP proxy (no KYC block, safe to test many variations —
+# flat $2/month, zero per-request cost):
+#   1. Does a wide, ~whole-country bbox with NO area/region return `clusters` covering literally
+#      every major city (not just ones "near" some specific area/region context)? If so, ONE
+#      request could replace CITY_SLUG_TO_ID/REGION_SLUGS entirely as the discovery step.
+#   2. Is `area`/`region` actually required at all, or does bbox alone do the real filtering (the
+#      earlier coverage diagnostic could only test this against Web Unlocker's KYC wall — blocked
+#      before getting a real answer)?
+#   3. For an over-cap city (Tel Aviv, docCount 4972 from the known cluster), does a TIGHT bbox
+#      built from that cluster's own `center` point return that city's real markers directly (up to
+#      200), or finer sub-clusters (e.g. by neighborhood) if still over cap at that zoom?
+#   4. Does the map endpoint accept a plain `city=<id>` filter (same param the HTML search page
+#      already uses) instead of/alongside bbox — which would be a far simpler per-city query than
+#      hand-computing bboxes for all 42+ tracked cities?
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 0) Check ISP proxy secrets are present
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ] || [ -z "$BRIGHT_DATA_ISP_USER" ] || [ -z "$BRIGHT_DATA_ISP_PASS" ]; then
+            echo "One or more BRIGHT_DATA_ISP_* secrets are not set — every later step will no-op."
+            exit 0
+          fi
+          echo "Secrets present."
+
+      - name: 1) Whole-country bbox, NO area/region — does clusters cover the whole country in one call?
+        if: always()
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then echo "skipping - no secrets"; exit 0; fi
+          # Israel's real extent, roughly: lat 29.3 (Eilat) to 33.4 (Lebanon border), lon 34.2
+          # (Mediterranean coast) to 35.95 (Jordan Valley/Golan) - generous padding on all sides.
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?bBox=29.3,34.2,33.4,35.95&zoom=7" \
+            -o /tmp/country.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/country.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/country.json', encoding='utf-8'))
+          except json.JSONDecodeError as e:
+              print(f'not parseable JSON: {e}'); raise SystemExit(0)
+          data = payload.get('data', {}) if isinstance(payload, dict) else {}
+          print('data keys:', list(data.keys()) if isinstance(data, dict) else type(data))
+          markers = data.get('markers') or []
+          clusters = data.get('clusters') or []
+          print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+          total_doc_count = sum(c.get('docCount', 0) for c in clusters if isinstance(c, dict))
+          print(f'sum of all cluster docCounts: {total_doc_count}')
+          for c in sorted(clusters, key=lambda c: -c.get('docCount', 0))[:20]:
+              print(f\"  cityId={c.get('cityId')!r} key={c.get('key')!r} docCount={c.get('docCount')} center={c.get('center')} areaId={c.get('areaId')} regionId={c.get('regionId')}\")
+          "
+
+      - name: 2) Same known Tel-Aviv bbox, area/region OMITTED — same data as with them included?
+        if: always()
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then echo "skipping - no secrets"; exit 0; fi
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?bBox=31.987679,34.732856,32.146966,34.857736&zoom=11" \
+            -o /tmp/noareas.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/noareas.json', encoding='utf-8'))
+              data = payload.get('data', {})
+              markers = data.get('markers') or []
+              clusters = data.get('clusters') or []
+              print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+              print('first marker price/city (sanity):', markers[0].get('price') if markers else None, (markers[0].get('address', {}).get('city', {}).get('text') if markers else None))
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
+
+      - name: 3) Tight bbox around Tel-Aviv cluster center (from known clusters data) at high zoom — real markers or finer clusters?
+        if: always()
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then echo "skipping - no secrets"; exit 0; fi
+          # Tel Aviv cluster center confirmed live: [lon=34.797374, lat=32.087667]. +-0.035 deg is
+          # roughly a 4km box around it - tight enough to plausibly stay under the 200-marker cap
+          # for a real city-center-only query, wide enough to still cover central Tel Aviv.
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?bBox=32.052667,34.762374,32.122667,34.832374&zoom=15" \
+            -o /tmp/tight.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/tight.json', encoding='utf-8'))
+              data = payload.get('data', {})
+              markers = data.get('markers') or []
+              clusters = data.get('clusters') or []
+              print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+              for c in clusters[:10]:
+                  print(f\"  sub-cluster: {c}\"[:200])
+              cities = sorted({(m.get('address', {}) or {}).get('city', {}).get('text') for m in markers if isinstance(m, dict)})
+              print('distinct cities in markers:', cities)
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
+
+      - name: 4) Does the map API accept a plain city= filter (same param the HTML search page uses)?
+        if: always()
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then echo "skipping - no secrets"; exit 0; fi
+          # kiryat-motzkin (city id 8200, from yad2_client.CITY_SLUG_TO_ID) - a small city, real
+          # chance its whole real inventory is under 200 regardless, good for checking whether
+          # `city=` alone (no bBox at all) returns anything real.
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?city=8200&zoom=13" \
+            -o /tmp/cityonly.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/cityonly.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/cityonly.json', encoding='utf-8'))
+              data = payload.get('data', {})
+              markers = data.get('markers') or []
+              clusters = data.get('clusters') or []
+              print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+              cities = sorted({(m.get('address', {}) or {}).get('city', {}).get('text') for m in markers if isinstance(m, dict)})
+              print('distinct cities in markers:', cities)
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
