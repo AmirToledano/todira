@@ -1,0 +1,65 @@
+name: Diagnose Homeless — does /rent/ paginate beyond one fetch? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# homeless_client.py's own module docstring flags a real, still-open question: Komo and Yad2 both
+# turned out to have far more total listings than one page/request returns (Komo: ~175 pages
+# behind its own single-page view once paginated properly; Yad2: same real gap, fixed via
+# fetch_region_pages). Homeless has never been checked for the same thing — fetch_search_results
+# reads exactly one plain fetch of https://www.homeless.co.il/rent/ and nothing more.
+#
+# This checks three real things in one cheap fetch (1 ZenRows credit, same confirmed-plain tier
+# homeless_client.py already uses):
+#   1. How many real <tr id="ad_..."> rows does ONE fetch actually return?
+#   2. Is there any real pagination control on the page (a page-number link, a "next page" href,
+#      a query param like ?page=/?pg=/?p= visible in the page's own markup) — Yad2's own
+#      pagination (see yad2_client.py's _region_url) was found exactly this way, by looking at
+#      what the site's own UI does, not guessing a param name.
+#   3. Is there any real total-count indicator on the page (e.g. "X מודעות" / "X תוצאות") that
+#      would confirm whether one fetch's row count IS the total, or is a truncated page of a
+#      larger real number?
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch homeless.co.il/rent/ and inspect for real pagination/total-count signals
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            -o /tmp/homeless.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/homeless.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+
+          row_ids = re.findall(r'<tr id="ad_(\d+)"', html)
+          print(f"Real <tr id=\"ad_...\"> rows in this one fetch: {len(row_ids)}")
+          print(f"Unique ids: {len(set(row_ids))}")
+
+          # Look for anything that looks like a page-number control or next-page link/param.
+          page_param_hits = re.findall(r'href="[^"]*[?&](?:page|pg|p)=(\d+)[^"]*"', html, re.I)
+          print(f"href with a page-like query param: {len(page_param_hits)} (values: {sorted(set(page_param_hits))[:10]})")
+
+          pager_class_hits = re.findall(r'class="[^"]*pag(?:e|er|ination)[^"]*"', html, re.I)
+          print(f"elements with a pag(e/er/ination)-like class: {len(pager_class_hits)}")
+          for h in pager_class_hits[:10]:
+              print("  ", h)
+
+          # Total-count text, e.g. "1,234 מודעות" / "נמצאו X תוצאות" - loose pattern, real check.
+          count_hits = re.findall(r'[\d,]{2,}\s*(?:מודעות|תוצאות|דירות)', html)
+          print(f"'<number> מודעות/תוצאות/דירות' style total-count text: {count_hits[:10]}")
+
+          # A literal "עמוד" (page) or "הבא" (next) near a link, which would indicate real UI pagination.
+          next_hits = re.findall(r'.{0,60}(?:עמוד\s*\d+|הבא\s*>|>\s*הבא).{0,60}', html)
+          print(f"'עמוד N' / 'הבא' (next) style hits: {len(next_hits)}")
+          for h in next_hits[:10]:
+              print("  ", re.sub(r'\s+', ' ', h))
+          PYEOF
