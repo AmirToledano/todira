@@ -1,0 +1,64 @@
+name: Diagnose — why does Homeless's description fetch sometimes return the SITE's own generic text? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# Real bug report from real Telegram messages (safe-single-test-run.yaml): several Homeless
+# listings' descriptions showed the SITE's own generic "הומלס הלוח הראשון והאמין בישראל..."
+# marketing text instead of that listing's own real description, and most had no description at
+# all. Checks the exact ids this project's own real run fetched (83520, 83511, 83480, plus the one
+# that errored outright with RESP001: 83534) individually: real HTTP status, final content length,
+# whether the homepage's own generic description text appears, and whether the requested id
+# actually appears anywhere in the returned page (the real signal that ZenRows/Homeless served the
+# actual listing page, not a redirect to the homepage or some other fallback).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Real Homeless homepage's own description (the suspected fallback content)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            -o /tmp/homepage.html -w "homepage http_status=%{http_code} size=%{size_download}\n" --max-time 60
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/homepage.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          m = re.search(r'<meta name="[Dd]escription" content="([^"]*)"', html)
+          print("homepage <meta Description>:", m.group(1)[:300] if m else "(none found)")
+          PYEOF
+
+      - name: Fetch each real id from tonight's run individually, checking status + whether the id itself appears in the response
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          for id in 83520 83511 83480 83534; do
+            echo "=== id=$id ==="
+            curl -sS -G "https://api.zenrows.com/v1/" \
+              --data-urlencode "apikey=$ZENROWS_API_KEY" \
+              --data-urlencode "url=https://www.homeless.co.il/rent/viewad,${id}.aspx" \
+              -o "/tmp/detail_${id}.html" \
+              -w "  http_status=%{http_code} size=%{size_download}\n" --max-time 60 || true
+            python3 - "$id" << 'PYEOF'
+          import re, sys
+          id_ = sys.argv[1]
+          with open(f'/tmp/detail_{id_}.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          desc = re.search(r'<meta name="[Dd]escription" content="([^"]*)"', html)
+          og_desc = re.search(r'<meta property="og:description" content="([^"]*)"', html)
+          print(f"  <meta Description>: {desc.group(1)[:200] if desc else '(none)'}")
+          print(f"  <meta og:description>: {og_desc.group(1)[:200] if og_desc else '(none)'}")
+          print(f"  id {id_!r} appears literally in the page: {id_ in html}")
+          print(f"  looks like the generic homepage blurb (הענק בדורין in text): {'הלוח הראשון' in html}")
+          # A real listing page almost certainly has its own price ("₪") and rooms markup somewhere;
+          # the homepage (a search results table) does too, so also check for a listing-page-
+          # specific marker: the Hebrew word for "publisher"/contact area, or a "viewad" self-link.
+          print(f"  contains this same id as a link (viewad,{id_}): {'viewad,' + id_ in html}")
+          PYEOF
+            sleep 2
+          done
