@@ -1,0 +1,102 @@
+name: Diagnose — Homeless's real viewad URL behavior (redirect?) + a real listing's image markup (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# Real bug report from a real Telegram send (safe-single-test-run.yaml, tonight): clicking
+# "לפרטי הדירה המלאים" for a Homeless listing (external_id=83480, url built by homeless_client.py
+# as https://www.homeless.co.il/rent/viewad,<id>.aspx — the same URL shape already confirmed
+# working for id=746758 in an earlier diagnostic) instead lands on Homeless's own homepage. Checks
+# with a REAL browser (Chromium via Playwright, not a plain HTTP fetch — a plain curl/ZenRows fetch
+# already confirmed 200 + real content for id=746758, so if this is real browser navigation/JS
+# behavior specifically, only a real browser will reproduce it) whether:
+#   1. The exact failing URL (id=83480) really redirects for a plain, direct, bookmark-like visit.
+#   2. The originally-confirmed-working URL (id=746758) still behaves the same as before (rules
+#      out "the URL shape usage changed" vs. "something about this specific id/listing differs").
+#   3. What the search page's own real anchor href for a fresh listing actually looks like RIGHT
+#      NOW (server-rendered attribute, not the onclick handler) — confirms whether
+#      homeless_client.py's own constructed URL template still matches the site's real link shape.
+#
+# ALSO checks for real image markup on Homeless's search page (never done before — Komo needed a
+# dedicated investigation for this, Homeless never got one) since Homeless listings currently show
+# with zero photos in this project, same complaint as Komo had before PR #254/#256.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright Chromium
+        run: |
+          npm init -y > /dev/null
+          npm install playwright@1.48.0 > /dev/null
+          npx playwright install --with-deps chromium
+
+      - name: Real browser visit to both URLs — does either genuinely redirect?
+        run: |
+          cat > check.js << 'EOF'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+
+            for (const id of ['83480', '746758']) {
+              const url = `https://www.homeless.co.il/rent/viewad,${id}.aspx`;
+              console.log(`\n=== visiting ${url} ===`);
+              const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(e => {
+                console.log(`  navigation error: ${e.message}`);
+                return null;
+              });
+              if (response) {
+                console.log(`  final status: ${response.status()}`);
+              }
+              console.log(`  final URL after any redirects: ${page.url()}`);
+              const title = await page.title().catch(() => '(no title)');
+              console.log(`  page title: ${title}`);
+            }
+
+            await browser.close();
+          })();
+          EOF
+          node check.js
+
+      - name: Real search page — dump the actual anchor href + any image markup for one fresh listing row
+        run: |
+          cat > search.js << 'EOF'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+            await page.goto('https://www.homeless.co.il/rent/', { waitUntil: 'networkidle', timeout: 30000 });
+            const html = await page.content();
+            require('fs').writeFileSync('/tmp/search_rendered.html', html);
+            console.log('rendered search page size:', html.length);
+            await browser.close();
+          })();
+          EOF
+          node search.js
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/search_rendered.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+
+          # Real anchor hrefs pointing at a listing detail page, in whatever shape the site
+          # actually renders right now (viewad vs ViewDetails vs something else entirely).
+          hrefs = re.findall(r'href="([^"]*(?:viewad|ViewDetails)[^"]*)"', flat, re.I)
+          print(f"detail-page-like hrefs found: {len(hrefs)}")
+          for h in hrefs[:10]:
+              print("  ", h)
+
+          # Real image markup for the first few rows (real <img src> inside the table).
+          imgs = re.findall(r'<img[^>]+src="([^"]+)"', flat)
+          print(f"\n<img src=...> tags on the rendered search page: {len(imgs)}")
+          for u in imgs[:15]:
+              print("  ", u)
+          PYEOF
