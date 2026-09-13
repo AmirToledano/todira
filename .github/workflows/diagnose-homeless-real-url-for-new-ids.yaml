@@ -1,0 +1,67 @@
+name: Diagnose — what IS the real detail-page URL for a currently-listed Homeless ad? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# CONFIRMED (diagnose-homeless-description-mismatch.yaml): ALL FOUR ids from tonight's real
+# production run (83520, 83511, 83480, 83534) — every single one, not intermittently — return
+# Homeless's own HOMEPAGE content (HTTP 200, no error) when fetched at
+# https://www.homeless.co.il/rent/viewad,<id>.aspx, with the requested id appearing NOWHERE in the
+# response. The one sample id this project has always used to confirm this URL shape
+# (746758, tested many times this session, always real content) is a much larger number — real ad
+# numbers on a classifieds site should only grow over time, so a BRAND NEW listing having a much
+# SMALLER id than an older sample is a strong signal that the row's own id="ad_<N>" DOM attribute
+# is NOT actually the same number the site's own detail-page URL expects for CURRENT listings
+# (a site change since this project's own homeless_client.py was written, or the id="ad_<N>"
+# attribute was never the real ad number to begin with and 746758 matching was coincidence).
+#
+# Fetches the real, current /rent/ search page (the exact same fetch scraper/main.py already
+# does) and dumps the FULL raw row markup around one of these specific ids (83480) — every
+# attribute, every href, every onclick — so the real detail-page identifier can be read directly
+# off the site's own markup instead of guessed again.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the real current search page and dump the FULL row markup for id=83480
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            -o /tmp/search.html -w "http_status=%{http_code} size=%{size_download}\n" --max-time 60
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/search.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+
+          # Full <tr ... id="ad_83480" ...> row, start to end, exactly as this project's own
+          # _ROW_RE would see it — print every attribute and every href/onclick inside it.
+          m = re.search(r'<tr[^>]*\bid="ad_83480"[^>]*>.*?</tr>', flat, re.S)
+          if m:
+              print("=== full row for id=ad_83480 ===")
+              print(m.group(0))
+              print()
+              hrefs = re.findall(r'href="([^"]+)"', m.group(0))
+              print(f"hrefs inside this row: {hrefs}")
+              onclicks = re.findall(r'onclick="([^"]+)"', m.group(0))
+              print(f"onclick handlers inside this row: {onclicks}")
+          else:
+              print("Row id=ad_83480 not found on this fetch — it may have already been "
+                    "delisted/moved since tonight's scrape. Showing the first 3 real rows "
+                    "found instead, whatever their ids are.")
+              rows = re.findall(r'<tr[^>]*\bid="ad_(\d+)"[^>]*>.*?</tr>', flat, re.S)
+              all_rows = re.findall(r'<tr[^>]*\bid="ad_\d+"[^>]*>.*?</tr>', flat, re.S)
+              for row in all_rows[:3]:
+                  print("--- row ---")
+                  print(row[:1500])
+                  hrefs = re.findall(r'href="([^"]+)"', row)
+                  print(f"hrefs: {hrefs}")
+                  onclicks = re.findall(r'onclick="([^"]+)"', row)
+                  print(f"onclicks: {onclicks}")
+                  print()
+          PYEOF
