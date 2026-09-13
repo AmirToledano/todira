@@ -150,11 +150,12 @@ jobs:
           # visible instead of guessed.
           price_matches = list(re.finditer(r'[\d,]{3,7}\s*₪', flat))
           print(f"numeric price-like occurrences: {len(price_matches)}")
-          for m in price_matches[:3]:
+
+          def dump(m, label):
               window_start = max(0, m.start() - 1200)
               window = flat[window_start:m.end() + 150]
               hrefs = list(re.finditer(r'<a\b[^>]*href="([^"]*)"[^>]*>', window))
-              print("=== price occurrence ===")
+              print(f"=== {label} ===")
               if hrefs:
                   last = hrefs[-1]
                   print(f"  nearest preceding <a href>: {last.group(1)!r}")
@@ -164,4 +165,23 @@ jobs:
                   print("  no preceding <a href> found within 1200 chars — printing raw window:")
                   print("   ", window)
               print()
+
+          for m in price_matches[:3]:
+              dump(m, "price occurrence (early, likely promoted carousel)")
+
+          # 2026-09-13: page's own JS sets curr_display_tab = "Table" — the first few price hits
+          # above all landed on class="promotedAd" cards (a top carousel), which may not represent
+          # the real bulk listing structure below it. Checking LATER occurrences (skipping ones
+          # whose nearest link contains "promotedAd") to see if the main/regular listings use a
+          # different markup shape (e.g. an actual <tr>/<td> table row, matching that JS variable).
+          non_promoted_shown = 0
+          for m in price_matches[3:]:
+              window_start = max(0, m.start() - 1200)
+              window = flat[window_start:m.end() + 150]
+              if "promotedAd" in window:
+                  continue
+              dump(m, "later, non-promoted-carousel occurrence")
+              non_promoted_shown += 1
+              if non_promoted_shown >= 3:
+                  break
           PYEOF
