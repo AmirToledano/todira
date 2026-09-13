@@ -191,11 +191,17 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
         session.commit()
 
 
-async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> tuple[int, int]:
+async def _notify_new_matches(
+    bot: Bot, session: Session, listing: Listing, *, only_telegram_user_id: str | None = None
+) -> tuple[int, int]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
     that now match a filter they didn't before (e.g. a price drop brought them into budget).
-    Returns (matched_count, sent_count)."""
+    Returns (matched_count, sent_count).
+
+    `only_telegram_user_id`: see run_notifications' own docstring — when set, every OTHER user is
+    silently skipped (never marked as notified, so they still get the real notification once this
+    restriction is lifted on a later run)."""
     matched = 0
     sent = 0
     to_notify: list[tuple[Filter, User]] = []
@@ -207,6 +213,10 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
             continue
         user = session.get(User, filter_row.user_id)
         if user is None:
+            continue
+        if only_telegram_user_id is not None and str(user.telegram_user_id) != str(
+            only_telegram_user_id
+        ):
             continue
         if user.telegram_user_id is None and not _whatsapp_eligible(user):
             # No channel to actually push through. A Google-only standalone account (2026-09-05)
@@ -255,7 +265,14 @@ async def _notify_new_matches(bot: Bot, session: Session, listing: Listing) -> t
     return matched, sent
 
 
-async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old_price: int) -> int:
+async def _notify_price_change(
+    bot: Bot,
+    session: Session,
+    listing: Listing,
+    old_price: int,
+    *,
+    only_telegram_user_id: str | None = None,
+) -> int:
     """Re-notify users who already received a 'new' notification for this exact listing that its
     price just changed — 📉 drop or 📈 increase, whichever `old_price` vs. `listing.price` says
     (see format_caption's _price_change_header). Drop and increase are separate
@@ -268,7 +285,9 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
     push would need its own separate Meta-approved template — "your saved search matched" and
     "the price on a listing you were already shown just changed" are different enough content
     that the same template copy can't honestly cover both. Not built until there's a second
-    approved template to point at; revisit then."""
+    approved template to point at; revisit then.
+
+    `only_telegram_user_id`: see run_notifications' own docstring."""
     sent = 0
     reason = (
         NotificationReason.PRICE_DROP
@@ -289,6 +308,10 @@ async def _notify_price_change(bot: Bot, session: Session, listing: Listing, old
             continue
         user = session.get(User, user_id)
         if user is None or not user.is_active or not user.notifications_enabled:
+            continue
+        if only_telegram_user_id is not None and str(user.telegram_user_id) != str(
+            only_telegram_user_id
+        ):
             continue
         if user.telegram_user_id is None:
             # Price-change re-notifications are Telegram-only — see this function's own
@@ -322,10 +345,23 @@ async def run_notifications(
     session: Session,
     new_listings: list[Listing],
     price_change_events: list[tuple[Listing, int]],
+    *,
+    only_telegram_user_id: str | None = None,
 ) -> dict[str, int]:
     """`new_listings`: rows inserted for the first time this run. `price_change_events`:
     (listing, old_price) pairs for existing listings whose price just changed (either direction).
-    Returns a summary dict for main.py's run-summary log line."""
+    Returns a summary dict for main.py's run-summary log line.
+
+    2026-09-13: `only_telegram_user_id`, when set, restricts every actual send to that ONE
+    Telegram user — every other otherwise-matching user is silently skipped this run (not marked
+    as notified, so they get the real notification on a later run once this restriction is
+    lifted). Added specifically for resuming the scraper after a long pause (see main.py's
+    NOTIFICATIONS_SUSPENDED docstring for the fuller catch-up-burst reasoning this complements):
+    the owner explicitly wants to keep verifying the pipeline actually works end to end (real
+    Telegram pushes landing on their own phone) WITHOUT flooding every other real user during the
+    catch-up period — a middle ground between "suspend all notifications" and "notify everyone,
+    backlog and all." `matched`/`notifications_sent` etc. in the returned summary still count only
+    the sends that actually went out (i.e. just this one user's), same contract as always."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
@@ -336,15 +372,21 @@ async def run_notifications(
 
     async with Bot(token=token) as bot:
         for listing in new_listings:
-            m, s = await _notify_new_matches(bot, session, listing)
+            m, s = await _notify_new_matches(
+                bot, session, listing, only_telegram_user_id=only_telegram_user_id
+            )
             matched_count += m
             new_sent_count += s
         for listing, old_price in price_change_events:
             # a price change can also newly qualify filters that were previously priced out
-            m, s = await _notify_new_matches(bot, session, listing)
+            m, s = await _notify_new_matches(
+                bot, session, listing, only_telegram_user_id=only_telegram_user_id
+            )
             matched_count += m
             new_sent_count += s
-            price_change_sent_count += await _notify_price_change(bot, session, listing, old_price)
+            price_change_sent_count += await _notify_price_change(
+                bot, session, listing, old_price, only_telegram_user_id=only_telegram_user_id
+            )
 
     return {
         "matched": matched_count,

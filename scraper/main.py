@@ -98,9 +98,12 @@ def _notifications_suspended() -> bool:
     days/weeks suspended would otherwise find many genuinely-new listings and fire a real
     notification burst to every matching user's phone in one shot, regardless of time of day. When
     set, run_once() still does everything else exactly as normal (scrape/upsert/delist all run in
-    full — this ONLY skips the final run_notifications call) so the catch-up itself is never
-    silently incomplete; just re-enable notifications (unset this) once satisfied the DB is caught
-    up to real current state."""
+    full) so the catch-up itself is never silently incomplete.
+
+    2026-09-13: this no longer means a full skip — see run_once()'s own use of this alongside
+    OWNER_TELEGRAM_USER_ID. The owner explicitly wants real Telegram pushes to keep landing on
+    their OWN phone during the catch-up (so the pipeline is genuinely being verified end to end,
+    not just trusted on faith) while every other real user stays untouched until this is lifted."""
     return os.environ.get(_NOTIFICATIONS_SUSPENDED_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
 
 
@@ -571,19 +574,46 @@ def run_once() -> dict[str, int]:
                 {"matched": 0, "notifications_sent": 0, "price_change_notifications_sent": 0}
             )
         elif _notifications_suspended():
-            logger.warning(
-                "%s is set — skipping notifications for %d new listing(s) and %d price change(s) "
-                "this run (already upserted/delisted normally; only the notify step is skipped).",
-                _NOTIFICATIONS_SUSPENDED_ENV_VAR, len(new_listings), len(price_change_events),
-            )
-            summary.update(
-                {
-                    "matched": 0,
-                    "notifications_sent": 0,
-                    "price_change_notifications_sent": 0,
-                    "notifications_suspended": True,
-                }
-            )
+            owner_telegram_user_id = os.environ.get("OWNER_TELEGRAM_USER_ID", "").strip() or None
+            if owner_telegram_user_id is None:
+                # Can't restrict-to-owner without an owner id to restrict to — falls back to a
+                # full skip rather than risk accidentally notifying everyone (only_telegram_user_id
+                # =None in run_notifications means "no restriction at all", the opposite of intent
+                # here).
+                logger.warning(
+                    "%s is set but OWNER_TELEGRAM_USER_ID is not — falling back to a full "
+                    "notification skip for %d new listing(s)/%d price change(s) this run (can't "
+                    "restrict to the owner with no owner id configured).",
+                    _NOTIFICATIONS_SUSPENDED_ENV_VAR, len(new_listings), len(price_change_events),
+                )
+                summary.update(
+                    {
+                        "matched": 0,
+                        "notifications_sent": 0,
+                        "price_change_notifications_sent": 0,
+                        "notifications_suspended": True,
+                    }
+                )
+            else:
+                logger.warning(
+                    "%s is set — restricting notifications to the owner only (telegram_user_id="
+                    "%s) for %d new listing(s)/%d price change(s) this run; every other user is "
+                    "skipped (still upserted/delisted normally, and will get their real "
+                    "notification once this is lifted).",
+                    _NOTIFICATIONS_SUSPENDED_ENV_VAR, owner_telegram_user_id,
+                    len(new_listings), len(price_change_events),
+                )
+                summary.update(
+                    asyncio.run(
+                        run_notifications(
+                            session,
+                            new_listings,
+                            price_change_events,
+                            only_telegram_user_id=owner_telegram_user_id,
+                        )
+                    )
+                )
+                summary["notifications_suspended"] = True
         else:
             summary.update(
                 asyncio.run(run_notifications(session, new_listings, price_change_events))
