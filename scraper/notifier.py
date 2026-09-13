@@ -30,7 +30,7 @@ from telegram import Bot
 from dorin_common import bright_data_client, whatsapp_client
 from dorin_common.access import has_full_access
 from dorin_common.cards import format_caption, send_listing_card
-from dorin_common.enums import NotificationReason
+from dorin_common.enums import NotificationReason, Source
 from dorin_common.matching import evaluate
 from dorin_common.models import Filter, Listing, SentNotification, User
 
@@ -180,8 +180,22 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
     sequencing difference the owner asked for — match first, then decide whether to spend a fetch —
     not fetching speculatively for every scraped listing regardless of who it matches. website/
     main.py's _fill_missing_descriptions_in_background (2026-09-07) covers the complementary case
-    this discovery-time-only trigger can't: a listing whose paying match happens AFTER discovery."""
+    this discovery-time-only trigger can't: a listing whose paying match happens AFTER discovery.
+
+    2026-09-13: scoped to Source.YAD2 ONLY — a real bug found via a real production Telegram send,
+    where a matching Komo/Homeless listing's own URL got passed to this SAME Bright Data DCA
+    collector, which is built specifically to parse a Yad2 listing detail page's DOM (see
+    bright_data_client.py's own module docstring). scraper/main.py's own
+    _enrich_new_listings_via_bright_data already had this exact scoping (added 2026-09-13 once
+    Komo/Homeless started sharing this project's new_ids path) — this call site was simply missed
+    when that fix went in, since it lives in a different module (notifier.py, not main.py) and
+    isn't called from the same place. Komo/Homeless get their own real descriptions from their own
+    scrapers now (see komo_client.py's _DESCRIPTION_RE and homeless_client.py's
+    fetch_listing_description) — this function was never their path to begin with, so narrowing it
+    to Yad2 loses nothing for them."""
     if listing.description or not bright_data_client.is_configured():
+        return
+    if listing.source != Source.YAD2:
         return
     if not any(_has_access_for(user) for user in recipients):
         return

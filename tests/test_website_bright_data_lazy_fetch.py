@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+from dorin_common.enums import Source
+
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
 _WEBSITE_DIR = Path(__file__).resolve().parent.parent / "website"
@@ -32,10 +34,11 @@ _spec.loader.exec_module(website_main)
 
 
 class _FakeListing:
-    def __init__(self, id, description=None, url="https://yad2.co.il/item/x"):
+    def __init__(self, id, description=None, url="https://yad2.co.il/item/x", source=Source.YAD2):
         self.id = id
         self.description = description
         self.url = url
+        self.source = source
 
 
 class _FakeGetSession:
@@ -98,6 +101,29 @@ def test_fill_missing_descriptions_fires_one_thread_per_missing_listing():
     assert thread_mock.call_count == 2
     started_ids = {call.kwargs["args"][0] for call in thread_mock.call_args_list}
     assert started_ids == {1, 2}
+
+
+def test_fill_missing_descriptions_skips_non_yad2_sources(monkeypatch):
+    # 2026-09-13: real bug found via a real production Telegram send — this Bright Data DCA
+    # collector is built specifically to parse a YAD2 listing detail page's DOM (see
+    # bright_data_client.py's own module docstring); pointing it at a Komo/Homeless URL gets
+    # nonsense, not real enrichment. scraper/notifier.py's own _maybe_fetch_description had the
+    # identical gap, fixed the same night.
+    komo = _FakeListing(id=1, description=None, url="https://komo.co.il/item/1", source=Source.KOMO)
+    homeless = _FakeListing(
+        id=2, description=None, url="https://homeless.co.il/item/2", source=Source.HOMELESS
+    )
+    yad2 = _FakeListing(id=3, description=None, url="https://yad2.co.il/item/3", source=Source.YAD2)
+    with (
+        patch.object(website_main.bright_data_client, "is_configured", return_value=True),
+        patch.object(website_main.threading, "Thread") as thread_mock,
+    ):
+        website_main._fill_missing_descriptions_in_background([komo, homeless, yad2])
+    thread_mock.assert_called_once_with(
+        target=website_main._ensure_description_sync,
+        args=(3, "https://yad2.co.il/item/3"),
+        daemon=True,
+    )
 
 
 def test_ensure_description_sync_fetches_and_caches():
