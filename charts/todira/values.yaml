@@ -156,7 +156,8 @@ scraper:
   # ZenRows onto Bright Data's ISP proxy, this should go back to
   # "0 8,10,12,14,16,18,20,22 * * *" (kept here in this comment so restoring it doesn't mean
   # reconstructing the original schedule from memory).
-  schedule: "0 8 * * *"
+  # 2026-09-13: 09:30 (not 08:00) per explicit owner request.
+  schedule: "30 9 * * *"
   # 2026-09-13: real ZenRows dashboard check (owner's own screenshot) found only 7,218 credits
   # left on the Build 45k plan, renewing 2026-10-01 (~18 days away) — 87% of the plan already used.
   # At the schedule/sources active before tonight (8 runs/day, full 7-region Yad2 sweep + all-42-
