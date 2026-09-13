@@ -1,0 +1,101 @@
+name: Diagnose Yad2 via Bright Data's Web Unlocker (read-only, first real attempt)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# Owner's explicit push (2026-09-12/13): ZenRows just confirmed (see
+# diagnose-yad2-map-api-cost.yaml) that BOTH www.yad2.co.il and gw.yad2.co.il are forced into its
+# most expensive tier (REQS002) — no cheaper path exists through ZenRows specifically. This project
+# already pays for a DIFFERENT unlocking service, Bright Data (see
+# common/dorin_common/bright_data_client.py) — but only for its Data Collector API (DCA), tied to
+# one pre-built Scraper Studio collector configured specifically to parse a Yad2 LISTING DETAIL
+# page's DOM. That collector cannot be reused here: this is a different URL shape entirely (a JSON
+# API endpoint, gw.yad2.co.il/realestate-feed/rent/map), and the DCA collector's own Parser code
+# only knows how to read a listing detail page's fields.
+#
+# This tests Bright Data's separate **Web Unlocker API** instead — a generic "fetch any URL through
+# our unlocking infrastructure" product (POST https://api.brightdata.com/request, body
+# {"zone": <zone>, "url": <target>, "format": "raw"}, same Bearer API key already stored as
+# BRIGHT_DATA_API_KEY) — NOT yet used anywhere in this project. This is a genuinely first attempt:
+#
+#   - The exact request shape above is Bright Data's own documented Web Unlocker REST API shape,
+#     not independently confirmed against this account's own real traffic yet (unlike everything
+#     else in bright_data_client.py, which WAS corrected 2026-09-12 after an earlier wrong-product
+#     guess — see that file's own docstring for that exact cautionary tale). Treat whatever comes
+#     back here as the real, first evidence — success or failure — not a foregone conclusion either
+#     way.
+#   - `zone` needs a Web Unlocker zone to actually exist on this Bright Data account — tries the
+#     platform's own common default name ("web_unlocker1") first; a zone-not-found error very
+#     likely means the owner needs to create one in the Bright Data dashboard first (a real account
+#     setup step, not a bug in this workflow), not that Web Unlocker itself doesn't work for Yad2.
+#
+# Tests BOTH the plain www.yad2.co.il region page AND the gw.yad2.co.il map API in one run, so a
+# single dispatch answers "does Bright Data's Web Unlocker get past Yad2's protection at all" for
+# both URL shapes already investigated.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Web Unlocker — www.yad2.co.il region page (zone=web_unlocker1)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          if [ -z "$BRIGHT_DATA_API_KEY" ]; then
+            echo "BRIGHT_DATA_API_KEY secret is not set in this repo — cannot test Bright Data at all."
+            exit 0
+          fi
+          curl -sS -D /tmp/region.headers -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $BRIGHT_DATA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"zone":"web_unlocker1","url":"https://www.yad2.co.il/realestate/rent/tel-aviv-area","format":"raw"}' \
+            -o /tmp/region.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 90
+          echo "--- response headers ---"
+          cat /tmp/region.headers
+          echo "--- body (first 1500 chars) ---"
+          head -c 1500 /tmp/region.body
+          echo
+          echo "--- real-data check ---"
+          python3 -c "
+          with open('/tmp/region.body', encoding='utf-8', errors='replace') as f:
+              body = f.read()
+          print(f'length={len(body)}')
+          print(f\"contains feed-item-layout-link: {'feed-item-layout-link' in body}\")
+          "
+
+      - name: Web Unlocker — gw.yad2.co.il map API, real bbox from the owner's own DevTools (zone=web_unlocker1)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          if [ -z "$BRIGHT_DATA_API_KEY" ]; then
+            echo "BRIGHT_DATA_API_KEY secret is not set — skipping."
+            exit 0
+          fi
+          curl -sS -D /tmp/map.headers -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $BRIGHT_DATA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11","format":"raw"}' \
+            -o /tmp/map.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 90
+          echo "--- response headers ---"
+          cat /tmp/map.headers
+          echo "--- body (first 1500 chars) ---"
+          head -c 1500 /tmp/map.body
+          echo
+          echo "--- real-data check ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/map.body', encoding='utf-8') as f:
+                  data = json.load(f)
+              markers = data.get('data', {}).get('markers', [])
+              print(f'Parsed OK. markers count: {len(markers)}')
+              if markers:
+                  print('First marker price:', markers[0].get('price'))
+          except Exception as e:
+              print(f'Not the expected JSON shape: {e}')
+          "
