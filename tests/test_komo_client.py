@@ -36,6 +36,13 @@ _REAL_DETAILS_HTML = (
     # <meta name="Description"> content, truncated here (the real page's text runs on longer).
     '<meta name="Description" content="דירה יוקרתית מושקעת ברמה גבוהה עם מיזוג '
     'מרכזי וחימום תת רצפתי">'
+    # Confirmed live (diagnose-komo-detail-images.yaml, 2026-09-13) — this same real listing's
+    # actual og:image tag, byte-for-byte (bare "&", not "&amp;" — Komo's own markup is sloppy
+    # here; html.unescape is a safe no-op on an unrecognized "&picNum"/"&luachNum" sequence, so
+    # this doesn't need to be HTML-escaped to round-trip correctly). A relative path, needing
+    # urljoin against DETAILS_PAGE_URL.
+    '<meta property="og:image" content="/api/modaot/tmunot/showPic/list/'
+    '?picSize=b&picNum=25352812&luachNum=2">'
     '<div class="floor firstInfoBlockWrap" style="width:25%;" >'
     '<div class="firstInfo" > 1 </div><div class="firstInfoTitle" > קומה</div></div>'
     '<div class="mr firstInfoBlockWrap" style="width:25%;" >'
@@ -72,6 +79,10 @@ def test_parse_details_html_extracts_the_real_confirmed_listing():
         "floor": 1,
         "square_meters": 38,
         "description": "דירה יוקרתית מושקעת ברמה גבוהה עם מיזוג מרכזי וחימום תת רצפתי",
+        "images": [
+            "https://www.komo.co.il/api/modaot/tmunot/showPic/list/"
+            "?picSize=b&picNum=25352812&luachNum=2"
+        ],
         "street": "שערי ירושלים 5",
         "neighborhood": None,
         "city": "ירושלים",
@@ -101,6 +112,18 @@ def test_parse_details_html_description_html_entities_unescaped():
     # html.unescape("&nbsp;") is U+00A0 (a real non-breaking space), not a plain " " — asserting
     # the exact character rather than a plain space, since that's genuinely what unescape returns.
     assert item["description"] == "דירה & מרפסת  גדולה"
+
+
+def test_parse_details_html_missing_og_image_leaves_images_empty():
+    # No <meta property="og:image"> at all — must degrade to an empty list, not raise (same
+    # benefit-of-the-doubt policy as every other optional field here).
+    html = (
+        '<div class="price modaaWPrice"><span>7,000</span></div>'
+        '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;2 חדרים '
+        '&nbsp;בירושלים, שערי ירושלים 5" />'
+    )
+    item = _parse_details_html(html, modaa_num="4471462")
+    assert item["images"] == []
 
 
 def test_parse_details_html_missing_price_returns_none():
