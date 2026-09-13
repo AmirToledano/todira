@@ -1,0 +1,95 @@
+name: Diagnose Yad2 via Bright Data's ISP proxy (read-only, first real attempt)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
+#
+# Bright Data's Web Unlocker (see diagnose-yad2-bright-data-cost.yaml) hit a real "Residential
+# Failed... no KYC" wall for every URL except one lucky exact bbox — and full KYC needs a company
+# email the owner doesn't have yet (Gmail rejected). Bright Data's own dashboard offers ISP
+# proxies as a "start immediately — no verification, no domain restrictions" alternative, so the
+# owner created one (zone "isp_proxy1") to test — real credentials, real $2/month cost already
+# committed, not a free trial.
+#
+# IMPORTANT — this is a real ISP proxy (raw IP-level access), NOT an API that renders JS for you
+# like Web Unlocker does. Based on this project's own already-documented history (yad2_client.py's
+# module docstring, attempts 1-8): a raw proxy with no real browser/JS rendering could not get past
+# Yad2's own Radware Bot Manager wall on the full HTML search page — only attempt 9 (a residential
+# proxy GATEWAY combined with an actual headless browser running JS) got through, at a severe cost
+# (every sub-resource billed separately). So THIS diagnostic tests two different things with two
+# different real expectations, not blind hope:
+#   1. gw.yad2.co.il's map API (pure JSON, no JS rendering needed at all) — the earlier block there
+#      was Bright Data's OWN residential-KYC classification (via Web Unlocker specifically), not a
+#      Yad2-side JS challenge. An ISP proxy (no KYC gate, per Bright Data's own dashboard) has a
+#      real chance of getting through to this endpoint specifically.
+#   2. www.yad2.co.il's own full search page (real HTML, but Yad2 itself needs JS execution to even
+#      render its own listing cards) — expected, based on this project's own history, to most
+#      likely still fail the same way attempts 1-8 did. Tested anyway for a real answer, not
+#      assumed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1) ISP proxy against gw.yad2.co.il's map API (pure JSON, no JS rendering needed)
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ] || [ -z "$BRIGHT_DATA_ISP_USER" ] || [ -z "$BRIGHT_DATA_ISP_PASS" ]; then
+            echo "One or more BRIGHT_DATA_ISP_* secrets are not set — cannot test."
+            exit 0
+          fi
+          curl -sS -D /tmp/map.headers \
+            --proxy "$BRIGHT_DATA_ISP_HOST" \
+            --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11" \
+            -o /tmp/map.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60
+          echo "--- response headers ---"
+          cat /tmp/map.headers
+          echo "--- body (first 1000 chars) ---"
+          head -c 1000 /tmp/map.body
+          echo
+          echo "--- real-data check ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/map.body', encoding='utf-8') as f:
+                  data = json.load(f)
+              markers = data.get('data', {}).get('markers', [])
+              print(f'Parsed OK. markers count: {len(markers)}')
+              if markers:
+                  print('First marker price:', markers[0].get('price'))
+          except Exception as e:
+              print(f'Not the expected JSON shape: {e}')
+          "
+
+      - name: 2) Same ISP proxy against www.yad2.co.il's full search page (expected to likely still fail — real answer, not assumed)
+        if: always()
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then
+            echo "Secrets not set — skipping."
+            exit 0
+          fi
+          curl -sS -D /tmp/page.headers \
+            --proxy "$BRIGHT_DATA_ISP_HOST" \
+            --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://www.yad2.co.il/realestate/rent/tel-aviv-area" \
+            -o /tmp/page.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60
+          echo "--- real-data check ---"
+          python3 -c "
+          with open('/tmp/page.body', encoding='utf-8', errors='replace') as f:
+              body = f.read()
+          print(f'length={len(body)}')
+          print(f\"contains feed-item-layout-link (real listing cards): {'feed-item-layout-link' in body}\")
+          print(f\"contains Yad2's own antibot marker 'Are you for real': {'Are you for real' in body}\")
+          "
