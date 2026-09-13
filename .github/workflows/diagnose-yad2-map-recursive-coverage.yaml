@@ -80,6 +80,35 @@ jobs:
               print(f\"  cityId={c.get('cityId')!r} key={c.get('key')!r} docCount={c.get('docCount')} center={c.get('center')} areaId={c.get('areaId')} regionId={c.get('regionId')}\")
           "
 
+      - name: 1b) Whole-country bbox WITH area=1&region=3 (Tel-Aviv-area's real known-good values, "wrong" for most of the bbox) — does it avoid the challenge and still return country-wide clusters?
+        if: always()
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then echo "skipping - no secrets"; exit 0; fi
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=29.3,34.2,33.4,35.95&zoom=7" \
+            -o /tmp/country2.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/country2.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/country2.json', encoding='utf-8'))
+          except json.JSONDecodeError as e:
+              print(f'not parseable JSON: {e}'); raise SystemExit(0)
+          data = payload.get('data', {}) if isinstance(payload, dict) else {}
+          markers = data.get('markers') or []
+          clusters = data.get('clusters') or []
+          print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+          total_doc_count = sum(c.get('docCount', 0) for c in clusters if isinstance(c, dict))
+          print(f'sum of all cluster docCounts: {total_doc_count}')
+          for c in sorted(clusters, key=lambda c: -c.get('docCount', 0))[:25]:
+              print(f\"  cityId={c.get('cityId')!r} key={c.get('key')!r} docCount={c.get('docCount')} center={c.get('center')} areaId={c.get('areaId')} regionId={c.get('regionId')}\")
+          "
+
       - name: 2) Same known Tel-Aviv bbox, area/region OMITTED — same data as with them included?
         if: always()
         env:
@@ -118,7 +147,7 @@ jobs:
           # for a real city-center-only query, wide enough to still cover central Tel Aviv.
           curl -sS \
             --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
-            "https://gw.yad2.co.il/realestate-feed/rent/map?bBox=32.052667,34.762374,32.122667,34.832374&zoom=15" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=32.052667,34.762374,32.122667,34.832374&zoom=15" \
             -o /tmp/tight.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
           python3 -c "
           import json
@@ -136,6 +165,39 @@ jobs:
               print(f'not parseable JSON: {e}')
           "
 
+      - name: 5) REGRESSION CHECK — re-fetch the ORIGINAL known-good exact request (area=1&region=3 included)
+        if: always()
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then echo "skipping - no secrets"; exit 0; fi
+          # Steps 1/2/3/4 above ALL got http_status=302 (a Radware/Incapsula-style challenge
+          # redirect, not real JSON) - every one of them omitted area/region. This step reruns the
+          # EXACT request that is confirmed to have worked before (diagnose-yad2-isp-proxy.yaml,
+          # WITH area=1&region=3) to tell apart two real possibilities: (a) area/region are
+          # genuinely required and omitting them is what triggered the challenge - the proxy itself
+          # is fine, or (b) this ISP proxy's assigned IP has since been flagged/rate-limited by
+          # Yad2's own bot manager regardless of params - a real fragility worth knowing before
+          # building anything more on top of this.
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11" \
+            -o /tmp/regression.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/regression.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/regression.json', encoding='utf-8'))
+              data = payload.get('data', {})
+              markers = data.get('markers') or []
+              clusters = data.get('clusters') or []
+              print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
+
       - name: 4) Does the map API accept a plain city= filter (same param the HTML search page uses)?
         if: always()
         env:
@@ -146,10 +208,15 @@ jobs:
           if [ -z "$BRIGHT_DATA_ISP_HOST" ]; then echo "skipping - no secrets"; exit 0; fi
           # kiryat-motzkin (city id 8200, from yad2_client.CITY_SLUG_TO_ID) - a small city, real
           # chance its whole real inventory is under 200 regardless, good for checking whether
-          # `city=` alone (no bBox at all) returns anything real.
+          # `city=` works as a filter. area=1&region=3 (Tel-Aviv-area's own real known-good values)
+          # are included even though this city is actually in the north - steps 1-4's shared 302
+          # finding (see step 5) suggests area/region being NON-EMPTY, not necessarily "correct for
+          # this geography", may be what avoids Yad2's own bot-challenge redirect. If real filtering
+          # by city still works despite "wrong" area/region, that's useful; if it 302s anyway,
+          # area/region correctness (not just presence) may matter.
           curl -sS \
             --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
-            "https://gw.yad2.co.il/realestate-feed/rent/map?city=8200&zoom=13" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?city=8200&area=1&region=3&zoom=13" \
             -o /tmp/cityonly.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
           echo "--- first 300 chars ---"; head -c 300 /tmp/cityonly.json; echo
           python3 -c "
