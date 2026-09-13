@@ -13,7 +13,7 @@ import logging
 from typing import Any
 
 from dorin_common import cities
-from dorin_common.enums import DealType
+from dorin_common.enums import DealType, Source
 from dorin_common.schemas import NormalizedListing
 
 logger = logging.getLogger(__name__)
@@ -145,22 +145,40 @@ def _enrich_from_feed_record(item: NormalizedListing, record: dict[str, Any]) ->
     return item.model_copy(update=updates)
 
 
-def normalize(raw_item: dict[str, Any], *, deal_type: str = DealType.RENT) -> NormalizedListing | None:
+def normalize(
+    raw_item: dict[str, Any], *, source: str = Source.YAD2, deal_type: str = DealType.RENT
+) -> NormalizedListing | None:
     """Returns None (and logs) only if the item is missing fields we can't function without
-    (a usable id). Everything else degrades gracefully to None rather than aborting."""
+    (a usable id). Everything else degrades gracefully to None rather than aborting.
+
+    2026-09-13: generalized from Yad2-only to accept any `source` (komo_client.py and
+    homeless_client.py both now produce raw dicts in the SAME flat shape yad2_client._parse_cards
+    already does — id/url/price/rooms/floor/square_meters/street/neighborhood/city — deliberately,
+    specifically so this one function keeps working for all three without per-source branches).
+    The `_get(...)` fallback key names below (roomsCount/squareMeter/cityText/etc.) are Yad2-
+    specific historical hedges from before that shape was confirmed; harmless no-ops for
+    Komo/Homeless items, which never carry those keys, but kept rather than removed since Yad2
+    raw items (via _feed_record-enriched cards) still sometimes do."""
     external_id = _get(raw_item, "id", "adNumber", "order_id")
     if external_id is None:
-        logger.warning("Skipping Yad2 item with no recognizable id field: %r", raw_item)
+        logger.warning("Skipping %s item with no recognizable id field: %r", source, raw_item)
         return None
 
     url = _get(raw_item, "url", "link")
-    if url is None:
-        # best-effort fallback shape — verify the real ad URL pattern during the research spike
+    if url is None and source == Source.YAD2:
+        # Yad2-specific historical fallback — Komo/Homeless items always carry their own real
+        # "url" (see their own fetch_search_results), so they never need this and must NEVER get
+        # a yad2.co.il URL slapped on by accident if one's ever missing (that would silently
+        # mislabel a Komo/Homeless listing as a Yad2 one to anyone who clicks it). Left narrowly
+        # scoped to source == Source.YAD2 rather than generalized to "any source, build some
+        # generic URL" — a genuinely missing url for a non-Yad2 source should fail loudly (below,
+        # `url: str` in NormalizedListing has no default, so this raises and gets skipped) rather
+        # than silently invent a plausible-looking but wrong link.
         url = f"https://www.yad2.co.il/item/{external_id}"
 
     try:
         item = NormalizedListing(
-            source="yad2",
+            source=source,
             external_id=str(external_id),
             url=url,
             deal_type=deal_type,
