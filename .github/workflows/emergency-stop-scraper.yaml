@@ -20,6 +20,16 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
 
+      - name: Patch the live CronJob to suspend=true FIRST — before touching any Job/Pod
+        # Deleting a running Job while the CronJob resource itself still says suspend=false can
+        # immediately trigger a NEW Job (a missed/backlogged schedule catching up the instant
+        # concurrencyPolicy: Forbid's block clears) — confirmed live 2026-09-13, a real incident,
+        # not a hypothetical. Patching suspend=true directly on the live object first closes that
+        # gap without waiting for a full CI/CD helm upgrade to land.
+        run: |
+          kubectl patch cronjob todira-scraper -n todira --type merge -p '{"spec":{"suspend":true}}'
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}'; echo
+
       - name: Show current scraper jobs/pods before killing anything (real state, not assumed)
         run: |
           kubectl get jobs -n todira -l app=todira-scraper -o wide || true
@@ -29,6 +39,7 @@ jobs:
       - name: Delete every scraper Job (cascades to its Pod(s), stopping any in-progress run)
         run: |
           kubectl delete job -n todira -l app=todira-scraper --wait=true || true
-          echo "--- after delete ---"
+          echo "--- after delete (waiting 5s to catch any immediate re-trigger) ---"
+          sleep 5
           kubectl get jobs -n todira -l app=todira-scraper -o wide || true
           kubectl get pods -n todira -l app=todira-scraper -o wide || true
