@@ -1,0 +1,87 @@
+name: Diagnose — real root cause of tonight's notification-flood incident (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13, same
+# night as the incident (see EMERGENCY commits #249/#250 and emergency-stop-scraper.yaml).
+#
+# The owner reported ALL users (not just the owner) got Telegram notifications during the
+# scraper's very first catch-up run after being unsuspended, despite NOTIFICATIONS_SUSPENDED +
+# OWNER_TELEGRAM_USER_ID (PR #244) being deployed IN THE SAME COMMIT as the resume itself
+# (#243, suspended: false). Static code review of notifier.py/main.py found no obvious bug in the
+# restriction logic itself — every code path either does a full skip or an owner-only send, never
+# an unrestricted send, AS LONG AS that logic is what actually ran. The real, unverified question
+# this checks: did the very first catch-up Job (created by Kubernetes' own CronJob controller the
+# INSTANT `suspend` flipped from true to false — a real, documented k8s behavior, independent of
+# the `schedule` field, which only governs FUTURE runs) actually run WITH that logic, or did it
+# start from an EARLIER commit's image before the owner-only fix (or even before
+# NOTIFICATIONS_SUSPENDED existed at all) reached the cluster?
+#
+# Default successfulJobsHistoryLimit/failedJobsHistoryLimit (3/1, unset in this chart) should
+# still be keeping the last few completed scraper Jobs/Pods around — this reads their real logs
+# and real deployed env/image, not a guess.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: All scraper Jobs still known to the cluster (completed and not), oldest first
+        run: |
+          kubectl get jobs -n todira -l app=todira-scraper -o wide --sort-by=.metadata.creationTimestamp
+          echo "--- as JSON (creationTimestamp, completionTime, succeeded/failed) ---"
+          kubectl get jobs -n todira -l app=todira-scraper -o json | \
+            python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for j in data['items']:
+    m = j['metadata']
+    s = j.get('status', {})
+    print(m['name'], 'created=' + m.get('creationTimestamp', '?'),
+          'completed=' + s.get('completionTime', '?'),
+          'succeeded=' + str(s.get('succeeded', 0)), 'failed=' + str(s.get('failed', 0)))
+"
+
+      - name: All scraper Pods still known to the cluster (completed and not), oldest first
+        run: |
+          kubectl get pods -n todira -l app=todira-scraper -o wide --sort-by=.metadata.creationTimestamp
+
+      - name: For EVERY still-known scraper pod — real deployed image tag + the two env vars that matter
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper -o jsonpath='{.items[*].metadata.name}'); do
+            echo "=== $POD ==="
+            echo "created: $(kubectl get pod -n todira "$POD" -o jsonpath='{.metadata.creationTimestamp}')"
+            echo "image:   $(kubectl get pod -n todira "$POD" -o jsonpath='{.spec.containers[0].image}')"
+            echo "NOTIFICATIONS_SUSPENDED=$(kubectl get pod -n todira "$POD" -o jsonpath='{range .spec.containers[0].env[?(@.name=="NOTIFICATIONS_SUSPENDED")]}{.value}{end}')"
+            OWNER_SET=$(kubectl get pod -n todira "$POD" -o jsonpath='{range .spec.containers[0].env[?(@.name=="OWNER_TELEGRAM_USER_ID")]}present{end}')
+            echo "OWNER_TELEGRAM_USER_ID env entry present: ${OWNER_SET:-no}"
+            echo ""
+          done
+
+      - name: Real logs from every still-known scraper pod (current, then --previous as a fallback)
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper -o jsonpath='{.items[*].metadata.name}'); do
+            echo "====================================================================="
+            echo "=== logs: $POD ==="
+            echo "====================================================================="
+            kubectl logs -n todira "$POD" --timestamps --tail=1000 2>&1 || true
+            echo "--- (--previous, if it restarted) ---"
+            kubectl logs -n todira "$POD" --timestamps --tail=1000 --previous 2>&1 || echo "(no previous container)"
+          done
+
+      - name: Grep every captured log for the exact restriction-decision lines main.py logs
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper -o jsonpath='{.items[*].metadata.name}'); do
+            echo "=== $POD — restriction-decision lines ==="
+            kubectl logs -n todira "$POD" --tail=5000 2>/dev/null | \
+              grep -iE "notification|NOTIFICATIONS_SUSPENDED|restricting|owner|matched.*new listing" || echo "(no matching lines / log unavailable)"
+            echo ""
+          done
