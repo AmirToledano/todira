@@ -190,10 +190,13 @@ scraper:
   # one shot, regardless of time of day — set true for the initial catch-up period. The scraper
   # still does everything else exactly as normal (scrape/upsert/delist all run in full — see
   # scraper/main.py's _notifications_suspended docstring) so the DB genuinely catches up to real
-  # current state; only the final notify step is skipped. Flip back to `false` once satisfied
-  # (check the scraper pod's own logs for the "skipping notifications for N new listing(s)" line to
-  # see how big each run's backlog actually was) that the catch-up is done and real-time
-  # notifications should resume.
+  # current state. Real sends are restricted to the owner's OWN Telegram account
+  # (OWNER_TELEGRAM_USER_ID, already wired below) — explicit owner request: keep verifying the
+  # pipeline actually works end to end via real pushes to their own phone, without flooding every
+  # other real user during the catch-up. Falls back to a full skip if OWNER_TELEGRAM_USER_ID isn't
+  # set at all. Flip back to `false` once satisfied (check the scraper pod's own logs for the
+  # "restricting notifications to the owner only" line, and how big each run's backlog was) that
+  # the catch-up is done and real-time notifications should resume for everyone.
   notificationsSuspended: true
   # Proactive WhatsApp Message Template push (2026-09-08, scraper/notifier.py's own
   # _whatsapp_eligible) — the APPROVED template's exact name/language in Meta's WhatsApp Manager.
