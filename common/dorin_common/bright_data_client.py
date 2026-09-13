@@ -51,6 +51,20 @@ What's still genuinely unknown here is account-specific, not shape-specific:
     fallback keys either way.
 Both BRIGHT_DATA_API_KEY and BRIGHT_DATA_COLLECTOR_ID are required together; unset (the default) =
 both functions always return None immediately, same as before this feature existed.
+
+2026-09-13: added fetch_via_web_unlocker — a SEPARATE Bright Data product (Web Unlocker API,
+POST api.brightdata.com/request) from the Data Collector API above. The DCA collector is tied to
+one pre-built Scraper Studio "custom code" collector configured specifically to parse a Yad2
+listing DETAIL page's DOM — useless for any other URL shape. Web Unlocker is generic: "fetch this
+exact URL through our unlocking infrastructure, hand back the raw response" — no per-site collector
+needed. Confirmed live against real Yad2 URLs the owner found needed it (both a full rendered
+search-results page and gw.yad2.co.il's JSON map API, both blocked by ZenRows' own REQS002 at every
+tier tried — see .github/workflows/diagnose-yad2-map-api-cost.yaml and
+diagnose-yad2-bright-data-cost.yaml): both succeeded (HTTP 200, real data) through a Web Unlocker
+zone named "web_unlocker1" (Bright Data's own default zone name for this product, created live in
+the owner's dashboard the same day) — $1.50 per 1,000 SUCCESSFUL requests only, per that dashboard's
+own pricing (confirmed live, not a doc guess). Uses the SAME BRIGHT_DATA_API_KEY as the DCA
+functions above — one Bright Data account, multiple products/zones under it, not a second key.
 """
 from __future__ import annotations
 
@@ -65,9 +79,20 @@ logger = logging.getLogger(__name__)
 API_KEY_ENV_VAR = "BRIGHT_DATA_API_KEY"
 COLLECTOR_ID_ENV_VAR = "BRIGHT_DATA_COLLECTOR_ID"
 DESCRIPTION_FIELD_ENV_VAR = "BRIGHT_DATA_DESCRIPTION_FIELD"
+# 2026-09-13: only needed by fetch_via_web_unlocker (a different product from the DCA collector
+# above) — defaults to "web_unlocker1", Bright Data's own default zone name for this product,
+# confirmed live in the owner's own dashboard the same day this was added. Override only if the
+# owner ever creates/uses a differently-named Web Unlocker zone.
+WEB_UNLOCKER_ZONE_ENV_VAR = "BRIGHT_DATA_WEB_UNLOCKER_ZONE"
+_DEFAULT_WEB_UNLOCKER_ZONE = "web_unlocker1"
 
 _TRIGGER_URL = "https://api.brightdata.com/dca/trigger"
 _RESULT_URL = "https://api.brightdata.com/dca/dataset"
+_WEB_UNLOCKER_URL = "https://api.brightdata.com/request"
+# Confirmed live 2026-09-13: a real Yad2 full-page fetch took ~9s, the JSON map API ~5s, end to end
+# through Web Unlocker's own real-browser rendering — 90s leaves generous headroom without letting
+# one hung request block a scrape run indefinitely.
+_WEB_UNLOCKER_TIMEOUT_SECONDS = 90.0
 _REQUEST_TIMEOUT_SECONDS = 15.0
 _POLL_INTERVAL_SECONDS = 3.0
 # A scrape run shouldn't hang indefinitely on one slow fetch — 60s is a guess at "generous but
@@ -208,3 +233,41 @@ def fetch_listing_detail_via_bright_data(url: str) -> dict | None:
     mechanism this is meant to plug into (per-new-external_id, at discovery time) and what's still
     unbuilt before this is wired in for real."""
     return _trigger_and_fetch_first_row(url)
+
+
+def fetch_via_web_unlocker(url: str, *, zone: str | None = None) -> str | None:
+    """2026-09-13 addition. Fetches ANY url through Bright Data's Web Unlocker API (a single POST,
+    no trigger/poll dance — see module docstring for why this is a different product from the DCA
+    functions above, and what's already been confirmed live against real Yad2 URLs). Returns the
+    raw response body as text on HTTP 200, or None on missing API key, any request failure, or a
+    non-200 status — never raises, same "never blocks the caller on a failure" contract as every
+    other function in this file.
+
+    `zone` defaults to _DEFAULT_WEB_UNLOCKER_ZONE ("web_unlocker1") or the
+    BRIGHT_DATA_WEB_UNLOCKER_ZONE env var if set — override only for an account with a
+    differently-named zone. Only BRIGHT_DATA_API_KEY is required (no separate config needed to use
+    this vs. the DCA functions above — same account, same key, different Bright Data product)."""
+    api_key = os.environ.get(API_KEY_ENV_VAR, "").strip()
+    if not api_key:
+        return None
+    zone_name = zone or os.environ.get(WEB_UNLOCKER_ZONE_ENV_VAR, "").strip() or _DEFAULT_WEB_UNLOCKER_ZONE
+
+    try:
+        response = httpx.post(
+            _WEB_UNLOCKER_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"zone": zone_name, "url": url, "format": "raw"},
+            timeout=_WEB_UNLOCKER_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError:
+        logger.exception("Bright Data Web Unlocker request failed for %s", url)
+        return None
+
+    if response.status_code != 200:
+        logger.warning(
+            "Bright Data Web Unlocker returned non-200 for %s: zone=%r status=%d body=%r",
+            url, zone_name, response.status_code, response.text[:500],
+        )
+        return None
+
+    return response.text

@@ -4,22 +4,29 @@ Doesn't test fetch_search_results/_parse_cards (those need real network access, 
 this dependency-light suite, same reasoning as normalize.py/matching.py's tests). No longer needs
 a patchright stub — yad2_client.py switched to ZenRows' Fetch API (plain httpx) 2026-09-02, see
 its module docstring."""
+import json
+
 import httpx
 import pytest
 
 from dorin_common.cities import CITIES
+from dorin_common import bright_data_client
 from yad2_client import (
     BLOCKED_RESOURCE_TYPES,
     CITY_SLUG_TO_HEBREW_NAME,
     CITY_SLUG_TO_ID,
+    MAP_API_URL,
     REGION_SLUGS,
     ZENROWS_API_KEY_ENV_VAR,
     Yad2FetchError,
+    Yad2MapFetchError,
     fetch_all_listings,
     fetch_listing_detail,
+    fetch_map_markers,
     fetch_region_pages,
     fetch_search_results,
 )
+from yad2_client import _marker_to_raw_item
 from yad2_client import _extract_feed_records as extract_feed_records
 
 
@@ -540,3 +547,124 @@ def test_parse_cards_attaches_feed_record_only_when_a_match_exists(monkeypatch):
     assert "_feed_record" in captured_items["abcd1234"]
     assert "_feed_record" in captured_items["xyz789"]
     assert "_feed_record" not in captured_items["no-feed-match"]
+
+
+# --- fetch_map_markers / _marker_to_raw_item (2026-09-13 — see module docstring in
+# yad2_client.py) — Yad2's own map-markers API, reached via Bright Data's Web Unlocker instead of
+# ZenRows (which refuses this endpoint outright). Marker shape below is the REAL confirmed record
+# (see .github/workflows/diagnose-yad2-bright-data-cost.yaml's actual output), not invented.
+
+_REAL_MARKER = {
+    "address": {
+        "region": {"text": "תל אביב והסביבה", "id": 3},
+        "city": {"text": "חולון"},
+        "area": {"text": "אזור חולון ובת ים"},
+        "neighborhood": {"text": "ג'סי כהן"},
+        "street": {"text": "הערבה"},
+        "house": {"number": 14, "floor": 4},
+        "coords": {"lon": 34.763276, "lat": 32.012712},
+    },
+    "subcategoryId": 2,
+    "categoryId": 2,
+    "adType": "private",
+    "price": 3800,
+    "token": "3zsxuu6d",
+    "additionalDetails": {
+        "property": {"text": "דירה"},
+        "roomsCount": 2.5,
+        "squareMeter": 65,
+        "propertyCondition": {"id": 2},
+    },
+    "metaData": {
+        "coverImage": "https://img.yad2.co.il/1.jpeg",
+        "images": ["https://img.yad2.co.il/1.jpeg", "https://img.yad2.co.il/2.jpeg"],
+    },
+    "tags": [],
+    "orderId": 57321396,
+    "priority": 1,
+}
+
+
+def test_marker_to_raw_item_extracts_the_real_confirmed_shape():
+    item = _marker_to_raw_item(_REAL_MARKER)
+    assert item == {
+        "id": "3zsxuu6d",
+        "url": "https://www.yad2.co.il/item/3zsxuu6d",
+        "price": 3800,
+        "rooms": 2.5,
+        "floor": 4,
+        "square_meters": 65,
+        "street": "הערבה 14",
+        "neighborhood": "ג'סי כהן",
+        "city": "חולון",
+        "images": ["https://img.yad2.co.il/1.jpeg", "https://img.yad2.co.il/2.jpeg"],
+    }
+
+
+def test_marker_to_raw_item_missing_token_returns_none():
+    marker = {k: v for k, v in _REAL_MARKER.items() if k != "token"}
+    assert _marker_to_raw_item(marker) is None
+
+
+def test_marker_to_raw_item_missing_house_number_keeps_street_name_only():
+    marker = {**_REAL_MARKER, "address": {**_REAL_MARKER["address"], "house": {"floor": 4}}}
+    item = _marker_to_raw_item(marker)
+    assert item["street"] == "הערבה"
+    assert item["floor"] == 4
+
+
+def test_marker_to_raw_item_no_images_omits_the_key():
+    marker = {**_REAL_MARKER, "metaData": {}}
+    item = _marker_to_raw_item(marker)
+    assert "images" not in item
+
+
+def test_fetch_map_markers_missing_bright_data_config_raises(monkeypatch):
+    monkeypatch.delenv(bright_data_client.API_KEY_ENV_VAR, raising=False)
+    with pytest.raises(Yad2MapFetchError, match="Bright Data Web Unlocker failed"):
+        list(fetch_map_markers("31.9,34.7,32.1,34.8", area=1, region=3))
+
+
+def test_fetch_map_markers_builds_the_real_confirmed_url_and_parses_markers(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", fake_fetch)
+
+    items = list(
+        fetch_map_markers("31.987679,34.732856,32.146966,34.857736", area=1, region=3, zoom=11)
+    )
+
+    assert captured["url"] == (
+        f"{MAP_API_URL}?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+    )
+    assert len(items) == 1
+    assert items[0]["id"] == "3zsxuu6d"
+
+
+def test_fetch_map_markers_invalid_json_raises(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: "not json")
+
+    with pytest.raises(Yad2MapFetchError, match="wasn't valid JSON"):
+        list(fetch_map_markers("bbox", area=1, region=3))
+
+
+def test_fetch_map_markers_missing_markers_list_raises(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: '{"data": {}}')
+
+    with pytest.raises(Yad2MapFetchError, match="no usable 'data.markers' list"):
+        list(fetch_map_markers("bbox", area=1, region=3))
+
+
+def test_fetch_map_markers_skips_non_dict_and_tokenless_entries(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
+    body = '{"data": {"markers": [123, {"no": "token"}]}}'
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: body)
+
+    assert list(fetch_map_markers("bbox", area=1, region=3)) == []

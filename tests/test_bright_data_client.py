@@ -18,6 +18,7 @@ def _clean_env(monkeypatch):
         bright_data_client.API_KEY_ENV_VAR,
         bright_data_client.COLLECTOR_ID_ENV_VAR,
         bright_data_client.DESCRIPTION_FIELD_ENV_VAR,
+        bright_data_client.WEB_UNLOCKER_ZONE_ENV_VAR,
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -287,5 +288,91 @@ def test_detail_returns_none_for_non_dict_row(monkeypatch):
 
     with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
         result = bright_data_client.fetch_listing_detail_via_bright_data("https://yad2.co.il/item/1")
+
+    assert result is None
+
+
+# --- fetch_via_web_unlocker (2026-09-13) — a different Bright Data product (Web Unlocker API,
+# single POST) from the DCA trigger/poll flow above. Confirmed live against real Yad2 URLs that
+# ZenRows itself rejected at every tier — see this function's own module docstring.
+
+
+def test_web_unlocker_returns_none_when_api_key_not_set():
+    assert bright_data_client.fetch_via_web_unlocker("https://example.com") is None
+
+
+def test_web_unlocker_happy_path_uses_default_zone_and_raw_format(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "key123")
+    monkeypatch.delenv(bright_data_client.WEB_UNLOCKER_ZONE_ENV_VAR, raising=False)
+    captured = {}
+
+    def fake_post(url, **kw):
+        captured["url"] = url
+        captured["kw"] = kw
+        return httpx.Response(200, text="<html>real page</html>", request=httpx.Request("POST", url))
+
+    with patch.object(httpx, "post", fake_post):
+        result = bright_data_client.fetch_via_web_unlocker("https://www.yad2.co.il/realestate/rent/x")
+
+    assert result == "<html>real page</html>"
+    assert captured["url"] == bright_data_client._WEB_UNLOCKER_URL
+    assert captured["kw"]["json"] == {
+        "zone": "web_unlocker1",
+        "url": "https://www.yad2.co.il/realestate/rent/x",
+        "format": "raw",
+    }
+    assert captured["kw"]["headers"]["Authorization"] == "Bearer key123"
+
+
+def test_web_unlocker_uses_configured_zone_override(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "key123")
+    monkeypatch.setenv(bright_data_client.WEB_UNLOCKER_ZONE_ENV_VAR, "my_custom_zone")
+    captured = {}
+
+    def fake_post(url, **kw):
+        captured["zone"] = kw["json"]["zone"]
+        return httpx.Response(200, text="ok", request=httpx.Request("POST", url))
+
+    with patch.object(httpx, "post", fake_post):
+        bright_data_client.fetch_via_web_unlocker("https://example.com")
+
+    assert captured["zone"] == "my_custom_zone"
+
+
+def test_web_unlocker_explicit_zone_argument_wins_over_env(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "key123")
+    monkeypatch.setenv(bright_data_client.WEB_UNLOCKER_ZONE_ENV_VAR, "env_zone")
+    captured = {}
+
+    def fake_post(url, **kw):
+        captured["zone"] = kw["json"]["zone"]
+        return httpx.Response(200, text="ok", request=httpx.Request("POST", url))
+
+    with patch.object(httpx, "post", fake_post):
+        bright_data_client.fetch_via_web_unlocker("https://example.com", zone="explicit_zone")
+
+    assert captured["zone"] == "explicit_zone"
+
+
+def test_web_unlocker_non_200_returns_none(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "key123")
+
+    def fake_post(url, **kw):
+        return httpx.Response(400, text='{"code":"zone not found"}', request=httpx.Request("POST", url))
+
+    with patch.object(httpx, "post", fake_post):
+        result = bright_data_client.fetch_via_web_unlocker("https://example.com")
+
+    assert result is None
+
+
+def test_web_unlocker_network_failure_returns_none_not_raise(monkeypatch):
+    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "key123")
+
+    def fake_post(url, **kw):
+        raise httpx.ConnectError("boom", request=httpx.Request("POST", url))
+
+    with patch.object(httpx, "post", fake_post):
+        result = bright_data_client.fetch_via_web_unlocker("https://example.com")
 
     assert result is None

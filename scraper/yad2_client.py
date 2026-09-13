@@ -43,7 +43,28 @@ project currently scrapes; extend it (search "yad2 city id <name>") before addin
 a different lever: 7 broad-region requests (REGION_SLUGS) instead of 42 per-city ones, ~6x cheaper
 per full-country sweep on the same ZenRows plan already in use. See that function's own
 module-level comment for the full reasoning and why it isn't wired into scraper/main.py yet.
-"""
+
+2026-09-13: added `fetch_map_markers` — a completely different, MUCH cheaper source for the same
+kind of data, found live by the owner in his own browser's DevTools (Network tab, filtered on
+"bbox" while panning/zooming Yad2's own results map): a plain GET to
+`gw.yad2.co.il/realestate-feed/rent/map?area=&region=&bBox=&zoom=` returns real, rich per-listing
+JSON (price, address down to house number/floor, exact lat/lon, roomsCount, squareMeter, and
+PHOTOS — all in one response, confirmed live to return 200 markers in a single call, vs. ~43-46
+cards from one fetch_all_listings region request). ZenRows itself flatly refuses this endpoint at
+every tier (REQS002, same as www.yad2.co.il — see
+.github/workflows/diagnose-yad2-map-api-cost.yaml) — this instead goes through Bright Data's Web
+Unlocker API (dorin_common.bright_data_client.fetch_via_web_unlocker, a DIFFERENT Bright Data
+product from the Data Collector API scraper/main.py already uses for detail-page enrichment),
+confirmed live to succeed on both this map API and the plain search page (see
+diagnose-yad2-bright-data-cost.yaml) at $1.50 per 1,000 SUCCESSFUL requests only — dramatically
+cheaper than ZenRows' forced ~25-credit tier, per real numbers from the owner's own Bright Data
+dashboard, not a guess.
+
+NOT wired into scraper/main.py's run_once() yet, deliberately — this is a bigger architectural
+change than fetch_all_listings was (a different provider, a different data shape, and the real
+bBox/area/region values needed to cover the whole country haven't been worked out yet, only the
+one bbox the owner's own browser happened to be showing). Kept as a real, tested, ready building
+block — the actual production switch-over is a follow-up decision, not made here."""
 from __future__ import annotations
 
 import json
@@ -54,6 +75,7 @@ from typing import Any, Iterator
 from urllib.parse import urljoin
 
 import httpx
+from dorin_common import bright_data_client
 
 logger = logging.getLogger(__name__)
 
@@ -632,3 +654,130 @@ def fetch_listing_detail(url: str) -> dict[str, Any] | None:
     except (KeyError, TypeError, IndexError, json.JSONDecodeError):
         logger.exception("Failed to parse __NEXT_DATA__ on Yad2 listing detail page: %s", url)
         return None
+
+
+# 2026-09-13: see module docstring for the full discovery story (owner's own DevTools) and cost
+# comparison. This is a real, separate Yad2 endpoint — not the same one _parse_cards/fetch_all_listings
+# read from — reached via Bright Data's Web Unlocker instead of ZenRows (ZenRows refuses it outright,
+# REQS002, at every tier — confirmed live, see diagnose-yad2-map-api-cost.yaml).
+MAP_API_URL = "https://gw.yad2.co.il/realestate-feed/rent/map"
+
+
+class Yad2MapFetchError(RuntimeError):
+    """fetch_map_markers failed outright — Bright Data's Web Unlocker request itself failed (see
+    bright_data_client.fetch_via_web_unlocker's own docstring for its failure modes), or it
+    succeeded but returned something that isn't the expected {"data": {"markers": [...]}} shape."""
+
+
+def _build_map_url(bbox: str, *, area: int, region: int, zoom: int) -> str:
+    return f"{MAP_API_URL}?area={area}&region={region}&bBox={bbox}&zoom={zoom}"
+
+
+def _marker_to_raw_item(marker: dict[str, Any]) -> dict[str, Any] | None:
+    """Converts one raw map-API marker record into the same flat shape _parse_cards yields
+    (id/url/price/rooms/floor/square_meters/street/neighborhood/city) so normalize() handles either
+    source identically — see that function's `_get(raw_item, ...)` fallback-key lookups, which this
+    output is deliberately built to satisfy (using the SAME key names _parse_cards already uses,
+    e.g. "square_meters" not "squareMeter", "rooms" not "roomsCount"). Also includes "images"
+    (a key normalize() already checks) since, unlike a plain search card, this source carries real
+    photo URLs for free — no separate detail-page fetch needed to get them.
+
+    Returns None (never raises) for a marker missing its "token" (the only field this project has
+    no fallback for — without it there's no external_id to key a Listing row on at all), matching
+    _parse_cards' and fetch_listing_detail's shared "skip what's unusable, never abort the whole
+    batch over one bad record" convention."""
+    token = marker.get("token")
+    if not token:
+        return None
+
+    address = marker.get("address")
+    address = address if isinstance(address, dict) else {}
+    house = address.get("house")
+    house = house if isinstance(house, dict) else {}
+    additional = marker.get("additionalDetails")
+    additional = additional if isinstance(additional, dict) else {}
+    meta = marker.get("metaData")
+    meta = meta if isinstance(meta, dict) else {}
+
+    def _address_text(field: str) -> str | None:
+        value = address.get(field)
+        return value.get("text") if isinstance(value, dict) else None
+
+    street_text = _address_text("street")
+    house_number = house.get("number")
+    # Matches the same "<street name> <house number>" shape a real Yad2 card's own street-name
+    # span already carries (see _CARD_RE) — confirmed live house_number is a plain int (94), not a
+    # pre-formatted string, on the one real marker this was built against (see module docstring).
+    street = f"{street_text} {house_number}".strip() if street_text and house_number else street_text
+
+    images = meta.get("images")
+    image_urls = (
+        [url for url in images if isinstance(url, str) and url.strip()]
+        if isinstance(images, list)
+        else []
+    )
+
+    item: dict[str, Any] = {
+        "id": str(token),
+        "url": f"https://www.yad2.co.il/item/{token}",
+        "price": marker.get("price"),
+        "rooms": additional.get("roomsCount"),
+        "floor": house.get("floor"),
+        "square_meters": additional.get("squareMeter"),
+        "street": street,
+        "neighborhood": _address_text("neighborhood"),
+        "city": _address_text("city"),
+    }
+    if image_urls:
+        item["images"] = image_urls
+    return item
+
+
+def fetch_map_markers(
+    bbox: str, *, area: int, region: int, zoom: int = 11
+) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts (normalize()-ready, same shape as _parse_cards) from Yad2's own
+    map-markers API for one bounding box — see module docstring for the real cost/coverage numbers
+    (confirmed live: 200 markers in ONE request, vs. ~43-46 from one fetch_all_listings region
+    request, at a small fraction of the cost since this goes through Bright Data's Web Unlocker,
+    not ZenRows).
+
+    `bbox` is Yad2's own comma-separated "south,west,north,east" string (confirmed live from the
+    owner's own browser — see module docstring); `area`/`region` are Yad2's own numeric ids for
+    the broader area being searched (3 = "תל אביב והסביבה" in the one real example this was built
+    against — NOT yet mapped out for other areas/regions; a caller covering more of the country
+    needs to find those ids the same way this one was found, live, before assuming they follow any
+    particular numbering pattern). `zoom` defaults to 11, matching the one real confirmed request.
+
+    Raises Yad2MapFetchError on any failure (missing Bright Data config, network error, non-200,
+    unparseable/unexpected JSON shape) — unlike fetch_listing_detail's "return None" contract,
+    this matches fetch_all_listings/fetch_region_pages' own "raise, don't silently yield nothing"
+    convention for a primary discovery source, so a real outage surfaces as a countable error
+    rather than a silently-empty run."""
+    url = _build_map_url(bbox, area=area, region=region, zoom=zoom)
+    body = bright_data_client.fetch_via_web_unlocker(url)
+    if body is None:
+        raise Yad2MapFetchError(
+            f"Bright Data Web Unlocker failed to fetch Yad2's map API: {url} — see its own logs "
+            "for the specific failure (missing config, network error, or non-200 status)."
+        )
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise Yad2MapFetchError(f"Yad2 map API response for {url} wasn't valid JSON: {exc}") from exc
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    markers = data.get("markers") if isinstance(data, dict) else None
+    if not isinstance(markers, list):
+        raise Yad2MapFetchError(
+            f"Yad2 map API response for {url} had no usable 'data.markers' list: "
+            f"{str(payload)[:500]!r}"
+        )
+
+    for marker in markers:
+        if not isinstance(marker, dict):
+            continue
+        item = _marker_to_raw_item(marker)
+        if item is not None:
+            yield item
