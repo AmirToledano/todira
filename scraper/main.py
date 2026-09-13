@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from typing import Callable
 
@@ -41,6 +42,66 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 # whole app) keeps our own "scraper.main"/"scraper.notifier" etc. logging at INFO as intended.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("scraper.main")
+
+# 2026-09-13: real, live ZenRows balance check (owner's own dashboard screenshot) found only
+# 7,218 credits remain on a plan that renews 2026-10-01 — ~18 days away. At the schedule/sources
+# active before this date (8 runs/day, full 7-region Yad2 sweep + all-42-city Komo discovery every
+# run, ~260 credits/run in steady state) that remaining balance lasts only ~3.5 days, not 18 — and
+# BEFORE counting Komo's own first-ever production run, where EVERY currently-active Komo listing
+# nationwide looks "new" (no prior run ever populated known_ids for source=komo) and would each
+# cost a real detail-page fetch. These three env vars are the real, deployable response — all
+# optional/temporary, meant to be relaxed or removed once either the ZenRows plan renews, the
+# owner buys more credits, or Yad2 fully moves off ZenRows onto Bright Data's ISP proxy (see
+# yad2_client.py's fetch_map_markers — not wired in yet, blocked on a separate rate-limit finding,
+# see PROJECT_STATE.md 2026-09-13).
+_KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR = "KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN"
+# 300 credits reserved for Komo's backlog per run, out of the real ~2,500-credit safety buffer
+# this whole change is built around (see values.yaml's own comment for the exact math) — a genuine
+# guess at "meaningfully progresses the backlog without risking the whole remaining balance in one
+# run", not a measured number (Komo's real total nationwide active-listing count is unknown).
+_DEFAULT_KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN = 300
+_YAD2_MAX_PAGES_ENV_VAR = "YAD2_MAX_PAGES_PER_REGION"
+_NOTIFICATIONS_SUSPENDED_ENV_VAR = "NOTIFICATIONS_SUSPENDED"
+
+
+def _komo_max_new_detail_fetches_per_run() -> int:
+    raw = os.environ.get(_KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "").strip()
+    if not raw:
+        return _DEFAULT_KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r (not an int) — using default %d",
+            _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, raw, _DEFAULT_KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN,
+        )
+        return _DEFAULT_KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN
+
+
+def _yad2_max_pages_per_region_override() -> int | None:
+    """None (the default) means "use fetch_region_pages' own built-in default (15)" — this only
+    exists so ops can temporarily tighten Yad2's own per-region catch-up cap (see that function's
+    module comment for its own reasoning) via a values.yaml/env change, without a code redeploy,
+    during the exact same credit-budget squeeze _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR above is for."""
+    raw = os.environ.get(_YAD2_MAX_PAGES_ENV_VAR, "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r (not an int) — using fetch_region_pages' own default", _YAD2_MAX_PAGES_ENV_VAR, raw)
+        return None
+
+
+def _notifications_suspended() -> bool:
+    """True while catching up a long-paused scraper back to real current state — a resume after
+    days/weeks suspended would otherwise find many genuinely-new listings and fire a real
+    notification burst to every matching user's phone in one shot, regardless of time of day. When
+    set, run_once() still does everything else exactly as normal (scrape/upsert/delist all run in
+    full — this ONLY skips the final run_notifications call) so the catch-up itself is never
+    silently incomplete; just re-enable notifications (unset this) once satisfied the DB is caught
+    up to real current state."""
+    return os.environ.get(_NOTIFICATIONS_SUSPENDED_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
 
 
 def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[int, int]]]:
@@ -254,7 +315,12 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     """Returns (normalized_items, seen_external_ids, fetched_count, error_count, all_succeeded) —
     same shape every _scrape_* function returns, so run_once() can treat all three sources
     uniformly. See fetch_region_pages' own docstring in yad2_client.py for the pagination/cost
-    reasoning."""
+    reasoning.
+
+    2026-09-13: _yad2_max_pages_per_region_override() lets ops temporarily tighten
+    fetch_region_pages' own max_pages (built-in default 15) via a values.yaml/env change — see
+    that function's own comment for the real credit-budget reasoning this and Komo's own per-run
+    cap share. None (unset) means "use fetch_region_pages' own default", not "unlimited"."""
     fetched = 0
     errors = 0
     normalized_items = []
@@ -262,11 +328,13 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     all_succeeded = True
 
     known_ids = _fetch_known_external_ids(Source.YAD2)
+    max_pages_override = _yad2_max_pages_per_region_override()
+    fetch_kwargs = {} if max_pages_override is None else {"max_pages": max_pages_override}
     logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
     for region in REGION_SLUGS:
         logger.info("Fetching Yad2 listings for region=%s", region)
         try:
-            for raw_item in fetch_region_pages(region, known_ids):
+            for raw_item in fetch_region_pages(region, known_ids, **fetch_kwargs):
                 fetched += 1
                 normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.RENT)
                 if normalized is not None:
@@ -307,7 +375,15 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     cost 1 credit per already-known listing per run, rejected as wasteful without a real reason to
     believe Komo prices change often enough to justify it; revisit if that assumption turns out
     wrong). `seen_external_ids` still includes already-known ids (from the coordinates list, not a
-    detail fetch) so delisting stays correct regardless of this gap."""
+    detail fetch) so delisting stays correct regardless of this gap.
+
+    2026-09-13: also enforces _komo_max_new_detail_fetches_per_run() — a real, temporary credit-
+    budget safety cap (see that function's own comment) on how many NEW detail fetches (the only
+    part of this function with an actual per-listing ZenRows cost) happen in ONE run. Only the paid
+    detail fetch is skipped once the cap is hit for the rest of this run — coordinate discovery
+    keeps running for every remaining city regardless (cheap, and still needed so
+    seen_external_ids stays complete for delisting), and a capped-out id is simply picked up by a
+    LATER run instead (processed_this_run doesn't mark it as done, so it's retried next time)."""
     fetched = 0
     errors = 0
     normalized_items = []
@@ -316,6 +392,9 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
 
     known_ids = _fetch_known_external_ids(Source.KOMO)
     processed_this_run: set[str] = set(known_ids)
+    max_new_detail_fetches = _komo_max_new_detail_fetches_per_run()
+    new_detail_fetches_this_run = 0
+    cap_logged = False
 
     logger.info("Scraping %d Komo cities this run", len(CITY_SLUG_TO_HEBREW_NAME))
     for city in CITY_SLUG_TO_HEBREW_NAME:
@@ -340,6 +419,18 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
                 continue  # already known from a prior run, or already handled earlier this run
             processed_this_run.add(modaa_num)
 
+            if new_detail_fetches_this_run >= max_new_detail_fetches:
+                if not cap_logged:
+                    logger.warning(
+                        "Komo hit its per-run new-detail-fetch safety cap (%s=%d) — remaining new "
+                        "listings this run are skipped and will be picked up in a later run "
+                        "instead of spending unbounded ZenRows credits in one shot.",
+                        _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
+                    )
+                    cap_logged = True
+                continue
+
+            new_detail_fetches_this_run += 1
             fetched += 1
             detail = fetch_komo_listing_detail(modaa_num)
             if detail is None:
@@ -475,13 +566,27 @@ def run_once() -> dict[str, int]:
             "delisted": delisted_count,
             "errors": errors,
         }
-        if new_listings or price_change_events:
+        if not (new_listings or price_change_events):
             summary.update(
-                asyncio.run(run_notifications(session, new_listings, price_change_events))
+                {"matched": 0, "notifications_sent": 0, "price_change_notifications_sent": 0}
+            )
+        elif _notifications_suspended():
+            logger.warning(
+                "%s is set — skipping notifications for %d new listing(s) and %d price change(s) "
+                "this run (already upserted/delisted normally; only the notify step is skipped).",
+                _NOTIFICATIONS_SUSPENDED_ENV_VAR, len(new_listings), len(price_change_events),
+            )
+            summary.update(
+                {
+                    "matched": 0,
+                    "notifications_sent": 0,
+                    "price_change_notifications_sent": 0,
+                    "notifications_suspended": True,
+                }
             )
         else:
             summary.update(
-                {"matched": 0, "notifications_sent": 0, "price_change_notifications_sent": 0}
+                asyncio.run(run_notifications(session, new_listings, price_change_events))
             )
 
     return summary

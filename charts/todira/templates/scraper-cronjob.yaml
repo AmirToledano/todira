@@ -105,6 +105,21 @@ spec:
                   value: {{ .Values.scraper.whatsappMatchTemplateName | default "" | quote }}
                 - name: WHATSAPP_MATCH_TEMPLATE_LANGUAGE
                   value: {{ .Values.scraper.whatsappMatchTemplateLanguage | default "he" | quote }}
+                # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
+                # scraper.komoMaxNewDetailFetchesPerRun for the real math these exist to protect.
+                # Only set when the value is actually present, so scraper/main.py's own Python-side
+                # defaults (unset env var) apply otherwise rather than an empty string overriding
+                # them — same pattern as the optional secretKeyRefs above.
+                {{- if .Values.scraper.komoMaxNewDetailFetchesPerRun }}
+                - name: KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN
+                  value: {{ .Values.scraper.komoMaxNewDetailFetchesPerRun | quote }}
+                {{- end }}
+                {{- if .Values.scraper.yad2MaxPagesPerRegion }}
+                - name: YAD2_MAX_PAGES_PER_REGION
+                  value: {{ .Values.scraper.yad2MaxPagesPerRegion | quote }}
+                {{- end }}
+                - name: NOTIFICATIONS_SUSPENDED
+                  value: {{ .Values.scraper.notificationsSuspended | default false | quote }}
               resources:
                 requests:
                   cpu: {{ .Values.resources.scraper.requests.cpu }}
