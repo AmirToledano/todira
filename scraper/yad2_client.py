@@ -52,19 +52,34 @@ JSON (price, address down to house number/floor, exact lat/lon, roomsCount, squa
 PHOTOS — all in one response, confirmed live to return 200 markers in a single call, vs. ~43-46
 cards from one fetch_all_listings region request). ZenRows itself flatly refuses this endpoint at
 every tier (REQS002, same as www.yad2.co.il — see
-.github/workflows/diagnose-yad2-map-api-cost.yaml) — this instead goes through Bright Data's Web
-Unlocker API (dorin_common.bright_data_client.fetch_via_web_unlocker, a DIFFERENT Bright Data
-product from the Data Collector API scraper/main.py already uses for detail-page enrichment),
-confirmed live to succeed on both this map API and the plain search page (see
-diagnose-yad2-bright-data-cost.yaml) at $1.50 per 1,000 SUCCESSFUL requests only — dramatically
-cheaper than ZenRows' forced ~25-credit tier, per real numbers from the owner's own Bright Data
-dashboard, not a guess.
+.github/workflows/diagnose-yad2-map-api-cost.yaml).
+
+First working route found (same day): Bright Data's Web Unlocker API
+(dorin_common.bright_data_client.fetch_via_web_unlocker) — confirmed live to succeed once, at $1.50
+per 1,000 requests, but then hit a real "no KYC" wall for every OTHER bbox/param combination tried
+(see diagnose-yad2-map-api-coverage.yaml) — Bright Data's own residential-KYC gate, not usable for
+real production without completing a business-verification process this project doesn't have the
+company email for yet.
+
+Actual route used below: `bright_data_client.fetch_via_isp_proxy` — a plain, unauthenticated-by-
+Bright-Data (no KYC at all) ISP proxy, confirmed live (diagnose-yad2-isp-proxy.yaml) to fetch this
+exact map API successfully (200 real markers, real prices) at a flat $2/month per IP — dramatically
+cheaper than either ZenRows (~25 credits/request, and REFUSES this endpoint anyway) or Web Unlocker
+($0.0015/request AND KYC-gated), and the cheapest option found for Yad2 in this whole project.
+Works here specifically because this endpoint is pure JSON needing no JS rendering — the same proxy
+against Yad2's own full HTML search page loads (not IP-blocked) but stays empty of real listing
+cards, since Yad2's own page needs actual browser JS execution to render them (a separate,
+unsolved problem — see YAD2_NOTES.md attempts 1-8 — this function doesn't attempt to fix that, and
+doesn't need to: the map API alone already carries everything needed).
 
 NOT wired into scraper/main.py's run_once() yet, deliberately — this is a bigger architectural
 change than fetch_all_listings was (a different provider, a different data shape, and the real
 bBox/area/region values needed to cover the whole country haven't been worked out yet, only the
-one bbox the owner's own browser happened to be showing). Kept as a real, tested, ready building
-block — the actual production switch-over is a follow-up decision, not made here."""
+one bbox the owner's own browser happened to be showing — see the earlier clustering finding in
+diagnose-yad2-map-api-coverage.yaml: a wide-enough bbox returns aggregated per-city cluster counts
+instead of individual markers past a real ~200-marker cap, so full coverage needs a real recursive
+zoom-in strategy, not yet designed). Kept as a real, tested, ready building block — the actual
+production switch-over is a follow-up decision, not made here."""
 from __future__ import annotations
 
 import json
@@ -658,14 +673,15 @@ def fetch_listing_detail(url: str) -> dict[str, Any] | None:
 
 # 2026-09-13: see module docstring for the full discovery story (owner's own DevTools) and cost
 # comparison. This is a real, separate Yad2 endpoint — not the same one _parse_cards/fetch_all_listings
-# read from — reached via Bright Data's Web Unlocker instead of ZenRows (ZenRows refuses it outright,
-# REQS002, at every tier — confirmed live, see diagnose-yad2-map-api-cost.yaml).
+# read from — reached via Bright Data's ISP proxy instead of ZenRows (ZenRows refuses it outright,
+# REQS002, at every tier — confirmed live, see diagnose-yad2-map-api-cost.yaml) or Web Unlocker
+# (real "no KYC" wall for every bbox but one — see diagnose-yad2-map-api-coverage.yaml).
 MAP_API_URL = "https://gw.yad2.co.il/realestate-feed/rent/map"
 
 
 class Yad2MapFetchError(RuntimeError):
-    """fetch_map_markers failed outright — Bright Data's Web Unlocker request itself failed (see
-    bright_data_client.fetch_via_web_unlocker's own docstring for its failure modes), or it
+    """fetch_map_markers failed outright — Bright Data's ISP proxy request itself failed (see
+    bright_data_client.fetch_via_isp_proxy's own docstring for its failure modes), or it
     succeeded but returned something that isn't the expected {"data": {"markers": [...]}} shape."""
 
 
@@ -739,8 +755,8 @@ def fetch_map_markers(
     """Yields raw listing dicts (normalize()-ready, same shape as _parse_cards) from Yad2's own
     map-markers API for one bounding box — see module docstring for the real cost/coverage numbers
     (confirmed live: 200 markers in ONE request, vs. ~43-46 from one fetch_all_listings region
-    request, at a small fraction of the cost since this goes through Bright Data's Web Unlocker,
-    not ZenRows).
+    request, at a flat $2/month via Bright Data's ISP proxy — no per-request cost at all, and no
+    KYC gate, unlike Web Unlocker which hit one).
 
     `bbox` is Yad2's own comma-separated "south,west,north,east" string (confirmed live from the
     owner's own browser — see module docstring); `area`/`region` are Yad2's own numeric ids for
@@ -755,10 +771,10 @@ def fetch_map_markers(
     convention for a primary discovery source, so a real outage surfaces as a countable error
     rather than a silently-empty run."""
     url = _build_map_url(bbox, area=area, region=region, zoom=zoom)
-    body = bright_data_client.fetch_via_web_unlocker(url)
+    body = bright_data_client.fetch_via_isp_proxy(url)
     if body is None:
         raise Yad2MapFetchError(
-            f"Bright Data Web Unlocker failed to fetch Yad2's map API: {url} — see its own logs "
+            f"Bright Data ISP proxy failed to fetch Yad2's map API: {url} — see its own logs "
             "for the specific failure (missing config, network error, or non-200 status)."
         )
 

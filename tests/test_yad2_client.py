@@ -620,20 +620,22 @@ def test_marker_to_raw_item_no_images_omits_the_key():
 
 
 def test_fetch_map_markers_missing_bright_data_config_raises(monkeypatch):
-    monkeypatch.delenv(bright_data_client.API_KEY_ENV_VAR, raising=False)
-    with pytest.raises(Yad2MapFetchError, match="Bright Data Web Unlocker failed"):
+    monkeypatch.delenv(bright_data_client.ISP_PROXY_HOST_ENV_VAR, raising=False)
+    monkeypatch.delenv(bright_data_client.ISP_PROXY_USER_ENV_VAR, raising=False)
+    monkeypatch.delenv(bright_data_client.ISP_PROXY_PASS_ENV_VAR, raising=False)
+    with pytest.raises(Yad2MapFetchError, match="Bright Data ISP proxy failed"):
         list(fetch_map_markers("31.9,34.7,32.1,34.8", area=1, region=3))
 
 
 def test_fetch_map_markers_builds_the_real_confirmed_url_and_parses_markers(monkeypatch):
-    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
+    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
     captured = {}
 
     def fake_fetch(url):
         captured["url"] = url
         return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", fake_fetch)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
 
     items = list(
         fetch_map_markers("31.987679,34.732856,32.146966,34.857736", area=1, region=3, zoom=11)
@@ -647,24 +649,24 @@ def test_fetch_map_markers_builds_the_real_confirmed_url_and_parses_markers(monk
 
 
 def test_fetch_map_markers_invalid_json_raises(monkeypatch):
-    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
-    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: "not json")
+    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: "not json")
 
     with pytest.raises(Yad2MapFetchError, match="wasn't valid JSON"):
         list(fetch_map_markers("bbox", area=1, region=3))
 
 
 def test_fetch_map_markers_missing_markers_list_raises(monkeypatch):
-    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
-    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: '{"data": {}}')
+    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: '{"data": {}}')
 
     with pytest.raises(Yad2MapFetchError, match="no usable 'data.markers' list"):
         list(fetch_map_markers("bbox", area=1, region=3))
 
 
 def test_fetch_map_markers_skips_non_dict_and_tokenless_entries(monkeypatch):
-    monkeypatch.setenv(bright_data_client.API_KEY_ENV_VAR, "fake-key")
+    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
     body = '{"data": {"markers": [123, {"no": "token"}]}}'
-    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: body)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: body)
 
     assert list(fetch_map_markers("bbox", area=1, region=3)) == []
