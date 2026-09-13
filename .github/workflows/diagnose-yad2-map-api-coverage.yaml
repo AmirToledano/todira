@@ -42,10 +42,17 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11","format":"raw"}' \
             -o /tmp/known.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 90
+          echo "--- raw body (always shown) ---"
+          cat /tmp/known.json
+          echo
           python3 -c "
           import json
-          with open('/tmp/known.json', encoding='utf-8') as f:
-              payload = json.load(f)
+          try:
+              with open('/tmp/known.json', encoding='utf-8') as f:
+                  payload = json.load(f)
+          except json.JSONDecodeError as e:
+              print(f'not parseable JSON: {e}')
+              raise SystemExit(0)
           print('top-level keys:', list(payload.keys()))
           data = payload.get('data', {})
           print('data keys:', list(data.keys()) if isinstance(data, dict) else type(data))
@@ -58,6 +65,7 @@ jobs:
           "
 
       - name: 2) Same bbox, area/region OMITTED entirely — does it still return the same real data?
+        if: always()
         env:
           BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
         run: |
@@ -81,6 +89,7 @@ jobs:
           "
 
       - name: 3) MUCH larger bbox (wide swath of central Israel) — does marker count exceed 200?
+        if: always()
         env:
           BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
         run: |
@@ -92,6 +101,9 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.7,34.5,32.5,35.2&zoom=9","format":"raw"}' \
             -o /tmp/wide.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 90
+          echo "--- raw body (first 500 chars, always shown) ---"
+          head -c 500 /tmp/wide.json
+          echo
           python3 -c "
           import json
           try:
@@ -106,6 +118,7 @@ jobs:
           "
 
       - name: 4) Jerusalem-area bbox (approximate, NOT from live DevTools) with Tel-Aviv's area/region values
+        if: always()
         env:
           BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
         run: |
@@ -118,6 +131,9 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"zone":"web_unlocker1","url":"https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.72,35.13,31.85,35.28&zoom=12","format":"raw"}' \
             -o /tmp/jlm.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 90
+          echo "--- raw body (first 500 chars, always shown) ---"
+          head -c 500 /tmp/jlm.json
+          echo
           python3 -c "
           import json
           try:
