@@ -189,6 +189,12 @@ scraper:
   #   they were already meant as a safety margin, not a tight prediction.
   komoMaxNewDetailFetchesPerRun: 300
   yad2MaxPagesPerRegion: 5
+  # 2026-09-13: same real-money-per-fetch reasoning as komoMaxNewDetailFetchesPerRun above, one
+  # order of magnitude smaller — Homeless is added description enrichment (a per-listing detail-
+  # page fetch, only for genuinely-new listings; see homeless_client.fetch_listing_description and
+  # scraper/main.py's _scrape_homeless), lower expected volume than Komo's nationwide coverage, but
+  # still a real per-listing cost that shouldn't go uncapped on a first-ever run.
+  homelessMaxNewDescriptionFetchesPerRun: 50
   # 2026-09-13 EMERGENCY RE-SUSPEND: real users got Telegram notifications they should not have
   # right after the resume above went live — the owner-only NOTIFICATIONS_SUSPENDED restriction
   # did not behave as intended (or something else triggered a full-notification run). Re-suspended

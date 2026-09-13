@@ -47,6 +47,23 @@ _REAL_DETAILS_HTML = (
     '<div class="firstInfo" > 1 </div><div class="firstInfoTitle" > קומה</div></div>'
     '<div class="mr firstInfoBlockWrap" style="width:25%;" >'
     '<div class="firstInfo" > 38 </div><div class="firstInfoTitle" > מ"ר</div></div>'
+    # Confirmed live (diagnose-komo-gallery-and-homeless-description.yaml, 2026-09-13) — this same
+    # real listing's actual gallery: 2 distinct real photos, the first one repeated (desktop +
+    # mobile responsive layouts render the SAME photo twice) — must de-duplicate. Then a real
+    # "sameads" (recommended listings) carousel showing a DIFFERENT listing's own photo, which
+    # must NOT be included.
+    '<div class="hideOnMobile desktopPics">'
+    '<img alt="תמונה למודעה" src="/api/modaot/tmunot/showPic/list/'
+    '?picSize=b&picNum=25352812&luachNum=2" /></div>'
+    '<div class="tmunotDesktop">'
+    '<img alt="תמונה למודעה" src="/api/modaot/tmunot/showPic/list/'
+    '?picSize=b&picNum=25352812&luachNum=2" /></div>'
+    '<div class="tmunotDesktop">'
+    '<img alt="תמונה למודעה" src="/api/modaot/tmunot/showPic/list/'
+    '?picSize=b&picNum=25352813&luachNum=2" /></div>'
+    '<div class="sameads-swiper"><div class="cItemWrap">'
+    '<img alt="תמונה למודעה" src="/api/modaot/tmunot/showPic/list/'
+    '?picNum=99999999&luachNum=2" /></div></div>'
 )
 
 _REAL_COORDS_JSON = (
@@ -81,7 +98,9 @@ def test_parse_details_html_extracts_the_real_confirmed_listing():
         "description": "דירה יוקרתית מושקעת ברמה גבוהה עם מיזוג מרכזי וחימום תת רצפתי",
         "images": [
             "https://www.komo.co.il/api/modaot/tmunot/showPic/list/"
-            "?picSize=b&picNum=25352812&luachNum=2"
+            "?picSize=b&picNum=25352812&luachNum=2",
+            "https://www.komo.co.il/api/modaot/tmunot/showPic/list/"
+            "?picSize=b&picNum=25352813&luachNum=2",
         ],
         "street": "שערי ירושלים 5",
         "neighborhood": None,
@@ -114,8 +133,8 @@ def test_parse_details_html_description_html_entities_unescaped():
     assert item["description"] == "דירה & מרפסת  גדולה"
 
 
-def test_parse_details_html_missing_og_image_leaves_images_empty():
-    # No <meta property="og:image"> at all — must degrade to an empty list, not raise (same
+def test_parse_details_html_no_images_at_all_leaves_images_empty():
+    # Neither a gallery nor an og:image — must degrade to an empty list, not raise (same
     # benefit-of-the-doubt policy as every other optional field here).
     html = (
         '<div class="price modaaWPrice"><span>7,000</span></div>'
@@ -124,6 +143,22 @@ def test_parse_details_html_missing_og_image_leaves_images_empty():
     )
     item = _parse_details_html(html, modaa_num="4471462")
     assert item["images"] == []
+
+
+def test_parse_details_html_falls_back_to_og_image_when_no_gallery_markup_matches():
+    # A page with a real og:image but no _GALLERY_IMG_RE-matching <img> tags (e.g. a future markup
+    # change) still gets that one photo rather than nothing.
+    html = (
+        '<div class="price modaaWPrice"><span>7,000</span></div>'
+        '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;2 חדרים '
+        '&nbsp;בירושלים, שערי ירושלים 5" />'
+        '<meta property="og:image" content="/api/modaot/tmunot/showPic/list/'
+        '?picSize=b&picNum=12345&luachNum=2">'
+    )
+    item = _parse_details_html(html, modaa_num="4471462")
+    assert item["images"] == [
+        "https://www.komo.co.il/api/modaot/tmunot/showPic/list/?picSize=b&picNum=12345&luachNum=2"
+    ]
 
 
 def test_parse_details_html_missing_price_returns_none():

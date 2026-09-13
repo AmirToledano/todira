@@ -118,6 +118,10 @@ spec:
                 - name: YAD2_MAX_PAGES_PER_REGION
                   value: {{ .Values.scraper.yad2MaxPagesPerRegion | quote }}
                 {{- end }}
+                {{- if .Values.scraper.homelessMaxNewDescriptionFetchesPerRun }}
+                - name: HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
+                  value: {{ .Values.scraper.homelessMaxNewDescriptionFetchesPerRun | quote }}
+                {{- end }}
                 - name: NOTIFICATIONS_SUSPENDED
                   value: {{ .Values.scraper.notificationsSuspended | default false | quote }}
               resources:

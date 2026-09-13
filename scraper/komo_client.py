@@ -122,18 +122,18 @@ _OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]+)"')
 # about Komo's own page structure made it unavailable, unlike Yad2's search-results feed (which
 # genuinely has no description field at all, see normalize.py's own history).
 _DESCRIPTION_RE = re.compile(r'<meta name="Description" content="([^"]*)"', re.I)
-# Confirmed live 2026-09-13 (diagnose-komo-detail-images.yaml): the SAME sample listing
-# (modaaNum=4471462) really does have a real photo — `<meta property="og:image" content="/api/
-# modaot/tmunot/showPic/list/?picSize=b&picNum=25352812&luachNum=2">`, a relative path (needs
-# urljoin against DETAILS_PAGE_URL). The full page also has a `desktopPics`/`tmunotDesktop`
-# gallery with MORE real `<img>` tags for this same listing, but the live capture couldn't tell
-# apart genuine additional photos from desktop/mobile duplicates of the SAME picNum, or reliably
-# rule out a later "same ads" (recommended listings) carousel's own unrelated photos bleeding into
-# a naive page-wide <img> scrape — deliberately not attempted here. og:image alone is unambiguous
-# (a page's own og:image always describes ITSELF, never a sidebar recommendation) and turns every
-# Komo listing from 0 real photos to (at least) 1 — real, not a guess, just not yet the full
-# gallery. A real follow-up, not silently assumed complete.
+# Confirmed live 2026-09-13 (diagnose-komo-detail-images.yaml, then diagnose-komo-gallery-and-
+# homeless-description.yaml): the SAME sample listing (modaaNum=4471462) has a real og:image tag
+# AND a real desktopPics/tmunotDesktop photo gallery with 4 distinct real photos total (og:image's
+# own picNum plus 3 more) — confirmed genuinely this listing's own, not a "same ads" (recommended
+# listings) carousel's OTHER photos further down the same page, by checking that every one of
+# those 4 picNums appears strictly BEFORE the page's own "sameads"/"cItemWrap" markup, while the
+# carousel's own (different) photos appear only after it. og:image kept as the ordering-independent
+# single-photo fallback (a page's own og:image always describes itself); _extract_gallery_images
+# below is the real multi-photo source, scoped to that confirmed boundary.
 _OG_IMAGE_RE = re.compile(r'<meta property="og:image" content="([^"]+)"')
+_GALLERY_IMG_RE = re.compile(r'<img[^>]+src="(/api/modaot/tmunot/showPic/list/[^"]+)"')
+_SAME_ADS_BOUNDARY_RE = re.compile(r"sameads|cItemWrap")
 _ROOMS_RE = re.compile(r"([\d.]+)\s*חדרים")
 # Matches the city name right after "חדרים" and Hebrew's own "ב" (=\"in\") prefix, up to the
 # comma that separates it from the street — e.g. "...2 חדרים  בירושלים, שערי ירושלים 5" ->
@@ -155,6 +155,33 @@ def _firstinfo_block_re(class_name: str) -> re.Pattern[str]:
 
 _FLOOR_RE = _firstinfo_block_re("floor")
 _SIZE_SQM_RE = _firstinfo_block_re("mr")
+
+
+def _extract_gallery_images(page_html: str, *, modaa_num: str) -> list[str]:
+    """Every real photo belonging to THIS listing, full URLs, in page order, de-duplicated (the
+    confirmed sample page repeats each picNum's <img> tag more than once — once per responsive
+    desktop/mobile layout — for the SAME real photo). See _GALLERY_IMG_RE's own comment for why
+    this is scoped to before the "sameads"/cItemWrap boundary rather than every <img> on the page.
+    Falls back to scanning the whole page if that boundary marker isn't found at all (logged, not
+    silently assumed safe) — better one possibly-extra photo than zero, since a false grab from an
+    unrelated "same ads" listing would need Komo to have removed that marker AND placed different
+    real content in what would now be an unrecognizable location, an unlikely combination."""
+    boundary_match = _SAME_ADS_BOUNDARY_RE.search(page_html)
+    if boundary_match is None:
+        logger.warning(
+            "No sameads/cItemWrap boundary found on Komo details page for modaaNum=%s — "
+            "scanning the whole page for gallery images instead of stopping at a confirmed "
+            "boundary; a same-ads photo could theoretically leak in here.",
+            modaa_num,
+        )
+        searchable = page_html
+    else:
+        searchable = page_html[: boundary_match.start()]
+
+    seen_paths: dict[str, None] = {}
+    for match in _GALLERY_IMG_RE.finditer(searchable):
+        seen_paths.setdefault(html.unescape(match.group(1)), None)
+    return [urljoin(DETAILS_PAGE_URL, path) for path in seen_paths]
 
 
 class KomoFetchError(RuntimeError):
@@ -348,12 +375,14 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
     description_match = _DESCRIPTION_RE.search(page_html)
     description = html.unescape(description_match.group(1)).strip() if description_match else None
 
-    og_image_match = _OG_IMAGE_RE.search(page_html)
-    images = (
-        [urljoin(DETAILS_PAGE_URL, html.unescape(og_image_match.group(1)))]
-        if og_image_match
-        else []
-    )
+    images = _extract_gallery_images(page_html, modaa_num=modaa_num)
+    if not images:
+        # Fallback only — a page whose gallery markup doesn't match _GALLERY_IMG_RE for some
+        # reason (a future Komo markup change) still gets its one confirmed og:image rather than
+        # nothing, same benefit-of-the-doubt policy as every other optional field here.
+        og_image_match = _OG_IMAGE_RE.search(page_html)
+        if og_image_match:
+            images = [urljoin(DETAILS_PAGE_URL, html.unescape(og_image_match.group(1)))]
 
     return {
         "id": modaa_num,

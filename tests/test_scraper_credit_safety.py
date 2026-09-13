@@ -135,6 +135,102 @@ def test_scrape_komo_never_caps_when_no_new_listings_exist(monkeypatch):
     assert fetched == 0
 
 
+def test_homeless_cap_defaults_when_env_var_unset(monkeypatch):
+    monkeypatch.delenv(scraper_main._HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR, raising=False)
+    assert (
+        scraper_main._homeless_max_new_description_fetches_per_run()
+        == scraper_main._DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
+    )
+
+
+def test_homeless_cap_respects_valid_override(monkeypatch):
+    monkeypatch.setenv(scraper_main._HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR, "7")
+    assert scraper_main._homeless_max_new_description_fetches_per_run() == 7
+
+
+def test_homeless_cap_falls_back_to_default_on_invalid_value(monkeypatch):
+    monkeypatch.setenv(scraper_main._HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR, "not-a-number")
+    assert (
+        scraper_main._homeless_max_new_description_fetches_per_run()
+        == scraper_main._DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
+    )
+
+
+# --- _scrape_homeless: description fetch only for genuinely-new listings, capped ------------------
+
+
+def _fake_homeless_item(external_id: str) -> dict:
+    return {
+        "id": external_id,
+        "url": f"https://www.homeless.co.il/rent/viewad,{external_id}.aspx",
+        "price": 3000,
+        "rooms": 3.0,
+        "floor": 1,
+        "square_meters": None,
+        "street": "רחוב כלשהו",
+        "neighborhood": None,
+        "city": "תל אביב",
+    }
+
+
+def test_scrape_homeless_fetches_description_only_for_genuinely_new_listings(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_homeless_results",
+        lambda: iter([_fake_homeless_item("1"), _fake_homeless_item("2")]),
+    )
+
+    description_calls = []
+
+    def _fake_fetch_description(external_id):
+        description_calls.append(external_id)
+        return "תיאור אמיתי"
+
+    monkeypatch.setattr(scraper_main, "fetch_homeless_description", _fake_fetch_description)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_homeless()
+    )
+
+    assert description_calls == ["2"]  # only the genuinely-new one, never the already-known "1"
+    assert seen_external_ids == {"1", "2"}
+    assert fetched == 2
+    assert all_succeeded is True
+    new_item = next(item for item in normalized_items if item.external_id == "2")
+    assert new_item.description == "תיאור אמיתי"
+
+
+def test_scrape_homeless_stops_new_description_fetches_at_the_cap(monkeypatch):
+    """3 never-before-seen listings, cap=2: the 3rd should get no description fetch, but ALL THREE
+    ids must still land in seen_external_ids (so delisting stays correct) and all three must still
+    be upserted (only the EXTRA description fetch is skipped, never the listing itself)."""
+    monkeypatch.setenv(scraper_main._HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR, "2")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_homeless_results",
+        lambda: iter([_fake_homeless_item("1"), _fake_homeless_item("2"), _fake_homeless_item("3")]),
+    )
+
+    description_calls = []
+
+    def _fake_fetch_description(external_id):
+        description_calls.append(external_id)
+        return "תיאור אמיתי"
+
+    monkeypatch.setattr(scraper_main, "fetch_homeless_description", _fake_fetch_description)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_homeless()
+    )
+
+    assert description_calls == ["1", "2"]  # capped at 2, never fetched the 3rd
+    assert seen_external_ids == {"1", "2", "3"}
+    assert len(normalized_items) == 3
+    assert all_succeeded is True
+
+
 def test_scrape_komo_fails_gracefully_when_the_one_discovery_call_fails(monkeypatch):
     """2026-09-13: fetch_all_coordinate_ids is now ONE call, not one per city — a failure there
     means Komo has nothing to report this run at all (not a partial per-city failure anymore).
