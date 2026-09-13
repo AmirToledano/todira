@@ -14,6 +14,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 
 import notifier
+from dorin_common.enums import Source
 
 _NOW = dt.datetime.now(dt.timezone.utc)
 
@@ -96,7 +97,7 @@ def test_notify_new_matches_passes_has_access_true_for_a_trial_user():
 
 
 def test_maybe_fetch_description_skips_when_not_configured():
-    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     session = SimpleNamespace(commit=lambda: None)
     with (
         patch.object(notifier.bright_data_client, "is_configured", lambda: False),
@@ -107,7 +108,7 @@ def test_maybe_fetch_description_skips_when_not_configured():
 
 
 def test_maybe_fetch_description_skips_when_already_cached():
-    listing = SimpleNamespace(description="כבר יש תיאור", url="https://yad2.co.il/item/1")
+    listing = SimpleNamespace(description="כבר יש תיאור", url="https://yad2.co.il/item/1", source=Source.YAD2)
     session = SimpleNamespace(commit=lambda: None)
     with (
         patch.object(notifier.bright_data_client, "is_configured", lambda: True),
@@ -118,7 +119,7 @@ def test_maybe_fetch_description_skips_when_already_cached():
 
 
 def test_maybe_fetch_description_skips_when_no_recipient_is_paying():
-    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     session = SimpleNamespace(commit=lambda: None)
     free_users = [_user(), _user(id=2, telegram_user_id=556)]  # both expired trial, no payment
     with (
@@ -130,7 +131,7 @@ def test_maybe_fetch_description_skips_when_no_recipient_is_paying():
 
 
 def test_maybe_fetch_description_fetches_and_caches_when_a_recipient_is_paying():
-    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     committed = []
     session = SimpleNamespace(commit=lambda: committed.append(True))
     recipients = [_user(), _user(id=2, telegram_user_id=556, trial_ends_at=_NOW + dt.timedelta(days=1))]
@@ -148,7 +149,7 @@ def test_maybe_fetch_description_fetches_and_caches_when_a_recipient_is_paying()
 
 
 def test_maybe_fetch_description_does_not_cache_on_fetch_failure():
-    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1")
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     committed = []
     session = SimpleNamespace(commit=lambda: committed.append(True))
     recipients = [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
@@ -161,6 +162,27 @@ def test_maybe_fetch_description_does_not_cache_on_fetch_failure():
 
     assert listing.description is None
     assert committed == []
+
+
+def test_maybe_fetch_description_skips_for_non_yad2_source(monkeypatch):
+    # 2026-09-13: real bug found via a real production Telegram send — this Bright Data DCA
+    # collector is built specifically to parse a YAD2 listing detail page's DOM (see
+    # bright_data_client.py's own module docstring); pointing it at a Komo/Homeless URL gets
+    # nonsense, not real enrichment. scraper/main.py's own _enrich_new_listings_via_bright_data
+    # already had this scoping — this call site was simply missed.
+    for source in (Source.KOMO, Source.HOMELESS):
+        listing = SimpleNamespace(description=None, url="https://komo.co.il/item/1", source=source)
+        session = SimpleNamespace(commit=lambda: None)
+        with (
+            patch.object(notifier.bright_data_client, "is_configured", lambda: True),
+            patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+        ):
+            asyncio.run(
+                notifier._maybe_fetch_description(
+                    session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
+                )
+            )
+        mock_fetch.assert_not_called()
 
 
 def test_notify_new_matches_skips_a_user_with_no_telegram_id():

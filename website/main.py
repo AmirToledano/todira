@@ -52,6 +52,7 @@ from dorin_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_acc
 from dorin_common.channel_link import generate_link_code
 from dorin_common.cities import CITIES
 from dorin_common.db import get_session
+from dorin_common.enums import Source
 from dorin_common.google_link import generate_google_link_token
 from dorin_common.matching import evaluate
 from dorin_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
@@ -799,11 +800,19 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
     finishes and caches it on Listing.description forever. Callers must only pass this the listings
     actually being shown on THIS page (already capped — APARTMENTS_PAGE_SIZE for /apartments, the
     liked list itself for /liked) so one page load can't fan out into an unbounded number of
-    concurrent Bright Data fetches."""
+    concurrent Bright Data fetches.
+
+    2026-09-13: skips any non-Yad2 listing — a real bug found via a real production Telegram send
+    (scraper/notifier.py's own _maybe_fetch_description had the identical gap, fixed the same
+    night): this Bright Data DCA collector is built specifically to parse a YAD2 listing detail
+    page's DOM (see bright_data_client.py's own module docstring), so pointing it at a Komo/
+    Homeless URL gets nonsense, not real enrichment. Komo/Homeless get their own real descriptions
+    from their own scrapers now (komo_client.py/homeless_client.py) — this was never their path to
+    begin with, so narrowing it to Yad2 loses nothing for them."""
     if not bright_data_client.is_configured():
         return
     for listing in listings:
-        if listing.description:
+        if listing.description or listing.source != Source.YAD2:
             continue
         threading.Thread(
             target=_ensure_description_sync, args=(listing.id, listing.url), daemon=True
