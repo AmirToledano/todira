@@ -38,17 +38,18 @@ jobs:
         run: |
           kubectl get jobs -n todira -l app=todira-scraper -o wide --sort-by=.metadata.creationTimestamp
           echo "--- as JSON (creationTimestamp, completionTime, succeeded/failed) ---"
-          kubectl get jobs -n todira -l app=todira-scraper -o json | \
-            python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for j in data['items']:
-    m = j['metadata']
-    s = j.get('status', {})
-    print(m['name'], 'created=' + m.get('creationTimestamp', '?'),
-          'completed=' + s.get('completionTime', '?'),
-          'succeeded=' + str(s.get('succeeded', 0)), 'failed=' + str(s.get('failed', 0)))
-"
+          kubectl get jobs -n todira -l app=todira-scraper -o json > /tmp/jobs.json
+          python3 - /tmp/jobs.json << 'PYEOF'
+          import json, sys
+          with open(sys.argv[1]) as f:
+              data = json.load(f)
+          for j in data['items']:
+              m = j['metadata']
+              s = j.get('status', {})
+              print(m['name'], 'created=' + m.get('creationTimestamp', '?'),
+                    'completed=' + s.get('completionTime', '?'),
+                    'succeeded=' + str(s.get('succeeded', 0)), 'failed=' + str(s.get('failed', 0)))
+          PYEOF
 
       - name: All scraper Pods still known to the cluster (completed and not), oldest first
         run: |
