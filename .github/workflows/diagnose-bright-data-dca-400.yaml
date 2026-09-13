@@ -34,6 +34,22 @@ jobs:
           cat /tmp/trigger_response.json
           echo ""
 
+      - name: Retry the SAME request WITHOUT queue_next=1 (the error names that param specifically)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
+        run: |
+          curl -sS -X POST "https://api.brightdata.com/dca/trigger?collector=${BRIGHT_DATA_COLLECTOR_ID}" \
+            -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '[{"url": "https://www.yad2.co.il/realestate/item/center-and-sharon/o01w54te"}]' \
+            -o /tmp/trigger_response_no_queue.json \
+            -w "\nhttp_status=%{http_code}\n" \
+            --max-time 30
+          echo "--- full response body (no queue_next) ---"
+          cat /tmp/trigger_response_no_queue.json
+          echo ""
+
       - name: Also check the collector's own status via the Scraper Studio API (is it still active?)
         env:
           BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
