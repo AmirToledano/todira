@@ -18,13 +18,13 @@ ZenRows' own `X-Request-Credits` response header, always `1` for every one of th
    [{"id","uid","lat","lng"}, ...]}`, dozens of entries confirmed live (1MB+ response). This is
    Komo's OWN map-pins endpoint (the owner's own hunch, confirmed correct) — no price, no address,
    just enough to enumerate every listing currently on the map plus its Komo id (`modaaNum`).
-   NOTE (2026-09-12, unconfirmed): the one live sample pulled had lat/lng spanning both the
-   Jerusalem area (~31.8) AND the Tel Aviv area (~32.0-32.3) despite the search page being
-   requested with cityName=ירושלים — i.e. this endpoint may not actually filter by city at all,
-   and cityName might only matter for step 1's own sessionToken issuance. Not yet deliberately
-   tested (e.g. by comparing two different cityName runs' id sets) — treat fetch_search_results'
-   own per-city looping as possibly redundant (one call might already return national coverage)
-   until that's checked; it's not incorrect either way, just possibly wasteful across many cities.
+   CONFIRMED live 2026-09-13 (diagnose-komo-region-coverage.yaml, prompted by an owner question):
+   this endpoint is NATIONWIDE regardless of cityName — a real side-by-side test queried
+   "ירושלים" and "תל אביב יפו" (opposite ends of the country) and got back byte-identical
+   11,976-id sets. cityName only matters for step 1's own sessionToken issuance, not for what this
+   endpoint returns. Use fetch_all_coordinate_ids() (below fetch_coordinate_ids), which calls this
+   ONCE, not once per tracked city — the old per-city loop paid 42x (84 credits/run) for the exact
+   same data every time before this was confirmed and fixed the same night.
 3. GET code/nadlan/details/?modaaNum=<id> — the real per-listing detail page. CONFIRMED against a
    real listing (id 4471462, owner's own "שערי ירושלים 5" / "7,000 ₪" listing) to contain exactly
    the fields below, parsed straight out of its markup (not a JSON API — an actual HTML page, like
@@ -200,6 +200,15 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
     — see module docstring's cost note for why a further per-listing fetch is required, not
     optional, before any of these can be shown to a user.
 
+    2026-09-13: CONFIRMED live (diagnose-komo-region-coverage.yaml) that `city` does NOT actually
+    filter this endpoint at all — a real side-by-side test queried "ירושלים" and "תל אביב יפו"
+    (opposite ends of the country) and got back byte-identical 11,976-id sets. cityName only
+    matters for issuing step 1's own sessionToken, not for what step 2 (the coordinates endpoint
+    itself) returns — this function is kept as-is (still genuinely useful, e.g. if this ever needs
+    re-verifying against a specific city later) but production code should call
+    fetch_all_coordinate_ids() below instead of looping this per city — see that function and
+    scraper/main.py's _scrape_komo for the real cost this fixed (84 credits/run -> 2).
+
     Two real requests, both confirmed 1 credit each (2 credits total per call, regardless of how
     many listings come back) — this function alone is cheap to call for every SCRAPE_CITIES entry
     every run; the cost this project actually needs to manage lives in fetch_listing_detail."""
@@ -254,6 +263,22 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
             f"{payload!r}"
         )
     return listing_ids
+
+
+# 2026-09-13: see fetch_coordinate_ids' own docstring for the confirmed finding (identical
+# 11,976-id sets for Jerusalem and Tel Aviv) that makes this the correct way to call it now — ANY
+# valid city slug returns the same nationwide data, so "tel-aviv" here is an arbitrary but
+# guaranteed-valid pick (already in CITY_SLUG_TO_HEBREW_NAME), not a meaningful choice of region.
+_NATIONWIDE_COVERAGE_CITY_SLUG = "tel-aviv"
+
+
+def fetch_all_coordinate_ids() -> list[dict[str, str]]:
+    """Komo's adscoordinates endpoint is confirmed nationwide regardless of which city is queried
+    (see fetch_coordinate_ids' own docstring) — this is the one real call scraper/main.py's
+    _scrape_komo should make per run (2 ZenRows credits total) instead of looping over every
+    tracked city (84 credits/run for the exact same data, every time). Returns exactly what
+    fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG) would."""
+    return fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG)
 
 
 def _parse_details_html(html: str, *, modaa_num: str) -> dict[str, Any] | None:

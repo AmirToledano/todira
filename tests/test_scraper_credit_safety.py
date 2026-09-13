@@ -88,21 +88,17 @@ def test_notifications_suspended_false_for_other_values(monkeypatch):
 
 
 def test_scrape_komo_stops_new_detail_fetches_at_the_cap(monkeypatch):
-    """3 cities, each with one never-before-seen listing, cap=2: the 3rd listing's detail should
-    never be fetched, but ALL THREE ids must still land in seen_external_ids (so delisting stays
-    correct even for the capped-out one)."""
+    """3 never-before-seen listings (all from ONE fetch_all_coordinate_ids call — confirmed
+    nationwide, see komo_client.py), cap=2: the 3rd listing's detail should never be fetched, but
+    ALL THREE ids must still land in seen_external_ids (so delisting stays correct even for the
+    capped-out one)."""
     monkeypatch.setenv(scraper_main._KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "2")
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(
-        scraper_main, "CITY_SLUG_TO_HEBREW_NAME", {"city-a": "א", "city-b": "ב", "city-c": "ג"}
+        scraper_main,
+        "fetch_all_coordinate_ids",
+        lambda: [{"id": "1"}, {"id": "2"}, {"id": "3"}],
     )
-
-    coordinates_by_city = {
-        "city-a": [{"id": "1"}],
-        "city-b": [{"id": "2"}],
-        "city-c": [{"id": "3"}],
-    }
-    monkeypatch.setattr(scraper_main, "fetch_coordinate_ids", lambda city: coordinates_by_city[city])
 
     fetched_detail_ids = []
 
@@ -125,8 +121,7 @@ def test_scrape_komo_never_caps_when_no_new_listings_exist(monkeypatch):
     way) — a regression guard against the cap accidentally blocking already-known listings."""
     monkeypatch.setenv(scraper_main._KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "0")
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
-    monkeypatch.setattr(scraper_main, "CITY_SLUG_TO_HEBREW_NAME", {"city-a": "א"})
-    monkeypatch.setattr(scraper_main, "fetch_coordinate_ids", lambda city: [{"id": "1"}])
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", lambda: [{"id": "1"}])
 
     def _fail_if_called(modaa_num):
         raise AssertionError("should never fetch an already-known listing's detail")
@@ -138,3 +133,25 @@ def test_scrape_komo_never_caps_when_no_new_listings_exist(monkeypatch):
     assert seen_external_ids == {"1"}
     assert normalized_items == []
     assert fetched == 0
+
+
+def test_scrape_komo_fails_gracefully_when_the_one_discovery_call_fails(monkeypatch):
+    """2026-09-13: fetch_all_coordinate_ids is now ONE call, not one per city — a failure there
+    means Komo has nothing to report this run at all (not a partial per-city failure anymore).
+    Must return the same 5-tuple shape (never raise) with all_succeeded=False, so run_once() skips
+    delisting for Komo this run instead of mistaking an empty seen_external_ids for "everything
+    delisted"."""
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fail(*, _err=scraper_main.KomoFetchError):
+        raise _err("simulated discovery failure")
+
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _fail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_komo()
+
+    assert normalized_items == []
+    assert seen_external_ids == set()
+    assert fetched == 0
+    assert errors == 1
+    assert all_succeeded is False

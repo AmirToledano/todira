@@ -178,6 +178,14 @@ scraper:
   #     10-day backlog size are both genuinely unknown) — watch the real ZenRows dashboard over the
   #     next few days rather than trusting this number blindly, same "verify, don't assume"
   #     standard as everywhere else in this project. Revert this schedule once safe to.
+  #
+  #   UPDATE (same night): the "all-42-city Komo discovery" cost above (84 credits/run) is now
+  #   WRONG in a good way — confirmed live (diagnose-komo-region-coverage.yaml) that Komo's
+  #   coordinates endpoint is genuinely nationwide regardless of which city is queried (Jerusalem
+  #   and Tel Aviv queries returned byte-identical id sets), so scraper/main.py's _scrape_komo now
+  #   calls it ONCE (2 credits/run, not 84). The ~260-credits/run and ~6,360-total estimates above
+  #   are therefore conservative (real cost is lower) — left as-is rather than recalculated, since
+  #   they were already meant as a safety margin, not a tight prediction.
   komoMaxNewDetailFetchesPerRun: 300
   yad2MaxPagesPerRegion: 5
   # 2026-09-13: resumed after being suspended since 2026-09-03 (see the credit-budget comment
