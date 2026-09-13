@@ -19,6 +19,9 @@ def _clean_env(monkeypatch):
         bright_data_client.COLLECTOR_ID_ENV_VAR,
         bright_data_client.DESCRIPTION_FIELD_ENV_VAR,
         bright_data_client.WEB_UNLOCKER_ZONE_ENV_VAR,
+        bright_data_client.ISP_PROXY_HOST_ENV_VAR,
+        bright_data_client.ISP_PROXY_USER_ENV_VAR,
+        bright_data_client.ISP_PROXY_PASS_ENV_VAR,
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -376,3 +379,58 @@ def test_web_unlocker_network_failure_returns_none_not_raise(monkeypatch):
         result = bright_data_client.fetch_via_web_unlocker("https://example.com")
 
     assert result is None
+
+
+# --- fetch_via_isp_proxy (2026-09-13) — a plain authenticated HTTP proxy (Bright Data ISP
+# proxies), the working alternative found the same day Web Unlocker hit a real KYC wall. Confirmed
+# live against a real Yad2 endpoint — see this function's own module docstring.
+
+
+def _isp_configure(monkeypatch):
+    monkeypatch.setenv(bright_data_client.ISP_PROXY_HOST_ENV_VAR, "brd.superproxy.io:44445")
+    monkeypatch.setenv(bright_data_client.ISP_PROXY_USER_ENV_VAR, "brd-customer-x-zone-isp_proxy1")
+    monkeypatch.setenv(bright_data_client.ISP_PROXY_PASS_ENV_VAR, "secret123")
+
+
+def test_isp_proxy_returns_none_when_any_of_the_three_env_vars_missing(monkeypatch):
+    # Host set, user/pass missing - still unconfigured.
+    monkeypatch.setenv(bright_data_client.ISP_PROXY_HOST_ENV_VAR, "brd.superproxy.io:44445")
+    assert bright_data_client.fetch_via_isp_proxy("https://example.com") is None
+
+
+def test_isp_proxy_happy_path_builds_the_right_proxy_url(monkeypatch):
+    _isp_configure(monkeypatch)
+    captured = {}
+
+    def fake_get(url, *, proxy, timeout):
+        captured["url"] = url
+        captured["proxy"] = proxy
+        return httpx.Response(200, text='{"data":{"markers":[]}}', request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = bright_data_client.fetch_via_isp_proxy("https://gw.yad2.co.il/x")
+
+    assert result == '{"data":{"markers":[]}}'
+    assert captured["url"] == "https://gw.yad2.co.il/x"
+    assert captured["proxy"] == "http://brd-customer-x-zone-isp_proxy1:secret123@brd.superproxy.io:44445"
+
+
+def test_isp_proxy_non_200_returns_none(monkeypatch):
+    _isp_configure(monkeypatch)
+
+    def fake_get(url, *, proxy, timeout):
+        return httpx.Response(403, text="forbidden", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert bright_data_client.fetch_via_isp_proxy("https://example.com") is None
+
+
+def test_isp_proxy_network_failure_returns_none_not_raise(monkeypatch):
+    _isp_configure(monkeypatch)
+
+    def fake_get(url, *, proxy, timeout):
+        raise httpx.ConnectError("boom", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert bright_data_client.fetch_via_isp_proxy("https://example.com") is None

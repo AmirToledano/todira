@@ -65,6 +65,33 @@ zone named "web_unlocker1" (Bright Data's own default zone name for this product
 the owner's dashboard the same day) — $1.50 per 1,000 SUCCESSFUL requests only, per that dashboard's
 own pricing (confirmed live, not a doc guess). Uses the SAME BRIGHT_DATA_API_KEY as the DCA
 functions above — one Bright Data account, multiple products/zones under it, not a second key.
+
+BUT: real production use of fetch_via_web_unlocker hit a wall the very same day — Bright Data's own
+"Residential Failed (bad_endpoint): ... no KYC access mode in accordance with robots.txt" error for
+EVERY bbox/param variation except the one exact URL already lucky-tested (see
+diagnose-yad2-map-api-coverage.yaml) — full KYC needs a company email the owner didn't have yet.
+
+2026-09-13, same day: added fetch_via_isp_proxy as the WORKING alternative — a THIRD, different
+Bright Data product (plain ISP proxies: real IPs with residential reputation but hosted in
+datacenters, reached via a classic authenticated HTTP proxy, not an API wrapper). Confirmed live
+(see .github/workflows/diagnose-yad2-isp-proxy.yaml) to have NO KYC gate at all ("start
+immediately — no verification, no domain restrictions" per Bright Data's own dashboard) and to
+successfully fetch gw.yad2.co.il's map API with real data (200 markers, real prices) — because that
+endpoint is pure JSON needing no JS rendering, the earlier Web Unlocker block was Bright Data's own
+residential-KYC classification specifically, not anything Yad2-side. The SAME proxy against
+www.yad2.co.il's own full HTML search page came back 200 (not blocked at the network/IP level
+either) but genuinely empty of real listing cards — consistent with this project's own
+already-documented understanding (yad2_client.py's module docstring, attempts 1-8) that Yad2's own
+search page needs real JS execution to render its cards at all, a separate problem a plain proxy
+(no browser) was never going to solve on its own — not a concern for fetch_map_markers's purposes,
+since the map API alone already carries everything needed.
+
+Real cost: a flat $2/month per IP ("unlimited usage subject to Bright Data's fair use policy"), NOT
+metered per request like Web Unlocker or ZenRows — confirmed live via the owner's own Bright Data
+dashboard, the cheapest of every option this project has tried for Yad2 by a wide margin. Needs
+THREE new env vars (a proxy's own host/user/pass, not an API key): BRIGHT_DATA_ISP_HOST (e.g.
+"brd.superproxy.io:44445"), BRIGHT_DATA_ISP_USER, BRIGHT_DATA_ISP_PASS — all set together or this
+function is unconfigured (returns None immediately, same contract as every other function here).
 """
 from __future__ import annotations
 
@@ -86,6 +113,15 @@ DESCRIPTION_FIELD_ENV_VAR = "BRIGHT_DATA_DESCRIPTION_FIELD"
 WEB_UNLOCKER_ZONE_ENV_VAR = "BRIGHT_DATA_WEB_UNLOCKER_ZONE"
 _DEFAULT_WEB_UNLOCKER_ZONE = "web_unlocker1"
 
+# 2026-09-13: only needed by fetch_via_isp_proxy — a plain authenticated HTTP proxy (a Bright Data
+# "ISP proxies" zone), not an API key/zone-name pair like the two products above. All three must be
+# set together (host, username, password of one specific proxy zone the owner created) or this
+# function is unconfigured — see its own docstring for why this exists (Web Unlocker's real KYC
+# wall) and what it costs ($2/month flat, not per-request).
+ISP_PROXY_HOST_ENV_VAR = "BRIGHT_DATA_ISP_HOST"
+ISP_PROXY_USER_ENV_VAR = "BRIGHT_DATA_ISP_USER"
+ISP_PROXY_PASS_ENV_VAR = "BRIGHT_DATA_ISP_PASS"
+
 _TRIGGER_URL = "https://api.brightdata.com/dca/trigger"
 _RESULT_URL = "https://api.brightdata.com/dca/dataset"
 _WEB_UNLOCKER_URL = "https://api.brightdata.com/request"
@@ -93,6 +129,9 @@ _WEB_UNLOCKER_URL = "https://api.brightdata.com/request"
 # through Web Unlocker's own real-browser rendering — 90s leaves generous headroom without letting
 # one hung request block a scrape run indefinitely.
 _WEB_UNLOCKER_TIMEOUT_SECONDS = 90.0
+# Confirmed live 2026-09-13: a real gw.yad2.co.il map-API fetch through the ISP proxy took ~1.1s
+# (no browser rendering involved at all, unlike Web Unlocker) — 60s still leaves generous headroom.
+_ISP_PROXY_TIMEOUT_SECONDS = 60.0
 _REQUEST_TIMEOUT_SECONDS = 15.0
 _POLL_INTERVAL_SECONDS = 3.0
 # A scrape run shouldn't hang indefinitely on one slow fetch — 60s is a guess at "generous but
@@ -267,6 +306,42 @@ def fetch_via_web_unlocker(url: str, *, zone: str | None = None) -> str | None:
         logger.warning(
             "Bright Data Web Unlocker returned non-200 for %s: zone=%r status=%d body=%r",
             url, zone_name, response.status_code, response.text[:500],
+        )
+        return None
+
+    return response.text
+
+
+def fetch_via_isp_proxy(url: str) -> str | None:
+    """2026-09-13 addition — see module docstring for the full story (Web Unlocker's real KYC
+    wall, this being the working alternative found the same day). A classic authenticated HTTP
+    proxy request — NOT an API wrapper: no unlocking/rendering/CAPTCHA-solving happens on Bright
+    Data's side here, just routing the request through one of their ISP-reputation IPs. Confirmed
+    live to work for a pure-JSON endpoint (no JS execution needed); would NOT by itself get past a
+    site that needs real browser rendering to produce its content (see this function's own
+    module-docstring section for why that's a genuinely different, unsolved problem, not
+    something this function claims to fix).
+
+    Returns the raw response body as text on HTTP 200, or None on missing config (any of the three
+    env vars unset), any request failure, or a non-200 status — never raises, same contract as
+    every other function in this file."""
+    host = os.environ.get(ISP_PROXY_HOST_ENV_VAR, "").strip()
+    user = os.environ.get(ISP_PROXY_USER_ENV_VAR, "").strip()
+    password = os.environ.get(ISP_PROXY_PASS_ENV_VAR, "").strip()
+    if not (host and user and password):
+        return None
+
+    proxy_url = f"http://{user}:{password}@{host}"
+    try:
+        response = httpx.get(url, proxy=proxy_url, timeout=_ISP_PROXY_TIMEOUT_SECONDS)
+    except httpx.HTTPError:
+        logger.exception("Bright Data ISP proxy request failed for %s", url)
+        return None
+
+    if response.status_code != 200:
+        logger.warning(
+            "Bright Data ISP proxy returned non-200 for %s: status=%d body=%r",
+            url, response.status_code, response.text[:500],
         )
         return None
 
