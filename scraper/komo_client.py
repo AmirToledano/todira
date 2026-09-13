@@ -63,6 +63,7 @@ bot-detection-bypass code — same reasoning, same infra, different (much cheape
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -112,6 +113,15 @@ _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 # Confirmed live against modaaNum=4471462 (see module docstring, step 3).
 _PRICE_RE = re.compile(r'class="price modaaWPrice"[^>]*>\s*<span[^>]*>([\d,]+)')
 _OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]+)"')
+# Confirmed live 2026-09-13 (diagnose-komo-homeless-reachability.yaml run #12, re-read while
+# investigating why Komo listings never carry a description): a real, free-text Hebrew ad
+# description — the poster's own words, not a generated summary — sits in the SAME details page
+# this project already fetches for price/rooms/floor/size, at zero extra ZenRows cost. Confirmed
+# sample (modaaNum=4471462): `<meta name="Description" content="דירה יוקרתית מושקעת ברמה גבוהה
+# עם מיזוג מרכזי וחימום תת רצפתי...">`. This was simply never looked for until now — nothing
+# about Komo's own page structure made it unavailable, unlike Yad2's search-results feed (which
+# genuinely has no description field at all, see normalize.py's own history).
+_DESCRIPTION_RE = re.compile(r'<meta name="Description" content="([^"]*)"', re.I)
 _ROOMS_RE = re.compile(r"([\d.]+)\s*חדרים")
 # Matches the city name right after "חדרים" and Hebrew's own "ב" (=\"in\") prefix, up to the
 # comma that separates it from the street — e.g. "...2 חדרים  בירושלים, שערי ירושלים 5" ->
@@ -281,19 +291,23 @@ def fetch_all_coordinate_ids() -> list[dict[str, str]]:
     return fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG)
 
 
-def _parse_details_html(html: str, *, modaa_num: str) -> dict[str, Any] | None:
+def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | None:
     """Parses one Komo listing detail page (see module docstring, step 3) into a raw dict shaped
     like yad2_client._parse_cards' own output (id/url/price/rooms/floor/square_meters/street/
     neighborhood/city) for downstream consistency. Returns None (logging why) rather than raising
     on a missing/malformed page — same defensive contract as yad2_client.fetch_listing_detail:
-    a failed detail fetch for one listing must never abort the whole scrape."""
-    price_match = _PRICE_RE.search(html)
+    a failed detail fetch for one listing must never abort the whole scrape.
+
+    Parameter named `page_html`, not `html` — this module imports the stdlib `html` module (for
+    `html.unescape` on the description field below); a same-named parameter would shadow it for
+    the whole function body."""
+    price_match = _PRICE_RE.search(page_html)
     if price_match is None:
         logger.warning("No price found on Komo details page for modaaNum=%s", modaa_num)
         return None
     price = int(price_match.group(1).replace(",", ""))
 
-    og_title_match = _OG_TITLE_RE.search(html)
+    og_title_match = _OG_TITLE_RE.search(page_html)
     if og_title_match is None:
         logger.warning("No og:title found on Komo details page for modaaNum=%s", modaa_num)
         return None
@@ -311,13 +325,16 @@ def _parse_details_html(html: str, *, modaa_num: str) -> dict[str, Any] | None:
 
     street = street_part.strip() or None
 
-    floor_match = _FLOOR_RE.search(html)
+    floor_match = _FLOOR_RE.search(page_html)
     floor = int(floor_match.group(1)) if floor_match and floor_match.group(1).isdigit() else None
 
-    size_match = _SIZE_SQM_RE.search(html)
+    size_match = _SIZE_SQM_RE.search(page_html)
     square_meters = (
         int(size_match.group(1)) if size_match and size_match.group(1).isdigit() else None
     )
+
+    description_match = _DESCRIPTION_RE.search(page_html)
+    description = html.unescape(description_match.group(1)).strip() if description_match else None
 
     return {
         "id": modaa_num,
@@ -326,6 +343,7 @@ def _parse_details_html(html: str, *, modaa_num: str) -> dict[str, Any] | None:
         "rooms": rooms,
         "floor": floor,
         "square_meters": square_meters,
+        "description": description,
         "street": street,
         "neighborhood": None,  # not present anywhere on Komo's own details page — see docstring
         "city": city,
@@ -339,14 +357,14 @@ def fetch_listing_detail(modaa_num: str) -> dict[str, Any] | None:
     unlike Yad2's same-named function, this one is NOT optional enrichment — it's the only source
     of price for a Komo listing, so it must be called at least once per genuinely new listing."""
     try:
-        html = _zenrows_get(
+        page_html = _zenrows_get(
             f"{DETAILS_PAGE_URL}?modaaNum={modaa_num}",
             context_label=f"komo details modaaNum={modaa_num!r}",
         )
     except KomoFetchError:
         logger.exception("Failed to fetch Komo listing detail page: modaaNum=%s", modaa_num)
         return None
-    return _parse_details_html(html, modaa_num=modaa_num)
+    return _parse_details_html(page_html, modaa_num=modaa_num)
 
 
 def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:

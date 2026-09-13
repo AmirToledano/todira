@@ -203,7 +203,19 @@ def _build_body_lines(
     if listing.street:
         street_display = escape(listing.street)
         maps_url = _google_maps_url(listing)
-        street_text = street_link(street_display, maps_url) if maps_url else street_display
+        # 2026-09-13: a THIRD real user report of this exact line drifting off-RTL, after the
+        # 2026-09-02 (single leading mark) and 2026-09-03 (per-line marks, see this function's own
+        # tail comment) fixes — this is the one line that embeds a long LTR string (the Google
+        # Maps URL) inside its own <a href="...">, unlike every other line here. The per-line
+        # leading RLM already added is a MARK (weak — it only nudges a neutral run), not an
+        # override; a long strong-LTR run appearing later in the same line can still tip a client's
+        # bidi resolution for that line. Reinforcing with a second RLM immediately before the
+        # link's own VISIBLE text (not just at the line's start) costs nothing and directly targets
+        # the one line actually carrying embedded LTR content — cheap, unconfirmed-until-a-real-
+        # screenshot-says-otherwise, not a guaranteed fix.
+        street_text = (
+            street_link(_RTL_MARK + street_display, maps_url) if maps_url else street_display
+        )
         location = f"{location} {street_text}" if location else street_text
     if location:
         lines.append(f"📍{location}")
