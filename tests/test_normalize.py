@@ -4,7 +4,7 @@ The module's own docstring promises it "never raises" - a malformed/missing fiel
 degrade to None rather than aborting a scrape run over one bad item. That defensive contract is
 exactly what's worth locking down with tests, since scraper/main.py relies on it silently.
 """
-from dorin_common.enums import DealType
+from dorin_common.enums import DealType, Source
 
 from normalize import normalize
 
@@ -21,6 +21,36 @@ def test_minimal_item_with_only_id_still_normalizes():
     assert result.deal_type == DealType.RENT
     # no explicit url - falls back to a constructed one
     assert result.url == "https://www.yad2.co.il/item/123"
+
+
+# --- source parameter (2026-09-13 — generalized for komo_client.py/homeless_client.py, which
+# produce raw dicts in the same flat shape yad2_client._parse_cards already does) ---
+
+
+def test_defaults_to_yad2_source_when_not_specified():
+    assert normalize({"id": "1"}).source == "yad2"
+
+
+def test_komo_source_is_used_verbatim():
+    result = normalize({"id": "1", "url": "https://www.komo.co.il/x"}, source=Source.KOMO)
+    assert result.source == Source.KOMO
+
+
+def test_homeless_source_is_used_verbatim():
+    result = normalize(
+        {"id": "1", "url": "https://www.homeless.co.il/x"}, source=Source.HOMELESS
+    )
+    assert result.source == Source.HOMELESS
+
+
+def test_non_yad2_source_with_no_url_fails_loudly_instead_of_getting_a_yad2_url():
+    # The "https://www.yad2.co.il/item/<id>" fallback is a Yad2-specific historical hedge — a
+    # Komo/Homeless item missing its own "url" (which their real fetch_search_results always
+    # provides) must NEVER silently get a yad2.co.il URL slapped on it (that would mislabel a
+    # Komo/Homeless listing as a Yad2 one to anyone who clicks it). Missing url + non-Yad2 source
+    # -> NormalizedListing's required `url: str` field fails validation -> normalize() catches it
+    # and returns None, same "skip the bad item, don't abort the run" contract as a missing id.
+    assert normalize({"id": "1"}, source=Source.KOMO) is None
 
 
 def test_id_can_come_from_alternate_key_names():
