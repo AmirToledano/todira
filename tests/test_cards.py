@@ -68,21 +68,21 @@ def test_no_prefix_line_for_a_plain_rent_or_sale_listing():
 
 def test_broker_prefix_line_shown_regardless_of_deal_type():
     caption = format_caption(make_listing(deal_type="sale", is_broker_listing=True), has_access=True)
-    assert "🏢<b>תיווך</b>" in caption
+    assert "🏢 <b>תיווך</b>" in caption
 
     caption = format_caption(make_listing(deal_type="rent", is_broker_listing=True), has_access=True)
-    assert "🏢<b>תיווך</b>" in caption
+    assert "🏢 <b>תיווך</b>" in caption
 
 
 def test_sublet_prefix_line_shown_when_not_broker():
     caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=False), has_access=True)
-    assert "🏢<b>סאבלט</b>" in caption
+    assert "🏢 <b>סאבלט</b>" in caption
     assert "תיווך" not in caption
 
 
 def test_broker_prefix_wins_over_sublet_if_somehow_both():
     caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=True), has_access=True)
-    assert "🏢<b>תיווך</b>" in caption
+    assert "🏢 <b>תיווך</b>" in caption
     assert "סאבלט" not in caption
 
 
