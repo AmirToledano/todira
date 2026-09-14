@@ -27,6 +27,9 @@ jobs:
             --data-urlencode "apikey=$ZENROWS_API_KEY" \
             --data-urlencode "url=https://www.homeless.co.il/rent/" \
             -o /tmp/search.html -w "http_status=%{http_code} size=%{size_download}\n" --max-time 60
+          echo "--- raw response body (in case it's a ZenRows-side error, not the real page) ---"
+          cat /tmp/search.html
+          echo
           python3 - << 'PYEOF'
           import re
           with open('/tmp/search.html', encoding='utf-8', errors='replace') as f:
