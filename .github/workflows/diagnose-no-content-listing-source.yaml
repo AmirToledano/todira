@@ -1,0 +1,65 @@
+name: Diagnose — which source is the "no content, odd indentation" listing actually from? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# A real owner screenshot showed a Telegram card with NO description/features and (per the owner's
+# own read) slightly different indentation than other cards — a Be'er Sheva listing, "שכונה ג' -
+# א.ל. זיסו 10", 2,700₪, 4.0 rooms, 100 sqm, floor 0. The owner's own hypothesis: is this actually
+# a Komo/Homeless listing, not Yad2? yad2-catchup-fix-run.yaml caps NEW Komo/Homeless
+# description/detail fetches at just 5 each this run (KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN=5,
+# HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN=5) while Yad2's own Bright Data enrichment has no
+# such per-run cap — so a content-less card is far more likely to be Komo/Homeless than Yad2 this
+# specific run. Same read-only postgres:16-alpine pod pattern as
+# diagnose-kiryat-motzkin-no-match.yaml (proven working, see that file's own history).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Query for the exact listing from the screenshot, plus a broader source/content-gap breakdown
+        run: |
+          kubectl delete pod diag-no-content-source -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-no-content-source
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-no-content-source
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" \
+                      -c "SELECT id, source, external_id, url, city, street, price, rooms, size_sqm, floor, description IS NOT NULL AS has_description, image_urls, scraped_at FROM listings WHERE city = 'באר שבע' AND price = 2700 AND rooms = 4.0 AND size_sqm = 100 ORDER BY scraped_at DESC LIMIT 5;" \
+                      -c "SELECT source, count(*) FILTER (WHERE description IS NULL) AS no_description, count(*) AS total FROM listings WHERE scraped_at > now() - interval '6 hours' GROUP BY source;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-no-content-source -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-no-content-source || true
+          kubectl delete pod diag-no-content-source -n todira --ignore-not-found
