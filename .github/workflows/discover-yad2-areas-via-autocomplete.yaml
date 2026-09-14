@@ -1,0 +1,102 @@
+name: Discover Yad2's real area↔region taxonomy via its address-autocomplete API (read-only)
+
+# Reusable, read-only, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# Answers the owner's real question — "how many sub-areas does each district actually have, and
+# what are they" — WITHOUT needing anyone's browser at all. Found live: Yad2's own address search
+# box is backed by `gw.yad2.co.il/address-autocomplete/realestate/v2?text=<query>`, which returns,
+# for any matching text, a `areas` array where every entry already carries a CORRECT `areaId` +
+# `regionId` + `regionHeb` (region name) — the exact hierarchy REGIONS_ON_MAP_API needs, and
+# unlike Yad2's own on-page search dropdown, NOT a global unscoped substring match: each area's
+# regionId here is Yad2's own real, internal attribution, not a display-layer artifact.
+#
+# CONFIRMED LIVE 2026-09-14: this endpoint works over a PLAIN, un-proxied request (straight from a
+# GitHub Actions runner's own IP, no Bright Data ISP proxy) — a real 200 with real JSON — but is
+# BLOCKED (302, Radware challenge) through our specific Bright Data ISP proxy IP, the same pattern
+# other blocked endpoints on this host have shown. This workflow deliberately uses NO proxy at all
+# — this is a one-time taxonomy-discovery exercise, not part of the production scraper, so it never
+# needs to go through the ISP proxy in the first place.
+#
+# Strategy: query with a broad list of search terms (major city names, already bundled in
+# common/dorin_common/cities.py for other reasons, plus all 7 REGION_SLUGS' own Hebrew names) and
+# aggregate every distinct `areaId` seen, grouped by `regionId`. This is NOT guaranteed
+# mathematically complete (a real area with no city/region name substring in common with any term
+# tried could be missed) — but it is a real, live, first-party enumeration, dramatically more
+# complete than any single manual search, and the output tells us plainly which of the 5 still-
+# blocked regions (see REGIONS_ON_MAP_API's own comment) have how many known areas — the concrete
+# number the owner asked for before doing any further manual bbox-hunting.
+on:
+  workflow_dispatch:
+    inputs:
+      extra_terms:
+        description: "Optional extra comma-separated search terms to also query, beyond the built-in city/region list"
+        required: false
+        type: string
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query the autocomplete API for every term and aggregate areas by region
+        env:
+          EXTRA_TERMS: ${{ inputs.extra_terms }}
+        run: |
+          python3 -c "
+          import json
+          import os
+          import time
+          import urllib.parse
+          import urllib.request
+
+          # The same 41-city list bundled in common/dorin_common/cities.py (kept inline here so
+          # this workflow needs no repo checkout/import) plus all 7 REGION_SLUGS' own Hebrew names
+          # (scraper/yad2_client.py) as extra broad search terms.
+          CITIES = [
+              'תל אביב יפו', 'ירושלים', 'חיפה', 'ראשון לציון', 'פתח תקווה', 'אשדוד', 'נתניה',
+              'באר שבע', 'בני ברק', 'חולון', 'רמת גן', 'אשקלון', 'רחובות', 'בת ים', 'בית שמש',
+              'כפר סבא', 'הרצליה', 'חדרה', 'מודיעין מכבים רעות', 'רעננה', 'רמלה', 'רמת השרון',
+              'נצרת', 'לוד', 'גבעתיים', 'הוד השרון', 'נהריה', 'אילת', 'קריית אתא', 'קריית גת',
+              'קריית מוצקין', 'קריית ביאליק', 'קריית אונו', 'יבנה', 'אור יהודה', 'צפת', 'עפולה',
+              'טבריה', 'דימונה', 'מבשרת ציון', 'הר גילה', 'כרמיאל',
+          ]
+          REGION_NAMES = [
+              'מרכז והשרון', 'דרום', 'תל אביב והסביבה', 'יהודה ושומרון', 'חוף הצפון',
+              'ירושלים והסביבה', 'צפון ועמקים',
+          ]
+          extra = [t.strip() for t in os.environ.get('EXTRA_TERMS', '').split(',') if t.strip()]
+          terms = list(dict.fromkeys(CITIES + REGION_NAMES + extra))  # de-dupe, keep order
+
+          areas_by_id = {}  # areaId -> full area dict (last write wins, values are stable)
+          failures = []
+          for i, term in enumerate(terms):
+              url = 'https://gw.yad2.co.il/address-autocomplete/realestate/v2?text=' + urllib.parse.quote(term)
+              try:
+                  req = urllib.request.Request(url, headers={'Accept': 'application/json'})
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      body = resp.read().decode('utf-8')
+                  payload = json.loads(body)
+              except Exception as exc:
+                  failures.append((term, str(exc)))
+                  continue
+              for area in payload.get('areas') or []:
+                  area_id = area.get('areaId')
+                  if area_id is not None:
+                      areas_by_id[area_id] = area
+              time.sleep(0.2)  # light pacing — no need to hammer it
+
+          print(f'Queried {len(terms)} terms, {len(failures)} failed.')
+          if failures:
+              print('Failed terms:', failures[:10])
+          print(f'Found {len(areas_by_id)} distinct areas total.')
+          print()
+
+          by_region = {}
+          for area in areas_by_id.values():
+              by_region.setdefault((area.get('regionId'), area.get('regionHeb')), []).append(area)
+
+          for (region_id, region_heb), areas in sorted(by_region.items(), key=lambda kv: (kv[0][0] or '')):
+              print(f'=== regionId={region_id} ({region_heb}): {len(areas)} area(s) ===')
+              for a in sorted(areas, key=lambda a: a.get('areaId') or ''):
+                  print(f\"  areaId={a.get('areaId'):<4} topAreaId={a.get('topAreaId'):<4} {a.get('fullTitleText')}\")
+              print()
+          "
