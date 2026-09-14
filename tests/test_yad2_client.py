@@ -674,6 +674,42 @@ def test_fetch_map_markers_skips_non_dict_and_tokenless_entries(monkeypatch):
     assert list(fetch_map_markers("bbox", area=1, region=3)) == []
 
 
+# --- fetch_map_markers: optional area / alternate host (2026-09-14 — see _build_map_url's own
+# docstring for the two real findings this covers: a district-level request can omit `area`
+# entirely, and Yad2 routes at least one region through a different domain entirely) -----------
+
+
+def test_fetch_map_markers_omits_area_param_entirely_when_area_is_none(monkeypatch):
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+
+    list(fetch_map_markers("29.7,33.1,33.7,37.9", region=4, zoom=7))
+
+    assert captured["url"] == f"{MAP_API_URL}?region=4&bBox=29.7,33.1,33.7,37.9&zoom=7"
+    assert "area=" not in captured["url"]
+
+
+def test_fetch_map_markers_uses_the_given_host_instead_of_the_default(monkeypatch):
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+
+    list(fetch_map_markers("29.7,33.1,33.7,37.9", region=4, zoom=7, host="gw.yad-il.co.il"))
+
+    assert captured["url"] == (
+        "https://gw.yad-il.co.il/realestate-feed/rent/map?region=4&bBox=29.7,33.1,33.7,37.9&zoom=7"
+    )
+
+
 # --- REGIONS_ON_MAP_API / fetch_region_via_map_api (2026-09-14 — the real, partial migration off
 # ZenRows for regions with a confirmed-real map-API bbox; see fetch_region_via_map_api's own
 # module comment in yad2_client.py for the full reasoning) -------------------------------------
@@ -685,11 +721,11 @@ def test_regions_on_map_api_is_a_subset_of_region_slugs():
     assert set(REGIONS_ON_MAP_API) <= set(REGION_SLUGS)
 
 
-def test_only_tel_aviv_area_is_on_the_map_api_so_far():
-    # Documents the current real migration state — only tel-aviv-area has a confirmed-real bbox
-    # (see the module comment). This test is meant to be updated, not deleted, the day a second
-    # region gets its own confirmed-real bbox/area/region live.
-    assert set(REGIONS_ON_MAP_API) == {"tel-aviv-area"}
+def test_tel_aviv_area_and_partnership_east_are_on_the_map_api_so_far():
+    # Documents the current real migration state (see the module comment). This test is meant to
+    # be updated, not deleted, the day a further region gets its own confirmed-real
+    # bbox/area/region live.
+    assert set(REGIONS_ON_MAP_API) == {"tel-aviv-area", "partnership/east"}
 
 
 def test_fetch_region_via_map_api_uses_tel_aviv_areas_confirmed_real_params(monkeypatch):
@@ -708,6 +744,27 @@ def test_fetch_region_via_map_api_uses_tel_aviv_areas_confirmed_real_params(monk
     )
     assert len(items) == 1
     assert items[0]["id"] == "3zsxuu6d"
+
+
+def test_fetch_region_via_map_api_uses_partnership_easts_confirmed_real_params(monkeypatch):
+    # No `area` param, a DIFFERENT host — both real, confirmed-live findings for this region (see
+    # REGIONS_ON_MAP_API's own comment).
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+
+    items = list(fetch_region_via_map_api("partnership/east"))
+
+    assert captured["url"] == (
+        "https://gw.yad-il.co.il/realestate-feed/rent/map?region=4&"
+        "bBox=29.778653,33.142100,33.787281,37.954214&zoom=7"
+    )
+    assert "area=" not in captured["url"]
+    assert len(items) == 1
 
 
 def test_fetch_region_via_map_api_unknown_region_raises_key_error():
