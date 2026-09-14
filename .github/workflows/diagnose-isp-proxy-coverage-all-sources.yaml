@@ -1,0 +1,91 @@
+name: Diagnose — can the flat-rate ISP proxy replace ZenRows/DCA for Yad2 detail pages, Homeless, and Komo? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# Real owner question: can EVERYTHING (Yad2 detail-page enrichment currently via Bright Data's
+# DCA collector, Homeless/Komo currently via ZenRows credits) move onto the already-paid-for,
+# flat-$2/month Bright Data ISP proxy instead, to minimize total spend? Already CONFIRMED this
+# session (bright_data_client.py's own module docstring) that the ISP proxy does NOT work for
+# Yad2's own SEARCH-RESULTS page (genuinely needs real JS execution to render listing cards at
+# all — a plain proxy with no browser can't do that). NOT yet tested: the THREE other fetches this
+# project does that are documented as plain, server-rendered HTML/JSON needing no JS rendering at
+# all (confirmed via ZenRows' own js_render=false / X-Request-Credits=1 evidence in each module's
+# own docstring):
+#   1. A Yad2 LISTING DETAIL page — does its __NEXT_DATA__/searchText appear in the raw server
+#      HTML without any JS execution? (yad2_client.py/bright_data_client.py's own docstrings
+#      describe this as SSR JSON embedded in a <script> tag, distinct from the client-rendered
+#      search page — untested via a plain, no-browser proxy specifically.)
+#   2. Homeless's /rent/ search page — homeless_client.py's own docstring already calls this
+#      "plain server-rendered HTML (no session dance, no separate map/coordinates API, no JS
+#      rendering)" via ZenRows' plain tier; testing the SAME plain characteristic holds via the
+#      ISP proxy instead.
+#   3. Komo's search page (for its embedded sessionToken) and detail page — komo_client.py's own
+#      docstring: "window.sessionToken... directly in the plain server-rendered HTML" and the
+#      detail page "an actual HTML page" parsed via regex, neither needing js_render per ZenRows.
+#
+# Real, cheap (the ISP proxy's own cost is flat, already paid for) — just checking whether the
+# SAME already-confirmed-real markers each module's own tests already assert on are present in
+# what the ISP proxy returns, instead of guessing from the search-page finding alone.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1) Yad2 listing detail page via ISP proxy — check for __NEXT_DATA__ / searchText
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          # Real, live token from tonight's own production run logs (tel-aviv-area).
+          URL="https://www.yad2.co.il/realestate/item/tel-aviv-area/68h503f1"
+          curl -sS -x "http://${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}@${BRIGHT_DATA_ISP_HOST}" \
+            "$URL" -o /tmp/yad2_detail.html -w "http_status=%{http_code} size=%{size_download}\n" --max-time 60 || echo "(curl failed)"
+          echo "--- checks ---"
+          grep -q '__NEXT_DATA__' /tmp/yad2_detail.html && echo "__NEXT_DATA__: FOUND" || echo "__NEXT_DATA__: NOT FOUND"
+          grep -q 'searchText' /tmp/yad2_detail.html && echo "searchText: FOUND" || echo "searchText: NOT FOUND"
+          echo "first 300 chars of body:"
+          head -c 300 /tmp/yad2_detail.html; echo
+
+      - name: 2) Homeless /rent/ search page via ISP proxy — check for real listing rows
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS -x "http://${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}@${BRIGHT_DATA_ISP_HOST}" \
+            "https://www.homeless.co.il/rent/" -o /tmp/homeless.html -w "http_status=%{http_code} size=%{size_download}\n" --max-time 60 || echo "(curl failed)"
+          echo "--- checks ---"
+          ROWS=$(grep -oE 'id="ad_[0-9]+"' /tmp/homeless.html | wc -l)
+          echo "real listing rows (id=\"ad_<N>\") found: $ROWS"
+          head -c 300 /tmp/homeless.html; echo
+
+      - name: 3) Komo search page via ISP proxy — check for the embedded sessionToken
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS -x "http://${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}@${BRIGHT_DATA_ISP_HOST}" \
+            "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes=1&cityName=%D7%AA%D7%9C%20%D7%90%D7%91%D7%99%D7%91" \
+            -o /tmp/komo_search.html -w "http_status=%{http_code} size=%{size_download}\n" --max-time 60 || echo "(curl failed)"
+          echo "--- checks ---"
+          grep -oE 'sessionToken\s*=\s*"[A-Za-z0-9]{16,64}"' /tmp/komo_search.html | head -1 || echo "sessionToken: NOT FOUND"
+          head -c 300 /tmp/komo_search.html; echo
+
+      - name: 4) Komo listing detail page via ISP proxy — check for the confirmed price marker
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          # Real modaaNum this project's own module docstring already confirmed content for.
+          curl -sS -x "http://${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}@${BRIGHT_DATA_ISP_HOST}" \
+            "https://www.komo.co.il/code/nadlan/details/?modaaNum=4471462" \
+            -o /tmp/komo_detail.html -w "http_status=%{http_code} size=%{size_download}\n" --max-time 60 || echo "(curl failed)"
+          echo "--- checks ---"
+          grep -q 'ModaaWDetailsValue' /tmp/komo_detail.html && echo "price marker: FOUND" || echo "price marker: NOT FOUND"
+          grep -oE '<meta property="og:title" content="[^"]*"' /tmp/komo_detail.html | head -1 || echo "og:title: NOT FOUND"
+          head -c 300 /tmp/komo_detail.html; echo
