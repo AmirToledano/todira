@@ -25,7 +25,14 @@ from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import _compute_detail_updates, normalize
 from notifier import run_notifications
-from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_region_pages
+from yad2_client import (
+    REGION_SLUGS,
+    REGIONS_ON_MAP_API,
+    Yad2FetchError,
+    Yad2MapFetchError,
+    fetch_region_pages,
+    fetch_region_via_map_api,
+)
 
 # 2026-09-12: how many fetch_listing_detail_via_bright_data calls run concurrently when enriching
 # a batch of newly-discovered listings. Each call is a real blocking trigger->poll->snapshot round
@@ -371,11 +378,25 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     fetch_kwargs = {} if max_pages_override is None else {"max_pages": max_pages_override}
     logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
     for region in REGION_SLUGS:
-        logger.info("Fetching Yad2 listings for region=%s", region)
+        # 2026-09-14: partial migration off ZenRows — regions with a confirmed-real map-API bbox
+        # (see yad2_client.REGIONS_ON_MAP_API's own comment for which ones and why) go through
+        # Bright Data's flat-rate ISP proxy instead; every other region is unchanged. Both paths
+        # feed the exact same normalize()/error-handling logic below — the only difference is which
+        # iterator/exception type is used to get raw items.
+        use_map_api = region in REGIONS_ON_MAP_API
+        logger.info(
+            "Fetching Yad2 listings for region=%s (via %s)",
+            region, "Bright Data map API" if use_map_api else "ZenRows",
+        )
         region_succeeded = False
         for attempt in (1, 2):
             try:
-                for raw_item in fetch_region_pages(region, known_ids, **fetch_kwargs):
+                region_items = (
+                    fetch_region_via_map_api(region)
+                    if use_map_api
+                    else fetch_region_pages(region, known_ids, **fetch_kwargs)
+                )
+                for raw_item in region_items:
                     fetched += 1
                     normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.RENT)
                     if normalized is not None:
@@ -385,9 +406,11 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
                         errors += 1
                 region_succeeded = True
                 break
-            except Yad2FetchError as exc:
+            except (Yad2FetchError, Yad2MapFetchError) as exc:
                 # A quota error ("AUTH004") can't be fixed by waiting a few seconds — the account
                 # is out until its plan resets, so retrying just burns another call for nothing.
+                # (Only ever raised by the ZenRows path — Yad2MapFetchError never carries it — so
+                # this check is simply never true for a map-API region, which is fine.)
                 if "AUTH004" in str(exc):
                     logger.error(
                         "Yad2 fetch failed for region=%s — ZenRows quota exhausted (AUTH004), "

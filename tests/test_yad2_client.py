@@ -17,6 +17,7 @@ from yad2_client import (
     CITY_SLUG_TO_ID,
     MAP_API_URL,
     REGION_SLUGS,
+    REGIONS_ON_MAP_API,
     ZENROWS_API_KEY_ENV_VAR,
     Yad2FetchError,
     Yad2MapFetchError,
@@ -24,6 +25,7 @@ from yad2_client import (
     fetch_listing_detail,
     fetch_map_markers,
     fetch_region_pages,
+    fetch_region_via_map_api,
     fetch_search_results,
 )
 from yad2_client import _marker_to_raw_item
@@ -670,3 +672,51 @@ def test_fetch_map_markers_skips_non_dict_and_tokenless_entries(monkeypatch):
     monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: body)
 
     assert list(fetch_map_markers("bbox", area=1, region=3)) == []
+
+
+# --- REGIONS_ON_MAP_API / fetch_region_via_map_api (2026-09-14 — the real, partial migration off
+# ZenRows for regions with a confirmed-real map-API bbox; see fetch_region_via_map_api's own
+# module comment in yad2_client.py for the full reasoning) -------------------------------------
+
+
+def test_regions_on_map_api_is_a_subset_of_region_slugs():
+    # Every region routed to the map API must still be one of the real REGION_SLUGS scraper/main.py
+    # iterates over — a typo'd key here would silently mean that region is never scraped at all.
+    assert set(REGIONS_ON_MAP_API) <= set(REGION_SLUGS)
+
+
+def test_only_tel_aviv_area_is_on_the_map_api_so_far():
+    # Documents the current real migration state — only tel-aviv-area has a confirmed-real bbox
+    # (see the module comment). This test is meant to be updated, not deleted, the day a second
+    # region gets its own confirmed-real bbox/area/region live.
+    assert set(REGIONS_ON_MAP_API) == {"tel-aviv-area"}
+
+
+def test_fetch_region_via_map_api_uses_tel_aviv_areas_confirmed_real_params(monkeypatch):
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+
+    items = list(fetch_region_via_map_api("tel-aviv-area"))
+
+    assert captured["url"] == (
+        f"{MAP_API_URL}?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+    )
+    assert len(items) == 1
+    assert items[0]["id"] == "3zsxuu6d"
+
+
+def test_fetch_region_via_map_api_unknown_region_raises_key_error():
+    with pytest.raises(KeyError):
+        list(fetch_region_via_map_api("south"))
+
+
+def test_fetch_region_via_map_api_propagates_yad2_map_fetch_error(monkeypatch):
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: "not json")
+
+    with pytest.raises(Yad2MapFetchError, match="wasn't valid JSON"):
+        list(fetch_region_via_map_api("tel-aviv-area"))

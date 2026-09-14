@@ -280,6 +280,11 @@ def _fake_yad2_item(external_id: str) -> dict:
 
 def test_scrape_yad2_retries_once_on_transient_failure_and_succeeds(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    # tel-aviv-area is a real REGIONS_ON_MAP_API entry (2026-09-14) — cleared here so this test
+    # exercises the generic ZenRows/fetch_region_pages retry path it was written for, independent
+    # of which specific region happens to be on the map API today (see the dedicated
+    # test_scrape_yad2_uses_the_map_api_for_regions_on_it below for that routing itself).
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
     calls = []
@@ -302,6 +307,7 @@ def test_scrape_yad2_retries_once_on_transient_failure_and_succeeds(monkeypatch)
 
 def test_scrape_yad2_gives_up_after_retry_also_fails(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
     calls = []
@@ -324,6 +330,7 @@ def test_scrape_yad2_does_not_retry_on_auth004_quota_error(monkeypatch):
     # A quota error can't be fixed by waiting a few seconds - retrying it just burns another call
     # for nothing, so this must give up after exactly one attempt, not two.
     monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
     calls = []
@@ -349,6 +356,7 @@ def test_scrape_yad2_multiple_regions_each_get_their_own_independent_retry(monke
     """One region failing (and recovering on retry) must not affect a different region's own
     fetch — each region's retry state is independent."""
     monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area", "jerusalem-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
     calls_per_region: dict[str, int] = {}
@@ -366,3 +374,57 @@ def test_scrape_yad2_multiple_regions_each_get_their_own_independent_retry(monke
     assert calls_per_region == {"tel-aviv-area": 2, "jerusalem-area": 1}
     assert all_succeeded is True
     assert seen_external_ids == {"tel-aviv-area-1", "jerusalem-area-1"}
+
+
+# --- _scrape_yad2: regions on REGIONS_ON_MAP_API use the Bright Data map API, not ZenRows -------
+# (2026-09-14 — the real, partial migration; see yad2_client.REGIONS_ON_MAP_API's own comment)
+
+
+def test_scrape_yad2_uses_the_map_api_for_regions_on_it(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area", "jerusalem-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"tel-aviv-area": {}})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    map_calls = []
+    zenrows_calls = []
+
+    def _fake_fetch_region_via_map_api(region):
+        map_calls.append(region)
+        yield _fake_yad2_item(f"{region}-map")
+
+    def _fake_fetch_region_pages(region, known_ids, **kwargs):
+        zenrows_calls.append(region)
+        yield _fake_yad2_item(f"{region}-zenrows")
+
+    monkeypatch.setattr(scraper_main, "fetch_region_via_map_api", _fake_fetch_region_via_map_api)
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", _fake_fetch_region_pages)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert map_calls == ["tel-aviv-area"]  # went through the map API, not ZenRows
+    assert zenrows_calls == ["jerusalem-area"]  # unaffected region still uses fetch_region_pages
+    assert all_succeeded is True
+    assert seen_external_ids == {"tel-aviv-area-map", "jerusalem-area-zenrows"}
+
+
+def test_scrape_yad2_map_api_region_retries_on_yad2_map_fetch_error(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"tel-aviv-area": {}})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    calls = []
+
+    def _fake_fetch_region_via_map_api(region):
+        calls.append(region)
+        if len(calls) == 1:
+            raise scraper_main.Yad2MapFetchError("Bright Data ISP proxy failed: transient")
+        yield _fake_yad2_item("1")
+
+    monkeypatch.setattr(scraper_main, "fetch_region_via_map_api", _fake_fetch_region_via_map_api)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(calls) == 2  # a real retry happened, same as the ZenRows path
+    assert all_succeeded is True
+    assert seen_external_ids == {"1"}
+    assert errors == 0
