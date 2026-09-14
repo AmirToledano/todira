@@ -1,0 +1,82 @@
+name: Diagnose a Yad2 _next/data JSON URL (read-only, direct + via ISP proxy)
+
+# Reusable, read-only, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# One-off diagnostic for a specific lead: www.yad2.co.il/realestate/_next/data/<buildId>/rent/
+# <slug>.json?zoom=<N>&slug=<slug> — a Next.js internal data-fetching endpoint the owner captured
+# LIVE exactly once (via a real client-side link click on yad2.co.il/latestsearches, not a typed
+# URL — see scraper/yad2_client.py's REGIONS_ON_MAP_API comment for why that distinction matters:
+# Next.js only fires this XHR on a "soft" in-app navigation, never on a hard/typed-URL page load,
+# so it could not be reliably re-captured from the browser afterward). Whether this endpoint is a
+# genuinely useful alternative to the map API depends on two things this workflow answers without
+# needing the browser at all:
+#   1. Is the URL (specifically its buildId path segment, which changes on every Yad2 frontend
+#      deploy) still valid right now? Tested with a plain, un-proxied request first.
+#   2. Is it blocked by Radware through OUR SPECIFIC Bright Data ISP proxy IP the same way the
+#      no-area map-API requests were, or does it go through cleanly? Tested second, through the
+#      proxy, only if step 1 confirms the URL itself is still alive.
+#
+# This does NOT touch REGIONS_ON_MAP_API or any production code — purely diagnostic, same spirit
+# as verify-yad2-region-map-params.yaml.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Full _next/data/.../[slug].json?... URL captured from DevTools"
+        required: true
+        type: string
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Step 1 — plain, un-proxied request (is the URL/buildId still valid at all?)
+        env:
+          URL: ${{ inputs.url }}
+        run: |
+          echo "Testing (no proxy): $URL"
+          curl -sS -D /tmp/direct.headers \
+            -H "Accept: application/json" \
+            "$URL" \
+            -o /tmp/direct.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 || true
+          echo "--- body (first 500 chars) ---"
+          head -c 500 /tmp/direct.body || true
+          echo
+
+      - name: Step 2 — same URL through the real Bright Data ISP proxy
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+          URL: ${{ inputs.url }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ] || [ -z "$BRIGHT_DATA_ISP_USER" ] || [ -z "$BRIGHT_DATA_ISP_PASS" ]; then
+            echo "One or more BRIGHT_DATA_ISP_* GitHub Actions secrets are not set — cannot test via proxy."
+            exit 1
+          fi
+          echo "Testing (via ISP proxy): $URL"
+          curl -sS -D /tmp/proxy.headers \
+            --proxy "$BRIGHT_DATA_ISP_HOST" \
+            --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            -H "Accept: application/json" \
+            "$URL" \
+            -o /tmp/proxy.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60
+          echo "--- body (first 500 chars) ---"
+          head -c 500 /tmp/proxy.body
+          echo
+          echo "--- verdict ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/proxy.body', encoding='utf-8') as f:
+                  payload = json.load(f)
+          except Exception as exc:
+              print(f'NOT valid JSON via proxy — likely blocked/challenged or a dead buildId: {exc}')
+              raise SystemExit(1)
+          print('Valid JSON via proxy. Top-level keys:', list(payload.keys()) if isinstance(payload, dict) else type(payload))
+          print(json.dumps(payload, ensure_ascii=False)[:1500])
+          "
