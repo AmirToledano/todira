@@ -1,0 +1,65 @@
+name: Diagnose — retest the ONE known-good Yad2 map-API request, alone (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# Exactly what PROJECT_STATE.md's own "Next concrete steps" for the 2026-09-13 rate-limit finding
+# calls for: "re-fetch the ONE known-good exact request... ALONE, not alongside other test
+# variations in the same run — a clean single data point." diagnose-yad2-isp-proxy.yaml (the
+# original) fires TWO requests in one run (map API + full search page) — deliberately NOT reused
+# here, since a second request in the same run would muddy this specific read.
+#
+# Real history: this exact request worked cleanly once (2026-09-13 ~00:55, 200 real markers). ~20
+# minutes later, a SECOND diagnostic run fired 11 requests within ~2 minutes (including a
+# regression check with these SAME exact params) and every one came back a Radware/Incapsula-style
+# 302 challenge — strongly suggesting a rate/velocity-triggered block on that one static IP, not a
+# permanent one. Real elapsed time has now passed (this is the next day) — this checks whether it
+# recovered, with nothing else run alongside it to contaminate the read.
+#
+# If this comes back clean: the 4 open questions from that same entry (country-wide bbox,
+# area/region requirement, over-cap city drill-down, plain city= filter) get tested ONE AT A TIME
+# with real minutes-not-seconds delays between them, in SEPARATE dispatches of a future workflow —
+# never batched into one run again.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: The ONE known-good request, alone — nothing else fired in this run
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ] || [ -z "$BRIGHT_DATA_ISP_USER" ] || [ -z "$BRIGHT_DATA_ISP_PASS" ]; then
+            echo "One or more BRIGHT_DATA_ISP_* secrets are not set — cannot test."
+            exit 0
+          fi
+          curl -sS -D /tmp/map.headers \
+            --proxy "$BRIGHT_DATA_ISP_HOST" \
+            --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11" \
+            -o /tmp/map.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60
+          echo "--- response headers ---"
+          cat /tmp/map.headers
+          echo "--- body (first 800 chars) ---"
+          head -c 800 /tmp/map.body
+          echo
+          echo "--- real-data check ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/map.body', encoding='utf-8') as f:
+                  payload = json.load(f)
+          except Exception as exc:
+              print(f'NOT valid JSON — likely a challenge page, not real data: {exc}')
+          else:
+              markers = (payload.get('data') or {}).get('markers') if isinstance(payload, dict) else None
+              if isinstance(markers, list):
+                  print(f'REAL DATA: {len(markers)} markers returned — the block has lifted.')
+              else:
+                  print(f'Valid JSON but no usable markers list — shape: {str(payload)[:300]!r}')
+          "
