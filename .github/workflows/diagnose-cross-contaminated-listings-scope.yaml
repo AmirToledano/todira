@@ -1,0 +1,62 @@
+name: Diagnose — how many listings actually got the wrong (donor) Bright Data content? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14, same
+# incident as the adNumber cross-contamination fix (PR #277). The owner reported the SAME wrong
+# donor content (a "סבלט במרכז תל אביב... דיזנגוף 175" description, matching photos, "כניסה:
+# 26.08.2026") landed on a DIFFERENT real listing (שכונה ד' יצחק רגר 179, 3,300₪) and estimated
+# ~400 of his own notifications carried it — this measures the REAL scope in the DB (every row
+# whose description matches that exact donor text, or any description shared by more than one
+# listing at all) before deciding on a cleanup. Read-only: counts and lists only, no UPDATE.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Query for duplicate-description listings (the real signature of this bug)
+        run: |
+          kubectl delete pod diag-contam-scope -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-contam-scope
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-contam-scope
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" \
+                      -c "SELECT count(*) AS exact_donor_matches FROM listings WHERE source = 'yad2' AND description LIKE '%דיזנגוף 175%';" \
+                      -c "SELECT description, count(*) AS how_many_listings_share_it, count(DISTINCT (city, street, price)) AS distinct_addresses_prices FROM listings WHERE source = 'yad2' AND description IS NOT NULL AND scraped_at > now() - interval '8 hours' GROUP BY description HAVING count(*) > 1 ORDER BY count(*) DESC LIMIT 20;" \
+                      -c "SELECT count(*) AS total_yad2_rows_with_a_description_shared_by_more_than_one_listing FROM listings l WHERE source = 'yad2' AND description IS NOT NULL AND scraped_at > now() - interval '8 hours' AND EXISTS (SELECT 1 FROM listings l2 WHERE l2.source = 'yad2' AND l2.description = l.description AND l2.id != l.id AND l2.scraped_at > now() - interval '8 hours');"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-contam-scope -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-contam-scope || true
+          kubectl delete pod diag-contam-scope -n todira --ignore-not-found
