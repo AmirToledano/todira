@@ -1,17 +1,18 @@
 """Unit tests for scraper/komo_client.py. Sample HTML/JSON fragments mirror the exact real markup
 confirmed live against modaaNum=4471462 and Komo's own adscoordinates endpoint (see
 .github/workflows/diagnose-komo-homeless-reachability.yaml, runs #9-#13, and komo_client.py's own
-module docstring) — not invented shapes. Mocks httpx directly rather than hitting the network, no
-real ZenRows credits spent by running this suite, same reasoning as test_yad2_client.py."""
-import httpx
+module docstring) — not invented shapes. Mocks dorin_common.bright_data_client's ISP-proxy
+functions directly rather than hitting the network — no real Bright Data traffic spent by running
+this suite, same reasoning as test_yad2_client.py's own map-API tests. Since the 2026-09-14
+migration (see komo_client.py's own STATUS entry) this module no longer uses ZenRows at all."""
 import pytest
 
 import komo_client
+from dorin_common import bright_data_client
 from komo_client import (
     ADSCOORDINATES_URL,
     DETAILS_PAGE_URL,
     SEARCH_PAGE_URL,
-    ZENROWS_API_KEY_ENV_VAR,
     KomoFetchError,
     _extract_session_token,
     _parse_details_html,
@@ -129,8 +130,10 @@ def test_parse_details_html_description_html_entities_unescaped():
     )
     item = _parse_details_html(html, modaa_num="4471462")
     # html.unescape("&nbsp;") is U+00A0 (a real non-breaking space), not a plain " " — asserting
-    # the exact character rather than a plain space, since that's genuinely what unescape returns.
-    assert item["description"] == "דירה & מרפסת  גדולה"
+    # the exact character (via \xa0) rather than a plain space, since that's genuinely what
+    # unescape returns; a literal non-breaking space in source is visually indistinguishable from
+    # a normal one and easy to silently flatten when this file is retyped/copied.
+    assert item["description"] == "דירה & מרפסת \xa0גדולה"
 
 
 def test_parse_details_html_no_images_at_all_leaves_images_empty():
@@ -189,87 +192,73 @@ def test_parse_details_html_missing_stat_blocks_leaves_floor_and_size_none():
 # --- fetch_coordinate_ids (stages 1+2) ---
 
 
-def test_fetch_coordinate_ids_missing_api_key_raises_without_any_http_call(monkeypatch):
-    monkeypatch.delenv(ZENROWS_API_KEY_ENV_VAR, raising=False)
-    with pytest.raises(KomoFetchError, match=ZENROWS_API_KEY_ENV_VAR):
-        fetch_coordinate_ids("jerusalem")
-
-
 def test_fetch_coordinate_ids_unknown_city_slug_raises_without_any_http_call(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    def fail_get(url):
+        raise AssertionError("should not make a request for an unknown city slug")
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fail_get)
     with pytest.raises(KomoFetchError, match="No Hebrew city name mapped"):
         fetch_coordinate_ids("nonexistent-city")
 
 
 def test_fetch_coordinate_ids_full_pipeline_real_confirmed_shape(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
     captured = {}
 
-    def fake_get(url, params, timeout):
+    def fake_get(url):
         captured["get_url"] = url
-        captured["get_params"] = params
-        return httpx.Response(
-            200, text=_REAL_SESSION_TOKEN_LINE, request=httpx.Request("GET", url)
-        )
+        return _REAL_SESSION_TOKEN_LINE
 
-    def fake_post(url, params, data, timeout):
+    def fake_post(url, data):
         captured["post_url"] = url
-        captured["post_params"] = params
         captured["post_data"] = data
-        return httpx.Response(200, text=_REAL_COORDS_JSON, request=httpx.Request("POST", url))
+        return _REAL_COORDS_JSON
 
-    monkeypatch.setattr(httpx, "get", fake_get)
-    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_get)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", fake_post)
 
     result = fetch_coordinate_ids("jerusalem")
 
     assert result == [
         {"id": "4471462", "uid": "01xMnyW-jCSW", "lng": "35.2027025", "lat": "31.810889"}
     ]
-    assert captured["get_params"]["url"] == f"{SEARCH_PAGE_URL}?nehes=1&cityName=ירושלים"
-    assert captured["post_params"]["url"] == ADSCOORDINATES_URL
+    assert captured["get_url"] == f"{SEARCH_PAGE_URL}?nehes=1&cityName=ירושלים"
+    assert captured["post_url"] == ADSCOORDINATES_URL
     assert captured["post_data"] == {"iska": "1", "sessionToken": "E327BE43D5B24F55A3AD23AA35FF5F2D"}
 
 
+def test_fetch_coordinate_ids_isp_proxy_get_failure_raises(monkeypatch):
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: None)
+    with pytest.raises(KomoFetchError, match="Bright Data ISP proxy failed to fetch"):
+        fetch_coordinate_ids("jerusalem")
+
+
 def test_fetch_coordinate_ids_no_token_in_search_page_raises(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
-
-    def fake_get(url, params, timeout):
-        return httpx.Response(200, text="<html>no token</html>", request=httpx.Request("GET", url))
-
-    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: "<html>no token</html>")
     with pytest.raises(KomoFetchError, match="No sessionToken found"):
         fetch_coordinate_ids("jerusalem")
 
 
+def test_fetch_coordinate_ids_isp_proxy_post_failure_raises(monkeypatch):
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", lambda url, data: None)
+    with pytest.raises(KomoFetchError, match="Bright Data ISP proxy failed to POST"):
+        fetch_coordinate_ids("jerusalem")
+
+
 def test_fetch_coordinate_ids_non_ok_status_raises(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
-
-    def fake_get(url, params, timeout):
-        return httpx.Response(
-            200, text=_REAL_SESSION_TOKEN_LINE, request=httpx.Request("GET", url)
-        )
-
-    def fake_post(url, params, data, timeout):
-        return httpx.Response(
-            200, text='{"status":"Error: iska is empty"}', request=httpx.Request("POST", url)
-        )
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
+    monkeypatch.setattr(
+        bright_data_client, "fetch_via_isp_proxy_post",
+        lambda url, data: '{"status":"Error: iska is empty"}',
+    )
     with pytest.raises(KomoFetchError, match="non-OK status"):
         fetch_coordinate_ids("jerusalem")
 
 
-def test_fetch_coordinate_ids_zenrows_error_body_raises_with_code(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
-    error_body = '{"code":"AUTH004","title":"Usage exceeded (AUTH004)"}'
-
-    def fake_get(url, params, timeout):
-        return httpx.Response(200, text=error_body, request=httpx.Request("GET", url))
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    with pytest.raises(KomoFetchError, match="AUTH004"):
+def test_fetch_coordinate_ids_not_json_raises(monkeypatch):
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", lambda url, data: "not json")
+    with pytest.raises(KomoFetchError, match="wasn't valid JSON"):
         fetch_coordinate_ids("jerusalem")
 
 
@@ -295,71 +284,38 @@ def test_fetch_all_coordinate_ids_delegates_to_a_fixed_valid_city_slug(monkeypat
 # --- fetch_listing_detail (stage 3) ---
 
 
-def test_fetch_listing_detail_missing_api_key_returns_none_without_http_call(monkeypatch):
-    monkeypatch.delenv(ZENROWS_API_KEY_ENV_VAR, raising=False)
-
-    def fake_get(*args, **kwargs):
-        raise AssertionError("should not make an HTTP call without an API key")
-
-    monkeypatch.setattr(httpx, "get", fake_get)
+def test_fetch_listing_detail_isp_proxy_failure_returns_none_not_raise(monkeypatch):
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: None)
     assert fetch_listing_detail("4471462") is None
 
 
 def test_fetch_listing_detail_parses_the_real_confirmed_shape(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
     captured = {}
 
-    def fake_get(url, params, timeout):
-        captured["params"] = params
-        return httpx.Response(200, text=_REAL_DETAILS_HTML, request=httpx.Request("GET", url))
+    def fake_get(url):
+        captured["url"] = url
+        return _REAL_DETAILS_HTML
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_get)
 
     item = fetch_listing_detail("4471462")
 
     assert item["price"] == 7000
     assert item["rooms"] == 2.0
-    assert captured["params"]["url"] == f"{DETAILS_PAGE_URL}?modaaNum=4471462"
-
-
-def test_fetch_listing_detail_non_200_returns_none(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
-
-    def fake_get(url, params, timeout):
-        return httpx.Response(500, text="internal error", request=httpx.Request("GET", url))
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    assert fetch_listing_detail("4471462") is None
-
-
-def test_fetch_listing_detail_network_failure_returns_none_not_raise(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
-
-    def fake_get(url, params, timeout):
-        raise httpx.ConnectTimeout("timed out")
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    assert fetch_listing_detail("4471462") is None
+    assert captured["url"] == f"{DETAILS_PAGE_URL}?modaaNum=4471462"
 
 
 # --- fetch_search_results (convenience wrapper) ---
 
 
 def test_fetch_search_results_yields_one_priced_item_per_coordinate_id(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    def fake_get(url):
+        if url.startswith(SEARCH_PAGE_URL):
+            return _REAL_SESSION_TOKEN_LINE
+        return _REAL_DETAILS_HTML
 
-    def fake_get(url, params, timeout):
-        if params["url"].startswith(SEARCH_PAGE_URL):
-            return httpx.Response(
-                200, text=_REAL_SESSION_TOKEN_LINE, request=httpx.Request("GET", url)
-            )
-        return httpx.Response(200, text=_REAL_DETAILS_HTML, request=httpx.Request("GET", url))
-
-    def fake_post(url, params, data, timeout):
-        return httpx.Response(200, text=_REAL_COORDS_JSON, request=httpx.Request("POST", url))
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_get)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", lambda url, data: _REAL_COORDS_JSON)
 
     items = list(fetch_search_results("jerusalem"))
 
@@ -369,20 +325,10 @@ def test_fetch_search_results_yields_one_priced_item_per_coordinate_id(monkeypat
 
 
 def test_fetch_search_results_skips_items_with_no_id(monkeypatch):
-    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
-
-    def fake_get(url, params, timeout):
-        return httpx.Response(
-            200, text=_REAL_SESSION_TOKEN_LINE, request=httpx.Request("GET", url)
-        )
-
-    def fake_post(url, params, data, timeout):
-        return httpx.Response(
-            200, text='{"status":"OK","list":[{"uid":"no-id-here"}]}',
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
+    monkeypatch.setattr(
+        bright_data_client, "fetch_via_isp_proxy_post",
+        lambda url, data: '{"status":"OK","list":[{"uid":"no-id-here"}]}',
+    )
 
     assert list(fetch_search_results("jerusalem")) == []
