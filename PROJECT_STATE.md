@@ -5832,3 +5832,75 @@ incomplete data" logic already handles it correctly, unchanged.
 
 775 tests pass (3 new: `fetch_all_coordinate_ids`'s delegation, `_scrape_komo`'s single-call cap
 enforcement updated, a new discovery-failure test); ruff clean.
+
+## Update 2026-09-14: several real production bugs found + fixed, and the ISP-proxy migration's
+## first real region goes live (tel-aviv-area) — catching this file up on a busy day
+
+A lot happened this day across several separate reports/investigations; summarized here rather
+than as separate multi-page entries, to keep this file from becoming unusable:
+
+**RTL rendering escalated from a weak mark to a real bidi embedding.** The owner reported (via
+screenshots, and firmly corrected a first wrong read of the report as "no bug, just an optical
+effect of variable line lengths") that every Telegram/WhatsApp message should hug the right edge
+like a chat bubble — the existing `_RTL_MARK` (U+200F, a weak mark) wasn't forcing that reliably
+whenever a line contained an embedded strong-LTR run (a URL). `cards.py` now wraps every rendered
+line in a real RLE/PDF embedding (`_force_rtl()`, U+202B/U+202C) instead. Found and fixed a real,
+separate bug while making this change: the WhatsApp-format Google Maps line had ZERO RTL
+protection at all before this.
+
+**A hard Telegram send-failure bug, found live.** `format_caption`'s old `[:CAPTION_LIMIT]`
+character-slice truncation could land mid-`<a>`-tag, producing invalid HTML and a hard `BadRequest`
+send failure (not cosmetic — the message never sent). Fixed with `_fit_to_limit()`, which drops
+whole trailing body lines instead of slicing mid-tag.
+
+**A catastrophic Bright Data cross-contamination bug — found, fixed, and cleaned up.** Owner
+screenshots showed two different real listings (different addresses) sharing the exact same photos
+and description. Root cause: Bright Data's DCA trial-tier collector's shared result buffer doesn't
+reliably scope by job id under this project's own concurrent-trigger batching
+(`_BRIGHT_DATA_ENRICH_CONCURRENCY = 5`) — a working theory, not confirmed with Bright Data support,
+but matches the evidence. Fixed at the source: `bright_data_client.py` now checks the returned
+row's own `adNumber` against the URL's own external_id and discards (returns `None`) on a
+mismatch, rather than risk writing one listing's content onto another. The live run that caused
+this was emergency-stopped; a scoped diagnostic found 1,450 real DB rows carrying contaminated
+data; a confirmation-gated cleanup workflow reset all 1,450 (`UPDATE 1450`, verified 0 remaining)
+after explicit owner go-ahead.
+
+**Retry-once resilience for Yad2 region fetches and Bright Data DCA calls.** A real catch-up run
+had delisting skipped for "at least one region/city failed to fetch" — the exact failing region
+was lost to k8s log rotation before it could be read, but the account's own ZenRows dashboard
+showed 96% of monthly credits already used the same day (53,911/56,000), the leading explanation.
+`scraper/main.py`'s `_scrape_yad2()` now retries a failing region once after a short delay, except
+on a confirmed `AUTH004` quota error (retrying that can never succeed — the account is out until
+the plan resets). `bright_data_client.py`'s DCA trigger also retries once, covering both transient
+failures and the adNumber-mismatch rejection above. Explicitly communicated to the owner: this
+does NOT guarantee 100% content coverage while ZenRows credits stay constrained — see section 4/
+the entries above for the real ongoing budget picture.
+
+**The ISP-proxy migration's first real step, live: tel-aviv-area now uses the map API, not
+ZenRows.** Continuing the entries above (`diagnose-yad2-isp-proxy-single-retest.yaml` re-confirmed
+live that the 2026-09-13 rate-limit block had lifted — 200 real markers, clean 200), and after one
+more real finding (`diagnose-yad2-map-single-test.yaml`: a whole-country, zoomed-out bbox — even
+WITH `area`/`region` set — ALSO triggered the same Radware 302 challenge, ~40s after that clean
+success; broad/zoomed-out query SHAPE itself may risk the challenge, not just request velocity —
+a more nuanced conclusion than the original 2026-09-13 theory), the safe path taken was: don't
+keep testing broader variations, ship a real per-region integration using only the one bbox
+already proven live. `yad2_client.py` gained `REGIONS_ON_MAP_API` (currently just
+`tel-aviv-area`, its exact confirmed bbox `area=1&region=3&bBox=31.987679,34.732856,32.146966,
+34.857736&zoom=11`) and `fetch_region_via_map_api()`; `scraper/main.py`'s `_scrape_yad2()` checks
+this mapping per region and routes to the map API (Bright Data ISP proxy, flat $2/month) instead
+of `fetch_region_pages` (ZenRows, ~25 credits/page) when applicable — same normalize()/retry/
+error-counting logic either way. The other 6 `REGION_SLUGS` regions are UNCHANGED (still ZenRows)
+— each needs its own confirmed-real bbox/area/region found live, the same way, before it can move;
+nothing here guesses or interpolates one.
+
+Also wired `BRIGHT_DATA_ISP_HOST`/`USER`/`PASS` into the real scraper CronJob
+(`charts/todira/templates/scraper-cronjob.yaml`, optional secretKeyRefs, same pattern as the
+existing Bright Data DCA secrets) and added `set-bright-data-isp-secret.yaml` (same mechanics as
+`set-whatsapp-secret.yaml`) so the owner can patch the real k8s secret's ISP proxy credentials
+straight from the GitHub Actions UI form. **As of this entry those three secret keys are NOT yet
+set on the real cluster** — until they are, tel-aviv-area's map-API path fails cleanly (retries
+once, then skips that region for the run, same as any other Yad2FetchError) rather than crashing;
+running that workflow is the one remaining real step to make this migration actually take effect
+in production.
+
+821 tests pass; ruff clean. PR #284.
