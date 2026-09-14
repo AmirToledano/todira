@@ -84,6 +84,33 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: bright-data-description-field
                       optional: true
+                # 2026-09-14: Bright Data's flat-rate ISP proxy (bright_data_client.py's
+                # fetch_via_isp_proxy) — the real, partial Yad2-off-ZenRows migration (see
+                # yad2_client.py's REGIONS_ON_MAP_API for exactly which region(s) use this and why).
+                # Same "optional: true" pattern as every other Bright Data secret above: unset means
+                # fetch_via_isp_proxy always returns None (see its own docstring), so that region
+                # just falls back to the normal Yad2FetchError-style retry-then-skip handling rather
+                # than crashing the pod — but it DOES mean tel-aviv-area gets zero real Yad2 coverage
+                # until these three keys actually exist on the real k8s secret (not yet done as of
+                # this change — owner still needs to add bright-data-isp-host/-user/-pass to it).
+                - name: BRIGHT_DATA_ISP_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: bright-data-isp-host
+                      optional: true
+                - name: BRIGHT_DATA_ISP_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: bright-data-isp-user
+                      optional: true
+                - name: BRIGHT_DATA_ISP_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: bright-data-isp-pass
+                      optional: true
                 # Proactive WhatsApp Message Template push (2026-09-08, dorin_common/
                 # whatsapp_client.py + notifier.py's _whatsapp_eligible/_send_whatsapp_match_
                 # template) — same access-token/phone-number-id secret website-deployment.yaml

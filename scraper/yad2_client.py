@@ -797,3 +797,49 @@ def fetch_map_markers(
         item = _marker_to_raw_item(marker)
         if item is not None:
             yield item
+
+
+# 2026-09-14: real, PARTIAL migration off ZenRows — only for regions with a CONFIRMED-real (live
+# request, not guessed/interpolated) map-API bbox/area/region. tel-aviv-area is the only one so
+# far: this exact bbox is the SAME one re-verified live today (see
+# diagnose-yad2-isp-proxy-single-retest.yaml's successful run — 200 real markers, the 2026-09-13
+# rate-limit block had lifted) after the original 2026-09-13 discovery. The other 6 REGION_SLUGS
+# entries (center-and-sharon, jerusalem-area, south, coastal-north, north-and-valleys,
+# partnership/east) stay on fetch_region_pages/ZenRows until each one's own real bbox/area/region
+# is found the same way — live, from the owner's own browser DevTools or an equivalent confirmed
+# request. Yad2's own area/region numbering has no known pattern to guess from (nothing here should
+# ever interpolate a bbox for an unconfirmed region), and a wrong/too-broad bbox risks the same
+# Radware challenge seen both on 2026-09-13 (rapid batching) and again today with a whole-country,
+# zoomed-out bbox even WITH area/region set — see diagnose-yad2-map-single-test.yaml's
+# "1b_country_bbox_with_area_region" result. Real cost: flat $2/month total for Bright Data's ISP
+# proxy (not per-region, not per-request) vs. ZenRows' ~25 credits/page for this region alone.
+#
+# Known, accepted limitation (not solved here): unlike fetch_region_pages, this does ONE request
+# and stops — no paging to catch up on more than one response's worth of markers (confirmed live:
+# up to 200 in a single response). A tel-aviv-area run with more than 200 genuinely-new listings
+# since the last scrape would miss some until the next run picks them up — accepted for now since
+# it only ever costs a delayed catch-up, never wrong/lost data, and 200 comfortably covers this
+# project's real observed per-run new-listing volume everywhere else in the codebase.
+REGIONS_ON_MAP_API: dict[str, dict[str, int | str]] = {
+    "tel-aviv-area": {
+        "bbox": "31.987679,34.732856,32.146966,34.857736",
+        "area": 1,
+        "region": 3,
+        "zoom": 11,
+    },
+}
+
+
+def fetch_region_via_map_api(region: str) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts for one region using its confirmed-real map-API params (see
+    REGIONS_ON_MAP_API above) — the ISP-proxy-based replacement for fetch_region_pages, for the
+    subset of regions that have one. Raises KeyError if `region` isn't in REGIONS_ON_MAP_API — a
+    caller bug, not a runtime condition to handle gracefully: main.py only calls this for regions
+    it already knows are covered (checked via `region in REGIONS_ON_MAP_API` before calling)."""
+    params = REGIONS_ON_MAP_API[region]
+    yield from fetch_map_markers(
+        str(params["bbox"]),
+        area=int(params["area"]),
+        region=int(params["region"]),
+        zoom=int(params.get("zoom", 11)),
+    )
