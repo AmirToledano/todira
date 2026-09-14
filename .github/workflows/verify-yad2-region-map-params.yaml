@@ -19,6 +19,18 @@ name: Verify a candidate Yad2 map-API bbox/area/region (read-only, via ISP proxy
 # with real minutes between dispatches, not back-to-back. A too-broad/zoomed-out bbox risks the
 # same Radware challenge as request velocity does — keep each region's bbox realistically scoped
 # to that region, matching tel-aviv-area's own bbox tightness.
+#
+# 2026-09-14, same day: two real findings from live DevTools captures (not every region matches
+# tel-aviv-area's own exact shape) made this form more flexible:
+#   (a) `area` isn't always present — a district-level ("מחוז") request can be plain
+#       `region=<id>&bBox=...&zoom=...` with no `area` param at all (confirmed live for
+#       center-and-sharon and partnership/east) — so `area` is optional here now, omit it to send
+#       a request without one.
+#   (b) `host` isn't always gw.yad2.co.il — Yad2 routes at least one region (partnership/east,
+#       יהודה ושומרון — plausibly a real legal/geopolitical reason) through an entirely different
+#       domain, gw.yad-il.co.il, confirmed live from the owner's own browser address bar (not a
+#       typo — double-checked). Defaults to gw.yad2.co.il; override only when DevTools shows a
+#       genuinely different host for that region.
 on:
   workflow_dispatch:
     inputs:
@@ -30,19 +42,24 @@ on:
         description: "bBox value from DevTools, exactly as Yad2 sent it: south,west,north,east"
         required: true
         type: string
-      area:
-        description: "area value from DevTools (a small integer)"
-        required: true
-        type: string
       region:
         description: "region value from DevTools (a small integer)"
         required: true
+        type: string
+      area:
+        description: "area value from DevTools (a small integer) — leave blank if the real request had no area param at all"
+        required: false
         type: string
       zoom:
         description: "zoom value from DevTools"
         required: false
         type: string
         default: "11"
+      host:
+        description: "Map API host — leave as default unless DevTools showed a different one for this region (e.g. gw.yad-il.co.il for partnership/east)"
+        required: false
+        type: string
+        default: "gw.yad2.co.il"
 
 jobs:
   verify:
@@ -58,16 +75,23 @@ jobs:
           AREA: ${{ inputs.area }}
           REGION: ${{ inputs.region }}
           ZOOM: ${{ inputs.zoom }}
+          HOST: ${{ inputs.host }}
         run: |
           if [ -z "$BRIGHT_DATA_ISP_HOST" ] || [ -z "$BRIGHT_DATA_ISP_USER" ] || [ -z "$BRIGHT_DATA_ISP_PASS" ]; then
             echo "One or more BRIGHT_DATA_ISP_* GitHub Actions secrets are not set — cannot test."
             exit 1
           fi
-          echo "Testing region_label='$REGION_LABEL' area=$AREA region=$REGION bBox=$BBOX zoom=$ZOOM"
+          AREA_PARAM=""
+          if [ -n "$AREA" ]; then
+            AREA_PARAM="area=${AREA}&"
+          fi
+          URL="https://${HOST}/realestate-feed/rent/map?${AREA_PARAM}region=${REGION}&bBox=${BBOX}&zoom=${ZOOM}"
+          echo "Testing region_label='$REGION_LABEL' host=$HOST area='${AREA:-<none>}' region=$REGION bBox=$BBOX zoom=$ZOOM"
+          echo "Full URL: $URL"
           curl -sS -D /tmp/map.headers \
             --proxy "$BRIGHT_DATA_ISP_HOST" \
             --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
-            "https://gw.yad2.co.il/realestate-feed/rent/map?area=${AREA}&region=${REGION}&bBox=${BBOX}&zoom=${ZOOM}" \
+            "$URL" \
             -o /tmp/map.body \
             -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
             --max-time 60
@@ -75,6 +99,10 @@ jobs:
           head -c 500 /tmp/map.body
           echo
           echo "--- verdict ---"
+          AREA_LITERAL="None"
+          if [ -n "$AREA" ]; then
+            AREA_LITERAL="$AREA"
+          fi
           python3 -c "
           import json
           try:
@@ -86,11 +114,13 @@ jobs:
           markers = (payload.get('data') or {}).get('markers') if isinstance(payload, dict) else None
           if isinstance(markers, list) and markers:
               cities = sorted({(m.get('address', {}) or {}).get('city', {}).get('text') for m in markers if isinstance(m, dict)})
+              regions = sorted({(m.get('address', {}) or {}).get('region', {}).get('text') for m in markers if isinstance(m, dict)})
               print(f'REAL DATA: {len(markers)} markers returned.')
               print(f'distinct cities seen: {cities}')
+              print(f'distinct region labels seen (should all be the SAME one region): {regions}')
               print()
               print('If this looks right for the intended region, add this to REGIONS_ON_MAP_API in scraper/yad2_client.py:')
-              print(f'    \"<region-slug>\": {{\"bbox\": \"${BBOX}\", \"area\": ${AREA}, \"region\": ${REGION}, \"zoom\": ${ZOOM}}},')
+              print(f'    \"<region-slug>\": {{\"host\": \"${HOST}\", \"bbox\": \"${BBOX}\", \"area\": ${AREA_LITERAL}, \"region\": ${REGION}, \"zoom\": ${ZOOM}}},')
           elif isinstance(markers, list):
               print('Valid JSON, but ZERO markers — bbox/area/region combination may be empty or wrong, not necessarily blocked.')
           else:
