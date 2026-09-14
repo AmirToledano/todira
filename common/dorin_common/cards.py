@@ -192,7 +192,7 @@ def _build_body_lines(
 
     prefix_word = _deal_type_prefix_word(listing)
     if prefix_word is not None:
-        lines.append(f"🏢{bold(prefix_word)}")
+        lines.append(f"🏢 {bold(prefix_word)}")
 
     location_bits = []
     if listing.city:
