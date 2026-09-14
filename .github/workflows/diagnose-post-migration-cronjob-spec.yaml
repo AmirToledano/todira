@@ -1,0 +1,38 @@
+name: Diagnose — confirm the live CronJob's spec actually carries the tel-aviv-area migration (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14. Reads the
+# live todira-scraper CronJob's OWN OBJECT SPEC only (image tag + declared env var names) — never
+# creates a Job, never triggers a real scrape run. Exists purely to confirm the just-merged PR #284
+# (tel-aviv-area routed through Bright Data's ISP proxy) actually reached the real cluster via CI/
+# CD's `helm upgrade`, rather than assuming a green Actions run means the live object changed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real live CronJob image tag + declared env var names (spec only, no Job created)
+        run: |
+          echo "--- deployed scraper image ---"
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].image}{"\n"}'
+          echo "--- declared env var names on the scraper container ---"
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{range .spec.jobTemplate.spec.template.spec.containers[0].env[*]}{.name}{"\n"}{end}'
+          echo "--- do the 3 new ISP proxy secret keys actually exist on todira-bot-secret yet? ---"
+          for key in bright-data-isp-host bright-data-isp-user bright-data-isp-pass; do
+            value=$(kubectl get secret todira-bot-secret -n todira -o jsonpath="{.data.${key}}" 2>/dev/null || true)
+            if [ -n "$value" ]; then
+              echo "${key}: SET"
+            else
+              echo "${key}: NOT SET"
+            fi
+          done
