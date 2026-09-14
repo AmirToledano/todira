@@ -1,0 +1,161 @@
+name: Diagnose Yad2 map API — ONE question per dispatch (read-only, via ISP proxy)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# Same 5 real open questions diagnose-yad2-map-recursive-coverage.yaml already documented (see
+# that file's own header for the full reasoning) — but that workflow fired all 5 in one run,
+# which is exactly what triggered the rate/velocity block on 2026-09-13. This fires exactly ONE
+# of them per dispatch, picked by `test`, so each real request can be spaced out from the last
+# with a real pause in between — never batched again.
+on:
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Which single question to test this dispatch"
+        required: true
+        type: choice
+        options:
+          - "1_country_bbox_no_area_region"
+          - "1b_country_bbox_with_area_region"
+          - "2_known_bbox_no_area_region"
+          - "3_tight_bbox_cluster_center"
+          - "4_city_filter"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "1) Whole-country bbox, NO area/region — does clusters cover the whole country?"
+        if: inputs.test == '1_country_bbox_no_area_region'
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?bBox=29.3,34.2,33.4,35.95&zoom=7" \
+            -o /tmp/r.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/r.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/r.json', encoding='utf-8'))
+          except json.JSONDecodeError as e:
+              print(f'NOT valid JSON — likely a challenge page: {e}'); raise SystemExit(0)
+          data = payload.get('data', {}) if isinstance(payload, dict) else {}
+          markers = data.get('markers') or []
+          clusters = data.get('clusters') or []
+          print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+          total_doc_count = sum(c.get('docCount', 0) for c in clusters if isinstance(c, dict))
+          print(f'sum of all cluster docCounts: {total_doc_count}')
+          for c in sorted(clusters, key=lambda c: -c.get('docCount', 0))[:20]:
+              print(f\"  cityId={c.get('cityId')!r} key={c.get('key')!r} docCount={c.get('docCount')} center={c.get('center')} areaId={c.get('areaId')} regionId={c.get('regionId')}\")
+          "
+
+      - name: "1b) Whole-country bbox WITH area=1&region=3 — avoids the challenge, still country-wide?"
+        if: inputs.test == '1b_country_bbox_with_area_region'
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=29.3,34.2,33.4,35.95&zoom=7" \
+            -o /tmp/r.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/r.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/r.json', encoding='utf-8'))
+          except json.JSONDecodeError as e:
+              print(f'NOT valid JSON — likely a challenge page: {e}'); raise SystemExit(0)
+          data = payload.get('data', {}) if isinstance(payload, dict) else {}
+          markers = data.get('markers') or []
+          clusters = data.get('clusters') or []
+          print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+          total_doc_count = sum(c.get('docCount', 0) for c in clusters if isinstance(c, dict))
+          print(f'sum of all cluster docCounts: {total_doc_count}')
+          for c in sorted(clusters, key=lambda c: -c.get('docCount', 0))[:25]:
+              print(f\"  cityId={c.get('cityId')!r} key={c.get('key')!r} docCount={c.get('docCount')} center={c.get('center')} areaId={c.get('areaId')} regionId={c.get('regionId')}\")
+          "
+
+      - name: "2) Known Tel-Aviv bbox, area/region OMITTED — same data as with them included?"
+        if: inputs.test == '2_known_bbox_no_area_region'
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?bBox=31.987679,34.732856,32.146966,34.857736&zoom=11" \
+            -o /tmp/r.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/r.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/r.json', encoding='utf-8'))
+              data = payload.get('data', {})
+              markers = data.get('markers') or []
+              clusters = data.get('clusters') or []
+              print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+              print('first marker price/city (sanity):', markers[0].get('price') if markers else None, (markers[0].get('address', {}).get('city', {}).get('text') if markers else None))
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
+
+      - name: "3) Tight bbox around Tel-Aviv cluster center at high zoom — real markers or finer clusters?"
+        if: inputs.test == '3_tight_bbox_cluster_center'
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=32.052667,34.762374,32.122667,34.832374&zoom=15" \
+            -o /tmp/r.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/r.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/r.json', encoding='utf-8'))
+              data = payload.get('data', {})
+              markers = data.get('markers') or []
+              clusters = data.get('clusters') or []
+              print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+              for c in clusters[:10]:
+                  print(f\"  sub-cluster: {c}\"[:200])
+              cities = sorted({(m.get('address', {}) or {}).get('city', {}).get('text') for m in markers if isinstance(m, dict)})
+              print('distinct cities in markers:', cities)
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
+
+      - name: "4) Does the map API accept a plain city= filter?"
+        if: inputs.test == '4_city_filter'
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS \
+            --proxy "$BRIGHT_DATA_ISP_HOST" --proxy-user "${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}" \
+            "https://gw.yad2.co.il/realestate-feed/rent/map?city=8200&area=1&region=3&zoom=13" \
+            -o /tmp/r.json -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"; head -c 300 /tmp/r.json; echo
+          python3 -c "
+          import json
+          try:
+              payload = json.load(open('/tmp/r.json', encoding='utf-8'))
+              data = payload.get('data', {})
+              markers = data.get('markers') or []
+              clusters = data.get('clusters') or []
+              print(f'markers count: {len(markers)}, clusters count: {len(clusters)}')
+              cities = sorted({(m.get('address', {}) or {}).get('city', {}).get('text') for m in markers if isinstance(m, dict)})
+              print('distinct cities in markers:', cities)
+          except Exception as e:
+              print(f'not parseable JSON: {e}')
+          "
