@@ -260,3 +260,109 @@ def test_scrape_komo_fails_gracefully_when_the_one_discovery_call_fails(monkeypa
     assert fetched == 0
     assert errors == 1
     assert all_succeeded is False
+
+
+# --- _scrape_yad2: a failing region gets ONE retry before delisting is skipped (2026-09-14) -------
+
+
+def _fake_yad2_item(external_id: str) -> dict:
+    return {
+        "id": external_id,
+        "price": 5000,
+        "rooms": 2.0,
+        "floor": 1,
+        "square_meters": 60,
+        "street": "רחוב כלשהו",
+        "neighborhood": None,
+        "city": "תל אביב",
+    }
+
+
+def test_scrape_yad2_retries_once_on_transient_failure_and_succeeds(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    calls = []
+
+    def _fake_fetch_region_pages(region, known_ids, **kwargs):
+        calls.append(region)
+        if len(calls) == 1:
+            raise scraper_main.Yad2FetchError("ZenRows Fetch API request failed: transient")
+        yield _fake_yad2_item("1")
+
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", _fake_fetch_region_pages)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(calls) == 2  # a real retry happened
+    assert all_succeeded is True  # the retry succeeded, so delisting is NOT skipped
+    assert seen_external_ids == {"1"}
+    assert errors == 0
+
+
+def test_scrape_yad2_gives_up_after_retry_also_fails(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    calls = []
+
+    def _fake_fetch_region_pages(region, known_ids, **kwargs):
+        calls.append(region)
+        raise scraper_main.Yad2FetchError("Yad2's own bot-challenge page came back")
+        yield  # pragma: no cover - makes this a generator, never reached
+
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", _fake_fetch_region_pages)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(calls) == 2  # both the original attempt AND the retry were genuinely made
+    assert all_succeeded is False
+    assert errors == 1
+
+
+def test_scrape_yad2_does_not_retry_on_auth004_quota_error(monkeypatch):
+    # A quota error can't be fixed by waiting a few seconds - retrying it just burns another call
+    # for nothing, so this must give up after exactly one attempt, not two.
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    calls = []
+
+    def _fake_fetch_region_pages(region, known_ids, **kwargs):
+        calls.append(region)
+        raise scraper_main.Yad2FetchError(
+            "ZenRows returned an error instead of the Yad2 page for city='tel-aviv': "
+            "http_status=401 code='AUTH004' title='Usage exceeded (AUTH004)'"
+        )
+        yield  # pragma: no cover - makes this a generator, never reached
+
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", _fake_fetch_region_pages)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(calls) == 1  # never retried
+    assert all_succeeded is False
+    assert errors == 1
+
+
+def test_scrape_yad2_multiple_regions_each_get_their_own_independent_retry(monkeypatch):
+    """One region failing (and recovering on retry) must not affect a different region's own
+    fetch — each region's retry state is independent."""
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area", "jerusalem-area"])
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    calls_per_region: dict[str, int] = {}
+
+    def _fake_fetch_region_pages(region, known_ids, **kwargs):
+        calls_per_region[region] = calls_per_region.get(region, 0) + 1
+        if region == "tel-aviv-area" and calls_per_region[region] == 1:
+            raise scraper_main.Yad2FetchError("transient network error")
+        yield _fake_yad2_item(f"{region}-1")
+
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", _fake_fetch_region_pages)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert calls_per_region == {"tel-aviv-area": 2, "jerusalem-area": 1}
+    assert all_succeeded is True
+    assert seen_external_ids == {"tel-aviv-area-1", "jerusalem-area-1"}

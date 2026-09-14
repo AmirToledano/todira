@@ -223,8 +223,35 @@ def _extract_job_id(body: object) -> str | None:
     return None
 
 
+_ATTEMPTS = 2  # see _trigger_and_fetch_first_row's own docstring for why
+
+
 def _trigger_and_fetch_first_row(url: str) -> dict | None:
-    """Shared trigger -> poll mechanics for both fetch_listing_description and
+    """Retries _trigger_and_fetch_first_row_once up to _ATTEMPTS times, returning the first
+    successful row or None if every attempt failed. 2026-09-14: added the SAME day the adNumber
+    cross-contamination check went in (see that check's own comment in the "once" function below)
+    — a fresh trigger call gets a brand-new job id, which the working theory says is exactly what
+    sidesteps whatever shared-result-buffer confusion produced a wrong-listing row the first time,
+    so a second attempt has a real chance of getting this listing's OWN data rather than repeating
+    the same failure. Also gives genuinely transient failures (a dropped request, a slow poll that
+    juuust missed the deadline) a real second chance, which they never had before. Does NOT retry
+    a missing-config case — that fails as an instant, guaranteed no-op, not something time helps."""
+    if not is_configured():
+        return None
+    for attempt in range(1, _ATTEMPTS + 1):
+        row = _trigger_and_fetch_first_row_once(url)
+        if row is not None:
+            return row
+        if attempt < _ATTEMPTS:
+            logger.warning(
+                "Bright Data DCA attempt %d/%d failed for %s — retrying once more.",
+                attempt, _ATTEMPTS, url,
+            )
+    return None
+
+
+def _trigger_and_fetch_first_row_once(url: str) -> dict | None:
+    """One real trigger -> poll attempt — shared mechanics for both fetch_listing_description and
     fetch_listing_detail_via_bright_data (2026-09-12 addition) — same Bright Data Data Collector
     API, same blocking/synchronous contract, same "never raises" guarantee. Returns the first row
     of the result as a plain dict, or None on missing config, any request failure, an
