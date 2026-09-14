@@ -1,0 +1,97 @@
+name: CLEANUP — reset the ~1450 Yad2 listings that got another listing's Bright Data content
+
+# ONE-OFF, manual-only — added 2026-09-14, same incident as PR #277 (the adNumber
+# cross-contamination fix). diagnose-cross-contaminated-listings-scope.yaml confirmed the real
+# scope: 1450 real Yad2 listings (1414+ distinct real addresses/prices) currently carry another
+# listing's description/photos/amenities/floor_total/move-in-date/broker-status — virtually the
+# ENTIRE enrichment output of the killed catch-up run, not a rare edge case. This is live,
+# user-facing wrong data RIGHT NOW (the website's /apartments isn't gated by
+# NOTIFICATIONS_SUSPENDED — that only silences Telegram pushes), so this doesn't wait on a
+# separate scraper run to self-heal.
+#
+# Resets EXACTLY the fields _compute_detail_updates (scraper/normalize.py) can set — nothing else
+# on these rows is touched (price/rooms/size/floor/city/street/url all came from the listing's OWN
+# real search-card scrape, never from Bright Data, and stay exactly as-is). image_urls can't be
+# set to NULL (NOT NULL column, models.py) — reset to '{}' instead, which is a real, already-
+# supported state (send_listing_card's own "0 real photos -> Todi fallback image" path, see
+# dorin_common/cards.py) rather than showing definitely-wrong photos claiming to be this
+# apartment. The NEXT real Yad2 scrape re-populates image_urls from that listing's own fresh
+# search-card data for any row already in the DB (scraper/main.py's existing-listing upsert path)
+# — so this is a real but self-healing loss, not permanent, whenever a real Yad2 run is next
+# approved.
+#
+# Scoped to the EXACT rows diagnose-cross-contaminated-listings-scope.yaml already confirmed:
+# source=yad2, scraped in this run's window, description shared with at least one OTHER listing
+# scraped in the same window. Real listings whose description genuinely doesn't collide with any
+# other one are left untouched.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >-
+          Type EXACTLY: I CONFIRM THE CLEANUP SCOPE
+        required: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse unless the exact confirmation phrase was given
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "I CONFIRM THE CLEANUP SCOPE" ]; then
+            echo "Confirmation phrase did not match exactly — refusing to run anything."
+            exit 1
+          fi
+          echo "Confirmation accepted."
+
+  cleanup:
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Reset the affected rows' Bright-Data-derived fields, print before/after counts
+        run: |
+          kubectl delete pod cleanup-contam -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: cleanup-contam
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: cleanup-contam
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" \
+                      -c "SELECT count(*) AS rows_before_cleanup FROM listings l WHERE l.source = 'yad2' AND l.description IS NOT NULL AND l.scraped_at > now() - interval '8 hours' AND EXISTS (SELECT 1 FROM listings l2 WHERE l2.source = 'yad2' AND l2.description = l.description AND l2.id != l.id AND l2.scraped_at > now() - interval '8 hours');" \
+                      -c "UPDATE listings SET description = NULL, property_type = NULL, has_parking = NULL, has_elevator = NULL, has_balcony = NULL, safe_room_type = NULL, floor_total = NULL, move_in_date = NULL, image_urls = '{}', is_broker_listing = NULL WHERE source = 'yad2' AND description IS NOT NULL AND scraped_at > now() - interval '8 hours' AND EXISTS (SELECT 1 FROM listings l2 WHERE l2.source = 'yad2' AND l2.description = listings.description AND l2.id != listings.id AND l2.scraped_at > now() - interval '8 hours');" \
+                      -c "SELECT count(*) AS rows_still_matching_the_old_pattern_after_cleanup FROM listings l WHERE l.source = 'yad2' AND l.description IS NOT NULL AND l.scraped_at > now() - interval '8 hours' AND EXISTS (SELECT 1 FROM listings l2 WHERE l2.source = 'yad2' AND l2.description = l.description AND l2.id != l.id AND l2.scraped_at > now() - interval '8 hours');" \
+                      -c "SELECT id, source, external_id, city, street, price, rooms, description, image_urls FROM listings WHERE id = 4552;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod cleanup-contam -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira cleanup-contam || true
+          kubectl delete pod cleanup-contam -n todira --ignore-not-found
