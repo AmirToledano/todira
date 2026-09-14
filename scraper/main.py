@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from typing import Callable
 
 from sqlalchemy import func, select
@@ -34,6 +35,18 @@ from yad2_client import REGION_SLUGS, Yad2FetchError, fetch_region_pages
 # at "meaningfully parallel but not abusive", not a documented Bright Data rate limit — revisit if
 # real usage shows it's too low (slow runs) or too high (errors/throttling).
 _BRIGHT_DATA_ENRICH_CONCURRENCY = 5
+
+# 2026-09-14: added after a real catch-up run's delisting got skipped ("at least one region/city
+# failed to fetch") — root cause never pinned down for certain (the pod's own log for the failing
+# moment had already rotated out by the time it was checked), but the account's own ZenRows
+# dashboard showed 96% of its monthly credits already used the same day, and one of Yad2FetchError's
+# real causes is exactly ZenRows returning an AUTH004 "usage exceeded" error — the leading
+# explanation, not a certainty. A single retry, after a short pause, gives a genuinely transient
+# failure (a dropped request, Yad2's own bot-challenge on one unlucky request) a real second
+# chance — but retrying an AUTH004 quota error can't ever succeed (the account is out until the
+# plan resets), so that specific case is never retried, just to avoid burning an extra call for
+# nothing.
+_REGION_RETRY_DELAY_SECONDS = 5.0
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 # httpx's own "httpx" logger emits an INFO line per request with the FULL request URL — including
@@ -359,19 +372,40 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
     for region in REGION_SLUGS:
         logger.info("Fetching Yad2 listings for region=%s", region)
-        try:
-            for raw_item in fetch_region_pages(region, known_ids, **fetch_kwargs):
-                fetched += 1
-                normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.RENT)
-                if normalized is not None:
-                    normalized_items.append(normalized)
-                    seen_external_ids.add(normalized.external_id)
+        region_succeeded = False
+        for attempt in (1, 2):
+            try:
+                for raw_item in fetch_region_pages(region, known_ids, **fetch_kwargs):
+                    fetched += 1
+                    normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.RENT)
+                    if normalized is not None:
+                        normalized_items.append(normalized)
+                        seen_external_ids.add(normalized.external_id)
+                    else:
+                        errors += 1
+                region_succeeded = True
+                break
+            except Yad2FetchError as exc:
+                # A quota error ("AUTH004") can't be fixed by waiting a few seconds — the account
+                # is out until its plan resets, so retrying just burns another call for nothing.
+                if "AUTH004" in str(exc):
+                    logger.error(
+                        "Yad2 fetch failed for region=%s — ZenRows quota exhausted (AUTH004), "
+                        "not retrying: %s", region, exc,
+                    )
+                    break
+                if attempt == 1:
+                    logger.warning(
+                        "Yad2 fetch failed for region=%s (attempt 1/2) — retrying once in %.0fs: %s",
+                        region, _REGION_RETRY_DELAY_SECONDS, exc,
+                    )
+                    time.sleep(_REGION_RETRY_DELAY_SECONDS)
                 else:
-                    errors += 1
-        except Yad2FetchError:
-            logger.exception(
-                "Failed to fetch Yad2 results for region=%s — skipping this region", region
-            )
+                    logger.exception(
+                        "Failed to fetch Yad2 results for region=%s after retry — skipping this "
+                        "region", region,
+                    )
+        if not region_succeeded:
             errors += 1
             all_succeeded = False
 

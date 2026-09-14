@@ -153,6 +153,95 @@ def test_adnumber_mismatch_is_compared_as_string_not_type_sensitive(monkeypatch)
     assert result is not None
 
 
+# --- retry-once wrapper (2026-09-14) ---
+
+
+def test_retries_once_and_succeeds_on_second_attempt(monkeypatch):
+    # A first attempt that only ever gets a pending-status response (never a real result before
+    # its own poll deadline) must not be the end of the story — a second, fresh trigger call gets
+    # a real chance to succeed.
+    _configure(monkeypatch)
+    monkeypatch.setattr(bright_data_client, "_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(bright_data_client, "_POLL_TIMEOUT_SECONDS", 0.2)
+    trigger_calls = []
+
+    def fake_post(url, **kw):
+        trigger_calls.append(url)
+        return _resp(url, {"collection_id": f"job_{len(trigger_calls)}"})
+
+    # attempt 1's job (job_1) never finishes within its own poll deadline; attempt 2's job
+    # (job_2) has a real result ready immediately - keyed by job id, since attempt 1's poll loop
+    # calls this repeatedly until its deadline, not just once.
+    def fake_get(url, **kw):
+        job_id = kw["params"]["id"]
+        if job_id == "job_1":
+            return _resp(url, {"status": "collecting", "message": "Job is not finished"})
+        return _resp(url, [{"description": "טקסט אמיתי בניסיון השני"}])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
+
+    assert result == "טקסט אמיתי בניסיון השני"
+    assert len(trigger_calls) == 2  # a real second trigger call happened
+
+
+def test_gives_up_after_both_attempts_fail(monkeypatch):
+    _configure(monkeypatch)
+    trigger_calls = []
+
+    def fake_post(url, **kw):
+        trigger_calls.append(url)
+        raise httpx.ConnectError("boom", request=httpx.Request("POST", url))
+
+    with patch.object(httpx, "post", fake_post):
+        result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
+
+    assert result is None
+    assert len(trigger_calls) == 2  # both attempts were genuinely made, not just one
+
+
+def test_does_not_retry_when_not_configured(monkeypatch):
+    calls = []
+
+    def fake_post(url, **kw):
+        calls.append(url)
+        return _resp(url, {"collection_id": "job_1"})
+
+    with patch.object(httpx, "post", fake_post):
+        result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
+
+    assert result is None
+    assert calls == []  # never even attempted once — missing config can't be fixed by retrying
+
+
+def test_retries_after_an_adnumber_mismatch_and_recovers_the_real_listing(monkeypatch):
+    # Ties the two 2026-09-14 fixes together: a first attempt that comes back as another
+    # listing's data (the cross-contamination bug) is discarded, and the retry gets a real chance
+    # to fetch THIS listing's own data instead of just being treated as a dead end.
+    _configure(monkeypatch)
+    trigger_calls = []
+
+    def fake_post(url, **kw):
+        trigger_calls.append(url)
+        return _resp(url, {"collection_id": f"job_{len(trigger_calls)}"})
+
+    poll_responses = iter([
+        [{"adNumber": 99999999, "searchText": "מודעה של מישהו אחר"}],  # wrong listing
+        [{"adNumber": 12345678, "searchText": "המודעה הנכונה"}],  # this listing, for real
+    ])
+
+    def fake_get(url, **kw):
+        return _resp(url, next(poll_responses))
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_detail_via_bright_data(
+            "https://www.yad2.co.il/item/12345678"
+        )
+
+    assert result == {"adNumber": 12345678, "searchText": "המודעה הנכונה"}
+    assert len(trigger_calls) == 2
+
+
 # --- is_configured ---
 
 
