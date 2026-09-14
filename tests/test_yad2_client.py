@@ -9,6 +9,7 @@ import json
 import httpx
 import pytest
 
+import yad2_client
 from dorin_common.cities import CITIES
 from dorin_common import bright_data_client
 from yad2_client import (
@@ -777,3 +778,40 @@ def test_fetch_region_via_map_api_propagates_yad2_map_fetch_error(monkeypatch):
 
     with pytest.raises(Yad2MapFetchError, match="wasn't valid JSON"):
         list(fetch_region_via_map_api("tel-aviv-area"))
+
+
+def test_every_region_maps_to_a_non_empty_list_of_configs():
+    # 2026-09-14: REGIONS_ON_MAP_API values are lists (a region can need more than one sub-area to
+    # get real, full coverage — see the module comment) — a bare dict here would be a real bug.
+    for region, configs in REGIONS_ON_MAP_API.items():
+        assert isinstance(configs, list), f"{region!r}'s value must be a list, not {type(configs)}"
+        assert configs, f"{region!r} has an empty config list — nothing would ever be fetched"
+
+
+def test_fetch_region_via_map_api_unions_multiple_sub_areas_for_one_region(monkeypatch):
+    # The real reason REGIONS_ON_MAP_API values are lists: a region whose district-level request
+    # is blocked needs one real request PER major city/sub-area to get genuine full coverage, not
+    # an artificially narrow single-city substitute (see the module comment's "MULTIPLE SUB-AREAS
+    # PER REGION" entry — a real owner pushback that changed this design).
+    fake_configs = {
+        "south": [
+            {"bbox": "bbox-beer-sheva", "area": 10, "region": 2, "zoom": 12},
+            {"bbox": "bbox-ashdod", "area": 20, "region": 2, "zoom": 12},
+        ],
+    }
+    monkeypatch.setattr(yad2_client, "REGIONS_ON_MAP_API", fake_configs)
+
+    requested_urls = []
+
+    def fake_fetch(url):
+        requested_urls.append(url)
+        token = "beer-sheva" if "beer-sheva" in url else "ashdod"
+        marker = {**_REAL_MARKER, "token": token}
+        return json.dumps({"status": "OK", "data": {"markers": [marker]}})
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+
+    items = list(fetch_region_via_map_api("south"))
+
+    assert len(requested_urls) == 2  # both sub-areas were actually fetched, not just the first
+    assert {item["id"] for item in items} == {"beer-sheva", "ashdod"}  # union of both

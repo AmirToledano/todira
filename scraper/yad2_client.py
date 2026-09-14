@@ -857,41 +857,68 @@ def fetch_map_markers(
 # $2/month total for Bright Data's ISP proxy (not per-region, not per-request) vs. ZenRows' ~25
 # credits/page for a region on ZenRows.
 #
+# MULTIPLE SUB-AREAS PER REGION (2026-09-14, later still the same night): the owner correctly
+# pushed back on the obvious-looking fix for the CORRECTED FINDING above — "just use one city's
+# own area=+region= pair" would mean e.g. "south" (a real region spanning Ashdod, Ashkelon, Beer
+# Sheva, Netivot, Eilat, and more) silently shrinking to whatever ONE city was picked, losing every
+# other city in it. That's not a real region migration, just a much smaller one wearing its name.
+# So each entry below is a LIST of one-or-more sub-area configs, not a single dict — most regions
+# so far only need one (the whole district fits in a single safe request, e.g. partnership/east's
+# own different-host shape), but a region whose district-level request is blocked needs one real,
+# live-captured area=+region= pair PER major city/sub-area to get genuine full coverage. Finding
+# the REAL, complete list of sub-areas for a region (not guessing which cities matter): type the
+# region's own name into Yad2's search box, open the "אזור" (not "מחוז", not "עיר") dropdown level
+# — that's Yad2's own official sub-area list for that region, not an assumption about which cities
+# are big enough to matter.
+#
 # Known, accepted limitation (not solved here): unlike fetch_region_pages, this does ONE request
-# and stops — no paging to catch up on more than one response's worth of markers (confirmed live:
-# up to 200 in a single response). A region with more than 200 genuinely-new listings since the
-# last scrape would miss some until the next run picks them up — accepted for now since it only
-# ever costs a delayed catch-up, never wrong/lost data, and 200 comfortably covers this project's
-# real observed per-run new-listing volume everywhere else in the codebase.
-REGIONS_ON_MAP_API: dict[str, dict[str, int | str]] = {
-    "tel-aviv-area": {
-        "bbox": "31.987679,34.732856,32.146966,34.857736",
-        "area": 1,
-        "region": 3,
-        "zoom": 11,
-    },
-    "partnership/east": {
-        "bbox": "29.778653,33.142100,33.787281,37.954214",
-        "region": 4,
-        "zoom": 7,
-        "host": "gw.yad-il.co.il",
-    },
+# per sub-area and stops — no paging to catch up on more than one response's worth of markers
+# (confirmed live: up to 200 in a single response). A sub-area with more than 200 genuinely-new
+# listings since the last scrape would miss some until the next run picks them up — accepted for
+# now since it only ever costs a delayed catch-up, never wrong/lost data, and 200 comfortably
+# covers this project's real observed per-run new-listing volume everywhere else in the codebase.
+# A listing sitting right on the geographic boundary between two adjacent sub-areas could
+# theoretically be returned by both of that region's requests — accepted as a rare, harmless
+# duplicate (normalize()'s own upsert-by-external_id already makes a repeat write a no-op, same as
+# every other source's own overlap handling in this codebase), not a correctness bug worth solving.
+REGIONS_ON_MAP_API: dict[str, list[dict[str, int | str]]] = {
+    "tel-aviv-area": [
+        {
+            "bbox": "31.987679,34.732856,32.146966,34.857736",
+            "area": 1,
+            "region": 3,
+            "zoom": 11,
+        },
+    ],
+    "partnership/east": [
+        {
+            "bbox": "29.778653,33.142100,33.787281,37.954214",
+            "region": 4,
+            "zoom": 7,
+            "host": "gw.yad-il.co.il",
+        },
+    ],
 }
 
 
 def fetch_region_via_map_api(region: str) -> Iterator[dict[str, Any]]:
-    """Yields raw listing dicts for one region using its confirmed-real map-API params (see
-    REGIONS_ON_MAP_API above) — the ISP-proxy-based replacement for fetch_region_pages, for the
-    subset of regions that have one. Raises KeyError if `region` isn't in REGIONS_ON_MAP_API — a
-    caller bug, not a runtime condition to handle gracefully: main.py only calls this for regions
-    it already knows are covered (checked via `region in REGIONS_ON_MAP_API` before calling)."""
-    params = REGIONS_ON_MAP_API[region]
-    area = params.get("area")
-    host = params.get("host")
-    yield from fetch_map_markers(
-        str(params["bbox"]),
-        area=int(area) if area is not None else None,
-        region=int(params["region"]),
-        zoom=int(params.get("zoom", 11)),
-        host=str(host) if host is not None else None,
-    )
+    """Yields raw listing dicts for one region by fetching EVERY sub-area config listed for it in
+    REGIONS_ON_MAP_API above (see that dict's own comment for why a region can need more than one)
+    and yielding the union — the ISP-proxy-based replacement for fetch_region_pages, for the
+    subset of regions that have at least one confirmed-real sub-area. Raises KeyError if `region`
+    isn't in REGIONS_ON_MAP_API — a caller bug, not a runtime condition to handle gracefully:
+    main.py only calls this for regions it already knows are covered (checked via
+    `region in REGIONS_ON_MAP_API` before calling). A failure fetching any ONE sub-area raises
+    immediately (Yad2MapFetchError propagates, same as fetch_map_markers' own "raise, don't
+    silently yield nothing" convention) rather than silently skipping it — main.py's existing
+    retry-once logic already covers this at the whole-region level."""
+    for params in REGIONS_ON_MAP_API[region]:
+        area = params.get("area")
+        host = params.get("host")
+        yield from fetch_map_markers(
+            str(params["bbox"]),
+            area=int(area) if area is not None else None,
+            region=int(params["region"]),
+            zoom=int(params.get("zoom", 11)),
+            host=str(host) if host is not None else None,
+        )
