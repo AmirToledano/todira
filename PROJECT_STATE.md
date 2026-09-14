@@ -5904,3 +5904,50 @@ running that workflow is the one remaining real step to make this migration actu
 in production.
 
 821 tests pass; ruff clean. PR #284.
+
+## Update 2026-09-14 (same night, follow-up): the ISP proxy secret got set on the real cluster,
+## AND Komo moved off ZenRows entirely — the second, bigger part of this migration
+
+The one remaining step from the entry above got done the same night: the owner found the real
+ISP-proxy host/username in a Gmail message Bright Data sent when the zone was created (the
+password itself wasn't in that email "for security" — the owner navigated Bright Data's own
+dashboard to `isp_proxy1`'s "Access details" panel and revealed it there, via mobile Safari after
+several dead-end UI attempts — direct navigation to the zone's own real URL didn't work on mobile,
+Request Desktop Site didn't help, but the sidebar's My Proxies entry point eventually did). Ran
+`set-bright-data-isp-secret.yaml` with the real values; a fresh dispatch of
+`diagnose-post-migration-cronjob-spec.yaml` confirmed all three keys now read `SET` on the real
+`todira-bot-secret`. Also confirmed via a fresh `diagnose-cronjob-live-state.yaml` dispatch: the
+real CronJob is currently **suspended** (`suspend=true`) — worth stating plainly since it means
+there is no "next scheduled run" picking this up automatically; it only takes effect once/if the
+owner resumes the CronJob (a decision outside this session's own scope — the standing owner-only-
+approval mandate for actually running the scraper still applies).
+
+While the owner was working on that, used the same session to dig further into two other open
+diagnostics that hadn't been acted on yet: `diagnose-isp-proxy-coverage-all-sources.yaml`'s own
+results (run earlier that day, never followed up) showed Komo's search page and detail page BOTH
+work cleanly through the ISP proxy (unlike Yad2's own detail page and Homeless's own search page,
+both blocked the same way) — but the actual discovery mechanism (`adscoordinates/list/`, a POST
+with a session token, not the plain GET already tested) was still unverified. Built
+`diagnose-komo-isp-proxy-full-discovery.yaml` to replicate that exact two-step flow; it came back
+clean — `status=OK`, 11,635 real ids, no block at all.
+
+That's all three of Komo's endpoints confirmed, so `komo_client.py` was migrated OFF ZenRows
+ENTIRELY (not partial like Yad2's tel-aviv-area-only migration) — every stage (search page,
+adscoordinates POST, detail page) now goes through the same flat-rate ISP proxy, via a new
+`bright_data_client.fetch_via_isp_proxy_post` (the POST counterpart to the existing GET-only
+`fetch_via_isp_proxy`, needed since adscoordinates requires a form body). `scraper/main.py`'s
+`_scrape_komo` needed zero changes — same `KomoFetchError` contract, same function signatures.
+This frees 100% of Komo's own ZenRows spend (2 credits/run discovery + up to
+`KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN` credits/run for new listings) for Yad2, the source actually
+under real credit pressure — a genuine, not partial, answer to a real slice of the ongoing ZenRows-
+budget crisis. No chart/secret changes needed (the same three ISP-proxy env vars already wired in
+for Yad2 cover Komo too) — this takes effect the moment the CronJob is next unsuspended and runs.
+
+Also built `verify-yad2-region-map-params.yaml` — a reusable, read-only workflow (bbox/area/region/
+zoom typed into a form) so the owner can verify a candidate region's map-API params with one
+dispatch once they bring back real DevTools values for the other 6 `REGION_SLUGS` regions, without
+needing a new one-off workflow written each time. NOT yet used for real (still waiting on the
+owner's own DevTools data, only obtainable from a desktop browser — confirmed not meaningfully
+possible from iPhone alone).
+
+824 tests pass; ruff clean. PRs #284 (docs)/#285 (docs)/#286/#287/#288/#289.
