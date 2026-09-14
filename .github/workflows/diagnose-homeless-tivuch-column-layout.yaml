@@ -1,0 +1,70 @@
+name: Diagnose — what is the REAL column layout of a Homeless Tivuch (brokered) row? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# homeless_client.py's own _ROW_RE docstring already flagged (2026-09-13, id=83480) that a
+# Tivuch ("RentTivuch") row has NO floor column between rooms and price, unlike a plain listing
+# row — but that finding was written from partial/approximate notes, not a full live re-dump, and
+# was deliberately left "not attempted in this pass". The user asked (2026-09-14) why this should
+# wait — fixing it now needs the REAL current column-by-column breakdown of a live Tivuch row,
+# not a guess. This fetches the real, current /rent/ search page (same one-credit ZenRows fetch
+# scraper/main.py already does) and, for every row whose own href contains "RentTivuch", prints
+# EVERY <td> cell's raw inner text in order — so the real field mapping can be read directly off
+# the page instead of inferred from a partial note. Also prints one plain (non-Tivuch) row for a
+# side-by-side comparison.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the real current search page and dump every <td> of Tivuch rows vs. plain rows
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            -o /tmp/search.html -w "http_status=%{http_code} size=%{size_download}\n" --max-time 60
+          python3 - << 'PYEOF'
+          import re
+          with open('/tmp/search.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          flat = re.sub(r'>\s+<', '><', html)
+
+          row_re = re.compile(r'<tr[^>]*\bid="ad_(?P<id>\d+)"[^>]*>.*?</tr>', re.S)
+          rows = list(row_re.finditer(flat))
+          print(f"Total rows found on this fetch: {len(rows)}")
+
+          def dump_row(m, label):
+              row_html = m.group(0)
+              row_id = m.group("id")
+              print(f"\n=== {label} row id={row_id} ===")
+              hrefs = re.findall(r'href="([^"]+)"', row_html)
+              print(f"hrefs: {hrefs}")
+              # Every <td ...>...</td> cell's raw inner content, in order, with its index —
+              # this is the ground truth for column position, whatever it turns out to be.
+              tds = re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.S)
+              for i, td in enumerate(tds):
+                  # Collapse nested tags to a compact one-line preview but keep enough to see
+                  # img src / a href / span text if present.
+                  preview = re.sub(r'\s+', ' ', td).strip()
+                  print(f"  td[{i}] = {preview[:200]!r}")
+
+          tivuch_count = 0
+          plain_shown = False
+          for m in rows:
+              row_html = m.group(0)
+              is_tivuch = "RentTivuch" in row_html
+              if is_tivuch and tivuch_count < 3:
+                  dump_row(m, "TIVUCH")
+                  tivuch_count += 1
+              elif not is_tivuch and not plain_shown:
+                  dump_row(m, "PLAIN")
+                  plain_shown = True
+              if tivuch_count >= 3 and plain_shown:
+                  break
+
+          print(f"\nTotal Tivuch rows seen (capped dump at 3): {sum(1 for m in rows if 'RentTivuch' in m.group(0))}")
+          PYEOF
