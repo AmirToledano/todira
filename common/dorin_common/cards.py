@@ -277,6 +277,33 @@ def _force_rtl(text: str) -> str:
     return f"{_RLE}{text}{_PDF}"
 
 
+def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:
+    """Real production bug, found 2026-09-14 while chasing an unrelated RTL report: the owner's
+    own live run logged 18+ failed sends, `telegram.error.BadRequest: Can't parse entities: can't
+    find end tag corresponding to start tag "a"` / `unclosed start tag at byte offset ...`.
+    `header + body + footer` was being blindly sliced to `limit` characters — but the caption's
+    length budget only ever accounted for how much DESCRIPTION text to add (see the `remaining`
+    calculation at each caller), not for header+body+footer alone already exceeding `limit` on a
+    listing with enough content (a price-change header, a long location/street with its own
+    <a href=...> Google Maps link, several features, ...) — no description involved at all. When
+    that happens, the blind slice can land inside ANY of this caption's several <a>...</a> tags
+    (the street's maps link mid-body, or the footer's own listing link at the very end), and
+    Telegram's HTML parser rejects the WHOLE message rather than rendering a truncated tag — a
+    hard send failure, not a cosmetic one.
+
+    Every real <a>...</a> in this file opens and closes within a single line (never split across
+    lines), so dropping whole trailing BODY lines — instead of slicing characters — can never
+    itself produce an unclosed tag. The header and footer are never touched: the footer in
+    particular carries the one link every caption must keep (the listing's own source link, or the
+    upgrade lock line), so it must survive intact even when the body has to give up content."""
+    if len(header) + len(body) + len(footer) <= limit:
+        return header + body + footer
+    lines = body.split("\n")
+    while lines and len(header) + len("\n".join(lines)) + len(footer) > limit:
+        lines.pop()
+    return header + "\n".join(lines) + footer
+
+
 def format_caption(
     listing: Listing,
     *,
@@ -326,7 +353,7 @@ def format_caption(
             description = description[: remaining - 1] + "…"
         body += f"\n\n{_force_rtl(f'📝 {description}')}"
 
-    return (header + body + footer)[:CAPTION_LIMIT]
+    return _fit_to_limit(header, body, footer, CAPTION_LIMIT)
 
 
 WHATSAPP_MESSAGE_LIMIT = 4096
@@ -385,7 +412,7 @@ def format_caption_whatsapp(
             description = description[: remaining - 1] + "…"
         body += f"\n\n{_force_rtl(f'📝 {description}')}"
 
-    return (header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
+    return _fit_to_limit(header, body, footer, WHATSAPP_MESSAGE_LIMIT)
 
 
 async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: str) -> bool:

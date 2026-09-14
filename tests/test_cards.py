@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from dorin_common.cards import format_caption, format_caption_whatsapp
+from dorin_common.cards import CAPTION_LIMIT, _fit_to_limit, format_caption, format_caption_whatsapp
 
 
 def make_listing(**overrides):
@@ -261,6 +261,53 @@ def test_whatsapp_caption_includes_the_raw_url_not_an_html_link():
 def test_whatsapp_footer_has_no_source_tag():
     caption = format_caption_whatsapp(make_listing(), has_access=True)
     assert "🏷️" not in caption
+
+
+def test_fit_to_limit_is_a_noop_when_already_within_budget():
+    assert _fit_to_limit("H", "B", "F", limit=100) == "HBF"
+
+
+def test_fit_to_limit_drops_whole_body_lines_never_a_partial_one():
+    # Real production bug, 2026-09-14: the old blind `[:CAPTION_LIMIT]` character slice could
+    # land inside an <a>...</a> tag - dropping whole lines instead can never do that, since every
+    # real <a> tag in this file opens and closes within one line.
+    body = "aaaa\nbbbb\ncccc\ndddd"
+    result = _fit_to_limit("", body, "FOOTER", limit=15)
+    assert result.endswith("FOOTER")
+    kept_body = result[: -len("FOOTER")]
+    for line in kept_body.split("\n"):
+        assert line == "" or line in {"aaaa", "bbbb", "cccc", "dddd"}
+
+
+def test_fit_to_limit_never_drops_the_footer():
+    result = _fit_to_limit("", "way too much body content here", "FOOTER", limit=5)
+    assert result.endswith("FOOTER")
+
+
+def test_overflowing_caption_never_cuts_an_html_tag_in_half():
+    # Real production bug, 2026-09-14: 18+ real sends in one live run failed with
+    # `telegram.error.BadRequest: Can't parse entities: can't find end tag...` /
+    # `unclosed start tag at byte offset ...` - a content-heavy listing (a price-change header +
+    # a long street/maps <a> link + several features) pushed the caption past CAPTION_LIMIT with
+    # NO description involved at all, so the description-only length budget never even engaged,
+    # and the final blind slice landed inside an <a> tag.
+    listing = make_listing(
+        street="רחוב עם שם ארוך מאוד " * 10,
+        has_parking=True,
+        has_elevator=True,
+        has_balcony=True,
+        pets_allowed=True,
+        is_renovated=True,
+        is_roommate_friendly=True,
+        safe_room_type="safe_room",
+        furniture="furnished",
+    )
+    caption = format_caption(listing, price_change_from=10000, has_access=True)
+    assert len(caption) <= CAPTION_LIMIT
+    assert caption.count("<a ") == caption.count("</a>")
+    # The footer - the listing's own link - must always survive intact, never sacrificed to make
+    # room for body content.
+    assert "לפרטי הדירה המלאים" in caption
 
 
 # --- has_access gating — a lite/expired user must not get a working link out to the actual
