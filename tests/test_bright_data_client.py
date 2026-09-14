@@ -36,6 +36,33 @@ def _resp(url, json_body, status=200, text=None):
     return httpx.Response(status, request=httpx.Request("GET", url), **kwargs)
 
 
+# --- _looks_like_pending_status (2026-09-14) ---
+
+
+def test_pending_status_dict_shapes_are_recognized():
+    # The two exact real shapes seen in production logs that night.
+    assert bright_data_client._looks_like_pending_status(
+        {"status": "collecting", "message": "Job is not finished"}
+    )
+    assert bright_data_client._looks_like_pending_status(
+        {"status": "building", "message": "Dataset is not ready yet, try again in 30s"}
+    )
+    # A status-only dict (no message) should still count — the "message" key isn't load-bearing.
+    assert bright_data_client._looks_like_pending_status({"status": "collecting"})
+
+
+def test_a_real_record_is_never_mistaken_for_pending_status():
+    real_row = {
+        "token": "rccfe1nk", "price": 7500, "additionalDetails": {"roomsCount": 2.5},
+        "customer": {"agencyName": "x"}, "searchText": "טקסט",
+    }
+    assert not bright_data_client._looks_like_pending_status(real_row)
+    assert not bright_data_client._looks_like_pending_status([real_row])
+    assert not bright_data_client._looks_like_pending_status([])
+    assert not bright_data_client._looks_like_pending_status(None)
+    assert not bright_data_client._looks_like_pending_status({})  # empty dict — falsy, not pending
+
+
 # --- is_configured ---
 
 
@@ -101,6 +128,50 @@ def test_polls_until_result_is_ready(monkeypatch):
         result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
 
     assert result == "טקסט"
+
+
+def test_polls_through_a_pending_status_dict_not_just_an_empty_list(monkeypatch):
+    # 2026-09-14: REAL production bug — a still-processing poll response is a non-empty STATUS
+    # dict, not an empty list (confirmed real from a production run's own logs: hours of
+    # {"status": "collecting", ...} / {"status": "building", ...} entries). The old `if rows:
+    # break` treated that non-empty dict as "done" on the very first poll, so every single
+    # enrichment silently failed (bright_data_enriched: 0 out of 994 new listings that night,
+    # despite trigger calls genuinely succeeding). Must keep polling through it, exactly like an
+    # empty list, until a real record (or the timeout) is reached.
+    _configure(monkeypatch)
+    monkeypatch.setattr(bright_data_client, "_POLL_INTERVAL_SECONDS", 0)
+    responses = iter([
+        {"status": "collecting", "message": "Job is not finished"},
+        {"status": "building", "message": "Dataset is not ready yet, try again in 30s"},
+        [{"description": "תיאור אמיתי אחרי שהמשימה הסתיימה"}],
+    ])
+
+    def fake_post(url, **kw):
+        return _resp(url, {"collection_id": "job_1"})
+
+    def fake_get(url, **kw):
+        return _resp(url, next(responses))
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
+
+    assert result == "תיאור אמיתי אחרי שהמשימה הסתיימה"
+
+
+def test_returns_none_when_only_pending_status_ever_comes_back_before_timeout(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(bright_data_client, "_POLL_TIMEOUT_SECONDS", 0)
+
+    def fake_post(url, **kw):
+        return _resp(url, {"collection_id": "job_1"})
+
+    def fake_get(url, **kw):
+        return _resp(url, {"status": "collecting", "message": "Job is not finished"})
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_description("https://yad2.co.il/item/1")
+
+    assert result is None
 
 
 def test_returns_none_on_poll_timeout(monkeypatch):

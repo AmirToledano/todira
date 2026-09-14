@@ -109,6 +109,19 @@ actually needed — one URL per call, not a batch). Removing it confirmed live: 
 except clause now always logs the response body on a 4xx/5xx, so a future rejection reason (e.g.
 if the collector is ever upgraded off the trial tier and something else changes) is visible from
 the next real production log line instead of needing another live replay to discover.
+
+2026-09-14: found the NEXT reason `bright_data_enriched` was still 0 even after the fix above —
+the queue_next fix made trigger calls succeed (real 200s, real job ids), but the poll loop's own
+`if rows: break` treated ANY non-empty poll response as "the job is done". A real still-processing
+poll returns a non-empty STATUS dict too — confirmed real from a production run's own logs (hours
+of `{"status": "collecting", "message": "Job is not finished"}` / `{"status": "building", "message":
+"Dataset is not ready yet, try again in 30s"}` entries) — not an empty list as the loop had always
+assumed. So the very first poll (often under a second after triggering) broke out immediately with
+that status object mistaken for the real record, which downstream code found no usable fields in —
+every single enrichment silently failing despite the trigger call itself genuinely succeeding. A
+real run that night: `bright_data_enriched: 0` out of 994 new Yad2 listings, after ~3 hours of
+continuous trigger/poll activity that never actually produced one real result. Fixed by
+`_looks_like_pending_status` — see that function's own docstring and the poll loop's own comment.
 """
 from __future__ import annotations
 
@@ -163,6 +176,17 @@ def is_configured() -> bool:
         os.environ.get(API_KEY_ENV_VAR, "").strip()
         and os.environ.get(COLLECTOR_ID_ENV_VAR, "").strip()
     )
+
+
+def _looks_like_pending_status(rows: object) -> bool:
+    """True for a "still processing" poll response — NOT a real result, even though it's a
+    non-empty (truthy) dict. Confirmed real 2026-09-14 (a production run's own logs, hours of
+    identical entries): `{"status": "collecting", "message": "Job is not finished"}` and
+    `{"status": "building", "message": "Dataset is not ready yet, try again in 30s"}` — a real
+    completed record NEVER has this shape (confirmed real, PROJECT_STATE.md 2026-09-11: top-level
+    keys like token/price/additionalDetails/inProperty/searchText/customer/..., never "status" or
+    "message"). See the poll loop's own comment for the real bug this fixes."""
+    return isinstance(rows, dict) and bool(rows) and set(rows.keys()) <= {"status", "message"}
 
 
 def _extract_job_id(body: object) -> str | None:
@@ -239,6 +263,17 @@ def _trigger_and_fetch_first_row(url: str) -> dict | None:
         )
         return None
 
+    # 2026-09-14: REAL production bug found and fixed — `if rows: break` (the only check this loop
+    # used to have) treated ANY non-empty poll response as "the job is done", but a genuinely
+    # still-processing poll returns a non-empty STATUS dict too (see _looks_like_pending_status's
+    # own docstring for the two exact real shapes seen), not an empty list/falsy value as this loop
+    # originally assumed. The result: the very first poll (after ~_REQUEST_TIMEOUT_SECONDS, often
+    # under a second) almost always broke out immediately with a "still collecting" status object
+    # mistaken for the real record, which _compute_detail_updates (scraper/main.py) then found no
+    # usable fields in — every single enrichment silently failing (`bright_data_enriched: 0` in a
+    # real run-summary line, confirmed 2026-09-14, despite ~3 hours of continuous trigger/poll
+    # activity across 994 new Yad2 listings). Now keeps polling through a pending-status response,
+    # exactly as it already did for an empty list.
     deadline = time.monotonic() + _POLL_TIMEOUT_SECONDS
     rows = None
     while time.monotonic() < deadline:
@@ -252,9 +287,12 @@ def _trigger_and_fetch_first_row(url: str) -> dict | None:
         except (httpx.HTTPError, ValueError):
             logger.exception("Bright Data DCA result poll failed for job %s (%s)", job_id, url)
             return None
-        if rows:
+        if rows and not _looks_like_pending_status(rows):
             break
         time.sleep(_POLL_INTERVAL_SECONDS)
+    else:
+        rows = None  # loop exhausted the deadline without ever breaking — never trust a leftover
+        # pending-status dict from the last iteration as if it were a real (if late) result.
 
     if not rows:
         logger.error(
