@@ -44,6 +44,8 @@ _REAL_ROW_NO_NEIGHBORHOOD = (
     '<td style="width:100px" >2,130 ₪</td>'
     '<td style="width:100px" >מיידי</td>'
     '<td style="width:100px" ><span class="newmessage">13/09/2026</span></td>'
+    '<td style="width:100px" ><a href="/rent/viewad,746758.aspx">לפרטים</a></td>'
+    '</tr>'
 )
 
 _REAL_ROW_WITH_NEIGHBORHOOD = (
@@ -61,6 +63,8 @@ _REAL_ROW_WITH_NEIGHBORHOOD = (
     '<td style="width:80px" >7</td>'
     '<td style="width:100px" >8,600 ₪</td>'
     '<td style="width:100px" >מיידי</td>'
+    '<td style="width:100px" ><a href="/rent/viewad,746729.aspx">לפרטים</a></td>'
+    '</tr>'
 )
 
 
@@ -117,6 +121,8 @@ def test_parse_rows_empty_src_yields_no_images_not_a_placeholder():
         '<td style="width:80px" >3</td>'
         '<td style="width:80px" >1</td>'
         '<td style="width:100px" >4,000 ₪</td>'
+        '<td style="width:100px" ><a href="/rent/viewad,1.aspx">לפרטים</a></td>'
+        '</tr>'
     )
     items = list(_parse_rows(row))
     assert items[0]["images"] == []
@@ -217,13 +223,19 @@ def test_fetch_listing_description_extracts_the_real_confirmed_description(monke
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    description = fetch_listing_description("746758")
+    # 2026-09-13: fetch_listing_description now takes the listing's own real URL (as returned by
+    # fetch_search_results/_parse_rows), not a bare id — a bare id can no longer be reconstructed
+    # into the right URL, since brokered ("Tivuch") listings use a different path prefix
+    # (/RentTivuch/ vs /rent/) that isn't derivable from the id alone. See homeless_client.py's own
+    # module docstring and _ROW_RE's comment for the real bug this fixed.
+    real_url = "https://www.homeless.co.il/rent/viewad,746758.aspx"
+    description = fetch_listing_description(real_url)
 
     assert description == (
         "דירה להשכרה בתל אביב, דרך השלום מודעה 746758 -  הכניסה מרחוב הורודצקי. "
         "זו הכניסה השקטה של הבניין."
     )
-    assert captured["params"]["url"] == "https://www.homeless.co.il/rent/viewad,746758.aspx"
+    assert captured["params"]["url"] == real_url
 
 
 def test_fetch_listing_description_missing_meta_tags_returns_none(monkeypatch):
@@ -234,14 +246,14 @@ def test_fetch_listing_description_missing_meta_tags_returns_none(monkeypatch):
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    assert fetch_listing_description("746758") is None
+    assert fetch_listing_description("https://www.homeless.co.il/rent/viewad,746758.aspx") is None
 
 
 def test_fetch_listing_description_missing_api_key_returns_none_not_raises(monkeypatch):
     # Unlike fetch_search_results (which raises), this is genuinely optional enrichment — never
     # raises, same defensive contract as komo_client.fetch_listing_detail.
     monkeypatch.delenv(ZENROWS_API_KEY_ENV_VAR, raising=False)
-    assert fetch_listing_description("746758") is None
+    assert fetch_listing_description("https://www.homeless.co.il/rent/viewad,746758.aspx") is None
 
 
 def test_fetch_listing_description_network_failure_returns_none_not_raises(monkeypatch):
@@ -252,4 +264,4 @@ def test_fetch_listing_description_network_failure_returns_none_not_raises(monke
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    assert fetch_listing_description("746758") is None
+    assert fetch_listing_description("https://www.homeless.co.il/rent/viewad,746758.aspx") is None
