@@ -68,25 +68,36 @@ jobs:
 
           areas_by_id = {}  # areaId -> full area dict (last write wins, values are stable)
           failures = []
+          failure_bodies = []  # (term, status, first-200-chars) for the first few failures, to diagnose
           for i, term in enumerate(terms):
               url = 'https://gw.yad2.co.il/address-autocomplete/realestate/v2?text=' + urllib.parse.quote(term)
               try:
                   req = urllib.request.Request(url, headers={'Accept': 'application/json'})
                   with urllib.request.urlopen(req, timeout=15) as resp:
-                      body = resp.read().decode('utf-8')
+                      status = resp.status
+                      body = resp.read().decode('utf-8', errors='replace')
                   payload = json.loads(body)
               except Exception as exc:
                   failures.append((term, str(exc)))
+                  if len(failure_bodies) < 5:
+                      status_seen = locals().get('status', 'N/A')
+                      body_seen = locals().get('body', '')[:200]
+                      failure_bodies.append((term, status_seen, body_seen))
+                  time.sleep(4)  # a lot more room after a failure, in case it's rate-limit related
                   continue
               for area in payload.get('areas') or []:
                   area_id = area.get('areaId')
                   if area_id is not None:
                       areas_by_id[area_id] = area
-              time.sleep(0.2)  # light pacing — no need to hammer it
+              time.sleep(2.5)  # real pacing — the first run's 0.2s was clearly too fast (48/49 failed)
 
           print(f'Queried {len(terms)} terms, {len(failures)} failed.')
           if failures:
-              print('Failed terms:', failures[:10])
+              print('Failed terms (first 10):', [f[0] for f in failures[:10]])
+          if failure_bodies:
+              print('--- first few failures, raw status + body snippet ---')
+              for term, status_seen, body_seen in failure_bodies:
+                  print(f'{term!r}: status={status_seen!r} body[:200]={body_seen!r}')
           print(f'Found {len(areas_by_id)} distinct areas total.')
           print()
 
