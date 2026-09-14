@@ -1,0 +1,76 @@
+name: Diagnose — does Komo's real discovery flow (session token + adscoordinates POST) work via the ISP proxy? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14.
+#
+# diagnose-isp-proxy-coverage-all-sources.yaml already confirmed live (today) that Komo's search
+# page (apartments-for-rent.asp) and a listing's own detail page (details/?modaaNum=) both work
+# cleanly through Bright Data's ISP proxy (real HTML back, no Cloudflare/Radware-style block —
+# unlike Yad2's listing-detail page and Homeless's search page, both blocked the same way). NOT yet
+# tested: the actual endpoint komo_client.fetch_coordinate_ids uses for real discovery — a POST to
+# ADSCOORDINATES_URL with a sessionToken extracted from the search page (see that function's own
+# docstring). This is the one missing piece before Komo could move off ZenRows entirely (both
+# discovery AND detail enrichment) onto the already-paid-for flat-rate ISP proxy.
+#
+# Replicates komo_client.py's own two-step flow exactly (same URL, same session-token regex shape,
+# same POST body) but through the ISP proxy (plain curl) instead of ZenRows' Fetch API — a single,
+# isolated request pair, not batched with anything else, matching this project's own established
+# pacing discipline for testing a new endpoint through the ISP proxy.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Step 1: search page via ISP proxy — extract the real sessionToken"
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          if [ -z "$BRIGHT_DATA_ISP_HOST" ] || [ -z "$BRIGHT_DATA_ISP_USER" ] || [ -z "$BRIGHT_DATA_ISP_PASS" ]; then
+            echo "One or more BRIGHT_DATA_ISP_* secrets are not set — cannot test."
+            exit 1
+          fi
+          curl -sS -x "http://${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}@${BRIGHT_DATA_ISP_HOST}" \
+            "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes=1&cityName=%D7%AA%D7%9C%20%D7%90%D7%91%D7%99%D7%91" \
+            -o /tmp/komo_search.html -w "search http_status=%{http_code} size=%{size_download}\n" --max-time 60
+
+          SESSION_TOKEN=$(grep -oE 'sessionToken\s*=\s*"[A-Za-z0-9]{16,64}"' /tmp/komo_search.html | head -1 | grep -oE '"[A-Za-z0-9]{16,64}"' | tr -d '"')
+          if [ -z "$SESSION_TOKEN" ]; then
+            echo "NO sessionToken found — search page body (first 300 chars):"
+            head -c 300 /tmp/komo_search.html
+            exit 1
+          fi
+          echo "sessionToken found: $SESSION_TOKEN"
+          echo "SESSION_TOKEN=$SESSION_TOKEN" >> "$GITHUB_ENV"
+
+      - name: "Step 2: POST adscoordinates/list/ via ISP proxy — the real discovery endpoint"
+        env:
+          BRIGHT_DATA_ISP_HOST: ${{ secrets.BRIGHT_DATA_ISP_HOST }}
+          BRIGHT_DATA_ISP_USER: ${{ secrets.BRIGHT_DATA_ISP_USER }}
+          BRIGHT_DATA_ISP_PASS: ${{ secrets.BRIGHT_DATA_ISP_PASS }}
+        run: |
+          curl -sS -x "http://${BRIGHT_DATA_ISP_USER}:${BRIGHT_DATA_ISP_PASS}@${BRIGHT_DATA_ISP_HOST}" \
+            -X POST "https://www.komo.co.il/api/modaotservice/adscoordinates/list/" \
+            --data-urlencode "iska=1" --data-urlencode "sessionToken=${SESSION_TOKEN}" \
+            -o /tmp/komo_coords.json -w "adscoordinates http_status=%{http_code} size=%{size_download}\n" --max-time 60
+          echo "--- first 300 chars ---"
+          head -c 300 /tmp/komo_coords.json; echo
+          echo "--- verdict ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/komo_coords.json', encoding='utf-8') as f:
+                  payload = json.load(f)
+          except Exception as exc:
+              print(f'NOT valid JSON — request likely blocked or malformed: {exc}')
+              raise SystemExit(1)
+          status = payload.get('status')
+          listing_ids = payload.get('list')
+          if status == 'OK' and isinstance(listing_ids, list):
+              print(f'REAL DATA: status=OK, {len(listing_ids)} ids returned — Komo discovery works fully via the ISP proxy.')
+          else:
+              print(f'Unexpected shape: status={status!r}, list type={type(listing_ids)} — {str(payload)[:300]!r}')
+              raise SystemExit(1)
+          "
