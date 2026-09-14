@@ -89,9 +89,7 @@ def test_broker_prefix_wins_over_sublet_if_somehow_both():
 def test_location_street_is_a_google_maps_link_on_telegram():
     caption = format_caption(make_listing(street="דיזנגוף 10"), has_access=True)
     assert '📍<b>ירושלים</b> - ניות <a href="https://www.google.com/maps/search/' in caption
-    # 2026-09-13: the link's own visible text gets a second, reinforcing RTL mark right before it
-    # (see _build_body_lines' own comment) — asserting ">‏דיזנגוף 10</a>", not the bare text.
-    assert ">‏דיזנגוף 10</a>" in caption
+    assert ">דיזנגוף 10</a>" in caption
     assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
 
 
@@ -157,22 +155,25 @@ def test_footer_link_text_and_no_source_tag():
     assert "🏷️" not in caption
 
 
-def test_caption_starts_with_an_invisible_rtl_mark():
+def test_caption_starts_with_a_real_rtl_embedding():
     # 2026-09-03: real user report + screenshot - Telegram rendered the caption's alignment
     # starting from the middle/left instead of the right, because nearly every line starts with
-    # an emoji (no strong bidi direction of its own). An invisible U+200F forces RTL regardless.
+    # an emoji (no strong bidi direction of its own). 2026-09-14: escalated from a bare U+200F
+    # mark (which never fully fixed this across three earlier attempts) to a real RLE (U+202B)
+    # ... PDF (U+202C) embedding — see _force_rtl's own docstring for the full history.
     caption = format_caption(make_listing(), has_access=True)
-    assert caption.startswith("‏")
+    assert caption.startswith("‫")
 
 
-def test_every_body_line_carries_its_own_rtl_mark_not_just_the_first():
+def test_every_body_line_carries_its_own_rtl_embedding_not_just_the_first():
     # A second real user report the same day: the block kept drifting further left line by line -
     # a single mark at the very front of the caption only anchors the FIRST line's direction, not
-    # every line independently. Every real content line needs its own leading mark.
+    # every line independently. Every real content line needs its own embedding.
     caption = format_caption(make_listing(has_parking=True), has_access=True)
     lines = [line for line in caption.split("\n") if line]
     for line in lines:
-        assert line.startswith("‏"), f"line missing its own RTL mark: {line!r}"
+        assert line.startswith("‫"), f"line missing its own RTL embedding: {line!r}"
+        assert line.endswith("‬"), f"line missing its own RTL embedding close: {line!r}"
 
 
 def test_blank_spacer_line_has_no_stray_rtl_mark():
@@ -192,14 +193,14 @@ def test_blank_line_separates_floor_from_features():
 
 def test_price_drop_header_prepended():
     caption = format_caption(make_listing(price=16000), price_change_from=18000, has_access=True)
-    assert caption.lstrip("‏").startswith("📉")
+    assert caption.lstrip("‫").startswith("📉")
     assert "ירידת מחיר" in caption
     assert "18,000" in caption
 
 
 def test_price_increase_header_prepended():
     caption = format_caption(make_listing(price=18000), price_change_from=16000, has_access=True)
-    assert caption.lstrip("‏").startswith("📈")
+    assert caption.lstrip("‫").startswith("📈")
     assert "עליית מחיר" in caption
     assert "16,000" in caption
 
@@ -234,16 +235,16 @@ def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
     # Telegram's HTML <a> tag — same underlying Google Maps URL, just on its own tappable line
     # right after the location line instead of inline.
     caption = format_caption_whatsapp(make_listing(street="דיזנגוף 10"), has_access=True)
-    # 2026-09-13: street text now carries its own reinforcing RTL mark too (see
-    # _build_body_lines' own comment) — WhatsApp's street_link is an identity function, so the
-    # mark added right before the street text lands here just like on Telegram.
-    assert "📍*ירושלים* - ניות ‏דיזנגוף 10" in caption
+    assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
     assert "<a href" not in caption
     lines = caption.split("\n")
-    # Every line carries its own leading RTL mark (see _build_body_lines) right before its emoji,
-    # so the location line no longer literally starts with "📍" - "in", not "startswith".
+    # Every line carries its own leading RTL embedding (see _build_body_lines) right before its
+    # emoji, so the location line no longer literally starts with "📍" - "in", not "startswith".
     location_line = next(i for i, line in enumerate(lines) if "📍" in line)
-    assert lines[location_line + 1].startswith("🗺️ https://www.google.com/maps/search/")
+    # The maps line is inserted after _build_body_lines already returned, so it carries its own
+    # separate RTL embedding rather than one from that function - see format_caption_whatsapp's
+    # own comment on why.
+    assert lines[location_line + 1].startswith("‫🗺️ https://www.google.com/maps/search/")
 
 
 def test_whatsapp_price_change_header_is_bold_with_asterisks():
