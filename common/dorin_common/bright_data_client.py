@@ -122,6 +122,23 @@ every single enrichment silently failing despite the trigger call itself genuine
 real run that night: `bright_data_enriched: 0` out of 994 new Yad2 listings, after ~3 hours of
 continuous trigger/poll activity that never actually produced one real result. Fixed by
 `_looks_like_pending_status` — see that function's own docstring and the poll loop's own comment.
+
+2026-09-14, same day, later: the fix above made enrichment actually WORK — and immediately
+surfaced a THIRD, worse bug once it did: the owner's own live notifications started carrying
+another listing's photos and description. Caught live from real screenshots (different addresses,
+prices, and room counts, but identical photos and description text down to the word — including a
+"2.5 rooms" description on a listing whose own fields said 4.0). Root cause never confirmed against
+Bright Data support (no access to their side), but the working theory: this collector is still on
+the trial tier (see the `queue_next` entry above), and its result buffer doesn't reliably scope by
+job id under concurrent triggers (`_BRIGHT_DATA_ENRICH_CONCURRENCY` in scraper/main.py runs several
+at once) — a poll for job A's `id` can hand back job B's already-collected page. Fixed defensively
+in `_trigger_and_fetch_first_row`, not by chasing the trial-tier theory further: every real Yad2
+item URL ends in its own external_id/adNumber, and the collector's own record separately carries
+that same number back — so a mismatch is provably a wrong-listing result, discarded before it ever
+reaches a row, same as any other failed fetch. The currently-running catch-up job that surfaced
+this was killed via emergency-stop-scraper.yaml the moment the pattern was confirmed, before this
+fix could reach it (it was already running on an older pinned image) — whatever it re-sends on its
+next real run will go through this check.
 """
 from __future__ import annotations
 
@@ -302,7 +319,35 @@ def _trigger_and_fetch_first_row(url: str) -> dict | None:
 
     logger.info("Bright Data DCA raw result for %s: %r", url, rows)
     row = rows[0] if isinstance(rows, list) else rows
-    return row if isinstance(row, dict) else None
+    if not isinstance(row, dict):
+        return None
+
+    # 2026-09-14: REAL production incident, found from a live owner-only run's actual Telegram
+    # messages (5+ real screenshots, different addresses/prices/room counts, IDENTICAL photos and
+    # description text word-for-word — including a "2.5 rooms" description on a listing whose own
+    # fields said 4.0 rooms). This collector is on Bright Data's trial tier (see this module's own
+    # 2026-09-13 entry on `queue_next`); the working theory is its result buffer doesn't reliably
+    # scope by job id under concurrent triggers (_BRIGHT_DATA_ENRICH_CONCURRENCY in scraper/main.py
+    # runs several of these at once) and can hand back a DIFFERENT job's already-collected page.
+    # Every real Yad2 item URL ends in its own external_id/adNumber (normalize.py: `url =
+    # f"https://www.yad2.co.il/item/{external_id}"`), and the collector's own record separately
+    # carries that same number back as `adNumber` — so this is a cheap, reliable way to catch a
+    # cross-contaminated result before it ever reaches a listing row: if the two disagree, this is
+    # provably NOT the page we asked for, so it's discarded exactly like any other failed fetch
+    # (never raises, caller just gets nothing) rather than silently writing another listing's
+    # photos/description/amenities onto this one.
+    expected_id = url.rstrip("/").rsplit("/", 1)[-1]
+    returned_ad_number = row.get("adNumber")
+    if returned_ad_number is not None and str(returned_ad_number) != expected_id:
+        logger.error(
+            "Bright Data DCA returned a DIFFERENT listing than requested — url=%s expected "
+            "id=%s but got adNumber=%r (job %s); discarding rather than risk cross-contaminating "
+            "this listing with another one's data.",
+            url, expected_id, returned_ad_number, job_id,
+        )
+        return None
+
+    return row
 
 
 def fetch_listing_description(url: str) -> str | None:

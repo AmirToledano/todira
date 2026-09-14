@@ -63,6 +63,96 @@ def test_a_real_record_is_never_mistaken_for_pending_status():
     assert not bright_data_client._looks_like_pending_status({})  # empty dict — falsy, not pending
 
 
+# --- cross-contaminated (wrong-listing) result detection (2026-09-14) ---
+
+
+def test_rejects_a_result_whose_adnumber_does_not_match_the_requested_url(monkeypatch):
+    # Real production incident: the owner's own live run sent several DIFFERENT listings (distinct
+    # addresses/prices/room counts) carrying IDENTICAL photos and description text — traced to this
+    # collector (still on Bright Data's trial tier) handing back another job's already-collected
+    # page under concurrent triggers. adNumber is the one field both sides can be cross-checked on:
+    # the requested URL's own trailing external_id vs. the record's own adNumber.
+    _configure(monkeypatch)
+    wrong_listing_row = {
+        "adNumber": 99999999,  # belongs to a DIFFERENT ad than the one requested below
+        "price": 7500,
+        "searchText": "טקסט של מודעה אחרת לגמרי",
+    }
+
+    def fake_post(url, **kw):
+        return _resp(url, {"collection_id": "job_1"})
+
+    def fake_get(url, **kw):
+        return _resp(url, [wrong_listing_row])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_detail_via_bright_data(
+            "https://www.yad2.co.il/item/12345678"
+        )
+
+    assert result is None
+
+
+def test_accepts_a_result_whose_adnumber_matches_the_requested_url(monkeypatch):
+    _configure(monkeypatch)
+    correct_row = {"adNumber": 12345678, "price": 7500, "searchText": "טקסט נכון"}
+
+    def fake_post(url, **kw):
+        return _resp(url, {"collection_id": "job_1"})
+
+    def fake_get(url, **kw):
+        return _resp(url, [correct_row])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_detail_via_bright_data(
+            "https://www.yad2.co.il/item/12345678"
+        )
+
+    assert result == correct_row
+
+
+def test_accepts_a_result_with_no_adnumber_at_all_cant_verify_so_doesnt_block(monkeypatch):
+    # Not every real record is guaranteed to carry adNumber (field-name hedging is already this
+    # file's own long-standing approach elsewhere) - absent, not mismatched, so there's nothing to
+    # contradict and this must not become a new, unrelated way for enrichment to silently fail.
+    _configure(monkeypatch)
+    row_without_ad_number = {"price": 7500, "searchText": "טקסט"}
+
+    def fake_post(url, **kw):
+        return _resp(url, {"collection_id": "job_1"})
+
+    def fake_get(url, **kw):
+        return _resp(url, [row_without_ad_number])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_detail_via_bright_data(
+            "https://www.yad2.co.il/item/12345678"
+        )
+
+    assert result == row_without_ad_number
+
+
+def test_adnumber_mismatch_is_compared_as_string_not_type_sensitive(monkeypatch):
+    # adNumber comes back as a real int from Bright Data's own JSON; the URL's trailing segment is
+    # always a str - must compare as the same type or every real match would false-positive as a
+    # mismatch.
+    _configure(monkeypatch)
+    row = {"adNumber": 12345678, "price": 1}
+
+    def fake_post(url, **kw):
+        return _resp(url, {"collection_id": "job_1"})
+
+    def fake_get(url, **kw):
+        return _resp(url, [row])
+
+    with patch.object(httpx, "post", fake_post), patch.object(httpx, "get", fake_get):
+        result = bright_data_client.fetch_listing_detail_via_bright_data(
+            "https://www.yad2.co.il/item/12345678"
+        )
+
+    assert result is not None
+
+
 # --- is_configured ---
 
 
