@@ -47,20 +47,31 @@ for id=746758) — but `_ROW_RE` only ever matched that cell to skip past it, di
 every single run. Fixed: now captured into the row's own `images` list (normalize() already reads
 this generically for every source, see PR #236/#254 for Komo's equivalent).
 
-OUTBOUND LINK (found 2026-09-13, NOT fixed — not fixable in this codebase): a real user report
-after the first real production Telegram send — clicking a Homeless listing's own "לפרטי הדירה
-המלאים" link (e.g. https://www.homeless.co.il/rent/viewad,83480.aspx, this module's own confirmed
-URL shape) redirected to Homeless's homepage instead of the listing. Investigated with a real
-headless browser (diagnose-homeless-detail-url-and-images.yaml): BOTH the reported-broken id AND
-the previously-confirmed-working one (746758) hit a Cloudflare-style "Just a moment..." bot-
-challenge page (HTTP 403) — a plain ZenRows fetch bypasses this (that's the whole point of ZenRows,
-and how this module already reads real content for description/price/etc.), but an ordinary end
-user's own browser clicking the link gets no such help from this project at all. This is Homeless's
-own bot-protection on direct/deep-linked access to a listing page, not a URL-construction bug here
-— genuinely nothing to change in this module for it. Real challenge pages like this usually resolve
-automatically for a genuine (non-automated) browser within a few seconds, so this may simply work
-fine for an actual user despite failing in an automated headless-browser test — unconfirmed either
-way without a real, non-automated click to compare against.
+OUTBOUND LINK (found 2026-09-13, FIXED same night): a real user report after the first real
+production Telegram send — clicking a Homeless listing's own "לפרטי הדירה המלאים" link redirected
+to Homeless's homepage instead of the listing. Root cause (confirmed live,
+diagnose-homeless-real-url-for-new-ids.yaml): this project always reconstructed the URL itself as
+f"https://www.homeless.co.il/rent/viewad,{id}.aspx" — correct only for a plain private listing. A
+real brokered ("Tivuch") listing's own real link uses a DIFFERENT path prefix,
+/RentTivuch/viewad,{id}.aspx, which cannot be derived from the id alone. Fixed by reading each
+row's own real href directly instead (see _ROW_RE/_HREF_RE and _parse_rows below) — never
+reconstructed from the id anymore, whichever prefix the row actually uses.
+
+TIVUCH COLUMN LAYOUT (found 2026-09-13, FIXED 2026-09-14): a brokered ("Tivuch") row's own real
+column layout has NO floor column at all between rooms and price, unlike a plain listing row —
+first flagged from a partial observation (one row, id=83480) and left as a known-but-unfixed gap,
+then confirmed properly via a full live re-dump of every <td> cell for 4 real current Tivuch rows
+plus 1 real plain row (diagnose-homeless-tivuch-column-layout.yaml). The real, confirmed shape:
+
+    plain:  checkbox,photo,type,city,neighborhood,street,rooms,FLOOR,price,entrydate,updatedate,href
+    Tivuch: checkbox,photo,type,city,neighborhood,street,rooms,price,entrydate,updatedate,href
+
+i.e. identical for the first 7 columns and the last 4, with the ONE column in between (floor)
+present only on a plain row. Before this fix, a Tivuch row's floor field silently captured its own
+price string, and its price field captured the entry-date string that comes after — both wrong,
+not just missing. _parse_rows below now splits each row generically into <td> cells and maps them
+by position from the front (fixed) and from the back (fixed), treating whatever's left in the
+middle as floor only if there's exactly one such column — genuinely None for Tivuch, not a miss.
 
 NOT yet confirmed: whether /rent/ paginates for more listings beyond what one fetch returns (Komo
 turned out to have ~175 pages behind its own single-page HTML view, Yad2 too — Homeless has not
@@ -99,56 +110,38 @@ PAGE_LOAD_TIMEOUT_S = 60
 _ZENROWS_ERROR_CODE_RE = re.compile(r'"code":"(?P<code>[A-Z0-9]+)"')
 _ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 
-# Matches one real listing row (confirmed live against id="ad_746758" and others — see module
-# docstring). The leading `<td class="selectionarea">...</td>` (a checkbox, never useful data) is
-# skipped non-greedily rather than matched field-by-field, since its own inner HTML (an <input>
-# with its own id/name attributes) isn't needed and its exact attribute order isn't worth pinning
-# down. Column order after that is fixed (photo, property type, city, neighborhood, street, rooms,
-# floor, price) per the table's own real header row.
-#
-# 2026-09-13: the photo cell's own <img src="..."> is now CAPTURED, not just matched-and-discarded
-# — a real bug found the hard way (a real Telegram send with zero photos): the confirmed real
-# sample row for id=746758 has always carried a real photo URL here
-# (https://uploads.homeless.co.il/rent/202609/300/nvFile5386664.jpg, see this module's own test
-# fixtures) that this regex simply threw away every single time. `[^"]*` (not `[^<]*`) since a src
-# URL can't contain `<` but the group must stop at the closing quote, not at some later `<`.
-#
-# 2026-09-13, same night, a SECOND real bug found the hard way (a real Telegram click that landed
-# on Homeless's own homepage instead of the listing): this project always built each listing's own
-# "url" field itself, as f"https://www.homeless.co.il/rent/viewad,{id}.aspx" — correct for the one
-# sample row ever tested (746758, a plain private listing) but WRONG for a real brokered listing
-# (confirmed live, diagnose-homeless-real-url-for-new-ids.yaml, id=83480): that row's own real
-# details link is `/RentTivuch/viewad,83480.aspx` — a DIFFERENT path prefix ("RentTivuch" =
-# rental-brokerage) than plain `/rent/`. Homeless's search results table interleaves both kinds of
-# listings, and there was never a way to tell them apart from the id alone. Fixed by capturing the
-# row's OWN real href (whatever prefix it actually uses) via `(?P<detail_path>[^"]+)` instead of
-# reconstructing it — `.*?` (non-greedy, DOTALL) between price and the href so this doesn't depend
-# on how many more columns (entry-date, update-date) sit in between, which may itself differ
-# between plain and Tivuch rows (see the docstring note below on that still-open question).
-#
-# KNOWN, CONFIRMED, NOT YET FIXED: that same real Tivuch row (id=83480) has NO floor column at all
-# between rooms and price (מרכז/וייצמן/4/50,000 ₪/מיידי/14-09-2026 — city, area, street, rooms,
-# PRICE directly, no floor) — a genuinely different column layout from the plain-listing shape this
-# regex still assumes. This means a Tivuch row's own floor/price fields, as extracted below, are
-# almost certainly WRONG (floor would capture the price string, price would capture the next
-# column's text) — a real, confirmed, separate gap from the URL bug just fixed, needing its own
-# dedicated investigation (telling Tivuch rows apart from plain ones, then a second column-order
-# regex for them) before it can be trusted. Not attempted in this pass — flagged here rather than
-# silently assumed away, matching this project's own "verify, don't guess" standard.
-_ROW_RE = re.compile(
-    r'<tr[^>]*\bid="ad_(?P<id>\d+)"[^>]*>'
-    r'<td[^>]*class="selectionarea"[^>]*>.*?</td>'
-    r'<td[^>]*><div><img[^>]*\bsrc="(?P<image_url>[^"]*)"[^>]*/?></div></td>'
-    r'<td[^>]*>(?P<property_type>[^<]*)</td>'
-    r'<td[^>]*>(?P<city>[^<]*)</td>'
-    r'<td[^>]*>(?P<neighborhood>[^<]*)</td>'
-    r'<td[^>]*>(?P<street>[^<]*)</td>'
-    r'<td[^>]*>(?P<rooms>[^<]*)</td>'
-    r'<td[^>]*>(?P<floor>[^<]*)</td>'
-    r'<td[^>]*>(?P<price>[^<]*)</td>'
-    r'.*?href="(?P<detail_path>[^"]+)"',
-    re.S,
-)
+# Matches the FULL span of one real listing row, id through closing </tr> (confirmed live against
+# id="ad_746758" and many others — see module docstring). Everything inside is then split into its
+# own <td> cells by _TD_RE and mapped by POSITION, not matched field-by-field in one fixed regex —
+# see the 2026-09-14 finding below on why a single fixed column order no longer holds for every row.
+_ROW_RE = re.compile(r'<tr[^>]*\bid="ad_(?P<id>\d+)"[^>]*>(?P<body>.*?)</tr>', re.S)
+
+# One row's own <td>...</td> cells, in order, as raw (still-escaped) inner HTML — deliberately
+# generic (not per-field) since 2026-09-14 (see below): the columns AFTER "rooms" differ in count
+# between a plain listing and a brokered ("Tivuch") one, so a single fixed-position regex can't
+# describe both. `[^>]*` on the opening tag tolerates any attributes (e.g. `style="..."`, `class=`).
+_TD_RE = re.compile(r'<td[^>]*>(?P<content>.*?)</td>', re.S)
+
+# The photo cell's own <img src="..."> — `[^"]*` (not `[^<]*`) since a src URL can't contain `<`
+# but the group must stop at the closing quote, not at some later `<`. Captured, not discarded, as
+# of 2026-09-13 — see module docstring's IMAGES note.
+_IMG_SRC_RE = re.compile(r'\bsrc="(?P<src>[^"]*)"')
+
+# The details-link cell's own real href — /rent/ for a plain listing, /RentTivuch/ for a brokered
+# one (see module docstring's OUTBOUND LINK / TIVUCH COLUMN LAYOUT notes). Read from THIS one cell
+# specifically (the last <td> in the row), not scanned across the whole row, since only this cell
+# is ever expected to carry an <a href>.
+_HREF_RE = re.compile(r'href="(?P<href>[^"]+)"')
+
+# Fixed columns from the FRONT — identical for both a plain and a brokered ("Tivuch") row, per the
+# table's own real header row and the 2026-09-14 live re-dump (diagnose-homeless-tivuch-column-
+# layout.yaml) that settled this: checkbox, photo, property type, city, neighborhood, street, rooms.
+# Property type isn't currently a field this project stores — its column still counts for position.
+_FRONT_FIXED_COLUMN_COUNT = 7  # checkbox(0) photo(1) property_type(2) city(3) neighborhood(4) street(5) rooms(6)
+# Fixed columns from the BACK — also identical for both row kinds (same 2026-09-14 re-dump): price,
+# entry date, update date, details link. Entry/update date aren't parsed into the output dict at
+# all (this project has never needed them) — they only matter here for counting past them.
+_BACK_FIXED_COLUMN_COUNT = 4  # price(-4) entry_date(-3) update_date(-2) details_link(-1)
 
 # Confirmed live 2026-09-13 (diagnose-komo-gallery-and-homeless-description.yaml) against a real
 # listing's own detail page (id=746758) — a real free-text Hebrew ad description, byte-identical
@@ -235,28 +228,74 @@ def _fetch_search_html() -> str:
 
 def _parse_rows(search_html: str) -> Iterator[dict[str, Any]]:
     # Parameter named `search_html`, not `html` — this module imports the stdlib `html` module
-    # (for `html.unescape` on the description field below); a same-named parameter would shadow it.
+    # (for `html.unescape` below); a same-named parameter would shadow it.
     flat = re.sub(r">\s+<", "><", search_html)  # collapse inter-tag whitespace only, keep tag text
-    for match in _ROW_RE.finditer(flat):
-        external_id = match.group("id")
-        rooms = _parse_rooms(match.group("rooms"))
-        floor = _parse_int(match.group("floor"))
-        neighborhood = _clean(match.group("neighborhood")) or None
-        image_url = html.unescape(match.group("image_url")).strip()
+    for row_match in _ROW_RE.finditer(flat):
+        external_id = row_match.group("id")
+        tds = _TD_RE.findall(row_match.group("body"))
+
+        min_expected = _FRONT_FIXED_COLUMN_COUNT + _BACK_FIXED_COLUMN_COUNT  # 11, Tivuch's own count
+        if len(tds) < min_expected:
+            logger.warning(
+                "Skipping Homeless row id=%s: only %d <td> cells found, expected at least %d "
+                "(checkbox+photo+type+city+neighborhood+street+rooms, then price+entrydate+"
+                "updatedate+detailslink) — the table's own markup may have changed again.",
+                external_id, len(tds), min_expected,
+            )
+            continue
+
+        image_match = _IMG_SRC_RE.search(tds[1])
+        image_url = html.unescape(image_match.group("src")).strip() if image_match else ""
+
+        city = _clean(tds[3]) or None
+        neighborhood = _clean(tds[4]) or None
+        street = _clean(tds[5]) or None
+        rooms = _parse_rooms(tds[6])
+
+        # Everything between "rooms" and the fixed back columns (price/entrydate/updatedate/
+        # detailslink) — confirmed live 2026-09-14 (diagnose-homeless-tivuch-column-layout.yaml,
+        # 4 real Tivuch rows + 1 real plain row): a PLAIN listing has exactly one such column
+        # (floor); a brokered ("Tivuch") listing has NONE at all — its price sits directly after
+        # rooms. This was the real, confirmed root cause of Tivuch rows getting a wrong floor AND
+        # a wrong price (floor capturing the price string, price capturing the entry-date string)
+        # before this fix — previously only flagged as a known gap, not fixed.
+        middle = tds[_FRONT_FIXED_COLUMN_COUNT:-_BACK_FIXED_COLUMN_COUNT]
+        if len(middle) == 0:
+            floor = None  # Tivuch (brokered) row — genuinely has no floor column, not a miss
+        elif len(middle) == 1:
+            floor = _parse_int(middle[0])  # plain row
+        else:
+            logger.warning(
+                "Homeless row id=%s has %d unexpected extra column(s) between rooms and price "
+                "(%r) — expected 0 (Tivuch/brokered) or 1 (floor, plain). Taking the first as "
+                "floor and ignoring the rest rather than guessing further.",
+                external_id, len(middle), middle,
+            )
+            floor = _parse_int(middle[0])
+
+        price = _parse_price(tds[-4])
+
+        href_match = _HREF_RE.search(tds[-1])
+        if href_match is None:
+            logger.warning(
+                "Skipping Homeless row id=%s: no href found in its own details-link cell (%r) — "
+                "can't build a real detail-page URL for it.", external_id, tds[-1][:200],
+            )
+            continue
         # The row's own real href — /rent/ for a plain listing, /RentTivuch/ for a brokered one
-        # (confirmed live, see _ROW_RE's own comment) — never reconstructed from the id anymore.
-        detail_url = urljoin(_DETAIL_PAGE_BASE, html.unescape(match.group("detail_path")).strip())
+        # (confirmed live, see module docstring) — never reconstructed from the id.
+        detail_url = urljoin(_DETAIL_PAGE_BASE, html.unescape(href_match.group("href")).strip())
 
         yield {
             "id": external_id,
             "url": detail_url,
-            "price": _parse_price(match.group("price")),
+            "price": price,
             "rooms": rooms,
             "floor": floor,
             "square_meters": None,  # not present anywhere on this page — see module docstring
-            "street": _clean(match.group("street")) or None,
+            "street": street,
             "neighborhood": neighborhood,
-            "city": _clean(match.group("city")) or None,
+            "city": city,
             "images": [image_url] if image_url else [],
         }
 
