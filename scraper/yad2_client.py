@@ -822,30 +822,40 @@ def fetch_map_markers(
 # markers, every one correctly labeled region="יהודה, שומרון ובקעת הירדן", no mixing).
 #
 # Two real findings while adding partnership/east that don't apply to tel-aviv-area's own entry:
-#   (a) it needs NO `area` param at all — a district-level ("מחוز") request can be plain
+#   (a) it needs NO `area` param at all — a district-level ("מחוז") request can be plain
 #       region=<id>&bBox=...&zoom=..., confirmed live (see fetch_map_markers' own docstring).
-#       center-and-sharon's own district-level request (region=1, no area) looked the same way
-#       live in the owner's browser, but the FIRST attempt to verify it through OUR OWN ISP proxy
-#       got a 302 Radware challenge — almost certainly from testing it back-to-back (under 30s)
-#       with the partnership/east verify run just before it, matching this project's own
-#       documented velocity-triggered-block pattern (2026-09-13), not necessarily a problem with
-#       that bbox itself. NOT yet re-verified with real spacing — center-and-sharon stays on
-#       ZenRows until it is.
 #   (b) it needs a DIFFERENT HOST — gw.yad-il.co.il, not gw.yad2.co.il — confirmed live from the
 #       owner's own browser address bar (not a typo, double-checked). Plausibly a real legal/
 #       geopolitical reason for Yad2 to route יהודה ושומרון listings through a separate domain.
 #       See _build_map_url's own docstring for how `host` is passed through.
 #
+# CORRECTED FINDING (2026-09-14, later the same night): a "no area, gw.yad2.co.il" district-level
+# request is NOT safe in general — it's specific to partnership/east's own DIFFERENT host. Three
+# real, separately-dispatched verify runs, spaced minutes apart (ruling out the velocity theory
+# this comment originally stated) — center-and-sharon (region=1) TWICE and jerusalem-area
+# (region=6) once, both plain region=<id>&bBox=...&zoom=... on gw.yad2.co.il — ALL THREE got the
+# same 302 Radware challenge, consistently, regardless of spacing. Meanwhile tel-aviv-area (WITH
+# area=1, also on gw.yad2.co.il) and partnership/east (no area, but on gw.yad-il.co.il) both work
+# every time. The real, evidence-backed pattern: our specific Bright Data ISP proxy IP is
+# currently flagged for "no area" requests specifically on the MAIN gw.yad2.co.il domain — an
+# area-scoped request (tel-aviv-area's own shape) or a different host (partnership/east's own
+# shape) both avoid it. Practical consequence: every remaining REGION_SLUGS entry that stays on
+# gw.yad2.co.il needs its own real, live-captured `area=`+`region=` pair (found by zooming INTO a
+# specific city within the district in a browser, not just opening the district-level view) —
+# not the plain district-level request this comment originally assumed would be fine.
+#
 # The remaining REGION_SLUGS entries (center-and-sharon, jerusalem-area, south, coastal-north,
-# north-and-valleys) stay on fetch_region_pages/ZenRows until each one's own real bbox/area/region
-# (and host, if it turns out to need one — check, don't assume gw.yad2.co.il) is found the same
-# way — live, from the owner's own browser DevTools or an equivalent confirmed request. Yad2's own
-# area/region numbering has no known pattern to guess from (nothing here should ever interpolate a
-# bbox for an unconfirmed region), and a wrong/too-broad bbox risks the same Radware challenge seen
-# on 2026-09-13 (rapid batching) and again on 2026-09-14 with a whole-country, zoomed-out bbox even
-# WITH area/region set — see diagnose-yad2-map-single-test.yaml's "1b_country_bbox_with_area_
-# region" result. Real cost: flat $2/month total for Bright Data's ISP proxy (not per-region, not
-# per-request) vs. ZenRows' ~25 credits/page for a region on ZenRows.
+# north-and-valleys) stay on fetch_region_pages/ZenRows until each one's own real, area-scoped
+# bbox/area/region (and host, if it turns out to need a different one — check, don't assume
+# gw.yad2.co.il) is found the same way — live, from the owner's own browser DevTools or an
+# equivalent confirmed request. Yad2's own area/region numbering has no known pattern to guess
+# from (nothing here should ever interpolate a bbox for an unconfirmed region), and a wrong/too-
+# broad bbox risks the same Radware challenge seen on 2026-09-13 (rapid batching) and repeatedly
+# on 2026-09-14 with district-level, no-area requests on gw.yad2.co.il (see above) — see also
+# diagnose-yad2-map-single-test.yaml's "1b_country_bbox_with_area_region" result for a third,
+# earlier data point (a whole-country bbox blocked even WITH area/region set). Real cost: flat
+# $2/month total for Bright Data's ISP proxy (not per-region, not per-request) vs. ZenRows' ~25
+# credits/page for a region on ZenRows.
 #
 # Known, accepted limitation (not solved here): unlike fetch_region_pages, this does ONE request
 # and stops — no paging to catch up on more than one response's worth of markers (confirmed live:
