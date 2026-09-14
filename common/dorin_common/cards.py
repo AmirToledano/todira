@@ -203,19 +203,7 @@ def _build_body_lines(
     if listing.street:
         street_display = escape(listing.street)
         maps_url = _google_maps_url(listing)
-        # 2026-09-13: a THIRD real user report of this exact line drifting off-RTL, after the
-        # 2026-09-02 (single leading mark) and 2026-09-03 (per-line marks, see this function's own
-        # tail comment) fixes — this is the one line that embeds a long LTR string (the Google
-        # Maps URL) inside its own <a href="...">, unlike every other line here. The per-line
-        # leading RLM already added is a MARK (weak — it only nudges a neutral run), not an
-        # override; a long strong-LTR run appearing later in the same line can still tip a client's
-        # bidi resolution for that line. Reinforcing with a second RLM immediately before the
-        # link's own VISIBLE text (not just at the line's start) costs nothing and directly targets
-        # the one line actually carrying embedded LTR content — cheap, unconfirmed-until-a-real-
-        # screenshot-says-otherwise, not a guaranteed fix.
-        street_text = (
-            street_link(_RTL_MARK + street_display, maps_url) if maps_url else street_display
-        )
+        street_text = street_link(street_display, maps_url) if maps_url else street_display
         location = f"{location} {street_text}" if location else street_text
     if location:
         lines.append(f"📍{location}")
@@ -243,14 +231,11 @@ def _build_body_lines(
         lines.append("")  # a visual gap before the features line — a real request, 2026-09-03
         lines.append(f"🔑 {features_label} {' | '.join(features)}")
 
-    # Every line gets its OWN leading RTL mark, not just the caption as a whole — a real user
-    # report (screenshot) showed the block drifting further left line by line. A single mark up
-    # front (the previous fix, 2026-09-03) only anchors the first line; each of these lines still
-    # starts with an emoji (no strong bidi direction of its own), so a renderer that computes
-    # alignment per line — not just once for the whole message — needs the mark on every one.
-    # Skip it on the blank spacer line: a lone RTL mark isn't actually invisible-and-blank, it can
-    # render as a faint stray mark on an otherwise empty line in some clients.
-    return [(_RTL_MARK + line if line else line) for line in lines]
+    # Every line gets its OWN RTL embedding, not just the caption as a whole — see _force_rtl's own
+    # docstring for why (2026-09-14: escalated from a bare RLM mark to a real RLE/PDF embedding).
+    # Skip it on the blank spacer line: an embedding around nothing still isn't actually
+    # invisible-and-blank in every client.
+    return [(_force_rtl(line) if line else line) for line in lines]
 
 
 def _price_change_header(price_change_from: int | None, current_price: int | None, *, bold: Callable[[str], str]) -> str:
@@ -264,19 +249,32 @@ def _price_change_header(price_change_from: int | None, current_price: int | Non
         emoji, label = "📉", "ירידת מחיר!"
     else:
         emoji, label = "📈", "עליית מחיר!"
-    return f"{_RTL_MARK}{emoji} {bold(label)} (היה {price_change_from:,}₪)\n\n"
+    return f"{_force_rtl(f'{emoji} {bold(label)} (היה {price_change_from:,}₪)')}\n\n"
 
 
-# U+200F (Right-to-Left Mark, invisible) forces Telegram/WhatsApp to treat the WHOLE caption as an
-# RTL paragraph regardless of which character comes first. Needed again because nearly every line
-# above deliberately starts with an emoji (📍, 💰, 🛏️, ...) — emoji have no strong bidi direction
-# of their own, so without this mark the caption's rendered alignment can fall back to LTR (a real
-# user report + screenshot, 2026-09-03: their own card's text visibly started from the middle/left
-# instead of the right, unlike the reference bot dorin.app's). An earlier version of this file used
-# the same mark and removed it (2026-09-02) on the assumption that every line starting with real
-# Hebrew TEXT (not emoji-first) would be enough on its own — that assumption didn't hold once the
-# emoji-first, bold-label format above replaced it.
-_RTL_MARK = "‏"
+# 2026-09-14: escalated from a bare RLM mark (U+200F) to a real bidi EMBEDDING (RLE U+202B ...
+# PDF U+202C). History: nearly every line in this card deliberately starts with an emoji (📍, 💰,
+# 🛏️, ...), which has no strong bidi direction of its own, so without any override the caption's
+# rendered alignment can fall back to LTR — a real user report + screenshot, 2026-09-03. A leading
+# RLM (tried 2026-09-02 through 2026-09-13, in three escalating forms: one mark for the whole
+# caption, then one per line, then a second reinforcing one on the street/maps line specifically)
+# never fully fixed it: RLM is a MARK, not an override — it only nudges a neutral run, and real
+# owner screenshots (2026-09-14) kept showing some lines still starting away from the right edge
+# even with a mark on every line. RLE...PDF is a real embedding: everything between the two is
+# forced to RTL embedding level regardless of what it contains (an emoji, a bolded Hebrew label, or
+# an embedded LTR run like a Google Maps URL), which is exactly what a mark can't guarantee. Used
+# per LINE (not once for the whole caption) since Telegram/WhatsApp apparently resolve direction
+# per rendered line, not just once for the whole paragraph (the same reason the per-line-mark
+# escalation happened on 2026-09-03) — like every fix in this history, this one is unconfirmed
+# until a real screenshot says otherwise: no local render (browser dir="auto", or anything else
+# this sandbox can run) reproduces Telegram's own client-side quirk closely enough to verify it
+# here, so this needs a real live test, not just tests passing.
+_RLE = "‫"  # RIGHT-TO-LEFT EMBEDDING
+_PDF = "‬"  # POP DIRECTIONAL FORMATTING — closes the most recent LRE/RLE/LRO/RLO
+
+
+def _force_rtl(text: str) -> str:
+    return f"{_RLE}{text}{_PDF}"
 
 
 def format_caption(
@@ -314,17 +312,19 @@ def format_caption(
     if has_access:
         # listing.url is scraped from Yad2, not written by this project — escaped defensively so
         # a stray `"` in it could never break out of the href attribute.
-        footer = f'\n\n{_RTL_MARK}🔗 <a href="{html.escape(listing.url)}">לפרטי הדירה המלאים &gt;&gt;</a>'
+        safe_url = html.escape(listing.url)
+        footer_text = f'🔗 <a href="{safe_url}">לפרטי הדירה המלאים &gt;&gt;</a>'
     elif upgrade_url:
-        footer = f'\n\n{_RTL_MARK}🔒 <a href="{upgrade_url}">לקישור למודעה המקורית — שדרג/י את המנוי</a>'
+        footer_text = f'🔒 <a href="{upgrade_url}">לקישור למודעה המקורית — שדרג/י את המנוי</a>'
     else:
-        footer = f"\n\n{_RTL_MARK}🔒 לקישור למודעה המקורית יש לשדרג את המנוי"
+        footer_text = "🔒 לקישור למודעה המקורית יש לשדרג את המנוי"
+    footer = f"\n\n{_force_rtl(footer_text)}"
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     description = html.escape((listing.description or "").strip())
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_RTL_MARK}📝 {description}"
+        body += f"\n\n{_force_rtl(f'📝 {description}')}"
 
     return (header + body + footer)[:CAPTION_LIMIT]
 
@@ -360,27 +360,30 @@ def format_caption_whatsapp(
         # maps_url only exists when listing.street is set, which always makes _build_body_lines
         # add a "📍..." line too — but found defensively (default -1, appends at the end) rather
         # than assumed, so this can never raise even if that correlation ever changes. "in", not
-        # "startswith" — every line now carries its own leading RTL mark (see _build_body_lines),
-        # so the location line no longer literally starts with "📍" itself.
+        # "startswith" — every line now carries its own RTL embedding (see _build_body_lines), so
+        # the location line no longer literally starts with "📍" itself. Wrapped with _force_rtl
+        # here too — this line is inserted AFTER _build_body_lines already returned (so it never
+        # went through that function's own wrapping), and it's the one line most likely to need
+        # it: it's nothing BUT a long strong-LTR Google Maps URL, no Hebrew at all.
         location_index = next(
             (i for i, line in enumerate(lines) if "📍" in line), len(lines) - 1
         )
-        lines.insert(location_index + 1, f"🗺️ {maps_url}")
+        lines.insert(location_index + 1, _force_rtl(f"🗺️ {maps_url}"))
 
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold)
     if has_access:
-        footer = f"\n\n{_RTL_MARK}🔗 לפרטי הדירה המלאים >>\n{listing.url}"
+        footer = f"\n\n{_force_rtl('🔗 לפרטי הדירה המלאים >>')}\n{listing.url}"
     elif upgrade_url:
-        footer = f"\n\n{_RTL_MARK}🔒 לקישור למודעה המקורית — שדרג/י את המנוי:\n{upgrade_url}"
+        footer = f"\n\n{_force_rtl('🔒 לקישור למודעה המקורית — שדרג/י את המנוי:')}\n{upgrade_url}"
     else:
-        footer = f"\n\n{_RTL_MARK}🔒 לקישור למודעה המקורית יש לשדרג את המנוי"
+        footer = f"\n\n{_force_rtl('🔒 לקישור למודעה המקורית יש לשדרג את המנוי')}"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_RTL_MARK}📝 {description}"
+        body += f"\n\n{_force_rtl(f'📝 {description}')}"
 
     return (header + body + footer)[:WHATSAPP_MESSAGE_LIMIT]
 
