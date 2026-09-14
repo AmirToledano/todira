@@ -898,6 +898,25 @@ REGIONS_ON_MAP_API: dict[str, list[dict[str, int | str]]] = {
             "host": "gw.yad-il.co.il",
         },
     ],
+    # 2026-09-14, first sub-area found for a previously-blocked region: found via Yad2's own
+    # "חיפושים אחרונים" (latest searches, yad2.co.il/latestsearches) page — clicking a past
+    # "מחוז: מרכז והשרון | אזור: אזור צפון השרון" search entry navigates client-side to
+    # .../center-and-sharon?area=70, which fires the real map API request below. Confirmed live
+    # via verify-yad2-region-map-params.yaml: 200 markers, all tagged region.text="מרכז והשרון"
+    # (no cross-region contamination), spanning Petah Tikva/Kfar Saba/Ra'anana/Netanya/Herzliya/
+    # Bnei Brak/Hod HaSharon and 20+ more cities — confirms the CORRECTED FINDING above (an
+    # area=+region= pair on gw.yad2.co.il is safe; only no-area requests on this host were ever
+    # blocked). More sub-areas still needed for full center-and-sharon coverage (this one covers
+    # the northern Sharon cluster, not the whole district) — add them the same way, one
+    # "latestsearches" click + verify-workflow dispatch at a time.
+    "center-and-sharon": [
+        {
+            "bbox": "31.988411,34.809327,32.621699,35.051643",
+            "area": 70,
+            "region": 1,
+            "zoom": 9,
+        },
+    ],
 }
 
 

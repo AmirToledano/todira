@@ -726,7 +726,7 @@ def test_tel_aviv_area_and_partnership_east_are_on_the_map_api_so_far():
     # Documents the current real migration state (see the module comment). This test is meant to
     # be updated, not deleted, the day a further region gets its own confirmed-real
     # bbox/area/region live.
-    assert set(REGIONS_ON_MAP_API) == {"tel-aviv-area", "partnership/east"}
+    assert set(REGIONS_ON_MAP_API) == {"tel-aviv-area", "partnership/east", "center-and-sharon"}
 
 
 def test_fetch_region_via_map_api_uses_tel_aviv_areas_confirmed_real_params(monkeypatch):
@@ -765,6 +765,26 @@ def test_fetch_region_via_map_api_uses_partnership_easts_confirmed_real_params(m
         "bBox=29.778653,33.142100,33.787281,37.954214&zoom=7"
     )
     assert "area=" not in captured["url"]
+    assert len(items) == 1
+
+
+def test_fetch_region_via_map_api_uses_center_and_sharons_first_confirmed_sub_area(monkeypatch):
+    # First sub-area found for a previously-blocked region (see REGIONS_ON_MAP_API's own comment)
+    # — found via yad2.co.il/latestsearches, confirmed live via verify-yad2-region-map-params.yaml
+    # (200 real markers, all tagged region.text="מרכז והשרון", no cross-region contamination).
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
+
+    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+
+    items = list(fetch_region_via_map_api("center-and-sharon"))
+
+    assert captured["url"] == (
+        f"{MAP_API_URL}?area=70&region=1&bBox=31.988411,34.809327,32.621699,35.051643&zoom=9"
+    )
     assert len(items) == 1
 
 
