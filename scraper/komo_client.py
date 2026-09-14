@@ -56,23 +56,35 @@ not already in the database — exactly the same "only enrich genuinely new rows
 _upsert_listings already applies for Yad2's own (unwired) fetch_listing_detail, just mandatory
 here instead of optional. NOT done yet — this file only provides the building blocks.
 
-Requires ZENROWS_API_KEY (same account/key already used for yad2_client.py — this is the same
-paid ZenRows Fetch API infrastructure, not a separate cost account). See yad2_client.py's own
-module docstring for why ZenRows (a legitimate paid service) is used here and not custom
-bot-detection-bypass code — same reasoning, same infra, different (much cheaper) target site.
-"""
+STATUS 2026-09-14: MIGRATED off ZenRows entirely, onto Bright Data's flat-rate ISP proxy (the
+same $2/month proxy yad2_client.fetch_map_markers uses for the tel-aviv-area region — see that
+module's own comment for the mechanism and cost story). Confirmed live, one endpoint at a time
+(diagnose-isp-proxy-coverage-all-sources.yaml for the search page + details page,
+diagnose-komo-isp-proxy-full-discovery.yaml for the real two-step discovery flow: session-token
+GET + adscoordinates POST, 11,635 real ids returned) that all three of Komo's endpoints — unlike
+Yad2's own listing-detail page or Homeless's search page, both of which hit a Cloudflare/Radware-
+style block via the same proxy — come back clean with no block at all. Since none of these three
+endpoints ever needed ZenRows' expensive js_render/premium_proxy tier to begin with (plain server-
+rendered HTML/JSON the whole way, see steps 1-3 above), moving them to a flat-rate proxy with zero
+per-request cost is a strict improvement over metered ZenRows credits, not a tradeoff — this frees
+up 100% of Komo's own ZenRows spend (previously 2 credits/run discovery + up to
+KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN credits/run for new listings) for Yad2, the source actually
+under real credit pressure (see PROJECT_STATE.md's ongoing ZenRows-budget entries).
+
+Requires BRIGHT_DATA_ISP_HOST/BRIGHT_DATA_ISP_USER/BRIGHT_DATA_ISP_PASS (see
+dorin_common.bright_data_client's own module docstring) — the same three env vars
+scraper-cronjob.yaml already wires in for Yad2's tel-aviv-area migration. No longer needs
+ZENROWS_API_KEY at all for anything in this file."""
 from __future__ import annotations
 
 import html
 import json
 import logging
-import os
 import re
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
-import httpx
-
+from dorin_common import bright_data_client
 from yad2_client import CITY_SLUG_TO_HEBREW_NAME
 
 logger = logging.getLogger(__name__)
@@ -89,26 +101,9 @@ SEARCH_PAGE_URL = "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp"
 ADSCOORDINATES_URL = "https://www.komo.co.il/api/modaotservice/adscoordinates/list/"
 DETAILS_PAGE_URL = "https://www.komo.co.il/code/nadlan/details/"
 
-ZENROWS_API_KEY_ENV_VAR = "ZENROWS_API_KEY"
-ZENROWS_FETCH_API_URL = "https://api.zenrows.com/v1/"
-
-# All three of Komo's endpoints are confirmed plain-fetchable (1 ZenRows credit each) — no
-# js_render, no premium_proxy, unlike Yad2's forced 25-credit tier. Deliberately NOT passing
-# block_resources either: that Fetch API param only matters when ZenRows is doing its own browser
-# rendering (js_render=true), which none of these requests use.
-PAGE_LOAD_TIMEOUT_S = 60
-
 # Confirmed live 2026-09-12: `window.sessionToken = "E327BE43D5B24F55A3AD23AA35FF5F2D";` embedded
 # directly in the search page's own plain HTML (see module docstring, step 1).
 _SESSION_TOKEN_RE = re.compile(r'sessionToken\s*=\s*"([A-Za-z0-9]{16,64})"')
-
-# Same shape/reasoning as yad2_client._ZENROWS_ERROR_CODE_RE/_ZENROWS_ERROR_TITLE_RE — ZenRows'
-# own JSON error body (quota/auth issues), not wrapped in any HTML shell. See that module's own
-# comment for the full reasoning; duplicated here rather than imported since these two client
-# modules are deliberately kept independently readable (see yad2_client.py's own file-per-source
-# convention already established in this project).
-_ZENROWS_ERROR_CODE_RE = re.compile(r'"code":"(?P<code>[A-Z0-9]+)"')
-_ZENROWS_ERROR_TITLE_RE = re.compile(r'"title":"(?P<title>[^"]*)"')
 
 # Confirmed live against modaaNum=4471462 (see module docstring, step 3).
 _PRICE_RE = re.compile(r'class="price modaaWPrice"[^>]*>\s*<span[^>]*>([\d,]+)')
@@ -185,55 +180,38 @@ def _extract_gallery_images(page_html: str, *, modaa_num: str) -> list[str]:
 
 
 class KomoFetchError(RuntimeError):
-    """A Komo/ZenRows fetch failed outright (bad API key, ZenRows account issue, network error,
-    or a non-200 from Komo itself). Unlike Yad2, Komo has shown no bot-challenge wall of its own
-    in any live run so far — every failure seen has been a plain HTTP/ZenRows-side problem."""
+    """A Komo fetch failed outright — Bright Data's ISP proxy request itself failed (see
+    bright_data_client.fetch_via_isp_proxy/_post's own docstrings for their failure modes: missing
+    config, network error, non-200), or Komo's own response wasn't the expected shape. Komo has
+    shown no bot-challenge wall of its own in any live run so far (unlike Yad2's Radware wall) —
+    every failure seen has been a plain HTTP/proxy-side problem."""
 
 
-def _get_zenrows_api_key() -> str:
-    api_key = os.environ.get(ZENROWS_API_KEY_ENV_VAR, "").strip()
-    if not api_key:
+def _isp_proxy_get(url: str, *, context_label: str) -> str:
+    """Shared ISP-proxy GET mechanics for the search page and detail page fetches below — raises
+    KomoFetchError (never returns None) so every caller keeps the same try/except shape it always
+    had, matching yad2_client.fetch_map_markers' own "raise on failure" convention for a primary
+    fetch (as opposed to fetch_listing_detail's own "return None" contract for optional
+    enrichment — see that function for where this distinction actually matters)."""
+    body = bright_data_client.fetch_via_isp_proxy(url)
+    if body is None:
         raise KomoFetchError(
-            f"{ZENROWS_API_KEY_ENV_VAR} is not set — see PROJECT_STATE.md. This is the same "
-            "ZenRows account/key yad2_client.py uses; Komo just needs its cheapest (plain, 1-"
-            "credit) tier, not Yad2's forced premium_proxy+js_render tier."
-        )
-    return api_key
-
-
-def _check_zenrows_response(response: httpx.Response, *, context_label: str) -> str:
-    """Shared response-validation for all three Komo endpoints — raises KomoFetchError on a
-    ZenRows-side error body or non-200; otherwise returns the raw text body. Mirrors
-    yad2_client._fetch_search_html's own ZenRows-error check, minus the Yad2-specific antibot
-    marker (never seen from Komo — see KomoFetchError's own docstring)."""
-    body = response.text
-    looks_like_zenrows_error = len(body) < 1000 and _ZENROWS_ERROR_CODE_RE.search(body) is not None
-    if response.status_code != 200 or looks_like_zenrows_error:
-        code_match = _ZENROWS_ERROR_CODE_RE.search(body)
-        title_match = _ZENROWS_ERROR_TITLE_RE.search(body)
-        raise KomoFetchError(
-            f"ZenRows returned an error instead of the Komo page for {context_label}: "
-            f"http_status={response.status_code} "
-            f"code={code_match.group('code') if code_match else '?'!r} "
-            f"title={title_match.group('title') if title_match else '?'!r} — check the ZenRows "
-            "dashboard for usage/plan/auth issues."
+            f"Bright Data ISP proxy failed to fetch {context_label}: {url} — see its own logs "
+            "for the specific failure (missing config, network error, or non-200 status)."
         )
     return body
 
 
-def _zenrows_get(url: str, *, context_label: str) -> str:
-    """Plain GET through ZenRows' Fetch API — no js_render/premium_proxy, confirmed 1 credit for
-    every Komo endpoint (see module docstring). Shared by all three fetch stages below."""
-    api_key = _get_zenrows_api_key()
-    try:
-        response = httpx.get(
-            ZENROWS_FETCH_API_URL,
-            params={"apikey": api_key, "url": url},
-            timeout=PAGE_LOAD_TIMEOUT_S,
+def _isp_proxy_post(url: str, data: dict[str, str], *, context_label: str) -> str:
+    """POST counterpart to _isp_proxy_get above — used only by fetch_coordinate_ids' own second
+    stage (the adscoordinates/list/ endpoint, which requires a POST body, not a GET)."""
+    body = bright_data_client.fetch_via_isp_proxy_post(url, data)
+    if body is None:
+        raise KomoFetchError(
+            f"Bright Data ISP proxy failed to POST to {context_label}: {url} — see its own logs "
+            "for the specific failure (missing config, network error, or non-200 status)."
         )
-    except httpx.HTTPError as exc:
-        raise KomoFetchError(f"ZenRows Fetch API request failed for {context_label}: {exc}") from exc
-    return _check_zenrows_response(response, context_label=context_label)
+    return body
 
 
 def _extract_session_token(search_page_html: str) -> str | None:
@@ -258,9 +236,9 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
     fetch_all_coordinate_ids() below instead of looping this per city — see that function and
     scraper/main.py's _scrape_komo for the real cost this fixed (84 credits/run -> 2).
 
-    Two real requests, both confirmed 1 credit each (2 credits total per call, regardless of how
-    many listings come back) — this function alone is cheap to call for every SCRAPE_CITIES entry
-    every run; the cost this project actually needs to manage lives in fetch_listing_detail."""
+    Two real requests through Bright Data's flat-rate ISP proxy (2026-09-14 — see module docstring's
+    STATUS entry) — zero per-request cost either way, unlike the ZenRows credits this used to
+    spend; this function is cheap to call for every SCRAPE_CITIES entry every run regardless."""
     hebrew_name = CITY_SLUG_TO_HEBREW_NAME.get(city)
     if hebrew_name is None:
         raise KomoFetchError(
@@ -270,7 +248,7 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
         )
 
     search_url = f"{SEARCH_PAGE_URL}?nehes=1&cityName={hebrew_name}"
-    search_html = _zenrows_get(search_url, context_label=f"komo search page city={city!r}")
+    search_html = _isp_proxy_get(search_url, context_label=f"komo search page city={city!r}")
 
     session_token = _extract_session_token(search_html)
     if session_token is None:
@@ -280,19 +258,11 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
             "diagnose-komo-homeless-reachability.yaml before assuming this is a transient error."
         )
 
-    api_key = _get_zenrows_api_key()
-    try:
-        response = httpx.post(
-            ZENROWS_FETCH_API_URL,
-            params={"apikey": api_key, "url": ADSCOORDINATES_URL},
-            data={"iska": "1", "sessionToken": session_token},
-            timeout=PAGE_LOAD_TIMEOUT_S,
-        )
-    except httpx.HTTPError as exc:
-        raise KomoFetchError(
-            f"ZenRows Fetch API request failed for komo adscoordinates city={city!r}: {exc}"
-        ) from exc
-    body = _check_zenrows_response(response, context_label=f"komo adscoordinates city={city!r}")
+    body = _isp_proxy_post(
+        ADSCOORDINATES_URL,
+        {"iska": "1", "sessionToken": session_token},
+        context_label=f"komo adscoordinates city={city!r}",
+    )
 
     try:
         payload = json.loads(body)
@@ -324,9 +294,10 @@ _NATIONWIDE_COVERAGE_CITY_SLUG = "tel-aviv"
 def fetch_all_coordinate_ids() -> list[dict[str, str]]:
     """Komo's adscoordinates endpoint is confirmed nationwide regardless of which city is queried
     (see fetch_coordinate_ids' own docstring) — this is the one real call scraper/main.py's
-    _scrape_komo should make per run (2 ZenRows credits total) instead of looping over every
-    tracked city (84 credits/run for the exact same data, every time). Returns exactly what
-    fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG) would."""
+    _scrape_komo should make per run instead of looping over every tracked city (this used to
+    matter for ZenRows credits — 84/run vs 2/run — before the 2026-09-14 ISP-proxy migration made
+    it free either way; still the right call, one real request pair instead of 42 identical ones).
+    Returns exactly what fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG) would."""
     return fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG)
 
 
@@ -401,12 +372,13 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
 
 def fetch_listing_detail(modaa_num: str) -> dict[str, Any] | None:
     """Stage 3: fetches ONE Komo listing's detail page and returns a raw dict, or None on ANY
-    failure (missing API key, network error, non-200, unparseable page) — never raises, matching
-    yad2_client.fetch_listing_detail's own defensive contract. See module docstring's cost note:
-    unlike Yad2's same-named function, this one is NOT optional enrichment — it's the only source
-    of price for a Komo listing, so it must be called at least once per genuinely new listing."""
+    failure (missing ISP proxy config, network error, non-200, unparseable page) — never raises,
+    matching yad2_client.fetch_listing_detail's own defensive contract. See module docstring's cost
+    note: unlike Yad2's same-named function, this one is NOT optional enrichment — it's the only
+    source of price for a Komo listing, so it must be called at least once per genuinely new
+    listing."""
     try:
-        page_html = _zenrows_get(
+        page_html = _isp_proxy_get(
             f"{DETAILS_PAGE_URL}?modaaNum={modaa_num}",
             context_label=f"komo details modaaNum={modaa_num!r}",
         )
@@ -421,13 +393,16 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
     one fully-priced raw listing dict per id currently on Komo's map for `city`, by calling
     fetch_coordinate_ids then fetch_listing_detail for EVERY id it returns.
 
-    COST WARNING — read module docstring's cost note before calling this in a real scrape loop:
-    this fetches every listing's detail page every time it's called (2 + N ZenRows credits for N
-    listings), with no "already known, skip it" logic of its own — that logic needs the caller's
-    own database state (which ids are already known), which this module has no access to. This
-    function exists mainly for manual/one-off use (e.g. a diagnostic run); scraper/main.py's real
-    integration should very likely call fetch_coordinate_ids + fetch_listing_detail directly so it
-    can skip already-known ids itself, not use this wrapper as-is."""
+    WARNING — read module docstring's cost note before calling this in a real scrape loop: this
+    fetches EVERY listing's detail page EVERY time it's called (one real request pair, then N more
+    for N listings), with no "already known, skip it" logic of its own — that logic needs the
+    caller's own database state (which ids are already known), which this module has no access to.
+    Even with the 2026-09-14 ISP-proxy migration removing the per-request ZenRows cost, re-fetching
+    every already-known listing every run is still real, unnecessary request volume against Komo's
+    own servers — this function exists mainly for manual/one-off use (e.g. a diagnostic run);
+    scraper/main.py's real integration should very likely call fetch_coordinate_ids +
+    fetch_listing_detail directly so it can skip already-known ids itself, not use this wrapper
+    as-is."""
     for item in fetch_coordinate_ids(city):
         modaa_num = item.get("id")
         if not modaa_num:

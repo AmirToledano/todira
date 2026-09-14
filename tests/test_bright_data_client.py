@@ -710,3 +710,57 @@ def test_isp_proxy_network_failure_returns_none_not_raise(monkeypatch):
 
     monkeypatch.setattr(httpx, "get", fake_get)
     assert bright_data_client.fetch_via_isp_proxy("https://example.com") is None
+
+
+# --- fetch_via_isp_proxy_post (2026-09-14) — POST variant for endpoints that need a body, like
+# Komo's adscoordinates/list/ (see komo_client.py) — same mechanism/contract as the GET version.
+
+
+def test_isp_proxy_post_returns_none_when_unconfigured(monkeypatch):
+    monkeypatch.delenv(bright_data_client.ISP_PROXY_HOST_ENV_VAR, raising=False)
+    monkeypatch.delenv(bright_data_client.ISP_PROXY_USER_ENV_VAR, raising=False)
+    monkeypatch.delenv(bright_data_client.ISP_PROXY_PASS_ENV_VAR, raising=False)
+    assert bright_data_client.fetch_via_isp_proxy_post("https://example.com", {"a": "1"}) is None
+
+
+def test_isp_proxy_post_happy_path_sends_the_form_body_through_the_proxy(monkeypatch):
+    _isp_configure(monkeypatch)
+    captured = {}
+
+    def fake_post(url, *, data, proxy, timeout):
+        captured["url"] = url
+        captured["data"] = data
+        captured["proxy"] = proxy
+        return httpx.Response(200, text='{"status":"OK"}', request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = bright_data_client.fetch_via_isp_proxy_post(
+        "https://www.komo.co.il/api/modaotservice/adscoordinates/list/",
+        {"iska": "1", "sessionToken": "abc123"},
+    )
+
+    assert result == '{"status":"OK"}'
+    assert captured["url"] == "https://www.komo.co.il/api/modaotservice/adscoordinates/list/"
+    assert captured["data"] == {"iska": "1", "sessionToken": "abc123"}
+    assert captured["proxy"] == "http://brd-customer-x-zone-isp_proxy1:secret123@brd.superproxy.io:44445"
+
+
+def test_isp_proxy_post_non_200_returns_none(monkeypatch):
+    _isp_configure(monkeypatch)
+
+    def fake_post(url, *, data, proxy, timeout):
+        return httpx.Response(403, text="forbidden", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    assert bright_data_client.fetch_via_isp_proxy_post("https://example.com", {}) is None
+
+
+def test_isp_proxy_post_network_failure_returns_none_not_raise(monkeypatch):
+    _isp_configure(monkeypatch)
+
+    def fake_post(url, *, data, proxy, timeout):
+        raise httpx.ConnectError("boom", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    assert bright_data_client.fetch_via_isp_proxy_post("https://example.com", {}) is None

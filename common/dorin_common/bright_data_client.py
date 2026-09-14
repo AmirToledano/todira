@@ -495,3 +495,31 @@ def fetch_via_isp_proxy(url: str) -> str | None:
         return None
 
     return response.text
+
+
+def fetch_via_isp_proxy_post(url: str, data: dict[str, str]) -> str | None:
+    """POST variant of fetch_via_isp_proxy — same ISP-proxy mechanism, config, and "return None,
+    never raise" contract as that function's own docstring; the only difference is the HTTP method
+    and the form-encoded `data` body. Added 2026-09-14 for komo_client.py's adscoordinates/list/
+    endpoint, which requires a POST carrying a session token — a plain GET can't reach it."""
+    host = os.environ.get(ISP_PROXY_HOST_ENV_VAR, "").strip()
+    user = os.environ.get(ISP_PROXY_USER_ENV_VAR, "").strip()
+    password = os.environ.get(ISP_PROXY_PASS_ENV_VAR, "").strip()
+    if not (host and user and password):
+        return None
+
+    proxy_url = f"http://{user}:{password}@{host}"
+    try:
+        response = httpx.post(url, data=data, proxy=proxy_url, timeout=_ISP_PROXY_TIMEOUT_SECONDS)
+    except httpx.HTTPError:
+        logger.exception("Bright Data ISP proxy POST request failed for %s", url)
+        return None
+
+    if response.status_code != 200:
+        logger.warning(
+            "Bright Data ISP proxy POST returned non-200 for %s: status=%d body=%r",
+            url, response.status_code, response.text[:500],
+        )
+        return None
+
+    return response.text
