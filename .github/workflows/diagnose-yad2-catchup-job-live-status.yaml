@@ -1,0 +1,56 @@
+name: Diagnose — is the Yad2 catch-up fix Job still running, and what's its real status now? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-14. Reads
+# ONLY — no patch, no new job creation, nothing that could trigger a new scraper run or touch
+# spec.suspend. Checks the real, current state of the standalone Job created by
+# yad2-catchup-fix-run.yaml (run_id 34790260524, JOB_NAME=todira-scraper-yad2-fix-1789342685):
+# that workflow's own 20-minute polling window ran out while the Job was still on region 5 of 7
+# (Running 0/1, no Complete/Failed condition ever reached) — so no run-summary/delisted-count line
+# was ever printed, and this Job is a standalone Kubernetes object, detached from the GitHub
+# Actions runner that created it, so it may still genuinely be running in the cluster right now.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real current status of the specific catch-up-fix Job (and any pod it owns)
+        run: |
+          echo "--- job status ---"
+          kubectl get job todira-scraper-yad2-fix-1789342685 -n todira -o wide || echo "(job not found — already cleaned up / TTL'd, or never existed under this exact name)"
+          echo
+          echo "--- job conditions (Complete/Failed only appear here) ---"
+          kubectl get job todira-scraper-yad2-fix-1789342685 -n todira -o jsonpath='{.status}' 2>/dev/null || true
+          echo
+          echo "--- pod(s) for this job ---"
+          kubectl get pods -n todira -l job-name=todira-scraper-yad2-fix-1789342685 -o wide || true
+
+      - name: Whatever logs exist right now for this job's pod (full — the job may have kept going past the 20-min window)
+        run: |
+          POD=$(kubectl get pods -n todira -l job-name=todira-scraper-yad2-fix-1789342685 -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -z "$POD" ]; then
+            echo "(no pod found for this job right now)"
+            exit 0
+          fi
+          echo "POD=$POD"
+          kubectl logs -n todira "$POD" --timestamps > /tmp/pod.log 2>&1 || echo "(logs command failed — pod may have been evicted/cleaned up)"
+          echo "--- full captured logs ---"
+          cat /tmp/pod.log 2>/dev/null || echo "(no logs captured)"
+          echo
+          echo "--- run-summary / delisted / notification lines specifically ---"
+          grep -iE "summary|notification|restricting|owner|bright_data_enriched|delisted|Scraping source=" /tmp/pod.log 2>/dev/null || echo "(none found)"
+
+      - name: Confirm the CronJob's OWN schedule is still suspended (informational only — this workflow never touches it)
+        run: |
+          SUSPEND=$(kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}')
+          echo "todira-scraper CronJob spec.suspend = $SUSPEND (this workflow does not touch this field)"
