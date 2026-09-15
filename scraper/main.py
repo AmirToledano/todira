@@ -62,6 +62,17 @@ from yad2_client import (
 # be too slow in practice, not preemptively.
 _BRIGHT_DATA_ENRICH_CONCURRENCY = 1
 
+# 2026-09-15: real, confirmed kill-switch — see charts/todira/values.yaml's own comment on
+# scraper.brightDataEnrichmentSuspended for the live diagnostic (.github/workflows/
+# diagnose-bright-data-stuck-same-result.yaml) that proved the Bright Data DCA collector currently
+# returns the SAME stale cached record for every distinct job id/url requested, 100% of the time —
+# a platform/account-side issue, not a bug in this file or bright_data_client.py's own trigger/
+# poll/retry logic (all confirmed working correctly by that same test). Checked at the START of
+# _enrich_new_listings_via_bright_data, same "no-op, returns 0, never blocks the run" contract as
+# is_configured() being false — every other scraper and Yad2's own normalized search-card fields
+# are completely unaffected; only this extra detail-enrichment step is paused.
+_BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR = "BRIGHT_DATA_ENRICHMENT_SUSPENDED"
+
 # 2026-09-14: added after a real catch-up run's delisting got skipped ("at least one region/city
 # failed to fetch") — root cause never pinned down for certain (the pod's own log for the failing
 # moment had already rotated out by the time it was checked), but the account's own ZenRows
@@ -305,6 +316,8 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     A no-op (returns 0 immediately, no network calls) when Bright Data isn't configured
     (BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID unset) — see bright_data_client.is_configured() —
     so this is always safe to call regardless of whether the feature is actually turned on yet.
+    Also a no-op when BRIGHT_DATA_ENRICHMENT_SUSPENDED=true — see
+    _BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR's own comment.
 
     2026-09-13: scoped to source == Source.YAD2 only (now that `new_ids` can include Komo/Homeless
     rows too — see run_once) — the Bright Data collector this calls is tied to one Scraper Studio
@@ -323,6 +336,8 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
 
     Returns how many listings were actually enriched (Bright Data returned usable data for)."""
     if not new_ids or not bright_data_client.is_configured():
+        return 0
+    if os.environ.get(_BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR, "").strip().lower() == "true":
         return 0
 
     table = Listing.__table__

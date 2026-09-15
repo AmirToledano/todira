@@ -76,6 +76,36 @@ def test_not_configured_is_a_pure_noop():
     assert session.executed_stmts == []
 
 
+def test_suspended_via_env_var_is_a_pure_noop():
+    session = _QueueSession([])  # would raise IndexError if execute() were ever called
+    with (
+        patch.object(_bright_data_client, "is_configured", lambda: True),
+        patch.dict(os.environ, {"BRIGHT_DATA_ENRICHMENT_SUSPENDED": "true"}),
+    ):
+        result = asyncio.run(_enrich(session, [1, 2, 3]))
+    assert result == 0
+    assert session.executed_stmts == []
+
+
+def test_suspended_env_var_unset_does_not_suspend():
+    session = _QueueSession(
+        [
+            _Result([(101, "https://yad2.co.il/item/101")]),  # SELECT id, url
+            None,  # UPDATE (result never read)
+        ]
+    )
+    with (
+        patch.object(_bright_data_client, "is_configured", lambda: True),
+        patch.object(
+            _bright_data_client, "fetch_listing_detail_via_bright_data", lambda url: _REAL_DETAIL
+        ),
+        patch.dict(os.environ, {}, clear=False),
+    ):
+        os.environ.pop("BRIGHT_DATA_ENRICHMENT_SUSPENDED", None)
+        result = asyncio.run(_enrich(session, [101]))
+    assert result == 1
+
+
 def test_empty_new_ids_is_a_pure_noop():
     session = _QueueSession([])
     with patch.object(_bright_data_client, "is_configured", lambda: True):

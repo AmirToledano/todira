@@ -212,6 +212,42 @@ scraper:
   # scraper/main.py's _scrape_homeless), lower expected volume than Komo's nationwide coverage, but
   # still a real per-listing cost that shouldn't go uncapped on a first-ever run.
   homelessMaxNewDescriptionFetchesPerRun: 50
+  # 2026-09-15 EMERGENCY SUSPEND, real root cause confirmed live, not guessed: production's Bright
+  # Data DCA enrichment (scraper/main.py's _enrich_new_listings_via_bright_data, used only for
+  # extra Yad2 listing detail — description/property type/amenities/etc., never required for a
+  # listing to exist) was found stuck grinding through hundreds of genuinely new Yad2 listings,
+  # returning the exact same wrong cached record (orderId=57346371, token='rccfe1nk',
+  # adNumber=83125484 — a Dizengoff St. sublet) for every one of them. The existing adNumber
+  # cross-check in common/dorin_common/bright_data_client.py was correctly catching and discarding
+  # every single wrong result — NO data corruption ever reached a real listing row — but nothing
+  # ever got the RIGHT data either, for 75+ minutes straight.
+  #
+  # Root cause, confirmed via a live, controlled test (.github/workflows/
+  # diagnose-bright-data-stuck-same-result.yaml): two real trigger calls, two different real Yad2
+  # URLs, got two genuinely DISTINCT job/collection ids back (the trigger step itself works fine) —
+  # but polling each of those distinct ids came back with the identical cached record in well under
+  # half a second, physically too fast for a real page navigate+render+extract (this collector's
+  # own real captures took several seconds each when it last worked correctly, per PROJECT_STATE.md
+  # 2026-09-12: 12/12 successful, DIFFERENT real results, token `dgne1po1` at the time). So the
+  # collector's recipe itself is NOT the problem (it's built correctly for dynamic per-job URL
+  # input, and has proven it can do so before) — something on Bright Data's own platform/account
+  # side (most likely the trial-tier collector silently no longer executing real jobs past some
+  # limit, and the /dca/dataset endpoint falling back to serving its last-ever-successful dataset
+  # regardless of which job id is queried) is the actual cause. This is outside this codebase's
+  # control — bright_data_client.py's trigger/poll/job-id-extraction/retry/cross-check logic is all
+  # confirmed working correctly by this same test.
+  #
+  # Suspended here rather than left running: at a CONFIRMED 100% failure rate, every run only burns
+  # real wall-clock minutes and real Bright Data API quota for zero benefit, and risks the hourly
+  # CronJob's `concurrencyPolicy: Forbid` silently skipping the next scheduled run while a big
+  # backlog is still being ground through. scraper/main.py's _enrich_new_listings_via_bright_data
+  # still runs but returns 0 immediately (same no-op contract as when BRIGHT_DATA_API_KEY/
+  # BRIGHT_DATA_COLLECTOR_ID are simply unset) — every other scraper (Yad2/Komo/Homeless/Facebook)
+  # and Yad2's own already-normalized search-card fields are completely unaffected; only the EXTRA
+  # detail enrichment on top is paused. Needs the owner's own look at the Bright Data dashboard
+  # (collector status, trial-tier real-execution quota/limits) before flipping back to false —
+  # nothing in this codebase can diagnose or fix Bright Data's own platform-side state further.
+  brightDataEnrichmentSuspended: true
   # 2026-09-13 EMERGENCY RE-SUSPEND, LIFTED 2026-09-15: the 2026-09-13 incident this guarded
   # against was the owner receiving real Telegram notifications at 6am after asking for nothing to
   # run, and reporting (at the time) that other real users got them too. Revisited explicitly
