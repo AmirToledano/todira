@@ -87,7 +87,17 @@ def _category_view(draft: dict, category: str):
             kb.PROPERTY_TYPE_LABELS, draft["property_types"], "pt"
         )
     if category == "loc":
-        return kb.CATEGORY_TITLES["loc"], kb.location_keyboard(draft)
+        # 2026-09-15: made explicit right here, not just in the root summary's own "or 'הכל'"
+        # fallback — see keyboards.location_keyboard's own comment for the real report this is
+        # part of. A user staring at an empty list otherwise has no way to tell "no cities chosen
+        # yet" apart from "deliberately unconstrained," which is exactly the ambiguity that led to
+        # manually selecting all 42 bundled cities instead (a strictly narrower, worse state).
+        note = (
+            "\n\n🌍 <i>כרגע: כל הערים (בלי הגבלה) — כולל ערים שלא ברשימה הקבועה.</i>"
+            if not draft["cities"]
+            else ""
+        )
+        return kb.CATEGORY_TITLES["loc"] + note, kb.location_keyboard(draft)
     if category == "locpick":
         return kb.CATEGORY_TITLES["locpick"], kb.city_picker_keyboard(draft)
     if category == "price":
@@ -344,6 +354,10 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             idx = int(parts[3])
             if 0 <= idx < len(draft["cities"]):
                 draft["cities"].pop(idx)
+        if sub == "clearall":
+            # See keyboards.location_keyboard's own 2026-09-15 comment — restores the TRUE "no
+            # city restriction" state (matches every city/town, not just the 42 curated ones).
+            draft["cities"] = []
         return await _show_category(query, draft, "loc")
     if action == "price":
         sub = parts[2]

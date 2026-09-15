@@ -1013,6 +1013,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Rien de coché = toutes les villes",
         "ar": "لا شيء محدد = كل المدن",
     },
+    # 2026-09-15: real owner report — the hint above already explains that an empty selection
+    # means "all cities" (matching.py skips the city filter entirely then, matching every real
+    # city/town, not just the ~40 in this curated list), but there was no quick way back to that
+    # state short of unchecking every box by hand — so the natural instinct is to check every
+    # single one instead, which is NOT the same thing and silently excludes any listing in a real
+    # town outside this list (confirmed live: over a thousand active listings, in towns like
+    # אריאל/חריש/נשר that simply aren't in cities_list). This button clears the whole grid in one
+    # click, reaching the true "all cities" state the hint already promises.
+    "filter.cities_clear_all": {
+        "he": "נקה הכל (כל הערים)",
+        "en": "Clear all (all cities)",
+        "ru": "Очистить всё (все города)",
+        "fr": "Tout effacer (toutes les villes)",
+        "ar": "مسح الكل (كل المدن)",
+    },
     "filter.price_min_label": {
         "he": "מחיר מינימלי", "en": "Minimum price", "ru": "Минимальная цена",
         "fr": "Prix minimum", "ar": "الحد الأدنى للسعر",

@@ -639,6 +639,16 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
 .field-hint { font-size: .78rem; color: var(--text-muted); margin-top: 5px; }
+/* Plain inline text-button inside a .field-hint (e.g. /filter's "clear all cities" link,
+   2026-09-15) — same font size as the hint text around it, underlined + brand-teal to still read
+   as tappable without full button chrome, which would be too heavy for hint-level text. */
+.link-btn {
+  background: none; border: none; padding: 0; margin: 0; font: inherit; font-size: inherit;
+  color: var(--teal); text-decoration: underline; cursor: pointer;
+}
+/* --heading, not --teal-dark — --teal-dark is frozen dark across both themes (see its own :root
+   comment above), so using it here would be near-invisible dark-on-dark text in dark mode. */
+.link-btn:hover, .link-btn:focus-visible { color: var(--heading); }
 
 /* Value-anchor callout on /upgrade (2026-09-10) — reframes the plan price against what a broker
    fee already costs, right below the plan cards where price sensitivity is highest. Flat teal

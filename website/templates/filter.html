@@ -32,13 +32,21 @@
         </label>
         {% endfor %}
       </div>
-      <div class="field-hint">{{ t('filter.cities_hint') }}</div>
+      <div class="field-hint">
+        {{ t('filter.cities_hint') }} ·
+        <button type="button" class="link-btn" onclick="clearAllCities()">{{ t('filter.cities_clear_all') }}</button>
+      </div>
     </div>
     <script>
       function filterCityChips(query) {
         var q = query.trim();
         document.querySelectorAll('#f-cities-grid .check-chip').forEach(function (chip) {
           chip.hidden = q.length > 0 && chip.dataset.cityName.indexOf(q) === -1;
+        });
+      }
+      function clearAllCities() {
+        document.querySelectorAll('#f-cities-grid input[type=checkbox]').forEach(function (cb) {
+          cb.checked = false;
         });
       }
     </script>
