@@ -6099,3 +6099,58 @@ approved diagnostic fetch this was built from. Still needed before this actually
 Not yet touched at all: Facebook Groups (a separate, harder problem — needs a specific group's own
 URL, which isn't on hand yet, and group posts are free-text, not structured listings the same way
 Marketplace is).
+
+## Update 2026-09-15 (same night, later): main scraper unsuspended; Facebook wired into its own
+## separate, cautious CronJob (still suspended by default)
+
+**The 2026-09-13 emergency suspension is lifted.** Revisited directly with the owner: he recalls
+the real 6am notification he personally received that day, but on reflection never actually
+verified other real users were notified too (said "just to be safe" at the time, not from confirmed
+evidence). Combined with the pipeline's own real end-to-end verification since then
+(`safe-single-test-run.yaml`, owner-only restriction confirmed working) and the product not
+charging real money yet, the owner gave explicit, fresh go-ahead to resume: `scraper.suspended` and
+`scraper.notificationsSuspended` both `true` -> `false` in `charts/todira/values.yaml`. The main
+scraper (Yad2/Komo/Homeless) is live again, real users get real notifications again, still on its
+current 1x/day (09:30 Israel time) schedule — restoring the original 8x/day cadence is a genuinely
+separate, still-open question (see below).
+
+**Facebook Marketplace scraping is now real, tested, deployed CODE — but still fully suspended by
+default in production.** Real discussion with the owner about WHY this needs to be more careful
+than Yad2/Komo/Homeless: every Facebook request runs through the dedicated account's own real,
+authenticated session from this cluster's datacenter IP — the exact profile Facebook's own
+Account-Integrity/automation detection exists to catch, and the real downside (a checkpoint or
+restriction on a real account) is categorically worse than a Yad2-style temporary IP block. Neither
+side knows Facebook's real internal rate-limit thresholds (not published, deliberately) — agreed
+approach: start conservative, add real mitigations, watch for real signs of trouble before scaling
+up, not declare a cadence "safe" by guessing.
+
+What actually shipped:
+- `scraper/main.py`'s new `_scrape_facebook()` — discovery + required per-new-listing city/
+  description enrichment (see facebook_client.py's own docstring), a real
+  `FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN` cap (default 15, an ACCOUNT-SAFETY cap, not a
+  credit-cost one), and `_FACEBOOK_DETAIL_FETCH_PACING_SECONDS` (3s) jitter between per-listing
+  requests — a human never opens listing after listing with zero delay, and request velocity is a
+  basic bot-detection signal.
+- A real, code-level kill-switch: `SCRAPE_SOURCES` env var + `_active_source_scrapers()` — Facebook
+  is excluded from a run unless explicitly opted in. The main scraper's own CronJob never sets this,
+  so nothing about today's Facebook work changes ITS behavior at all.
+- `charts/todira/templates/facebook-scraper-cronjob.yaml` — a completely SEPARATE CronJob (own
+  schedule, own `suspend`) from the main one, so cadence/kill-switch control is fully independent.
+  Schedule set to 3x/day (09:00/15:00/21:00 Israel time — deliberately not the same time as the
+  main scraper's own 09:30, so the two don't produce an obviously correlated infra-wide request
+  pattern). **`scraper.facebook.suspended: true` by default** — this does NOT start running just
+  because it deployed; the owner must explicitly flip it to `false` when ready.
+
+**Real, still-open follow-ups, explicitly flagged so they aren't lost:**
+1. Flip `scraper.facebook.suspended` to `false` when the owner is ready to actually start live runs
+   — `FACEBOOK_COOKIES` is already set on the real k8s secret (confirmed working via the diagnostic
+   workflow runs earlier tonight), so the only remaining gate is this flag.
+2. Whether to restore the main scraper's original 8x/day schedule (cut to 1x/day during the
+   2026-09-13 ZenRows credit crisis) — Yad2 and Komo are BOTH now fully off ZenRows (confirmed
+   earlier tonight), so that original constraint mostly no longer applies to them; Homeless still
+   uses ZenRows credits, so the owner needs to check the REAL current ZenRows dashboard balance
+   before this is decided (not something checkable from here).
+3. Once the Facebook CronJob has run successfully a few times with no account trouble, revisit
+   `FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN`/the 3x/day schedule with real evidence, not a guess.
+
+867 -> 880 tests pass across this update; ruff clean.
