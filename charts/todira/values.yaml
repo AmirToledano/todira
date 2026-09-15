@@ -259,13 +259,13 @@ scraper:
     # mitigations discussed tonight alongside FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN's own cap and
     # scraper/main.py's own _FACEBOOK_DETAIL_FETCH_PACING_SECONDS jitter between requests).
     schedule: "0 9,15,21 * * *"
-    # SUSPENDED BY DEFAULT — do not flip to false until FACEBOOK_COOKIES is confirmed actually
-    # set on the real k8s secret (see set-facebook-cookies-secret.yaml) and the owner has
-    # explicitly decided to start real, live runs against the dedicated account. Same
-    # "never trigger a new real production scraper run without fresh, explicit approval" standard
-    # this whole project holds for the main scraper, doubly so here given the real account-risk
-    # this entry's own comment above describes.
-    suspended: true
+    # 2026-09-15: turned ON — explicit owner go-ahead ("מרקטפלייס תדליק ביחד עם הריצה הבאה"),
+    # FACEBOOK_COOKIES already confirmed set on the real k8s secret (diagnostic workflow runs
+    # earlier tonight). First real production run(s) against the dedicated account start at the
+    # next scheduled 09:00/15:00/21:00 slot. Watch pod logs (`kubectl logs -n todira -l
+    # app=todira-facebook-scraper`) after the first run for anything unexpected — this is genuinely
+    # the first time this code touches the live account outside a manual diagnostic fetch.
+    suspended: false
     # Left unset — scraper/main.py's own Python-side default (15, see
     # _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN) applies. Override here only after real,
     # live evidence (several successful runs, no account warnings) supports a higher number.
