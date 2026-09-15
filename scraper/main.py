@@ -73,6 +73,28 @@ _BRIGHT_DATA_ENRICH_CONCURRENCY = 1
 # are completely unaffected; only this extra detail-enrichment step is paused.
 _BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR = "BRIGHT_DATA_ENRICHMENT_SUSPENDED"
 
+# 2026-09-15: real, owner-requested speed optimization, after walking the actual run-time
+# composition (not guessing) — Yad2/Komo/Homeless previously ran strictly SEQUENTIALLY in
+# run_once() below (one full source's worth of network calls, then the next), and Komo's/
+# Homeless's own per-genuinely-new-listing detail/description fetch loops were themselves fully
+# sequential too, one request at a time. Neither is required for correctness or safety:
+# - The three sources are three completely independent websites hit from this same box as
+#   independent connections — running them concurrently doesn't change the REQUEST RATE any single
+#   site sees, so it carries no extra detection risk (Yad2's own deliberate anti-detection pacing,
+#   _MAP_API_REGION_PACING_SECONDS, is UNCHANGED by this — it still paces requests WITHIN Yad2's own
+#   region loop exactly as before).
+# - Komo has already been confirmed (2026-09-15, diagnose-komo-homeless-direct-request.yaml) to
+#   have NO bot-challenge wall of its own at all — a real 11,547-id nationwide fetch succeeded
+#   fully un-proxied. Homeless's own per-listing description fetches go through ZenRows, a managed
+#   proxy service built for concurrent traffic — concurrency here doesn't touch OUR OWN IP's
+#   request rate against homeless.co.il at all, ZenRows' own pool does.
+# Bounded (not unbounded) concurrency, same Semaphore + asyncio.to_thread pattern already proven by
+# _enrich_new_listings_via_bright_data above — a moderate, not reckless, starting point (matching
+# that function's own original "meaningfully parallel but not abusive" reasoning), not a measured
+# ceiling for either site.
+_KOMO_DETAIL_FETCH_CONCURRENCY = 5
+_HOMELESS_DESCRIPTION_FETCH_CONCURRENCY = 5
+
 # 2026-09-14: added after a real catch-up run's delisting got skipped ("at least one region/city
 # failed to fetch") — root cause never pinned down for certain (the pod's own log for the failing
 # moment had already rotated out by the time it was checked), but the account's own ZenRows
@@ -303,6 +325,27 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
 
     session.commit()
     return new_ids, price_change_events
+
+
+async def _fetch_concurrently(
+    items: list, fetch_fn: Callable[[object], object], concurrency: int
+) -> list:
+    """Runs fetch_fn(item) for each item in `items`, bounded by `concurrency` in-flight calls at
+    once — same Semaphore + asyncio.to_thread pattern as _enrich_new_listings_via_bright_data
+    below (fetch_fn is always a blocking/synchronous network call here too). Returns one result
+    per item, in the SAME order as `items`. A result is None if fetch_fn itself returned None OR
+    raised — every fetch_fn this is used with (komo_client.fetch_listing_detail,
+    homeless_client.fetch_listing_description) is documented "never raises", so a raise here would
+    be a genuine bug, but this stays defensive rather than letting one bad item crash the whole
+    batch, matching that function's own per-listing exception handling."""
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _one(item: object) -> object:
+        async with semaphore:
+            return await asyncio.to_thread(fetch_fn, item)
+
+    results = await asyncio.gather(*(_one(item) for item in items), return_exceptions=True)
+    return [None if isinstance(result, BaseException) else result for result in results]
 
 
 async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> int:
@@ -566,25 +609,28 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     cap (see that function's own comment) on how many NEW detail fetches (the only part of this
     function with an actual per-listing ZenRows cost) happen in ONE run. A capped-out id is simply
     picked up by a LATER run instead (processed_this_run doesn't mark it as done, so it's retried
-    next time)."""
-    fetched = 0
+    next time).
+
+    2026-09-15: the actual new-listing detail fetches now run CONCURRENTLY, bounded by
+    _KOMO_DETAIL_FETCH_CONCURRENCY (see that constant's own comment for why this is safe — Komo has
+    already been confirmed to have no bot-challenge wall of its own) — same _fetch_concurrently
+    helper _scrape_homeless uses. Previously these ran one at a time, sequentially, which is what
+    made a run with many new Komo listings take a real, avoidable extra chunk of wall-clock time."""
     normalized_items = []
     seen_external_ids: set[str] = set()
 
     known_ids = _fetch_known_external_ids(Source.KOMO)
     processed_this_run: set[str] = set(known_ids)
     max_new_detail_fetches = _komo_max_new_detail_fetches_per_run()
-    new_detail_fetches_this_run = 0
-    cap_logged = False
 
     logger.info("Fetching Komo's nationwide coordinate list (one call, confirmed city-independent)")
     try:
         coordinates = fetch_all_coordinate_ids()
     except KomoFetchError:
         logger.exception("Failed to fetch Komo's coordinate list — skipping Komo entirely this run")
-        return normalized_items, seen_external_ids, fetched, 1, False
+        return normalized_items, seen_external_ids, 0, 1, False
 
-    errors = 0
+    new_ids_to_fetch: list[str] = []
     for coordinate in coordinates:
         modaa_num = coordinate.get("id")
         if not modaa_num:
@@ -592,23 +638,25 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
         modaa_num = str(modaa_num)
         seen_external_ids.add(modaa_num)
         if modaa_num in processed_this_run:
-            continue  # already known from a prior run, or already handled earlier this run
+            continue  # already known from a prior run, or a duplicate within this run's own list
         processed_this_run.add(modaa_num)
+        new_ids_to_fetch.append(modaa_num)
 
-        if new_detail_fetches_this_run >= max_new_detail_fetches:
-            if not cap_logged:
-                logger.warning(
-                    "Komo hit its per-run new-detail-fetch safety cap (%s=%d) — remaining new "
-                    "listings this run are skipped and will be picked up in a later run "
-                    "instead of spending unbounded ZenRows credits in one shot.",
-                    _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
-                )
-                cap_logged = True
-            continue
+    ids_to_fetch = new_ids_to_fetch[:max_new_detail_fetches]
+    if len(new_ids_to_fetch) > max_new_detail_fetches:
+        logger.warning(
+            "Komo hit its per-run new-detail-fetch safety cap (%s=%d) — remaining new "
+            "listings this run are skipped and will be picked up in a later run "
+            "instead of spending unbounded ZenRows credits in one shot.",
+            _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
+        )
 
-        new_detail_fetches_this_run += 1
-        fetched += 1
-        detail = fetch_komo_listing_detail(modaa_num)
+    fetched = len(ids_to_fetch)
+    errors = 0
+    details = asyncio.run(
+        _fetch_concurrently(ids_to_fetch, fetch_komo_listing_detail, _KOMO_DETAIL_FETCH_CONCURRENCY)
+    )
+    for detail in details:
         if detail is None:
             errors += 1
             continue
@@ -642,8 +690,13 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     NOT yet confirmed (see homeless_client.py's own module docstring): whether homeless.co.il/rent/
     paginates beyond what one fetch returns. If it does, this function currently only sees
     whatever's on that one page — a real, documented open question, not a silent assumption of
-    full coverage."""
-    fetched = 0
+    full coverage.
+
+    2026-09-15: the actual new-listing description fetches now run CONCURRENTLY, bounded by
+    _HOMELESS_DESCRIPTION_FETCH_CONCURRENCY (see that constant's own comment — these go through
+    ZenRows either way, a managed proxy built for concurrent traffic, so this doesn't change the
+    request rate OUR OWN IP presents to homeless.co.il at all) — same _fetch_concurrently helper
+    _scrape_komo uses. Previously these ran one at a time, sequentially."""
     errors = 0
     normalized_items = []
     seen_external_ids: set[str] = set()
@@ -651,40 +704,52 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
 
     known_ids = _fetch_known_external_ids(Source.HOMELESS)
     max_new_description_fetches = _homeless_max_new_description_fetches_per_run()
-    new_description_fetches_this_run = 0
-    cap_logged = False
 
     logger.info("Fetching Homeless listings")
+    raw_items: list[dict] = []
     try:
         for raw_item in fetch_homeless_results():
-            fetched += 1
-            external_id = raw_item["id"]
-            seen_external_ids.add(external_id)
-
-            if external_id not in known_ids:
-                if new_description_fetches_this_run < max_new_description_fetches:
-                    new_description_fetches_this_run += 1
-                    raw_item["description"] = fetch_homeless_description(raw_item["url"])
-                elif not cap_logged:
-                    logger.warning(
-                        "Homeless hit its per-run new-description-fetch safety cap (%s=%d) — "
-                        "remaining new listings this run get no description and will be picked "
-                        "up in a later run instead of spending unbounded ZenRows credits in one "
-                        "shot.",
-                        _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR,
-                        max_new_description_fetches,
-                    )
-                    cap_logged = True
-
-            normalized = normalize(raw_item, source=Source.HOMELESS, deal_type=DealType.RENT)
-            if normalized is not None:
-                normalized_items.append(normalized)
-            else:
-                errors += 1
+            raw_items.append(raw_item)
     except HomelessFetchError:
-        logger.exception("Failed to fetch Homeless listings — skipping this source this run")
+        # A partial list (whatever was already yielded before the failure) is still processed
+        # below, same as before this change — a mid-iteration failure never discarded what had
+        # already been fetched.
+        logger.exception("Failed to fetch Homeless listings — skipping the rest of this source")
         errors += 1
         all_succeeded = False
+
+    fetched = len(raw_items)
+    for raw_item in raw_items:
+        seen_external_ids.add(raw_item["id"])
+
+    new_items = [item for item in raw_items if item["id"] not in known_ids]
+    items_to_fetch = new_items[:max_new_description_fetches]
+    if len(new_items) > max_new_description_fetches:
+        logger.warning(
+            "Homeless hit its per-run new-description-fetch safety cap (%s=%d) — "
+            "remaining new listings this run get no description and will be picked "
+            "up in a later run instead of spending unbounded ZenRows credits in one "
+            "shot.",
+            _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR,
+            max_new_description_fetches,
+        )
+
+    descriptions = asyncio.run(
+        _fetch_concurrently(
+            [item["url"] for item in items_to_fetch],
+            fetch_homeless_description,
+            _HOMELESS_DESCRIPTION_FETCH_CONCURRENCY,
+        )
+    )
+    for item, description in zip(items_to_fetch, descriptions):
+        item["description"] = description
+
+    for raw_item in raw_items:
+        normalized = normalize(raw_item, source=Source.HOMELESS, deal_type=DealType.RENT)
+        if normalized is not None:
+            normalized_items.append(normalized)
+        else:
+            errors += 1
 
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
@@ -798,6 +863,26 @@ def _active_source_scrapers() -> tuple[tuple[str, Callable[[], tuple]], ...]:
     )
 
 
+async def _scrape_sources_concurrently(
+    active_sources: tuple[tuple[str, Callable[[], tuple]], ...]
+) -> tuple[tuple, ...]:
+    """Runs every active source's own scrape_fn() CONCURRENTLY instead of one after another — see
+    _KOMO_DETAIL_FETCH_CONCURRENCY's own comment above for why this is safe (independent websites,
+    no change in the request rate any single one sees; Yad2's own deliberate anti-detection pacing
+    inside _scrape_yad2 is unaffected either way). Each scrape_fn is itself a blocking/synchronous
+    function — some (_scrape_komo, _scrape_homeless) make their OWN internal asyncio.run() call for
+    their own bounded per-listing concurrency; safe to nest, since asyncio.to_thread runs each one
+    in a genuine OS thread with no event loop of its own, so that inner asyncio.run() creates its
+    own independent loop — no conflict. Returns results in the SAME order as `active_sources`
+    (asyncio.gather preserves order) — same "let a genuine bug propagate and fail the whole run
+    loudly" behavior as the previous sequential loop, since every scrape_fn already catches and
+    reports its own real fetch failures internally (see each one's own docstring) rather than
+    raising them out."""
+    return tuple(
+        await asyncio.gather(*(asyncio.to_thread(scrape_fn) for _source, scrape_fn in active_sources))
+    )
+
+
 def run_once() -> dict[str, int]:
     fetched = 0
     errors = 0
@@ -808,11 +893,15 @@ def run_once() -> dict[str, int]:
     # "seen" sets — a listing "not seen" in Komo's run says nothing about Yad2/Homeless).
     per_source_delisting_input: dict[str, tuple[set[str], set[str], bool]] = {}
 
-    for source, scrape_fn in _active_source_scrapers():
-        logger.info("Scraping source=%s", source)
-        normalized_items, seen_external_ids, source_fetched, source_errors, all_succeeded = (
-            scrape_fn()
-        )
+    active_sources = _active_source_scrapers()
+    logger.info(
+        "Scraping %d source(s) concurrently: %s",
+        len(active_sources), ", ".join(source for source, _fn in active_sources),
+    )
+    results = asyncio.run(_scrape_sources_concurrently(active_sources))
+    for (source, _scrape_fn), (
+        normalized_items, seen_external_ids, source_fetched, source_errors, all_succeeded
+    ) in zip(active_sources, results):
         fetched += source_fetched
         errors += source_errors
         all_normalized_items.extend(normalized_items)
