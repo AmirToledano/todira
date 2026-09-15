@@ -126,3 +126,90 @@ jobs:
             echo "=== Raw response body (status=$STATUS, non-200 — Facebook's own generic error/wall page, not real listing content, so safe to print in full) ==="
             cat /tmp/fb_body.html
           fi
+
+      - name: Extract the real field structure of one MarketplaceFeedListingStory/RentalMapClusterStory node
+        # 2026-09-15, third pass, only useful once the fetch above got a genuine 200 (confirmed:
+        # 192 __typename occurrences, MarketplaceFeedListingStory x27, MarketplaceFeedRentalMap-
+        # ClusterStory x11, 24 real /marketplace/item/<id>/ links, 107 embedded JSON script
+        # blocks). Knowing THOSE type names exist isn't enough to write a parser against — need to
+        # see one real node's actual field names (title/price/location/photo keys) the same way
+        # every other client in this project was only written after seeing real structure, never a
+        # guess. This is the real Marketplace content itself (same category of data this project's
+        # other diagnose-*.yaml workflows already print — real Yad2/Komo prices/addresses), so
+        # printing one representative node's structure here is consistent with that established
+        # practice, not a new kind of exposure.
+        run: |
+          STATUS=$(cat /tmp/fb_status.txt 2>/dev/null || echo "")
+          if [ "$STATUS" != "200" ]; then
+            echo "Skipping — last fetch wasn't a 200 (status=$STATUS), nothing real to extract."
+            exit 0
+          fi
+          python3 -c "
+          import re, json
+
+          with open('/tmp/fb_body.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+
+          script_blocks = re.findall(r'<script type=\"application/json\"[^>]*>(.*?)</script>', html, re.S)
+          print(f'Scanning {len(script_blocks)} JSON script blocks for a real listing node...')
+
+          TARGET_TYPES = ('MarketplaceFeedListingStory', 'MarketplaceFeedRentalMapClusterStory')
+          found = {}
+
+          def walk(obj):
+              if isinstance(obj, dict):
+                  tn = obj.get('__typename')
+                  if tn in TARGET_TYPES and tn not in found:
+                      found[tn] = obj
+                  for v in obj.values():
+                      walk(v)
+              elif isinstance(obj, list):
+                  for v in obj:
+                      walk(v)
+
+          for block in script_blocks:
+              block = block.strip()
+              if block.startswith('for (;;);'):
+                  block = block[len('for (;;);'):]
+              if block.startswith('<!--') and block.endswith('-->'):
+                  block = block[4:-3].strip()
+              if not block:
+                  continue
+              try:
+                  data = json.loads(block)
+              except json.JSONDecodeError:
+                  continue
+              walk(data)
+              if len(found) >= len(TARGET_TYPES):
+                  break
+
+          def pretty(obj, indent=1, max_depth=4):
+              pad = '  ' * indent
+              if indent >= max_depth:
+                  print(pad + '...(max depth reached)')
+                  return
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      if isinstance(v, dict):
+                          print(f'{pad}{k}: {{...}} ({len(v)} keys)')
+                          pretty(v, indent + 1, max_depth)
+                      elif isinstance(v, list):
+                          print(f'{pad}{k}: [...] ({len(v)} items)')
+                          for item in v[:2]:
+                              pretty(item, indent + 1, max_depth)
+                      else:
+                          sval = repr(v)
+                          if len(sval) > 140:
+                              sval = sval[:140] + '...(truncated)'
+                          print(f'{pad}{k}: {sval}')
+              elif isinstance(obj, list):
+                  for item in obj[:2]:
+                      pretty(item, indent, max_depth)
+
+          if not found:
+              print('No target node found in any parseable JSON script block — may need deeper unwrapping (bigpipe/relay framing) or a different category/URL.')
+          for typename, node in found.items():
+              print(f'')
+              print(f'=== Sample {typename} — top-level keys: {sorted(node.keys())} ===')
+              pretty(node)
+          "
