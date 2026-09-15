@@ -407,6 +407,206 @@ def test_scrape_yad2_uses_the_map_api_for_regions_on_it(monkeypatch):
     assert seen_external_ids == {"tel-aviv-area-map", "jerusalem-area-zenrows"}
 
 
+# --- _scrape_facebook: account-safety cap + required city enrichment (2026-09-15) ----------------
+
+
+def _fake_facebook_item(external_id: str) -> dict:
+    return {
+        "id": external_id,
+        "url": f"https://www.facebook.com/marketplace/item/{external_id}/",
+        "price": 3000,
+        "images": [],
+        "rooms": None,
+        "floor": None,
+        "square_meters": None,
+        "city": None,
+        "neighborhood": None,
+        "street": None,
+    }
+
+
+def test_facebook_cap_defaults_when_env_var_unset(monkeypatch):
+    monkeypatch.delenv(scraper_main._FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, raising=False)
+    assert (
+        scraper_main._facebook_max_new_detail_fetches_per_run()
+        == scraper_main._DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN
+    )
+
+
+def test_facebook_cap_respects_valid_override(monkeypatch):
+    monkeypatch.setenv(scraper_main._FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "5")
+    assert scraper_main._facebook_max_new_detail_fetches_per_run() == 5
+
+
+def test_facebook_cap_falls_back_to_default_on_invalid_value(monkeypatch):
+    monkeypatch.setenv(scraper_main._FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "not-a-number")
+    assert (
+        scraper_main._facebook_max_new_detail_fetches_per_run()
+        == scraper_main._DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN
+    )
+
+
+def test_scrape_facebook_skips_already_known_listings_entirely(monkeypatch):
+    """Unlike Homeless, a known Facebook listing is never re-upserted at all — re-normalizing it
+    here (city=None at discovery) would clobber its already-good city on the UPDATE path."""
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
+    monkeypatch.setattr(
+        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+    )
+
+    def _fail_if_called(item_id):
+        raise AssertionError("should never fetch an already-known listing's detail page")
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", _fail_if_called)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert seen_external_ids == {"1"}
+    assert normalized_items == []
+    assert fetched == 1
+    assert all_succeeded is True
+
+
+def test_scrape_facebook_upserts_a_new_listing_with_its_real_detail_city(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(
+        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+    )
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_facebook_listing_detail",
+        lambda item_id: {"city": "הרצליה", "description": "תיאור אמיתי"},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].city == "הרצליה"
+    assert normalized_items[0].description == "תיאור אמיתי"
+    assert errors == 0
+
+
+def test_scrape_facebook_skips_a_new_listing_with_no_confirmed_city(monkeypatch):
+    """No safe fallback for an unknown city — the listing is skipped entirely (not upserted with
+    city=None), and stays out of known_ids so a later run retries it."""
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(
+        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+    )
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_facebook_listing_detail",
+        lambda item_id: {"city": None, "description": "יש תיאור אבל אין עיר"},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert normalized_items == []
+    assert errors == 1
+    assert seen_external_ids == {"1"}  # still counted as seen, for delisting purposes
+
+
+def test_scrape_facebook_returns_none_detail_gracefully(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(
+        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+    )
+    monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", lambda item_id: None)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert normalized_items == []
+    assert errors == 1
+
+
+def test_scrape_facebook_stops_new_detail_fetches_at_the_cap(monkeypatch):
+    monkeypatch.setenv(scraper_main._FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "2")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_facebook_results",
+        lambda: iter(
+            [_fake_facebook_item("1"), _fake_facebook_item("2"), _fake_facebook_item("3")]
+        ),
+    )
+
+    detail_calls = []
+
+    def _fake_detail(item_id):
+        detail_calls.append(item_id)
+        return {"city": "הרצליה", "description": None}
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", _fake_detail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert detail_calls == ["1", "2"]  # capped at 2, never fetched the 3rd
+    assert seen_external_ids == {"1", "2", "3"}
+    assert len(normalized_items) == 2
+    assert all_succeeded is True
+
+
+def test_scrape_facebook_fails_gracefully_when_discovery_fails(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fail():
+        raise scraper_main.FacebookFetchError("simulated discovery failure")
+        yield  # pragma: no cover - makes this a generator, never reached
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_results", _fail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert normalized_items == []
+    assert seen_external_ids == set()
+    assert errors == 1
+    assert all_succeeded is False
+
+
+# --- _active_source_scrapers: Facebook is opt-in only, a real kill-switch (2026-09-15) ------------
+
+
+def test_active_source_scrapers_excludes_facebook_by_default(monkeypatch):
+    monkeypatch.delenv(scraper_main._SCRAPE_SOURCES_ENV_VAR, raising=False)
+
+    sources = [source for source, _fn in scraper_main._active_source_scrapers()]
+
+    assert scraper_main.Source.FACEBOOK_MARKETPLACE not in sources
+    assert sources == [scraper_main.Source.YAD2, scraper_main.Source.KOMO, scraper_main.Source.HOMELESS]
+
+
+def test_active_source_scrapers_includes_only_facebook_when_explicitly_opted_in(monkeypatch):
+    monkeypatch.setenv(scraper_main._SCRAPE_SOURCES_ENV_VAR, "facebook_marketplace")
+
+    sources = [source for source, _fn in scraper_main._active_source_scrapers()]
+
+    assert sources == [scraper_main.Source.FACEBOOK_MARKETPLACE]
+
+
+def test_active_source_scrapers_respects_a_multi_source_list(monkeypatch):
+    monkeypatch.setenv(scraper_main._SCRAPE_SOURCES_ENV_VAR, "yad2,facebook_marketplace")
+
+    sources = [source for source, _fn in scraper_main._active_source_scrapers()]
+
+    assert sources == [scraper_main.Source.YAD2, scraper_main.Source.FACEBOOK_MARKETPLACE]
+
+
 def test_scrape_yad2_map_api_region_retries_on_yad2_map_fetch_error(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"tel-aviv-area": {}})

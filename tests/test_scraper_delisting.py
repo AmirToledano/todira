@@ -16,7 +16,7 @@ scraped_city_names) still holds after the switch to region sweeps: run_once() no
 from the cities actually represented in a run's fetched listings, not from a fixed slug list.
 
 2026-09-13: _mark_delisted also now takes an explicit `source` (Komo/Homeless going live alongside
-Yad2 — see run_once()'s own _SOURCE_SCRAPERS list) — each source's delisting pass must never touch
+Yad2 — see run_once()'s own _ALL_SOURCE_SCRAPERS list, filtered by _active_source_scrapers()) — each source's delisting pass must never touch
 another source's rows, same reasoning as the city-scoping fix above, just one more dimension. No
 live DB is available in CI, so this doesn't execute against a real database - it inspects the
 *compiled SQL* of both UPDATE statements _mark_delisted builds, via a fake session that just

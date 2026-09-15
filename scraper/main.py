@@ -18,6 +18,9 @@ from dorin_common import bright_data_client
 from dorin_common.db import get_session
 from dorin_common.enums import DealType, Source
 from dorin_common.models import Listing
+from facebook_client import FacebookFetchError
+from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
+from facebook_client import fetch_search_results as fetch_facebook_results
 from homeless_client import HomelessFetchError
 from homeless_client import fetch_listing_description as fetch_homeless_description
 from homeless_client import fetch_search_results as fetch_homeless_results
@@ -120,6 +123,33 @@ _NOTIFICATIONS_SUSPENDED_ENV_VAR = "NOTIFICATIONS_SUSPENDED"
 _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR = "HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN"
 _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN = 50
 
+# 2026-09-15: Facebook's own per-run cap is NOT a credit-cost safety net like Komo/Homeless's own
+# caps above (Facebook charges nothing per request) — it's an ACCOUNT-SAFETY net. Every request
+# here runs through the dedicated scraping account's own real, authenticated session from a
+# datacenter IP, the exact profile Facebook's own automation/Account-Integrity detection is built
+# to catch; the real downside of getting that wrong is a checkpoint/restriction on the account
+# itself, not a recoverable "try again later" the way a blocked scrape of a public, anonymous page
+# is. A small, deliberately conservative default — see facebook_client.py's own module docstring
+# for the real, live-confirmed field structure this whole client is built against, and
+# PROJECT_STATE.md's 2026-09-15 Facebook entries for the real account-risk discussion this default
+# came out of.
+_FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR = "FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN"
+_DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN = 15
+# Deliberate pacing between each per-listing detail-page fetch (real, separate requests against the
+# live account) — same reasoning as _MAP_API_REGION_PACING_SECONDS above: a human browsing
+# Marketplace never opens listing after listing with zero delay, and request velocity is one of the
+# most basic bot-detection signals. Costs at most a few tens of seconds per run at the small cap
+# above — cheap insurance.
+_FACEBOOK_DETAIL_FETCH_PACING_SECONDS = 3.0
+# Real kill-switch, independent of any CronJob's own `suspend`/schedule: Facebook scraping is
+# EXCLUDED from a run unless explicitly opted in via SCRAPE_SOURCES (see _active_source_scrapers
+# below) — so merely deploying this code, or FACEBOOK_COOKIES existing in the secret, can never by
+# itself start hitting the live Facebook account. A separate CronJob (see charts/todira's
+# facebook-scraper-cronjob.yaml) sets SCRAPE_SOURCES=facebook_marketplace explicitly, on its own
+# schedule, with its own `suspend` — the main scraper's own CronJob never sets this var at all, so
+# its default (every source except Facebook) is exactly today's existing behavior, unchanged.
+_SCRAPE_SOURCES_ENV_VAR = "SCRAPE_SOURCES"
+
 
 def _homeless_max_new_description_fetches_per_run() -> int:
     raw = os.environ.get(_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR, "").strip()
@@ -134,6 +164,21 @@ def _homeless_max_new_description_fetches_per_run() -> int:
             _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN,
         )
         return _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
+
+
+def _facebook_max_new_detail_fetches_per_run() -> int:
+    raw = os.environ.get(_FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "").strip()
+    if not raw:
+        return _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r (not an int) — using default %d",
+            _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, raw,
+            _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN,
+        )
+        return _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN
 
 
 def _komo_max_new_detail_fetches_per_run() -> int:
@@ -621,17 +666,113 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
+def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
+    """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
+    shape as _scrape_yad2. Unlike every other source, a Facebook listing's real CITY is genuinely
+    unknown until its own detail page is fetched (see facebook_client.py's own module docstring —
+    the search feed's own location is lat/lng only) — so, unlike Komo/Homeless's optional
+    enrichment, a listing whose detail fetch fails or doesn't yield a real city is skipped
+    ENTIRELY this run (never upserted with city=None), same as Komo's own "capped-out new id is
+    simply retried next run" pattern (it stays out of `known_ids`, so nothing here marks it done).
+
+    An already-known listing is also skipped entirely, never re-upserted — real, documented gap,
+    same as Komo's own (see that function's own docstring): the search feed DOES carry a fresh
+    price for every listing, known or new, but re-normalizing a known listing here with
+    city=None (not re-fetched) would silently clobber its already-good city on the UPDATE path in
+    _upsert_listings. Not worth the complexity of a separate "refresh price only" path yet at this
+    project's current, tiny expected Facebook volume — revisit if that turns out wrong.
+
+    Enforces _facebook_max_new_detail_fetches_per_run() — an ACCOUNT-SAFETY cap, not a credit-cost
+    one (see that function's own comment) — and paces each detail fetch by
+    _FACEBOOK_DETAIL_FETCH_PACING_SECONDS, both specifically because every request here runs
+    through the dedicated account's own real, authenticated session."""
+    fetched = 0
+    errors = 0
+    normalized_items = []
+    seen_external_ids: set[str] = set()
+
+    known_ids = _fetch_known_external_ids(Source.FACEBOOK_MARKETPLACE)
+    max_new_detail_fetches = _facebook_max_new_detail_fetches_per_run()
+    new_detail_fetches_this_run = 0
+    cap_logged = False
+
+    try:
+        raw_items = list(fetch_facebook_results())
+    except FacebookFetchError:
+        logger.exception(
+            "Failed to fetch Facebook Marketplace search results — skipping this source this run"
+        )
+        return normalized_items, seen_external_ids, fetched, 1, False
+
+    for raw_item in raw_items:
+        fetched += 1
+        external_id = raw_item["id"]
+        seen_external_ids.add(external_id)
+
+        if external_id in known_ids:
+            continue  # not re-upserted this run — see this function's own docstring
+
+        if new_detail_fetches_this_run >= max_new_detail_fetches:
+            if not cap_logged:
+                logger.warning(
+                    "Facebook hit its per-run new-detail-fetch safety cap (%s=%d) — remaining "
+                    "new listings this run are skipped and will be picked up in a later run "
+                    "instead of making unbounded requests against the live account in one shot.",
+                    _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
+                )
+                cap_logged = True
+            continue
+
+        if new_detail_fetches_this_run > 0:
+            time.sleep(_FACEBOOK_DETAIL_FETCH_PACING_SECONDS)
+        new_detail_fetches_this_run += 1
+        detail = fetch_facebook_listing_detail(external_id)
+        if detail is None or not detail.get("city"):
+            errors += 1
+            continue  # no real city to place it in any city-scoped filter — retried next run
+
+        raw_item["city"] = detail["city"]
+        raw_item["description"] = detail.get("description")
+        normalized = normalize(raw_item, source=Source.FACEBOOK_MARKETPLACE, deal_type=DealType.RENT)
+        if normalized is not None:
+            normalized_items.append(normalized)
+        else:
+            errors += 1
+
+    return normalized_items, seen_external_ids, fetched, errors, True
+
+
 # 2026-09-13: one entry per source this project scrapes — each a (source, scrape_fn) pair, where
 # scrape_fn takes no arguments and returns _scrape_yad2's own (normalized_items, seen_external_ids,
 # fetched, errors, all_succeeded) shape. run_once() below loops over this list generically instead
 # of three copy-pasted blocks, so adding a fourth source later means one line here, not editing
 # run_once() itself. Order doesn't matter (each source's upsert/delisting is independent; only
 # notifications run once at the end, over ALL sources' new listings/price changes combined).
-_SOURCE_SCRAPERS: tuple[tuple[str, Callable[[], tuple]], ...] = (
+_ALL_SOURCE_SCRAPERS: tuple[tuple[str, Callable[[], tuple]], ...] = (
     (Source.YAD2, _scrape_yad2),
     (Source.KOMO, _scrape_komo),
     (Source.HOMELESS, _scrape_homeless),
+    (Source.FACEBOOK_MARKETPLACE, _scrape_facebook),
 )
+
+
+def _active_source_scrapers() -> tuple[tuple[str, Callable[[], tuple]], ...]:
+    """Which sources THIS run actually scrapes. Facebook is a real kill-switch case, not just
+    another source — see _SCRAPE_SOURCES_ENV_VAR's own comment: it never runs unless explicitly
+    opted into via SCRAPE_SOURCES, so neither deploying this code nor FACEBOOK_COOKIES existing in
+    the secret can, by itself, start hitting the live Facebook account. The main scraper's own
+    CronJob never sets SCRAPE_SOURCES at all, so its default here (every source except Facebook)
+    is exactly today's existing behavior, unchanged; a separate CronJob sets
+    SCRAPE_SOURCES=facebook_marketplace explicitly, on its own schedule."""
+    raw = os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip()
+    if raw:
+        wanted = {s.strip() for s in raw.split(",") if s.strip()}
+        return tuple((source, fn) for source, fn in _ALL_SOURCE_SCRAPERS if source in wanted)
+    return tuple(
+        (source, fn)
+        for source, fn in _ALL_SOURCE_SCRAPERS
+        if source != Source.FACEBOOK_MARKETPLACE
+    )
 
 
 def run_once() -> dict[str, int]:
@@ -644,7 +785,7 @@ def run_once() -> dict[str, int]:
     # "seen" sets — a listing "not seen" in Komo's run says nothing about Yad2/Homeless).
     per_source_delisting_input: dict[str, tuple[set[str], set[str], bool]] = {}
 
-    for source, scrape_fn in _SOURCE_SCRAPERS:
+    for source, scrape_fn in _active_source_scrapers():
         logger.info("Scraping source=%s", source)
         normalized_items, seen_external_ids, source_fetched, source_errors, all_succeeded = (
             scrape_fn()

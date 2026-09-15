@@ -229,6 +229,30 @@ scraper:
   # very next unpause starts sending immediately, instead of needing a second follow-up deploy.
   whatsappMatchTemplateName: "new_listing_match"
   whatsappMatchTemplateLanguage: "he"
+  # 2026-09-15: facebook-scraper-cronjob.yaml — a SEPARATE CronJob from the main scraper above,
+  # deliberately (see that file's own comment for the full account-safety reasoning: every request
+  # runs through the dedicated scraping account's own real, authenticated session from this
+  # cluster's datacenter IP, a materially different risk than an anonymous Yad2/Komo/Homeless
+  # fetch). Explicit owner decision tonight: start conservative (2-3x/day) and watch the account's
+  # own real health before ever increasing this.
+  facebook:
+    # 09:00 / 15:00 / 21:00 Israel time — 3x/day, spread across the day, deliberately NOT at the
+    # exact same time as the main scraper's own 09:30 schedule above (avoids an obviously
+    # correlated request-pattern across this project's whole infrastructure, one of several small
+    # mitigations discussed tonight alongside FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN's own cap and
+    # scraper/main.py's own _FACEBOOK_DETAIL_FETCH_PACING_SECONDS jitter between requests).
+    schedule: "0 9,15,21 * * *"
+    # SUSPENDED BY DEFAULT — do not flip to false until FACEBOOK_COOKIES is confirmed actually
+    # set on the real k8s secret (see set-facebook-cookies-secret.yaml) and the owner has
+    # explicitly decided to start real, live runs against the dedicated account. Same
+    # "never trigger a new real production scraper run without fresh, explicit approval" standard
+    # this whole project holds for the main scraper, doubly so here given the real account-risk
+    # this entry's own comment above describes.
+    suspended: true
+    # Left unset — scraper/main.py's own Python-side default (15, see
+    # _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN) applies. Override here only after real,
+    # live evidence (several successful runs, no account warnings) supports a higher number.
+    # maxNewDetailFetchesPerRun: 15
 
 resources:
   bot:
