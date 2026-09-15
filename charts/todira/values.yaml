@@ -195,25 +195,27 @@ scraper:
   # scraper/main.py's _scrape_homeless), lower expected volume than Komo's nationwide coverage, but
   # still a real per-listing cost that shouldn't go uncapped on a first-ever run.
   homelessMaxNewDescriptionFetchesPerRun: 50
-  # 2026-09-13 EMERGENCY RE-SUSPEND: real users got Telegram notifications they should not have
-  # right after the resume above went live — the owner-only NOTIFICATIONS_SUSPENDED restriction
-  # did not behave as intended (or something else triggered a full-notification run). Re-suspended
-  # immediately pending investigation — do NOT flip back to `false` until the actual root cause is
-  # found and fixed, not just assumed fixed.
-  suspended: true
-  # 2026-09-13: a resume after this long a pause would otherwise find many genuinely-new listings
-  # on its very first run(s) and fire a real notification burst to every matching user's phone in
-  # one shot, regardless of time of day — set true for the initial catch-up period. The scraper
-  # still does everything else exactly as normal (scrape/upsert/delist all run in full — see
-  # scraper/main.py's _notifications_suspended docstring) so the DB genuinely catches up to real
-  # current state. Real sends are restricted to the owner's OWN Telegram account
-  # (OWNER_TELEGRAM_USER_ID, already wired below) — explicit owner request: keep verifying the
-  # pipeline actually works end to end via real pushes to their own phone, without flooding every
-  # other real user during the catch-up. Falls back to a full skip if OWNER_TELEGRAM_USER_ID isn't
-  # set at all. Flip back to `false` once satisfied (check the scraper pod's own logs for the
-  # "restricting notifications to the owner only" line, and how big each run's backlog was) that
-  # the catch-up is done and real-time notifications should resume for everyone.
-  notificationsSuspended: true
+  # 2026-09-13 EMERGENCY RE-SUSPEND, LIFTED 2026-09-15: the 2026-09-13 incident this guarded
+  # against was the owner receiving real Telegram notifications at 6am after asking for nothing to
+  # run, and reporting (at the time) that other real users got them too. Revisited explicitly
+  # tonight: the owner now recalls he never actually verified that other users were notified —
+  # that claim was said "just to be safe," not from confirmed evidence — and the pipeline HAS since
+  # been verified end-to-end via a real, safety-gated owner-only test run
+  # (safe-single-test-run.yaml, NOTIFICATIONS_SUSPENDED=true + owner-only restriction enforced and
+  # confirmed working correctly). Explicit, fresh, in-context go-ahead given tonight to resume —
+  # the product isn't charging real money yet, so real users receiving real match notifications
+  # (the actual intended behavior) carries no real downside even if the original 09-13 mechanism is
+  # never fully explained. If real trouble shows up again, `.github/workflows/
+  # emergency-stop-scraper.yaml` still exists to kill an in-progress run immediately, and this flag
+  # flips back to `true` just as fast.
+  suspended: false
+  # 2026-09-15: lifted alongside `suspended` above, same explicit go-ahead — a resume after only
+  # ~2 days suspended (not the long 09-03 pause this owner-only restriction was originally built
+  # for) has a genuinely small catch-up backlog, and the owner explicitly wants real notifications
+  # flowing to real users now (see `suspended`'s own comment for the full reasoning). Real sends
+  # are the actual intended, non-suspended behavior — see scraper/main.py's own
+  # _notifications_suspended docstring for what this flag controls when true.
+  notificationsSuspended: false
   # Proactive WhatsApp Message Template push (2026-09-08, scraper/notifier.py's own
   # _whatsapp_eligible) — the APPROVED template's exact name/language in Meta's WhatsApp Manager.
   # Not secret (a template name isn't a credential — whatsappAccessToken/whatsappPhoneNumberId
