@@ -1,0 +1,58 @@
+name: Check — current scraper Job/Pod status and recent logs (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-15.
+#
+# Real trigger: a same-night diagnostic (diagnose-yad2-sale-sublet-shape.yaml) got a genuine
+# Radware challenge page from GitHub Actions runner IPs for a plain Yad2 rent-page fetch that had
+# worked fine earlier the same night — right after the main scraper's schedule went live at
+# hourly. Different IP than production (GitHub Actions vs. the EC2 box), so not conclusive on its
+# own, but worth a real, read-only check of what production itself is actually seeing right now,
+# rather than assuming either way. Mirrors emergency-stop-scraper.yaml's own read-only inspection
+# steps exactly — this workflow never deletes/kills anything, only looks.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Current scraper Jobs/Pods (main + Facebook)
+        run: |
+          echo "=== Main scraper jobs ==="
+          kubectl get jobs -n todira -l app=todira-scraper -o wide || true
+          echo "--- pods ---"
+          kubectl get pods -n todira -l app=todira-scraper -o wide || true
+          echo
+          echo "=== Facebook scraper jobs ==="
+          kubectl get jobs -n todira -l app=todira-facebook-scraper -o wide || true
+          echo "--- pods ---"
+          kubectl get pods -n todira -l app=todira-facebook-scraper -o wide || true
+
+      - name: Most recent main scraper pod's own logs (last 200 lines)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No scraper pod found at all yet."
+            exit 0
+          fi
+          echo "=== Logs for $POD (last 200 lines) ==="
+          kubectl logs -n todira "$POD" --tail=200 || true
+
+      - name: Most recent Facebook scraper pod's own logs (last 200 lines), if any
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No Facebook scraper pod found yet — expected, hasn't hit its first scheduled slot yet."
+            exit 0
+          fi
+          echo "=== Logs for $POD (last 200 lines) ==="
+          kubectl logs -n todira "$POD" --tail=200 || true
