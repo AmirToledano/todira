@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import sys
 import time
 from typing import Callable
@@ -134,13 +135,20 @@ _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN = 50
 # PROJECT_STATE.md's 2026-09-15 Facebook entries for the real account-risk discussion this default
 # came out of.
 _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR = "FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN"
-_DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN = 15
-# Deliberate pacing between each per-listing detail-page fetch (real, separate requests against the
-# live account) — same reasoning as _MAP_API_REGION_PACING_SECONDS above: a human browsing
-# Marketplace never opens listing after listing with zero delay, and request velocity is one of the
-# most basic bot-detection signals. Costs at most a few tens of seconds per run at the small cap
-# above — cheap insurance.
-_FACEBOOK_DETAIL_FETCH_PACING_SECONDS = 3.0
+# 2026-09-15: raised from an initial 15 to 25 (owner's own explicit go-ahead, "can give more") —
+# one discovery fetch has only ever yielded ~24-27 real listings live (see facebook_client.py's own
+# module docstring), so 25 is effectively "enrich everything this run found", not a further
+# artificial narrowing below the feed's own real size; still a real, deliberate ceiling against an
+# unexpectedly large feed rather than no cap at all.
+_DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN = 25
+# Deliberate, RANDOMIZED pacing between each per-listing detail-page fetch (real, separate requests
+# against the live account) — same reasoning as _MAP_API_REGION_PACING_SECONDS above (a human
+# browsing Marketplace never opens listing after listing with zero delay, and request velocity is
+# one of the most basic bot-detection signals), randomized rather than a fixed interval per the
+# owner's own explicit suggestion tonight — a perfectly constant gap between requests is itself a
+# machine-like signal a fixed sleep doesn't hide. Costs at most a couple of minutes per run at the
+# cap above — cheap insurance either way.
+_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE = (2.0, 6.0)
 # Real kill-switch, independent of any CronJob's own `suspend`/schedule: Facebook scraping is
 # EXCLUDED from a run unless explicitly opted in via SCRAPE_SOURCES (see _active_source_scrapers
 # below) — so merely deploying this code, or FACEBOOK_COOKIES existing in the secret, can never by
@@ -683,9 +691,9 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     project's current, tiny expected Facebook volume — revisit if that turns out wrong.
 
     Enforces _facebook_max_new_detail_fetches_per_run() — an ACCOUNT-SAFETY cap, not a credit-cost
-    one (see that function's own comment) — and paces each detail fetch by
-    _FACEBOOK_DETAIL_FETCH_PACING_SECONDS, both specifically because every request here runs
-    through the dedicated account's own real, authenticated session."""
+    one (see that function's own comment) — and paces each detail fetch by a RANDOMIZED interval
+    within _FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE, both specifically because every request
+    here runs through the dedicated account's own real, authenticated session."""
     fetched = 0
     errors = 0
     normalized_items = []
@@ -724,7 +732,7 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
             continue
 
         if new_detail_fetches_this_run > 0:
-            time.sleep(_FACEBOOK_DETAIL_FETCH_PACING_SECONDS)
+            time.sleep(random.uniform(*_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE))
         new_detail_fetches_this_run += 1
         detail = fetch_facebook_listing_detail(external_id)
         if detail is None or not detail.get("city"):

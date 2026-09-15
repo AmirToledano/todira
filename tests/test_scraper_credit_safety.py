@@ -471,7 +471,7 @@ def test_scrape_facebook_skips_already_known_listings_entirely(monkeypatch):
 
 def test_scrape_facebook_upserts_a_new_listing_with_its_real_detail_city(monkeypatch):
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
-    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
         scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
     )
@@ -495,7 +495,7 @@ def test_scrape_facebook_skips_a_new_listing_with_no_confirmed_city(monkeypatch)
     """No safe fallback for an unknown city — the listing is skipped entirely (not upserted with
     city=None), and stays out of known_ids so a later run retries it."""
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
-    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
         scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
     )
@@ -516,7 +516,7 @@ def test_scrape_facebook_skips_a_new_listing_with_no_confirmed_city(monkeypatch)
 
 def test_scrape_facebook_returns_none_detail_gracefully(monkeypatch):
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
-    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
         scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
     )
@@ -533,7 +533,7 @@ def test_scrape_facebook_returns_none_detail_gracefully(monkeypatch):
 def test_scrape_facebook_stops_new_detail_fetches_at_the_cap(monkeypatch):
     monkeypatch.setenv(scraper_main._FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "2")
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
-    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
         scraper_main,
         "fetch_facebook_results",
