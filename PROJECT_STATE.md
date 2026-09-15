@@ -6298,3 +6298,67 @@ proven by the Bright Data enrichment code) bounds Komo/Homeless per-listing fetc
 `_scrape_sources_concurrently` instead of one after another. 11 new tests
 (`tests/test_scraper_concurrency.py`); one existing Homeless test made order-insensitive since
 concurrent side effects don't land in a guaranteed order. 889 tests pass; ruff clean.
+
+## Update 2026-09-15 (same night, later still): Bright Data root cause fully confirmed — a free-trial
+## account limitation, not a bug; Web Unlocker and a self-built direct-fetch alternative both ruled out
+
+Owner asked to keep digging rather than go straight to Bright Data support. Continued live,
+collaborative debugging via the owner's own dashboard screenshots (permissions, API keys, collector
+list, Initiate-by-API tabs) plus three separate diagnostic workflow runs against the real API:
+
+- Confirmed via the dashboard (Account Settings -> Users and API keys): this account is on a **Free
+  trial** plan. Only ONE collector — explicitly labeled "Free trial" in the UI, 4,066 completed runs,
+  100% success rate, 23s294ms average job time historically — can be triggered via the API at all.
+- Every other collector tested got a real `401 Invalid credentials`, regardless of API key permission
+  level (even a freshly-generated Admin key) or endpoint version:
+  - `yad2.co.il` (`c_mtkpmnlb2c089s7pr3`, the correctly-built production collector, 7 runs all via
+    the web UI, never via API) — 401 on legacy `/dca/trigger` AND on the newer
+    `/datasets/v3/trigger?dataset_id=` (ruling out "wrong/deprecated endpoint" as the explanation).
+  - The historical 2026-09-12 collector (`c_mtyf4w2z1ag3eu3n1u`, the one this file's own
+    2026-09-12 entry records as the real working fix for the "Incompatible worker" bug) — same 401.
+- The one collector that DOES respond returns results in under 1 second — far faster than its own
+  23s average — for every URL tried, always the same cached listing (adNumber=83125484). This is
+  consistent with a free-trial collector replaying a fixed demo result rather than performing a real
+  per-URL scrape.
+
+**Conclusion: this was never a code bug or a credential/permission misconfiguration in this repo.**
+It's a Bright Data free-trial-tier product limitation — the account's trial simply does not allow
+triggering a real, custom-built collector via the API. `brightDataEnrichmentSuspended` stays `true`
+until the owner either upgrades the Bright Data plan or a $0 alternative is found (see below).
+
+Also ruled out this session, so the remaining decision space is fully mapped:
+- **Web Unlocker** (same account/API key/credit pool, $1.50/1000 successful requests): blocked by a
+  KYC requirement (company email verification). The owner had a KYC video call scheduled and
+  cancelled it — not currently viable.
+- **ISP Proxy** (already configured, $2/month flat): confirmed earlier to work for plain JSON API
+  endpoints but NOT for full rendered HTML pages — not usable for listing descriptions.
+- **Reusing the existing ZenRows account** for Yad2 detail-page enrichment: Yad2 sits in ZenRows' own
+  expensive anti-bot pricing tier (~25 credits/request, vs Homeless's 1 credit/request) — would
+  likely cost MORE than a paid Bright Data plan, not less, against the existing 45,000 credit/month
+  plan ceiling.
+- **A $0, fully self-built direct fetch of the Yad2 listing page itself** (no proxy, no JS
+  rendering — the same technique already proven live for Yad2's search/map pages, on the theory that
+  `__NEXT_DATA__.metaData.description` is server-rendered and needs no client JS to populate): tested
+  twice tonight with a plain GET carrying a real browser User-Agent/Accept-Language, parsing for
+  `__NEXT_DATA__` and a genuine Radware-challenge signature —
+  - From a GitHub Actions runner IP (`diagnose-yad2-listing-detail-direct-fetch.yaml`): real Radware
+    challenge page (`Title: Radware Page`, signals `['Radware', 'validate.perfdrive']`), no
+    `__NEXT_DATA__` at all.
+  - From production's OWN real egress IP — a standalone, throwaway k8s Pod inside the actual
+    `todira` cluster (`diagnose-yad2-listing-detail-from-production-ip.yaml`, PR #341, run
+    2026-09-15T19:03Z) — **identical result**: `http_status=200`, `Title: Radware Page`, signals
+    `['Radware', 'validate.perfdrive']`, no `__NEXT_DATA__` script tag found. Production's own IP
+    reputation was the one remaining unfalsified hypothesis for why the GitHub-Actions-IP test
+    failed; it is now ruled out too — Yad2's individual LISTING pages carry stronger anti-bot
+    protection than the search/map pages regardless of requester IP, at least for a plain
+    unauthenticated GET with no JS execution.
+
+**Where this leaves the listing-description problem, concretely**: a $0 direct-fetch fix is not
+viable — Radware blocks it outright, from both a shared CI IP and production's own clean IP. The
+only remaining paths are (a) a paid Bright Data Scraper Studio plan, previously estimated (this
+file's own 2026-09-07 pricing check) around $1.50/1,000 page loads, roughly $6-7/month at current
+listing volume; (b) a different rotating-residential-proxy provider without a KYC wall, not yet
+researched; or (c) a more involved self-built approach that actually executes JS / solves the
+Radware challenge (headless browser), which is real engineering work, not a quick fix. Nothing
+further can be resolved without the owner picking a direction — flagged back to the owner rather than
+guessed at or spent on.
