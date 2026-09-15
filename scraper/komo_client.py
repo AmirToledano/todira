@@ -74,7 +74,23 @@ under real credit pressure (see PROJECT_STATE.md's ongoing ZenRows-budget entrie
 Requires BRIGHT_DATA_ISP_HOST/BRIGHT_DATA_ISP_USER/BRIGHT_DATA_ISP_PASS (see
 dorin_common.bright_data_client's own module docstring) — the same three env vars
 scraper-cronjob.yaml already wires in for Yad2's tel-aviv-area migration. No longer needs
-ZENROWS_API_KEY at all for anything in this file."""
+ZENROWS_API_KEY at all for anything in this file.
+
+STATUS 2026-09-15: MIGRATED again, this time OFF the Bright Data ISP proxy too, same night Yad2's
+own map API made the identical discovery (see yad2_client._fetch_direct's own docstring for the
+full story) — confirmed live (diagnose-komo-homeless-direct-request.yaml, run twice) that Komo's
+search page + adscoordinates POST both work perfectly with ZERO proxy at all, straight off a fresh
+GitHub Actions IP: 11,547 real coordinate ids back. `_isp_proxy_get`/`_isp_proxy_post` (names kept
+as-is, only their bodies changed) now do a plain `httpx.get`/`httpx.post`, no Bright Data
+involved — this file no longer needs BRIGHT_DATA_ISP_HOST/USER/PASS either. Same open risk as
+yad2_client._fetch_direct's own docstring: this is proven against one fresh IP so far, not weeks
+of real production traffic against a static IP — watch real runs for a returning block and
+reconsider only if that actually happens.
+
+Homeless was tested the same way, same night, and did NOT get the same result: a direct request to
+homeless.co.il/rent/ came back `403`, Cloudflare's own "Just a moment..." JS-challenge page — a
+real, different wall from Yad2's Radware or nothing at all here. Homeless genuinely still needs
+SOME bypass (currently ZenRows) — see homeless_client.py's own module docstring; not migrated."""
 from __future__ import annotations
 
 import html
@@ -84,7 +100,7 @@ import re
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
-from dorin_common import bright_data_client
+import httpx
 from yad2_client import CITY_SLUG_TO_HEBREW_NAME
 
 logger = logging.getLogger(__name__)
@@ -180,38 +196,56 @@ def _extract_gallery_images(page_html: str, *, modaa_num: str) -> list[str]:
 
 
 class KomoFetchError(RuntimeError):
-    """A Komo fetch failed outright — Bright Data's ISP proxy request itself failed (see
-    bright_data_client.fetch_via_isp_proxy/_post's own docstrings for their failure modes: missing
-    config, network error, non-200), or Komo's own response wasn't the expected shape. Komo has
-    shown no bot-challenge wall of its own in any live run so far (unlike Yad2's Radware wall) —
-    every failure seen has been a plain HTTP/proxy-side problem."""
+    """A Komo fetch failed outright — the plain direct request itself failed (network error,
+    non-200), or Komo's own response wasn't the expected shape. Komo has shown no bot-challenge
+    wall of its own in any live run so far (unlike Yad2's Radware wall or Homeless's Cloudflare
+    wall) — every failure seen has been a plain HTTP problem."""
+
+
+_DIRECT_FETCH_TIMEOUT_SECONDS = 30.0
 
 
 def _isp_proxy_get(url: str, *, context_label: str) -> str:
-    """Shared ISP-proxy GET mechanics for the search page and detail page fetches below — raises
-    KomoFetchError (never returns None) so every caller keeps the same try/except shape it always
-    had, matching yad2_client.fetch_map_markers' own "raise on failure" convention for a primary
-    fetch (as opposed to fetch_listing_detail's own "return None" contract for optional
-    enrichment — see that function for where this distinction actually matters)."""
-    body = bright_data_client.fetch_via_isp_proxy(url)
-    if body is None:
+    """Plain, UN-proxied GET — no Bright Data ISP proxy, no auth, nothing. Name kept as
+    `_isp_proxy_get` (not renamed to `_fetch_direct`, matching yad2_client.py's own name for the
+    same idea) purely to keep this diff to the function body, not every call site — 2026-09-15:
+    confirmed live (diagnose-komo-homeless-direct-request.yaml) that Komo's own search page and
+    adscoordinates endpoint BOTH work cleanly with zero proxy at all, straight off a fresh GitHub
+    Actions IP (11,547 real coordinate ids back) — the exact same finding that already took Yad2
+    off this same Bright Data ISP proxy today (see yad2_client._fetch_direct's own docstring for
+    the full story: the proxy IP's own reputation, not anything about these endpoints, was the
+    real problem). Unlike Yad2's finding this one hasn't been proven against many regions/days of
+    real traffic yet — same open risk as yad2_client._fetch_direct's own docstring: production's
+    own IP is presumably static too, so watch real runs for a returning block and reconsider only
+    if that happens, not preemptively. Raises KomoFetchError (never returns None) so every caller
+    keeps the same try/except shape it always had, matching yad2_client.fetch_map_markers' own
+    "raise on failure" convention for a primary fetch."""
+    try:
+        response = httpx.get(url, timeout=_DIRECT_FETCH_TIMEOUT_SECONDS)
+    except httpx.HTTPError as exc:
+        raise KomoFetchError(f"Direct (un-proxied) request failed for {context_label}: {url}") from exc
+    if response.status_code != 200:
         raise KomoFetchError(
-            f"Bright Data ISP proxy failed to fetch {context_label}: {url} — see its own logs "
-            "for the specific failure (missing config, network error, or non-200 status)."
+            f"Direct (un-proxied) request returned non-200 for {context_label}: {url} — "
+            f"status={response.status_code} body={response.text[:500]!r}"
         )
-    return body
+    return response.text
 
 
 def _isp_proxy_post(url: str, data: dict[str, str], *, context_label: str) -> str:
     """POST counterpart to _isp_proxy_get above — used only by fetch_coordinate_ids' own second
-    stage (the adscoordinates/list/ endpoint, which requires a POST body, not a GET)."""
-    body = bright_data_client.fetch_via_isp_proxy_post(url, data)
-    if body is None:
+    stage (the adscoordinates/list/ endpoint, which requires a POST body, not a GET). Same
+    2026-09-15 direct-request migration, same reasoning — see _isp_proxy_get's own docstring."""
+    try:
+        response = httpx.post(url, data=data, timeout=_DIRECT_FETCH_TIMEOUT_SECONDS)
+    except httpx.HTTPError as exc:
+        raise KomoFetchError(f"Direct (un-proxied) POST failed for {context_label}: {url}") from exc
+    if response.status_code != 200:
         raise KomoFetchError(
-            f"Bright Data ISP proxy failed to POST to {context_label}: {url} — see its own logs "
-            "for the specific failure (missing config, network error, or non-200 status)."
+            f"Direct (un-proxied) POST returned non-200 for {context_label}: {url} — "
+            f"status={response.status_code} body={response.text[:500]!r}"
         )
-    return body
+    return response.text
 
 
 def _extract_session_token(search_page_html: str) -> str | None:
