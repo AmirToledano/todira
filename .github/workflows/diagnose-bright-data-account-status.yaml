@@ -19,6 +19,13 @@ name: Diagnose — Bright Data real account balance + collector status (read-onl
 # looking for this collector's real status/active field — the earlier guess of
 # /dca/collections?collector=X, plural mismatched, got a plain 404). Pure Bright Data API traffic,
 # no Yad2/ZenRows cost, does not touch the live k8s scraper Job.
+# 2026-09-15, later: this workflow originally read BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID
+# from GitHub Actions' own repo secrets — a completely separate store from the real k8s
+# todira-bot-secret that production (and the owner's own key rotation via
+# set-bright-data-api-key-secret.yaml) actually updates. That meant every run of this workflow was
+# silently testing a stale, unrelated credential, never the real Admin key. Fixed to read from the
+# real k8s secret, matching every other credential-using diagnostic in this repo (e.g.
+# diagnose-bright-data-stuck-same-result.yaml, fixed the same way in PR #333).
 on:
   workflow_dispatch: {}
 
@@ -26,10 +33,32 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Check real account balance/credits
-        env:
-          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
         run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read + mask the real Bright Data API key and collector id from the k8s secret
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' | base64 -d)
+          COLLECTOR_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-collector-id}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+          echo "::add-mask::$COLLECTOR_ID"
+          if [ -z "$API_KEY" ]; then
+            echo "bright-data-api-key is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$API_KEY" > /tmp/bd_api_key.txt
+          echo "$COLLECTOR_ID" > /tmp/bd_collector_id.txt
+
+      - name: Check real account balance/credits
+        run: |
+          export BRIGHT_DATA_API_KEY=$(cat /tmp/bd_api_key.txt)
+          echo "::add-mask::$BRIGHT_DATA_API_KEY"
           echo "=== GET https://api.brightdata.com/customer/balance ==="
           curl -sS "https://api.brightdata.com/customer/balance" \
             -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
@@ -41,10 +70,11 @@ jobs:
           echo ""
 
       - name: List this account's own collectors (real status/active field, if any)
-        env:
-          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
-          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
         run: |
+          export BRIGHT_DATA_API_KEY=$(cat /tmp/bd_api_key.txt)
+          export BRIGHT_DATA_COLLECTOR_ID=$(cat /tmp/bd_collector_id.txt)
+          echo "::add-mask::$BRIGHT_DATA_API_KEY"
+          echo "::add-mask::$BRIGHT_DATA_COLLECTOR_ID"
           echo "collector id (masked by GH, length only): ${#BRIGHT_DATA_COLLECTOR_ID} chars"
           echo "=== GET https://api.brightdata.com/dca/collectors ==="
           curl -sS "https://api.brightdata.com/dca/collectors" \
@@ -57,10 +87,11 @@ jobs:
           echo ""
 
       - name: Check this specific collector's own status by id (path param, not query)
-        env:
-          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
-          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
         run: |
+          export BRIGHT_DATA_API_KEY=$(cat /tmp/bd_api_key.txt)
+          export BRIGHT_DATA_COLLECTOR_ID=$(cat /tmp/bd_collector_id.txt)
+          echo "::add-mask::$BRIGHT_DATA_API_KEY"
+          echo "::add-mask::$BRIGHT_DATA_COLLECTOR_ID"
           echo "=== GET https://api.brightdata.com/dca/collectors/\$BRIGHT_DATA_COLLECTOR_ID ==="
           curl -sS "https://api.brightdata.com/dca/collectors/${BRIGHT_DATA_COLLECTOR_ID}" \
             -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
