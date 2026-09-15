@@ -61,25 +61,26 @@ per 1,000 requests, but then hit a real "no KYC" wall for every OTHER bbox/param
 real production without completing a business-verification process this project doesn't have the
 company email for yet.
 
-Actual route used below: `bright_data_client.fetch_via_isp_proxy` — a plain, unauthenticated-by-
-Bright-Data (no KYC at all) ISP proxy, confirmed live (diagnose-yad2-isp-proxy.yaml) to fetch this
-exact map API successfully (200 real markers, real prices) at a flat $2/month per IP — dramatically
-cheaper than either ZenRows (~25 credits/request, and REFUSES this endpoint anyway) or Web Unlocker
-($0.0015/request AND KYC-gated), and the cheapest option found for Yad2 in this whole project.
-Works here specifically because this endpoint is pure JSON needing no JS rendering — the same proxy
-against Yad2's own full HTML search page loads (not IP-blocked) but stays empty of real listing
-cards, since Yad2's own page needs actual browser JS execution to render them (a separate,
-unsolved problem — see YAD2_NOTES.md attempts 1-8 — this function doesn't attempt to fix that, and
-doesn't need to: the map API alone already carries everything needed).
+Second route (2026-09-13 to 2026-09-15): Bright Data's ISP proxy (`bright_data_client.
+fetch_via_isp_proxy`) — a plain, unauthenticated-by-Bright-Data (no KYC at all) proxy, confirmed
+live to fetch this map API successfully at a flat $2/month per IP. Used for over a day, but its
+own static IP accumulated enough Radware "reputation damage" from a day of testing (including
+genuinely blocked requests, not just this project's own fault) that by 2026-09-15 it started
+failing on requests that had worked through it hours earlier — see REGIONS_ON_MAP_API's own
+comment and `_fetch_direct`'s docstring below for the full live A/B finding that replaced it.
 
-NOT wired into scraper/main.py's run_once() yet, deliberately — this is a bigger architectural
-change than fetch_all_listings was (a different provider, a different data shape, and the real
-bBox/area/region values needed to cover the whole country haven't been worked out yet, only the
-one bbox the owner's own browser happened to be showing — see the earlier clustering finding in
-diagnose-yad2-map-api-coverage.yaml: a wide-enough bbox returns aggregated per-city cluster counts
-instead of individual markers past a real ~200-marker cap, so full coverage needs a real recursive
-zoom-in strategy, not yet designed). Kept as a real, tested, ready building block — the actual
-production switch-over is a follow-up decision, not made here."""
+ACTUAL route used below, as of 2026-09-15: `_fetch_direct` — a plain, un-proxied GET, no Bright
+Data anything. Confirmed live that a direct request currently succeeds for every one of the 7
+REGION_SLUGS' own district-level bbox/region requests, while the (by then reputation-damaged) ISP
+proxy failed on all of them, including ones it used to handle fine. See `_fetch_direct`'s own
+docstring for the real A/B evidence and the known open risk this doesn't solve (this project's own
+production IP could in principle suffer the same reputation decay over real repeated use — watch
+for it, don't assume it can't happen here too).
+
+NOW wired into scraper/main.py's run_once() (see fetch_region_via_map_api below) for every region
+listed in REGIONS_ON_MAP_API — as of 2026-09-15 that's all 7 REGION_SLUGS, each with its own
+confirmed-real, live-captured district-level bbox/region pair (no `area` needed for any of them —
+see REGIONS_ON_MAP_API's own comment for how each was found and verified)."""
 from __future__ import annotations
 
 import json
@@ -90,7 +91,6 @@ from typing import Any, Iterator
 from urllib.parse import urljoin
 
 import httpx
-from dorin_common import bright_data_client
 
 logger = logging.getLogger(__name__)
 
@@ -680,9 +680,9 @@ MAP_API_URL = "https://gw.yad2.co.il/realestate-feed/rent/map"
 
 
 class Yad2MapFetchError(RuntimeError):
-    """fetch_map_markers failed outright — Bright Data's ISP proxy request itself failed (see
-    bright_data_client.fetch_via_isp_proxy's own docstring for its failure modes), or it
-    succeeded but returned something that isn't the expected {"data": {"markers": [...]}} shape."""
+    """fetch_map_markers failed outright — the direct (un-proxied) request itself failed (see
+    _fetch_direct's own docstring for its failure modes), or it succeeded but returned something
+    that isn't the expected {"data": {"markers": [...]}} shape."""
 
 
 def _build_map_url(
@@ -759,6 +759,52 @@ def _marker_to_raw_item(marker: dict[str, Any]) -> dict[str, Any] | None:
     return item
 
 
+_DIRECT_FETCH_TIMEOUT_SECONDS = 30.0
+
+
+def _fetch_direct(url: str) -> str | None:
+    """Plain, UN-proxied GET — no Bright Data ISP proxy, no auth, nothing. Added 2026-09-15,
+    replacing this file's earlier `bright_data_client.fetch_via_isp_proxy` call, after a real,
+    live finding that upends the whole premise of routing map-API requests through our own ISP
+    proxy IP: dispatched the SAME confirmed-good request (partnership/east, which had worked
+    through the proxy for over a day) both directly and through the proxy, back to back —
+    direct: 200, real data; through our proxy: 302, Radware challenge. Repeated for all 7
+    REGION_SLUGS' own district-level bbox/region pairs: direct succeeded for every single one,
+    while the proxy failed for every single one (including regions that had worked through it
+    hours earlier). The proxy's own IP is static and had been hammered with failed/blocked
+    requests all day (see REGIONS_ON_MAP_API's CORRECTED FINDING and later comments below) — its
+    Radware reputation had clearly degraded over the course of that testing. A plain direct
+    request (whatever IP this code happens to run from) had no such history and went through
+    cleanly on every region tried.
+
+    Same "return None on failure, never raise" contract as bright_data_client.fetch_via_isp_proxy
+    had, so fetch_map_markers' own error handling above needs no other change.
+
+    KNOWN OPEN RISK, not solved here: this project's own production IP (wherever the k8s CronJob
+    actually runs from) is presumably ALSO static, not a fresh IP per request the way each of the
+    diagnostic GitHub Actions runs above got — so the same reputation-decay risk that burned the
+    ISP proxy today could in principle happen to this IP too, given enough real repeated use. No
+    fix attempted here (there isn't a better alternative available right now — Web Unlocker is
+    still KYC-gated, see the module docstring's own history) — just watch real production runs for
+    a return of the 302/Radware-challenge pattern, and revisit (e.g. asking Bright Data for a
+    fresh, unburned ISP-proxy IP, or a rotating-IP service) only if that actually happens, not
+    preemptively."""
+    try:
+        response = httpx.get(url, timeout=_DIRECT_FETCH_TIMEOUT_SECONDS)
+    except httpx.HTTPError:
+        logger.exception("Direct (un-proxied) request failed for %s", url)
+        return None
+
+    if response.status_code != 200:
+        logger.warning(
+            "Direct (un-proxied) request returned non-200 for %s: status=%d body=%r",
+            url, response.status_code, response.text[:500],
+        )
+        return None
+
+    return response.text
+
+
 def fetch_map_markers(
     bbox: str, *, area: int | None = None, region: int, zoom: int = 11, host: str | None = None
 ) -> Iterator[dict[str, Any]]:
@@ -780,17 +826,17 @@ def fetch_map_markers(
     _build_map_url's own docstring). `zoom` defaults to 11, matching the first real confirmed
     request (tel-aviv-area) — other regions have used other real, live-confirmed zoom values.
 
-    Raises Yad2MapFetchError on any failure (missing Bright Data config, network error, non-200,
-    unparseable/unexpected JSON shape) — unlike fetch_listing_detail's "return None" contract,
-    this matches fetch_all_listings/fetch_region_pages' own "raise, don't silently yield nothing"
-    convention for a primary discovery source, so a real outage surfaces as a countable error
-    rather than a silently-empty run."""
+    Raises Yad2MapFetchError on any failure (network error, non-200, unparseable/unexpected JSON
+    shape) — unlike fetch_listing_detail's "return None" contract, this matches
+    fetch_all_listings/fetch_region_pages' own "raise, don't silently yield nothing" convention
+    for a primary discovery source, so a real outage surfaces as a countable error rather than a
+    silently-empty run."""
     url = _build_map_url(bbox, area=area, region=region, zoom=zoom, host=host)
-    body = bright_data_client.fetch_via_isp_proxy(url)
+    body = _fetch_direct(url)
     if body is None:
         raise Yad2MapFetchError(
-            f"Bright Data ISP proxy failed to fetch Yad2's map API: {url} — see its own logs "
-            "for the specific failure (missing config, network error, or non-200 status)."
+            f"Direct (un-proxied) request failed to fetch Yad2's map API: {url} — see its own "
+            "logs for the specific failure (network error or non-200 status)."
         )
 
     try:
@@ -814,73 +860,43 @@ def fetch_map_markers(
             yield item
 
 
-# 2026-09-14: real, PARTIAL migration off ZenRows — only for regions with a CONFIRMED-real (live
-# request, not guessed/interpolated) map-API bbox/area/region. Started with tel-aviv-area alone
-# (re-verified live via diagnose-yad2-isp-proxy-single-retest.yaml — 200 real markers, the
-# 2026-09-13 rate-limit block had lifted); partnership/east added the same night after the owner
-# found its own real request live (diagnose-yad2-region-map-params.yaml verify run: 200 real
-# markers, every one correctly labeled region="יהודה, שומרון ובקעת הירדן", no mixing).
+# FINAL STATE as of 2026-09-15 — all 7 REGION_SLUGS covered, full district-level requests, no
+# `area` needed anywhere. This superseded several earlier, now-historical dead ends (kept in git
+# history, not repeated here in full): a "no-area, gw.yad2.co.il" request was for a while believed
+# blocked in general (only true of our OWN, by-then reputation-damaged Bright Data ISP proxy IP —
+# see below), which led to a whole detour through per-sub-area hunting (area=+region= pairs found
+# one city cluster at a time via yad2.co.il/latestsearches) before the real, simpler picture
+# emerged.
 #
-# Two real findings while adding partnership/east that don't apply to tel-aviv-area's own entry:
-#   (a) it needs NO `area` param at all — a district-level ("מחוז") request can be plain
-#       region=<id>&bBox=...&zoom=..., confirmed live (see fetch_map_markers' own docstring).
-#   (b) it needs a DIFFERENT HOST — gw.yad-il.co.il, not gw.yad2.co.il — confirmed live from the
-#       owner's own browser address bar (not a typo, double-checked). Plausibly a real legal/
-#       geopolitical reason for Yad2 to route יהודה ושומרון listings through a separate domain.
-#       See _build_map_url's own docstring for how `host` is passed through.
+# THE REAL FINDING: every one of these 7 bbox/region pairs is the owner's own real, live-captured
+# district-level request (DevTools, panning/zooming that region's own map view — never guessed or
+# interpolated) — no `area` param needed for ANY of them. What actually mattered was never
+# "area vs. no-area": it was WHICH IP the request goes through. A live A/B test dispatched the
+# same confirmed-good request (partnership/east) both directly (no proxy at all) and through our
+# Bright Data ISP proxy, back to back: direct → 200, real data; through our proxy → 302, Radware
+# challenge. Repeated for all 7 regions' own district-level requests: direct succeeded for every
+# single one (including ones that had failed through the proxy hours earlier, and even ones the
+# proxy itself used to handle fine, like partnership/east) — our proxy's own static IP had simply
+# accumulated bad Radware reputation over a full day of testing (including genuinely blocked
+# requests). See `_fetch_direct`'s own docstring for the fetch mechanism this uses now (no proxy
+# at all) and the one known open risk it doesn't solve.
 #
-# CORRECTED FINDING (2026-09-14, later the same night): a "no area, gw.yad2.co.il" district-level
-# request is NOT safe in general — it's specific to partnership/east's own DIFFERENT host. Three
-# real, separately-dispatched verify runs, spaced minutes apart (ruling out the velocity theory
-# this comment originally stated) — center-and-sharon (region=1) TWICE and jerusalem-area
-# (region=6) once, both plain region=<id>&bBox=...&zoom=... on gw.yad2.co.il — ALL THREE got the
-# same 302 Radware challenge, consistently, regardless of spacing. Meanwhile tel-aviv-area (WITH
-# area=1, also on gw.yad2.co.il) and partnership/east (no area, but on gw.yad-il.co.il) both work
-# every time. The real, evidence-backed pattern: our specific Bright Data ISP proxy IP is
-# currently flagged for "no area" requests specifically on the MAIN gw.yad2.co.il domain — an
-# area-scoped request (tel-aviv-area's own shape) or a different host (partnership/east's own
-# shape) both avoid it. Practical consequence: every remaining REGION_SLUGS entry that stays on
-# gw.yad2.co.il needs its own real, live-captured `area=`+`region=` pair (found by zooming INTO a
-# specific city within the district in a browser, not just opening the district-level view) —
-# not the plain district-level request this comment originally assumed would be fine.
+# `host` stays available (see _build_map_url) for partnership/east, which Yad2 itself routes
+# through a different domain (gw.yad-il.co.il, not gw.yad2.co.il) — plausibly a real legal/
+# geopolitical reason, confirmed live from the owner's own browser address bar.
 #
-# The remaining REGION_SLUGS entries (center-and-sharon, jerusalem-area, south, coastal-north,
-# north-and-valleys) stay on fetch_region_pages/ZenRows until each one's own real, area-scoped
-# bbox/area/region (and host, if it turns out to need a different one — check, don't assume
-# gw.yad2.co.il) is found the same way — live, from the owner's own browser DevTools or an
-# equivalent confirmed request. Yad2's own area/region numbering has no known pattern to guess
-# from (nothing here should ever interpolate a bbox for an unconfirmed region), and a wrong/too-
-# broad bbox risks the same Radware challenge seen on 2026-09-13 (rapid batching) and repeatedly
-# on 2026-09-14 with district-level, no-area requests on gw.yad2.co.il (see above) — see also
-# diagnose-yad2-map-single-test.yaml's "1b_country_bbox_with_area_region" result for a third,
-# earlier data point (a whole-country bbox blocked even WITH area/region set). Real cost: flat
-# $2/month total for Bright Data's ISP proxy (not per-region, not per-request) vs. ZenRows' ~25
-# credits/page for a region on ZenRows.
+# Each entry is still a LIST (not a single dict) even though every region here only needs one
+# district-level request today — kept this shape rather than simplifying back to dict[str, dict]
+# in case a future region genuinely does need multiple sub-requests (e.g. if a district-level
+# request ever starts returning the aggregated-cluster-count shape a too-wide bbox can trigger
+# past Yad2's own ~200-marker-per-response cap — not currently observed for any of these 7, but
+# not proven impossible either).
 #
-# MULTIPLE SUB-AREAS PER REGION (2026-09-14, later still the same night): the owner correctly
-# pushed back on the obvious-looking fix for the CORRECTED FINDING above — "just use one city's
-# own area=+region= pair" would mean e.g. "south" (a real region spanning Ashdod, Ashkelon, Beer
-# Sheva, Netivot, Eilat, and more) silently shrinking to whatever ONE city was picked, losing every
-# other city in it. That's not a real region migration, just a much smaller one wearing its name.
-# So each entry below is a LIST of one-or-more sub-area configs, not a single dict — most regions
-# so far only need one (the whole district fits in a single safe request, e.g. partnership/east's
-# own different-host shape), but a region whose district-level request is blocked needs one real,
-# live-captured area=+region= pair PER major city/sub-area to get genuine full coverage. Finding
-# the REAL, complete list of sub-areas for a region (not guessing which cities matter): type the
-# region's own name into Yad2's search box, open the "אזור" (not "מחוז", not "עיר") dropdown level
-# — that's Yad2's own official sub-area list for that region, not an assumption about which cities
-# are big enough to matter.
-#
-# Known, accepted limitation (not solved here): unlike fetch_region_pages, this does ONE request
-# per sub-area and stops — no paging to catch up on more than one response's worth of markers
-# (confirmed live: up to 200 in a single response). A sub-area with more than 200 genuinely-new
-# listings since the last scrape would miss some until the next run picks them up — accepted for
-# now since it only ever costs a delayed catch-up, never wrong/lost data, and 200 comfortably
-# covers this project's real observed per-run new-listing volume everywhere else in the codebase.
-# A listing sitting right on the geographic boundary between two adjacent sub-areas could
-# theoretically be returned by both of that region's requests — accepted as a rare, harmless
-# duplicate (normalize()'s own upsert-by-external_id already makes a repeat write a no-op, same as
-# every other source's own overlap handling in this codebase), not a correctness bug worth solving.
+# Known, accepted limitation (not solved here): this does ONE request per region and stops — no
+# paging to catch up on more than one response's worth of markers (confirmed live: up to 200 in a
+# single response, per REGION_SLUGS entry now, not per sub-area). A region with more than 200
+# genuinely-new listings since the last scrape would miss some until the next run picks them up —
+# accepted for now since it only ever costs a delayed catch-up, never wrong/lost data.
 REGIONS_ON_MAP_API: dict[str, list[dict[str, int | str]]] = {
     "tel-aviv-area": [
         {
@@ -898,22 +914,38 @@ REGIONS_ON_MAP_API: dict[str, list[dict[str, int | str]]] = {
             "host": "gw.yad-il.co.il",
         },
     ],
-    # 2026-09-14, first sub-area found for a previously-blocked region: found via Yad2's own
-    # "חיפושים אחרונים" (latest searches, yad2.co.il/latestsearches) page — clicking a past
-    # "מחוז: מרכז והשרון | אזור: אזור צפון השרון" search entry navigates client-side to
-    # .../center-and-sharon?area=70, which fires the real map API request below. Confirmed live
-    # via verify-yad2-region-map-params.yaml: 200 markers, all tagged region.text="מרכז והשרון"
-    # (no cross-region contamination), spanning Petah Tikva/Kfar Saba/Ra'anana/Netanya/Herzliya/
-    # Bnei Brak/Hod HaSharon and 20+ more cities — confirms the CORRECTED FINDING above (an
-    # area=+region= pair on gw.yad2.co.il is safe; only no-area requests on this host were ever
-    # blocked). More sub-areas still needed for full center-and-sharon coverage (this one covers
-    # the northern Sharon cluster, not the whole district) — add them the same way, one
-    # "latestsearches" click + verify-workflow dispatch at a time.
     "center-and-sharon": [
         {
-            "bbox": "31.988411,34.809327,32.621699,35.051643",
-            "area": 70,
+            "bbox": "31.808989,34.507037,32.418309,35.222485",
             "region": 1,
+            "zoom": 10,
+        },
+    ],
+    "jerusalem-area": [
+        {
+            "bbox": "31.549448,34.818058,31.938335,35.272844",
+            "region": 6,
+            "zoom": 10,
+        },
+    ],
+    "south": [
+        {
+            "bbox": "29.490631,33.476480,31.904124,36.268220",
+            "region": 2,
+            "zoom": 8,
+        },
+    ],
+    "coastal-north": [
+        {
+            "bbox": "32.342601,34.560052,33.137625,35.500061",
+            "region": 5,
+            "zoom": 9,
+        },
+    ],
+    "north-and-valleys": [
+        {
+            "bbox": "32.387068,34.885247,33.335914,36.008669",
+            "region": 7,
             "zoom": 9,
         },
     ],
