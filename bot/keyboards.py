@@ -169,6 +169,20 @@ def location_keyboard(draft: dict) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📋 הוסף עיר מרשימה", callback_data="f:loc:full")],
         [InlineKeyboardButton("🔍 חיפוש עיר לפי הקלדה", callback_data="f:loc:addcity")],
     ]
+    if draft["cities"]:
+        # 2026-09-15: real owner report — an empty cities list already means "כל הערים" (see
+        # render_root_summary's own "or 'הכל'" fallback just below, and matching.py's
+        # _check_hard_filters: `if filter_row.cities:` is skipped entirely when this is empty, so
+        # NO city check applies at all, including cities outside cities.CITIES) — but the only way
+        # to reach that state was manually adding, then manually removing, every single city one at
+        # a time. The owner instead selected all 42 bundled cities individually to mean "all
+        # cities," which is NOT the same thing: it silently excludes every real listing whose city
+        # isn't one of those 42 curated names (confirmed live: 1,153 of 3,794 active rent listings,
+        # in real towns like אריאל/חריש/נשר/קרית שמונה that just aren't in the bundled list). This
+        # button reaches the SAME true-"all" state the summary already promises, in one tap.
+        rows.append(
+            [InlineKeyboardButton("🌍 נקה הכל — כל הערים, בלי הגבלה", callback_data="f:loc:clearall")]
+        )
     for idx, city in enumerate(draft["cities"]):
         rows.append([InlineKeyboardButton(f"🗑️ {city}", callback_data=f"f:loc:rmc:{idx}")])
     rows.append([BACK_BUTTON])
