@@ -32,6 +32,18 @@ name: Diagnose — Bright Data DCA returning the SAME result regardless of input
 # pattern every other credential-using diagnostic in this repo already uses (see
 # diagnose-facebook-marketplace-page-structure.yaml) — this also means the test now genuinely
 # reflects whatever key is actually deployed to production, not a separately-tracked copy.
+#
+# 2026-09-15, third run: the collector's own Scraper Studio "Save to development" flow got stuck
+# in a real, repeated "Output schema errors" loop tonight — the collector accumulated many
+# mismatched Output Schema field definitions from unrelated past experiments (listings,
+# property_urls, canary, raw_length, etc.), none of which match the current single-item parser's
+# real (dynamic passthrough) output. Bright Data's own docs (error-codes page, found via web
+# search — docs.brightdata.com is unreachable directly from this sandbox) document exactly this
+# situation: an "Incompatible input/output schema" error can be bypassed at TRIGGER time with
+# `override_incompatible_schema=1` (the UI's own "Trigger anyway" button does the same thing).
+# Added here so this diagnostic can test the real, currently-saved-as-Draft collector code
+# directly via the API, without needing the Studio UI's own save flow to succeed first.
+# override_incompatible_schema=1 is appended to both trigger URLs below.
 on:
   workflow_dispatch:
     inputs:
@@ -86,7 +98,7 @@ jobs:
           headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
           req = urllib.request.Request(
-              f"https://api.brightdata.com/dca/trigger?collector={collector_id}",
+              f"https://api.brightdata.com/dca/trigger?collector={collector_id}&override_incompatible_schema=1",
               data=json.dumps([{"url": url}]).encode(),
               headers=headers, method="POST",
           )
@@ -142,7 +154,7 @@ jobs:
           headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
           req = urllib.request.Request(
-              f"https://api.brightdata.com/dca/trigger?collector={collector_id}",
+              f"https://api.brightdata.com/dca/trigger?collector={collector_id}&override_incompatible_schema=1",
               data=json.dumps([{"url": url}]).encode(),
               headers=headers, method="POST",
           )
