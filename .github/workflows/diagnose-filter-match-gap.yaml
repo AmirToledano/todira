@@ -1,0 +1,96 @@
+name: Diagnose — why a fully-unconstrained rent filter doesn't match every active rent listing (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-15.
+#
+# Real owner report: with EVERY constraint in his own filter set to "no limit" (price, rooms,
+# floor, area, all 42 bundled cities selected, all requirement toggles off, no keywords, no
+# move-in-date bound), find_matching_listings/website /apartments reported 2,634 matches — while a
+# plain count of active (non-delisted, non-duplicate) rent listings was 3,794 a little earlier the
+# same session. property_type and cities were already ruled out by READING the code (not guessed):
+#   - property_type: only 4 Hebrew values are ever actually mapped to a real PropertyType
+#     (scraper/normalize.py's _HEBREW_PROPERTY_TYPE_MAP: apartment, garden_apartment, penthouse,
+#     private_house) + "penthouse" via the separate Bright Data detail-page map
+#     (_PROPERTY_TYPE_MAP) — every one of those 4 IS in the owner's own selected property_types, so
+#     this can't be excluding anything right now.
+#   - cities: the owner's filter has exactly the full 42-entry dorin_common.cities.CITIES list,
+#     confirmed by set comparison — nothing bundled is missing from his selection.
+# What ISN'T ruled out yet, and what this query checks directly:
+#   1. matching.py's own city check (_check_hard_filters) is a PLAIN string-equality test against
+#      filter_row.cities, NOT run through normalize_spelling like several other fields in the same
+#      file — so any active rent listing whose own `city` column holds a value that isn't [exactly]
+#      one of those 42 canonical strings (a smaller town Yad2/Komo/Homeless surfaced that isn't in
+#      the curated cities.py list at all, or a canonicalize_city() gap) fails the city hard filter
+#      regardless of how "unconstrained" the filter otherwise is.
+#   2. bot/handlers/apartments.py's find_matching_listings excludes this SPECIFIC user's own hidden
+#      listings (UserListingAction action='hidden') — a real, but per-user, exclusion no citywide
+#      count would ever reflect.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Query city coverage + owner's own hidden-listing count
+        run: |
+          kubectl delete pod diag-filter-gap -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-filter-gap
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-filter-gap
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    BUNDLED_CITIES="'תל אביב יפו','ירושלים','חיפה','ראשון לציון','פתח תקווה','אשדוד','נתניה','באר שבע','בני ברק','חולון','רמת גן','אשקלון','רחובות','בת ים','בית שמש','כפר סבא','הרצליה','חדרה','מודיעין מכבים רעות','רעננה','רמלה','רמת השרון','נצרת','לוד','גבעתיים','הוד השרון','נהריה','אילת','קריית אתא','קריית גת','קריית מוצקין','קריית ביאליק','קריית אונו','יבנה','אור יהודה','צפת','עפולה','טבריה','דימונה','מבשרת ציון','הר גילה','כרמיאל'"
+                    echo "--- total active rent listings ---"
+                    psql "$CONN" -c "SELECT count(*) AS active_rent FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL;"
+                    echo "--- active rent listings whose city IS in the 42-city bundled list ---"
+                    psql "$CONN" -c "SELECT count(*) FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND city IN ($BUNDLED_CITIES);"
+                    echo "--- active rent listings whose city is NOT in the bundled list (top 30 by count) ---"
+                    psql "$CONN" -c "SELECT city, count(*) AS n FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND city NOT IN ($BUNDLED_CITIES) GROUP BY city ORDER BY n DESC LIMIT 30;"
+                    echo "--- total count of active rent listings NOT in the bundled list ---"
+                    psql "$CONN" -c "SELECT count(*) FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND city NOT IN ($BUNDLED_CITIES);"
+                    echo "--- how many of those have a NULL city ---"
+                    psql "$CONN" -c "SELECT count(*) FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND city IS NULL;"
+                    echo "--- owner's own hidden-listing count (find_matching_listings excludes these) ---"
+                    psql "$CONN" -c "SELECT count(*) FROM user_listing_actions ula JOIN users u ON u.id = ula.user_id WHERE u.telegram_user_id = '${OWNER_TELEGRAM_USER_ID}' AND ula.action = 'hidden';"
+                    echo "--- breakdown by source, for listings outside the bundled city list ---"
+                    psql "$CONN" -c "SELECT source, count(*) FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND city NOT IN ($BUNDLED_CITIES) GROUP BY source;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-filter-gap -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-filter-gap || true
+          kubectl delete pod diag-filter-gap -n todira --ignore-not-found
