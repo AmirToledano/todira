@@ -6019,15 +6019,28 @@ lost across sessions:**
    drifting to `"sale"`/`"sublet"` on an already-RENT-hardcoded path would silently corrupt data, not
    add real coverage — the real feature needs its own explicit per-source deal_type plumbing, not a
    one-line constant swap.
-2. **The /filter text-input prompts ("הקלד/י מחיר מינימלי" etc.) don't auto-open the device
-   keyboard.** Root cause confirmed: these all use `query.edit_message_text` (editing the existing
-   menu message in place) — Telegram's `editMessageText` only accepts `InlineKeyboardMarkup` for
-   `reply_markup`; `ForceReply` (the mechanism that DOES auto-open the keyboard) only works on a
-   NEWLY SENT message, not an edit. Recommended approach (not yet built, owner hasn't decided): a
-   hybrid — add quick-pick preset buttons directly on the price/rooms/floor category keyboards for
-   the common values (zero typing, zero extra message, matches the owner's own stated preference for
-   an ADDITIONAL path over changing the existing one), and reserve a new-message-with-ForceReply
-   prompt only for the "type a custom value" fallback.
+2. **DONE, same day (PR #311):** the /filter text-input prompts ("הקלד/י מחיר מינימלי" etc.) didn't
+   auto-open the device keyboard — root cause: `query.edit_message_text` only accepts
+   `InlineKeyboardMarkup`, and `ForceReply` (the thing that DOES auto-open the keyboard) only works
+   on a NEWLY SENT message, not an edit. Built exactly the hybrid the owner asked for
+   ("אני זורם איתך על המקלדת שהצעת... תבנה את זה"): price/rooms/floor min/max now show a tap-only
+   preset grid first (`kb.numeric_preset_keyboard`/`kb.NUMERIC_PRESETS`), and every remaining typed
+   field (custom numeric value, city search, keywords, min area, move-in dates) now goes through a
+   new `filter_conversation._prompt_for_text` helper — a freshly sent message with a real
+   `ForceReply`, which is what actually opens the keyboard. Retry-after-bad-input messages keep that
+   `ForceReply` alive too, instead of letting the keyboard close on the first typo.
 
-840 tests pass; ruff clean. PRs #299/#300/#301/#302/#303/#304 (diagnostic)/#305, plus the PR that
-carries this entry and the carousel CSS fix.
+**Also fixed same day: `/apartments` flooding the chat with cards instead of a link.** Real owner
+report — the command sent up to `RESULT_LIMIT=10` individual listing cards directly into the chat
+every time, which (a) clutters the chat for no reason and (b) for a broad filter (thousands of
+matches) showed an arbitrary, uninformative subset of 10 while never saying how many really
+matched. `bot/handlers/apartments.py`'s `apartments()` now does the same thing
+`filter_conversation._handle_save` already switched to earlier the same day: report the TRUE,
+uncapped total match count and a single link to the website's own paginated `/apartments?uid=...`
+view (which already applies its own has_access/locked-card gating) — no cards sent from the bot
+command at all anymore. `RESULT_LIMIT`, `_load_matches_sync`, and the `send_listing_card`/
+`format_caption`/`has_full_access` imports it needed are all gone from that file; renamed to
+`_count_matches_sync`, returning just an `int | None`.
+
+851 tests pass; ruff clean. PRs #299/#300/#301/#302/#303/#304 (diagnostic)/#305/#311, plus the PR
+that carries this entry and the carousel CSS fix, plus the PR carrying the /apartments fix above.
