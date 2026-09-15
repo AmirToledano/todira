@@ -22,7 +22,7 @@ reason about for no real benefit.
 
 Tie-break when two sources both introduce what looks like the same apartment: whichever source's
 row already exists in the database wins as canonical — the later one is flagged as its duplicate.
-Within a single scrape run, sources are processed in _SOURCE_SCRAPERS order (Yad2, Komo, Homeless
+Within a single scrape run, sources are processed in _ALL_SOURCE_SCRAPERS order (Yad2, Komo, Homeless
 — see scraper/main.py), so a same-run collision resolves to "whichever ran first this run", not
 necessarily the objectively "best" source. This is a deliberately simple v1 rule, not a quality
 ranking — revisit if real usage shows a specific source's data is consistently worse to keep as

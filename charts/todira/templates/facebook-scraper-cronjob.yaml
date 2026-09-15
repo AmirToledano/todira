@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-facebook-scraper
+  labels:
+    app: {{ .Release.Name }}-facebook-scraper
+spec:
+  # 2026-09-15: a SEPARATE CronJob, deliberately — not just another source added to the main
+  # scraper-cronjob.yaml's own _SOURCE_SCRAPERS loop. Every request here runs through the
+  # DEDICATED scraping account's own real, authenticated session (see set-facebook-cookies-
+  # secret.yaml) from this cluster's own datacenter IP — the classic profile Facebook's own
+  # Account-Integrity/automation detection is built to catch. The real downside of getting this
+  # wrong is a checkpoint/restriction on a real account, not a recoverable "try again later" the
+  # way a blocked Yad2/Komo/Homeless request is — so this needs its own independent schedule and
+  # its own independent suspend switch, never tied to the main scraper's cadence or suspend state.
+  # See scraper/main.py's own SCRAPE_SOURCES/_active_source_scrapers comments for the code-level
+  # half of this same kill-switch: the main CronJob never sets SCRAPE_SOURCES, so it can never
+  # accidentally start scraping Facebook even if this file's own suspend is somehow misconfigured.
+  schedule: {{ .Values.scraper.facebook.schedule | quote }}
+  # Defaults to suspended (true) if unset — the opposite fail-safe direction from the main
+  # scraper's own `| default false`, deliberately: Facebook scraping must never start just because
+  # this key was accidentally omitted from a values override.
+  suspend: {{ .Values.scraper.facebook.suspended | default true }}
+  timeZone: "Asia/Jerusalem"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      # Same reasoning as scraper-cronjob.yaml's own backoffLimit: 0 — a pod crash must fail
+      # visibly, never trigger a silent, unbounded retry that re-runs requests against the live
+      # Facebook account from scratch.
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-facebook-scraper
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: facebook-scraper
+              image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
+              env:
+                # Fixed (not a secret) — see scraper/main.py's _active_source_scrapers: this is
+                # the actual opt-in that makes this CronJob's own run touch Facebook at all.
+                - name: SCRAPE_SOURCES
+                  value: "facebook_marketplace"
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: database-url
+                - name: TELEGRAM_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: telegram-bot-token
+                - name: OWNER_TELEGRAM_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: owner-telegram-user-id
+                      optional: true
+                - name: WEBSITE_URL
+                  value: "https://{{ .Values.website.domain }}"
+                # The dedicated scraping account's real session cookie — see
+                # set-facebook-cookies-secret.yaml's own header comment for how this key is set
+                # (typed directly into that workflow's own GitHub Actions form, never through a
+                # chat/AI session). optional: true so a values/chart deploy alone can never crash
+                # this pod — a genuinely missing cookie surfaces as a real, logged
+                # FacebookFetchError inside the run instead (see facebook_client.py's own
+                # _get_cookie_header), same "fail visibly, not silently" standard as everywhere
+                # else in this project.
+                - name: FACEBOOK_COOKIES
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: facebook-cookies
+                      optional: true
+                - name: WHATSAPP_ACCESS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: whatsapp-access-token
+                      optional: true
+                - name: WHATSAPP_PHONE_NUMBER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: whatsapp-phone-number-id
+                      optional: true
+                - name: WHATSAPP_MATCH_TEMPLATE_NAME
+                  value: {{ .Values.scraper.whatsappMatchTemplateName | default "" | quote }}
+                - name: WHATSAPP_MATCH_TEMPLATE_LANGUAGE
+                  value: {{ .Values.scraper.whatsappMatchTemplateLanguage | default "he" | quote }}
+                # Real ACCOUNT-SAFETY cap (not a credit-cost one) on new-listing detail-page
+                # fetches per run — see scraper/main.py's own _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR
+                # comment. Same optional-only-if-set pattern as komoMaxNewDetailFetchesPerRun etc.
+                # in scraper-cronjob.yaml, so Python's own conservative default (15) applies when
+                # this is left unset here.
+                {{- if .Values.scraper.facebook.maxNewDetailFetchesPerRun }}
+                - name: FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN
+                  value: {{ .Values.scraper.facebook.maxNewDetailFetchesPerRun | quote }}
+                {{- end }}
+                # Same flag/value as the main scraper-cronjob.yaml uses — one shared kill switch
+                # for "no real Telegram/WhatsApp sends this run", not a separate Facebook-only one.
+                - name: NOTIFICATIONS_SUSPENDED
+                  value: {{ .Values.scraper.notificationsSuspended | default false | quote }}
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.scraper.requests.cpu }}
+                  memory: {{ .Values.resources.scraper.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.scraper.limits.cpu }}
+                  memory: {{ .Values.resources.scraper.limits.memory }}
