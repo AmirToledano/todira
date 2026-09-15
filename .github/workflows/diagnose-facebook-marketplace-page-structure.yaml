@@ -9,16 +9,25 @@ name: Diagnose — real Facebook Marketplace page structure via the stored sessi
 # own history (yad2_client.py — 8 failed attempts before its real page structure was understood;
 # komo_client.py/homeless_client.py — each only written after a live diagnostic like this one)
 # is explicit that writing a parser against a GUESSED structure is a real, repeated mistake here —
-# so this fetches ONE real page with the real cookie and reports back safe, structural findings
-# only (status/redirect, title, a generic scan for GraphQL "__typename" values, marketplace item
-# link counts) — never the raw page dump, and the cookie itself is masked before this job's very
-# first shell touches it (same mechanism as set-facebook-cookies-secret.yaml's own masking step),
-# so it can never appear in this run's own logs.
+# so this fetches ONE real page with the real cookie and reports back safe findings only. The
+# cookie itself is masked before this job's very first shell touches it (same mechanism as
+# set-facebook-cookies-secret.yaml's own masking step), so it can never appear in this run's logs.
 #
-# Deliberately ONE request this first run (Marketplace's public category page only, not a specific
-# Group — no group URL is on hand yet, and a single low-volume, browser-like GET is the lowest-risk
-# way to take the very first real look, matching a real, explicit owner go-ahead for exactly one
-# careful diagnostic before anything else touches the live account).
+# A genuine 200 Marketplace page would carry other real users' listing content, so on success this
+# only reports structure (status, title, a generic GraphQL "__typename" scan, item-link counts) —
+# never the raw page dump. A NON-200 response is different: that's Facebook's own generic system
+# error/wall page, not another user's data, so the raw body IS printed in that case — it's the only
+# way to actually see what's wrong and fix the request.
+#
+# 2026-09-15, first run: plain Cookie+User-Agent+Accept-Language headers got a real
+# http_status=400, title "Error", 856 bytes — not a login/checkpoint wall (no such signal matched),
+# Facebook's own generic bad-request page. Second run, same day: added the Sec-Fetch-*/Sec-CH-UA
+# client-hint headers a real Chrome navigation always sends (several sites' edge/WAF layers reject
+# a request without them as non-browser, a common cause of exactly this kind of contentless 400).
+#
+# Deliberately ONE request per run (Marketplace's public category page only, not a specific Group —
+# no group URL is on hand yet), matching a real, explicit owner go-ahead for careful, low-volume
+# diagnostics only, before anything else touches the live account.
 on:
   workflow_dispatch: {}
 
@@ -48,18 +57,28 @@ jobs:
           fi
 
           echo "=== Fetching Marketplace property-rentals category page ==="
-          curl -sS --compressed -L --max-redirs 5 \
+          STATUS=$(curl -sS --compressed -L --max-redirs 5 \
             -D /tmp/fb_headers.txt \
             -o /tmp/fb_body.html \
-            -w "http_status=%{http_code} final_url=%{url_effective} size_bytes=%{size_download}\n" \
+            -w "%{http_code}" \
             --max-time 30 \
             -H "Cookie: $COOKIE" \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
             -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
             -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
-            "https://www.facebook.com/marketplace/category/propertyrentals/" || true
+            -H "Upgrade-Insecure-Requests: 1" \
+            -H "Sec-Fetch-Site: none" \
+            -H "Sec-Fetch-Mode: navigate" \
+            -H "Sec-Fetch-User: ?1" \
+            -H "Sec-Fetch-Dest: document" \
+            -H "sec-ch-ua: \"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"" \
+            -H "sec-ch-ua-mobile: ?0" \
+            -H "sec-ch-ua-platform: \"Windows\"" \
+            "https://www.facebook.com/marketplace/category/propertyrentals/") || STATUS="curl_failed"
+          echo "http_status=$STATUS size_bytes=$(wc -c < /tmp/fb_body.html 2>/dev/null || echo 0)"
+          echo "$STATUS" > /tmp/fb_status.txt
 
-      - name: Analyze the saved page — structure only, never the raw HTML
+      - name: Analyze the saved page
         run: |
           echo "=== Response headers (no cookie ever appears here — only what Facebook itself sent back) ==="
           grep -iE "^(location|set-cookie|content-type|content-length):" /tmp/fb_headers.txt | sed -E 's/^(set-cookie:).*/\1 [redacted, not needed]/i' || true
@@ -100,3 +119,10 @@ jobs:
           script_json_count = len(re.findall(r'<script type=\"application/json\"', html))
           print(f'=== <script type=\"application/json\"> blocks found: {script_json_count} ===')
           "
+
+          STATUS=$(cat /tmp/fb_status.txt 2>/dev/null || echo "")
+          if [ "$STATUS" != "200" ]; then
+            echo
+            echo "=== Raw response body (status=$STATUS, non-200 — Facebook's own generic error/wall page, not real listing content, so safe to print in full) ==="
+            cat /tmp/fb_body.html
+          fi
