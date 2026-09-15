@@ -1,0 +1,50 @@
+name: Diagnose live scraper Job/Pod status (read-only)
+
+# One-off, read-only check of whatever todira-scraper-safe-test-* Job/Pod currently exists —
+# built 2026-09-15 to look directly at cluster state when safe-single-test-run.yaml's own
+# polling step ran past its coded 10-minute ceiling without GitHub's own job-status API showing
+# it as complete. Never modifies anything.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: List any todira-scraper-safe-test-* Jobs and their status
+        run: |
+          echo "--- jobs ---"
+          kubectl get jobs -n todira -l job-name --show-labels 2>/dev/null || true
+          kubectl get jobs -n todira 2>/dev/null | grep -E "safe-test|NAME" || echo "(none found via grep)"
+          echo
+          echo "--- full job describe for any safe-test job ---"
+          for j in $(kubectl get jobs -n todira -o name | grep safe-test); do
+            echo "=== $j ==="
+            kubectl describe "$j" -n todira
+          done
+      - name: List pods for any safe-test job and their status
+        run: |
+          echo "--- pods ---"
+          kubectl get pods -n todira | grep -E "safe-test|NAME" || echo "(none found via grep)"
+          echo
+          for p in $(kubectl get pods -n todira -o name | grep safe-test); do
+            echo "=== $p describe ==="
+            kubectl describe "$p" -n todira
+          done
+      - name: Tail current logs for any safe-test pod
+        run: |
+          for p in $(kubectl get pods -n todira -o name | grep safe-test); do
+            echo "=== logs: $p ==="
+            kubectl logs -n todira "$p" --tail=300 --timestamps || echo "(no logs yet / error)"
+          done
+      - name: CronJob's own spec.suspend (sanity check, informational only)
+        run: |
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.suspend}'
+          echo
