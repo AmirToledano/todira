@@ -25,11 +25,42 @@ name: Diagnose — real Facebook Marketplace page structure via the stored sessi
 # client-hint headers a real Chrome navigation always sends (several sites' edge/WAF layers reject
 # a request without them as non-browser, a common cause of exactly this kind of contentless 400).
 #
-# Deliberately ONE request per run (Marketplace's public category page only, not a specific Group —
-# no group URL is on hand yet), matching a real, explicit owner go-ahead for careful, low-volume
-# diagnostics only, before anything else touches the live account.
+# Deliberately ONE request per run (not a specific Group — no group URL is on hand yet), matching a
+# real, explicit owner go-ahead for careful, low-volume diagnostics only, before anything else
+# touches the live account.
+#
+# 2026-09-15, fourth run: owner decided the real scraping strategy should be per-city (mirrors
+# yad2_client.py's REGION_SLUGS — tag each result by which city URL it came from, since a
+# MarketplaceFeedListingStory's own for_sale_item.location is lat/lng only, no city/street text at
+# all) rather than one nationwide fetch + reverse geocoding. `url_path` lets this same workflow
+# test candidate per-city URL shapes (e.g. "telaviv/propertyrentals", "108424279183935/propertyrentals")
+# across separate manual runs without a new commit each time — never guess at a URL shape blind,
+# same rule this project's whole scraping history is built on.
+# 2026-09-15, fifth run: the owner opened this exact sample listing (item/1053986910834947) in his
+# own real browser and found its DETAIL page shows a real address ("הרצליה, 46000") and street name
+# in the description ("רחוב הכוזרי") — neither present anywhere in the search-feed
+# MarketplaceFeedListingStory node the fourth run's extraction printed (that node's own
+# for_sale_item.location is lat/lng only). This changes the plan for the better: a per-city
+# search-feed fetch isn't needed just to learn the city — a single broad discovery fetch (or a
+# small number of them) plus a per-NEW-listing detail-page fetch (same "enrich once, cache forever"
+# pattern already proven by komo_client.fetch_listing_detail / homeless_client.
+# fetch_listing_description) can get the real address AND description in one extra request per
+# genuinely new listing, not one extra request per city per run. `item_id` lets this workflow fetch
+# one specific listing's own detail page to confirm its real field structure before any of that
+# gets built — defaults to the exact listing the owner already looked at himself.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      url_path:
+        description: 'Path after facebook.com/marketplace/ to test (default: category/propertyrentals/)'
+        required: false
+        type: string
+        default: 'category/propertyrentals/'
+      item_id:
+        description: 'A specific marketplace item id to fetch the detail page for (default: a known real listing)'
+        required: false
+        type: string
+        default: '1053986910834947'
 
 jobs:
   diagnose:
@@ -44,10 +75,14 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
 
-      - name: Fetch Marketplace's real property-rentals category page, using the stored cookie
+      - name: Fetch the Marketplace page at the given url_path, using the stored cookie
         # Cookie is read from the k8s secret and masked in this step's own first two lines, before
         # anything else runs — same ordering reasoning as every other set-*-secret.yaml/diagnose
-        # workflow in this repo that touches a real credential.
+        # workflow in this repo that touches a real credential. URL_PATH itself is a public path
+        # segment (a candidate city slug/id), never secret — safe to read via the normal ${{ }}
+        # interpolation and to print.
+        env:
+          URL_PATH: ${{ inputs.url_path }}
         run: |
           COOKIE=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.facebook-cookies}' | base64 -d)
           echo "::add-mask::$COOKIE"
@@ -56,7 +91,8 @@ jobs:
             exit 1
           fi
 
-          echo "=== Fetching Marketplace property-rentals category page ==="
+          TARGET_URL="https://www.facebook.com/marketplace/${URL_PATH:-category/propertyrentals/}"
+          echo "=== Fetching $TARGET_URL ==="
           STATUS=$(curl -sS --compressed -L --max-redirs 5 \
             -D /tmp/fb_headers.txt \
             -o /tmp/fb_body.html \
@@ -74,8 +110,8 @@ jobs:
             -H "sec-ch-ua: \"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"" \
             -H "sec-ch-ua-mobile: ?0" \
             -H "sec-ch-ua-platform: \"Windows\"" \
-            "https://www.facebook.com/marketplace/category/propertyrentals/") || STATUS="curl_failed"
-          echo "http_status=$STATUS size_bytes=$(wc -c < /tmp/fb_body.html 2>/dev/null || echo 0)"
+            "$TARGET_URL") || STATUS="curl_failed"
+          echo "http_status=$STATUS final_url_was_redirected=$(grep -ic '^location:' /tmp/fb_headers.txt || echo 0) size_bytes=$(wc -c < /tmp/fb_body.html 2>/dev/null || echo 0)"
           echo "$STATUS" > /tmp/fb_status.txt
 
       - name: Analyze the saved page
@@ -183,7 +219,7 @@ jobs:
               if len(found) >= len(TARGET_TYPES):
                   break
 
-          def pretty(obj, indent=1, max_depth=4):
+          def pretty(obj, indent=1, max_depth=6):
               pad = '  ' * indent
               if indent >= max_depth:
                   print(pad + '...(max depth reached)')
@@ -212,4 +248,111 @@ jobs:
               print(f'')
               print(f'=== Sample {typename} — top-level keys: {sorted(node.keys())} ===')
               pretty(node)
+          "
+
+      - name: Fetch one listing's detail page, using the stored cookie
+        env:
+          ITEM_ID: ${{ inputs.item_id }}
+        run: |
+          COOKIE=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.facebook-cookies}' | base64 -d)
+          echo "::add-mask::$COOKIE"
+          if [ -z "$COOKIE" ]; then
+            echo "facebook-cookies is empty in todira-bot-secret — nothing to test with."
+            exit 1
+          fi
+
+          DETAIL_URL="https://www.facebook.com/marketplace/item/${ITEM_ID}/"
+          echo "=== Fetching $DETAIL_URL ==="
+          STATUS=$(curl -sS --compressed -L --max-redirs 5 \
+            -D /tmp/fb_detail_headers.txt \
+            -o /tmp/fb_detail_body.html \
+            -w "%{http_code}" \
+            --max-time 30 \
+            -H "Cookie: $COOKIE" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            -H "Upgrade-Insecure-Requests: 1" \
+            -H "Sec-Fetch-Site: none" \
+            -H "Sec-Fetch-Mode: navigate" \
+            -H "Sec-Fetch-User: ?1" \
+            -H "Sec-Fetch-Dest: document" \
+            -H "sec-ch-ua: \"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"" \
+            -H "sec-ch-ua-mobile: ?0" \
+            -H "sec-ch-ua-platform: \"Windows\"" \
+            "$DETAIL_URL") || STATUS="curl_failed"
+          echo "http_status=$STATUS size_bytes=$(wc -c < /tmp/fb_detail_body.html 2>/dev/null || echo 0)"
+          echo "$STATUS" > /tmp/fb_detail_status.txt
+
+      - name: Extract real address/description fields from the detail page
+        # Generic KEY-NAME scan (not a specific __typename, unlike the feed-node extraction above)
+        # — the detail page's own product/location node type isn't known yet, so this walks every
+        # parsed JSON object and flags any dict that itself owns a key whose NAME contains one of
+        # these target substrings, printing just that dict's __typename and the matching field(s).
+        # This is the real address/description content the owner's own screenshot showed
+        # ("הרצליה, 46000", "רחוב הכוזרי" in the description) — same category of real listing data
+        # this project's other diagnose-*.yaml workflows already print (real Yad2/Komo addresses),
+        # so printing it here is consistent with established practice, not new exposure.
+        run: |
+          STATUS=$(cat /tmp/fb_detail_status.txt 2>/dev/null || echo "")
+          if [ "$STATUS" != "200" ]; then
+            echo "Skipping — detail-page fetch wasn't a 200 (status=$STATUS)."
+            if [ -f /tmp/fb_detail_body.html ]; then
+              echo "=== Raw response body (non-200, Facebook's own error/wall page, safe to print) ==="
+              cat /tmp/fb_detail_body.html
+            fi
+            exit 0
+          fi
+          python3 -c "
+          import re, json
+
+          with open('/tmp/fb_detail_body.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+
+          script_blocks = re.findall(r'<script type=\"application/json\"[^>]*>(.*?)</script>', html, re.S)
+          print(f'Scanning {len(script_blocks)} JSON script blocks on the detail page...')
+
+          TARGET_KEY_SUBSTRINGS = ('address', 'location_text', 'reverse_geocode', 'city', 'postal', 'street', 'description')
+          seen_ids = set()
+          matches = []
+
+          def walk(obj):
+              if len(matches) >= 15:
+                  return
+              if isinstance(obj, dict):
+                  if id(obj) not in seen_ids:
+                      matching_keys = [k for k in obj.keys() if any(sub in k.lower() for sub in TARGET_KEY_SUBSTRINGS)]
+                      if matching_keys:
+                          seen_ids.add(id(obj))
+                          matches.append((obj.get('__typename', '?'), matching_keys, obj))
+                  for v in obj.values():
+                      walk(v)
+              elif isinstance(obj, list):
+                  for v in obj:
+                      walk(v)
+
+          for block in script_blocks:
+              block = block.strip()
+              if block.startswith('for (;;);'):
+                  block = block[len('for (;;);'):]
+              if block.startswith('<!--') and block.endswith('-->'):
+                  block = block[4:-3].strip()
+              if not block:
+                  continue
+              try:
+                  data = json.loads(block)
+              except json.JSONDecodeError:
+                  continue
+              walk(data)
+
+          def truncate(v, n=300):
+              s = repr(v)
+              return s if len(s) <= n else s[:n] + '...(truncated)'
+
+          print(f'=== {len(matches)} dict(s) with an address/location/description-like key found ===')
+          for typename, keys, obj in matches:
+              print(f'')
+              print(f'--- __typename={typename}, matching keys={keys} ---')
+              for k in keys:
+                  print(f'  {k}: {truncate(obj[k])}')
           "
