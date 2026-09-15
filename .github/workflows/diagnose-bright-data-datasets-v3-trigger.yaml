@@ -1,0 +1,90 @@
+name: Diagnose — does the real yad2.co.il collector need the newer Datasets API v3 endpoint? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-15.
+#
+# Direct continuation of tonight's Bright Data investigation: after fixing the API key's
+# permissions (Admin) and correcting BRIGHT_DATA_COLLECTOR_ID to the real "yad2.co.il" collector
+# (diagnose-bright-data-collector-id-match.yaml confirmed the mismatch), triggering via the legacy
+# /dca/trigger?collector= endpoint with that SAME key now gets a real 401 Unauthorized — even
+# though that exact key successfully triggered the WRONG collector moments earlier via that same
+# legacy endpoint. Real, live web research (not guessed) found the legacy DCA API is described as
+# deprecated in favor of a newer Datasets API v3 (POST /datasets/v3/trigger?dataset_id=..., not
+# /dca/trigger?collector=...). "yad2.co.il" also has a visibly richer Collector-runs UI (Cost
+# breakdown, Queue tab, Activated indicator, Auto Self Healing) than the legacy-feeling "New
+# collector" — consistent with it having been built on Bright Data's current product generation,
+# which plausibly only accepts triggers via the newer v3 endpoint, not the legacy one. This tests
+# that directly: POST /datasets/v3/trigger?dataset_id=<the real yad2.co.il collector id> with the
+# same real credentials, and reports the real response. Pure Bright Data API traffic — no Yad2/
+# ZenRows cost, does not touch the live k8s scraper Job.
+on:
+  workflow_dispatch:
+    inputs:
+      test_url:
+        description: "A real Yad2 item URL to test"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read + mask the real Bright Data credentials from the k8s secret
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' | base64 -d)
+          COLLECTOR_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-collector-id}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+          echo "::add-mask::$COLLECTOR_ID"
+          if [ -z "$API_KEY" ] || [ -z "$COLLECTOR_ID" ]; then
+            echo "bright-data-api-key or bright-data-collector-id is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$API_KEY" > /tmp/bd_api_key.txt
+          echo "$COLLECTOR_ID" > /tmp/bd_collector_id.txt
+
+      - name: Try the newer Datasets API v3 trigger endpoint
+        env:
+          TEST_URL: ${{ inputs.test_url }}
+        run: |
+          API_KEY=$(cat /tmp/bd_api_key.txt)
+          COLLECTOR_ID=$(cat /tmp/bd_collector_id.txt)
+          echo "::add-mask::$API_KEY"
+          echo "::add-mask::$COLLECTOR_ID"
+          echo "=== POST https://api.brightdata.com/datasets/v3/trigger?dataset_id=<collector> ==="
+          curl -sS -X POST "https://api.brightdata.com/datasets/v3/trigger?dataset_id=${COLLECTOR_ID}" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "[{\"url\": \"${TEST_URL}\"}]" \
+            -o /tmp/v3_trigger.json \
+            -w "\nhttp_status=%{http_code}\n" \
+            --max-time 30 || true
+          echo "--- response body ---"
+          cat /tmp/v3_trigger.json 2>/dev/null || echo "(no response captured)"
+          echo ""
+
+      - name: Also try with include_errors + no format param (some v3 deployments require it)
+        env:
+          TEST_URL: ${{ inputs.test_url }}
+        run: |
+          API_KEY=$(cat /tmp/bd_api_key.txt)
+          COLLECTOR_ID=$(cat /tmp/bd_collector_id.txt)
+          echo "::add-mask::$API_KEY"
+          echo "::add-mask::$COLLECTOR_ID"
+          echo "=== POST .../datasets/v3/trigger?dataset_id=<collector>&include_errors=true ==="
+          curl -sS -X POST "https://api.brightdata.com/datasets/v3/trigger?dataset_id=${COLLECTOR_ID}&include_errors=true" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "[{\"url\": \"${TEST_URL}\"}]" \
+            -o /tmp/v3_trigger_2.json \
+            -w "\nhttp_status=%{http_code}\n" \
+            --max-time 30 || true
+          echo "--- response body ---"
+          cat /tmp/v3_trigger_2.json 2>/dev/null || echo "(no response captured)"
+          echo ""
