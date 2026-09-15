@@ -1,11 +1,12 @@
 """Tests for find_matching_listings' (bot/handlers/apartments.py) own SQL query — specifically
-that it scopes by the filter's city as well as deal_type before applying RECENT_LISTINGS_SCANNED.
+that it scopes by the filter's city as well as deal_type.
 
 Found live 2026-09-07: this used to only filter by deal_type, so a narrow filter for one specific
-(less active) city could have its own matching listings permanently pushed out of the
-RECENT_LISTINGS_SCANNED window by newer listings scraped for every OTHER city — a real, live
-"silently show fewer/zero matches" bug for exactly the users a narrow filter is meant to serve
-well. website/main.py's /apartments had the identical gap (see
+(less active) city could have its own matching listings permanently pushed out of the query's
+recency window (RECENT_LISTINGS_SCANNED, a fixed 500-row cap that existed then — removed
+2026-09-15, see find_matching_listings' own comment) by newer listings scraped for every OTHER
+city — a real, live "silently show fewer/zero matches" bug for exactly the users a narrow filter
+is meant to serve well. website/main.py's /apartments had the identical gap (see
 tests/test_website_content_gating.py's own regression test for that side).
 """
 from __future__ import annotations
