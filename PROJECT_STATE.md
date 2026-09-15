@@ -5951,3 +5951,83 @@ owner's own DevTools data, only obtainable from a desktop browser — confirmed 
 possible from iPhone alone).
 
 824 tests pass; ruff clean. PRs #284 (docs)/#285 (docs)/#286/#287/#288/#289.
+
+## Update 2026-09-15: Yad2 fully off the ISP proxy too (direct requests, all 7 regions); a real
+## owner-only production test run; then a cluster of real filter/notification UX bugs found and fixed
+
+**Yad2 migration finished, same night as the Komo one above**: root-caused the day-long Radware-
+blocking saga as the Bright Data ISP proxy IP's own reputation decay (a day of heavy testing burned
+it), not "area vs no-area" as earlier entries guessed — a live A/B test (same request, direct vs.
+via-proxy) proved it for all 7 `REGION_SLUGS`. `yad2_client.py`'s `fetch_map_markers` now calls a
+new `_fetch_direct` (plain `httpx.get`, no proxy at all) instead of
+`bright_data_client.fetch_via_isp_proxy`; `REGIONS_ON_MAP_API` now covers all 7 regions (PR #299).
+**Open risk, not solved**: production's own IP is presumably static too — the same reputation-decay
+risk could in principle hit it over real repeated use; watch for a returning 302/Radware pattern.
+
+**Then a real, safety-gated owner-only production test run** (`safe-single-test-run.yaml`, approved
+explicitly, `spec.suspend` never touched, `NOTIFICATIONS_SUSPENDED=true` + `OWNER_TELEGRAM_USER_ID`
+enforced throughout, verified after) surfaced two more real bugs, both fixed same night (PR #301):
+jerusalem-area getting Radware-blocked because the region loop had ZERO inter-region delay (fixed:
+`_MAP_API_REGION_PACING_SECONDS`), and a Bright Data DCA cross-job-contamination bug — concurrent
+enrichment (`_BRIGHT_DATA_ENRICH_CONCURRENCY=5`) let one job's poll return a DIFFERENT job's already-
+collected result (same adNumber, 117+ times in one run) — fixed by serializing to 1.
+
+**Next morning, real owner usage of that same test run's data surfaced a cluster of real product
+bugs** (PRs #302/#303/#305), each root-caused with a live read-only DB query before touching code,
+not guessed:
+- The run-summary's own `matched: 1784` line was misread by the owner as "1784 apartments total" —
+  it's actually a sum of (listing, filter) match-pairs across EVERY real user's filter in one run,
+  unrelated to any single filter's own count.
+- Saving/updating a filter in the bot used to dump every matching listing as its own Telegram card
+  immediately — `bot/handlers/filter_conversation.py`'s `_handle_save` and `onboarding.py`'s
+  `_handle_freetext` now always send ONE link to the website's own `/apartments?uid=...` view
+  instead; real-time Telegram pushes stay for what they're for (genuinely new/price-changed
+  listings, via the untouched `scraper/notifier.py` flow).
+- That reported count was itself capped at `RESULT_LIMIT=10` (meant only for the bot's own on-demand
+  `/apartments` preview) — an almost-unconstrained owner filter reported "10 matches" when a direct
+  DB count showed 3,794 active rent listings existed. Fixed in two steps: first raised the cap,
+  then (owner's own follow-up ask, after seeing the real scale) removed it entirely — `find_matching_
+  listings` (`bot/handlers/apartments.py`) and website `/apartments` (`website/main.py`) both dropped
+  their `RECENT_LISTINGS_SCANNED=500`/`.limit(500)` SQL caps; `limit` is now genuinely optional.
+- Even fully unconstrained, the owner's own filter still only matched 2,634 of 3,794 — a live query
+  found exactly why: 1,153 active rent listings are in real towns (אריאל, חריש, נשר, קרית שמונה,
+  גבעת זאב, מעלה אדומים, ...) that simply aren't in `dorin_common.cities.CITIES`' curated ~42-city
+  list. Not a matching-logic bug — `cities=[]` already means "no city restriction at all" (both the
+  bot's root summary and the website's own field hint already said so) — the real gap was that there
+  was no way to REACH that true "all" state once any city had been added, short of removing every
+  selection one at a time, so the owner had instead selected all 42 bundled cities individually,
+  which is a strictly NARROWER state. Fixed with a real "🌍 נקה הכל — כל הערים" / "נקה הכל" shortcut
+  in both the bot (`keyboards.location_keyboard`) and the website (`templates/filter.html`) that
+  clears the selection in one tap, reaching the state the hint text already promised.
+
+**Also fixed same session**: the /apartments photo carousel feeling stuttery on iPhone/Safari (real
+owner report, reproducible, not a screenshot artifact) — `.listing-cover` was missing `-webkit-
+overflow-scrolling: touch` (the standard fix for jank in a NESTED horizontal scroll container inside
+a vertically-scrolling page on WebKit) and `touch-action: pan-x` (removes horizontal/vertical
+gesture-disambiguation lag); `.cover-slide` was missing `scroll-snap-stop: always` (without it a
+fast flick can overshoot past the next photo, and the browser's correction is exactly what "stuck
+between two photos" looks like).
+
+**Two real, NOT-YET-STARTED items raised by the owner, explicitly flagged here so they aren't
+lost across sessions:**
+1. **Sale ("מכירה") and sublet ("סאבלט") listings don't exist in the DB at all.** Confirmed by
+   reading the code, not a filter bug: `scraper/main.py` hardcodes `deal_type=DealType.RENT` for
+   ALL THREE sources (Yad2, Komo, Homeless) — sale/sublet scraping was simply never built. A real,
+   fairly large feature if wanted (separate URLs/endpoints per source, likely UI changes too) — the
+   owner hasn't decided yet whether to build it; don't start without asking first.
+   NOTE for the case someone else's Yad2 scraping work meantime widens this by accident: a `deal_type`
+   drifting to `"sale"`/`"sublet"` on an already-RENT-hardcoded path would silently corrupt data, not
+   add real coverage — the real feature needs its own explicit per-source deal_type plumbing, not a
+   one-line constant swap.
+2. **The /filter text-input prompts ("הקלד/י מחיר מינימלי" etc.) don't auto-open the device
+   keyboard.** Root cause confirmed: these all use `query.edit_message_text` (editing the existing
+   menu message in place) — Telegram's `editMessageText` only accepts `InlineKeyboardMarkup` for
+   `reply_markup`; `ForceReply` (the mechanism that DOES auto-open the keyboard) only works on a
+   NEWLY SENT message, not an edit. Recommended approach (not yet built, owner hasn't decided): a
+   hybrid — add quick-pick preset buttons directly on the price/rooms/floor category keyboards for
+   the common values (zero typing, zero extra message, matches the owner's own stated preference for
+   an ADDITIONAL path over changing the existing one), and reserve a new-message-with-ForceReply
+   prompt only for the "type a custom value" fallback.
+
+840 tests pass; ruff clean. PRs #299/#300/#301/#302/#303/#304 (diagnostic)/#305, plus the PR that
+carries this entry and the carousel CSS fix.
