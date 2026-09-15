@@ -1,0 +1,90 @@
+name: Diagnose — Yad2's real forsale/sublet URL shape (read-only, direct requests)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-15.
+#
+# Real next step: owner asked to start building sale ("מכירה") + sublet ("סאבלט") listing support
+# — currently deal_type is hardcoded to DealType.RENT everywhere in scraper/main.py, so no
+# sale/sublet listings exist in the DB at all despite the bot/website UI already fully supporting
+# them (DealType.SALE/SUBLET already exist, already selectable filters — see PROJECT_STATE.md).
+# Same "never guess a URL/param shape" rule this project's whole scraping history is built on
+# (yad2_client.py itself needed 8 failed attempts before its real rent page/map-API shape was
+# understood) — this fetches Yad2's real forsale page + map API (same direct, un-proxied technique
+# already confirmed safe for rent, see yad2_client._fetch_direct's own docstring) and searches the
+# real rent page's own embedded data for a real sublet filter parameter, instead of assuming
+# "/realestate/forsale/..." or a guessed "?dealType=sublet" query param are correct.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Yad2's real forsale search page (tel-aviv-area) — direct, no proxy
+        run: |
+          echo "=== GET https://www.yad2.co.il/realestate/forsale/tel-aviv-area ==="
+          curl -sS -D /tmp/forsale_page.headers \
+            "https://www.yad2.co.il/realestate/forsale/tel-aviv-area" \
+            -o /tmp/forsale_page.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" || true
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/forsale_page.body || true
+          echo
+          echo "--- does the body look like a real listings page? ---"
+          python3 -c "
+          with open('/tmp/forsale_page.body', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f'length={len(html)}')
+          import re
+          title = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'title={title.group(1).strip() if title else \"?\"}')
+          card_count = len(re.findall(r'data-nagish=\"feed-item-layout-link\"', html))
+          print(f'real feed-item cards found (same marker yad2_client._CARD_RE looks for): {card_count}')
+          "
+
+      - name: Fetch Yad2's map API for forsale, same bbox/region/zoom as tel-aviv-area rent
+        run: |
+          URL="https://gw.yad2.co.il/realestate-feed/forsale/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+          echo "=== GET $URL ==="
+          curl -sS -D /tmp/forsale_map.headers "$URL" \
+            -o /tmp/forsale_map.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" || true
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/forsale_map.body || true
+          echo
+          echo "--- parsed verdict ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/forsale_map.body', encoding='utf-8') as f:
+                  data = json.load(f)
+              markers = data.get('data', {}).get('markers') if isinstance(data, dict) else None
+              if isinstance(markers, list):
+                  print(f'SUCCESS — {len(markers)} real forsale markers returned.')
+                  if markers:
+                      print('First marker keys:', sorted(markers[0].keys()))
+              else:
+                  print(f'Got JSON but no usable markers list — top-level keys: {list(data.keys()) if isinstance(data, dict) else type(data)}')
+          except Exception as exc:
+              print(f'NOT valid JSON — likely blocked/challenged/wrong shape: {exc}')
+          "
+
+      - name: Fetch the real rent page and search its own embedded data for a sublet filter param
+        run: |
+          echo "=== GET https://www.yad2.co.il/realestate/rent/tel-aviv-area ==="
+          curl -sS "https://www.yad2.co.il/realestate/rent/tel-aviv-area" \
+            -o /tmp/rent_page.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" || true
+          echo "--- searching for 'sublet'/'סאבלט' mentions in the real page's own embedded data ---"
+          python3 -c "
+          import re
+          with open('/tmp/rent_page.body', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          for needle in ('sublet', 'subLet', 'SubLet', 'סאבלט'):
+              positions = [m.start() for m in re.finditer(re.escape(needle), html)]
+              print(f'{needle!r}: {len(positions)} occurrence(s)')
+              for pos in positions[:3]:
+                  print('   context:', html[max(0, pos-80):pos+80].replace(chr(10), ' '))
+          "
