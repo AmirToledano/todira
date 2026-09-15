@@ -6185,3 +6185,65 @@ Real option, not remotely justified today.
 **Explicit owner decision: don't touch any of this now** — just keep it on record for if/when the
 302/Radware pattern actually comes back. Nothing here has been implemented; this section exists
 so it isn't re-researched from scratch next time.
+
+## Update 2026-09-15 (same night, later still): Bright Data DCA stuck-enrichment bug — real root
+## cause found (live, controlled test, not guessed), fixed by suspending the feature at the source
+
+Found via the new `check-scraper-job-status.yaml` read-only inspection (built to check production's
+real state after the same-night Yad2 sale/sublet diagnostic hit an unexplained Radware wall):
+production's Bright Data DCA enrichment (`_enrich_new_listings_via_bright_data`, extra Yad2 listing
+detail only — description/property type/amenities/etc., never required for a listing to exist at
+all) had been grinding for 75+ minutes through a large backlog of genuinely new Yad2 listings,
+returning the exact same wrong cached record — `orderId=57346371`, `token='rccfe1nk'`,
+`adNumber=83125484` (a Dizengoff St. sublet) — for at least 6 different real listing URLs in a row,
+even fully serialized (`_BRIGHT_DATA_ENRICH_CONCURRENCY=1`, the exact fix that was believed to have
+closed this class of bug on 2026-09-14). The existing `adNumber` cross-check in
+`bright_data_client.py` correctly caught and discarded every single wrong result — **no data
+corruption reached any real listing row** — but nothing ever got the RIGHT data either.
+
+Owner's explicit instruction: don't just stop the job — understand why it's happening and fix the
+real cause, not just patch around it again. Read `bright_data_client.py` in full (all three of its
+prior real, documented bugs — the `queue_next` trial-tier rejection, the "still processing" status
+dict mistaken for a real result, and the original 2026-09-14 cross-contamination find) and
+`scraper/main.py`'s own call site — both confirmed clean: `id_url_pairs` is a fresh, correct
+per-listing `(id, url)` SELECT, and each call passes its own listing's own URL. Not a client-side
+bug in how URLs are passed in.
+
+**Root cause, confirmed via a live, controlled test** (new
+`.github/workflows/diagnose-bright-data-stuck-same-result.yaml`, merged to main and run directly
+against the real Bright Data API — no scraper/k8s involvement): triggered the real collector with
+two different, real, currently-live Yad2 URLs (`3qw9iaa4` and `6ye5tyo3`, pulled from the actual
+stuck run's own logs). Both trigger calls got genuinely DISTINCT job/collection ids back
+(`j_mu2t5mad12qkv2q8l8` and `j_mu2t66i91vth9894dt`) — the trigger step itself works correctly. But
+polling each of those distinct ids came back with the byte-identical cached record in well under
+half a second (0.03s–0.4s from trigger to a "real" result) — physically far too fast for an actual
+page navigate+render+extract cycle. For comparison: this exact same collector, when it last
+genuinely worked (2026-09-12 entry above), took several real seconds per capture and returned 12/12
+DIFFERENT real results (token `dgne1po1` at the time) — so the collector's own recipe is NOT the
+problem; it's proven capable of real dynamic per-job URL input before. A `/dca/collections` metadata
+lookup (best-effort, endpoint shape never confirmed) came back a plain 404, so no extra insight
+there.
+
+**Conclusion**: something on Bright Data's own platform/account side — most likely this trial-tier
+collector silently no longer executing real jobs past some undocumented limit, with the
+`/dca/dataset?id=` endpoint falling back to serving its last-ever-successful dataset regardless of
+which job id is actually queried — not anything in this codebase. `bright_data_client.py`'s
+trigger/poll/job-id-extraction/retry/cross-check logic is all confirmed working exactly as designed
+by this same test. This is outside what any code change here can fix directly; only the owner's own
+look at the Bright Data dashboard (collector status, trial-tier real-execution quota/limits) can
+actually resolve it.
+
+**What WAS fixed**: at a confirmed 100% failure rate, letting this keep running only burns real
+wall-clock minutes and real Bright Data API quota for zero benefit, and risks the hourly CronJob's
+`concurrencyPolicy: Forbid` silently skipping a scheduled run while a big backlog is still being
+ground through. New `scraper.brightDataEnrichmentSuspended` values.yaml flag (default `true` now) +
+`BRIGHT_DATA_ENRICHMENT_SUSPENDED` env var, checked at the top of
+`_enrich_new_listings_via_bright_data` — same no-op-returns-0 contract as Bright Data simply being
+unconfigured. Every other scraper (Yad2/Komo/Homeless/Facebook) and Yad2's own already-normalized
+search-card fields (price/rooms/address/photos/etc. — everything a listing needs to exist and match
+filters) are completely unaffected; only this extra enrichment layer is paused. 2 new tests
+(`tests/test_scraper_bright_data_enrichment.py`). 882 tests pass; ruff clean.
+
+**Still open**: flip `brightDataEnrichmentSuspended` back to `false` once the owner has checked the
+Bright Data dashboard and either fixed or replaced the collector — nothing in this codebase can
+diagnose Bright Data's own platform-side state any further than this entry already has.
