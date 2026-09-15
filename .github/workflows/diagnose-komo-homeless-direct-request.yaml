@@ -1,0 +1,111 @@
+name: Diagnose — does Komo/Homeless work via a plain DIRECT request too, like Yad2's map API? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-15.
+#
+# Real owner request the same night Yad2's own "burned ISP proxy" saga got resolved (see
+# yad2_client.py's REGIONS_ON_MAP_API comment / PROJECT_STATE.md's 2026-09-15 entry): Yad2's map
+# API turned out to need NO proxy at all — the day-long block was the Bright Data ISP proxy IP's
+# own reputation decay, not anything about the endpoint itself. Komo (2026-09-14) and Homeless
+# (still on ZenRows) both currently go through a paid proxy (Bright Data ISP proxy / ZenRows
+# respectively) that was never actually proven necessary for THEM specifically — Komo's own module
+# docstring already notes "no bot-challenge wall of its own in any live run so far (unlike Yad2's
+# Radware wall)", and Homeless's own docstring calls it "simpler than either Yad2 or Komo... no
+# session dance, no JS rendering". This tests both, plain, no proxy, from this GitHub Actions
+# runner's own fresh IP — a genuine answer, not a guess. A block here doesn't prove production's
+# own (static) IP would also be blocked, same open-question caveat yad2_client._fetch_direct's own
+# docstring already carries, but a SUCCESS here is a strong, real signal worth acting on.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Komo — direct search page + direct adscoordinates POST (no proxy)
+        run: |
+          echo "=== Step 1: direct GET of Komo's search page (Jerusalem) ==="
+          SEARCH_URL="https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes=1&cityName=ירושלים"
+          curl -sS -D /tmp/komo_search.headers "$SEARCH_URL" \
+            -o /tmp/komo_search.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" || true
+          echo "--- first 300 chars ---"
+          head -c 300 /tmp/komo_search.body || true
+          echo
+          echo "=== Step 2: extract sessionToken, then direct POST to adscoordinates ==="
+          python3 -c "
+          import re
+          with open('/tmp/komo_search.body', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          m = re.search(r'sessionToken\s*=\s*\"([A-Za-z0-9]{16,64})\"', html)
+          if not m:
+              print('NO sessionToken found in the direct response — cannot test stage 2.')
+              raise SystemExit(0)
+          token = m.group(1)
+          print(f'Found sessionToken: {token[:8]}... (len={len(token)})')
+          with open('/tmp/komo_token.txt', 'w') as f:
+              f.write(token)
+          "
+          if [ -f /tmp/komo_token.txt ]; then
+            TOKEN=$(cat /tmp/komo_token.txt)
+            curl -sS -D /tmp/komo_coords.headers \
+              "https://www.komo.co.il/api/modaotservice/adscoordinates/list/" \
+              --data "iska=1&sessionToken=$TOKEN" \
+              -o /tmp/komo_coords.body \
+              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+              --max-time 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" || true
+            echo "--- adscoordinates response, first 400 chars ---"
+            head -c 400 /tmp/komo_coords.body || true
+            echo
+            echo "--- verdict ---"
+            python3 -c "
+            import json
+            try:
+                with open('/tmp/komo_coords.body', encoding='utf-8') as f:
+                    data = json.load(f)
+                lst = data.get('list') if isinstance(data, dict) else None
+                if isinstance(lst, list) and lst:
+                    print(f'SUCCESS — direct POST worked, {len(lst)} real coordinate ids returned.')
+                else:
+                    print(f'Got JSON back but no usable list array — status/shape: {data if isinstance(data, dict) else type(data)}')
+            except Exception as exc:
+                print(f'NOT valid JSON — likely blocked/challenged: {exc}')
+            "
+          fi
+
+      - name: Homeless — direct search page + direct detail page (no proxy)
+        run: |
+          echo "=== Step 1: direct GET of Homeless's search page ==="
+          curl -sS -D /tmp/homeless_search.headers "https://www.homeless.co.il/rent/" \
+            -o /tmp/homeless_search.body \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" || true
+          echo "--- first 300 chars ---"
+          head -c 300 /tmp/homeless_search.body || true
+          echo
+          echo "=== Step 2: extract one real ad id, then direct GET its detail page ==="
+          python3 -c "
+          import re
+          with open('/tmp/homeless_search.body', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          m = re.search(r'<tr[^>]*\bid=\"ad_(\d+)\"', html)
+          rows = len(re.findall(r'<tr[^>]*\bid=\"ad_\d+\"', html))
+          print(f'Real listing rows found in direct response: {rows}')
+          if not m:
+              print('NO ad_<id> row found — cannot test the detail page.')
+              raise SystemExit(0)
+          with open('/tmp/homeless_id.txt', 'w') as f:
+              f.write(m.group(1))
+          print(f'Using id={m.group(1)} for the detail-page test.')
+          "
+          if [ -f /tmp/homeless_id.txt ]; then
+            ID=$(cat /tmp/homeless_id.txt)
+            curl -sS -D /tmp/homeless_detail.headers \
+              "https://www.homeless.co.il/rent/viewad,${ID}.aspx" \
+              -o /tmp/homeless_detail.body \
+              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+              --max-time 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" || true
+            echo "--- detail page, description meta tag if present ---"
+            grep -o '<meta name="Description"[^>]*>' /tmp/homeless_detail.body | head -c 500 || echo "(no Description meta tag found)"
+            echo
+          fi
