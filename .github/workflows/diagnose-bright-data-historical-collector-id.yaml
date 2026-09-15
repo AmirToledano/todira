@@ -1,0 +1,114 @@
+name: Diagnose — does the historical (2026-09-12, confirmed-working) collector id still work? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-15.
+#
+# Direct continuation of tonight's Bright Data investigation. PROJECT_STATE.md's own 2026-09-12
+# entry records a real, decisive finding from back then: the ORIGINAL collector (built 2026-09-06)
+# had an "Incompatible worker" bug (defaulted to a lightweight `code` worker, but the recipe used
+# `wait()`, which only the `browser` worker supports) — so a BRAND NEW collector was built from
+# scratch, switched to the `browser` worker, and worked immediately (Version 1, tagged Production).
+# That collector's own real id, read directly off its "Initiate by API" tab at the time, was
+# recorded verbatim: c_mtyf4w2z1ag3eu3n1u.
+#
+# That id is DIFFERENT from both "New collector" (today's dashboard) and "yad2.co.il" (today's
+# dashboard, c_mtkpmnlb2c089s7pr3, which 401s on every real trigger attempt tonight even with a
+# confirmed-correct Admin key). This tests the historical id directly — it may be the SAME as
+# whichever collector was actually configured in production before tonight's changes, or a THIRD,
+# previously-untested option entirely. Uses the real k8s-secret API key (Admin), a real live URL,
+# and this ONE historical collector id passed as a workflow input (never touches the actual k8s
+# secret). Pure Bright Data API traffic — no Yad2/ZenRows cost, does not touch the live scraper Job.
+on:
+  workflow_dispatch:
+    inputs:
+      test_url:
+        description: "A real Yad2 item URL to test"
+        required: true
+      historical_collector_id:
+        description: "The historical collector id to test (default: the one recorded 2026-09-12)"
+        required: false
+        default: "c_mtyf4w2z1ag3eu3n1u"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read + mask the real Bright Data API key from the k8s secret
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+          if [ -z "$API_KEY" ]; then
+            echo "bright-data-api-key is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$API_KEY" > /tmp/bd_api_key.txt
+
+      - name: Trigger the historical collector id directly (legacy /dca/trigger)
+        env:
+          TEST_URL: ${{ inputs.test_url }}
+          HISTORICAL_COLLECTOR_ID: ${{ inputs.historical_collector_id }}
+        run: |
+          API_KEY=$(cat /tmp/bd_api_key.txt)
+          echo "::add-mask::$API_KEY"
+          python3 - <<'PYEOF'
+          import json, os, time, urllib.request
+
+          api_key = os.environ["API_KEY"]
+          collector_id = os.environ["HISTORICAL_COLLECTOR_ID"]
+          url = os.environ["TEST_URL"]
+          headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+          print(f"testing historical collector id (length only): {len(collector_id)} chars")
+          try:
+              req = urllib.request.Request(
+                  f"https://api.brightdata.com/dca/trigger?collector={collector_id}",
+                  data=json.dumps([{"url": url}]).encode(),
+                  headers=headers, method="POST",
+              )
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  body = json.loads(resp.read())
+              print("trigger response:", body)
+          except urllib.error.HTTPError as exc:
+              print(f"TRIGGER FAILED: http_status={exc.code} body={exc.read().decode(errors='replace')[:500]!r}")
+              raise SystemExit(0)
+
+          job_id = None
+          candidate = body[0] if isinstance(body, list) and body else body
+          if isinstance(candidate, dict):
+              for key in ("collection_id", "response_id", "job_id", "id"):
+                  if candidate.get(key):
+                      job_id = str(candidate[key])
+                      break
+          print(f"job_id = {job_id!r}")
+          if job_id is None:
+              print("NO JOB ID EXTRACTED — cannot poll.")
+              raise SystemExit(0)
+
+          deadline = time.monotonic() + 60
+          rows = None
+          while time.monotonic() < deadline:
+              req = urllib.request.Request(
+                  f"https://api.brightdata.com/dca/dataset?id={job_id}", headers=headers,
+              )
+              with urllib.request.urlopen(req, timeout=15) as resp:
+                  rows = json.loads(resp.read())
+              is_pending = isinstance(rows, dict) and bool(rows) and set(rows.keys()) <= {"status", "message"}
+              if rows and not is_pending:
+                  break
+              time.sleep(3)
+          print("raw poll result:", rows)
+          row = rows[0] if isinstance(rows, list) and rows else rows
+          if isinstance(row, dict):
+              print(f"RETURNED adNumber = {row.get('adNumber')!r}  orderId = {row.get('orderId')!r}  token = {row.get('token')!r}")
+              expected_id = url.rstrip("/").rsplit("/", 1)[-1]
+              print(f"expected id (from URL) = {expected_id!r}")
+              print("MATCH" if str(row.get("adNumber")) == expected_id else "MISMATCH")
+          PYEOF
