@@ -38,10 +38,25 @@ from yad2_client import (
 # a batch of newly-discovered listings. Each call is a real blocking trigger->poll->snapshot round
 # trip (up to _POLL_TIMEOUT_SECONDS ~45s in the worst case, see bright_data_client.py) — running
 # them one at a time would make a scrape run with many new listings unacceptably slow; running ALL
-# of them at once risks hammering Bright Data's API with an unbounded burst. 5 is a starting guess
-# at "meaningfully parallel but not abusive", not a documented Bright Data rate limit — revisit if
-# real usage shows it's too low (slow runs) or too high (errors/throttling).
-_BRIGHT_DATA_ENRICH_CONCURRENCY = 5
+# of them at once risks hammering Bright Data's API with an unbounded burst. 5 was a starting guess
+# at "meaningfully parallel but not abusive", not a documented Bright Data rate limit.
+#
+# 2026-09-15: dropped to 1 — real, live evidence (the safe-single-test-run.yaml owner-only test
+# run, same day) confirmed the exact cross-job-contamination race bright_data_client.py's own
+# module docstring already theorized about ("the collector... doesn't reliably scope by job id
+# under concurrent triggers") is REAL and frequent at concurrency=5, not a rare edge case: one
+# single run's pod logs showed the SAME wrong adNumber returned 117 times across many different
+# job ids in one ~10-minute window, each one caught by the existing mismatch-discard-and-retry
+# defense (data stayed correct — see that function's own docstring for the real incident this
+# defense was built to catch) but at real cost: every one of those 117 is a wasted trigger+poll
+# round trip AND a full retry cycle, which is why that run's enrichment phase was taking many
+# minutes longer than the region-discovery phase that preceded it. Serializing to 1 in-flight
+# request at a time removes the race entirely (no two jobs' poll windows can ever overlap) — a
+# genuine, understood fix for the actual mechanism, not just a bigger dose of the same defensive
+# patch. Slower per-listing throughput is the deliberate tradeoff; revisit (a higher number, or a
+# real per-job-scoped poll if Bright Data's API ever supports one) only if this turns out to still
+# be too slow in practice, not preemptively.
+_BRIGHT_DATA_ENRICH_CONCURRENCY = 1
 
 # 2026-09-14: added after a real catch-up run's delisting got skipped ("at least one region/city
 # failed to fetch") — root cause never pinned down for certain (the pod's own log for the failing
@@ -54,6 +69,20 @@ _BRIGHT_DATA_ENRICH_CONCURRENCY = 5
 # plan resets), so that specific case is never retried, just to avoid burning an extra call for
 # nothing.
 _REGION_RETRY_DELAY_SECONDS = 5.0
+
+# 2026-09-15: added after a real, live-observed finding — the owner-only safe-single-test-run.yaml
+# run fired center-and-sharon/tel-aviv-area/jerusalem-area within under 0.6s of each other (no
+# delay ever existed between iterations of the `for region in REGION_SLUGS` loop below, only
+# _REGION_RETRY_DELAY_SECONDS above, which is a retry-within-one-region gap, not a between-regions
+# one) — jerusalem-area got a 302 Radware challenge on both its attempts, while every region that
+# happened to fire with more natural spacing (waiting on a slower ZenRows region, or after a retry
+# cycle) succeeded. Matches the same velocity-sensitivity already documented elsewhere for this
+# site (see yad2_client.py's REGIONS_ON_MAP_API comment) — this project's production IP has no
+# fresh-IP-per-request advantage GitHub Actions' own diagnostic runs happened to have. A small,
+# deliberate pause between map-API region fetches only (ZenRows regions are naturally paced by
+# their own much slower per-page fetches) costs at most 6 * this value per run (~9s for all 7
+# regions) — cheap insurance against tripping the same challenge again.
+_MAP_API_REGION_PACING_SECONDS = 1.5
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 # httpx's own "httpx" logger emits an INFO line per request with the FULL request URL — including
@@ -378,15 +407,17 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     fetch_kwargs = {} if max_pages_override is None else {"max_pages": max_pages_override}
     logger.info("Scraping %d Yad2 regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
     for region in REGION_SLUGS:
-        # 2026-09-14: partial migration off ZenRows — regions with a confirmed-real map-API bbox
-        # (see yad2_client.REGIONS_ON_MAP_API's own comment for which ones and why) go through
-        # Bright Data's flat-rate ISP proxy instead; every other region is unchanged. Both paths
-        # feed the exact same normalize()/error-handling logic below — the only difference is which
-        # iterator/exception type is used to get raw items.
+        # 2026-09-15: as of REGIONS_ON_MAP_API covering all 7 REGION_SLUGS (see that dict's own
+        # comment), this migration off ZenRows is COMPLETE — every region goes through the map API
+        # now, via a plain direct (un-proxied) request (see yad2_client._fetch_direct's own
+        # docstring for why it's no longer routed through Bright Data's ISP proxy either). The
+        # `use_map_api`/ZenRows branch below is kept as a real fallback path, not dead code — a
+        # region temporarily removed from REGIONS_ON_MAP_API (e.g. if it starts failing and no
+        # replacement bbox is confirmed yet) falls straight back to it, no code change needed.
         use_map_api = region in REGIONS_ON_MAP_API
         logger.info(
             "Fetching Yad2 listings for region=%s (via %s)",
-            region, "Bright Data map API" if use_map_api else "ZenRows",
+            region, "map API (direct)" if use_map_api else "ZenRows",
         )
         region_succeeded = False
         for attempt in (1, 2):
@@ -431,6 +462,11 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
         if not region_succeeded:
             errors += 1
             all_succeeded = False
+        if use_map_api:
+            # See _MAP_API_REGION_PACING_SECONDS' own comment — deliberately unconditional (runs
+            # after the LAST region too; harmless, just a few seconds of otherwise-idle time before
+            # this function returns).
+            time.sleep(_MAP_API_REGION_PACING_SECONDS)
 
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
