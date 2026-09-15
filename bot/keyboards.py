@@ -221,6 +221,45 @@ def city_search_results_keyboard(matches: list[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+NUMERIC_PRESETS: dict[str, list] = {
+    "price_min": [0, 1500, 2000, 2500, 3000, 4000, 5000, 7000],
+    "price_max": [2500, 3500, 4500, 5500, 7000, 9000, 12000, 18000],
+    "rooms_min": [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0],
+    "rooms_max": [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0],
+    "floor_min": [0, 1, 2, 3, 4, 5, 8, 12],
+    "floor_max": [1, 2, 3, 4, 5, 8, 12, 20],
+}
+
+
+def numeric_preset_keyboard(field: str, current, parent_category: str) -> InlineKeyboardMarkup:
+    """Quick-pick grid of common values for a price/rooms/floor min or max field, tap-only — no
+    typing needed for the common case. "✏️ ערך אחר..." is the fallback for anything not in the
+    grid (routed by filter_conversation._prompt_for_text to a freshly SENT message with a
+    ForceReply, which is the only way to get Telegram to auto-open the device keyboard — the old
+    behavior here edited the existing message with a plain text prompt, which python-telegram-bot/
+    the Bot API can only attach an InlineKeyboardMarkup to, never a ForceReply, so the keyboard
+    never opened on its own. Real owner complaint, 2026-09-15."""
+    presets = NUMERIC_PRESETS[field]
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for idx, val in enumerate(presets):
+        label = f"{val:g}" if isinstance(val, float) else str(val)
+        mark = "✅ " if current == val else ""
+        row.append(InlineKeyboardButton(f"{mark}{label}", callback_data=f"f:pick:{field}:{idx}"))
+        if len(row) == 4:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("✏️ ערך אחר...", callback_data=f"f:pick:{field}:custom")])
+    if current is not None:
+        rows.append(
+            [InlineKeyboardButton("🗑️ נקה (ללא הגבלה)", callback_data=f"f:pick:{field}:clear")]
+        )
+    rows.append([InlineKeyboardButton("⬅️ חזרה", callback_data=f"f:cat:{parent_category}")])
+    return InlineKeyboardMarkup(rows)
+
+
 def price_keyboard(draft: dict) -> InlineKeyboardMarkup:
     req_mark = "☑️" if draft["require_price"] else "⬜"
     rows = [
