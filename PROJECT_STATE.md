@@ -6154,3 +6154,34 @@ What actually shipped:
    `FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN`/the 3x/day schedule with real evidence, not a guess.
 
 867 -> 880 tests pass across this update; ruff clean.
+
+## Update 2026-09-15 (same night, later still): if Yad2 blocks the production IP again — real
+## options researched, NOT acted on, owner said "don't touch it now, just remember this"
+
+Real, live web research (not guessed) into what to do IF Yad2's own Radware wall starts blocking
+production's static IP again under the new hourly schedule (see the entry above — this is a real,
+still-open risk, explicitly being watched via pod logs, not solved). Three real options found, in
+the order to actually reach for them:
+
+1. **Tighten pacing first, not the IP.** The ONE time this actually happened live tonight
+   (jerusalem-area getting 302'd), the real cause was zero delay between requests, not IP burn —
+   fixed by `_MAP_API_REGION_PACING_SECONDS`. If it recurs, raise that number before touching
+   anything about the IP at all — cheapest, matches the actual observed mechanism.
+2. **A genuine rotating RESIDENTIAL proxy** (NOT the Bright Data ISP proxy already tried and
+   rejected for Yad2 — that one is datacenter-hosted-but-ISP-registered, ~40-60% success against
+   real protected sites; true rotating residential IPs — real end-user devices — get ~95-99%).
+   Real cost/complexity, worth it only with live evidence pacing alone isn't enough.
+3. **EC2 stop→start for a fresh public IP** — this box has no Elastic IP attached (confirmed in
+   RUNBOOK.md), so a stop→start very likely gets a brand-new IP for free. Real catch: this ALREADY
+   broke DNS (`todira.app`) and `KUBECONFIG_B64` once before (see this file's 2026-08-30 entries) —
+   real downtime + manual fixes each time. Emergency-only lever, not routine.
+
+AWS also has a "correct," purpose-built way to rotate OUTBOUND IPs without touching the box's own
+public-facing IP at all — a NAT Gateway with up to 8 Elastic IPs, hash-distributed per connection,
+gracefully rotatable — but that means retrofitting a whole NAT-gateway/private-subnet VPC
+architecture around today's single-EC2-box setup, plus a real ongoing NAT Gateway cost (~$32+/mo).
+Real option, not remotely justified today.
+
+**Explicit owner decision: don't touch any of this now** — just keep it on record for if/when the
+302/Radware pattern actually comes back. Nothing here has been implemented; this section exists
+so it isn't re-researched from scratch next time.
