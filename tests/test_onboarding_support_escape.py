@@ -74,7 +74,9 @@ def test_normal_criteria_message_does_not_escalate():
     async def fake_to_thread(func, *args, **kwargs):
         if func is onboarding.gemini_client.parse_onboarding_message:
             return gemini_result
-        return (0, [], True)
+        # 2026-09-15: _save_filter_sync now returns just the match count (an int), not a
+        # (total, new_matches, has_access) tuple — see onboarding.py's own comment on that change.
+        return 0
 
     with patch.object(onboarding.gemini_client, "parse_onboarding_message", return_value=gemini_result), \
          patch.object(onboarding, "escalate_to_owner", AsyncMock(return_value=True)) as mock_escalate, \

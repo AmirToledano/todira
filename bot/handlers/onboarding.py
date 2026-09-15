@@ -25,20 +25,13 @@ still ends the conversation immediately instead of re-onboarding them.
 from __future__ import annotations
 
 import asyncio
-import os
 
 from config import WEBSITE_URL
 from dorin_common import cities, gemini_client
-from dorin_common.access import has_full_access
-from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
-
-# Mirrors website/main.py's _is_owner_id / bot/handlers/start.py's own copy — same secret, same
-# "owner always has full access" override.
-OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
-from handlers.apartments import RESULT_LIMIT, find_new_matches_to_show
+from handlers.apartments import RECENT_LISTINGS_SCANNED, find_new_matches_to_show
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
@@ -89,11 +82,9 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return AWAIT_FREETEXT
 
 
-def _save_filter_sync(tg_user, state: dict) -> tuple[int, list, bool]:
+def _save_filter_sync(tg_user, state: dict) -> int:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
-        is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
-        access = has_full_access(user, is_owner=is_owner)
         filter_row = Filter(
             user_id=user.id,
             deal_type=state["deal_type"],
@@ -106,15 +97,21 @@ def _save_filter_sync(tg_user, state: dict) -> tuple[int, list, bool]:
         )
         session.add(filter_row)
         session.commit()
-        # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
-        # brand-new user especially shouldn't have to wait for the next scrape to see anything.
-        # Always a fresh Filter here (onboarding only runs for a user with none yet), so in
-        # practice every current match is "new" — find_new_matches_to_show is still used (not
-        # find_matching_listings directly) so these get recorded as SentNotification rows, keeping
-        # a later /filter re-save (filter_conversation.py) from resending the same ones again.
-        total, new_to_show = find_new_matches_to_show(session, user.id, filter_row, limit=RESULT_LIMIT)
+        # 2026-09-15: no longer sends the matching listings themselves as Telegram cards here (see
+        # _handle_freetext's own comment) — only need the count now. find_new_matches_to_show is
+        # still used (not find_matching_listings directly) purely for its bookkeeping side effect:
+        # every currently-matching listing gets a SentNotification(reason=NEW) row, so a later
+        # /filter re-save (filter_conversation.py) doesn't re-count it, AND a future price change on
+        # it still reaches this user via the normal scraper/notifier.py flow. limit=
+        # RECENT_LISTINGS_SCANNED (not the much smaller RESULT_LIMIT the bot's own on-demand
+        # /apartments command uses) so this count isn't artificially capped at 10 — a real owner
+        # complaint 2026-09-15: an almost-unconstrained filter reported "10 matches" when the true
+        # number was far higher.
+        total, _new_to_show = find_new_matches_to_show(
+            session, user.id, filter_row, limit=RECENT_LISTINGS_SCANNED
+        )
         session.commit()
-        return total, new_to_show, access
+        return total
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -180,34 +177,25 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
         return AWAIT_FREETEXT
 
-    total, new_matches, has_access = await asyncio.to_thread(
-        _save_filter_sync, update.effective_user, state
-    )
+    total = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
 
     context.user_data.pop("onboarding", None)
     await update.message.reply_text(
         "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter ⚙️"
     )
 
-    # Sends every current match as a real card, not just a count/link (mirrors the reference
-    # bot's behavior on both its guided-form and free-text paths, per the owner's screenshots
-    # 2026-08-31) — a brand-new user especially shouldn't have to click through anywhere to see
-    # what already matches right now. Always effectively "every" match here (a fresh filter has
-    # nothing recorded as already-shown yet) — see find_new_matches_to_show's own docstring.
-    if new_matches:
+    # 2026-09-15: used to send every current match as its own Telegram card right here — see
+    # filter_conversation.py's _handle_save, which had the exact same pattern and the exact same
+    # real owner complaint the same day (a broad filter flooded the chat immediately, and the
+    # count/send was silently capped at RESULT_LIMIT=10 regardless of the true number matching).
+    # Now always just points at the website's own /apartments?uid=... view instead, same as there.
+    apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
+    if total:
+        count_text = f"{total}{'+' if total >= RECENT_LISTINGS_SCANNED else ''}"
         await update.message.reply_text(
-            f"👀 יש כרגע {total}{'+' if total >= RESULT_LIMIT else ''} דירות שמתאימות:"
+            f"👀 יש כרגע {count_text} דירות שמתאימות — כולן כאן: {apartments_url}"
         )
-        upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
-        for listing in new_matches:
-            await send_listing_card(
-                context.bot,
-                update.effective_chat.id,
-                listing,
-                format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
-            )
     else:
-        apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
         await update.message.reply_text(
             f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"
         )

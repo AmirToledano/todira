@@ -23,13 +23,11 @@ import logging
 import keyboards as kb
 from config import WEBSITE_URL
 from dorin_common import cities
-from dorin_common.access import has_full_access
-from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
-from dorin_common.models import Filter, User
+from dorin_common.models import Filter
 from dorin_common.schemas import FilterData
 from dorin_common.users import get_or_create_user
-from handlers.apartments import OWNER_TELEGRAM_USER_ID, RESULT_LIMIT, find_new_matches_to_show
+from handlers.apartments import RECENT_LISTINGS_SCANNED, find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -234,11 +232,9 @@ def _describe_validation_error(exc: ValidationError) -> str:
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
-def _save_and_match_sync(tg_user, values: dict) -> tuple[int, list, bool]:
+def _save_and_match_sync(tg_user, values: dict) -> int:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
-        is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
-        access = has_full_access(user, is_owner=is_owner)
         existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
         if existing is None:
             existing = Filter(user_id=user.id, **values)
@@ -248,14 +244,22 @@ def _save_and_match_sync(tg_user, values: dict) -> tuple[int, list, bool]:
                 setattr(existing, field, value)
         session.commit()
 
-        # Also surfaces what already matches RIGHT NOW (not just future notifications) — a
-        # brand-new user especially shouldn't have to wait for the next scrape to see anything.
-        # mirrors the reference bot's "👀 הראי לי דוגמה" prompt for the single inline example.
-        # Only the NOT-already-shown ones, though (find_new_matches_to_show) - re-saving/tweaking
-        # a filter used to resend every current match in full, every time.
-        total, new_to_show = find_new_matches_to_show(session, user.id, existing, limit=RESULT_LIMIT)
+        # 2026-09-15: no longer sends the matching listings themselves as Telegram cards (see
+        # _handle_save's own comment) — only need the count now. Still goes through
+        # find_new_matches_to_show, not find_matching_listings directly, purely for its bookkeeping
+        # side effect: every currently-matching listing gets a SentNotification(reason=NEW) row, so
+        # a FUTURE price change on one of them still reaches this user via the normal scraper/
+        # notifier.py flow (which only re-notifies users who already have a NEW-reason row for that
+        # listing) — without that, a listing only ever seen via the website link would never
+        # qualify for a later price-drop alert. limit=RECENT_LISTINGS_SCANNED (not the much smaller
+        # RESULT_LIMIT used by the bot's own on-demand /apartments command) so this count/bookkeeping
+        # isn't artificially capped at 10 — a real owner complaint 2026-09-15: an almost-
+        # unconstrained filter reported "10 matches" when the true number was far higher.
+        total, _new_to_show = find_new_matches_to_show(
+            session, user.id, existing, limit=RECENT_LISTINGS_SCANNED
+        )
         session.commit()
-        return total, new_to_show, access
+        return total
 
 
 async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dict) -> int:
@@ -275,34 +279,28 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    total, new_matches, has_access = await asyncio.to_thread(
+    total = await asyncio.to_thread(
         _save_and_match_sync, update.effective_user, validated.model_dump()
     )
 
     context.user_data.pop("draft", None)
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
     await query.edit_message_text("✅ הסינון נשמר! תתחיל/י לקבל התראות על דירות מתאימות.")
-    # Sends every NEW-to-this-user current match as a real card, not just a count/link (mirrors
-    # the reference bot's behavior on both its guided-form and free-text paths, per the owner's
-    # screenshots 2026-08-31) — a brand-new user especially shouldn't have to click through
-    # anywhere to see what already matches right now. "New-to-this-user" (not just "every current
-    # match") since 2026-09-02 — see find_new_matches_to_show's own docstring for the real report.
-    if new_matches:
-        intro = f"👀 יש כרגע {total}{'+' if total >= RESULT_LIMIT else ''} דירות שמתאימות"
-        intro += ":" if len(new_matches) == total else f" — הנה {len(new_matches)} שעוד לא ראית:"
-        await query.message.reply_text(intro)
-        upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
-        for listing in new_matches:
-            await send_listing_card(
-                context.bot,
-                update.effective_chat.id,
-                listing,
-                format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
-            )
-    elif total:
+    # 2026-09-15: used to send every NEW-to-this-user current match as its own Telegram card right
+    # here — a real owner complaint the same day: a broad filter matching dozens/hundreds of
+    # already-existing listings flooded the chat with cards immediately on save, AND (since the
+    # count/send was capped at RESULT_LIMIT=10) silently misrepresented how many really matched.
+    # Now ALWAYS just points at the website's own /apartments?uid=... view instead — no such cap,
+    # properly paginated (website/main.py's own /apartments route) — whether this is a brand-new
+    # filter or an update to an existing one. Real-time Telegram pushes are reserved for what
+    # they're actually for: a listing that's genuinely NEW (or newly price-changed) from THIS point
+    # on, via the normal scraper/notifier.py flow — completely untouched by this change, and it
+    # still reaches this same website view next time the user opens it (no separate bookkeeping
+    # needed there, /apartments always queries live DB state).
+    if total:
+        count_text = f"{total}{'+' if total >= RECENT_LISTINGS_SCANNED else ''}"
         await query.message.reply_text(
-            "הסינון עודכן! כל הדירות התואמות כרגע כבר נשלחו לך קודם — "
-            f"אפשר לראות את כולן שוב באתר: {apartments_url}"
+            f"👀 יש כרגע {count_text} דירות שמתאימות — כולן כאן: {apartments_url}"
         )
     else:
         await query.message.reply_text(

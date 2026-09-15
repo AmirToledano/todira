@@ -1,0 +1,92 @@
+name: Diagnose — real total listing count vs. the /filter-save RESULT_LIMIT cap (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-15.
+#
+# The owner set an almost fully-unconstrained filter (all cities, price 100-180000, rooms 0.5-15)
+# via /filter and only ever received 10, then +3 more, real listings — asked whether that's
+# reasonable given a run-summary line earlier tonight said "matched: 1784". That 1784 figure is a
+# SUM of (listing, filter) match-pairs across EVERY real user's filter during one scrape run
+# (scraper/notifier.py's own per-listing loop, uncapped) — not a total DB row count and not
+# specific to the owner's own filter. The actual number the owner should have seen is bounded by
+# TWO separate things, neither related to that 1784 figure:
+#   1. bot/handlers/apartments.py's RESULT_LIMIT=10 — find_matching_listings stops scanning the
+#      instant it collects 10 matches, so the bot's post-save "here's what matches" summary can
+#      never show more than 10 at a time regardless of how many really match.
+#      RECENT_LISTINGS_SCANNED=500 (same file) additionally only ever looks at the 500
+#      most-recently-scraped rows in the first place.
+#   2. The REAL total row count currently in the DB — this query answers that directly, since
+#      safe-single-test-run.yaml's own YAD2_MAX_PAGES_PER_REGION=1 override capped that run to a
+#      small single-page-per-region sample, nowhere near a full crawl.
+# Same read-only postgres:16-alpine throwaway-pod pattern as diagnose-no-content-listing-source.yaml
+# / diagnose-kiryat-motzkin-no-match.yaml (proven working). Touches nothing, writes nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Query real listing counts + the owner's own filter row
+        run: |
+          kubectl delete pod diag-listing-count -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-listing-count
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-listing-count
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  # Same secret/key charts/todira/templates/website-deployment.yaml itself uses —
+                  # needed IN the pod's own env, not the GH Actions step's, since the heredoc below
+                  # is single-quoted ('PODYAML') so ${OWNER_TELEGRAM_USER_ID} is sent to Kubernetes
+                  # literally and only expands once the pod's own /bin/sh runs it.
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- total rows, all sources/deal_types ---"
+                    psql "$CONN" -c "SELECT count(*) AS total_rows FROM listings;"
+                    echo "--- active (non-delisted, non-duplicate) rows by deal_type ---"
+                    psql "$CONN" -c "SELECT deal_type, count(*) AS active_rows FROM listings WHERE is_delisted = false AND duplicate_of_id IS NULL GROUP BY deal_type;"
+                    echo "--- active rows by source ---"
+                    psql "$CONN" -c "SELECT source, count(*) AS active_rows FROM listings WHERE is_delisted = false AND duplicate_of_id IS NULL GROUP BY source;"
+                    echo "--- oldest/newest scraped_at among active rows ---"
+                    psql "$CONN" -c "SELECT min(scraped_at) AS oldest, max(scraped_at) AS newest FROM listings WHERE is_delisted = false AND duplicate_of_id IS NULL;"
+                    echo "--- the owner's own saved filter row (matches OWNER_TELEGRAM_USER_ID) ---"
+                    psql "$CONN" -c "SELECT f.* FROM filters f JOIN users u ON u.id = f.user_id WHERE u.telegram_user_id = '${OWNER_TELEGRAM_USER_ID}';"
+                    echo "--- how many active rent listings actually satisfy the owner's own price/rooms bounds (raw SQL approximation of evaluate(), ignoring cities/property_type/amenities which the owner left unconstrained) ---"
+                    psql "$CONN" -c "SELECT count(*) AS raw_price_rooms_match FROM listings l JOIN filters f ON true JOIN users u ON u.id = f.user_id AND u.telegram_user_id = '${OWNER_TELEGRAM_USER_ID}' WHERE l.is_delisted = false AND l.duplicate_of_id IS NULL AND l.deal_type = f.deal_type AND (f.price_min IS NULL OR l.price >= f.price_min) AND (f.price_max IS NULL OR l.price <= f.price_max) AND (f.rooms_min IS NULL OR l.rooms >= f.rooms_min) AND (f.rooms_max IS NULL OR l.rooms <= f.rooms_max);"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-listing-count -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-listing-count || true
+          kubectl delete pod diag-listing-count -n todira --ignore-not-found
