@@ -22,6 +22,16 @@ name: Diagnose — Bright Data DCA returning the SAME result regardless of input
 # listing) and checks whether the returned adNumber ever varies, or is always 83125484 regardless
 # of input. Also inspects the collector's own /dca/collections metadata for any visible input-schema
 # clue. Pure Bright Data API traffic — no Yad2/ZenRows cost, does not touch the live k8s scraper Job.
+#
+# 2026-09-15, second run: originally read BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID from this
+# repo's OWN GitHub Actions secrets — a SEPARATE store from the k8s todira-bot-secret the real
+# scraper pods actually read from. After the owner rotated to a new Admin-permission key via
+# set-bright-data-api-key-secret.yaml (which patches the k8s secret, not this repo's), this
+# workflow's OLD GitHub Actions secret value 401'd (the old key was invalidated when the new one
+# was created). Fixed by reading directly from the k8s secret instead, same kubectl+jsonpath+mask
+# pattern every other credential-using diagnostic in this repo already uses (see
+# diagnose-facebook-marketplace-page-structure.yaml) — this also means the test now genuinely
+# reflects whatever key is actually deployed to production, not a separately-tracked copy.
 on:
   workflow_dispatch:
     inputs:
@@ -36,12 +46,37 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read + mask the real Bright Data credentials from the k8s secret
+        # Same credentials the production scraper pods actually use (charts/todira/templates/
+        # scraper-cronjob.yaml's BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID secretKeyRefs) —
+        # masked immediately, before anything else in this job touches them.
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' | base64 -d)
+          COLLECTOR_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-collector-id}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+          echo "::add-mask::$COLLECTOR_ID"
+          if [ -z "$API_KEY" ] || [ -z "$COLLECTOR_ID" ]; then
+            echo "bright-data-api-key or bright-data-collector-id is empty in todira-bot-secret — nothing to test with."
+            exit 1
+          fi
+          echo "$API_KEY" > /tmp/bd_api_key.txt
+          echo "$COLLECTOR_ID" > /tmp/bd_collector_id.txt
+
       - name: Trigger + poll for url_a, print the returned adNumber
         env:
-          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
-          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
           TEST_URL: ${{ inputs.url_a }}
         run: |
+          export BRIGHT_DATA_API_KEY=$(cat /tmp/bd_api_key.txt)
+          export BRIGHT_DATA_COLLECTOR_ID=$(cat /tmp/bd_collector_id.txt)
           python3 - <<'PYEOF'
           import json, os, time, urllib.request
 
@@ -94,10 +129,10 @@ jobs:
 
       - name: Trigger + poll for url_b, print the returned adNumber
         env:
-          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
-          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
           TEST_URL: ${{ inputs.url_b }}
         run: |
+          export BRIGHT_DATA_API_KEY=$(cat /tmp/bd_api_key.txt)
+          export BRIGHT_DATA_COLLECTOR_ID=$(cat /tmp/bd_collector_id.txt)
           python3 - <<'PYEOF'
           import json, os, time, urllib.request
 
@@ -149,12 +184,13 @@ jobs:
           PYEOF
 
       - name: Inspect the collector's own metadata (best-effort, endpoint shape not previously confirmed)
-        env:
-          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
-          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
         run: |
-          curl -sS "https://api.brightdata.com/dca/collections?collector=${BRIGHT_DATA_COLLECTOR_ID}" \
-            -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+          API_KEY=$(cat /tmp/bd_api_key.txt)
+          COLLECTOR_ID=$(cat /tmp/bd_collector_id.txt)
+          echo "::add-mask::$API_KEY"
+          echo "::add-mask::$COLLECTOR_ID"
+          curl -sS "https://api.brightdata.com/dca/collections?collector=${COLLECTOR_ID}" \
+            -H "Authorization: Bearer ${API_KEY}" \
             -o /tmp/collector_info.json \
             -w "\nhttp_status=%{http_code}\n" \
             --max-time 30 || true
