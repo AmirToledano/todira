@@ -11,7 +11,6 @@ import pytest
 
 import yad2_client
 from dorin_common.cities import CITIES
-from dorin_common import bright_data_client
 from yad2_client import (
     BLOCKED_RESOURCE_TYPES,
     CITY_SLUG_TO_HEBREW_NAME,
@@ -622,23 +621,23 @@ def test_marker_to_raw_item_no_images_omits_the_key():
     assert "images" not in item
 
 
-def test_fetch_map_markers_missing_bright_data_config_raises(monkeypatch):
-    monkeypatch.delenv(bright_data_client.ISP_PROXY_HOST_ENV_VAR, raising=False)
-    monkeypatch.delenv(bright_data_client.ISP_PROXY_USER_ENV_VAR, raising=False)
-    monkeypatch.delenv(bright_data_client.ISP_PROXY_PASS_ENV_VAR, raising=False)
-    with pytest.raises(Yad2MapFetchError, match="Bright Data ISP proxy failed"):
+def test_fetch_map_markers_direct_request_failure_raises(monkeypatch):
+    # _fetch_direct itself has no config to be "missing" (it's a plain, un-proxied GET — see its
+    # own docstring for why, 2026-09-15) — its only failure modes are network errors/non-200,
+    # both collapsed to a None return, exercised here directly rather than hitting a real network.
+    monkeypatch.setattr(yad2_client, "_fetch_direct", lambda url: None)
+    with pytest.raises(Yad2MapFetchError, match="Direct .un-proxied. request failed"):
         list(fetch_map_markers("31.9,34.7,32.1,34.8", area=1, region=3))
 
 
 def test_fetch_map_markers_builds_the_real_confirmed_url_and_parses_markers(monkeypatch):
-    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
     captured = {}
 
     def fake_fetch(url):
         captured["url"] = url
         return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+    monkeypatch.setattr(yad2_client, "_fetch_direct", fake_fetch)
 
     items = list(
         fetch_map_markers("31.987679,34.732856,32.146966,34.857736", area=1, region=3, zoom=11)
@@ -652,25 +651,22 @@ def test_fetch_map_markers_builds_the_real_confirmed_url_and_parses_markers(monk
 
 
 def test_fetch_map_markers_invalid_json_raises(monkeypatch):
-    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: "not json")
+    monkeypatch.setattr(yad2_client, "_fetch_direct", lambda url: "not json")
 
     with pytest.raises(Yad2MapFetchError, match="wasn't valid JSON"):
         list(fetch_map_markers("bbox", area=1, region=3))
 
 
 def test_fetch_map_markers_missing_markers_list_raises(monkeypatch):
-    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: '{"data": {}}')
+    monkeypatch.setattr(yad2_client, "_fetch_direct", lambda url: '{"data": {}}')
 
     with pytest.raises(Yad2MapFetchError, match="no usable 'data.markers' list"):
         list(fetch_map_markers("bbox", area=1, region=3))
 
 
 def test_fetch_map_markers_skips_non_dict_and_tokenless_entries(monkeypatch):
-    # fetch_via_isp_proxy is monkeypatched directly below, so no real env vars are needed here.
     body = '{"data": {"markers": [123, {"no": "token"}]}}'
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: body)
+    monkeypatch.setattr(yad2_client, "_fetch_direct", lambda url: body)
 
     assert list(fetch_map_markers("bbox", area=1, region=3)) == []
 
@@ -687,7 +683,7 @@ def test_fetch_map_markers_omits_area_param_entirely_when_area_is_none(monkeypat
         captured["url"] = url
         return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+    monkeypatch.setattr(yad2_client, "_fetch_direct", fake_fetch)
 
     list(fetch_map_markers("29.7,33.1,33.7,37.9", region=4, zoom=7))
 
@@ -702,7 +698,7 @@ def test_fetch_map_markers_uses_the_given_host_instead_of_the_default(monkeypatc
         captured["url"] = url
         return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+    monkeypatch.setattr(yad2_client, "_fetch_direct", fake_fetch)
 
     list(fetch_map_markers("29.7,33.1,33.7,37.9", region=4, zoom=7, host="gw.yad-il.co.il"))
 
@@ -711,9 +707,9 @@ def test_fetch_map_markers_uses_the_given_host_instead_of_the_default(monkeypatc
     )
 
 
-# --- REGIONS_ON_MAP_API / fetch_region_via_map_api (2026-09-14 — the real, partial migration off
-# ZenRows for regions with a confirmed-real map-API bbox; see fetch_region_via_map_api's own
-# module comment in yad2_client.py for the full reasoning) -------------------------------------
+# --- REGIONS_ON_MAP_API / fetch_region_via_map_api (2026-09-15 — ALL 7 REGION_SLUGS now covered;
+# see fetch_region_via_map_api's own module comment in yad2_client.py for the full reasoning,
+# including why every fetch below goes through _fetch_direct, not a proxy) ----------------------
 
 
 def test_regions_on_map_api_is_a_subset_of_region_slugs():
@@ -722,97 +718,95 @@ def test_regions_on_map_api_is_a_subset_of_region_slugs():
     assert set(REGIONS_ON_MAP_API) <= set(REGION_SLUGS)
 
 
-def test_tel_aviv_area_and_partnership_east_are_on_the_map_api_so_far():
-    # Documents the current real migration state (see the module comment). This test is meant to
-    # be updated, not deleted, the day a further region gets its own confirmed-real
-    # bbox/area/region live.
-    assert set(REGIONS_ON_MAP_API) == {"tel-aviv-area", "partnership/east", "center-and-sharon"}
+def test_all_seven_regions_are_on_the_map_api():
+    # 2026-09-15: the migration off ZenRows/fetch_region_pages for Yad2 is now COMPLETE — every
+    # REGION_SLUGS entry has its own confirmed-real, live-captured district-level bbox/region.
+    assert set(REGIONS_ON_MAP_API) == set(REGION_SLUGS)
 
 
-def test_fetch_region_via_map_api_uses_tel_aviv_areas_confirmed_real_params(monkeypatch):
-    captured = {}
-
-    def fake_fetch(url):
-        captured["url"] = url
-        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
-
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
-
-    items = list(fetch_region_via_map_api("tel-aviv-area"))
-
-    assert captured["url"] == (
-        f"{MAP_API_URL}?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
-    )
-    assert len(items) == 1
-    assert items[0]["id"] == "3zsxuu6d"
-
-
-def test_fetch_region_via_map_api_uses_partnership_easts_confirmed_real_params(monkeypatch):
-    # No `area` param, a DIFFERENT host — both real, confirmed-live findings for this region (see
-    # REGIONS_ON_MAP_API's own comment).
-    captured = {}
-
-    def fake_fetch(url):
-        captured["url"] = url
-        return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
-
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
-
-    items = list(fetch_region_via_map_api("partnership/east"))
-
-    assert captured["url"] == (
+# (region_slug, expected_url) — one entry per REGIONS_ON_MAP_API config, each the owner's own real,
+# live-captured request (never guessed/interpolated — see REGIONS_ON_MAP_API's own comment).
+_EXPECTED_REGION_URLS = [
+    (
+        "tel-aviv-area",
+        f"{MAP_API_URL}?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11",
+    ),
+    (
+        "partnership/east",
         "https://gw.yad-il.co.il/realestate-feed/rent/map?region=4&"
-        "bBox=29.778653,33.142100,33.787281,37.954214&zoom=7"
-    )
-    assert "area=" not in captured["url"]
-    assert len(items) == 1
+        "bBox=29.778653,33.142100,33.787281,37.954214&zoom=7",
+    ),
+    (
+        "center-and-sharon",
+        f"{MAP_API_URL}?region=1&bBox=31.808989,34.507037,32.418309,35.222485&zoom=10",
+    ),
+    (
+        "jerusalem-area",
+        f"{MAP_API_URL}?region=6&bBox=31.549448,34.818058,31.938335,35.272844&zoom=10",
+    ),
+    (
+        "south",
+        f"{MAP_API_URL}?region=2&bBox=29.490631,33.476480,31.904124,36.268220&zoom=8",
+    ),
+    (
+        "coastal-north",
+        f"{MAP_API_URL}?region=5&bBox=32.342601,34.560052,33.137625,35.500061&zoom=9",
+    ),
+    (
+        "north-and-valleys",
+        f"{MAP_API_URL}?region=7&bBox=32.387068,34.885247,33.335914,36.008669&zoom=9",
+    ),
+]
 
 
-def test_fetch_region_via_map_api_uses_center_and_sharons_first_confirmed_sub_area(monkeypatch):
-    # First sub-area found for a previously-blocked region (see REGIONS_ON_MAP_API's own comment)
-    # — found via yad2.co.il/latestsearches, confirmed live via verify-yad2-region-map-params.yaml
-    # (200 real markers, all tagged region.text="מרכז והשרון", no cross-region contamination).
+@pytest.mark.parametrize("region_slug,expected_url", _EXPECTED_REGION_URLS)
+def test_fetch_region_via_map_api_uses_each_regions_confirmed_real_params(
+    monkeypatch, region_slug, expected_url
+):
     captured = {}
 
     def fake_fetch(url):
         captured["url"] = url
         return json.dumps({"status": "OK", "data": {"markers": [_REAL_MARKER]}})
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+    monkeypatch.setattr(yad2_client, "_fetch_direct", fake_fetch)
 
-    items = list(fetch_region_via_map_api("center-and-sharon"))
+    items = list(fetch_region_via_map_api(region_slug))
 
-    assert captured["url"] == (
-        f"{MAP_API_URL}?area=70&region=1&bBox=31.988411,34.809327,32.621699,35.051643&zoom=9"
-    )
+    assert captured["url"] == expected_url
     assert len(items) == 1
+
+
+def test_expected_region_urls_covers_every_real_region_slug():
+    # A region added to REGIONS_ON_MAP_API without a matching entry in _EXPECTED_REGION_URLS above
+    # would silently skip the per-region param check above — this catches that gap.
+    assert {slug for slug, _ in _EXPECTED_REGION_URLS} == set(REGIONS_ON_MAP_API)
 
 
 def test_fetch_region_via_map_api_unknown_region_raises_key_error():
     with pytest.raises(KeyError):
-        list(fetch_region_via_map_api("south"))
+        list(fetch_region_via_map_api("nonexistent-region"))
 
 
 def test_fetch_region_via_map_api_propagates_yad2_map_fetch_error(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: "not json")
+    monkeypatch.setattr(yad2_client, "_fetch_direct", lambda url: "not json")
 
     with pytest.raises(Yad2MapFetchError, match="wasn't valid JSON"):
         list(fetch_region_via_map_api("tel-aviv-area"))
 
 
 def test_every_region_maps_to_a_non_empty_list_of_configs():
-    # 2026-09-14: REGIONS_ON_MAP_API values are lists (a region can need more than one sub-area to
-    # get real, full coverage — see the module comment) — a bare dict here would be a real bug.
+    # REGIONS_ON_MAP_API values are lists (kept that way for a future region that might genuinely
+    # need multiple sub-requests — see the module comment) — a bare dict here would be a real bug.
     for region, configs in REGIONS_ON_MAP_API.items():
         assert isinstance(configs, list), f"{region!r}'s value must be a list, not {type(configs)}"
         assert configs, f"{region!r} has an empty config list — nothing would ever be fetched"
 
 
 def test_fetch_region_via_map_api_unions_multiple_sub_areas_for_one_region(monkeypatch):
-    # The real reason REGIONS_ON_MAP_API values are lists: a region whose district-level request
-    # is blocked needs one real request PER major city/sub-area to get genuine full coverage, not
-    # an artificially narrow single-city substitute (see the module comment's "MULTIPLE SUB-AREAS
-    # PER REGION" entry — a real owner pushback that changed this design).
+    # No REGIONS_ON_MAP_API entry currently needs more than one sub-request (see the module
+    # comment), but fetch_region_via_map_api's own union-over-the-list behavior is still real
+    # behavior worth covering directly, with a fake multi-entry region.
     fake_configs = {
         "south": [
             {"bbox": "bbox-beer-sheva", "area": 10, "region": 2, "zoom": 12},
@@ -829,7 +823,7 @@ def test_fetch_region_via_map_api_unions_multiple_sub_areas_for_one_region(monke
         marker = {**_REAL_MARKER, "token": token}
         return json.dumps({"status": "OK", "data": {"markers": [marker]}})
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_fetch)
+    monkeypatch.setattr(yad2_client, "_fetch_direct", fake_fetch)
 
     items = list(fetch_region_via_map_api("south"))
 

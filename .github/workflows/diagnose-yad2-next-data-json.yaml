@@ -75,8 +75,14 @@ jobs:
               with open('/tmp/proxy.body', encoding='utf-8') as f:
                   payload = json.load(f)
           except Exception as exc:
+              # Deliberately exit 0, not 1 — a block/challenge here is an EXPECTED, informative
+              # diagnostic outcome, not a workflow failure. Exiting 1 made GitHub Actions email a
+              # 'FAILED' notification for every single blocked test (confirmed 2026-09-15, a real
+              # notification-spam problem when running several of these back to back) even though
+              # the workflow did exactly its job. Read the printed verdict, not the run's pass/fail
+              # badge, to know whether the URL got through.
               print(f'NOT valid JSON via proxy — likely blocked/challenged or a dead buildId: {exc}')
-              raise SystemExit(1)
+              raise SystemExit(0)
           print('Valid JSON via proxy. Top-level keys:', list(payload.keys()) if isinstance(payload, dict) else type(payload))
           print(json.dumps(payload, ensure_ascii=False)[:1500])
           "
