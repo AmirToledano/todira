@@ -6044,3 +6044,58 @@ command at all anymore. `RESULT_LIMIT`, `_load_matches_sync`, and the `send_list
 
 851 tests pass; ruff clean. PRs #299/#300/#301/#302/#303/#304 (diagnostic)/#305/#311, plus the PR
 that carries this entry and the carousel CSS fix, plus the PR carrying the /apartments fix above.
+
+## Update 2026-09-15 (same night): Facebook Marketplace — real page structure confirmed live, a
+## real scraper client built and tested, deliberately NOT wired into the automatic scraper yet
+
+**Real diagnostic findings** (`.github/workflows/diagnose-facebook-marketplace-page-structure.yaml`,
+run several times against the dedicated account's real stored session cookie, owner-approved one
+careful step at a time):
+1. A plain HTTPS GET to `facebook.com/marketplace/category/propertyrentals/` with just
+   Cookie+User-Agent+Accept-Language got a real `http_status=400` "Error" page — Facebook's own
+   generic bad-request response, not a login wall. Adding the `Sec-Fetch-*`/`sec-ch-ua` client-hint
+   headers a real Chrome navigation always sends fixed it: a genuine `200` with real content.
+2. Every current listing is embedded as GraphQL-shaped JSON inside `<script type="application/
+   json">` blocks (104-107 per page) — no headless browser/JS rendering needed, same "plain fetch,
+   real embedded JSON" shape as `homeless_client.py`. Each listing is a `MarketplaceFeedListingStory`
+   node whose `for_sale_item` carries id/title/price/photos/seller/permalink — but its own
+   `location` is latitude/longitude ONLY, no city or street text anywhere.
+3. The owner independently opened one of the exact sample listings in his own browser and found its
+   DETAIL page (not the search feed) shows a real address ("הרצליה, 46000") and a street name inside
+   the free-text description ("רחוב הכוזרי") — confirmed live via a targeted fetch of that same
+   listing's detail page: a `reverse_geocode_detailed: {city, state, postal_code}` dict gives the
+   clean structured city, and `redacted_description.text` gives the real free-text description
+   (which is also the ONLY place a real street name or the actual Israeli "X.5 חדרים" room count
+   ever appears — Facebook's own auto-generated `custom_title` uses an English bedroom count, a
+   different, non-Israeli-convention number).
+4. Owner decision: scrape ONE broad discovery feed (not per-city — the per-city idea was superseded
+   once the detail-page address was found) plus a per-genuinely-new-listing detail-page fetch for
+   city/description, mirroring Komo's own "enrich once, cache forever" pattern rather than
+   reverse-geocoding coordinates.
+
+**`scraper/facebook_client.py` built and tested against this real structure** (never guessed) —
+`fetch_search_results()` (discovery) and `fetch_listing_detail()` (required per-new-listing
+enrichment, not optional like Homeless's description — there's no safe fallback for an unknown
+city). 16 new tests, 867 total pass, ruff clean. Full field-level reasoning is in the module's own
+docstring.
+
+**Deliberately NOT wired into `scraper/main.py`'s `_SOURCE_SCRAPERS` yet** — doing so would mean
+every scheduled CronJob run (currently several times a day) starts hitting the live Facebook account
+automatically, a materially different, ongoing risk to a live external account beyond the single
+approved diagnostic fetch this was built from. Still needed before this actually runs in production:
+- Wire `FACEBOOK_COOKIES` as an env var from `todira-bot-secret`'s `facebook-cookies` key into
+  `charts/todira`'s scraper deployment/CronJob (same pattern as `ZENROWS_API_KEY` etc.).
+- Decide a real per-run safety cap on new-listing detail-page fetches (mirrors
+  `KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN`/`HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN`, but this one
+  is about live-account request-volume/ban risk, not a metered API cost — needs its own, probably
+  more conservative, default).
+- Add `_scrape_facebook` to `scraper/main.py` and `Source.FACEBOOK_MARKETPLACE` to
+  `_SOURCE_SCRAPERS`, following Komo's own "skip a capped-out new listing entirely this run, retry
+  next run" pattern (never upsert a listing with city=None).
+- The owner's explicit go-ahead for turning this on in production, the same way every other live
+  step in this feature (the account itself, the cookie export, each diagnostic fetch) was gated on
+  an explicit ask first.
+
+Not yet touched at all: Facebook Groups (a separate, harder problem — needs a specific group's own
+URL, which isn't on hand yet, and group posts are free-text, not structured listings the same way
+Marketplace is).
