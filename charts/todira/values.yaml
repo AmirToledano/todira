@@ -157,7 +157,24 @@ scraper:
   # "0 8,10,12,14,16,18,20,22 * * *" (kept here in this comment so restoring it doesn't mean
   # reconstructing the original schedule from memory).
   # 2026-09-13: 09:30 (not 08:00) per explicit owner request.
-  schedule: "30 9 * * *"
+  # 2026-09-15: bumped from 1x/day to HOURLY, 09:00-22:00 Israel time (14 runs/day) — explicit
+  # owner request the same night the 09-13 credit-crisis cut was reconsidered. The original
+  # reason for that cut (Yad2's 175-credits/run 7-region ZenRows sweep + Komo's uncapped
+  # nationwide-backlog first run) no longer applies at all: both are now fully migrated OFF
+  # ZenRows onto plain direct requests (see yad2_client._fetch_direct/komo_client._isp_proxy_get's
+  # own docstrings). The only source still on ZenRows is Homeless — real math, not a guess: its
+  # own search-page fetch is a FIXED 1 credit/run regardless of what it finds, and its per-listing
+  # description-fetch cost (capped at homelessMaxNewDescriptionFetchesPerRun, 50/run) tracks the
+  # real daily count of genuinely-new listings, not how often this checks — running more often
+  # just finds them in smaller batches, it doesn't multiply the total. Going from 1 to 14 runs/day
+  # therefore adds only ~13 extra FIXED credits/day (~390/month) versus 1x/day — trivial on any
+  # real ZenRows plan tier. The real thing actually worth watching with sustained hourly production
+  # traffic is Yad2's OWN still-open, already-documented risk (see yad2_client.py's
+  # REGIONS_ON_MAP_API comment): its map API is un-proxied, direct, and production's own IP is
+  # static, so the same reputation-decay mechanism that caused the original multi-day Radware block
+  # could in principle return under sustained heavier real use — watch pod logs for a returning
+  # 302/Radware pattern, not a ZenRows dashboard number, if trouble shows up.
+  schedule: "0 9-22 * * *"
   # 2026-09-13: real ZenRows dashboard check (owner's own screenshot) found only 7,218 credits
   # left on the Build 45k plan, renewing 2026-10-01 (~18 days away) — 87% of the plan already used.
   # At the schedule/sources active before tonight (8 runs/day, full 7-region Yad2 sweep + all-42-
