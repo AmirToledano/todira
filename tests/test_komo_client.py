@@ -1,14 +1,14 @@
 """Unit tests for scraper/komo_client.py. Sample HTML/JSON fragments mirror the exact real markup
 confirmed live against modaaNum=4471462 and Komo's own adscoordinates endpoint (see
 .github/workflows/diagnose-komo-homeless-reachability.yaml, runs #9-#13, and komo_client.py's own
-module docstring) — not invented shapes. Mocks dorin_common.bright_data_client's ISP-proxy
-functions directly rather than hitting the network — no real Bright Data traffic spent by running
-this suite, same reasoning as test_yad2_client.py's own map-API tests. Since the 2026-09-14
-migration (see komo_client.py's own STATUS entry) this module no longer uses ZenRows at all."""
+module docstring) — not invented shapes. Mocks komo_client's own _isp_proxy_get/_isp_proxy_post
+(a plain direct httpx GET/POST since the 2026-09-15 migration — name kept from the 2026-09-14
+Bright Data ISP proxy era, only the body changed, see komo_client.py's own STATUS entry) rather
+than hitting the network — no real HTTP traffic spent by running this suite, same reasoning as
+test_yad2_client.py's own map-API tests, mocking at the same _fetch_direct-equivalent boundary."""
 import pytest
 
 import komo_client
-from dorin_common import bright_data_client
 from komo_client import (
     ADSCOORDINATES_URL,
     DETAILS_PAGE_URL,
@@ -193,10 +193,10 @@ def test_parse_details_html_missing_stat_blocks_leaves_floor_and_size_none():
 
 
 def test_fetch_coordinate_ids_unknown_city_slug_raises_without_any_http_call(monkeypatch):
-    def fail_get(url):
+    def fail_get(url, *, context_label):
         raise AssertionError("should not make a request for an unknown city slug")
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fail_get)
+    monkeypatch.setattr(komo_client, "_isp_proxy_get", fail_get)
     with pytest.raises(KomoFetchError, match="No Hebrew city name mapped"):
         fetch_coordinate_ids("nonexistent-city")
 
@@ -204,17 +204,17 @@ def test_fetch_coordinate_ids_unknown_city_slug_raises_without_any_http_call(mon
 def test_fetch_coordinate_ids_full_pipeline_real_confirmed_shape(monkeypatch):
     captured = {}
 
-    def fake_get(url):
+    def fake_get(url, *, context_label):
         captured["get_url"] = url
         return _REAL_SESSION_TOKEN_LINE
 
-    def fake_post(url, data):
+    def fake_post(url, data, *, context_label):
         captured["post_url"] = url
         captured["post_data"] = data
         return _REAL_COORDS_JSON
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_get)
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", fake_post)
+    monkeypatch.setattr(komo_client, "_isp_proxy_get", fake_get)
+    monkeypatch.setattr(komo_client, "_isp_proxy_post", fake_post)
 
     result = fetch_coordinate_ids("jerusalem")
 
@@ -227,37 +227,53 @@ def test_fetch_coordinate_ids_full_pipeline_real_confirmed_shape(monkeypatch):
 
 
 def test_fetch_coordinate_ids_isp_proxy_get_failure_raises(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: None)
-    with pytest.raises(KomoFetchError, match="Bright Data ISP proxy failed to fetch"):
+    def fail_get(url, *, context_label):
+        raise KomoFetchError(f"Direct (un-proxied) request failed for {context_label}: {url}")
+
+    monkeypatch.setattr(komo_client, "_isp_proxy_get", fail_get)
+    with pytest.raises(KomoFetchError, match="Direct .un-proxied. request failed"):
         fetch_coordinate_ids("jerusalem")
 
 
 def test_fetch_coordinate_ids_no_token_in_search_page_raises(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: "<html>no token</html>")
+    monkeypatch.setattr(
+        komo_client, "_isp_proxy_get", lambda url, *, context_label: "<html>no token</html>"
+    )
     with pytest.raises(KomoFetchError, match="No sessionToken found"):
         fetch_coordinate_ids("jerusalem")
 
 
 def test_fetch_coordinate_ids_isp_proxy_post_failure_raises(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", lambda url, data: None)
-    with pytest.raises(KomoFetchError, match="Bright Data ISP proxy failed to POST"):
+    def fail_post(url, data, *, context_label):
+        raise KomoFetchError(f"Direct (un-proxied) POST failed for {context_label}: {url}")
+
+    monkeypatch.setattr(
+        komo_client, "_isp_proxy_get", lambda url, *, context_label: _REAL_SESSION_TOKEN_LINE
+    )
+    monkeypatch.setattr(komo_client, "_isp_proxy_post", fail_post)
+    with pytest.raises(KomoFetchError, match="Direct .un-proxied. POST failed"):
         fetch_coordinate_ids("jerusalem")
 
 
 def test_fetch_coordinate_ids_non_ok_status_raises(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
     monkeypatch.setattr(
-        bright_data_client, "fetch_via_isp_proxy_post",
-        lambda url, data: '{"status":"Error: iska is empty"}',
+        komo_client, "_isp_proxy_get", lambda url, *, context_label: _REAL_SESSION_TOKEN_LINE
+    )
+    monkeypatch.setattr(
+        komo_client, "_isp_proxy_post",
+        lambda url, data, *, context_label: '{"status":"Error: iska is empty"}',
     )
     with pytest.raises(KomoFetchError, match="non-OK status"):
         fetch_coordinate_ids("jerusalem")
 
 
 def test_fetch_coordinate_ids_not_json_raises(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", lambda url, data: "not json")
+    monkeypatch.setattr(
+        komo_client, "_isp_proxy_get", lambda url, *, context_label: _REAL_SESSION_TOKEN_LINE
+    )
+    monkeypatch.setattr(
+        komo_client, "_isp_proxy_post", lambda url, data, *, context_label: "not json"
+    )
     with pytest.raises(KomoFetchError, match="wasn't valid JSON"):
         fetch_coordinate_ids("jerusalem")
 
@@ -285,18 +301,21 @@ def test_fetch_all_coordinate_ids_delegates_to_a_fixed_valid_city_slug(monkeypat
 
 
 def test_fetch_listing_detail_isp_proxy_failure_returns_none_not_raise(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: None)
+    def fail_get(url, *, context_label):
+        raise KomoFetchError(f"Direct (un-proxied) request failed for {context_label}: {url}")
+
+    monkeypatch.setattr(komo_client, "_isp_proxy_get", fail_get)
     assert fetch_listing_detail("4471462") is None
 
 
 def test_fetch_listing_detail_parses_the_real_confirmed_shape(monkeypatch):
     captured = {}
 
-    def fake_get(url):
+    def fake_get(url, *, context_label):
         captured["url"] = url
         return _REAL_DETAILS_HTML
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_get)
+    monkeypatch.setattr(komo_client, "_isp_proxy_get", fake_get)
 
     item = fetch_listing_detail("4471462")
 
@@ -309,13 +328,15 @@ def test_fetch_listing_detail_parses_the_real_confirmed_shape(monkeypatch):
 
 
 def test_fetch_search_results_yields_one_priced_item_per_coordinate_id(monkeypatch):
-    def fake_get(url):
+    def fake_get(url, *, context_label):
         if url.startswith(SEARCH_PAGE_URL):
             return _REAL_SESSION_TOKEN_LINE
         return _REAL_DETAILS_HTML
 
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", fake_get)
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy_post", lambda url, data: _REAL_COORDS_JSON)
+    monkeypatch.setattr(komo_client, "_isp_proxy_get", fake_get)
+    monkeypatch.setattr(
+        komo_client, "_isp_proxy_post", lambda url, data, *, context_label: _REAL_COORDS_JSON
+    )
 
     items = list(fetch_search_results("jerusalem"))
 
@@ -325,10 +346,12 @@ def test_fetch_search_results_yields_one_priced_item_per_coordinate_id(monkeypat
 
 
 def test_fetch_search_results_skips_items_with_no_id(monkeypatch):
-    monkeypatch.setattr(bright_data_client, "fetch_via_isp_proxy", lambda url: _REAL_SESSION_TOKEN_LINE)
     monkeypatch.setattr(
-        bright_data_client, "fetch_via_isp_proxy_post",
-        lambda url, data: '{"status":"OK","list":[{"uid":"no-id-here"}]}',
+        komo_client, "_isp_proxy_get", lambda url, *, context_label: _REAL_SESSION_TOKEN_LINE
+    )
+    monkeypatch.setattr(
+        komo_client, "_isp_proxy_post",
+        lambda url, data, *, context_label: '{"status":"OK","list":[{"uid":"no-id-here"}]}',
     )
 
     assert list(fetch_search_results("jerusalem")) == []
