@@ -31,7 +31,7 @@ from handlers.apartments import find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
-from telegram import Update
+from telegram import ForceReply, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     CallbackQueryHandler,
@@ -61,6 +61,34 @@ FIELD_TO_CATEGORY = {
     "min_area_sqm": "area",
     "move_in_earliest": "move",
     "move_in_latest": "move",
+}
+
+# 2026-09-15: every prompt a text-input field can show, now sent via _prompt_for_text (a freshly
+# SENT message with a ForceReply) instead of edited into the existing inline-keyboard message —
+# see _prompt_for_text's own docstring for why. Centralized here (was previously just an inline
+# string literal at each menu_callback call site) so both menu_callback and the numeric picker's
+# "✏️ ערך אחר..." fallback share the exact same wording per field.
+_TEXT_PROMPTS = {
+    "city": "הקלד/י שם עיר לחיפוש:",
+    "price_min": "הקלד/י מחיר מינימלי (או '-' לביטול הגבלה):",
+    "price_max": "הקלד/י מחיר מקסימלי (או '-' לביטול הגבלה):",
+    "rooms_min": "הקלד/י מספר חדרים מינימלי (למשל 2.5), או '-' לביטול:",
+    "rooms_max": "הקלד/י מספר חדרים מקסימלי, או '-' לביטול:",
+    "floor_min": "הקלד/י קומה מינימלית, או '-' לביטול:",
+    "floor_max": "הקלד/י קומה מקסימלית, או '-' לביטול:",
+    "min_area_sqm": 'הקלד/י שטח מינימלי במ"ר, או \'-\' לביטול:',
+    "keywords": "הקלד/י מילות מפתח מופרדות בפסיקים:",
+    "move_in_earliest": "הקלד/י תאריך מוקדם ביותר (YYYY-MM-DD), או '-' לביטול:",
+    "move_in_latest": "הקלד/י תאריך מאוחר ביותר (YYYY-MM-DD), או '-' לביטול:",
+}
+
+_NUMERIC_PICKER_LABELS = {
+    "price_min": "מחיר מינימלי",
+    "price_max": "מחיר מקסימלי",
+    "rooms_min": "חדרים מינימלי",
+    "rooms_max": "חדרים מקסימלי",
+    "floor_min": "קומה מינימלית",
+    "floor_max": "קומה מקסימלית",
 }
 
 
@@ -136,6 +164,35 @@ async def _show_category(query, draft: dict, category: str) -> int:
 async def _send_category(message, draft: dict, category: str) -> None:
     title, markup = _category_view(draft, category)
     await message.reply_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
+
+
+async def _prompt_for_text(query, context, *, awaiting: str, prompt: str) -> int:
+    """Sends the text prompt as a freshly SENT message with a ForceReply keyboard, instead of
+    editing it into the existing inline-keyboard message like every call site here used to.
+    editMessageText's own reply_markup only accepts an InlineKeyboardMarkup — never a ForceReply —
+    so that older approach could never make the device keyboard open on its own; a real owner
+    complaint 2026-09-15 ("המקלדת לא נפתחת אוטומטית"). ForceReply is the one reply_markup type
+    that does auto-open it, but Telegram only allows attaching it to a newly sent message.
+    Strips the old message's own inline keyboard first (edit_message_reply_markup, text
+    untouched) so its buttons can't be tapped while AWAIT_TEXT is active — that state has no
+    CallbackQueryHandler at all (see build_filter_conversation_handler), so a stray tap on a
+    left-behind button would otherwise silently go nowhere.
+    """
+    context.user_data["awaiting"] = awaiting
+    await query.edit_message_reply_markup(reply_markup=None)
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=prompt,
+        reply_markup=ForceReply(selective=True, input_field_placeholder=prompt[:64]),
+    )
+    return AWAIT_TEXT
+
+
+async def _show_numeric_picker(query, draft: dict, field: str) -> int:
+    title = f"{kb.CATEGORY_TITLES[FIELD_TO_CATEGORY[field]]} — {_NUMERIC_PICKER_LABELS[field]}"
+    markup = kb.numeric_preset_keyboard(field, draft[field], FIELD_TO_CATEGORY[field])
+    await query.edit_message_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
+    return MENU
 
 
 def _apply_single_select(draft: dict, ns: str, value: str) -> None:
@@ -342,9 +399,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if action == "loc":
         sub = parts[2]
         if sub == "addcity":
-            context.user_data["awaiting"] = "city"
-            await query.edit_message_text("הקלד/י שם עיר לחיפוש:")
-            return AWAIT_TEXT
+            return await _prompt_for_text(query, context, awaiting="city", prompt=_TEXT_PROMPTS["city"])
         if sub == "full":
             return await _show_category(query, draft, "locpick")
         if sub == "togc":
@@ -362,65 +417,66 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if action == "price":
         sub = parts[2]
         if sub == "min":
-            context.user_data["awaiting"] = "price_min"
-            await query.edit_message_text("הקלד/י מחיר מינימלי (או '-' לביטול הגבלה):")
-            return AWAIT_TEXT
+            return await _show_numeric_picker(query, draft, "price_min")
         if sub == "max":
-            context.user_data["awaiting"] = "price_max"
-            await query.edit_message_text("הקלד/י מחיר מקסימלי (או '-' לביטול הגבלה):")
-            return AWAIT_TEXT
+            return await _show_numeric_picker(query, draft, "price_max")
         if sub == "reqtoggle":
             draft["require_price"] = not draft["require_price"]
         return await _show_category(query, draft, "price")
     if action == "rooms":
         sub = parts[2]
         if sub == "min":
-            context.user_data["awaiting"] = "rooms_min"
-            await query.edit_message_text("הקלד/י מספר חדרים מינימלי (למשל 2.5), או '-' לביטול:")
-            return AWAIT_TEXT
+            return await _show_numeric_picker(query, draft, "rooms_min")
         if sub == "max":
-            context.user_data["awaiting"] = "rooms_max"
-            await query.edit_message_text("הקלד/י מספר חדרים מקסימלי, או '-' לביטול:")
-            return AWAIT_TEXT
+            return await _show_numeric_picker(query, draft, "rooms_max")
         return await _show_category(query, draft, "rooms")
     if action == "floor":
         sub = parts[2]
         if sub == "min":
-            context.user_data["awaiting"] = "floor_min"
-            await query.edit_message_text("הקלד/י קומה מינימלית, או '-' לביטול:")
-            return AWAIT_TEXT
+            return await _show_numeric_picker(query, draft, "floor_min")
         if sub == "max":
-            context.user_data["awaiting"] = "floor_max"
-            await query.edit_message_text("הקלד/י קומה מקסימלית, או '-' לביטול:")
-            return AWAIT_TEXT
+            return await _show_numeric_picker(query, draft, "floor_max")
         if sub == "ground":
             draft["ground_floor_only"] = not draft["ground_floor_only"]
         return await _show_category(query, draft, "floor")
+    if action == "pick":
+        # Quick-pick preset tap / custom-value fallback / clear, from a numeric_preset_keyboard
+        # screen (see kb.numeric_preset_keyboard and _show_numeric_picker above).
+        field, sub = parts[2], parts[3]
+        if sub == "custom":
+            return await _prompt_for_text(
+                query, context, awaiting=field, prompt=_TEXT_PROMPTS[field]
+            )
+        if sub == "clear":
+            draft[field] = None
+        else:
+            draft[field] = kb.NUMERIC_PRESETS[field][int(sub)]
+        return await _show_category(query, draft, FIELD_TO_CATEGORY[field])
     if action == "area":
         if parts[2] == "set":
-            context.user_data["awaiting"] = "min_area_sqm"
-            await query.edit_message_text('הקלד/י שטח מינימלי במ"ר, או \'-\' לביטול:')
-            return AWAIT_TEXT
+            return await _prompt_for_text(
+                query, context, awaiting="min_area_sqm", prompt=_TEXT_PROMPTS["min_area_sqm"]
+            )
         return await _show_category(query, draft, "area")
     if action == "kw":
         sub = parts[2]
         if sub == "set":
-            context.user_data["awaiting"] = "keywords"
-            await query.edit_message_text("הקלד/י מילות מפתח מופרדות בפסיקים:")
-            return AWAIT_TEXT
+            return await _prompt_for_text(
+                query, context, awaiting="keywords", prompt=_TEXT_PROMPTS["keywords"]
+            )
         if sub == "clear":
             draft["keywords"] = []
         return await _show_category(query, draft, "kw")
     if action == "move":
         sub = parts[2]
         if sub == "earliest":
-            context.user_data["awaiting"] = "move_in_earliest"
-            await query.edit_message_text("הקלד/י תאריך מוקדם ביותר (YYYY-MM-DD), או '-' לביטול:")
-            return AWAIT_TEXT
+            return await _prompt_for_text(
+                query, context, awaiting="move_in_earliest", prompt=_TEXT_PROMPTS["move_in_earliest"]
+            )
         if sub == "latest":
-            context.user_data["awaiting"] = "move_in_latest"
-            await query.edit_message_text("הקלד/י תאריך מאוחר ביותר (YYYY-MM-DD), או '-' לביטול:")
-            return AWAIT_TEXT
+            return await _prompt_for_text(
+                query, context, awaiting="move_in_latest", prompt=_TEXT_PROMPTS["move_in_latest"]
+            )
         if sub == "clear":
             draft["move_in_earliest"] = None
             draft["move_in_latest"] = None
@@ -448,14 +504,19 @@ async def _reply_parse_failure_or_escalate(
     the norm, and applying it anyway escalated ordinary city typos ("קרית מוצקין" — a spelling
     variant, not gibberish) to the owner as support requests (found 2026-09-02 via a real user's
     report)."""
+    # ForceReply on the retry too (not just the original prompt) — 2026-09-15: without it, the
+    # device keyboard that _prompt_for_text opened would close right back up on a bad first
+    # attempt, the exact "keyboard doesn't stay open" annoyance this whole feature exists to fix.
+    retry_markup = ForceReply(selective=True, input_field_placeholder=retry_message[:64])
     if escalate_on_sentence and looks_like_a_sentence(raw):
         await escalate_to_owner(update, context, raw)
         await update.message.reply_text(
             "🙋 זה לא נראה כמו הערך שביקשתי, אז ליתר ביטחון העברתי את מה שכתבת לצוות — "
-            "אם זו הייתה שאלה, תקבל/י מענה בהקדם.\n\n" + retry_message
+            "אם זו הייתה שאלה, תקבל/י מענה בהקדם.\n\n" + retry_message,
+            reply_markup=retry_markup,
         )
     else:
-        await update.message.reply_text(retry_message)
+        await update.message.reply_text(retry_message, reply_markup=retry_markup)
     context.user_data["awaiting"] = awaiting
     return AWAIT_TEXT
 
@@ -496,9 +557,10 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if looks_like_help_request(raw):
         await escalate_to_owner(update, context, raw)
         context.user_data["awaiting"] = awaiting
+        continue_msg = "אפשר להמשיך מאיפה שהפסקנו — שלח/י את הערך שהתבקשת להקליד."
         await update.message.reply_text(
-            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n"
-            "אפשר להמשיך מאיפה שהפסקנו — שלח/י את הערך שהתבקשת להקליד."
+            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n" + continue_msg,
+            reply_markup=ForceReply(selective=True, input_field_placeholder=continue_msg[:64]),
         )
         return AWAIT_TEXT
 
