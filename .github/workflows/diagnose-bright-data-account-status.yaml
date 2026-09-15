@@ -1,0 +1,72 @@
+name: Diagnose — Bright Data real account balance + collector status (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-15.
+#
+# Direct continuation of diagnose-bright-data-stuck-same-result.yaml's finding: that live test
+# proved the DCA collector accepts real, distinct trigger calls (real job ids back) but every poll
+# returns the exact same stale cached record in well under half a second — physically too fast for
+# a real scrape, and outside bright_data_client.py's own control (its trigger/poll/retry logic is
+# all confirmed working correctly). Real, live web research (not guessed) into Bright Data's own
+# API surface turned up two concrete, testable leads for WHY the platform side might be silently
+# not executing real jobs:
+#   1. The legacy DCA API this project uses is described as deprecated in favor of a newer
+#      Datasets API v3 (/datasets/v3/trigger, dataset_id param) — possible the legacy endpoint
+#      still accepts requests but no longer actually runs them for this account.
+#   2. Every Bright Data account has a real monthly free-tier credit allowance — if exhausted,
+#      real jobs may silently stop executing while the trigger call itself still succeeds.
+# This workflow checks both directly against the real account: GET /customer/balance (real
+# account credit/balance state) and GET /dca/collectors (this account's own collector list,
+# looking for this collector's real status/active field — the earlier guess of
+# /dca/collections?collector=X, plural mismatched, got a plain 404). Pure Bright Data API traffic,
+# no Yad2/ZenRows cost, does not touch the live k8s scraper Job.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check real account balance/credits
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          echo "=== GET https://api.brightdata.com/customer/balance ==="
+          curl -sS "https://api.brightdata.com/customer/balance" \
+            -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+            -o /tmp/balance.json \
+            -w "\nhttp_status=%{http_code}\n" \
+            --max-time 30 || true
+          echo "--- response body ---"
+          cat /tmp/balance.json 2>/dev/null || echo "(no response captured)"
+          echo ""
+
+      - name: List this account's own collectors (real status/active field, if any)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
+        run: |
+          echo "collector id (masked by GH, length only): ${#BRIGHT_DATA_COLLECTOR_ID} chars"
+          echo "=== GET https://api.brightdata.com/dca/collectors ==="
+          curl -sS "https://api.brightdata.com/dca/collectors" \
+            -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+            -o /tmp/collectors.json \
+            -w "\nhttp_status=%{http_code}\n" \
+            --max-time 30 || true
+          echo "--- response body ---"
+          cat /tmp/collectors.json 2>/dev/null || echo "(no response captured)"
+          echo ""
+
+      - name: Check this specific collector's own status by id (path param, not query)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
+        run: |
+          echo "=== GET https://api.brightdata.com/dca/collectors/\$BRIGHT_DATA_COLLECTOR_ID ==="
+          curl -sS "https://api.brightdata.com/dca/collectors/${BRIGHT_DATA_COLLECTOR_ID}" \
+            -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+            -o /tmp/collector_detail.json \
+            -w "\nhttp_status=%{http_code}\n" \
+            --max-time 30 || true
+          echo "--- response body ---"
+          cat /tmp/collector_detail.json 2>/dev/null || echo "(no response captured)"
+          echo ""
