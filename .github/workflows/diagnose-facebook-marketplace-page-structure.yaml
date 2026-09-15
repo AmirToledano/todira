@@ -1,0 +1,102 @@
+name: Diagnose — real Facebook Marketplace page structure via the stored session cookie (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-15.
+#
+# Real next step in the Facebook Marketplace/Groups scraping feature (see PROJECT_STATE.md's
+# 2026-09-15 entry): the dedicated account's session cookie is already safely stored in
+# todira-bot-secret's facebook-cookies key (see set-facebook-cookies-secret.yaml), but nobody has
+# ever actually looked at what a real, logged-in Marketplace page looks like yet. This project's
+# own history (yad2_client.py — 8 failed attempts before its real page structure was understood;
+# komo_client.py/homeless_client.py — each only written after a live diagnostic like this one)
+# is explicit that writing a parser against a GUESSED structure is a real, repeated mistake here —
+# so this fetches ONE real page with the real cookie and reports back safe, structural findings
+# only (status/redirect, title, a generic scan for GraphQL "__typename" values, marketplace item
+# link counts) — never the raw page dump, and the cookie itself is masked before this job's very
+# first shell touches it (same mechanism as set-facebook-cookies-secret.yaml's own masking step),
+# so it can never appear in this run's own logs.
+#
+# Deliberately ONE request this first run (Marketplace's public category page only, not a specific
+# Group — no group URL is on hand yet, and a single low-volume, browser-like GET is the lowest-risk
+# way to take the very first real look, matching a real, explicit owner go-ahead for exactly one
+# careful diagnostic before anything else touches the live account).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch Marketplace's real property-rentals category page, using the stored cookie
+        # Cookie is read from the k8s secret and masked in this step's own first two lines, before
+        # anything else runs — same ordering reasoning as every other set-*-secret.yaml/diagnose
+        # workflow in this repo that touches a real credential.
+        run: |
+          COOKIE=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.facebook-cookies}' | base64 -d)
+          echo "::add-mask::$COOKIE"
+          if [ -z "$COOKIE" ]; then
+            echo "facebook-cookies is empty in todira-bot-secret — nothing to test with. Re-run set-facebook-cookies-secret.yaml first."
+            exit 1
+          fi
+
+          echo "=== Fetching Marketplace property-rentals category page ==="
+          curl -sS --compressed -L --max-redirs 5 \
+            -D /tmp/fb_headers.txt \
+            -o /tmp/fb_body.html \
+            -w "http_status=%{http_code} final_url=%{url_effective} size_bytes=%{size_download}\n" \
+            --max-time 30 \
+            -H "Cookie: $COOKIE" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            "https://www.facebook.com/marketplace/category/propertyrentals/" || true
+
+      - name: Analyze the saved page — structure only, never the raw HTML
+        run: |
+          echo "=== Response headers (no cookie ever appears here — only what Facebook itself sent back) ==="
+          grep -iE "^(location|set-cookie|content-type|content-length):" /tmp/fb_headers.txt | sed -E 's/^(set-cookie:).*/\1 [redacted, not needed]/i' || true
+          echo
+          python3 -c "
+          import re
+          from collections import Counter
+
+          with open('/tmp/fb_body.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+
+          print(f'=== Body length: {len(html)} chars ===')
+
+          title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'Title: {title_match.group(1).strip() if title_match else \"(no <title> found)\"}')
+
+          lower = html.lower()
+          login_signals = [s for s in ('log in to facebook', 'loginform', 'checkpoint', 'login.php', 'two-factor', 'name=\"email\"') if s in lower]
+          print(f'Login/checkpoint-wall signals present: {login_signals or \"none\"}')
+
+          # Generic GraphQL structural scan — works regardless of Facebook's exact current DOM,
+          # since Marketplace/Groups pages embed their real data as GraphQL-shaped JSON with
+          # __typename markers. A frequency table of these is the single most useful signal for
+          # figuring out what data node types are actually on this page.
+          typenames = re.findall(r'\"__typename\":\"([A-Za-z0-9_]+)\"', html)
+          counts = Counter(typenames)
+          print(f'=== __typename occurrences found: {len(typenames)} total, {len(counts)} distinct ===')
+          for name, count in counts.most_common(30):
+              print(f'  {name}: {count}')
+
+          # Marketplace item permalinks are a stable, documented URL shape
+          # (facebook.com/marketplace/item/<id>/) regardless of internal markup changes.
+          item_ids = sorted(set(re.findall(r'/marketplace/item/(\d+)/', html)))
+          print(f'=== Distinct /marketplace/item/<id>/ links found: {len(item_ids)} ===')
+          if item_ids:
+              print(f'First few ids: {item_ids[:5]}')
+
+          script_json_count = len(re.findall(r'<script type=\"application/json\"', html))
+          print(f'=== <script type=\"application/json\"> blocks found: {script_json_count} ===')
+          "
