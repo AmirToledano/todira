@@ -230,8 +230,10 @@ def test_scrape_homeless_stops_new_description_fetches_at_the_cap(monkeypatch):
         scraper_main._scrape_homeless()
     )
 
-    # capped at 2, never fetched the 3rd
-    assert description_calls == [
+    # capped at 2, never fetched the 3rd — order-insensitive since 2026-09-15's concurrent
+    # fetching (bounded by _HOMELESS_DESCRIPTION_FETCH_CONCURRENCY) doesn't guarantee which of the
+    # two in-flight calls' side effects land first, only that both (and only those two) happen.
+    assert sorted(description_calls) == [
         "https://www.homeless.co.il/rent/viewad,1.aspx",
         "https://www.homeless.co.il/rent/viewad,2.aspx",
     ]
