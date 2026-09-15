@@ -1,11 +1,10 @@
-"""/apartments — the current top matching, non-hidden, non-delisted listings for the user's
-saved filter. `find_matching_listings` is also reused by filter_conversation.py to show an
-example match right after a filter is saved (mirrors the reference bot's "👀 הראי לי דוגמה"
-prompt)."""
+"""/apartments — how many of the user's saved filter's current matches exist right now, with a
+link to see them all on the website. `find_matching_listings` is also reused by
+filter_conversation.py to compute the same "how many match right now" count right after a filter
+is saved."""
 from __future__ import annotations
 
 import asyncio
-import os
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,18 +12,10 @@ from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
 from config import WEBSITE_URL
-from dorin_common.access import has_full_access
-from dorin_common.cards import format_caption, send_listing_card
 from dorin_common.db import get_session
 from dorin_common.enums import NotificationReason
 from dorin_common.matching import evaluate
 from dorin_common.models import Filter, Listing, SentNotification, User, UserListingAction
-
-RESULT_LIMIT = 10
-
-# Mirrors website/main.py's _is_owner_id / bot/handlers/start.py's own copy — same secret, same
-# "owner always has full access" override.
-OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
 
 def find_matching_listings(
@@ -33,16 +24,17 @@ def find_matching_listings(
     """`limit=None` (the default) scans every active listing that could possibly match — no
     artificial recency window. 2026-09-15: used to stop the underlying query at the 500
     most-recently-scraped rows (a constant then called RECENT_LISTINGS_SCANNED) before filtering,
-    regardless of `limit` — fine for RESULT_LIMIT's small on-demand preview (10 cards, `limit`
-    itself already stops the loop early) but a real owner complaint the same day for the
-    filter-save flow (find_new_matches_to_show below): a broad filter matching thousands of
-    listings only ever got credit for whichever happened to be among the 500 most recent, so both
-    the reported count and the /apartments link's own now-unrelated 500-row cap (website/main.py)
-    silently hid the rest. Removed here — `limit` (still honored, still stops the loop the moment
-    enough matches are found) is the only bound this function needs; a real DB read of a few
-    thousand rows plus a cheap in-Python evaluate() per row is not a concern at this project's
-    current scale, and only ever runs once per explicit action (a filter save, or the bot's own
-    /apartments command), never on every page scroll."""
+    regardless of `limit` — a real owner complaint the same day for the filter-save flow
+    (find_new_matches_to_show below): a broad filter matching thousands of listings only ever got
+    credit for whichever happened to be among the 500 most recent, so both the reported count and
+    the /apartments link's own now-unrelated 500-row cap (website/main.py) silently hid the rest.
+    Removed here — `limit` (kept as an optional parameter for any future caller that genuinely
+    wants a small preview; nothing in this codebase currently passes one) is the only bound this
+    function still supports; a real DB read of a few thousand rows plus a cheap in-Python
+    evaluate() per row is not a concern at this project's current scale, and only ever runs once
+    per explicit action (a filter save, or the bot's own /apartments command's count-only check —
+    see apartments.py's own _count_matches_sync, which also dropped its old RESULT_LIMIT=10 cap
+    the same day), never on every page scroll."""
     hidden_ids = set(
         session.scalars(
             select(UserListingAction.listing_id).where(
@@ -115,12 +107,20 @@ def find_new_matches_to_show(
     return len(matches), new_to_show
 
 
-def _load_matches_sync(tg_user) -> tuple[bool, list[Listing]] | None:
-    """Returns None to signal "no saved filter yet" (vs. an empty list = a real filter with 0
-    current matches) — the caller needs to tell the two apart to show a different message.
-    Otherwise (has_access, matches) — has_access (dorin_common.access.has_full_access) decides
-    whether format_caption below shows the full card or the locked/teaser one, see that module's
-    2026-09-05 comment."""
+def _count_matches_sync(tg_user) -> int | None:
+    """Returns None to signal "no saved filter yet" (vs. 0 = a real filter with no current
+    matches) — the caller needs to tell the two apart to show a different message. Otherwise the
+    TRUE total number of current matches, no cap (see find_matching_listings' own 2026-09-15
+    comment).
+
+    2026-09-15: this used to load up to RESULT_LIMIT=10 Listing rows and send each as its own
+    Telegram card directly in the chat. Real owner complaint the same day: for a broad filter
+    (thousands of matches) that both flooded the chat with an arbitrary, uninformative subset of
+    only 10 AND never told the user how many really matched. Same fix direction as
+    filter_conversation._handle_save's own 2026-09-15 change: just the count, plus a link to the
+    website's own full, paginated /apartments view — which already applies its own
+    has_access/locked-card gating (see website/main.py's own /apartments route), so this command
+    doesn't need to know or care about access level at all anymore."""
     with get_session() as session:
         user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
         filter_row = (
@@ -128,35 +128,27 @@ def _load_matches_sync(tg_user) -> tuple[bool, list[Listing]] | None:
         )
         if user is None or filter_row is None:
             return None
-        is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
-        access = has_full_access(user, is_owner=is_owner)
-        matches = find_matching_listings(session, user.id, filter_row, RESULT_LIMIT)
-        return access, matches
+        return len(find_matching_listings(session, user.id, filter_row))
 
 
 async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: PTB processes
     # updates one at a time by default, so a blocking DB call on the event loop freezes every
     # other user's interaction with the bot too, not just this one.
-    result = await asyncio.to_thread(_load_matches_sync, update.effective_user)
-    if result is None:
+    total = await asyncio.to_thread(_count_matches_sync, update.effective_user)
+    if total is None:
         await update.message.reply_text("עדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.")
         return
-    has_access, matches = result
 
-    if not matches:
+    apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
+    if total:
         await update.message.reply_text(
-            "לא נמצאו כרגע דירות תואמות. אני אמשיך לחפש ואודיע לך כשתתפרסם דירה מתאימה."
+            f"👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}"
         )
-        return
-
-    upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
-    for listing in matches:
-        await send_listing_card(
-            context.bot,
-            update.effective_chat.id,
-            listing,
-            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
+    else:
+        await update.message.reply_text(
+            "לא נמצאו כרגע דירות תואמות. אני אמשיך לחפש ואודיע לך כשתתפרסם דירה מתאימה. "
+            f"אפשר גם לעקוב באתר: {apartments_url}"
         )
 
 
