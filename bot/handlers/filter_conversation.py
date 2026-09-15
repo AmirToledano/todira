@@ -27,7 +27,7 @@ from dorin_common.db import get_session
 from dorin_common.models import Filter
 from dorin_common.schemas import FilterData
 from dorin_common.users import get_or_create_user
-from handlers.apartments import RECENT_LISTINGS_SCANNED, find_new_matches_to_show
+from handlers.apartments import find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -251,13 +251,13 @@ def _save_and_match_sync(tg_user, values: dict) -> int:
         # a FUTURE price change on one of them still reaches this user via the normal scraper/
         # notifier.py flow (which only re-notifies users who already have a NEW-reason row for that
         # listing) — without that, a listing only ever seen via the website link would never
-        # qualify for a later price-drop alert. limit=RECENT_LISTINGS_SCANNED (not the much smaller
-        # RESULT_LIMIT used by the bot's own on-demand /apartments command) so this count/bookkeeping
-        # isn't artificially capped at 10 — a real owner complaint 2026-09-15: an almost-
-        # unconstrained filter reported "10 matches" when the true number was far higher.
-        total, _new_to_show = find_new_matches_to_show(
-            session, user.id, existing, limit=RECENT_LISTINGS_SCANNED
-        )
+        # qualify for a later price-drop alert. limit=None (the default) so this count/bookkeeping
+        # covers EVERY current match, not an artificial subset — a real owner complaint 2026-09-15:
+        # an almost-unconstrained filter reported "10 matches" when the true number (checked
+        # directly against the DB) was 3,642. A second owner request the same day, after seeing that
+        # real number: no cap at all, not even a bigger one — someone whose filter matches thousands
+        # should see all of them via the link.
+        total, _new_to_show = find_new_matches_to_show(session, user.id, existing)
         session.commit()
         return total
 
@@ -298,10 +298,7 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # still reaches this same website view next time the user opens it (no separate bookkeeping
     # needed there, /apartments always queries live DB state).
     if total:
-        count_text = f"{total}{'+' if total >= RECENT_LISTINGS_SCANNED else ''}"
-        await query.message.reply_text(
-            f"👀 יש כרגע {count_text} דירות שמתאימות — כולן כאן: {apartments_url}"
-        )
+        await query.message.reply_text(f"👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}")
     else:
         await query.message.reply_text(
             f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"

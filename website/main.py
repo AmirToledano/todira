@@ -847,9 +847,15 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
             # matching regardless — never changes which listings can actually match. Mirrors
             # bot/handlers/apartments.py's find_matching_listings, which had the identical gap.
             listings_query = listings_query.where(Listing.city.in_(user.filter.cities))
-        listings = session.scalars(
-            listings_query.order_by(Listing.scraped_at.desc()).limit(500)
-        ).all()
+        # 2026-09-15: no `.limit(...)` here anymore — used to cap the underlying candidate scan at
+        # 500 most-recently-scraped rows before filtering, same spirit as the city-window bug just
+        # above and bot/handlers/apartments.py's own find_matching_listings (see that function's
+        # 2026-09-15 comment for the real owner report this fixes): a broad filter matching
+        # thousands of listings only ever showed whichever happened to be among the 500 most
+        # recent, with the rest silently invisible however far the user scrolled. `page_items`
+        # below still slices to APARTMENTS_PAGE_SIZE per request either way — this only widens the
+        # candidate pool that gets filtered+paginated, not how much renders into the DOM at once.
+        listings = session.scalars(listings_query.order_by(Listing.scraped_at.desc())).all()
         # 2026-09-06: previously didn't exclude hidden listings at all (unlike the bot's own
         # /apartments, see find_matching_listings) — a listing hidden via the Telegram 🙈 button
         # kept showing up here regardless. Same UserListingAction table, so this is a real fix, not

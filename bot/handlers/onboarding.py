@@ -31,7 +31,7 @@ from dorin_common import cities, gemini_client
 from dorin_common.db import get_session
 from dorin_common.models import Filter
 from dorin_common.users import get_or_create_user
-from handlers.apartments import RECENT_LISTINGS_SCANNED, find_new_matches_to_show
+from handlers.apartments import find_new_matches_to_show
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
@@ -102,14 +102,13 @@ def _save_filter_sync(tg_user, state: dict) -> int:
         # still used (not find_matching_listings directly) purely for its bookkeeping side effect:
         # every currently-matching listing gets a SentNotification(reason=NEW) row, so a later
         # /filter re-save (filter_conversation.py) doesn't re-count it, AND a future price change on
-        # it still reaches this user via the normal scraper/notifier.py flow. limit=
-        # RECENT_LISTINGS_SCANNED (not the much smaller RESULT_LIMIT the bot's own on-demand
-        # /apartments command uses) so this count isn't artificially capped at 10 — a real owner
-        # complaint 2026-09-15: an almost-unconstrained filter reported "10 matches" when the true
-        # number was far higher.
-        total, _new_to_show = find_new_matches_to_show(
-            session, user.id, filter_row, limit=RECENT_LISTINGS_SCANNED
-        )
+        # it still reaches this user via the normal scraper/notifier.py flow. limit=None (the
+        # default) so this count/bookkeeping covers EVERY current match, not an artificial subset —
+        # a real owner complaint 2026-09-15: an almost-unconstrained filter reported "10 matches"
+        # when the true number (checked directly against the DB) was 3,642. A second owner request
+        # the same day, after seeing that real number: no cap at all, not even a bigger one —
+        # someone whose filter matches thousands should see all of them via the link.
+        total, _new_to_show = find_new_matches_to_show(session, user.id, filter_row)
         session.commit()
         return total
 
@@ -191,10 +190,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Now always just points at the website's own /apartments?uid=... view instead, same as there.
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
     if total:
-        count_text = f"{total}{'+' if total >= RECENT_LISTINGS_SCANNED else ''}"
-        await update.message.reply_text(
-            f"👀 יש כרגע {count_text} דירות שמתאימות — כולן כאן: {apartments_url}"
-        )
+        await update.message.reply_text(f"👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}")
     else:
         await update.message.reply_text(
             f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"
