@@ -1,0 +1,58 @@
+name: Diagnose — does production's Bright Data collector id match the real yad2.co.il collector? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-15.
+#
+# Direct continuation of tonight's Bright Data investigation: the owner found TWO Scraper Studio
+# collectors on the real dashboard — "yad2.co.il" (the correctly-named, properly-built one, 7 runs
+# all via web UI, never via API — meaning production has NEVER actually triggered it) and
+# "New collector" (4.07K records, last delivered TODAY — suspiciously matching the exact window
+# the stuck-enrichment bug was happening). Working theory: BRIGHT_DATA_COLLECTOR_ID in the real k8s
+# secret points at the WRONG collector ("New collector", whatever that actually is) instead of the
+# real "yad2.co.il" one — which would explain everything already confirmed live: distinct real job
+# ids per trigger (a real collector, really creating jobs), genuinely fresh live data each time
+# (timestamps changed between runs), but ALWAYS the same one listing regardless of the url posted
+# (because whatever "New collector" actually is, its own recipe doesn't consume the dynamic url
+# input the way "yad2.co.il"'s real recipe is built to).
+#
+# This does the comparison directly and safely: reads the real k8s secret's bright-data-collector-id
+# and compares it (in Python, never echoed) against the real "yad2.co.il" collector id the owner
+# read off its own "Initiate by API" tab — prints ONLY match/mismatch, never either raw value, same
+# security posture as every other credential-adjacent diagnostic in this repo.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_collector_id:
+        description: "The real yad2.co.il collector's own id, from its Initiate by API tab (starts with c_)"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Compare the configured collector id against the real yad2.co.il one (never printed raw)
+        env:
+          EXPECTED_COLLECTOR_ID: ${{ inputs.expected_collector_id }}
+        run: |
+          echo "::add-mask::$EXPECTED_COLLECTOR_ID"
+          CONFIGURED_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-collector-id}' | base64 -d)
+          echo "::add-mask::$CONFIGURED_ID"
+          if [ -z "$CONFIGURED_ID" ]; then
+            echo "bright-data-collector-id is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "configured id length: ${#CONFIGURED_ID} chars"
+          echo "expected id length: ${#EXPECTED_COLLECTOR_ID} chars"
+          if [ "$CONFIGURED_ID" = "$EXPECTED_COLLECTOR_ID" ]; then
+            echo "MATCH — production is already configured with the real yad2.co.il collector id. The wrong-collector theory is NOT the cause."
+          else
+            echo "MISMATCH — production's BRIGHT_DATA_COLLECTOR_ID does NOT match the real yad2.co.il collector. This is very likely the actual root cause."
+          fi
