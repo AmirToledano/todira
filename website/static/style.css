@@ -479,11 +479,29 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   display: flex; aspect-ratio: 4 / 3; overflow-x: auto; scroll-snap-type: x mandatory;
   background: linear-gradient(135deg, #f1e2c8, #e7c9a8);
   scrollbar-width: none; /* Firefox */
+  /* 2026-09-15 real owner report (iPhone/Safari): swiping through a listing's photos felt
+     stuttery, not smooth — not a one-off screenshot artifact, reproducible. Three concrete,
+     well-known gaps in the original rule, not a guess:
+     -webkit-overflow-scrolling: touch — pre-momentum-by-default iOS Safari treated a NESTED
+       overflow-x container (this, inside the page's own vertical scroll) as a plain non-momentum
+       scroller without this; still the standard fix for jank in exactly this nested-scroll shape
+       on WebKit. touch-action: pan-x — without it, the browser has to disambiguate this
+       container's horizontal drag from the page's own vertical scroll on every touch, a real
+       source of input lag on a page with many of these side by side (up to 24 per /apartments
+       page). Neither has any effect on desktop/mouse use. */
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
 }
 .listing-cover::-webkit-scrollbar { display: none; }
 .cover-slide {
   flex: 0 0 100%; scroll-snap-align: start; width: 100%; height: 100%; object-fit: cover;
   object-position: center; display: block;
+  /* Without this, a fast flick can overshoot PAST the next photo to the one after it (default
+     scroll-snap behavior only snaps to whichever slide the browser's own momentum calculation
+     happens to land nearest to) — the browser then has to correct back, which is exactly what a
+     "stuck between two photos, not smooth" swipe looks and feels like. scroll-snap-stop: always
+     forces a stop at every single slide in turn, however hard the flick. */
+  scroll-snap-stop: always;
 }
 .no-image-caption {
   background: var(--teal); color: #fff;
