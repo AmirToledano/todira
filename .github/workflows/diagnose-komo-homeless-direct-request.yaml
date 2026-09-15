@@ -14,6 +14,15 @@ name: Diagnose — does Komo/Homeless work via a plain DIRECT request too, like 
 # runner's own fresh IP — a genuine answer, not a guess. A block here doesn't prove production's
 # own (static) IP would also be blocked, same open-question caveat yad2_client._fetch_direct's own
 # docstring already carries, but a SUCCESS here is a strong, real signal worth acting on.
+#
+# 2026-09-15, first run: Komo's own two real requests (search page + adscoordinates POST) BOTH
+# succeeded fully direct, no proxy — real 200s, a real sessionToken, real coordinate ids back. The
+# run still ended "failure" and never reached the Homeless step, purely a bug in THIS workflow's
+# own shell script (a nested `python3 -c "..."` block picked up extra leading whitespace from its
+# surrounding `if` block's own indentation, which Python's parser rejects at the top level of a
+# script — nothing to do with Komo or Homeless themselves). Fixed here by keeping every `python3
+# -c` block's own source flush against the run step's base indentation, never nested deeper, even
+# when the surrounding bash logically is.
 on:
   workflow_dispatch: {}
 
@@ -32,7 +41,7 @@ jobs:
           echo "--- first 300 chars ---"
           head -c 300 /tmp/komo_search.body || true
           echo
-          echo "=== Step 2: extract sessionToken, then direct POST to adscoordinates ==="
+          echo "=== Step 2: extract sessionToken ==="
           python3 -c "
           import re
           with open('/tmp/komo_search.body', encoding='utf-8', errors='replace') as f:
@@ -46,6 +55,7 @@ jobs:
           with open('/tmp/komo_token.txt', 'w') as f:
               f.write(token)
           "
+          echo "=== Step 3: direct POST to adscoordinates, if step 2 found a token ==="
           if [ -f /tmp/komo_token.txt ]; then
             TOKEN=$(cat /tmp/komo_token.txt)
             curl -sS -D /tmp/komo_coords.headers \
@@ -57,21 +67,23 @@ jobs:
             echo "--- adscoordinates response, first 400 chars ---"
             head -c 400 /tmp/komo_coords.body || true
             echo
-            echo "--- verdict ---"
-            python3 -c "
-            import json
-            try:
-                with open('/tmp/komo_coords.body', encoding='utf-8') as f:
-                    data = json.load(f)
-                lst = data.get('list') if isinstance(data, dict) else None
-                if isinstance(lst, list) and lst:
-                    print(f'SUCCESS — direct POST worked, {len(lst)} real coordinate ids returned.')
-                else:
-                    print(f'Got JSON back but no usable list array — status/shape: {data if isinstance(data, dict) else type(data)}')
-            except Exception as exc:
-                print(f'NOT valid JSON — likely blocked/challenged: {exc}')
-            "
           fi
+          echo "--- verdict ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/komo_coords.body', encoding='utf-8') as f:
+                  data = json.load(f)
+              lst = data.get('list') if isinstance(data, dict) else None
+              if isinstance(lst, list) and lst:
+                  print(f'SUCCESS — direct POST worked, {len(lst)} real coordinate ids returned.')
+              else:
+                  print(f'Got JSON back but no usable list array — status/shape: {data if isinstance(data, dict) else type(data)}')
+          except FileNotFoundError:
+              print('adscoordinates was never called (no sessionToken found in step 2).')
+          except Exception as exc:
+              print(f'NOT valid JSON — likely blocked/challenged: {exc}')
+          "
 
       - name: Homeless — direct search page + direct detail page (no proxy)
         run: |
@@ -83,7 +95,7 @@ jobs:
           echo "--- first 300 chars ---"
           head -c 300 /tmp/homeless_search.body || true
           echo
-          echo "=== Step 2: extract one real ad id, then direct GET its detail page ==="
+          echo "=== Step 2: extract one real ad id ==="
           python3 -c "
           import re
           with open('/tmp/homeless_search.body', encoding='utf-8', errors='replace') as f:
@@ -98,6 +110,7 @@ jobs:
               f.write(m.group(1))
           print(f'Using id={m.group(1)} for the detail-page test.')
           "
+          echo "=== Step 3: direct GET of that listing's detail page, if step 2 found an id ==="
           if [ -f /tmp/homeless_id.txt ]; then
             ID=$(cat /tmp/homeless_id.txt)
             curl -sS -D /tmp/homeless_detail.headers \
