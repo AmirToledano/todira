@@ -6247,3 +6247,54 @@ filters) are completely unaffected; only this extra enrichment layer is paused. 
 **Still open**: flip `brightDataEnrichmentSuspended` back to `false` once the owner has checked the
 Bright Data dashboard and either fixed or replaced the collector — nothing in this codebase can
 diagnose Bright Data's own platform-side state any further than this entry already has.
+
+## Update 2026-09-15 (same night, later still): Bright Data investigation — one real, concrete,
+## actionable lead found: the API key itself lacks required permissions
+
+Owner asked to keep digging so this is ready by the next run. Real web research (not guessed) into
+Bright Data's own API surface found the legacy DCA API this project uses is described as deprecated
+in favor of a newer Datasets API v3 (`/datasets/v3/trigger`, `dataset_id` param, not `collector`) —
+a plausible reason the platform accepts a trigger but doesn't really execute it. Built a new
+diagnostic (`.github/workflows/diagnose-bright-data-account-status.yaml`, merged + run) to check
+directly against the real account:
+
+- `GET https://api.brightdata.com/customer/balance` → **real HTTP 403**: "Your API key lacks the
+  required permissions for this action. You can change your token permissions at
+  https://brightdata.com/cp/setting/users". This is a genuine, concrete, actionable finding — the
+  API key's own permission SCOPE is limited. Strongly consistent with tonight's earlier finding
+  (trigger calls succeed and return real distinct job ids, but the underlying job never actually
+  executes, always serving a stale cached result instead) — a token whose scope doesn't cover
+  actually RUNNING a Scraper Studio job might still be accepted at trigger time (job created) while
+  silently failing to execute for real.
+- `GET https://api.brightdata.com/dca/collectors` and `GET .../dca/collectors/{id}` (path-param
+  guess, since the earlier `/dca/collections?collector=X` guess 404'd) — both plain 404 "Cannot GET"
+  too. Neither is a real endpoint on this API surface; still no way found to directly query this
+  collector's own execution/health status via API.
+
+**This is now something only the owner can act on** — it needs a login to the Bright Data dashboard
+at https://brightdata.com/cp/setting/users to check/fix the API token's permission scopes (nothing
+in this codebase or this sandbox has that access). Once the owner has looked there (or generated a
+fresh token with full permissions), `diagnose-bright-data-stuck-same-result.yaml` (already built,
+already proven to correctly detect the bug) can be re-run to confirm whether real per-URL data comes
+back before flipping `brightDataEnrichmentSuspended` back to `false`.
+
+## Update 2026-09-15 (same night, later still): scraper speed — sources + Komo/Homeless per-listing
+## fetches now run concurrently, not sequentially
+
+Owner asked why runs take as long as they do and whether it's inherent, after being shown the real
+run-time breakdown. Confirmed via reading the actual code (not guessing): Yad2/Komo/Homeless ran
+strictly sequentially in `run_once()`, and Komo's/Homeless's own per-genuinely-new-listing detail/
+description fetch loops were themselves fully sequential too — up to 300 Komo + 50 Homeless fetches,
+one at a time. None of this was required for safety: the three sources are independent websites, so
+running them concurrently doesn't change the request rate any single site sees; Komo has already
+been confirmed to have no bot-wall of its own at all; Homeless's fetches go through ZenRows either
+way (a managed proxy built for concurrent traffic). Yad2's own deliberate anti-detection pacing
+(`_MAP_API_REGION_PACING_SECONDS`) is completely unchanged — that's real, cheap, working insurance,
+not overhead to remove.
+
+Shipped: new `_fetch_concurrently` helper (same Semaphore + `asyncio.to_thread` pattern already
+proven by the Bright Data enrichment code) bounds Komo/Homeless per-listing fetches at 5 in flight;
+`run_once()` now runs all active sources' `scrape_fn()` calls concurrently via a new
+`_scrape_sources_concurrently` instead of one after another. 11 new tests
+(`tests/test_scraper_concurrency.py`); one existing Homeless test made order-insensitive since
+concurrent side effects don't land in a guaranteed order. 889 tests pass; ruff clean.
