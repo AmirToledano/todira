@@ -6362,3 +6362,110 @@ researched; or (c) a more involved self-built approach that actually executes JS
 Radware challenge (headless browser), which is real engineering work, not a quick fix. Nothing
 further can be resolved without the owner picking a direction — flagged back to the owner rather than
 guessed at or spent on.
+
+## Update 2026-09-15/16 (same all-nighter, continued live in the Bright Data dashboard itself):
+## real root cause of the ORIGINAL stuck-enrichment bug fully identified and fixed at the collector-
+## code level; a second, still-open platform bug (a stuck/locked stale input row) now blocks clean
+## verification — escalated to Bright Data support, not something this codebase can fix
+
+Continuation of the previous entry, done live with the owner directly inside the Bright Data
+Scraper Studio dashboard (screen-shared, turn by turn) rather than through this repo's diagnostic
+workflows. Sequence of real, confirmed findings, in order:
+
+**1. The API key was genuinely invalid, not a permissions issue.** `GET /customer/balance` with the
+k8s-secret-stored key returned a real `401 Invalid credentials` even after the earlier Admin-role
+key rotation. Root cause: Bright Data shows a freshly-created key's raw value **exactly once**, at
+creation time ("Key for this permission type can be viewed only on creation") — the value that had
+been copied into the k8s secret was subtly wrong (likely a copy/paste error during that one-time
+reveal), with no way to recover it. Fixed by generating a brand-new key via the dashboard's own
+"Refresh key" action, copying it with the UI's own Copy button (not manual retyping) this time, and
+re-running `set-bright-data-api-key-secret.yaml`. Confirmed live: `GET /customer/balance` now
+returns real `200 {"balance":4.8,"credit":0,"prepayment":0,"pending_costs":0.2}`, matching the
+dashboard exactly.
+
+**2. The real architecture of the `yad2.co.il` collector, found by reading its actual saved code**:
+it is a **two-stage Scraper Studio pipeline**, not the simple single-URL-in/single-record-out
+collector this project always assumed:
+- **Stage 1** (`const base_url = input.url || 'https://www.yad2.co.il/realestate/rent'; navigate(base_url);
+  wait('a[href^="/realestate/item/"]', {timeout: 60000}); scroll_to('bottom'); const {property_urls} =
+  parse(); for (let url of property_urls) { ...next_stage(...)... }`) is a **search/discovery** scraper:
+  given any URL, it finds every `/realestate/item/...` link on that page and hands each one to Stage 2.
+- **Stage 2** (`navigate(input.url); wait('[data-testid="price"]', {timeout: 60000}); collect(parse());`,
+  parser extracting `itemQuery.state.data` from `__NEXT_DATA__`) is the real, correct single-item
+  fetcher — this part of the code was always fine.
+
+**This is the actual, confirmed root cause of the original "always returns the same Dizengoff
+listing" bug.** That listing (`adNumber=83125484`) is a **Platinum/sponsored listing**
+(`packages: {hasMiniSite: true, isPlatinum: true, isNeighborhoodKing: true}`) that Yad2 shows as a
+promoted link on a huge number of pages. Stage 1 always found that same sponsored link first (or
+only), on whatever page it started from, and faithfully handed it to Stage 2 — which then fetched
+that listing's real, fresh data (real timestamps, not a cached recording) every time. Not staleness,
+not caching, not a credentials issue: a naive discovery-stage design that was never built to accept
+"fetch exactly this one URL" as its contract.
+
+**3. `url` was missing from the collector's own Input schema entirely.** The schema (a config
+page separate from the code editor, `.../schema?collector_id=...`) only defined `location`,
+`min_price`, `max_price`, `rooms`, `min_size`, `max_size` — no `url` field at all. Any `url` key sent
+via the API trigger was silently dropped before reaching the running code (confirmed: the polled
+result's own echoed `input` field was always `{}`, completely empty, not just missing `url`). Fixed
+by adding a `url` field (type URL, Required) to the Input schema.
+
+**4. Attempted fix — collapsing to a single stage — failed with empty `{}` results, and Bright
+Data's own Sophie AI support assistant confirmed exactly why.** Deleting Stage 1 and making Stage
+2's code the sole stage, then testing via "Run test crawl" with a real, specific Yad2 item URL,
+consistently returned an empty `{}` — no error (`Last errors` reported "No errors found", since the
+parser's own `try/catch` silently swallows a failed extraction and returns `{}` by design). Asked
+Sophie directly; her confirmed, documented answers:
+  - `next_stage()` (and `run_stage()`) **always** run in a brand-new browser session — there is no
+    `preserve_proxy_session()` function in Scraper Studio (a name a separate Gemini-generated deep-
+    research report had suggested exists; it does not, per Bright Data's own docs).
+  - The real, documented way to set a `Referer` header is `navigate(url, {referer: '...'})` — not a
+    separate `set_session_headers()` function (which also does not exist).
+  - `blocked('reason')` and `detect_block()` are real, documented functions for active block
+    detection — but `detect_block()` requires selector/condition arguments; calling it bare
+    (`detect_block();`) throws `Crawler error: detect_block validation error: "value" does not
+    contain [Selector, Condition]`.
+  - Separately, live in the Crawl Inspector, an actual **"Verifying your browser before
+    proceeding..."** interstitial was observed for this collector on a yad2.co.il page — a real,
+    visible Radware (or similar) anti-bot challenge screen, not a guess.
+  - Sophie's own recommended fix: keep everything in **one single stage** (not split via
+    `next_stage()`, which breaks session continuity), first `navigate()` to a normal Yad2 page with
+    an explicit `referer`, `wait('body')`, then `navigate(input.url, {referer: ...})` to the real
+    target in the **same** browser session, `wait()` for real content, `collect(parse())`.
+
+**5. A separate, genuine platform bug was found and fixed along the way**: a newly-created Scraper
+Studio stage defaults to the lightweight `code` worker (no real browser at all), which cannot run
+`wait()` — Scraper Studio's own "Incompatible worker" dialog caught this and offered to switch to
+the `browser` worker, which fixed it. This exact bug is separately documented in this file's own
+2026-09-12 entry for a *different* collector — a recurring Scraper Studio footgun for any
+newly-created stage, worth remembering for next time.
+
+**6. Current, still-open blocker (NOT resolved tonight, needs Bright Data support)**: even after
+all of the above fixes (valid key, `url` in the input schema, correct `browser` worker, referer-
+injecting single-stage code matching Sophie's own recommended pattern), the collector's own **Input
+tab in the Code editor keeps showing an extra, grayed-out, non-deletable input row** containing a
+stale `https://www.yad2.co.il/realestate/rent` value from a 2026-09-07 test run — even after fully
+deleting and rebuilding the Input schema from scratch down to a single `url` field. This row:
+  - Survives "Remove all input rows".
+  - Survives a full Input-schema wipe-and-rebuild (confirmed: deleted every field including `url`,
+    saved an empty schema, re-added only `url`, saved again — the locked row was still there
+    afterward).
+  - Appears to be what "Run test crawl" and the automatic preview inside "Save to development"
+    actually run against instead of a freshly-typed custom URL, making it impossible to get a clean
+    test of the fixes above — every recent test result has been contaminated by this stale row's own
+    `location`/`rent`-based input, not the real item URL entered.
+Asked Sophie directly whether this is a documented mechanism (tied to a specific historical job
+kept as a "reference sample", or to the Crawl Inspector's own job-picker dropdown, which independently
+shows a fixed `2026-09-07 ... j_mtq8ob8d9l600gz83` reference throughout this whole session) — she
+could not confirm any of it from Bright Data's own documentation, and explicitly said: **"that exact
+behavior is not documented and should be treated as a product/UI issue rather than expected schema
+behavior"**, pointing to Bright Data's own support ticket form for human escalation.
+
+**Net state right now**: the code fix is believed correct (matches Sophie's own confirmed
+recommended pattern for a Radware-style anti-bot target), but has not been cleanly verified end-to-
+end because of this separate, apparently-real Scraper Studio platform bug. `brightDataEnrichmentSuspended`
+stays `true`. **Next step, owned by the account owner, not by further guessing in this repo**: file
+a real Bright Data support ticket describing the stuck/locked input row exactly as reproduced above,
+get it cleared, then re-run `Run test crawl` with a real item URL one more time to confirm the
+referer-based single-stage code actually returns real per-URL data (a different `adNumber` matching
+the requested URL, with a real `metaData.description`) before flipping the suspension flag back off.
