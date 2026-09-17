@@ -252,7 +252,7 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instruction
         patch.object(website_main.grow_client, "is_configured", lambda: False),
     ):
         c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
-        resp = c.post("/upgrade", data={"plan": "weekly", "uid": "222"})
+        resp = c.post("/upgrade", data={"plan": "weekly", "uid": "222", "terms_agreed": "on"})
 
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/upgrade/pay?payment_id=")
@@ -278,3 +278,25 @@ def test_upgrade_submit_rejects_unknown_plan():
         resp = c.post("/upgrade", data={"plan": "yearly", "uid": "222"})
 
     assert resp.status_code == 400
+
+
+def test_upgrade_submit_rejects_missing_terms_agreement():
+    """2026-09-17: terms_agreed is a real, required field (see upgrade.html's own checkbox on
+    each plan's form) — the payment processor's own compliance requirement. The HTML5 `required`
+    attribute already blocks a normal browser submission without it; this is the server-side
+    backstop for a tampered/non-browser request that omits it entirely."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        # Deliberately omits terms_agreed entirely, matching how a browser form would never send
+        # an unchecked checkbox's field at all.
+        resp = c.post("/upgrade", data={"plan": "weekly", "uid": "222"})
+
+    assert resp.status_code == 400
+    assert fake_session.added == []  # no Payment row created — rejected before any gateway logic

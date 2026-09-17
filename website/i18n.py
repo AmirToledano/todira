@@ -89,6 +89,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Todira",
         "ar": "توديرا",
     },
+    "meta.title_about": {
+        "he": "אודות — טודירה",
+        "en": "About — Todira",
+        "ru": "О нас — Todira",
+        "fr": "À propos — Todira",
+        "ar": "من نحن — توديرا",
+    },
     "meta.title_terms": {
         "he": "תנאי שימוש — טודירה",
         "en": "Terms of Use — Todira",
@@ -251,6 +258,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "© 2026 Todira. Все права защищены.",
         "fr": "© 2026 Todira. Tous droits réservés.",
         "ar": "© 2026 توديرا. جميع الحقوق محفوظة.",
+    },
+    "footer.about": {
+        "he": "אודות", "en": "About", "ru": "О нас", "fr": "À propos", "ar": "من نحن",
     },
     "footer.terms": {
         "he": "תנאי שימוש", "en": "Terms of Use", "ru": "Условия использования",
@@ -1611,6 +1621,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Комиссия риелтора обычно составляет тысячи шекелей, один раз. У нас это символическая сумма, без обязательства продолжать платить после окончания периода.",
         "fr": "Les frais d'agence coûtent généralement des milliers de shekels, une seule fois. Chez nous, c'est une somme symbolique, sans engagement à continuer de payer une fois la période terminée.",
         "ar": "عمولة الوسيط عادة ما تكلف آلاف الشواقل، مرة واحدة. عندنا هو مبلغ رمزي، دون التزام بالاستمرار في الدفع بعد انتهاء الفترة.",
+    },
+    # Required terms-agreement checkbox on each plan's own form (2026-09-17, added per the
+    # payment processor's own compliance requirement — active, explicit consent to the terms,
+    # not just a passive link, before proceeding to checkout). Split into prefix/suffix around
+    # the terms link (reusing footer.terms for the link text itself) rather than one embedded-
+    # HTML string, matching this file's own no-`| safe`-anywhere convention.
+    "upgrade.terms_agree_prefix": {
+        "he": "קראתי ואני מסכים/ה ל", "en": "I have read and agree to the ",
+        "ru": "Я прочитал(а) и согласен(на) с ", "fr": "J'ai lu et j'accepte les ",
+        "ar": "لقد قرأت وأوافق على ",
+    },
+    "upgrade.terms_agree_suffix": {
+        "he": ", כולל מדיניות ביטול העסקה", "en": ", including the cancellation policy",
+        "ru": ", включая политику отмены", "fr": ", y compris la politique d'annulation",
+        "ar": "، بما في ذلك سياسة الإلغاء",
+    },
+    "upgrade.terms_error": {
+        "he": "צריך לאשר את תנאי השימוש לפני שממשיכים לתשלום.",
+        "en": "You need to agree to the Terms of Use before continuing to payment.",
+        "ru": "Перед переходом к оплате нужно принять условия использования.",
+        "fr": "Vous devez accepter les conditions d'utilisation avant de continuer vers le paiement.",
+        "ar": "يجب الموافقة على شروط الاستخدام قبل المتابعة إلى الدفع.",
     },
     "upgrade_pay.h1": {
         "he": "השלמת התשלום 💳", "en": "Complete payment 💳", "ru": "Завершение оплаты 💳",

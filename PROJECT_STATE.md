@@ -6768,3 +6768,59 @@ never actually run a real job on this account tier).
    nothing to do with Bright Data) — tracked separately, not yet fixed.
 3. Everything from the previous entry's "Still open" list (retry-rate measurement, the
    `safe-single-test-run.yaml` step-10 cosmetic false-alarm) is still open too.
+
+## Update 2026-09-17, same night, later still: UPay/Takbull compliance checklist — added the
+## missing legal-page content and a required terms-agreement checkbox before checkout
+
+UPay (the underlying card-clearing module Takbull's checkout terminal uses — see this file's
+2026-09-06 entries) emailed a real compliance checklist, sent now that the owner's terminal is
+finally live (previously blocked on documents/signature, see the 2026-09-06/later entries): the
+website needs (1.1) a shipping/delivery policy, (1.2) explicit site-owner liability language,
+(1.3) a cancellation/refund policy, (1.4) a privacy policy, (1.5) an active terms-agreement
+checkbox at checkout — plus (2) an "About" page and (3) a contact page with at least two contact
+methods.
+
+**Audited what already existed before writing anything** (per the owner's own "don't guess"
+standard): `website/templates/privacy.html` already fully satisfies 1.4. `contact.html` already
+has a contact form AND direct Telegram/WhatsApp links — satisfies 3, unchanged. `terms.html` had
+a general "AS IS" liability disclaimer (1.2, already adequate) but nothing at all for 1.1 or 1.3.
+No "About" page existed (2). No terms-agreement checkbox existed anywhere on the site (1.5) — the
+actual checkout flow when Takbull is configured redirects straight from `/upgrade` (our own plan-
+selection page) to Takbull's own hosted checkout page, so `/upgrade` is the only page under this
+project's control where that consent can be captured before the customer leaves the site.
+
+**Shipped**:
+- `terms.html`: two new sections (he+en) — "אספקת השירות"/"Service delivery" (digital service,
+  no physical shipping, access activates automatically and immediately on payment confirmation)
+  and "ביטול עסקה והחזרים"/"Cancellation and refunds" (references the existing 3-day free trial
+  as the pre-payment evaluation window; explains that completing payment for this instantly-
+  delivered digital service, with the user's confirmation at checkout, waives the standard
+  Consumer Protection Law cancellation right for digital services delivered with explicit
+  consent — but the owner will still review any cancellation/refund request in good faith via the
+  contact page or Telegram). **This is real legal/financial-commitment text, not just UI copy —
+  worth a lawyer's sanity check before treating it as final, even though it unblocks today's
+  compliance checklist.**
+- `website/templates/about.html` (new) + `GET /about` route + added to `_SITEMAP_PATHS` + a
+  footer nav link (`base.html`) — satisfies the About-page requirement, describing Todira's field
+  of occupation (automated rental-listing alerts), matching terms.html's own section 1 wording.
+- `upgrade.html`: added a required (`required` HTML5 attribute) terms-agreement checkbox to each
+  of the 3 plan-selection forms, linking to `/terms`. `main.py`'s `POST /upgrade` handler gained a
+  matching server-side check (`terms_agreed: bool = Form(False)`, rejected with the same 400 the
+  existing invalid-plan check already used) — a backstop for a tampered/non-browser request, same
+  "don't trust the client alone" pattern already used one line above it for the plan value itself.
+- 5 new i18n keys (`meta.title_about`, `footer.about`, `upgrade.terms_agree_prefix`/`_suffix`,
+  `upgrade.terms_error`) across all 5 supported languages.
+- Tests: 5 existing `POST /upgrade` test call sites (grow/takbull/paid_access) updated to include
+  `terms_agreed`; 2 new tests (missing-terms-agreement → 400 with no Payment row created; `/about`
+  renders). `_SITEMAP_PATHS`'s own test extended to check `/about` too. 895 tests pass (893 + 2);
+  ruff clean. Manually rendered `/about` and `/terms` directly (not just via the test suite) to
+  confirm the new sections actually appear in real HTML output, not just pass assertions.
+
+**Still open**:
+1. The cancellation/refund policy wording above should get a real legal sanity-check at some
+   point — drafted to be reasonable and standard-practice, not reviewed by a lawyer.
+2. Not yet confirmed whether UPay/Takbull consider this checklist fully satisfied — the email
+   asked for confirmation after implementing, not yet sent.
+3. Real end-to-end Takbull/UPay payment test is still the thing this has all been blocked on
+   (see the 2026-09-06 entries) — this update doesn't touch or unblock that directly, just clears
+   the compliance-checklist prerequisite.

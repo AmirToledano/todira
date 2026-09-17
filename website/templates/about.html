@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ t('meta.title_about') }}{% endblock %}
+{% block content %}
+<div class="legal-page reveal">
+{% if lang == 'he' %}
+  <h1>אודות טודירה</h1>
+
+  <p>טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (כגון יד2), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).</p>
+
+  <p>השירות אינו משרד תיווך, אינו בעל נכסים ואינו צד לעסקאות שכירות — הוא כלי טכנולוגי שמטרתו לחסוך למחפשי דירה את הצורך לרענן שוב ושוב אתרי מודעות בעצמם.</p>
+
+  <p>לפרטים נוספים ניתן לעיין ב<a href="/terms">תנאי השימוש</a> וב<a href="/privacy">מדיניות הפרטיות</a>, או לפנות אלינו דרך <a href="/contact">עמוד יצירת הקשר</a>.</p>
+{% else %}
+  {% if lang != 'en' %}<div class="notice">{{ t('legal.non_native_notice') }}</div>{% endif %}
+  <h1>About Todira</h1>
+
+  <p>Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (such as Yad2), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published.</p>
+
+  <p>The service is not a real-estate brokerage, does not own any properties, and is not a party to any rental transaction — it is a technology tool built to save apartment seekers the need to repeatedly refresh listing sites themselves.</p>
+
+  <p>For more details, see the <a href="/terms">Terms of Use</a> and the <a href="/privacy">Privacy Policy</a>, or reach out via the <a href="/contact">contact page</a>.</p>
+{% endif %}
+</div>
+{% endblock %}

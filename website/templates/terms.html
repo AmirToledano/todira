@@ -4,7 +4,7 @@
 <div class="legal-page reveal">
 {% if lang == 'he' %}
   <h1>תנאי שימוש</h1>
-  <p class="legal-updated">עודכן לאחרונה: אוגוסט 2026</p>
+  <p class="legal-updated">עודכן לאחרונה: ספטמבר 2026</p>
 
   <h2>1. מה זה טודירה</h2>
   <p>טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (כגון יד2), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך במנוי בתשלום, כמפורט בעמוד השדרוג באתר.</p>
@@ -30,12 +30,18 @@
   <h2>8. דין וסמכות שיפוט</h2>
   <p>תנאים אלה כפופים לדיני מדינת ישראל, וכל מחלוקת תידון בבתי המשפט המוסמכים בישראל בלבד.</p>
 
-  <h2>9. יצירת קשר</h2>
-  <p>לשאלות בנוגע לתנאים אלה — ניתן לפנות דרך הבוט בטלגרם.</p>
+  <h2>9. אספקת השירות</h2>
+  <p>השירות ניתן במלואו באופן דיגיטלי, ואינו כרוך במשלוח פיזי של מוצר כלשהו. עם אישור תשלום עבור מנוי בתשלום, הגישה למנוי מופעלת באופן אוטומטי ומיידי (בדרך כלל תוך דקות ספורות ממועד אישור העסקה), ישירות דרך הבוט בטלגרם ו/או האתר, ללא צורך בפעולה נוספת מצד המשתמש.</p>
+
+  <h2>10. ביטול עסקה והחזרים</h2>
+  <p>מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום, ולא במוצר פיזי הניתן להחזרה. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר' סעיף 1), המאפשרת לבחון את השירות מראש. עם השלמת התשלום ותחילת אספקת השירות בפועל, ובכפוף לאישור המשתמש בעת התשלום, המשתמש מוותר על זכות הביטול הרגילה הקבועה בחוק הגנת הצרכן, התשמ"א-1981, ביחס לשירותים דיגיטליים שאספקתם הושלמה בהסכמתו המפורשת. חרף האמור, ניתן לפנות אלינו בכל עת (דרך עמוד יצירת הקשר או הבוט בטלגרם) בבקשה לביטול או להחזר, ואנו נבחן כל פנייה לגופה בתום לב — לרבות במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום. החזר כספי, אם יאושר, יבוצע לאותו אמצעי תשלום ששימש לתשלום המקורי, בתוך זמן סביר.</p>
+
+  <h2>11. יצירת קשר</h2>
+  <p>לשאלות בנוגע לתנאים אלה — ניתן לפנות דרך הבוט בטלגרם או דרך <a href="/contact">עמוד יצירת הקשר</a>.</p>
 {% else %}
   {% if lang != 'en' %}<div class="notice">{{ t('legal.non_native_notice') }}</div>{% endif %}
   <h1>Terms of Use</h1>
-  <p class="legal-updated">Last updated: August 2026</p>
+  <p class="legal-updated">Last updated: September 2026</p>
 
   <h2>1. What Todira is</h2>
   <p>Todira is a personal service (a Telegram bot and companion website) that automatically scans apartment listings from external sources on the web (such as Yad2) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a paid subscription, as detailed on the site's upgrade page.</p>
@@ -61,8 +67,14 @@
   <h2>8. Governing law and jurisdiction</h2>
   <p>These terms are governed by the laws of the State of Israel, and any dispute shall be resolved exclusively in the competent courts of Israel.</p>
 
-  <h2>9. Contact</h2>
-  <p>For questions about these terms, please reach out via the Telegram bot.</p>
+  <h2>9. Service delivery</h2>
+  <p>The service is provided entirely digitally and does not involve physical shipping of any product. Upon confirmation of payment for a paid subscription, access is activated automatically and immediately (typically within a few minutes of transaction confirmation), directly through the Telegram bot and/or the website, with no further action required from the user.</p>
+
+  <h2>10. Cancellation and refunds</h2>
+  <p>This is a digital service delivered immediately and automatically upon payment confirmation, not a physical product that can be returned. Every user gets a free 3-day trial before any payment (see section 1), allowing the service to be evaluated in advance. Upon completing payment and the actual start of service delivery, and subject to the user's confirmation at the time of payment, the user waives the standard cancellation right under Israel's Consumer Protection Law, 5741-1981, with respect to digital services whose delivery has been completed with the user's explicit consent. Notwithstanding the above, you may contact us at any time (via the contact page or the Telegram bot) to request a cancellation or refund, and we will review each request in good faith — including in the case of a material technical fault that prevented use of the service, a duplicate charge, or a payment error. A refund, if approved, will be issued to the same payment method used for the original payment, within a reasonable time.</p>
+
+  <h2>11. Contact</h2>
+  <p>For questions about these terms, please reach out via the Telegram bot or the <a href="/contact">contact page</a>.</p>
 {% endif %}
 </div>
 {% endblock %}

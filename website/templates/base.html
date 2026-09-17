@@ -191,6 +191,7 @@
            this fix, the footer (present on every page) was missed. #}
         <a href="https://wa.me/{{ whatsapp_public_number }}?text={{ t('whatsapp.greeting') | urlencode }}" target="_blank">{{ t('nav.whatsapp') }}</a>
         {% endif %}
+        <a href="/about">{{ t('footer.about') }}</a>
         <a href="/terms">{{ t('footer.terms') }}</a>
         <a href="/privacy">{{ t('footer.privacy') }}</a>
         <a href="/accessibility">{{ t('footer.accessibility') }}</a>
