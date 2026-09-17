@@ -6541,11 +6541,13 @@ a desktop browser, worth remembering for next time):
    `/etc/rancher/k3s/config.yaml` and `sudo systemctl restart k3s` (confirmed: this does NOT restart
    the actual workload pods, only the k3s control-plane process — zero scraper/website downtime).
 
-**Also found, not yet fixed (separate, smaller, currently masked by everything above)**: the
-`partnership/east` region's map-API URL uses the wrong domain — `gw.yad-il.co.il` instead of the
-correct `gw.yad2.co.il` (visible in production's own error logs). Doesn't matter today since every
-region fails for the ASN-blocking reason above regardless of domain, but worth a one-line fix
-whenever someone's next in `yad2_client.py`'s `REGIONS_ON_MAP_API`.
+**Correction to this same entry, found a few hours later (see the Update below)**: the line above
+about `partnership/east` using "the wrong domain" was a mistake — `gw.yad-il.co.il` is the REAL,
+deliberate, already-confirmed-live (2026-09-14) domain Yad2 itself routes that specific region
+through (see `REGIONS_ON_MAP_API`'s own comment) — misread as a typo here only because every region
+was failing that night regardless of domain, which made it look uniform when it wasn't. Once Web
+Unlocker actually started returning real data (see below), `partnership/east` succeeded cleanly on
+that exact domain — nothing to fix here after all.
 
 **The real fix — Bright Data Web Unlocker API, re-tested live tonight, KYC wall is GONE**: this
 file's own `yad2_client.py` module docstring already documented that Web Unlocker was tried once
@@ -6593,11 +6595,11 @@ Bright Data dashboard cost after a few real days of production traffic rather th
 estimate blindly, same "verify, don't assume" standard as everywhere else in this project.
 
 **Still open, explicitly flagged so it isn't lost**:
-1. Fix the `gw.yad-il.co.il` → `gw.yad2.co.il` typo for `partnership/east` in `REGIONS_ON_MAP_API`
-   (small, currently harmless, but real).
+1. ~~Fix the `gw.yad-il.co.il` domain for `partnership/east`~~ — not a bug, see the correction above.
 2. Watch real production Yad2 runs over the next few days to confirm Web Unlocker holds up at real
    volume (it should — it's Bright Data's own managed anti-detect infrastructure, not this
-   project's own IP — but "should" isn't "confirmed at volume" yet).
+   project's own IP — but "should" isn't "confirmed at volume" yet). **Partially answered same
+   night — see the Update below.**
 3. Re-verify the Bright Data Scraper Studio DCA enrichment collector (separate feature,
    `brightDataEnrichmentSuspended` still `true`) now that its own platform bug is fixed (see the
    entry above) — lower priority than the Yad2-wide fix this entry covers.
@@ -6605,3 +6607,73 @@ estimate blindly, same "verify, don't assume" standard as everywhere else in thi
    configured) is worth keeping active at all now that Web Unlocker is the real working route for
    this specific problem — not decided here, just flagged as a real recurring-cost question now
    that there's a second paid option on the books.
+
+## Update 2026-09-17, same night, a few hours later: first real owner-only production test run —
+## the auth bug is confirmed fixed, but a NEW, different, genuinely live-confirmed finding: Web
+## Unlocker's own map-API renders are intermittently empty, not deterministically blocked — one
+## extra retry shipped as the real fix, backed by real per-region log analysis, not a guess
+
+Ran `safe-single-test-run.yaml` (owner-only, minimal scope, real production code, explicit owner
+approval each time — "פשוט תעשה ריצת ניסיון רק לowner") to confirm the Web Unlocker fix above
+actually works end-to-end, not just via manual `curl`.
+
+**First run: failed, but usefully — found a real deploy-time bug the manual curl test couldn't
+catch.** Every one of the 7 regions got `401 Invalid token` from Web Unlocker. Root cause: the
+`bright-data-api-key` value stored in `todira-bot-secret` was still the OLD Admin key — the fresh
+key generated a few hours earlier (in this same session, to fix the exact same `Invalid token`
+error during manual `curl` testing) was only ever verified locally, never written back to the k8s
+secret Kubernetes actually injects into the scraper CronJob. Fixed via the existing, safe,
+form-based `set-bright-data-api-key-secret.yaml` workflow (owner typed the new key directly into
+the GitHub Actions UI form, never through chat) — confirmed a clean `Success` run.
+
+**Second run, same night, after the key fix: real progress, and a genuinely new problem.** No more
+`401`s anywhere — the auth bug is fully fixed. But 3 of 7 regions (`center-and-sharon`,
+`jerusalem-area`, `north-and-valleys`) still failed, this time with a DIFFERENT symptom: `Yad2 map
+API response ... wasn't valid JSON: Expecting value: line 1 column 1 (char 0)` — a real HTTP 200
+from Web Unlocker, but with a genuinely EMPTY response body, not an error status and not a Radware
+page. Surface read: "Web Unlocker still doesn't work for the map API." **That surface read was
+wrong** — found by actually reading `scraper/main.py`'s own retry code before concluding anything
+(per the owner's explicit instruction not to guess): a successful retry logs NOTHING at all — only
+a failure logs a message. Going region-by-region through the real timestamps in the captured pod
+log showed the OTHER 4 regions (`tel-aviv-area`, `south`, `coastal-north`, `partnership/east`) each
+had exactly ONE failure warning logged and then NO further log line for that region at all before
+the next region started — meaning each one's own retry succeeded silently. The real result of this
+run: **4 of 7 regions succeeded**, not 0 of 7 — confirmed further by the run's own real summary
+line: `475 new listing(s)/5 price change(s)` genuinely upserted and sent to the owner (per
+`NOTIFICATIONS_SUSPENDED`'s owner-only restriction, exactly as designed).
+
+**Real conclusion, not a guess**: Bright Data's Web Unlocker renders the map API correctly most of
+the time, but a real fraction of individual requests come back with an empty body on Bright Data's
+own rendering side — a well-documented pattern for headless-render/unlocking APIs in general (their
+own browser worker occasionally times out or fails silently on one request), independent of
+anything this project's code does. The existing single retry (`_REGION_RETRY_DELAY_SECONDS`,
+already recovering 4 of 7 regions on its own) just isn't quite enough to reliably close the gap to
+all 7.
+
+**Fix shipped**: `scraper/main.py`'s Yad2 region fetch loop went from 2 total attempts (1 retry) to
+3 (`_YAD2_MAX_FETCH_ATTEMPTS = 3`, a new named constant, replacing the old hardcoded `for attempt in
+(1, 2):`) — log messages now say `attempt %d/%d` instead of a hardcoded `1/2` so they can't drift
+out of sync with the real count again. One existing test
+(`test_scrape_yad2_gives_up_after_retry_also_fails`) hardcoded the old 2-call expectation — updated
+to 3, since the underlying behavior is genuinely, intentionally changing, not a test bug. 889 tests
+pass; ruff clean.
+
+**Also corrected in this same update**: the earlier claim in the entry above that `partnership/east`
+uses "the wrong domain" (`gw.yad-il.co.il`) was a mistake, not a real bug — see the strikethrough
+correction added to that entry. `partnership/east` succeeded cleanly on that exact domain in both
+real test runs tonight; it's the deliberate, already-confirmed (2026-09-14) routing Yad2 itself
+uses for that region, misread as a typo only because every region was uniformly failing the night
+this was first written.
+
+**Still open**:
+1. Re-run `safe-single-test-run.yaml` (or just watch the next real scheduled run) to confirm 3
+   attempts actually gets all 7 regions to succeed, not just improves the odds — not yet done as of
+   this entry.
+2. The real per-request Web Unlocker failure RATE is still unmeasured (this run's sample size is 7
+   requests, 3 of which needed a retry) — worth revisiting the retry count again with more real
+   runs' worth of data rather than tuning further on a single data point.
+3. `todira-scraper` CronJob's `spec.suspend` is `false` (intentional, live since 2026-09-15) — but
+   `safe-single-test-run.yaml`'s own step 10 safety check still hardcodes an assumption that it
+   should be `true`, so it now fails (a false alarm, not a real problem) on every run. Worth a
+   one-line fix to that workflow so a real Slack/owner-facing "failure" stops crying wolf — low
+   priority, cosmetic only, never blocks the actual scraper run from completing.
