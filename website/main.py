@@ -408,7 +408,7 @@ def robots_txt(request: Request) -> PlainTextResponse:
 # since the set of genuinely public marketing/legal pages changes rarely; every one of these
 # already renders in all 5 languages via base.html's own hreflang alternates (added alongside
 # this), so the sitemap itself only needs to list each page once, not once per language.
-_SITEMAP_PATHS = ("/", "/login", "/contact", "/terms", "/privacy", "/accessibility")
+_SITEMAP_PATHS = ("/", "/login", "/contact", "/about", "/terms", "/privacy", "/accessibility")
 
 
 @app.get("/sitemap.xml")
@@ -451,6 +451,11 @@ def login(request: Request, next: str = "/apartments", uid: int | None = None):
         "login.html",
         {"next": _safe_next(next), "uid": uid, "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER},
     )
+
+
+@app.get("/about")
+def about(request: Request):
+    return _render(request, "about.html", {})
 
 
 @app.get("/terms")
@@ -1199,7 +1204,12 @@ def upgrade(request: Request, uid: int | None = None):
 
 
 @app.post("/upgrade")
-def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Form(None)):
+def upgrade_submit(
+    request: Request,
+    plan: str = Form(...),
+    uid: int | None = Form(None),
+    terms_agreed: bool = Form(False),
+):
     """Plan selection. Tries real gateways in order, falling back one step at a time so the site
     keeps working exactly as before until each is ready:
     1. Takbull (2026-09-06) once TAKBULL_PAYMENT_PAGE_URL/TAKBULL_WEBHOOK_SECRET are both
@@ -1214,8 +1224,16 @@ def upgrade_submit(request: Request, plan: str = Form(...), uid: int | None = Fo
        payment signal, a Bit transfer happens outside this system) whenever neither gateway is
        configured yet.
     The owner's /admin/users free-access toggle remains the remedy for a click/payment that turns
-    out not to have actually happened, under any of the three models."""
-    if plan not in PLAN_PRICES_ILS:
+    out not to have actually happened, under any of the three models.
+
+    2026-09-17: terms_agreed is a real, required field now (see upgrade.html's own checkbox on
+    each plan's form) — the payment processor's own compliance requirement is active, explicit
+    consent to the Terms of Use (which now covers the cancellation/refund policy, see terms.html)
+    before proceeding to checkout, not just a passive footer link. The HTML5 `required` attribute
+    already blocks a normal browser submission without it; this is the server-side backstop for a
+    tampered/non-browser request, same "don't trust the client alone" pattern as the plan
+    membership check right below."""
+    if plan not in PLAN_PRICES_ILS or not terms_agreed:
         return _render(request, "auth_error.html", {}, status_code=400)
 
     amount = PLAN_PRICES_ILS[plan]

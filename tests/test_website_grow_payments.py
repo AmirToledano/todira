@@ -122,7 +122,7 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_grow_checkout(c
         ),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222"})
+        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222", "terms_agreed": "on"})
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "https://grow.example/checkout/abc"
@@ -145,7 +145,7 @@ def test_upgrade_submit_marks_payment_failed_and_502s_when_grow_call_fails(clien
         patch.object(website_main.grow_client, "create_checkout_url", lambda **kw: None),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222"})
+        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222", "terms_agreed": "on"})
 
     assert resp.status_code == 502
     payment = fake_session.added[0]

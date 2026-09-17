@@ -28,6 +28,10 @@
       <form method="post" action="/upgrade">
         <input type="hidden" name="plan" value="weekly">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
+          <input type="checkbox" name="terms_agreed" required>
+          <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
+        </label>
         <button type="submit" class="btn block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_weekly')) }}</button>
       </form>
     </div>
@@ -37,6 +41,10 @@
       <form method="post" action="/upgrade">
         <input type="hidden" name="plan" value="biweekly">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
+          <input type="checkbox" name="terms_agreed" required>
+          <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
+        </label>
         <button type="submit" class="btn block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_biweekly')) }}</button>
       </form>
     </div>
@@ -46,6 +54,10 @@
       <form method="post" action="/upgrade">
         <input type="hidden" name="plan" value="monthly">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
+          <input type="checkbox" name="terms_agreed" required>
+          <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
+        </label>
         <button type="submit" class="btn gold block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_monthly')) }}</button>
       </form>
     </div>

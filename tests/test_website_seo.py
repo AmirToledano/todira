@@ -49,10 +49,20 @@ def test_sitemap_xml_lists_only_public_pages(client):
     resp = client.get("/sitemap.xml")
     assert resp.status_code == 200
     assert "xml" in resp.headers["content-type"]
-    for path in ("<loc>http://testserver/</loc>", "/login", "/contact", "/terms", "/privacy"):
+    for path in (
+        "<loc>http://testserver/</loc>", "/login", "/contact", "/about", "/terms", "/privacy",
+    ):
         assert path in resp.text
     assert "/apartments" not in resp.text
     assert "/admin" not in resp.text
+
+
+def test_about_page_renders(client):
+    """2026-09-17 addition — the payment processor's own compliance requirement for an "About"
+    page detailing the business's field of occupation (see PROJECT_STATE.md)."""
+    resp = client.get("/about")
+    assert resp.status_code == 200
+    assert "אודות" in resp.text
 
 
 def test_home_page_has_canonical_and_hreflang_for_every_language(client):

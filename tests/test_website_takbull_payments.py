@@ -122,7 +122,7 @@ def test_upgrade_submit_prefers_takbull_over_grow_when_both_configured(client):
         patch.object(website_main.grow_client, "is_configured", lambda: True),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "weekly", "uid": "222"})
+        resp = client.post("/upgrade", data={"plan": "weekly", "uid": "222", "terms_agreed": "on"})
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "https://paypage.takbull.co.il/4BPyx?order_reference=1"
@@ -143,7 +143,7 @@ def test_upgrade_submit_marks_payment_failed_and_502s_when_takbull_url_build_fai
         patch.object(website_main.takbull_client, "build_checkout_url", lambda **kw: None),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222"})
+        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222", "terms_agreed": "on"})
 
     assert resp.status_code == 502
     payment = fake_session.added[0]
