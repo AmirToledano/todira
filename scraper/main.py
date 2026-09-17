@@ -107,6 +107,18 @@ _HOMELESS_DESCRIPTION_FETCH_CONCURRENCY = 5
 # nothing.
 _REGION_RETRY_DELAY_SECONDS = 5.0
 
+# 2026-09-17: bumped from 2 total attempts (1 retry) to 3 (2 retries) — real, live evidence from
+# the first production run on Bright Data's Web Unlocker (see yad2_client._fetch_direct's own
+# docstring for the switch away from a direct, un-proxied GET): of 7 regions, 3 failed even after
+# one retry, but per-region log analysis showed the OTHER 4 succeeded silently on their own retry
+# (a successful attempt logs nothing — only failures do). A single retry already recovering most
+# failures, with the remainder failing the SAME way (an empty, non-JSON response body, not an auth
+# or block signature), matches the well-documented behavior of headless-render/unlocking APIs in
+# general: a fraction of individual render requests transiently come back empty on Bright Data's
+# own side, independent of anything this project controls, and need more than one retry to reduce
+# to a small residual failure rate rather than a systemic one.
+_YAD2_MAX_FETCH_ATTEMPTS = 3
+
 # 2026-09-15: added after a real, live-observed finding — the owner-only safe-single-test-run.yaml
 # run fired center-and-sharon/tel-aviv-area/jerusalem-area within under 0.6s of each other (no
 # delay ever existed between iterations of the `for region in REGION_SLUGS` loop below, only
@@ -531,7 +543,7 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
             region, "map API (direct)" if use_map_api else "ZenRows",
         )
         region_succeeded = False
-        for attempt in (1, 2):
+        for attempt in range(1, _YAD2_MAX_FETCH_ATTEMPTS + 1):
             try:
                 region_items = (
                     fetch_region_via_map_api(region)
@@ -559,16 +571,16 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
                         "not retrying: %s", region, exc,
                     )
                     break
-                if attempt == 1:
+                if attempt < _YAD2_MAX_FETCH_ATTEMPTS:
                     logger.warning(
-                        "Yad2 fetch failed for region=%s (attempt 1/2) — retrying once in %.0fs: %s",
-                        region, _REGION_RETRY_DELAY_SECONDS, exc,
+                        "Yad2 fetch failed for region=%s (attempt %d/%d) — retrying in %.0fs: %s",
+                        region, attempt, _YAD2_MAX_FETCH_ATTEMPTS, _REGION_RETRY_DELAY_SECONDS, exc,
                     )
                     time.sleep(_REGION_RETRY_DELAY_SECONDS)
                 else:
                     logger.exception(
-                        "Failed to fetch Yad2 results for region=%s after retry — skipping this "
-                        "region", region,
+                        "Failed to fetch Yad2 results for region=%s after %d attempts — skipping "
+                        "this region", region, _YAD2_MAX_FETCH_ATTEMPTS,
                     )
         if not region_succeeded:
             errors += 1

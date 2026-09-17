@@ -323,7 +323,7 @@ def test_scrape_yad2_gives_up_after_retry_also_fails(monkeypatch):
 
     normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
 
-    assert len(calls) == 2  # both the original attempt AND the retry were genuinely made
+    assert len(calls) == 3  # the original attempt AND both retries were genuinely made
     assert all_succeeded is False
     assert errors == 1
 
