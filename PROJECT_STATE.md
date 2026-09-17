@@ -6469,3 +6469,139 @@ a real Bright Data support ticket describing the stuck/locked input row exactly 
 get it cleared, then re-run `Run test crawl` with a real item URL one more time to confirm the
 referer-based single-stage code actually returns real per-URL data (a different `adNumber` matching
 the requested URL, with a real `metaData.description`) before flipping the suspension flag back off.
+
+**UPDATE, same night, resolved**: the owner filed the support ticket (via the Zendesk form the
+owner reached from Bright Data's own dashboard); support (a real human, "Adam") found and fixed the
+locked-row bug directly — re-saving the collector to production after removing the input field from
+its schema cleared the stuck IDE-level row. Confirmed live via a screenshot: the Input tab now shows
+only real, editable rows, no locked one. Not yet re-tested end-to-end against a real item URL to
+confirm the referer-based code returns correct per-URL data — parked here, not urgent (see the
+Yad2-wide fix below, which supersedes this specific enrichment feature's urgency for now).
+
+## Update 2026-09-16/17 (new day, same continuous session): production Yad2 scraping went fully
+## dark — real root cause found (AWS/datacenter ASN-level blocking, not IP-specific reputation),
+## three separate real infra bugs fixed along the way, and the actual long-term fix (Bright Data
+## Web Unlocker) wired into the codebase and confirmed live
+
+**How this was found**: continuing the sale/sublet URL-shape work (see task list), a read-only
+`check-scraper-job-status.yaml` run (prompted by the earlier sale/sublet diagnostic hitting an
+unexplained Radware wall from a GitHub Actions IP) showed the REAL production scraper — not a
+diagnostic — failing to fetch **every single one of the 7 `REGION_SLUGS`** for Yad2, each with the
+identical signature: a 302 redirect to a Radware/Reblaze challenge (`__uzdbm_*` cookies), from
+production's own real k8s pod. This was not a diagnostic finding — real users had stopped receiving
+new Yad2 listings.
+
+**Root cause, confirmed live, not guessed — and it overturns the working theory from the
+2026-09-15 entries above**: the previous assumption was that production's own static IP had slowly
+"burned" its Radware reputation from the 2026-09-15 hourly-schedule bump (14 runs/day × 7 regions).
+That would predict a **fresh** IP should work again. It didn't: after attaching a brand-new AWS
+Elastic IP (`16.171.252.125`, allocated fresh from Amazon's pool, never used for a single Yad2
+request before), the very next scraper run — using that IP for the first time, well under 100 total
+requests ever sent from it — got blocked the exact same way, within under two hours. An IP with
+essentially zero request history cannot have "burned its own reputation" that fast. The much more
+consistent explanation: Radware (or an upstream IP-intelligence feed it consumes) flags **AWS/
+datacenter ASN ranges** as elevated-risk more or less unconditionally, independent of any specific
+IP's own behavior — so no amount of IP rotation *within AWS* was ever going to fix this. This
+matches the general, well-documented industry pattern (cloud/hosting ASNs get flagged by IP-
+reputation vendors regardless of individual IP history) rather than anything specific to how this
+project used the IP.
+
+**Three real, separate infrastructure bugs fixed along the way** (all found and fixed live,
+collaboratively, screen-shared with the owner on his phone — a materially harder environment than
+a desktop browser, worth remembering for next time):
+1. **The EC2 box's public IP was NOT actually behind a stable Elastic IP** despite this file's own
+   2026-08-30 entry treating `13.50.115.61` as "already fixed" — it turned out that IP genuinely
+   *was* a real, associated Elastic IP (confirmed live in the AWS Console: Association ID present,
+   bound to instance `i-01c56758e50d4cdc4`) — so the earlier assumption was right after all, just
+   never fully verified. The fix here wasn't attaching a NEW Elastic IP concept — it was swapping
+   *which* Elastic IP is associated (allocate a second, unused one; associate it to the same
+   instance; the old one auto-disassociates) — zero downtime, no instance restart at all, unlike a
+   stop→start.
+2. **`KUBECONFIG_B64` and the `todira.app` DNS A record both needed updating** for the new IP — the
+   exact same two-part fix this file's 2026-08-30 entry already documented, done the same way (SSM
+   Session Manager → CloudShell for reliable mobile copy/paste, regenerate kubeconfig with `sed
+   's/127.0.0.1/<new-ip>/'`, `base64 -w0`, paste into the GitHub secret; update the A record via
+   Porkbun's DNS panel). **Real, repeated failure mode hit twice**: manually selecting a ~7,000-
+   character base64 blob out of a live, wrapped mobile terminal view is NOT reliable — got
+   `base64: invalid input` twice, and once a visibly duplicated ~700-character chunk (a scroll/
+   selection glitch, confirmed by eye). **What actually worked**: install `gh` CLI on the box itself
+   (official apt-repo method) and run `gh secret set KUBECONFIG_B64 --repo AmirToledano/todira <
+   /tmp/kubeconfig_b64.txt` directly from the SSM session — the file is generated straight into
+   the secret, never touching a clipboard at all. `gh auth login --with-token` failed with `error
+   validating token: missing required scope 'read:org'` (a real gh CLI quirk — it demands a wider
+   scope set than the operation actually needs); fixed by using `export GH_TOKEN=...` instead of
+   `gh auth login`, which skips that stricter validation entirely. **Worth remembering for next
+   time**: prefer `gh` CLI (or any mechanism that writes a file straight into the destination)
+   over manual copy-paste for anything longer than a couple hundred characters on mobile — this
+   cost real time and required an already-scarce owner's patience twice for the same root problem.
+3. **A stale TLS server certificate**: after the IP swap, `kubectl` started failing with `x509:
+   certificate is valid for 10.43.0.1, 127.0.0.1, 13.50.115.61, 13.60.13.78, 172.31.43.244, ::1,
+   not 16.171.252.125` — k3s's own serving cert has a fixed SAN list from whenever it was first
+   generated, and doesn't auto-include a newly-associated IP. Fixed by adding a `tls-san:` entry to
+   `/etc/rancher/k3s/config.yaml` and `sudo systemctl restart k3s` (confirmed: this does NOT restart
+   the actual workload pods, only the k3s control-plane process — zero scraper/website downtime).
+
+**Also found, not yet fixed (separate, smaller, currently masked by everything above)**: the
+`partnership/east` region's map-API URL uses the wrong domain — `gw.yad-il.co.il` instead of the
+correct `gw.yad2.co.il` (visible in production's own error logs). Doesn't matter today since every
+region fails for the ASN-blocking reason above regardless of domain, but worth a one-line fix
+whenever someone's next in `yad2_client.py`'s `REGIONS_ON_MAP_API`.
+
+**The real fix — Bright Data Web Unlocker API, re-tested live tonight, KYC wall is GONE**: this
+file's own `yad2_client.py` module docstring already documented that Web Unlocker was tried once
+(2026-09-13) and hit a real KYC wall for every case but one — matching the cancelled KYC video-call
+email the owner got this same session (now understood to have been for Web Unlocker access, not
+Scraper Studio). Rather than assume that wall still stood, it was re-tested live, directly from the
+existing `web_unlocker1` zone (which the owner — correctly — remembered already existed, from a
+`git log`/`PROJECT_STATE.md` check after this session's own summary missed it; a real, honest gap in
+what survives a context-compaction summary, now flagged explicitly so it's harder to lose again):
+- A plain `curl` to `https://api.brightdata.com/request` with `{"zone": "web_unlocker1", "url":
+  "https://www.yad2.co.il/realestate/rent/tel-aviv-area", "format": "raw"}` returned genuine Yad2
+  HTML (real Hebrew titles, real `lobbyData.recommendationLinks`), no Radware page, no KYC block.
+- The SAME test against the actual map API this project depends on
+  (`https://gw.yad2.co.il/realestate-feed/rent/map?region=3&bBox=...&zoom=11`) also succeeded —
+  hundreds of real markers, real Hebrew addresses/agency names, `"message":"OK"` at the end. This is
+  the one that matters: the 2026-09-13 KYC wall specifically hit this exact endpoint before: it does
+  not now.
+- One real snag along the way: the account's existing Admin API key (already confirmed working for
+  `/customer/balance` and Scraper Studio collector triggers) returned `Invalid token` specifically
+  for this endpoint. Asked Sophie (Bright Data's in-dashboard AI assistant) directly — confirmed the
+  request format was correct and the fix is simply to generate a fresh API key from Account
+  Settings → Users and API keys → Add key, which worked immediately. Not fully understood why the
+  older key didn't work here specifically; not worth chasing further given the fix was one click.
+
+**Code change shipped**: `scraper/yad2_client.py`'s `_fetch_direct` (the function
+`fetch_map_markers` already calls, used for every one of the 7 `REGION_SLUGS`) now calls
+`dorin_common.bright_data_client.fetch_via_web_unlocker(url)` instead of an un-proxied
+`httpx.get` — that function already existed, fully built and tested since 2026-09-13, just never
+reachable in practice until tonight's KYC-wall retest. Kept the function name `_fetch_direct`
+despite it no longer being direct/un-proxied (every test monkeypatches it as a whole, not its
+internals — renaming would only churn call sites for no real benefit). No chart/values.yaml changes
+needed: `BRIGHT_DATA_API_KEY` is already wired into the scraper CronJob's env from
+`todira-bot-secret`, and the zone defaults to `web_unlocker1` (this account's real zone name) with
+no extra config. 889 tests pass (55 in `test_yad2_client.py` specifically, all still green since
+every existing test replaces `_fetch_direct` wholesale rather than asserting on what's inside it);
+ruff clean.
+
+**Cost, estimated not yet measured against a real month of traffic**: Web Unlocker bills $1.50 per
+1,000 successful requests. At the current schedule (14 runs/day × 7 regions ≈ 100 map-API
+requests/day, each a small JSON response, not a full rendered page with images) this comes out to
+roughly $4.50/month — a small, real, ongoing cost where the prior two years of this project's Yad2
+fetching cost nothing (ZenRows free tier, then a flat $2/month ISP proxy, then genuinely free direct
+requests) — but the alternative right now is zero real Yad2 coverage at all. Worth checking the real
+Bright Data dashboard cost after a few real days of production traffic rather than trusting this
+estimate blindly, same "verify, don't assume" standard as everywhere else in this project.
+
+**Still open, explicitly flagged so it isn't lost**:
+1. Fix the `gw.yad-il.co.il` → `gw.yad2.co.il` typo for `partnership/east` in `REGIONS_ON_MAP_API`
+   (small, currently harmless, but real).
+2. Watch real production Yad2 runs over the next few days to confirm Web Unlocker holds up at real
+   volume (it should — it's Bright Data's own managed anti-detect infrastructure, not this
+   project's own IP — but "should" isn't "confirmed at volume" yet).
+3. Re-verify the Bright Data Scraper Studio DCA enrichment collector (separate feature,
+   `brightDataEnrichmentSuspended` still `true`) now that its own platform bug is fixed (see the
+   entry above) — lower priority than the Yad2-wide fix this entry covers.
+4. Revisit whether `fetch_via_isp_proxy`/the ISP proxy zone (`isp_proxy1`, still `$2/month`, still
+   configured) is worth keeping active at all now that Web Unlocker is the real working route for
+   this specific problem — not decided here, just flagged as a real recurring-cost question now
+   that there's a second paid option on the books.

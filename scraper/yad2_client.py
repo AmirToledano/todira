@@ -69,13 +69,29 @@ genuinely blocked requests, not just this project's own fault) that by 2026-09-1
 failing on requests that had worked through it hours earlier — see REGIONS_ON_MAP_API's own
 comment and `_fetch_direct`'s docstring below for the full live A/B finding that replaced it.
 
-ACTUAL route used below, as of 2026-09-15: `_fetch_direct` — a plain, un-proxied GET, no Bright
-Data anything. Confirmed live that a direct request currently succeeds for every one of the 7
-REGION_SLUGS' own district-level bbox/region requests, while the (by then reputation-damaged) ISP
-proxy failed on all of them, including ones it used to handle fine. See `_fetch_direct`'s own
-docstring for the real A/B evidence and the known open risk this doesn't solve (this project's own
-production IP could in principle suffer the same reputation decay over real repeated use — watch
-for it, don't assume it can't happen here too).
+2026-09-15 to 2026-09-16: `_fetch_direct` — a plain, un-proxied GET, no Bright Data anything.
+Confirmed live that a direct request succeeded for every one of the 7 REGION_SLUGS' own
+district-level bbox/region requests on 2026-09-15, right after the main scraper's schedule went
+hourly. That held for about a day: by the morning of 2026-09-16, every region started failing the
+exact same way (302 to a Radware/Reblaze challenge, `__uzdbm_*` cookies) — from the SAME static
+production IP. Root-caused live, not guessed: attaching a brand-new Elastic IP (never used for a
+single Yad2 request before) got blocked within under two hours and a couple dozen requests — far
+too fast/low-volume to be "this IP's own reputation decaying". The real mechanism is almost
+certainly ASN-level: Radware (or its upstream IP-intelligence feed) flags AWS/datacenter ranges as
+elevated-risk regardless of an individual IP's own history, so no amount of IP rotation inside AWS
+fixes this — see the 2026-09-15 "if Yad2 blocks the production IP again" entry in PROJECT_STATE.md
+for the options considered before this was confirmed live.
+
+CURRENT route, as of 2026-09-16/17: `_fetch_direct` now calls Bright Data's Web Unlocker API
+(`dorin_common.bright_data_client.fetch_via_web_unlocker`) instead of an un-proxied GET. The real
+KYC wall documented above (paragraph starting "First working route found") is GONE as of tonight —
+re-tested live, unprompted, against both a plain search page AND this exact map API (tel-aviv-area
+bbox/region/zoom), both succeeded with real data, no KYC block on either. Cost is the same $1.50/
+1,000 requests already known; at this project's real volume (14 runs/day × 7 regions ≈ 100 map-API
+requests/day, small JSON responses, not full rendered pages) this comes out to a few dollars a
+month, not a material cost. Function name kept as `_fetch_direct` even though it's no longer
+literally direct/un-proxied — every existing test monkeypatches this function as a whole rather
+than asserting on its internal implementation, so renaming it would only add churn for no benefit.
 
 NOW wired into scraper/main.py's run_once() (see fetch_region_via_map_api below) for every region
 listed in REGIONS_ON_MAP_API — as of 2026-09-15 that's all 7 REGION_SLUGS, each with its own
@@ -91,6 +107,8 @@ from typing import Any, Iterator
 from urllib.parse import urljoin
 
 import httpx
+
+from dorin_common import bright_data_client
 
 logger = logging.getLogger(__name__)
 
@@ -759,50 +777,23 @@ def _marker_to_raw_item(marker: dict[str, Any]) -> dict[str, Any] | None:
     return item
 
 
-_DIRECT_FETCH_TIMEOUT_SECONDS = 30.0
-
-
 def _fetch_direct(url: str) -> str | None:
-    """Plain, UN-proxied GET — no Bright Data ISP proxy, no auth, nothing. Added 2026-09-15,
-    replacing this file's earlier `bright_data_client.fetch_via_isp_proxy` call, after a real,
-    live finding that upends the whole premise of routing map-API requests through our own ISP
-    proxy IP: dispatched the SAME confirmed-good request (partnership/east, which had worked
-    through the proxy for over a day) both directly and through the proxy, back to back —
-    direct: 200, real data; through our proxy: 302, Radware challenge. Repeated for all 7
-    REGION_SLUGS' own district-level bbox/region pairs: direct succeeded for every single one,
-    while the proxy failed for every single one (including regions that had worked through it
-    hours earlier). The proxy's own IP is static and had been hammered with failed/blocked
-    requests all day (see REGIONS_ON_MAP_API's CORRECTED FINDING and later comments below) — its
-    Radware reputation had clearly degraded over the course of that testing. A plain direct
-    request (whatever IP this code happens to run from) had no such history and went through
-    cleanly on every region tried.
+    """Routes through Bright Data's Web Unlocker API (`bright_data_client.fetch_via_web_unlocker`).
+    Kept the name `_fetch_direct` despite no longer being direct/un-proxied — see module docstring's
+    2026-09-16/17 entry for why (every caller/test treats this as an opaque fetch function, renaming
+    it would only churn call sites and monkeypatches for no real benefit).
 
-    Same "return None on failure, never raise" contract as bright_data_client.fetch_via_isp_proxy
-    had, so fetch_map_markers' own error handling above needs no other change.
+    History, in order (full detail in the module docstring): a genuine un-proxied GET worked here
+    from 2026-09-15 to the morning of 2026-09-16, then Yad2/Radware started blocking this project's
+    entire AWS IP range outright — confirmed live that even a brand-new, never-before-used Elastic
+    IP got blocked within under two hours. Before that, Web Unlocker itself had been ruled out by a
+    real KYC wall (see the module docstring's "First working route found" paragraph) — re-tested
+    live tonight with no prompting for KYC at all, on both a plain search page and this exact map
+    API, so that wall is gone as of now.
 
-    KNOWN OPEN RISK, not solved here: this project's own production IP (wherever the k8s CronJob
-    actually runs from) is presumably ALSO static, not a fresh IP per request the way each of the
-    diagnostic GitHub Actions runs above got — so the same reputation-decay risk that burned the
-    ISP proxy today could in principle happen to this IP too, given enough real repeated use. No
-    fix attempted here (there isn't a better alternative available right now — Web Unlocker is
-    still KYC-gated, see the module docstring's own history) — just watch real production runs for
-    a return of the 302/Radware-challenge pattern, and revisit (e.g. asking Bright Data for a
-    fresh, unburned ISP-proxy IP, or a rotating-IP service) only if that actually happens, not
-    preemptively."""
-    try:
-        response = httpx.get(url, timeout=_DIRECT_FETCH_TIMEOUT_SECONDS)
-    except httpx.HTTPError:
-        logger.exception("Direct (un-proxied) request failed for %s", url)
-        return None
-
-    if response.status_code != 200:
-        logger.warning(
-            "Direct (un-proxied) request returned non-200 for %s: status=%d body=%r",
-            url, response.status_code, response.text[:500],
-        )
-        return None
-
-    return response.text
+    Same "return None on failure, never raise" contract every fetch helper in this module and in
+    bright_data_client.py shares, so fetch_map_markers' own error handling above needs no change."""
+    return bright_data_client.fetch_via_web_unlocker(url)
 
 
 def fetch_map_markers(
