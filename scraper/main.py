@@ -34,33 +34,24 @@ from yad2_client import (
     REGIONS_ON_MAP_API,
     Yad2FetchError,
     Yad2MapFetchError,
+    fetch_listing_detail_via_web_unlocker,
     fetch_region_pages,
     fetch_region_via_map_api,
 )
 
-# 2026-09-12: how many fetch_listing_detail_via_bright_data calls run concurrently when enriching
-# a batch of newly-discovered listings. Each call is a real blocking trigger->poll->snapshot round
-# trip (up to _POLL_TIMEOUT_SECONDS ~45s in the worst case, see bright_data_client.py) — running
-# them one at a time would make a scrape run with many new listings unacceptably slow; running ALL
-# of them at once risks hammering Bright Data's API with an unbounded burst. 5 was a starting guess
-# at "meaningfully parallel but not abusive", not a documented Bright Data rate limit.
+# 2026-09-12: how many fetch_listing_detail_via_web_unlocker calls run concurrently when enriching
+# a batch of newly-discovered listings. Each call is one blocking, self-contained Web Unlocker POST
+# (see yad2_client.py's own docstring) — running them one at a time would make a scrape run with
+# many new listings unacceptably slow; running ALL of them at once risks hammering Bright Data's API
+# with an unbounded burst.
 #
-# 2026-09-15: dropped to 1 — real, live evidence (the safe-single-test-run.yaml owner-only test
-# run, same day) confirmed the exact cross-job-contamination race bright_data_client.py's own
-# module docstring already theorized about ("the collector... doesn't reliably scope by job id
-# under concurrent triggers") is REAL and frequent at concurrency=5, not a rare edge case: one
-# single run's pod logs showed the SAME wrong adNumber returned 117 times across many different
-# job ids in one ~10-minute window, each one caught by the existing mismatch-discard-and-retry
-# defense (data stayed correct — see that function's own docstring for the real incident this
-# defense was built to catch) but at real cost: every one of those 117 is a wasted trigger+poll
-# round trip AND a full retry cycle, which is why that run's enrichment phase was taking many
-# minutes longer than the region-discovery phase that preceded it. Serializing to 1 in-flight
-# request at a time removes the race entirely (no two jobs' poll windows can ever overlap) — a
-# genuine, understood fix for the actual mechanism, not just a bigger dose of the same defensive
-# patch. Slower per-listing throughput is the deliberate tradeoff; revisit (a higher number, or a
-# real per-job-scoped poll if Bright Data's API ever supports one) only if this turns out to still
-# be too slow in practice, not preemptively.
-_BRIGHT_DATA_ENRICH_CONCURRENCY = 1
+# 2026-09-15: dropped to 1 while this ran through Bright Data's Scraper Studio DCA collector — a
+# real cross-job-contamination race (the collector didn't reliably scope results by job id under
+# concurrent triggers) made concurrent enrichment return wrong data. 2026-09-17: back to 5 now that
+# this routes through Web Unlocker instead — a single stateless POST per listing, no shared
+# trigger/poll job id at all, so that race is structurally impossible here. Revisit (higher, or
+# lower if Bright Data's own rate limits complain) only with real evidence, not preemptively.
+_BRIGHT_DATA_ENRICH_CONCURRENCY = 5
 
 # 2026-09-15: real, confirmed kill-switch — see charts/todira/values.yaml's own comment on
 # scraper.brightDataEnrichmentSuspended for the live diagnostic (.github/workflows/
@@ -364,33 +355,40 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     """For every listing genuinely new to the DB this run (never for one already known — an
     already-known listing already got this exactly once, on the run it first appeared, and the
     result is cached on Listing.description/etc forever), fetches the full listing-detail record
-    from Bright Data's Scraper Studio collector and applies normalize._compute_detail_updates'
-    fields (description, property type, amenities, floor_total, move-in date, real photos, broker
-    status) straight onto that row.
+    and applies normalize._compute_detail_updates' fields (description, property type, amenities,
+    floor_total, move-in date, real photos, broker status) straight onto that row.
 
-    A no-op (returns 0 immediately, no network calls) when Bright Data isn't configured
-    (BRIGHT_DATA_API_KEY/BRIGHT_DATA_COLLECTOR_ID unset) — see bright_data_client.is_configured() —
-    so this is always safe to call regardless of whether the feature is actually turned on yet.
-    Also a no-op when BRIGHT_DATA_ENRICHMENT_SUSPENDED=true — see
+    2026-09-17: routes through yad2_client.fetch_listing_detail_via_web_unlocker (Bright Data Web
+    Unlocker) instead of bright_data_client.fetch_listing_detail_via_bright_data (the Scraper
+    Studio DCA collector) — that collector is a dead end on this account's Free Trial tier
+    regardless of key/code fixes: the API can only ever trigger a fixed demo collector, confirmed
+    live by two distinct real URLs both coming back wrong (one empty, one the same stale cached
+    Dizengoff listing). Web Unlocker's own KYC wall for individual listing pages (which blocked
+    this exact route on 2026-09-13) is confirmed gone as of tonight. Kept this function's name and
+    its "_BRIGHT_DATA_..." constants below since Web Unlocker is still a Bright Data product on the
+    same account/key, just a different one than the DCA collector.
+
+    A no-op (returns 0 immediately, no network calls) when BRIGHT_DATA_API_KEY isn't set, so this
+    is always safe to call regardless of whether the feature is actually turned on yet. Also a
+    no-op when BRIGHT_DATA_ENRICHMENT_SUSPENDED=true — see
     _BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR's own comment.
 
     2026-09-13: scoped to source == Source.YAD2 only (now that `new_ids` can include Komo/Homeless
-    rows too — see run_once) — the Bright Data collector this calls is tied to one Scraper Studio
-    collector built specifically to parse a YAD2 listing detail page's DOM (see
-    bright_data_client.py's own module docstring); pointing it at a komo.co.il/homeless.co.il URL
-    would get nonsense or a hard failure, not real enrichment. Komo/Homeless don't need this
-    anyway — their own scrapers already get everything they support in one fetch.
+    rows too — see run_once) — fetch_listing_detail_via_web_unlocker parses a YAD2 listing detail
+    page's own __NEXT_DATA__; pointing it at a komo.co.il/homeless.co.il URL would get nonsense or
+    a hard failure, not real enrichment. Komo/Homeless don't need this anyway — their own scrapers
+    already get everything they support in one fetch.
 
     Runs the actual per-listing fetches concurrently (bounded by _BRIGHT_DATA_ENRICH_CONCURRENCY)
-    via asyncio.to_thread, since fetch_listing_detail_via_bright_data is blocking/synchronous (real
-    network calls + a polling wait, same contract as fetch_listing_description elsewhere in this
-    codebase) — see that function's own docstring. Deliberately best-effort per listing: one whose
-    fetch fails, times out, or returns nothing usable simply keeps its already-normalized
-    (search-card-only) fields, exactly as every listing always could before this feature existed —
-    never blocks or fails the whole run over one bad fetch.
+    via asyncio.to_thread, since fetch_listing_detail_via_web_unlocker is blocking/synchronous (a
+    real network call, same contract as fetch_listing_description elsewhere in this codebase) — see
+    that function's own docstring. Deliberately best-effort per listing: one whose fetch fails or
+    returns nothing usable simply keeps its already-normalized (search-card-only) fields, exactly
+    as every listing always could before this feature existed — never blocks or fails the whole run
+    over one bad fetch.
 
-    Returns how many listings were actually enriched (Bright Data returned usable data for)."""
-    if not new_ids or not bright_data_client.is_configured():
+    Returns how many listings were actually enriched (Web Unlocker returned usable data for)."""
+    if not new_ids or not os.environ.get(bright_data_client.API_KEY_ENV_VAR, "").strip():
         return 0
     if os.environ.get(_BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR, "").strip().lower() == "true":
         return 0
@@ -411,9 +409,7 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
 
     async def _fetch_one(listing_id: int, url: str) -> tuple[int, dict] | None:
         async with semaphore:
-            detail = await asyncio.to_thread(
-                bright_data_client.fetch_listing_detail_via_bright_data, url
-            )
+            detail = await asyncio.to_thread(fetch_listing_detail_via_web_unlocker, url)
         if detail is None:
             return None
         updates = _compute_detail_updates(detail)

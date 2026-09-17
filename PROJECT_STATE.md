@@ -6677,3 +6677,94 @@ this was first written.
    should be `true`, so it now fails (a false alarm, not a real problem) on every run. Worth a
    one-line fix to that workflow so a real Slack/owner-facing "failure" stops crying wolf — low
    priority, cosmetic only, never blocks the actual scraper run from completing.
+
+## Update 2026-09-17, same night, a few hours later still: the API key died again (root-caused to a
+## stray dashboard Refresh, not Bright Data), and — the real prize — the Bright Data DCA/Scraper
+## Studio collector is now confirmed a PERMANENT dead end (Free Trial account tier), replaced with a
+## Web-Unlocker-based enrichment path that actually works, live-confirmed real content
+
+**The key died again, ~30 minutes after the previous fix — root cause this time, not guessed.**
+`diagnose-bright-data-account-status.yaml` showed `401 Invalid credentials` on `/customer/balance`
+itself (not just Web Unlocker) — a genuine account-level auth failure, independent of this
+project's code. Real evidence ruled out expiry/revocation: both of the account's two API keys
+showed as valid (non-expired, non-revoked) in the dashboard. Real, live-witnessed cause: after the
+previous fix was confirmed working (a `safe-single-test-run.yaml` run at 4/7 regions succeeding),
+the owner went back into the Bright Data dashboard and **generated another fresh value for the
+same key** (a Refresh-style action) while trying to get a copy of it to test via `curl` — Bright
+Data shows a key's raw value exactly once, at creation/refresh time, so this silently invalidated
+the value already sitting in the k8s secret. The new value was verified locally but — same failure
+mode as earlier tonight — never written back to `todira-bot-secret`. Fixed for real this time by
+generating a brand-new key from scratch (Add API key, Admin permission, **Unlimited** expiration
+this time specifically to stop this cycle) and writing it via `set-bright-data-api-key-secret.yaml`
+— confirmed via `diagnose-bright-data-account-status.yaml`: `/customer/balance` returns real `200`
+with the account's actual balance.
+
+**The real prize: root-caused why Yad2 notifications keep arriving with real photos/price/rooms
+but never a free-text description.** Two separate, now-fully-understood causes, confirmed live,
+not guessed:
+
+1. **The map-API path (Yad2's primary fetch method since 2026-09-15) structurally never carries a
+   description at all.** `yad2_client._marker_to_raw_item` builds its raw item from map markers —
+   price/rooms/floor/square_meters/street/neighborhood/city/images — with no `description` field in
+   the marker payload to even extract. Not a bug: the map API just doesn't carry that field.
+2. **The ONLY thing that could add a real description — Bright Data's Scraper Studio DCA
+   collector — is now CONFIRMED a permanent dead end**, re-testing `diagnose-bright-data-stuck-
+   same-result.yaml` with the brand-new working key against two distinct real, live listing URLs
+   (`pm5tcpek`, `qqt4lfub`, both confirmed real via the owner's own recent Telegram notifications):
+   one came back completely empty (`{"input": {}}`), the other came back the exact same stale,
+   cached Dizengoff/`adNumber=83125484` record documented since 2026-09-11 — proving this was never
+   actually fixed, and matches EXACTLY the 2026-09-15 finding that this Bright Data account's
+   **Free Trial tier can only ever trigger a fixed demo collector via the API**, never a real
+   custom-built one, regardless of any key rotation or collector-code fix. `/dca/collectors` and
+   `/dca/collectors/{id}` also now 404 outright (a separate, likely-deprecated-endpoint finding,
+   not the root cause — the real code never called those paths anyway).
+
+**The fix: stopped using the DCA collector entirely for enrichment, replaced it with a direct
+Web-Unlocker fetch of the listing's own page.** Before building anything, live-tested (per the
+owner's explicit "don't guess" standard) whether Web Unlocker's 2026-09-13 KYC wall — which
+specifically blocked this exact "fetch an individual listing page" use case before — is also gone
+now, the same way it was already confirmed gone for search pages and the map API. It is: a real
+POST to Web Unlocker for `https://www.yad2.co.il/realestate/item/south/pm5tcpek` came back
+`http_status=200`, a real 232KB body, a real `__NEXT_DATA__` blob, and a real, listing-specific
+description (matching that exact apartment, not the Dizengoff placeholder) —
+`.github/workflows/diagnose-yad2-listing-detail-via-web-unlocker.yaml`, kept in the repo as a
+reusable diagnostic.
+
+**Code shipped**:
+- `scraper/yad2_client.py`: extracted the existing `fetch_listing_detail`'s (ZenRows-based)
+  `__NEXT_DATA__`-parsing tail into a shared `_parse_next_data_ad_record(html, url)` helper, then
+  added `fetch_listing_detail_via_web_unlocker(url)` — reuses `_fetch_direct` (already
+  Web-Unlocker-backed, see its own docstring) plus that same shared parser. Same return
+  shape/contract as the ZenRows version and as the old DCA-based
+  `bright_data_client.fetch_listing_detail_via_bright_data` (kept in `bright_data_client.py`,
+  unused now, same "deliberately-unused-utility" pattern as `fetch_listing_detail` itself — not
+  deleted in case a paid Bright Data plan ever makes the DCA route viable again).
+- `scraper/main.py`: `_enrich_new_listings_via_bright_data` now calls
+  `fetch_listing_detail_via_web_unlocker` instead of the DCA-based function; its no-op guard now
+  checks `BRIGHT_DATA_API_KEY` directly (`os.environ.get(bright_data_client.API_KEY_ENV_VAR)`)
+  instead of `bright_data_client.is_configured()`, since Web Unlocker never needed
+  `BRIGHT_DATA_COLLECTOR_ID` in the first place. `_BRIGHT_DATA_ENRICH_CONCURRENCY` raised back from
+  1 to 5 — the 2026-09-15 drop to 1 was specifically to avoid the DCA collector's cross-job-id race
+  under concurrent triggers, which is structurally impossible with Web Unlocker's one-shot
+  stateless POST per listing (no shared job id to race on at all).
+- `charts/todira/values.yaml`: `brightDataEnrichmentSuspended` flipped from `true` back to `false`
+  — enrichment is live again, now on a route that isn't a dead end.
+- Tests: `tests/test_scraper_bright_data_enrichment.py` updated to patch
+  `scraper_main.fetch_listing_detail_via_web_unlocker` and the `BRIGHT_DATA_API_KEY` env var
+  instead of `bright_data_client.is_configured`/`fetch_listing_detail_via_bright_data`. 4 new tests
+  in `tests/test_yad2_client.py` for `fetch_listing_detail_via_web_unlocker` (reusing the existing
+  `_NEXT_DATA_HTML` fixture — same parser, same shape). 893 tests pass; ruff clean.
+
+**Cost**: adds one Web Unlocker request per genuinely-new Yad2 listing (same $1.50/1,000 pricing
+as the map-API fetch, same account/key) — small relative to expected new-listing volume, and a
+real cost where the DCA route's "cost" was pure waste (paying for a Scraper Studio plan that could
+never actually run a real job on this account tier).
+
+**Still open**:
+1. Watch the next few real scheduled runs to confirm Web Unlocker enrichment holds up at real
+   volume and actually produces populated `description` fields on new Yad2 listings end-to-end
+   (confirmed working for one direct diagnostic fetch; not yet confirmed inside a real scrape run).
+2. Homeless is separately broken right now (`ZenRows RESP001` on its own search-page fetch,
+   nothing to do with Bright Data) — tracked separately, not yet fixed.
+3. Everything from the previous entry's "Still open" list (retry-rate measurement, the
+   `safe-single-test-run.yaml` step-10 cosmetic false-alarm) is still open too.
