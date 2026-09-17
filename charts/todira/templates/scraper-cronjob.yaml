@@ -152,9 +152,9 @@ spec:
                 - name: NOTIFICATIONS_SUSPENDED
                   value: {{ .Values.scraper.notificationsSuspended | default false | quote }}
                 # 2026-09-15: real, confirmed kill-switch — see values.yaml's own comment on
-                # scraper.brightDataEnrichmentSuspended for the live diagnostic that proved the
-                # Bright Data DCA collector currently returns the same stale cached record for
-                # every distinct job id/url, 100% of the time.
+                # scraper.brightDataEnrichmentSuspended for the full history (the Bright Data DCA
+                # collector this originally guarded against is no longer even called; 2026-09-17
+                # lifted now that enrichment routes through Web Unlocker instead).
                 - name: BRIGHT_DATA_ENRICHMENT_SUSPENDED
                   value: {{ .Values.scraper.brightDataEnrichmentSuspended | default false | quote }}
               resources:

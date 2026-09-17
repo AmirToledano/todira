@@ -237,17 +237,19 @@ scraper:
   # control — bright_data_client.py's trigger/poll/job-id-extraction/retry/cross-check logic is all
   # confirmed working correctly by this same test.
   #
-  # Suspended here rather than left running: at a CONFIRMED 100% failure rate, every run only burns
-  # real wall-clock minutes and real Bright Data API quota for zero benefit, and risks the hourly
-  # CronJob's `concurrencyPolicy: Forbid` silently skipping the next scheduled run while a big
-  # backlog is still being ground through. scraper/main.py's _enrich_new_listings_via_bright_data
-  # still runs but returns 0 immediately (same no-op contract as when BRIGHT_DATA_API_KEY/
-  # BRIGHT_DATA_COLLECTOR_ID are simply unset) — every other scraper (Yad2/Komo/Homeless/Facebook)
-  # and Yad2's own already-normalized search-card fields are completely unaffected; only the EXTRA
-  # detail enrichment on top is paused. Needs the owner's own look at the Bright Data dashboard
-  # (collector status, trial-tier real-execution quota/limits) before flipping back to false —
-  # nothing in this codebase can diagnose or fix Bright Data's own platform-side state further.
-  brightDataEnrichmentSuspended: true
+  # 2026-09-17 LIFTED: root cause fully understood (see above) and confirmed platform-level, not
+  # fixable in this codebase — this account's Free Trial tier can only ever trigger a fixed demo
+  # collector via the API, regardless of key or collector-code fixes (re-confirmed live tonight:
+  # two distinct real Yad2 URLs both came back wrong — one empty, one the same stale Dizengoff
+  # record). scraper/main.py's _enrich_new_listings_via_bright_data no longer calls that DCA
+  # collector at all — it now routes through Bright Data Web Unlocker instead (a real GET of the
+  # listing's own page, parsing __NEXT_DATA__ directly, same technique already proven live for the
+  # map-API fetch), which is NOT affected by the Free Trial collector-trigger limitation at all
+  # (Web Unlocker is a different Bright Data product, billed per-request, not tied to a collector).
+  # Confirmed live tonight: a real item URL fetched via Web Unlocker returned a genuine, correct,
+  # listing-specific description — no KYC wall (which blocked this exact route on 2026-09-13; now
+  # gone, same as the map-API/search-page KYC wall).
+  brightDataEnrichmentSuspended: false
   # 2026-09-13 EMERGENCY RE-SUSPEND, LIFTED 2026-09-15: the 2026-09-13 incident this guarded
   # against was the owner receiving real Telegram notifications at 6am after asking for nothing to
   # run, and reporting (at the time) that other real users got them too. Revisited explicitly

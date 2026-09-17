@@ -667,7 +667,16 @@ def fetch_listing_detail(url: str) -> dict[str, Any] | None:
         )
         return None
 
-    match = _NEXT_DATA_RE.search(response.text)
+    return _parse_next_data_ad_record(response.text, url)
+
+
+def _parse_next_data_ad_record(html: str, url: str) -> dict[str, Any] | None:
+    """Shared by fetch_listing_detail (ZenRows) and fetch_listing_detail_via_web_unlocker (Bright
+    Data Web Unlocker) — both fetch the SAME Yad2 listing detail page, just via different transport,
+    so the same __NEXT_DATA__ extraction applies to either one's HTML. Returns None (never raises)
+    on any missing/malformed __NEXT_DATA__, same degrade-gracefully contract as every fetch helper
+    in this module."""
+    match = _NEXT_DATA_RE.search(html)
     if match is None:
         logger.warning("No __NEXT_DATA__ found on Yad2 listing detail page: %s", url)
         return None
@@ -687,6 +696,28 @@ def fetch_listing_detail(url: str) -> dict[str, Any] | None:
     except (KeyError, TypeError, IndexError, json.JSONDecodeError):
         logger.exception("Failed to parse __NEXT_DATA__ on Yad2 listing detail page: %s", url)
         return None
+
+
+# 2026-09-17: the real, working replacement for Bright Data's Scraper Studio DCA collector (see
+# bright_data_client.fetch_listing_detail_via_bright_data's own docstring, and PROJECT_STATE.md's
+# 2026-09-15 entry) — that collector is a dead end on this account's Free Trial tier regardless of
+# key/code fixes (the API can only ever trigger a fixed demo collector, confirmed live 2026-09-17 by
+# two distinct real URLs both coming back wrong: one empty, one the same stale cached Dizengoff
+# listing). Web Unlocker's KYC wall (which blocked this exact use case on 2026-09-13) was re-tested
+# live 2026-09-17 and is gone for individual listing pages too, not just search/map pages — a real
+# GET of a real item URL came back with a genuine __NEXT_DATA__ and a real, listing-specific
+# description. Reuses _fetch_direct (already Web-Unlocker-backed, see its own docstring) rather than
+# a new bright_data_client function, since this only needs "fetch this URL's raw body" — exactly
+# _fetch_direct's contract already.
+def fetch_listing_detail_via_web_unlocker(url: str) -> dict[str, Any] | None:
+    """Same return shape/contract as fetch_listing_detail (ready for normalize._compute_detail_updates
+    /enrich_from_detail) and the same "never raises, None on any failure" guarantee — but routed
+    through Bright Data's Web Unlocker (flat $1.50/1,000 requests, same account/key already paying
+    for the map-API fetches) instead of ZenRows' expensive (~25 credits/request) Fetch API."""
+    html = _fetch_direct(url)
+    if html is None:
+        return None
+    return _parse_next_data_ad_record(html, url)
 
 
 # 2026-09-13: see module docstring for the full discovery story (owner's own DevTools) and cost

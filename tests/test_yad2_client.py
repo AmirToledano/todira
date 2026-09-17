@@ -23,6 +23,7 @@ from yad2_client import (
     Yad2MapFetchError,
     fetch_all_listings,
     fetch_listing_detail,
+    fetch_listing_detail_via_web_unlocker,
     fetch_map_markers,
     fetch_region_pages,
     fetch_region_via_map_api,
@@ -464,6 +465,58 @@ def test_fetch_listing_detail_no_query_carries_a_token_returns_none(monkeypatch)
 
     monkeypatch.setattr(httpx, "get", fake_get)
     assert fetch_listing_detail("https://www.yad2.co.il/realestate/item/abc123") is None
+
+
+# --- fetch_listing_detail_via_web_unlocker (2026-09-17) — the real, working replacement for the
+# Bright Data DCA collector, routed through Web Unlocker (see module docstring's 2026-09-17 entry
+# and _fetch_direct's own docstring). Same __NEXT_DATA__ shape/parsing as fetch_listing_detail
+# above (shares _parse_next_data_ad_record), just a different transport — _NEXT_DATA_HTML is reused
+# for that reason.
+
+
+def test_fetch_listing_detail_via_web_unlocker_parses_the_real_confirmed_shape(monkeypatch):
+    captured = {}
+
+    def fake_fetch_direct(url):
+        captured["url"] = url
+        return _NEXT_DATA_HTML
+
+    monkeypatch.setattr(yad2_client, "_fetch_direct", fake_fetch_direct)
+
+    data = fetch_listing_detail_via_web_unlocker("https://www.yad2.co.il/realestate/item/i8mec1k9")
+
+    assert data is not None
+    assert data["token"] == "i8mec1k9"
+    assert data["price"] == 16000
+    assert data["metaData"]["description"].startswith("פנטהאוז")
+    assert captured["url"] == "https://www.yad2.co.il/realestate/item/i8mec1k9"
+
+
+def test_fetch_listing_detail_via_web_unlocker_fetch_failure_returns_none(monkeypatch):
+    monkeypatch.setattr(yad2_client, "_fetch_direct", lambda url: None)
+    assert fetch_listing_detail_via_web_unlocker(
+        "https://www.yad2.co.il/realestate/item/abc123"
+    ) is None
+
+
+def test_fetch_listing_detail_via_web_unlocker_missing_next_data_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        yad2_client, "_fetch_direct", lambda url: "<html><body>no next data here</body></html>"
+    )
+    assert fetch_listing_detail_via_web_unlocker(
+        "https://www.yad2.co.il/realestate/item/abc123"
+    ) is None
+
+
+def test_fetch_listing_detail_via_web_unlocker_malformed_json_returns_none_not_raise(monkeypatch):
+    bad_html = (
+        '<html><body><script id="__NEXT_DATA__" type="application/json">'
+        "{not valid json</script></body></html>"
+    )
+    monkeypatch.setattr(yad2_client, "_fetch_direct", lambda url: bad_html)
+    assert fetch_listing_detail_via_web_unlocker(
+        "https://www.yad2.co.il/realestate/item/abc123"
+    ) is None
 
 
 # --- _extract_feed_records / _parse_cards feed-record merge (2026-09-02) ---

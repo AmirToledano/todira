@@ -32,6 +32,7 @@ _spec.loader.exec_module(scraper_main)
 
 _enrich = scraper_main._enrich_new_listings_via_bright_data
 _bright_data_client = scraper_main.bright_data_client
+_API_KEY_ENV_VAR = _bright_data_client.API_KEY_ENV_VAR
 
 
 class _Result:
@@ -70,7 +71,8 @@ _REAL_DETAIL = {
 
 def test_not_configured_is_a_pure_noop():
     session = _QueueSession([])  # would raise IndexError if execute() were ever called
-    with patch.object(_bright_data_client, "is_configured", lambda: False):
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop(_API_KEY_ENV_VAR, None)
         result = asyncio.run(_enrich(session, [1, 2, 3]))
     assert result == 0
     assert session.executed_stmts == []
@@ -78,9 +80,8 @@ def test_not_configured_is_a_pure_noop():
 
 def test_suspended_via_env_var_is_a_pure_noop():
     session = _QueueSession([])  # would raise IndexError if execute() were ever called
-    with (
-        patch.object(_bright_data_client, "is_configured", lambda: True),
-        patch.dict(os.environ, {"BRIGHT_DATA_ENRICHMENT_SUSPENDED": "true"}),
+    with patch.dict(
+        os.environ, {_API_KEY_ENV_VAR: "key", "BRIGHT_DATA_ENRICHMENT_SUSPENDED": "true"}
     ):
         result = asyncio.run(_enrich(session, [1, 2, 3]))
     assert result == 0
@@ -95,11 +96,8 @@ def test_suspended_env_var_unset_does_not_suspend():
         ]
     )
     with (
-        patch.object(_bright_data_client, "is_configured", lambda: True),
-        patch.object(
-            _bright_data_client, "fetch_listing_detail_via_bright_data", lambda url: _REAL_DETAIL
-        ),
-        patch.dict(os.environ, {}, clear=False),
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", lambda url: _REAL_DETAIL),
+        patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}),
     ):
         os.environ.pop("BRIGHT_DATA_ENRICHMENT_SUSPENDED", None)
         result = asyncio.run(_enrich(session, [101]))
@@ -108,7 +106,7 @@ def test_suspended_env_var_unset_does_not_suspend():
 
 def test_empty_new_ids_is_a_pure_noop():
     session = _QueueSession([])
-    with patch.object(_bright_data_client, "is_configured", lambda: True):
+    with patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}):
         result = asyncio.run(_enrich(session, []))
     assert result == 0
     assert session.executed_stmts == []
@@ -123,10 +121,8 @@ def test_enriches_a_new_listing_and_applies_updates():
     )
 
     with (
-        patch.object(_bright_data_client, "is_configured", lambda: True),
-        patch.object(
-            _bright_data_client, "fetch_listing_detail_via_bright_data", lambda url: _REAL_DETAIL
-        ),
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", lambda url: _REAL_DETAIL),
+        patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}),
     ):
         result = asyncio.run(_enrich(session, [101]))
 
@@ -148,8 +144,8 @@ def test_bright_data_returning_none_is_not_counted_and_issues_no_update():
     )
 
     with (
-        patch.object(_bright_data_client, "is_configured", lambda: True),
-        patch.object(_bright_data_client, "fetch_listing_detail_via_bright_data", lambda url: None),
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", lambda url: None),
+        patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}),
     ):
         result = asyncio.run(_enrich(session, [101]))
 
@@ -176,8 +172,8 @@ def test_one_listing_raising_does_not_abort_the_batch():
         return _REAL_DETAIL
 
     with (
-        patch.object(_bright_data_client, "is_configured", lambda: True),
-        patch.object(_bright_data_client, "fetch_listing_detail_via_bright_data", _flaky_fetch),
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", _flaky_fetch),
+        patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}),
     ):
         result = asyncio.run(_enrich(session, [101, 102]))
 
