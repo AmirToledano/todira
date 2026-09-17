@@ -1,0 +1,90 @@
+name: Diagnose — does a Yad2 individual listing page work via Bright Data Web Unlocker? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-17.
+#
+# Web Unlocker's KYC wall was confirmed gone for Yad2 SEARCH pages and the MAP API (see
+# PROJECT_STATE.md's 2026-09-16/17 entry) — but an individual /realestate/item/... listing detail
+# page was never re-tested after that. On 2026-09-13, Web Unlocker hit a real KYC wall for nearly
+# every request (one lucky exception), and on 2026-09-15 the DCA Scraper Studio collector route was
+# confirmed to be a dead end for a different reason (Free Trial account tier can only trigger a
+# fixed demo collector via the API, never a real custom one — see that same date's entry). This
+# tests, live, whether Web Unlocker specifically can fetch a real listing detail page now — the
+# real blocker for building a Bright-Data-Scraper-Studio-free enrichment path (self-parsing
+# __NEXT_DATA__ out of the raw HTML, same field the broken DCA collector was trying to extract).
+# Pure Bright Data API traffic — no k8s scraper Job touched.
+on:
+  workflow_dispatch:
+    inputs:
+      test_url:
+        description: "A real, currently-live Yad2 item URL to test"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read + mask the real Bright Data API key from the k8s secret
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+          if [ -z "$API_KEY" ]; then
+            echo "bright-data-api-key is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$API_KEY" > /tmp/bd_api_key.txt
+
+      - name: POST to Web Unlocker for the real item URL, inspect the response
+        env:
+          TEST_URL: ${{ inputs.test_url }}
+        run: |
+          export BRIGHT_DATA_API_KEY=$(cat /tmp/bd_api_key.txt)
+          python3 - <<'PYEOF'
+          import json, os, re, urllib.request
+
+          api_key = os.environ["BRIGHT_DATA_API_KEY"]
+          url = os.environ["TEST_URL"]
+
+          req = urllib.request.Request(
+              "https://api.brightdata.com/request",
+              data=json.dumps({"zone": "web_unlocker1", "url": url, "format": "raw"}).encode(),
+              headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=90) as resp:
+                  status = resp.status
+                  body = resp.read().decode("utf-8", errors="replace")
+          except urllib.error.HTTPError as exc:
+              status = exc.code
+              body = exc.read().decode("utf-8", errors="replace")
+
+          print(f"=== POST /request (zone=web_unlocker1) for {url} ===")
+          print(f"http_status={status}")
+          print(f"body length = {len(body)} chars")
+
+          title_match = re.search(r"<title>(.*?)</title>", body, re.IGNORECASE | re.DOTALL)
+          print(f"page <title> = {title_match.group(1)[:200] if title_match else '(none found)'}")
+
+          for signal in ("Radware", "validate.perfdrive", "kyc", "KYC", "company email", "verify your account"):
+              if signal in body:
+                  print(f"BLOCK/KYC SIGNAL FOUND: {signal!r}")
+
+          has_next_data = "__NEXT_DATA__" in body
+          print(f"__NEXT_DATA__ present = {has_next_data}")
+
+          if has_next_data:
+              m = re.search(r'"description"\s*:\s*"((?:[^"\\]|\\.)*)"', body)
+              print(f"description field found in HTML = {bool(m)}")
+              if m:
+                  decoded = m.group(1).encode().decode("unicode_escape")
+                  print(f"description preview: {decoded[:300]!r}")
+          PYEOF
