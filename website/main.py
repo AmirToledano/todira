@@ -1302,12 +1302,20 @@ def upgrade_submit(
 
 
 @app.get("/upgrade/success")
-def upgrade_success(request: Request, payment_id: int, uid: int | None = None):
-    """Landing page for BOTH payment paths: where Grow redirects the browser after checkout
+def upgrade_success(request: Request, payment_id: int | None = None, uid: int | None = None):
+    """Landing page for every payment path: where Grow redirects the browser after checkout
     (access is granted server-to-server by /webhooks/grow below, which may land slightly before or
     after this redirect — this just reports the payment's CURRENT status, never grants anything
-    itself), and where /upgrade/pay/confirm below sends the browser after the informal Bit/PayBox
-    flow (there access WAS already granted by that POST, so this always shows "paid" immediately)."""
+    itself), where /upgrade/pay/confirm below sends the browser after the informal Bit/PayBox flow
+    (there access WAS already granted by that POST, so this always shows "paid" immediately), and
+    Takbull's own static "דף תודה" (thank-you page) redirect — 2026-09-18 real request, configured
+    directly in Takbull's dashboard (Payment Page settings), NOT per-transaction like Grow's
+    success_url, so it never carries payment_id/uid at all. payment_id is optional for exactly that
+    case: landing here with no payment_id at all means "Takbull's own thank-you redirect, which
+    only ever fires after a real successful charge on their side" — shown as paid immediately
+    rather than looked up, since there's nothing to look up."""
+    if payment_id is None:
+        return _render(request, "upgrade_success.html", {"uid": uid, "paid": True})
     with get_session() as session:
         payment = session.get(Payment, payment_id)
     paid = payment is not None and payment.status == "paid"
