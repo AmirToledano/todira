@@ -160,6 +160,18 @@ _NOTIFICATIONS_SUSPENDED_ENV_VAR = "NOTIFICATIONS_SUSPENDED"
 _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR = "HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN"
 _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN = 50
 
+# 2026-09-18: real incident, not a hypothetical — the very first real production run after
+# switching Yad2 enrichment to Web Unlocker (see fetch_listing_detail_via_web_unlocker's own
+# docstring) ran for 20+ minutes and never reached the notification-sending step at all, live-
+# confirmed via check-scraper-job-status.yaml's real pod logs: Yad2 had a real backlog of
+# genuinely-new listings (map-API fetching was down for hours beforehand), and Web Unlocker's own
+# per-request timeout (_WEB_UNLOCKER_TIMEOUT_SECONDS=90s in bright_data_client.py) meant even a
+# handful of slow/timed-out individual item-page fetches could stall the whole run for many
+# minutes — with no cap at all, unlike Komo/Homeless/Facebook's own per-run caps above, which all
+# exist for exactly this "unbounded backlog" reason. Same safety-net pattern applied here.
+_BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR = "BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN"
+_DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 15
+
 # 2026-09-15: Facebook's own per-run cap is NOT a credit-cost safety net like Komo/Homeless's own
 # caps above (Facebook charges nothing per request) — it's an ACCOUNT-SAFETY net. Every request
 # here runs through the dedicated scraping account's own real, authenticated session from a
@@ -208,6 +220,21 @@ def _homeless_max_new_description_fetches_per_run() -> int:
             _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN,
         )
         return _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
+
+
+def _bright_data_enrich_max_per_run() -> int:
+    raw = os.environ.get(_BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, "").strip()
+    if not raw:
+        return _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r (not an int) — using default %d",
+            _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, raw,
+            _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN,
+        )
+        return _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
 
 
 def _facebook_max_new_detail_fetches_per_run() -> int:
@@ -405,6 +432,18 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
             table.c.id.in_(new_ids), table.c.source == Source.YAD2
         )
     ).all()
+
+    max_per_run = _bright_data_enrich_max_per_run()
+    if len(id_url_pairs) > max_per_run:
+        logger.warning(
+            "Yad2 Bright Data enrichment hit its per-run safety cap (%s=%d) — remaining "
+            "%d new listings this run keep only their search-card fields (no description) "
+            "and will be picked up in a later run, instead of risking one run stalling for "
+            "a long time on Web Unlocker's own per-request timeout.",
+            _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, max_per_run, len(id_url_pairs) - max_per_run,
+        )
+        id_url_pairs = id_url_pairs[:max_per_run]
+
     semaphore = asyncio.Semaphore(_BRIGHT_DATA_ENRICH_CONCURRENCY)
 
     async def _fetch_one(listing_id: int, url: str) -> tuple[int, dict] | None:

@@ -180,3 +180,42 @@ def test_one_listing_raising_does_not_abort_the_batch():
     # the raising listing is skipped, not fatal; the other one still gets enriched and counted
     assert result == 1
     assert session.committed is True
+
+
+def test_enrichment_respects_the_per_run_cap():
+    """2026-09-18: real incident, not hypothetical — see _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR's
+    own comment. 3 new listings, cap=2: only the first 2 (per the SELECT's own ordering) get a
+    fetch attempt at all — the 3rd never even gets fetch_listing_detail_via_web_unlocker called on
+    it, exactly like Komo/Homeless's own per-run caps."""
+    session = _QueueSession(
+        [
+            _Result(
+                [
+                    (101, "https://yad2.co.il/item/101"),
+                    (102, "https://yad2.co.il/item/102"),
+                    (103, "https://yad2.co.il/item/103"),
+                ]
+            ),  # SELECT id, url — three new listings
+            None,  # UPDATE for whichever ones succeed
+            None,
+        ]
+    )
+    fetched_urls = []
+
+    def _tracking_fetch(url):
+        fetched_urls.append(url)
+        return _REAL_DETAIL
+
+    with (
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", _tracking_fetch),
+        patch.dict(
+            os.environ,
+            {_API_KEY_ENV_VAR: "key", _bright_data_client.API_KEY_ENV_VAR: "key"},
+        ),
+        patch.object(scraper_main, "_bright_data_enrich_max_per_run", lambda: 2),
+    ):
+        result = asyncio.run(_enrich(session, [101, 102, 103]))
+
+    assert result == 2
+    assert len(fetched_urls) == 2
+    assert "103" not in "".join(fetched_urls)

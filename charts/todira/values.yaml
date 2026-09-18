@@ -212,6 +212,13 @@ scraper:
   # scraper/main.py's _scrape_homeless), lower expected volume than Komo's nationwide coverage, but
   # still a real per-listing cost that shouldn't go uncapped on a first-ever run.
   homelessMaxNewDescriptionFetchesPerRun: 50
+  # 2026-09-18: real incident, not hypothetical — the first real production run after switching
+  # Yad2 enrichment to Web Unlocker ran 20+ minutes and never reached the notification-sending
+  # step, live-confirmed via check-scraper-job-status.yaml's real pod logs, because a real backlog
+  # of genuinely-new Yad2 listings combined with Web Unlocker's own 90s per-request timeout had no
+  # cap at all — unlike every other per-run cap on this page. See
+  # scraper/main.py's _bright_data_enrich_max_per_run's own comment.
+  brightDataEnrichMaxNewListingsPerRun: 15
   # 2026-09-15 EMERGENCY SUSPEND, real root cause confirmed live, not guessed: production's Bright
   # Data DCA enrichment (scraper/main.py's _enrich_new_listings_via_bright_data, used only for
   # extra Yad2 listing detail — description/property type/amenities/etc., never required for a
