@@ -37,10 +37,19 @@ jobs:
     steps:
       - name: POST a Takbull-shaped payload to our real webhook and show the response
         env:
-          SECRET: ${{ secrets.TAKBULL_WEBHOOK_SECRET }}
+          SECRET_RAW: ${{ secrets.TAKBULL_WEBHOOK_SECRET }}
           PAYMENT_ID: ${{ inputs.payment_id }}
           AMOUNT_ILS: ${{ inputs.amount_ils }}
         run: |
+          # 2026-09-18: the raw secret env var here printed as "***\n\n" in this workflow's own
+          # logs on the first run, and curl failed with "URL rejected: Malformed input" — strongly
+          # suggests the GitHub secret itself was saved with a trailing newline (a real, previously
+          # documented failure mode on this project — see ci-cd.yaml's own comment on
+          # POSTGRES_PASSWORD for the exact same class of bug). main.py's own webhook handler
+          # already .strip()s the value it reads from the k8s env var before comparing, so this
+          # wouldn't break the REAL webhook's own secret check — but it does break this diagnostic
+          # script's naive string interpolation, so strip it here too before building the URL.
+          SECRET="$(printf '%s' "$SECRET_RAW" | tr -d '\n\r')"
           echo "--- POSTing to https://todira.app/webhooks/takbull/<secret> ---"
           curl -sS -i -X POST "https://todira.app/webhooks/takbull/${SECRET}" \
             -H "Content-Type: application/json" \
