@@ -149,6 +149,10 @@ spec:
                 - name: HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
                   value: {{ .Values.scraper.homelessMaxNewDescriptionFetchesPerRun | quote }}
                 {{- end }}
+                {{- if .Values.scraper.brightDataEnrichMaxNewListingsPerRun }}
+                - name: BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN
+                  value: {{ .Values.scraper.brightDataEnrichMaxNewListingsPerRun | quote }}
+                {{- end }}
                 - name: NOTIFICATIONS_SUSPENDED
                   value: {{ .Values.scraper.notificationsSuspended | default false | quote }}
                 # 2026-09-15: real, confirmed kill-switch — see values.yaml's own comment on

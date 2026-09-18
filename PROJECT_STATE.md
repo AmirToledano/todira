@@ -6824,3 +6824,51 @@ project's control where that consent can be captured before the customer leaves 
 3. Real end-to-end Takbull/UPay payment test is still the thing this has all been blocked on
    (see the 2026-09-06 entries) — this update doesn't touch or unblock that directly, just clears
    the compliance-checklist prerequisite.
+
+## Update 2026-09-18 morning: the API key issue was finally root-caused for real (a stray
+## dashboard Refresh mid-session, not Bright Data's side) — and the FIRST real production run
+## after the fix found a genuine, live-confirmed new bug: unbounded Yad2 enrichment can stall a
+## whole run for 20+ minutes with zero notifications sent, now capped like every other source
+
+**The key saga's real ending**: after multiple keys died within an hour of creation overnight
+(see the last several entries), Bright Data support (a human, not just Sophie) confirmed via the
+account's real audit log: `amir81358@gmail.com` already had 2 keys assigned — a user can only
+hold one key generated at a time, which is why the "Add API key" dropdown only ever offered the
+secondary `kyc@todira.app` user. The actual fix: **Refresh** the existing Active key already
+assigned to `amir81358@gmail.com` (expires 14-12-2026) — Bright Data's own R&D team had shipped a
+migration invalidating old hashed-format tokens in favor of UUID tokens, and a Refresh reissues
+the same key as a UUID token. Done live; `diagnose-bright-data-account-status.yaml` confirmed
+`/customer/balance` → real `200` immediately after, and a full `safe-single-test-run.yaml` cycle
+completed with **zero `401`/`Invalid credentials` anywhere in the logs** — the auth problem is
+genuinely over.
+
+**The very next real scheduled production run surfaced a real, different bug**: live-confirmed
+via `check-scraper-job-status.yaml`'s real pod logs (`todira-scraper-29828640-6k5hg`) — Yad2's map
+API succeeded across regions (the auth fix holds), but the run was still going 20+ minutes in,
+stuck in the NEW Web Unlocker enrichment step for `partnership/east`'s genuinely-new listings,
+including one real `httpx.ReadTimeout` after nearly 4 minutes on a single item fetch. The run
+never reached the notification-sending step at all — explains the owner's real report of zero
+Yad2 notifications for over an hour. Root cause: unlike Komo/Homeless/Facebook, the new
+`_enrich_new_listings_via_bright_data` had NO per-run cap on how many genuinely-new listings get
+an enrichment fetch — a real backlog (Yad2 had been down for hours) combined with Web Unlocker's
+own 90s per-request timeout meant one run could stall indefinitely.
+
+**Fix shipped**, same safety-net pattern as every other per-run cap in this file:
+`BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN` (default 15, `scraper.brightDataEnrichMaxNewListingsPerRun`
+in values.yaml) caps how many new Yad2 listings get an enrichment attempt per run — the rest keep
+their search-card-only fields (no description) and get picked up on a later run, same degrade-
+gracefully contract every other cap already uses. 899 tests pass (893 + 6: 3 env-var-parsing tests
+in `test_scraper_credit_safety.py`, 1 cap-enforcement test in `test_scraper_bright_data_enrichment.py`,
+plus the 2 UPay-related tests from the previous entry); ruff clean. Did NOT touch the live,
+currently-running production pod — let it finish naturally rather than killing real in-progress
+work; this only prevents the NEXT run from stalling the same way.
+
+**Still open**:
+1. Watch the next few real scheduled runs to confirm the cap actually keeps runs finishing in
+   reasonable time and real notifications resume flowing.
+2. The 90s Web Unlocker timeout itself is unchanged — worth watching whether it's still too
+   generous (a real per-request stall cost ~4 minutes tonight) even with the cap bounding total
+   worst case.
+3. Everything from the previous several entries' "Still open" lists (Homeless ZenRows RESP001,
+   Telegram caption RTL alignment inconsistency, DCA collector permanently dead-ended, etc.) is
+   still open too.

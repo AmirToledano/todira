@@ -156,6 +156,27 @@ def test_homeless_cap_falls_back_to_default_on_invalid_value(monkeypatch):
     )
 
 
+def test_bright_data_enrich_cap_defaults_when_env_var_unset(monkeypatch):
+    monkeypatch.delenv(scraper_main._BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, raising=False)
+    assert (
+        scraper_main._bright_data_enrich_max_per_run()
+        == scraper_main._DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
+    )
+
+
+def test_bright_data_enrich_cap_respects_valid_override(monkeypatch):
+    monkeypatch.setenv(scraper_main._BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, "3")
+    assert scraper_main._bright_data_enrich_max_per_run() == 3
+
+
+def test_bright_data_enrich_cap_falls_back_to_default_on_invalid_value(monkeypatch):
+    monkeypatch.setenv(scraper_main._BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, "not-a-number")
+    assert (
+        scraper_main._bright_data_enrich_max_per_run()
+        == scraper_main._DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
+    )
+
+
 # --- _scrape_homeless: description fetch only for genuinely-new listings, capped ------------------
 
 
