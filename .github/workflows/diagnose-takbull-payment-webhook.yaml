@@ -1,0 +1,76 @@
+name: Diagnose — real Takbull ₪1 test payment never granted access (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-18.
+#
+# Real owner report: a real ₪1 Takbull payment succeeded (Takbull's own receipt emailed, showing
+# "מזהה עסקה פנימי: 000000001" — Takbull's OWN internal order counter, not anything we passed) but
+# the website's own /account page still shows the trial as ended, meaning our webhook never
+# credited it. takbull_client.py's own module docstring already flagged this as unconfirmed:
+# order_reference is passed as a URL query param on the shared hosted payment page
+# (build_checkout_url), but "has no visible form field to check against like email did" — the
+# suspicion is Takbull's hosted page silently drops it rather than round-tripping it back into the
+# webhook payload. website/main.py's /webhooks/takbull looks up body.get("order_reference") and
+# leaves the Payment row "pending" (never guesses) whenever it's missing or doesn't match a real
+# pending row — this query checks the payments table directly to see exactly what happened to the
+# real row this test created, without needing to reproduce the payment again.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Query recent payments (Takbull especially) + owner's own paid_until
+        run: |
+          kubectl delete pod diag-takbull-payment -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-takbull-payment
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-takbull-payment
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- last 15 payment rows, any gateway ---"
+                    psql "$CONN" -c "SELECT id, user_id, plan, amount_ils, status, gateway, gateway_transaction_id, created_at, paid_at FROM payments ORDER BY id DESC LIMIT 15;"
+                    echo "--- last 15 Takbull payment rows specifically ---"
+                    psql "$CONN" -c "SELECT id, user_id, plan, amount_ils, status, gateway_transaction_id, created_at, paid_at FROM payments WHERE gateway = 'takbull' ORDER BY id DESC LIMIT 15;"
+                    echo "--- owner's own user row (paid_until / trial_ends_at / free_access_granted) ---"
+                    psql "$CONN" -c "SELECT id, telegram_user_id, paid_until, trial_ends_at, free_access_granted, created_at FROM users WHERE telegram_user_id = '${OWNER_TELEGRAM_USER_ID}';"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-takbull-payment -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-takbull-payment || true
+          kubectl delete pod diag-takbull-payment -n todira --ignore-not-found
