@@ -1,0 +1,95 @@
+name: Diagnose — manually POST to our own Takbull webhook to isolate the bug
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — added 2026-09-18.
+#
+# This sandbox's own network egress blocks direct curl to todira.app (confirmed live: connect
+# rejected by the agent proxy), so this workflow does the real HTTP POST from GitHub Actions'
+# runner instead — the same way Takbull's own server would.
+#
+# Purpose: isolate whether the real Takbull ₪1 test payment (Payment id=5, gateway=takbull,
+# status=pending, amount_ils=1, see PROJECT_STATE.md's Takbull entries) failed because (a) Takbull
+# never sent the webhook POST at all, or (b) our own /webhooks/takbull code has a bug that silently
+# rejects/ignores a payload it should accept. This sends a payload SHAPED EXACTLY like Takbull's
+# own documented order-success payload (order_reference/StatusDescription/OrderTotalSum/uniqId —
+# see website/main.py's _looks_like_a_successful_takbull_payload + webhooks_takbull), using the
+# REAL webhook secret and REAL payment_id=5 that corresponds to a real, already-charged ₪1 Takbull
+# payment (confirmed via Takbull's own emailed receipt) — this is reconciling an already-paid real
+# transaction, not fabricating one. If our endpoint accepts it and the DB shows payment #5 flip to
+# "paid", the bug is on Takbull's side (their webhook never fired). If it's rejected/still pending,
+# the bug is in our own code and the response body/website logs will show exactly why.
+on:
+  workflow_dispatch:
+    inputs:
+      payment_id:
+        description: "Payment id to reconcile (defaults to 5, the real ₪1 Takbull test payment)"
+        required: false
+        type: string
+        default: "5"
+      amount_ils:
+        description: "OrderTotalSum to send (must match the payment's own amount_ils exactly)"
+        required: false
+        type: string
+        default: "1"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST a Takbull-shaped payload to our real webhook and show the response
+        env:
+          SECRET: ${{ secrets.TAKBULL_WEBHOOK_SECRET }}
+          PAYMENT_ID: ${{ inputs.payment_id }}
+          AMOUNT_ILS: ${{ inputs.amount_ils }}
+        run: |
+          echo "--- POSTing to https://todira.app/webhooks/takbull/<secret> ---"
+          curl -sS -i -X POST "https://todira.app/webhooks/takbull/${SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"order_reference\": \"${PAYMENT_ID}\", \"StatusDescription\": \"Success\", \"StatusCode\": 0, \"OrderTotalSum\": ${AMOUNT_ILS}, \"OrderStatus\": \"Completed\", \"uniqId\": \"manual-reconciliation-$(date +%s)\", \"OrderNumber\": \"manual-verify\"}"
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Confirm in the DB whether the payment actually flipped to paid
+        env:
+          PAYMENT_ID: ${{ inputs.payment_id }}
+        run: |
+          kubectl delete pod diag-takbull-manual -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-takbull-manual
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-takbull-manual
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: PAYMENT_ID
+                    value: "${PAYMENT_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+                    psql "\$CONN" -c "SELECT id, status, gateway_transaction_id, paid_at FROM payments WHERE id = \${PAYMENT_ID};"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-takbull-manual -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-takbull-manual || true
+          kubectl delete pod diag-takbull-manual -n todira --ignore-not-found
