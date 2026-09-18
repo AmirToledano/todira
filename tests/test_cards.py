@@ -176,6 +176,35 @@ def test_every_body_line_carries_its_own_rtl_embedding_not_just_the_first():
         assert line.endswith("‬"), f"line missing its own RTL embedding close: {line!r}"
 
 
+def test_multiline_description_carries_rtl_embedding_on_every_physical_line():
+    # 2026-09-18: real user screenshots showed several cards still rendering mid-caption text
+    # starting from the middle instead of the right — traced to a real listing description that
+    # itself contains several physical lines (a very common shape for scraped listings, e.g.
+    # "דירת 5 חדרים...\nחדשה מהקבלן...\n2 חניות\nמחסן"). format_caption/format_caption_whatsapp
+    # only wrapped the WHOLE description block in one _force_rtl call — a single embedding that a
+    # bidi paragraph separator (a newline) resets per rendered line, exactly the same bug
+    # test_every_body_line_carries_its_own_rtl_embedding_not_just_the_first already covers for
+    # this file's own fixed field lines. Every physical line of the description needs its own
+    # embedding too.
+    multiline_description = "דירת 5 חדרים יפיפייה\nחדשה מהקבלן עדיין לא אוכלסה\n2 חניות\nמחסן"
+    caption = format_caption(make_listing(description=multiline_description), has_access=True)
+    assert "‫📝 דירת 5 חדרים יפיפייה‬" in caption
+    assert "‫חדשה מהקבלן עדיין לא אוכלסה‬" in caption
+    assert "‫2 חניות‬" in caption
+    assert "‫מחסן‬" in caption
+
+
+def test_whatsapp_multiline_description_carries_rtl_embedding_on_every_physical_line():
+    multiline_description = "דירת 5 חדרים יפיפייה\nחדשה מהקבלן עדיין לא אוכלסה\n2 חניות\nמחסן"
+    caption = format_caption_whatsapp(
+        make_listing(description=multiline_description), has_access=True
+    )
+    assert "‫📝 דירת 5 חדרים יפיפייה‬" in caption
+    assert "‫חדשה מהקבלן עדיין לא אוכלסה‬" in caption
+    assert "‫2 חניות‬" in caption
+    assert "‫מחסן‬" in caption
+
+
 def test_blank_spacer_line_has_no_stray_rtl_mark():
     caption = format_caption(make_listing(has_parking=True), has_access=True)
     lines = caption.split("\n")
