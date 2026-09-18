@@ -277,6 +277,18 @@ def _force_rtl(text: str) -> str:
     return f"{_RLE}{text}{_PDF}"
 
 
+def _force_rtl_block(text: str) -> str:
+    """Same per-line embedding as _build_body_lines' own comment explains, applied to a block of
+    text that can itself contain line breaks — a scraped description, which real listings (see the
+    2026-09-18 screenshots) often submit as several physical lines. A single _force_rtl call around
+    the whole block only wraps it in ONE embedding, but a newline resets the bidi embedding level
+    per rendered line, so only the block's first line actually rendered RTL-aligned and every line
+    after it fell back to the same broken alignment _build_body_lines was fixed for on 2026-09-14 —
+    this is that same fix, extended to free-form multi-line text instead of just this file's own
+    fixed field lines."""
+    return "\n".join(_force_rtl(line) if line else line for line in text.split("\n"))
+
+
 def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:
     """Real production bug, found 2026-09-14 while chasing an unrelated RTL report: the owner's
     own live run logged 18+ failed sends, `telegram.error.BadRequest: Can't parse entities: can't
@@ -351,7 +363,7 @@ def format_caption(
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_force_rtl(f'📝 {description}')}"
+        body += f"\n\n{_force_rtl_block(f'📝 {description}')}"
 
     return _fit_to_limit(header, body, footer, CAPTION_LIMIT)
 
@@ -410,7 +422,7 @@ def format_caption_whatsapp(
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_force_rtl(f'📝 {description}')}"
+        body += f"\n\n{_force_rtl_block(f'📝 {description}')}"
 
     return _fit_to_limit(header, body, footer, WHATSAPP_MESSAGE_LIMIT)
 
