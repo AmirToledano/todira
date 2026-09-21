@@ -312,6 +312,24 @@ def test_fetch_listing_description_missing_meta_tags_returns_none(monkeypatch):
     assert fetch_listing_description("https://www.homeless.co.il/rent/viewad,746758.aspx") is None
 
 
+def test_fetch_listing_description_rejects_the_sites_own_generic_description(monkeypatch):
+    """2026-09-21: real bug found live (owner's Telegram screenshots) — 6 of a real 30-listing
+    sample had the site's own generic <meta name="Description"> as their "description" instead of
+    a real per-listing one, confirmed via a live DB dump. Must return None, not the boilerplate."""
+    monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
+    generic_html = (
+        '<html><head><meta name="Description" content="מחפש ? בלוח הומלס מחכה לך '
+        'ועוד הרבה נדלן אחרות מתוך אינסוף מודעות עדכניות. הומלס - הרבה יותר מלוחות."></head></html>'
+    )
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text=generic_html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    assert fetch_listing_description("https://www.homeless.co.il/rent/viewad,746758.aspx") is None
+
+
 def test_fetch_listing_description_missing_api_key_returns_none_not_raises(monkeypatch):
     # Unlike fetch_search_results (which raises), this is genuinely optional enrichment — never
     # raises, same defensive contract as komo_client.fetch_listing_detail.

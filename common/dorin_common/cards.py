@@ -285,8 +285,17 @@ def _force_rtl_block(text: str) -> str:
     per rendered line, so only the block's first line actually rendered RTL-aligned and every line
     after it fell back to the same broken alignment _build_body_lines was fixed for on 2026-09-14 —
     this is that same fix, extended to free-form multi-line text instead of just this file's own
-    fixed field lines."""
-    return "\n".join(_force_rtl(line) if line else line for line in text.split("\n"))
+    fixed field lines.
+
+    splitlines(), not split("\n") — 2026-09-21: real screenshots taken DAYS after this function's
+    own 2026-09-18 fix went live still showed broken alignment, and a live DB dump
+    (diagnose-homeless-description-raw-chars.yaml) proved why: real Homeless descriptions use bare
+    "\\r" as their line separator, not "\\n" — split("\\n") never split them at all, so the entire
+    multi-paragraph description was still going through as one single _force_rtl-wrapped line,
+    reproducing the exact original bug for every line after the first. splitlines() handles \\r,
+    \\r\\n, \\n and the other line-boundary characters Python recognizes, and normalizing to "\\n"
+    on rejoin is itself a improvement (Telegram/WhatsApp only render "\\n" as a line break)."""
+    return "\n".join(_force_rtl(line) if line else line for line in text.splitlines())
 
 
 def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:

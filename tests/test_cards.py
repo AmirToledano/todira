@@ -205,6 +205,20 @@ def test_whatsapp_multiline_description_carries_rtl_embedding_on_every_physical_
     assert "‫מחסן‬" in caption
 
 
+def test_carriage_return_only_description_still_gets_per_line_rtl_embedding():
+    # 2026-09-21: real screenshots taken DAYS after the 2026-09-18 fix above went live still
+    # showed broken alignment for real Homeless listings — a live DB dump
+    # (diagnose-homeless-description-raw-chars.yaml) proved why: real Homeless descriptions use
+    # bare "\r" as their line separator, not "\n". split("\n") never split them at all, so the
+    # fix above silently didn't apply to this real, common case. splitlines() (used now) handles
+    # "\r" too.
+    cr_description = "דירה להשכרה\rבמרכז העיר\rקומה 3"
+    caption = format_caption(make_listing(description=cr_description), has_access=True)
+    assert "‫📝 דירה להשכרה‬" in caption
+    assert "‫במרכז העיר‬" in caption
+    assert "‫קומה 3‬" in caption
+
+
 def test_blank_spacer_line_has_no_stray_rtl_mark():
     caption = format_caption(make_listing(has_parking=True), has_access=True)
     lines = caption.split("\n")
