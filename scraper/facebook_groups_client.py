@@ -79,6 +79,8 @@ from typing import Any, Iterator
 
 import httpx
 
+import facebook_groups_text_parser
+
 logger = logging.getLogger(__name__)
 
 _GROUPS_BASE = "https://www.facebook.com/groups/"
@@ -318,7 +320,7 @@ def fetch_post_detail(group_id: str, post_id: str) -> dict[str, Any] | None:
     if author_name:
         description = f"{message}\n\n(מפרסם/ת: {author_name})"
 
-    return {
+    result: dict[str, Any] = {
         "id": str(post_id),
         "url": url,
         "description": description,
@@ -332,3 +334,10 @@ def fetch_post_detail(group_id: str, post_id: str) -> dict[str, Any] | None:
         "street": None,
         "images": [],
     }
+    # 2026-09-21, explicit owner decision: regex/keyword extraction, not a per-post LLM call (this
+    # project has never made one; the owner weighed cost vs. accuracy and chose free/imperfect) —
+    # see facebook_groups_text_parser.py's own module docstring. Only ever OVERWRITES one of the
+    # structured-field placeholders above with something a pattern actually matched in the real
+    # message text — never touches description/url/id/dateAdded.
+    result.update(facebook_groups_text_parser.parse_listing_fields(message))
+    return result
