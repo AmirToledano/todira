@@ -34,7 +34,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     # Both nullable. Originally a user had exactly one of the two, set once by whichever of
-    # dorin_common/users.py's two get_or_create_*_user helpers first created the row — that's
+    # todira_common/users.py's two get_or_create_*_user helpers first created the row — that's
     # still true for most rows. Channel-linking (channel_link_code below) lets a user end up with
     # BOTH set: once linked, the SAME row gets a second identifier attached to it rather than a
     # second row being created.
@@ -52,7 +52,7 @@ class User(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    # soft "paused / found apartment" flag (Dorin's "🎉 מצאתי דירה!") — matcher skips inactive users
+    # soft "paused / found apartment" flag (the reference bot's "🎉 מצאתי דירה!") — matcher skips inactive users
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
@@ -75,7 +75,7 @@ class User(Base):
     # 0003_whatsapp_users. None once no onboarding is in progress (not started, or completed).
     pending_onboarding_state: Mapped[dict | None] = mapped_column(JSONB)
 
-    # Paid-access fields — 2026-09-04 pricing decision (see common/dorin_common/access.py for the
+    # Paid-access fields — 2026-09-04 pricing decision (see common/todira_common/access.py for the
     # actual gate, `has_full_access`). Payment itself is informal/manual for now (a Bit transfer
     # outside this system) — there's no payment-gateway webhook, so `paid_until` is set directly
     # by the user's own plan-selection click (website's /upgrade), trusting it rather than
@@ -95,7 +95,7 @@ class User(Base):
     # message, or opened as a Telegram /start deep-link payload) to attach that channel to this
     # SAME row instead of creating a brand-new, disconnected one. Matches the reference product's
     # own confirmed UX (a `ref_xxxxxx` code sent as a plain WhatsApp message). See
-    # dorin_common/channel_link.py for generation/consumption; cleared after a single successful
+    # todira_common/channel_link.py for generation/consumption; cleared after a single successful
     # use, and `channel_link_code_expires_at` bounds how long an unused code stays valid.
     channel_link_code: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     channel_link_code_expires_at: Mapped[dt.datetime | None] = mapped_column(
@@ -108,7 +108,7 @@ class User(Base):
 
 
 class Filter(Base):
-    """One row per user (one-to-one) — Dorin conceptually has a single active filter per user."""
+    """One row per user (one-to-one) — the reference bot conceptually has a single active filter per user."""
 
     __tablename__ = "filters"
     __table_args__ = (
@@ -359,7 +359,7 @@ class PendingGoogleLink(Base):
     sends back, and it still says unlinked." Storing the google_sub server-side under an opaque,
     single-use token (embedded in the bot deep-link as `?start=gl_<token>`) means the link
     completes the MOMENT the visitor does /start — entirely bot-side, before they ever return to
-    any browser at all. See dorin_common/google_link.py for generation/consumption."""
+    any browser at all. See todira_common/google_link.py for generation/consumption."""
 
     __tablename__ = "pending_google_links"
 
@@ -378,7 +378,7 @@ class Payment(Base):
     paid_until with no verification. Created as "pending" the moment a user picks a plan and is
     redirected to the gateway's hosted checkout; flipped to "paid" only by the gateway's own
     server-to-server webhook (website's /webhooks/grow) confirming a real charge — extend_paid_until
-    (dorin_common/access.py) is called at THAT point, not on the click. "failed"/"cancelled" cover
+    (todira_common/access.py) is called at THAT point, not on the click. "failed"/"cancelled" cover
     a checkout the user abandoned or the gateway declined; those rows are kept (not deleted) as a
     plain audit trail of what was attempted.
 

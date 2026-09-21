@@ -5,9 +5,9 @@ aren't set, or the API call fails for any reason, every send_* function returns 
 never raises. Callers (whatsapp_webhook.py, scraper/notifier.py) treat a False return as "the
 message didn't go out" without crashing the whole request/run.
 
-Lives in dorin_common (moved here 2026-09-08, was website/whatsapp_client.py) because it's no
+Lives in todira_common (moved here 2026-09-08, was website/whatsapp_client.py) because it's no
 longer website-only: send_template_message below is used by scraper/notifier.py for proactive
-pushes, the same way dorin_common/cards.py and bright_data_client.py are already shared between
+pushes, the same way todira_common/cards.py and bright_data_client.py are already shared between
 the bot and the scraper.
 
 Two message-sending regimes:
@@ -44,7 +44,7 @@ _REQUEST_TIMEOUT_SECONDS = 15.0
 # so only the FIRST request per pod lifetime pays full handshake cost — every call after that,
 # including the typing-indicator call that immediately precedes almost every real reply here, reuses
 # the same warm connection. Module-level and created once, same lifetime as the cached Gemini client
-# in dorin_common/gemini_client.py.
+# in todira_common/gemini_client.py.
 _http_client = httpx.Client(timeout=_REQUEST_TIMEOUT_SECONDS)
 
 
@@ -145,7 +145,7 @@ def mark_as_read_with_typing_indicator(message_id: str) -> bool:
     """Marks the incoming message read AND shows WhatsApp's own "typing…" bubble to the user for
     up to ~25s (Meta clears it automatically the moment we send the actual reply, or after 25s,
     whichever comes first — no need to ever turn it off ourselves). 2026-09-06: the owner compared
-    this bot live against a competitor's ("דורין") that shows this, and asked for it specifically —
+    this bot live against a competitor's bot that shows this, and asked for it specifically —
     it doesn't make the underlying Gemini call any faster, but it turns the same wait from "did it
     even get my message?" into visibly "it's working on it," which is most of what "feels slow"
     actually is for a chat bot."""

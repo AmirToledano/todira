@@ -6,7 +6,7 @@ name: Diagnose Yad2 via Bright Data's Web Unlocker (read-only, first real attemp
 # diagnose-yad2-map-api-cost.yaml) that BOTH www.yad2.co.il and gw.yad2.co.il are forced into its
 # most expensive tier (REQS002) — no cheaper path exists through ZenRows specifically. This project
 # already pays for a DIFFERENT unlocking service, Bright Data (see
-# common/dorin_common/bright_data_client.py) — but only for its Data Collector API (DCA), tied to
+# common/todira_common/bright_data_client.py) — but only for its Data Collector API (DCA), tied to
 # one pre-built Scraper Studio collector configured specifically to parse a Yad2 LISTING DETAIL
 # page's DOM. That collector cannot be reused here: this is a different URL shape entirely (a JSON
 # API endpoint, gw.yad2.co.il/realestate-feed/rent/map), and the DCA collector's own Parser code

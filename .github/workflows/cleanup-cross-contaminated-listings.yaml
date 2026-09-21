@@ -14,7 +14,7 @@ name: CLEANUP — reset the ~1450 Yad2 listings that got another listing's Brigh
 # real search-card scrape, never from Bright Data, and stay exactly as-is). image_urls can't be
 # set to NULL (NOT NULL column, models.py) — reset to '{}' instead, which is a real, already-
 # supported state (send_listing_card's own "0 real photos -> Todi fallback image" path, see
-# dorin_common/cards.py) rather than showing definitely-wrong photos claiming to be this
+# todira_common/cards.py) rather than showing definitely-wrong photos claiming to be this
 # apartment. The NEXT real Yad2 scrape re-populates image_urls from that listing's own fresh
 # search-card data for any row already in the DB (scraper/main.py's existing-listing upsert path)
 # — so this is a real but self-healing loss, not permanent, whenever a real Yad2 run is next

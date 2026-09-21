@@ -18,14 +18,14 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TelegramError
 
-from dorin_common.models import Listing
+from todira_common.models import Listing
 
 logger = logging.getLogger(__name__)
 
 CAPTION_LIMIT = 1024
 
 # A 2+ real-photo listing gets ONE composite collage image instead of just its first photo — 2026-
-# 09-03 request, matching the reference bot dorin.app's own style (a real user screenshot showed
+# 09-03 request, matching the reference bot's own style (a real user screenshot showed
 # its cards leading with a photo grid, not a single image). Deliberately still ONE send_photo call
 # with ONE image, not Telegram's sendMediaGroup — see send_listing_card's own docstring on why
 # that was already rejected once (2026-09-02): it can't carry an inline keyboard, so 2+ photos
@@ -146,7 +146,7 @@ def _dachshund_photo_path() -> Path:
     return _MASCOT_PATH
 
 
-# 2026-09-03 rewrite: field order/labels/emphasis matching the reference bot dorin.app 1:1, per a
+# 2026-09-03 rewrite: field order/labels/emphasis matching the reference bot 1:1, per a
 # real side-by-side comparison against its own screenshots. Deal-type/broker prefix, then location
 # (city bold, street a clickable Google-Maps link on Telegram — see _google_maps_url), then price/
 # rooms/size/floor/move-in each on its own BOLD-labeled line (previously plain labels; italicized
@@ -482,7 +482,7 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     Telegram's own generic broken-image placeholder instead of falling back here) — with the
     caption and the ❤️/🙈/🎉 keyboard all on it via a plain send_photo. Deliberately NOT a
     multi-photo sendMediaGroup gallery anymore (2026-09-02, real
-    user report + a direct ask to match the reference bot dorin.app's own cleaner single-message
+    user report + a direct ask to match the reference bot's own cleaner single-message
     style): sendMediaGroup can't carry an inline keyboard at all, so showing 2+ photos meant a
     second, separate "⬆️ הדירה למעלה" message just to carry the buttons — confusing once several
     listings arrive in a burst (Telegram's own per-chat rate limit spaces the sends out, so by the

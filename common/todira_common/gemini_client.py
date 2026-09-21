@@ -1,6 +1,6 @@
 """Gemini-backed free-text onboarding parser — channel-agnostic, shared by the Telegram bot
 (bot/handlers/onboarding.py) and the WhatsApp webhook (website/whatsapp_webhook.py). Lives in
-dorin_common (not bot/) precisely so both can import it identically; moved here 2026-09-01 when
+todira_common (not bot/) precisely so both can import it identically; moved here 2026-09-01 when
 the WhatsApp integration was added — was bot/gemini_client.py before that, Telegram-only.
 
 The user describes what they're looking for in their own words (one messy paragraph, or several

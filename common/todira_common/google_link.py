@@ -18,7 +18,7 @@ import secrets
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from dorin_common.models import PendingGoogleLink
+from todira_common.models import PendingGoogleLink
 
 TOKEN_PREFIX = "gl_"
 _TOKEN_TTL = dt.timedelta(minutes=15)

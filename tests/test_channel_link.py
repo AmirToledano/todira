@@ -1,4 +1,4 @@
-"""Tests for common/dorin_common/channel_link.py — the `ref_xxxxxx` code generation/consumption
+"""Tests for common/todira_common/channel_link.py — the `ref_xxxxxx` code generation/consumption
 behind cross-channel account linking (see the module's own docstring, and
 bot/handlers/start.py + website/whatsapp_webhook.py for the two consumers)."""
 from __future__ import annotations
@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
-from dorin_common.channel_link import CODE_PREFIX, generate_link_code, resolve_link_code
+from todira_common.channel_link import CODE_PREFIX, generate_link_code, resolve_link_code
 
 _NOW = dt.datetime.now(dt.timezone.utc)
 

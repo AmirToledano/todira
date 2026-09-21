@@ -12,9 +12,9 @@ import datetime as dt
 import logging
 from typing import Any
 
-from dorin_common import cities
-from dorin_common.enums import DealType, Source
-from dorin_common.schemas import NormalizedListing
+from todira_common import cities
+from todira_common.enums import DealType, Source
+from todira_common.schemas import NormalizedListing
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,7 @@ def enrich_from_detail(item: NormalizedListing, detail: dict[str, Any]) -> Norma
     """Fills in fields Yad2's search-results cards never carry at all — property type, amenity
     booleans, safe-room presence, a real description, real multi-photo image URLs, floor_total,
     move-in date, and broker status — from one listing's own detail-page data (see
-    yad2_client.fetch_listing_detail, or common/dorin_common/bright_data_client.py's
+    yad2_client.fetch_listing_detail, or common/todira_common/bright_data_client.py's
     fetch_listing_detail_via_bright_data — both read the same underlying Yad2 __NEXT_DATA__, just
     via different scraping infrastructure, confirmed 2026-09-12). Purely additive and defensive:
     `detail`'s exact shape was confirmed against real listings (2026-09-02 via ZenRows,

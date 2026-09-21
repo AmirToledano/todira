@@ -1,8 +1,8 @@
 """One-off asset note — NOT run at deploy/runtime, and there is currently nothing to run.
 
-`common/dorin_common/assets/dachshunds/todi_detective.jpg` and its copy in
+`common/todira_common/assets/dachshunds/todi_detective.jpg` and its copy in
 `website/static/dachshunds/` (the "no real photos" listing-card placeholder, used identically on
-the website and in Telegram/WhatsApp — see dorin_common/cards.py's `_dachshund_photo_path` and
+the website and in Telegram/WhatsApp — see todira_common/cards.py's `_dachshund_photo_path` and
 website/templates/_listing_card.html) are a crop of a single illustration the user supplied
 directly (2026-09-02): Todi as a detective (deerstalker hat) standing on a laptop, pointing out a
 matching listing on a map to his smiling owner, with real-estate UI icons (a "for rent" sign, a

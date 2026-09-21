@@ -12,7 +12,7 @@ name: Diagnose — why a fully-unconstrained rent filter doesn't match every act
 #     private_house) + "penthouse" via the separate Bright Data detail-page map
 #     (_PROPERTY_TYPE_MAP) — every one of those 4 IS in the owner's own selected property_types, so
 #     this can't be excluding anything right now.
-#   - cities: the owner's filter has exactly the full 42-entry dorin_common.cities.CITIES list,
+#   - cities: the owner's filter has exactly the full 42-entry todira_common.cities.CITIES list,
 #     confirmed by set comparison — nothing bundled is missing from his selection.
 # What ISN'T ruled out yet, and what this query checks directly:
 #   1. matching.py's own city check (_check_hard_filters) is a PLAIN string-equality test against

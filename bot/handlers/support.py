@@ -15,9 +15,9 @@ import html
 import logging
 import os
 
-from dorin_common.db import get_session
-from dorin_common.models import ContactMessage
-from dorin_common.support import looks_like_help_request
+from todira_common.db import get_session
+from todira_common.models import ContactMessage
+from todira_common.support import looks_like_help_request
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.error import TelegramError

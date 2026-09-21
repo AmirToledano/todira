@@ -4,7 +4,7 @@ The module's own docstring promises it "never raises" - a malformed/missing fiel
 degrade to None rather than aborting a scrape run over one bad item. That defensive contract is
 exactly what's worth locking down with tests, since scraper/main.py relies on it silently.
 """
-from dorin_common.enums import DealType, Source
+from todira_common.enums import DealType, Source
 
 from normalize import normalize
 

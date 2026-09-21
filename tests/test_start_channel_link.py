@@ -1,6 +1,6 @@
 """Tests for bot/handlers/start.py: the channel-linking path (a `ref_xxxxxx` payload from a
 `t.me/<bot>?start=ref_xxxxxx` deep link generated on the website's /account page — see
-dorin_common/channel_link.py) and the expired-access renewal nudge (a returning, already-onboarded
+todira_common/channel_link.py) and the expired-access renewal nudge (a returning, already-onboarded
 user whose trial/paid access has run out gets a personalized "renew?" message instead of the plain
 welcome, matching the reference product's own confirmed /start behavior). Covers
 _upsert_or_link_user_sync's outcomes directly (pure sync logic, no event loop needed) and start()'s

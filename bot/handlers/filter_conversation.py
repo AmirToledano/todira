@@ -10,7 +10,7 @@ menu still open and coming back later (or after a redeploy) continues from the s
 of silently losing whatever wasn't saved yet.
 
 Scope note: neighborhoods_include/exclude and streets_include/exclude exist in the DB schema
-(dorin_common.models.Filter) but don't have a menu screen here yet — they weren't included in
+(todira_common.models.Filter) but don't have a menu screen here yet — they weren't included in
 this first pass to keep the conversation shippable; add a "neighborhoods"/"streets" category
 following the exact same add/remove pattern as `loc` (cities) whenever that's wanted next.
 """
@@ -22,11 +22,11 @@ import logging
 
 import keyboards as kb
 from config import WEBSITE_URL
-from dorin_common import cities
-from dorin_common.db import get_session
-from dorin_common.models import Filter
-from dorin_common.schemas import FilterData
-from dorin_common.users import get_or_create_user
+from todira_common import cities
+from todira_common.db import get_session
+from todira_common.models import Filter
+from todira_common.schemas import FilterData
+from todira_common.users import get_or_create_user
 from handlers.apartments import find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
@@ -216,7 +216,7 @@ def _apply_toggle(draft: dict, ns: str, value: str) -> None:
 
 
 def _toggle_city(draft: dict, idx: int) -> None:
-    """`idx` indexes dorin_common.cities.CITIES (the full bundled list), not draft["cities"]
+    """`idx` indexes todira_common.cities.CITIES (the full bundled list), not draft["cities"]
     (the user's own selection) — see kb.city_picker_keyboard / kb.city_search_results_keyboard,
     both of which build their callback_data from CITIES positions for a short, stable
     callback_data payload rather than encoding the (longer, Hebrew) city string directly."""

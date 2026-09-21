@@ -18,7 +18,7 @@ name: Discover Yad2's real area↔region taxonomy via its address-autocomplete A
 # needs to go through the ISP proxy in the first place.
 #
 # Strategy: query with a broad list of search terms (major city names, already bundled in
-# common/dorin_common/cities.py for other reasons, plus all 7 REGION_SLUGS' own Hebrew names) and
+# common/todira_common/cities.py for other reasons, plus all 7 REGION_SLUGS' own Hebrew names) and
 # aggregate every distinct `areaId` seen, grouped by `regionId`. This is NOT guaranteed
 # mathematically complete (a real area with no city/region name substring in common with any term
 # tried could be missed) — but it is a real, live, first-party enumeration, dramatically more
@@ -48,7 +48,7 @@ jobs:
           import urllib.parse
           import urllib.request
 
-          # The same 41-city list bundled in common/dorin_common/cities.py (kept inline here so
+          # The same 41-city list bundled in common/todira_common/cities.py (kept inline here so
           # this workflow needs no repo checkout/import) plus all 7 REGION_SLUGS' own Hebrew names
           # (scraper/yad2_client.py) as extra broad search terms.
           CITIES = [

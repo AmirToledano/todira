@@ -149,7 +149,7 @@ def test_filter_start_loads_from_db_when_no_draft_in_progress(monkeypatch):
     # The other half of the same behavior: with NO in-progress draft, filter_start must still
     # load from the DB as before (a first-ever /filter, or one right after Save/Cancel cleared
     # the draft) - resuming is only for an actual in-progress edit, not a blanket DB-skip.
-    from dorin_common.schemas import FilterData
+    from todira_common.schemas import FilterData
 
     saved = FilterData(deal_type="rent", cities=["גבעתיים"])
     fake_filter_row = SimpleNamespace(**saved.model_dump())

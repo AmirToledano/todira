@@ -1,4 +1,4 @@
-"""Unit tests for dorin_common/cards.py — Telegram/WhatsApp caption rendering for a Listing, plus
+"""Unit tests for todira_common/cards.py — Telegram/WhatsApp caption rendering for a Listing, plus
 send_listing_card's send behavior and _build_collage_sync's photo-compositing (both against a fake
 bot / mocked httpx — no real Telegram or network calls).
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from dorin_common.cards import CAPTION_LIMIT, _fit_to_limit, format_caption, format_caption_whatsapp
+from todira_common.cards import CAPTION_LIMIT, _fit_to_limit, format_caption, format_caption_whatsapp
 
 
 def make_listing(**overrides):
@@ -44,7 +44,7 @@ def make_listing(**overrides):
 
 
 def test_basic_caption_includes_core_fields():
-    # 2026-09-03 rewrite, matching the reference bot dorin.app 1:1: location before price, every
+    # 2026-09-03 rewrite, matching the reference bot 1:1: location before price, every
     # field its own BOLD-labeled line, ₪ (not "ש"ח") as the currency, no source tag anywhere.
     caption = format_caption(make_listing(), has_access=True)
     assert "🛏️ <b>חדרים:</b> 4" in caption
@@ -355,7 +355,7 @@ def test_overflowing_caption_never_cuts_an_html_tag_in_half():
 
 # --- has_access gating — a lite/expired user must not get a working link out to the actual
 # listing; the description IS shown to everyone as of 2026-09-12 (reversing the original
-# 2026-09-05 decision). See dorin_common/cards.py's format_caption docstring for that history and
+# 2026-09-05 decision). See todira_common/cards.py's format_caption docstring for that history and
 # why has_access has no default value.
 
 
@@ -449,8 +449,8 @@ def test_whatsapp_caption_does_not_html_escape_plain_text():
 import asyncio  # noqa: E402
 from unittest.mock import AsyncMock  # noqa: E402
 
-import dorin_common.cards as cards_module  # noqa: E402
-from dorin_common.cards import send_listing_card  # noqa: E402
+import todira_common.cards as cards_module  # noqa: E402
+from todira_common.cards import send_listing_card  # noqa: E402
 
 
 def _make_bot():
@@ -463,7 +463,7 @@ def _make_bot():
 
 def test_send_listing_card_no_images_sends_a_todi_photo():
     # No real photos -> the branded Todi-the-detective illustration instead of a bare text message
-    # (2026-09-02 request) — see dorin_common/cards.py's _dachshund_photo_path.
+    # (2026-09-02 request) — see todira_common/cards.py's _dachshund_photo_path.
     bot = _make_bot()
     listing = make_listing(image_urls=[])
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
@@ -497,7 +497,7 @@ def test_send_listing_card_one_image_uses_send_photo_with_keyboard(monkeypatch):
 
 
 def test_send_listing_card_multiple_images_sends_a_generated_collage(monkeypatch):
-    # 2026-09-03 request, matching the reference bot dorin.app's own style: 2+ real photos get ONE
+    # 2026-09-03 request, matching the reference bot's own style: 2+ real photos get ONE
     # composited collage image instead of just the first one. Still deliberately NOT a
     # sendMediaGroup gallery (2026-09-02: dropped after a real user report - sendMediaGroup can't
     # carry an inline keyboard, so 2+ photos needed a separate "⬆️ הדירה למעלה" follow-up message
@@ -607,7 +607,7 @@ def test_send_listing_card_retries_once_on_flood_control_then_succeeds():
 def test_dachshund_photo_path_resolves_to_the_mascot_asset():
     # A single branded illustration (2026-09-02), not a rotating photo pool - every call
     # resolves to the same real file.
-    from dorin_common.cards import _dachshund_photo_path
+    from todira_common.cards import _dachshund_photo_path
 
     path = _dachshund_photo_path()
     assert path.exists(), f"missing todi illustration asset: {path}"
@@ -615,7 +615,7 @@ def test_dachshund_photo_path_resolves_to_the_mascot_asset():
 
 
 def test_send_listing_card_no_images_caption_stays_within_telegram_limit():
-    from dorin_common.cards import CAPTION_LIMIT
+    from todira_common.cards import CAPTION_LIMIT
 
     bot = _make_bot()
     listing = make_listing(image_urls=[])
@@ -644,7 +644,7 @@ def test_send_listing_card_gives_up_after_second_flood_control_hit():
 import httpx as _httpx_module  # noqa: E402
 from PIL import Image as _PILImage  # noqa: E402
 
-from dorin_common.cards import _build_collage_sync  # noqa: E402
+from todira_common.cards import _build_collage_sync  # noqa: E402
 
 
 def _fake_jpeg_bytes(color, size=(200, 300)):

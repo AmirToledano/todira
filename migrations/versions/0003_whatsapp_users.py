@@ -4,7 +4,7 @@ now optional
 Users were hard-wired to Telegram (telegram_user_id NOT NULL UNIQUE) — a WhatsApp-onboarded
 user has no Telegram ID at all, so that column has to become optional. whatsapp_phone_number
 mirrors it: unique, nullable (a Telegram-only user has none). Deliberately no CHECK constraint
-requiring at least one of the two — application code (dorin_common/users.py) is the single place
+requiring at least one of the two — application code (todira_common/users.py) is the single place
 that creates User rows and always sets exactly one, keeping the schema simple.
 
 pending_onboarding_state (JSONB, nullable) persists an in-progress free-text onboarding

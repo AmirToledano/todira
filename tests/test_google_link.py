@@ -1,4 +1,4 @@
-"""Tests for common/dorin_common/google_link.py — the `gl_xxxxx` token generation/consumption
+"""Tests for common/todira_common/google_link.py — the `gl_xxxxx` token generation/consumption
 behind cross-BROWSER-CONTEXT Google account linking (see the module's own docstring for why this
 exists: Telegram's in-app browser is a separate cookie jar from wherever the Google sign-in
 started, which is why the earlier session-cookie-only approach kept failing live). Consumers:
@@ -11,12 +11,12 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
-from dorin_common.google_link import (
+from todira_common.google_link import (
     TOKEN_PREFIX,
     generate_google_link_token,
     resolve_google_link_token,
 )
-from dorin_common.models import PendingGoogleLink
+from todira_common.models import PendingGoogleLink
 
 _NOW = dt.datetime.now(dt.timezone.utc)
 

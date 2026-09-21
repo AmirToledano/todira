@@ -1,7 +1,7 @@
 """Bright Data **Data Collector API** (`/dca/...`) client — fetches a Yad2 listing's own detail-
 page data for ONE listing at a time, ON DEMAND, only when it's worth the cost. Moved here from
 scraper/ (2026-09-07) so website/main.py can call it too — the scraper and website pods are
-separate Docker images (see their own Dockerfiles), each copying only common/dorin_common/ plus
+separate Docker images (see their own Dockerfiles), each copying only common/todira_common/ plus
 their own directory, so a module used by both has to live here.
 
 Two functions, same underlying trigger/poll mechanics (`_trigger_and_fetch_first_row`):
@@ -380,7 +380,7 @@ def _trigger_and_fetch_first_row_once(url: str) -> dict | None:
 def fetch_listing_description(url: str) -> str | None:
     """Synchronous and BLOCKING (real network calls + a polling wait) — callers on an event loop
     MUST run this via asyncio.to_thread, same as every other blocking call in this codebase (see
-    e.g. dorin_common/cards.py's _build_collage_sync docstring for why). Returns None on missing
+    e.g. todira_common/cards.py's _build_collage_sync docstring for why). Returns None on missing
     config, any request failure, or a poll timeout — never raises, and a listing is always still
     sent without a description exactly as it always could before this feature existed, never
     blocked on this call succeeding."""

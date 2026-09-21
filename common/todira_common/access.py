@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from dorin_common.models import User
+from todira_common.models import User
 
 PLAN_DURATIONS: dict[str, dt.timedelta] = {
     "weekly": dt.timedelta(days=7),

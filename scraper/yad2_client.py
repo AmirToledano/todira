@@ -39,7 +39,7 @@ project currently scrapes; extend it (search "yad2 city id <name>") before addin
 `SCRAPE_CITIES` without also adding it here, or that city will silently fetch zero results.
 
 2026-09-03: added `fetch_all_listings` — a confirmed-live (not guessed) alternative to the per-city
-`fetch_search_results` loop above, chasing the same "closer to real-time, like dorin.app" goal via
+`fetch_search_results` loop above, chasing the same "closer to real-time, like the reference bot" goal via
 a different lever: 7 broad-region requests (REGION_SLUGS) instead of 42 per-city ones, ~6x cheaper
 per full-country sweep on the same ZenRows plan already in use. See that function's own
 module-level comment for the full reasoning and why it isn't wired into scraper/main.py yet.
@@ -55,7 +55,7 @@ every tier (REQS002, same as www.yad2.co.il — see
 .github/workflows/diagnose-yad2-map-api-cost.yaml).
 
 First working route found (same day): Bright Data's Web Unlocker API
-(dorin_common.bright_data_client.fetch_via_web_unlocker) — confirmed live to succeed once, at $1.50
+(todira_common.bright_data_client.fetch_via_web_unlocker) — confirmed live to succeed once, at $1.50
 per 1,000 requests, but then hit a real "no KYC" wall for every OTHER bbox/param combination tried
 (see diagnose-yad2-map-api-coverage.yaml) — Bright Data's own residential-KYC gate, not usable for
 real production without completing a business-verification process this project doesn't have the
@@ -83,7 +83,7 @@ fixes this — see the 2026-09-15 "if Yad2 blocks the production IP again" entry
 for the options considered before this was confirmed live.
 
 CURRENT route, as of 2026-09-16/17: `_fetch_direct` now calls Bright Data's Web Unlocker API
-(`dorin_common.bright_data_client.fetch_via_web_unlocker`) instead of an un-proxied GET. The real
+(`todira_common.bright_data_client.fetch_via_web_unlocker`) instead of an un-proxied GET. The real
 KYC wall documented above (paragraph starting "First working route found") is GONE as of tonight —
 re-tested live, unprompted, against both a plain search page AND this exact map API (tel-aviv-area
 bbox/region/zoom), both succeeded with real data, no KYC block on either. Cost is the same $1.50/
@@ -108,7 +108,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from dorin_common import bright_data_client
+from todira_common import bright_data_client
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +288,7 @@ def _parse_info_line_2(raw: str) -> tuple[float | None, int | None, int | None]:
         # rooms_range check has no benefit-of-the-doubt for missing rooms (unlike most other
         # fields), so ANY filter with a room-count range hard-failed every studio, even a range
         # like rooms_min=1 that should logically include one. Treating a studio as 1 room is this
-        # project's own documented convention (see dorin_common.enums's STUDIO property type).
+        # project's own documented convention (see todira_common.enums's STUDIO property type).
         rooms = 1.0
     elif m := re.search(r"([\d.]+)\s*חדרים", text):
         rooms = float(m.group(1))
@@ -483,7 +483,7 @@ def fetch_search_results(city: str) -> Iterator[dict[str, Any]]:
 
 
 # 2026-09-03: chasing the same goal as CITY_SLUG_TO_ID/fetch_search_results above (near-real-time
-# coverage like the reference bot dorin.app appears to have) but from a different angle — one
+# coverage like the reference bot appears to have) but from a different angle — one
 # request per REGION instead of one request PER CITY (42 requests to cover everywhere, at ~25
 # credits each — 1,050 credits per full sweep).
 #

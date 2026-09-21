@@ -231,7 +231,7 @@ def test_callback_unlinked_google_account_with_no_uid_shows_pending_link_page(cl
     # 2026-09-05: standalone signup, right here on the website — no bot required at all.
     assert 'action="/auth/google/create-account"' in resp.text
     # ...and the "I already have an account" path is still offered, now with a google_link_token
-    # (dorin_common/google_link.py) so THAT link completes on /start regardless of which
+    # (todira_common/google_link.py) so THAT link completes on /start regardless of which
     # browser/app the visitor ends up in — not just the plain, no-payload bot link this used to be.
     assert 'href="https://t.me/AmirDirotBot?start=gl_' in resp.text
     assert len(fake_session.added) == 1

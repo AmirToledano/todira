@@ -62,7 +62,7 @@
     // Infinite scroll for /apartments — rendering all (up to 200) matches in one page was heavy
     // enough to crash real mobile browsers (2026-09-06, see PROJECT_STATE.md), so the server now
     // sends APARTMENTS_PAGE_SIZE at a time; this fetches the next batch as the sentinel (the grid's
-    // last child) scrolls into view, matching the reference bot dorin.app's own /apartments.
+    // last child) scrolls into view, matching the reference bot's own /apartments.
     var grid = document.getElementById('listing-grid');
     if (!grid || !('IntersectionObserver' in window)) { return; }
 

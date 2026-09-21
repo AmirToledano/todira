@@ -2,7 +2,7 @@ name: Diagnose Komo + Homeless — reachability and page shape (read-only)
 
 # ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-12. First
 # real step of building Komo/Homeless scrapers (Source.KOMO/Source.HOMELESS already exist in
-# common/dorin_common/enums.py, added 2026-09-08 in anticipation of this). Same discipline this
+# common/todira_common/enums.py, added 2026-09-08 in anticipation of this). Same discipline this
 # project already used for Yad2 (diagnose-search-page-cheap-fetch.yaml etc.): never guess a site's
 # URL structure or page shape — fetch it for real through the same paid ZenRows infrastructure
 # already used for Yad2 (legitimate infra this project pays for, not custom bot-detection-bypass

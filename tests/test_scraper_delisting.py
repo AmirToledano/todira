@@ -28,7 +28,7 @@ import importlib.util
 import os
 from pathlib import Path
 
-from dorin_common.enums import Source
+from todira_common.enums import Source
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 

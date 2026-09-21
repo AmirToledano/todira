@@ -1,5 +1,5 @@
-"""Tests for dorin_common/whatsapp_client.py's send_text_message — the fail-soft contract (never
-raises, returns False on any failure) matching dorin_common/gemini_client.py's pattern.
+"""Tests for todira_common/whatsapp_client.py's send_text_message — the fail-soft contract (never
+raises, returns False on any failure) matching todira_common/gemini_client.py's pattern.
 
 Moved from website/whatsapp_client.py 2026-09-08 (now shared with scraper/notifier.py — see that
 module's own docstring); conftest.py already puts `common/` on sys.path for every test.
@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from dorin_common import whatsapp_client
+from todira_common import whatsapp_client
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 

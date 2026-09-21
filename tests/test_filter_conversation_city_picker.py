@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import keyboards as kb
 import handlers.filter_conversation as filter_conversation
-from dorin_common.cities import CITIES
+from todira_common.cities import CITIES
 from handlers.filter_conversation import MENU, _default_draft, _toggle_city, text_input
 
 

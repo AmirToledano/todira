@@ -49,7 +49,7 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: zenrows-api-key
                       optional: true
-                # scraper/notifier.py's access gating (2026-09-05, dorin_common.access.
+                # scraper/notifier.py's access gating (2026-09-05, todira_common.access.
                 # has_full_access) needs both to build the same owner-override + "🔒 upgrade" link
                 # the bot's own on-demand handlers already have — see notifier.py's own comment.
                 - name: OWNER_TELEGRAM_USER_ID
@@ -111,7 +111,7 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: bright-data-isp-pass
                       optional: true
-                # Proactive WhatsApp Message Template push (2026-09-08, dorin_common/
+                # Proactive WhatsApp Message Template push (2026-09-08, todira_common/
                 # whatsapp_client.py + notifier.py's _whatsapp_eligible/_send_whatsapp_match_
                 # template) — same access-token/phone-number-id secret website-deployment.yaml
                 # already uses for the webhook's own replies, both optional here the same way.

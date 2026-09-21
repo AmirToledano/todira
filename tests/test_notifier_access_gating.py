@@ -1,6 +1,6 @@
 """Tests for scraper/notifier.py's 2026-09-05 access gating — the proactive "new match" push
 must lock the description/link for a lite/expired user exactly like the bot's own on-demand
-handlers (dorin_common/cards.py's format_caption), not just show everything to everyone.
+handlers (todira_common/cards.py's format_caption), not just show everything to everyone.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 
 import notifier
-from dorin_common.enums import Source
+from todira_common.enums import Source
 
 _NOW = dt.datetime.now(dt.timezone.utc)
 

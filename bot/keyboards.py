@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from dorin_common import cities
-from dorin_common.enums import DealType, FurniturePref, PropertyType, SafeRoomPref
+from todira_common import cities
+from todira_common.enums import DealType, FurniturePref, PropertyType, SafeRoomPref
 
 DEAL_TYPE_LABELS = {DealType.RENT: "להשכרה", DealType.SALE: "למכירה", DealType.SUBLET: "סאבלט"}
 PROPERTY_TYPE_LABELS = {
