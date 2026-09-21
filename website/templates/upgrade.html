@@ -21,59 +21,34 @@
 
 {% if not display_is_owner %}
 <div class="settings-card reveal">
+  {% if has_active_subscription %}
+  <p class="field-hint" style="text-align:center">{{ t('upgrade.already_subscribed') }}</p>
+  {% else %}
   <div class="field-row">
     <div class="field" style="text-align:center">
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('upgrade.plan_weekly') }}</div>
-      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 12px">₪{{ plan_prices.weekly }}</p>
+      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('upgrade.plan_subscription') }}</div>
+      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 4px">₪{{ subscription_price }}<span style="font-size:1rem;font-weight:600">{{ t('upgrade.per_month_suffix') }}</span></p>
+      <p class="field-hint" style="margin:0 0 12px">{{ t('upgrade.cancel_anytime_hint') }}</p>
       <form method="post" action="/upgrade">
-        <input type="hidden" name="plan" value="weekly">
+        <input type="hidden" name="plan" value="{{ subscription_plan }}">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
         <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
           <input type="checkbox" name="terms_agreed" required>
           <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
         </label>
-        <button type="submit" class="btn block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_weekly')) }}</button>
-      </form>
-    </div>
-    <div class="field" style="text-align:center">
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('upgrade.plan_biweekly') }}</div>
-      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 12px">₪{{ plan_prices.biweekly }}</p>
-      <form method="post" action="/upgrade">
-        <input type="hidden" name="plan" value="biweekly">
-        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
-          <input type="checkbox" name="terms_agreed" required>
-          <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
-        </label>
-        <button type="submit" class="btn block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_biweekly')) }}</button>
-      </form>
-    </div>
-    <div class="field" style="text-align:center">
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('upgrade.plan_monthly') }}</div>
-      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 12px">₪{{ plan_prices.monthly }}</p>
-      <form method="post" action="/upgrade">
-        <input type="hidden" name="plan" value="monthly">
-        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
-          <input type="checkbox" name="terms_agreed" required>
-          <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
-        </label>
-        <button type="submit" class="btn gold block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_monthly')) }}</button>
+        <button type="submit" class="btn gold block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_subscription')) }}</button>
       </form>
     </div>
   </div>
-  {% if takbull_configured %}
+  {% if recurring_configured %}
   <p class="field-hint" style="text-align:center;margin-top:20px">
-    {{ t('upgrade.payment_hint_takbull') }}
-  </p>
-  {% elif grow_configured %}
-  <p class="field-hint" style="text-align:center;margin-top:20px">
-    {{ t('upgrade.payment_hint_grow') }}
+    {{ t('upgrade.payment_hint_takbull_recurring') }}
   </p>
   {% else %}
   <p class="field-hint" style="text-align:center;margin-top:20px">
     {{ t('upgrade.payment_hint_manual') }}
   </p>
+  {% endif %}
   {% endif %}
 </div>
 <div class="value-anchor reveal">

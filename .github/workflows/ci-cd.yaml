@@ -139,6 +139,8 @@ jobs:
             --set brightDataCollectorId="${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}" \
             --set brightDataDescriptionField="${{ secrets.BRIGHT_DATA_DESCRIPTION_FIELD }}" \
             --set takbullWebhookSecret="${{ secrets.TAKBULL_WEBHOOK_SECRET }}" \
+            --set takbullApiKey="${{ secrets.TAKBULL_API_KEY }}" \
+            --set takbullApiSecret="${{ secrets.TAKBULL_API_SECRET }}" \
             --set awsAccessKeyId="${{ secrets.AWS_ACCESS_KEY_ID }}" \
             --set awsSecretAccessKey="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
             --namespace todira --create-namespace

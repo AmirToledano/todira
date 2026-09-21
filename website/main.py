@@ -43,12 +43,18 @@ import os
 import secrets
 import threading
 import time
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
 from todira_common import bright_data_client
-from todira_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_access
+from todira_common.access import (
+    SUBSCRIPTION_PLAN,
+    PLAN_PRICES_ILS,
+    extend_paid_until,
+    has_full_access,
+)
 from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES
 from todira_common.db import get_session
@@ -1172,6 +1178,7 @@ PLAN_LABELS_HE = {
     "weekly": "שבועי — ₪15",
     "biweekly": "שבועיים — ₪25",
     "monthly": "חודשי — ₪40",
+    SUBSCRIPTION_PLAN: "חודשי — ₪49.90",
 }
 
 
@@ -1196,9 +1203,11 @@ def upgrade(request: Request, uid: int | None = None):
             "display_is_owner": _display_is_owner(request, user.telegram_user_id),
             "trial_ends_at": user.trial_ends_at,
             "paid_until": user.paid_until,
-            "plan_prices": PLAN_PRICES_ILS,
-            "grow_configured": grow_client.is_configured(),
-            "takbull_configured": takbull_client.is_configured(),
+            "subscription_plan": SUBSCRIPTION_PLAN,
+            "subscription_price": PLAN_PRICES_ILS[SUBSCRIPTION_PLAN],
+            "has_active_subscription": user.takbull_subscription_uniqid is not None
+            and not user.cancel_at_period_end,
+            "recurring_configured": takbull_client.recurring_api_configured(),
         },
     )
 
@@ -1210,30 +1219,35 @@ def upgrade_submit(
     uid: int | None = Form(None),
     terms_agreed: bool = Form(False),
 ):
-    """Plan selection. Tries real gateways in order, falling back one step at a time so the site
-    keeps working exactly as before until each is ready:
-    1. Takbull (2026-09-06) once TAKBULL_PAYMENT_PAGE_URL/TAKBULL_WEBHOOK_SECRET are both
-       configured — ₪0/month, chosen specifically over Grow for that reason (see
-       takbull_client.py's module docstring). Redirects to the owner's one shared Takbull payment
-       page; access is granted only once /webhooks/takbull below confirms a real charge.
-    2. Grow/Meshulam once GROW_PAGE_CODE/GROW_USER_ID/GROW_API_KEY are all configured — creates a
-       pending Payment row and redirects to Grow's hosted checkout; access is granted only once
-       /webhooks/grow below confirms a real charge (see grow_client.py's own comment on why that
-       confirmation logic is still provisional).
+    """Plan selection — 2026-09-21: the only real plan is the recurring ₪49.90/month subscription
+    (SUBSCRIPTION_PLAN); the earlier one-time weekly/biweekly/monthly plans are no longer offered
+    (their PLAN_PRICES_ILS/PLAN_DURATIONS entries stay only so historical Payment rows still
+    resolve). Tries real gateways in order, falling back one step at a time:
+    1. Takbull's real recurring API (2026-09-21) once TAKBULL_WEBHOOK_SECRET/TAKBULL_API_KEY/
+       TAKBULL_API_SECRET are all configured — see takbull_client.py's module docstring for the
+       real API this is built from. Creates a pending Payment, calls Takbull to open a NEW
+       recurring order, and redirects to that order's own checkout URL; access is granted (and
+       User.takbull_subscription_uniqid set) only once /webhooks/takbull below confirms the first
+       real charge. Every later month's charge is Takbull's own recurring engine firing
+       automatically, not anything this route does again.
+    2. Grow/Meshulam once GROW_PAGE_CODE/GROW_USER_ID/GROW_API_KEY are all configured — a ONE-TIME
+       ₪49.90 charge for 30 days' access (Grow has no recurring-billing API here, see
+       grow_client.py's own comment), offered only as a fallback while Takbull's recurring API
+       isn't configured yet. Access is granted only once /webhooks/grow below confirms a real
+       charge.
     3. The earlier informal click-trust model (2026-09-04 decision: the click itself IS the
        payment signal, a Bit transfer happens outside this system) whenever neither gateway is
        configured yet.
     The owner's /admin/users free-access toggle remains the remedy for a click/payment that turns
     out not to have actually happened, under any of the three models.
 
-    2026-09-17: terms_agreed is a real, required field now (see upgrade.html's own checkbox on
-    each plan's form) — the payment processor's own compliance requirement is active, explicit
-    consent to the Terms of Use (which now covers the cancellation/refund policy, see terms.html)
-    before proceeding to checkout, not just a passive footer link. The HTML5 `required` attribute
-    already blocks a normal browser submission without it; this is the server-side backstop for a
-    tampered/non-browser request, same "don't trust the client alone" pattern as the plan
-    membership check right below."""
-    if plan not in PLAN_PRICES_ILS or not terms_agreed:
+    2026-09-17: terms_agreed is a real, required field now (see upgrade.html's own checkbox) — the
+    payment processor's own compliance requirement is active, explicit consent to the Terms of Use
+    (which now covers the cancellation/refund policy, see terms.html) before proceeding to
+    checkout, not just a passive footer link. The HTML5 `required` attribute already blocks a
+    normal browser submission without it; this is the server-side backstop for a tampered/
+    non-browser request, same "don't trust the client alone" pattern as the plan check below."""
+    if plan != SUBSCRIPTION_PLAN or not terms_agreed:
         return _render(request, "auth_error.html", {}, status_code=400)
 
     amount = PLAN_PRICES_ILS[plan]
@@ -1243,18 +1257,37 @@ def upgrade_submit(
         if user is None:
             return _render(request, "need_uid.html", {"target": "upgrade"})
 
-        if takbull_client.is_configured():
+        if takbull_client.recurring_api_configured():
             payment = Payment(
                 user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway="takbull"
             )
             session.add(payment)
             session.commit()
-            checkout_url = takbull_client.build_checkout_url(payment_id=payment.id)
-            if checkout_url is not None:
-                return RedirectResponse(checkout_url, status_code=303)
-            payment.status = "failed"
+            payment_id = payment.id
+            redirect_uid = user.telegram_user_id
+            uid_qs = f"&uid={redirect_uid}" if redirect_uid else ""
+            secret = os.environ.get(takbull_client.WEBHOOK_SECRET_ENV_VAR, "").strip()
+            result = takbull_client.create_subscription_checkout_url(
+                payment_id=payment_id,
+                amount_ils=str(amount),
+                customer_full_name=user.first_name,
+                customer_email=None,
+                redirect_address=f"{WEBSITE_URL}/upgrade/success?payment_id={payment_id}{uid_qs}",
+                cancel_address=(
+                    f"{WEBSITE_URL}/upgrade?{uid_qs.lstrip('&')}"
+                    if redirect_uid
+                    else f"{WEBSITE_URL}/upgrade"
+                ),
+                ipn_address=f"{WEBSITE_URL}/webhooks/takbull/{secret}",
+            )
+            if result is None:
+                payment.status = "failed"
+                session.commit()
+                return _render(request, "auth_error.html", {}, status_code=502)
+            checkout_url, uniqid = result
+            payment.subscription_uniqid = uniqid
             session.commit()
-            return _render(request, "auth_error.html", {}, status_code=502)
+            return RedirectResponse(checkout_url, status_code=303)
 
         if not grow_client.is_configured():
             payment = Payment(
@@ -1484,13 +1517,33 @@ async def webhooks_takbull(request: Request, secret: str):
                 Payment.id == payment_id, Payment.gateway == "takbull", Payment.status == "pending"
             )
         )
+        is_renewal = False
         if payment is None:
-            logger.warning(
-                "Takbull webhook order_reference=%s did not match any pending Takbull payment — "
-                "ignoring",
-                payment_id,
+            # Not a pending first-time charge — check whether this is Takbull's own recurring
+            # engine firing a RENEWAL charge (month 2+) against a subscription we already created.
+            # Per Takbull's docs, IsSubscriptionPayment=true marks such an event; order_reference
+            # still points at the ORIGINAL (now already "paid") Payment row, since that row IS the
+            # subscription from Takbull's point of view, not a fresh one-time order. Genuinely
+            # NOT live-verified yet (no real renewal has fired through this) — see
+            # takbull_client.py's module docstring.
+            original = session.scalar(
+                select(Payment).where(
+                    Payment.id == payment_id,
+                    Payment.gateway == "takbull",
+                    Payment.status == "paid",
+                    Payment.subscription_uniqid.is_not(None),
+                )
             )
-            return Response(status_code=200)
+            if original is not None and bool(body.get("IsSubscriptionPayment")):
+                is_renewal = True
+                payment = original
+            else:
+                logger.warning(
+                    "Takbull webhook order_reference=%s did not match any pending Takbull "
+                    "payment (or renewal-eligible subscription) — ignoring",
+                    payment_id,
+                )
+                return Response(status_code=200)
 
         if not _looks_like_a_successful_takbull_payload(body):
             logger.warning(
@@ -1509,13 +1562,12 @@ async def webhooks_takbull(request: Request, secret: str):
         # payload above.
         order_total = body.get("OrderTotalSum")
         try:
-            # OrderTotalSum can plausibly arrive as a decimal string (e.g. "40.00") even though
-            # every example seen so far has been a clean int — int("40.00") raises ValueError, and
-            # this used to crash unhandled here (a real 500) instead of failing safe like every
-            # other suspicious-payload case on this endpoint. A field that's present but can't be
-            # parsed is treated the same as one that doesn't match: leave pending.
-            order_total_matches = order_total is not None and int(order_total) == payment.amount_ils
-        except (TypeError, ValueError):
+            # Decimal, not int (2026-09-21) — the recurring plan's ₪49.90 isn't a whole number, so
+            # OrderTotalSum arrives as e.g. "49.90"; int("49.90") raises ValueError, which used to
+            # get silently treated as "leave pending" here, meaning every real recurring charge
+            # would have gone uncredited forever under the old comparison.
+            order_total_matches = order_total is not None and Decimal(str(order_total)) == payment.amount_ils
+        except (InvalidOperation, TypeError, ValueError):
             order_total_matches = False
         if order_total is not None and not order_total_matches:
             logger.warning(
@@ -1541,11 +1593,50 @@ async def webhooks_takbull(request: Request, secret: str):
             logger.error("Takbull webhook for payment_id=%s references a deleted user", payment.id)
             return Response(status_code=200)
 
+        transaction_id = str(body.get("uniqId") or body.get("OrderNumber") or payment.id)
+
+        if is_renewal:
+            # A NEW Payment row per renewal cycle (not overwriting the original) — keeps the
+            # per-charge audit trail the class docstring promises, and gateway_transaction_id's
+            # own unique constraint is what stops a replayed webhook for the SAME cycle from
+            # double-crediting (a real new cycle always carries a transaction id we haven't seen).
+            existing = session.scalar(
+                select(Payment).where(Payment.gateway_transaction_id == transaction_id)
+            )
+            if existing is not None:
+                logger.info(
+                    "Takbull renewal webhook transaction_id=%s already processed — ignoring replay",
+                    transaction_id,
+                )
+                return Response(status_code=200)
+            if user.cancel_at_period_end:
+                logger.warning(
+                    "Takbull renewal charge for user_id=%s arrived after cancel_at_period_end was "
+                    "set — Takbull's own CancelSubscription call may not have taken effect; "
+                    "granting the paid period regardless since a real charge happened",
+                    user.id,
+                )
+            renewal_payment = Payment(
+                user_id=user.id,
+                plan=payment.plan,
+                amount_ils=payment.amount_ils,
+                status="paid",
+                gateway="takbull",
+                gateway_transaction_id=transaction_id,
+                subscription_uniqid=payment.subscription_uniqid,
+                paid_at=dt.datetime.now(dt.timezone.utc),
+            )
+            session.add(renewal_payment)
+            extend_paid_until(user, payment.plan)
+            session.commit()
+            return Response(status_code=200)
+
         payment.status = "paid"
         payment.paid_at = dt.datetime.now(dt.timezone.utc)
-        payment.gateway_transaction_id = str(
-            body.get("uniqId") or body.get("OrderNumber") or payment.id
-        )
+        payment.gateway_transaction_id = transaction_id
+        if payment.subscription_uniqid:
+            user.takbull_subscription_uniqid = payment.subscription_uniqid
+            user.cancel_at_period_end = False
         extend_paid_until(user, payment.plan)
         session.commit()
 
@@ -1616,8 +1707,50 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
             "notifications_enabled": notifications_enabled,
             "whatsapp_notifications_opted_in": whatsapp_notifications_opted_in,
             "payments": payments,
+            "has_active_subscription": user.takbull_subscription_uniqid is not None,
+            "cancel_at_period_end": user.cancel_at_period_end,
         },
     )
+
+
+@app.post("/account/cancel-subscription")
+def account_cancel_subscription(
+    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+):
+    """Stops future auto-renewal — the user KEEPS access until paid_until (the period already
+    charged for isn't clawed back), same as any standard SaaS cancellation. Deliberately does NOT
+    call Takbull's CancelSubscription API here — Takbull has no documented "un-cancel" API
+    counterpart, so calling it immediately would make /account/resume-subscription below unable to
+    actually resume anything. Instead this only flips the local flag; the real Takbull-side cancel
+    happens once the period actually ends (scraper's daily housekeeping — see
+    todira_common/access.py's module docstring and scraper/main.py), so a resume clicked before
+    then needs no API call at all and the recurring order keeps working uninterrupted throughout."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "account"})
+        user.cancel_at_period_end = True
+        session.commit()
+
+    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+
+
+@app.post("/account/resume-subscription")
+def account_resume_subscription(
+    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+):
+    """Undoes a cancel-subscription click made before the current period actually ran out. Pure
+    local-state flip, no Takbull call needed — see account_cancel_subscription's own comment on
+    why the real Takbull-side cancel is deliberately deferred until the period actually ends, so
+    there's nothing to "un-cancel" on Takbull's side as long as this is clicked before then."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "account"})
+        user.cancel_at_period_end = False
+        session.commit()
+
+    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
 
 
 @app.post("/account/notifications")

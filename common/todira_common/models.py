@@ -5,6 +5,7 @@ rationale (why arrays instead of join tables, why filters is one-to-one with use
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 from sqlalchemy import (
     ARRAY,
@@ -89,6 +90,17 @@ class User(Base):
     # Owner-granted comp access, independent of trial/payment — set only via the admin panel
     # (website's /admin/users), never by the user themselves.
     free_access_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    # Recurring ₪49.90/month subscription (2026-09-21, replaces the earlier one-time plans — see
+    # todira_common/access.py's PLAN_PRICES_ILS). cancel_at_period_end: the user asked to stop
+    # auto-renewing, but keeps access until paid_until — already-charged time isn't clawed back,
+    # same as any standard SaaS cancellation. takbull_subscription_uniqid: Takbull's own uniqId for
+    # this user's active recurring order (set once the subscription-creation webhook confirms it —
+    # see website/main.py's /webhooks/takbull), needed to call Takbull's CancelSubscription API.
+    cancel_at_period_end: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    takbull_subscription_uniqid: Mapped[str | None] = mapped_column(Text)
 
     # Cross-channel account linking (2026-09-05) — a short code generated on the website
     # (/account) for an already-logged-in user, then sent FROM a new channel (a WhatsApp text
@@ -385,7 +397,13 @@ class Payment(Base):
     Deliberately still supports gateway=None/status="paid" rows too: website/main.py's /upgrade
     falls back to the old click-trust flow whenever Grow isn't configured (no account yet) — see
     that route's own comment — so this table stays the single source of truth for "what plan is
-    this person currently on and since when" under BOTH models, not just the gateway one."""
+    this person currently on and since when" under BOTH models, not just the gateway one.
+
+    2026-09-21: also the per-cycle audit log for the recurring ₪49.90/month subscription — one row
+    per charge, the initial one AND every renewal (not just the first). subscription_uniqid links
+    every row belonging to the same Takbull recurring order together (mirrors
+    User.takbull_subscription_uniqid); gateway_transaction_id stays the guard against double-
+    crediting a replayed webhook for the SAME cycle, same as it always was for a one-time charge."""
 
     __tablename__ = "payments"
 
@@ -394,7 +412,9 @@ class Payment(Base):
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     plan: Mapped[str] = mapped_column(Text, nullable=False)
-    amount_ils: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Numeric, not Integer (2026-09-21) — every one-time plan price so far has been a whole number
+    # of shekels, but the recurring plan's ₪49.90 isn't. See migration 0012_subscription_billing.
+    amount_ils: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     # "pending" | "paid" | "failed" | "cancelled"
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending")
     # "grow" once real gateway checkout is wired; None for a row created under the earlier
@@ -403,6 +423,9 @@ class Payment(Base):
     # Grow's own transaction/process identifier, set once the webhook confirms payment — lets a
     # webhook retry/replay be recognized as the SAME payment instead of double-crediting the user.
     gateway_transaction_id: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
+    # Takbull's uniqId for the recurring order this charge belongs to (None for a one-time-plan
+    # payment) — see the class docstring above and website/main.py's /webhooks/takbull.
+    subscription_uniqid: Mapped[str | None] = mapped_column(Text, index=True)
     # A random per-payment secret WE generate and embed in the notifyUrl we hand to Grow (see
     # website/grow_client.py) — required as a query param on the incoming /webhooks/grow call
     # before it can mark this row paid. This exists because Grow's own webhook authentication

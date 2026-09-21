@@ -712,11 +712,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Combien ça coûte ?", "ar": "كم تكلفته؟",
     },
     "home.faq3_a": {
-        "he": "יש תקופת ניסיון של 3 ימים, ואז מנוי החל מ-15 ₪ לשבוע (יש גם אפשרות לשבועיים או לחודש).",
-        "en": "There's a 3-day trial period, then a subscription starting from ₪15/week (biweekly and monthly options are also available).",
-        "ru": "Есть 3-дневный пробный период, затем подписка от 15 ₪ в неделю (доступны также варианты на две недели и на месяц).",
-        "fr": "Il y a une période d'essai de 3 jours, puis un abonnement à partir de 15 ₪/semaine (options bihebdomadaire et mensuelle également disponibles).",
-        "ar": "هناك فترة تجريبية مدتها 3 أيام، ثم اشتراك يبدأ من 15 ₪ أسبوعيًا (تتوفر أيضًا خيارات لأسبوعين أو لشهر).",
+        "he": "יש תקופת ניסיון של 3 ימים, ואז מנוי חודשי של 49.90 ₪ שמתחדש אוטומטית — אפשר לבטל בכל רגע.",
+        "en": "There's a 3-day trial period, then a ₪49.90/month subscription that auto-renews — cancel anytime.",
+        "ru": "Есть 3-дневный пробный период, затем подписка за 49.90 ₪ в месяц с автопродлением — отменить можно в любой момент.",
+        "fr": "Il y a une période d'essai de 3 jours, puis un abonnement à 49,90 ₪/mois avec renouvellement automatique — annulez à tout moment.",
+        "ar": "هناك فترة تجريبية مدتها 3 أيام، ثم اشتراك شهري بقيمة 49.90 ₪ يتجدد تلقائيًا — يمكن الإلغاء في أي وقت.",
     },
     "home.faq4_q": {
         "he": "אפשר לשנות את הסינון אחרי שהגדרתי אותו?",
@@ -1335,6 +1335,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "לשדרוג המנוי", "en": "Upgrade now", "ru": "Оформить подписку",
         "fr": "Passer à l'abonnement", "ar": "الترقية الآن",
     },
+    "account.subscription_auto_renews": {
+        "he": "המנוי מתחדש אוטומטית כל חודש.",
+        "en": "Your subscription auto-renews every month.",
+        "ru": "Ваша подписка автоматически продлевается каждый месяц.",
+        "fr": "Votre abonnement se renouvelle automatiquement chaque mois.",
+        "ar": "يتجدد اشتراكك تلقائيًا كل شهر.",
+    },
+    "account.subscription_will_not_renew": {
+        "he": "ביטלת את החידוש האוטומטי — הגישה תישאר עד תום התקופה ששולמה, ולא תחויב/י שוב.",
+        "en": "You cancelled auto-renewal — access stays until the end of the period you already paid for, and you won't be charged again.",
+        "ru": "Вы отменили автопродление — доступ сохранится до конца уже оплаченного периода, повторного списания не будет.",
+        "fr": "Vous avez annulé le renouvellement automatique — l'accès reste actif jusqu'à la fin de la période déjà payée, sans nouveau prélèvement.",
+        "ar": "لقد ألغيت التجديد التلقائي — يبقى الوصول حتى نهاية الفترة المدفوعة بالفعل، ولن يتم خصم أي مبلغ مرة أخرى.",
+    },
+    "account.cancel_subscription_cta": {
+        "he": "בטל חידוש אוטומטי", "en": "Cancel auto-renewal", "ru": "Отменить автопродление",
+        "fr": "Annuler le renouvellement automatique", "ar": "إلغاء التجديد التلقائي",
+    },
+    "account.resume_subscription_cta": {
+        "he": "חדש חידוש אוטומטי", "en": "Resume auto-renewal", "ru": "Возобновить автопродление",
+        "fr": "Reprendre le renouvellement automatique", "ar": "استئناف التجديد التلقائي",
+    },
     "account.notifications_title": {
         "he": "התראות 🔔", "en": "Notifications 🔔", "ru": "Уведомления 🔔",
         "fr": "Notifications 🔔", "ar": "الإشعارات 🔔",
@@ -1577,6 +1599,34 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "upgrade.plan_monthly": {
         "he": "חודשי", "en": "Monthly", "ru": "Ежемесячный", "fr": "Mensuel", "ar": "شهري",
     },
+    "upgrade.plan_subscription": {
+        "he": "מנוי חודשי", "en": "Monthly subscription", "ru": "Ежемесячная подписка",
+        "fr": "Abonnement mensuel", "ar": "اشتراك شهري",
+    },
+    # Same string, different key — upgrade_pay.html looks this one up via string concatenation
+    # ("upgrade.plan_" ~ plan, plan being the raw SUBSCRIPTION_PLAN="monthly_subscription" key),
+    # while upgrade.html/account.html reference upgrade.plan_subscription directly above.
+    "upgrade.plan_monthly_subscription": {
+        "he": "מנוי חודשי", "en": "Monthly subscription", "ru": "Ежемесячная подписка",
+        "fr": "Abonnement mensuel", "ar": "اشتراك شهري",
+    },
+    "upgrade.per_month_suffix": {
+        "he": " / חודש", "en": " / month", "ru": " / месяц", "fr": " / mois", "ar": " / شهر",
+    },
+    "upgrade.cancel_anytime_hint": {
+        "he": "מתחדש אוטומטית כל חודש. אפשר לבטל בכל רגע מ־/account, וממשיכים לקבל גישה עד סוף התקופה ששולמה.",
+        "en": "Auto-renews every month. Cancel anytime from /account — you keep access until the end of the period you already paid for.",
+        "ru": "Автоматически продлевается каждый месяц. Отменить можно в любой момент в /account — доступ сохраняется до конца уже оплаченного периода.",
+        "fr": "Se renouvelle automatiquement chaque mois. Annulez à tout moment depuis /account — vous gardez l'accès jusqu'à la fin de la période déjà payée.",
+        "ar": "يتجدد تلقائيًا كل شهر. يمكن الإلغاء في أي وقت من /account — يبقى الوصول حتى نهاية الفترة المدفوعة بالفعل.",
+    },
+    "upgrade.already_subscribed": {
+        "he": "יש לך כבר מנוי פעיל. ניתן לנהל אותו בעמוד /account.",
+        "en": "You already have an active subscription. Manage it from the /account page.",
+        "ru": "У вас уже есть активная подписка. Управляйте ею на странице /account.",
+        "fr": "Vous avez déjà un abonnement actif. Gérez-le depuis la page /account.",
+        "ar": "لديك بالفعل اشتراك نشط. يمكنك إدارته من صفحة /account.",
+    },
     "upgrade.choose_plan_cta": {
         "he": "בחר {plan}", "en": "Choose {plan}", "ru": "Выбрать {plan}", "fr": "Choisir {plan}",
         "ar": "اختر {plan}",
@@ -1587,6 +1637,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. На странице оплаты вы увидите все 3 плана вместе — просто добавьте выбранный здесь план (по цене) в корзину и завершите оплату. 🐾",
         "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Sur la page de paiement, vous verrez les 3 forfaits ensemble — ajoutez simplement celui choisi ici (selon le prix) au panier et finalisez le paiement. 🐾",
         "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. في صفحة الدفع سترى الخطط الثلاث معًا — فقط أضف الخطة التي اخترتها هنا (حسب السعر) إلى السلة وأكمل الدفع. 🐾",
+    },
+    "upgrade.payment_hint_takbull_recurring": {
+        "he": "התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. החיוב יתחדש אוטומטית כל חודש עד שתבטל/י. 🐾",
+        "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. The charge auto-renews every month until you cancel. 🐾",
+        "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Списание автоматически продлевается каждый месяц, пока вы не отмените подписку. 🐾",
+        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Le prélèvement se renouvelle automatiquement chaque mois jusqu'à l'annulation. 🐾",
+        "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
     },
     "upgrade.payment_hint_grow": {
         "he": "התשלום מאובטח דרך Grow — ביט, פייבוקס, Apple Pay, Google Pay או כרטיס אשראי. 🐾",
@@ -1602,25 +1659,25 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Le paiement se fait manuellement via Bit/PayBox — après avoir cliqué, vous serez redirigé vers une page avec tous les détails de paiement. 🐾",
         "ar": "يتم الدفع يدويًا عبر Bit/PayBox — بعد الضغط ستنتقل إلى صفحة تحتوي على كل تفاصيل الدفع. 🐾",
     },
-    # 2026-09-10 addition: a small value-anchor box under the plan cards, right where price
+    # 2026-09-10 addition: a small value-anchor box under the plan card, right where price
     # sensitivity is highest — reframes the price against what people already know a broker
-    # costs, instead of leaving ₪15-40 sitting there with no context. Deliberately does NOT claim
-    # "cancel anytime" (a phrase that implies an auto-renewing subscription) — each plan is a
-    # one-time purchase for a fixed period (PLAN_DURATIONS), nothing auto-renews, so the honest
-    # framing is "no commitment to keep paying," not "cancel."
+    # costs. 2026-09-21: the plan itself became a real auto-renewing subscription (see
+    # todira_common/access.py's SUBSCRIPTION_PLAN), so the body copy below now DOES say "cancel
+    # anytime" — cancel_anytime_hint above (right on the plan card itself) already sets that
+    # expectation, this box just reinforces it next to the price comparison.
     "upgrade.value_anchor_title": {
-        "he": "40 ₪ לחודש? פחות מכוס קפה ביום.",
-        "en": "₪40 a month? Less than a daily coffee.",
-        "ru": "40 ₪ в месяц? Меньше чашки кофе в день.",
-        "fr": "40 ₪ par mois ? Moins qu'un café par jour.",
-        "ar": "40 ₪ شهريًا؟ أقل من فنجان قهوة يوميًا.",
+        "he": "49.90 ₪ לחודש? פחות מכוס קפה ביום.",
+        "en": "₪49.90 a month? Less than a daily coffee.",
+        "ru": "49.90 ₪ в месяц? Меньше чашки кофе в день.",
+        "fr": "49,90 ₪ par mois ? Moins qu'un café par jour.",
+        "ar": "49.90 ₪ شهريًا؟ أقل من فنجان قهوة يوميًا.",
     },
     "upgrade.value_anchor_body": {
-        "he": "עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי, ואין התחייבות להמשך אחרי שהתקופה נגמרת.",
-        "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token amount, with no commitment to keep paying after the period ends.",
-        "ru": "Комиссия риелтора обычно составляет тысячи шекелей, один раз. У нас это символическая сумма, без обязательства продолжать платить после окончания периода.",
-        "fr": "Les frais d'agence coûtent généralement des milliers de shekels, une seule fois. Chez nous, c'est une somme symbolique, sans engagement à continuer de payer une fois la période terminée.",
-        "ar": "عمولة الوسيط عادة ما تكلف آلاف الشواقل، مرة واحدة. عندنا هو مبلغ رمزي، دون التزام بالاستمرار في الدفع بعد انتهاء الفترة.",
+        "he": "עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי בחודש, ואפשר לבטל בכל רגע.",
+        "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token monthly amount, and you can cancel anytime.",
+        "ru": "Комиссия риелтора обычно составляет тысячи шекелей, один раз. У нас это символическая сумма в месяц, и вы можете отменить подписку в любой момент.",
+        "fr": "Les frais d'agence coûtent généralement des milliers de shekels, une seule fois. Chez nous, c'est une somme mensuelle symbolique, et vous pouvez annuler à tout moment.",
+        "ar": "عمولة الوسيط عادة ما تكلف آلاف الشواقل، مرة واحدة. عندنا هو مبلغ شهري رمزي، ويمكن الإلغاء في أي وقت.",
     },
     # Required terms-agreement checkbox on each plan's own form (2026-09-17, added per the
     # payment processor's own compliance requirement — active, explicit consent to the terms,

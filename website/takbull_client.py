@@ -30,15 +30,54 @@ Verified live 2026-09-06 against the owner's own real Takbull account (not guess
   as that one static "Hook Address" in Takbull's dashboard — see website/main.py's
   /webhooks/takbull/{secret} route.
 
-Scope: same one-time-charge-per-purchase model as Grow (see grow_client.py's own comment) — not
-auto-renewing billing.
+Scope: the hosted-page functions below (is_configured/build_checkout_url) are the original
+one-time-charge-per-purchase model (see grow_client.py's own comment) — not auto-renewing billing.
+
+2026-09-21 addition — real recurring subscription billing (₪49.90/month, see
+todira_common/access.py's SUBSCRIPTION_PLAN): Takbull's ₪0/month hosted-page trick above has no
+concept of a recurring order at all — that requires their actual REST API (api.takbull.co.il,
+API_Key/API_Secret headers), documented in the PDF the owner supplied (Postman workspace
+pawow2/takbull, base URL confirmed live against real request/response examples, not guessed):
+- POST /api/ExtranalAPI/GetTakbullPaymentPageRedirectUrl with DealType=4 ("Recurring"),
+  RecuringInterval=5 ("EachMonth"), OrderTotalSum/InitialAmount for the charge amount, plus the
+  same order_reference/RedirectAddress/CancelReturnAddress/IPNAddress fields the one-time flow
+  already uses — response is {responseCode, uniqId}; redirect the customer to
+  https://api.takbull.co.il/PaymentGateway?orderUniqId={uniqId} same as any other order.
+- GET /api/ExtranalAPI/CancelSubscription?uniqId={uniqId} to stop future auto-renewal.
+Requires the owner's account to have the API-key module enabled (₪99 one-time — see this module's
+history above: the hosted-page flow was deliberately built to NOT need it, but recurring billing
+genuinely requires the real API, there's no hosted-page equivalent) and real API_Key/API_Secret
+from app.takbull.co.il/api-setting. recurring_api_configured() gates every function below on both
+being set — NOT YET LIVE-VERIFIED end to end (no real subscription has been created or renewed
+through this yet); the first real subscription checkout is what actually confirms these field
+names/response shapes, same "verify live, don't guess" posture as grow_client.py's own module
+docstring. In particular: the exact webhook payload shape for a RENEWAL charge (month 2+, fired
+automatically by Takbull's own recurring engine, not by anything this site does) is inferred from
+the documented IsSubscriptionPayment field, not confirmed against a real renewal event — see
+website/main.py's /webhooks/takbull for how that's handled defensively (matches by
+subscription_uniqid, keyed off Payment.gateway_transaction_id for idempotency, never trusts an
+unrecognized shape).
 """
 from __future__ import annotations
 
+import logging
 import os
+
+import httpx
+
+logger = logging.getLogger(__name__)
 
 PAYMENT_PAGE_URL_ENV_VAR = "TAKBULL_PAYMENT_PAGE_URL"
 WEBHOOK_SECRET_ENV_VAR = "TAKBULL_WEBHOOK_SECRET"
+API_KEY_ENV_VAR = "TAKBULL_API_KEY"
+API_SECRET_ENV_VAR = "TAKBULL_API_SECRET"
+
+_API_BASE_URL = "https://api.takbull.co.il"
+_REQUEST_TIMEOUT_SECONDS = 15.0
+# RecuringInterval enum value for "EachMonth" — per the API docs' Order Parameters table
+# (1=Daily, 2=Weekly, 3=Monthly, 4=Annual, 5=EachMonth).
+_RECURRING_INTERVAL_EACH_MONTH = 5
+_DEAL_TYPE_RECURRING = 4
 
 
 def is_configured() -> bool:
@@ -62,3 +101,115 @@ def build_checkout_url(*, payment_id: int) -> str | None:
         return None
     separator = "&" if "?" in base_url else "?"
     return f"{base_url}{separator}order_reference={payment_id}"
+
+
+def recurring_api_configured() -> bool:
+    """Gates every function below (create_subscription_checkout_url/cancel_subscription) — see the
+    module docstring for why recurring billing needs Takbull's real API (API_Key/API_Secret),
+    unlike the ₪0/month hosted-page flow above which needs neither. website/main.py's /upgrade
+    falls back to the earlier one-time plans/Grow/informal flow when this is False."""
+    return bool(
+        os.environ.get(WEBHOOK_SECRET_ENV_VAR, "").strip()
+        and os.environ.get(API_KEY_ENV_VAR, "").strip()
+        and os.environ.get(API_SECRET_ENV_VAR, "").strip()
+    )
+
+
+def _api_headers() -> dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "API_Key": os.environ.get(API_KEY_ENV_VAR, "").strip(),
+        "API_Secret": os.environ.get(API_SECRET_ENV_VAR, "").strip(),
+    }
+
+
+def create_subscription_checkout_url(
+    *,
+    payment_id: int,
+    amount_ils: str,
+    customer_full_name: str | None,
+    customer_email: str | None,
+    redirect_address: str,
+    cancel_address: str,
+    ipn_address: str,
+) -> tuple[str, str] | None:
+    """Creates a new recurring (monthly) order via Takbull's real API and returns
+    (checkout_url, uniqid) — the uniqid is Takbull's own identifier for this subscription, stored
+    on both User.takbull_subscription_uniqid and Payment.subscription_uniqid so a later
+    cancel_subscription() call and every renewal-charge webhook can be tied back to it. Returns
+    None on any failure (logged, never raises), same fail-soft contract as grow_client.py's
+    create_checkout_url. `amount_ils` is passed as a string (Takbull's own examples show it that
+    way; the request otherwise mirrors the one-time GetTakbullPaymentPageRedirectUrl shape with
+    DealType=4/RecuringInterval=5 added)."""
+    if not recurring_api_configured():
+        logger.error("create_subscription_checkout_url called but the recurring API isn't configured")
+        return None
+
+    payload = {
+        "order_reference": str(payment_id),
+        "OrderTotalSum": amount_ils,
+        "InitialAmount": amount_ils,
+        "InitialChargeDescroption": "טודירה — מנוי חודשי",
+        "DealType": _DEAL_TYPE_RECURRING,
+        "RecuringInterval": _RECURRING_INTERVAL_EACH_MONTH,
+        "RedirectAddress": redirect_address,
+        "CancelReturnAddress": cancel_address,
+        "IPNAddress": ipn_address,
+        "CustomerFullName": customer_full_name or "",
+        "Customer": {"Email": customer_email} if customer_email else {},
+    }
+    try:
+        response = httpx.post(
+            f"{_API_BASE_URL}/api/ExtranalAPI/GetTakbullPaymentPageRedirectUrl",
+            json=payload,
+            headers=_api_headers(),
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (httpx.HTTPError, ValueError):
+        logger.exception(
+            "Takbull GetTakbullPaymentPageRedirectUrl (recurring) call failed for payment_id=%s",
+            payment_id,
+        )
+        return None
+
+    logger.info(
+        "Takbull GetTakbullPaymentPageRedirectUrl (recurring) raw response for payment_id=%s: %r",
+        payment_id, data,
+    )
+    uniqid = data.get("uniqId")
+    if data.get("responseCode") != 0 or not uniqid:
+        logger.error(
+            "Takbull GetTakbullPaymentPageRedirectUrl (recurring) response had no usable uniqId "
+            "(payment_id=%s) — see the raw payload logged above",
+            payment_id,
+        )
+        return None
+    return f"{_API_BASE_URL}/PaymentGateway?orderUniqId={uniqid}", uniqid
+
+
+def cancel_subscription(uniqid: str) -> bool:
+    """Cancels a recurring order via Takbull's real CancelSubscription API — called from
+    website/main.py's /account/cancel-subscription. Returns False on any failure (logged, never
+    raises); the caller still flips User.cancel_at_period_end regardless (see that route's own
+    comment on why: a customer's cancel request shouldn't be blocked by a transient API error, and
+    a subsequent renewal-charge webhook that arrives anyway even after Takbull's own cancellation
+    failed is now unable to double-credit access past paid_until, since the FRONTEND stops
+    reflecting it as an active subscription either way)."""
+    if not recurring_api_configured():
+        logger.error("cancel_subscription called but the recurring API isn't configured")
+        return False
+    try:
+        response = httpx.get(
+            f"{_API_BASE_URL}/api/ExtranalAPI/CancelSubscription",
+            params={"uniqId": uniqid},
+            headers=_api_headers(),
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError:
+        logger.exception("Takbull CancelSubscription call failed for uniqid=%s", uniqid)
+        return False
+    logger.info("Takbull CancelSubscription for uniqid=%s: HTTP %s", uniqid, response.status_code)
+    return True
