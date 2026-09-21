@@ -1,0 +1,76 @@
+name: Diagnose — is the real Takbull recurring API actually configured live, or still the old manual flow? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-21.
+#
+# The owner asked directly: did anything actually change in production, or is /upgrade still using
+# the old manual/click-trust hosted-page flow? website/takbull_client.py's recurring_api_configured()
+# gates the new DealType=4 recurring API path on BOTH TAKBULL_API_KEY and TAKBULL_API_SECRET being
+# set — this checks whether those are real, non-empty, live, at both layers they'd need to be set at
+# (the GitHub Actions repo secret ci-cd.yaml reads from, AND the actual k8s secret the website pod
+# reads from), WITHOUT ever printing or decoding either value (only whether each is present/absent
+# and how long it is) — same "confirm existence, never print secret content" discipline this
+# project's other diagnostics already use.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check GitHub Actions repo secrets (what ci-cd.yaml actually deploys with)
+        env:
+          GH_API_KEY: ${{ secrets.TAKBULL_API_KEY }}
+          GH_API_SECRET: ${{ secrets.TAKBULL_API_SECRET }}
+        run: |
+          echo "=== GitHub Actions repo secrets (used by ci-cd.yaml's helm upgrade --set) ==="
+          if [ -z "$GH_API_KEY" ]; then
+            echo "TAKBULL_API_KEY: NOT SET (empty)"
+          else
+            echo "TAKBULL_API_KEY: set, length=${#GH_API_KEY}"
+          fi
+          if [ -z "$GH_API_SECRET" ]; then
+            echo "TAKBULL_API_SECRET: NOT SET (empty)"
+          else
+            echo "TAKBULL_API_SECRET: set, length=${#GH_API_SECRET}"
+          fi
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Check the LIVE k8s secret the website pod actually reads from
+        run: |
+          echo "=== Live todira-bot-secret in the todira namespace ==="
+          API_KEY_LEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.takbull-api-key}' 2>/dev/null | base64 -d | wc -c)
+          API_SECRET_LEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.takbull-api-secret}' 2>/dev/null | base64 -d | wc -c)
+          echo "takbull-api-key: present, length=$API_KEY_LEN bytes"
+          echo "takbull-api-secret: present, length=$API_SECRET_LEN bytes"
+          if [ "$API_KEY_LEN" -eq 0 ] || [ "$API_SECRET_LEN" -eq 0 ]; then
+            echo ""
+            echo "VERDICT: at least one of takbull-api-key/takbull-api-secret is EMPTY live — "
+            echo "recurring_api_configured() returns False in production right now, so /upgrade is "
+            echo "NOT using the new recurring API. It's falling through to Grow (if configured) or "
+            echo "the old manual/click-trust Takbull hosted-page flow."
+          else
+            echo ""
+            echo "VERDICT: both keys are present and non-empty live — recurring_api_configured() "
+            echo "returns True, so /upgrade IS eligible to use the new recurring API path (still "
+            echo "doesn't prove Takbull's own account has the API-key module enabled — only that our "
+            echo "own config is in place)."
+          fi
+
+      - name: Check which website pod is actually running these env vars right now
+        run: |
+          echo "=== Live website pod env (names only, never values) ==="
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -z "$POD" ]; then
+            echo "Could not find a running todira-website pod."
+            exit 0
+          fi
+          echo "Pod: $POD"
+          kubectl exec -n todira "$POD" -- env 2>/dev/null | grep -o '^TAKBULL_[A-Z_]*' | sort -u || echo "(no TAKBULL_* env vars found on the live pod)"
