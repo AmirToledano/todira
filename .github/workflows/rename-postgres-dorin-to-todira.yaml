@@ -60,35 +60,49 @@ jobs:
                 args:
                   - |
                     set -e
-                    # Same user/password/host as the app's own DATABASE_URL, but connect to the
-                    # always-present "postgres" admin database instead of "dorin" — you cannot
-                    # rename a database you're currently connected to.
+                    # 2026-09-21 run #1 already renamed the DATABASE (dorin -> todira) but the ROLE
+                    # rename failed with "session user cannot be renamed" — Postgres refuses to let
+                    # a role rename itself, even as superuser, no matter which database it's
+                    # connected to. Since POSTGRES_USER=dorin was the only role ever created (the
+                    # official postgres image creates exactly one bootstrap superuser, named after
+                    # POSTGRES_USER — there's no separate "postgres" superuser role here to use
+                    # instead), the fix is to have "dorin" create a THROWAWAY second superuser,
+                    # reconnect as that one, do the rename from there, then drop the throwaway role
+                    # (itself from a third connection, as the now-renamed "todira" role — you can't
+                    # drop your own session role either, same restriction).
+                    #
+                    # The secret's DATABASE_URL still says dbname=dorin (stale — the secret hasn't
+                    # been redeployed since run #1 renamed the actual database), so every connection
+                    # below targets "todira" explicitly instead.
                     CONN="postgresql://${DATABASE_URL#*://}"
-                    ADMIN_CONN=$(echo "$CONN" | sed -E 's#^(.*)/[^/?]+(\??.*)$#\1/postgres\2#')
+                    TODIRA_CONN=$(echo "$CONN" | sed -E 's#^(.*)/[^/?]+(\??.*)$#\1/todira\2#')
 
-                    echo "--- before: databases ---"
-                    psql "$ADMIN_CONN" -c "SELECT datname FROM pg_database WHERE datname NOT LIKE 'template%';"
-                    echo "--- before: roles ---"
-                    psql "$ADMIN_CONN" -c "SELECT rolname FROM pg_roles WHERE rolname = 'dorin';"
+                    echo "--- confirm current state: connect as dorin to the already-renamed todira database ---"
+                    psql "$TODIRA_CONN" -c "SELECT current_database(), current_user;"
+                    psql "$TODIRA_CONN" -c "SELECT rolname FROM pg_roles WHERE rolname IN ('dorin', 'todira');"
 
-                    echo "--- terminating other active connections to dorin ---"
-                    psql "$ADMIN_CONN" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'dorin' AND pid <> pg_backend_pid();"
+                    TEMP_PASSWORD=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+                    echo "--- creating a throwaway bootstrap superuser to rename dorin from ---"
+                    psql "$TODIRA_CONN" -c "CREATE ROLE rename_bootstrap WITH SUPERUSER LOGIN PASSWORD '${TEMP_PASSWORD}';"
 
-                    echo "--- renaming database dorin -> todira ---"
-                    psql "$ADMIN_CONN" -c "ALTER DATABASE dorin RENAME TO todira;"
+                    BOOTSTRAP_CONN=$(echo "$TODIRA_CONN" | sed -E "s#^postgresql://[^:]+:[^@]+@#postgresql://rename_bootstrap:${TEMP_PASSWORD}@#")
 
-                    echo "--- renaming role dorin -> todira ---"
-                    psql "$ADMIN_CONN" -c "ALTER USER dorin RENAME TO todira;"
+                    echo "--- renaming role dorin -> todira (as the bootstrap role, not as dorin itself) ---"
+                    psql "$BOOTSTRAP_CONN" -c "ALTER USER dorin RENAME TO todira;"
 
                     echo "--- after: databases ---"
-                    psql "$ADMIN_CONN" -c "SELECT datname FROM pg_database WHERE datname NOT LIKE 'template%';"
+                    psql "$BOOTSTRAP_CONN" -c "SELECT datname FROM pg_database WHERE datname NOT LIKE 'template%';"
                     echo "--- after: roles ---"
-                    psql "$ADMIN_CONN" -c "SELECT rolname FROM pg_roles WHERE rolname = 'todira';"
+                    psql "$BOOTSTRAP_CONN" -c "SELECT rolname FROM pg_roles WHERE rolname IN ('todira', 'rename_bootstrap');"
 
-                    echo "--- sanity check: real data still there under the new name ---"
-                    NEW_CONN=$(echo "$ADMIN_CONN" | sed -E 's#/postgres(\??.*)$#/todira\1#')
-                    psql "$NEW_CONN" -c "SELECT count(*) AS listings_count FROM listings;"
-                    psql "$NEW_CONN" -c "SELECT count(*) AS filters_count FROM filters;"
+                    echo "--- sanity check: real data still there, reachable with the app's OWN eventual credentials (todira user, same password) ---"
+                    FINAL_CONN=$(echo "$TODIRA_CONN" | sed -E 's#^postgresql://[^:]+:#postgresql://todira:#')
+                    psql "$FINAL_CONN" -c "SELECT count(*) AS listings_count FROM listings;"
+                    psql "$FINAL_CONN" -c "SELECT count(*) AS filters_count FROM filters;"
+
+                    echo "--- cleaning up: drop the throwaway bootstrap role (as todira, not as itself) ---"
+                    psql "$FINAL_CONN" -c "DROP ROLE rename_bootstrap;"
+                    psql "$FINAL_CONN" -c "SELECT rolname FROM pg_roles WHERE rolname = 'rename_bootstrap';"
           PODYAML
           for i in $(seq 1 30); do
             PHASE=$(kubectl get pod admin-rename-dorin -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
