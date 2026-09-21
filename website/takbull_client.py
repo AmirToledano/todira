@@ -184,15 +184,26 @@ def create_subscription_checkout_url(
         "Takbull GetTakbullPaymentPageRedirectUrl (recurring) raw response for payment_id=%s: %r",
         payment_id, data,
     )
+    # 2026-09-21: TWO different documented response shapes were found for this same endpoint —
+    # the Postman/PDF doc the owner originally supplied shows {"responseCode": 0, "uniqId": "..."}
+    # (no page URL — this project builds one), while takbull.co.il's own official API docs site
+    # (found live, separately, later) shows {"Status": 1, "uniqId": "...", "PaymentPageUrl": "..."}
+    # (1 = success, 0 = failure — opposite polarity from responseCode's 0-means-success). Neither
+    # has been confirmed against a real live call yet (still blocked on TAKBULL_API_KEY/
+    # TAKBULL_API_SECRET), so rather than guess which one the real API actually returns, this
+    # accepts either success signal and prefers a real PaymentPageUrl from the response when one is
+    # present, falling back to constructing the URL (the only option the PDF's own shape allows).
     uniqid = data.get("uniqId")
-    if data.get("responseCode") != 0 or not uniqid:
+    success = data.get("responseCode") == 0 or data.get("Status") == 1
+    if not success or not uniqid:
         logger.error(
             "Takbull GetTakbullPaymentPageRedirectUrl (recurring) response had no usable uniqId "
             "(payment_id=%s) — see the raw payload logged above",
             payment_id,
         )
         return None
-    return f"{_API_BASE_URL}/PaymentGateway?orderUniqId={uniqid}", uniqid
+    payment_page_url = data.get("PaymentPageUrl") or f"{_API_BASE_URL}/PaymentGateway?orderUniqId={uniqid}"
+    return payment_page_url, uniqid
 
 
 def validate_notification(uniqid: str) -> dict | None:

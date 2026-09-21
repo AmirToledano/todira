@@ -1474,9 +1474,18 @@ def _looks_like_a_successful_takbull_payload(body: dict) -> bool:
     (Id/uniqId/OrderNumber/order_reference/CustomerFullName/CustomerEmail/CustomerPhone/
     OrderStatus/StatusCode/StatusDescription/OrderTotalSum/Action/IsSubscriptionPayment) —
     confirmed from their docs, not guessed. StatusDescription=="Success" is the clearest signal;
-    StatusCode==0 backs it up in case wording ever changes."""
+    StatusCode==0 backs it up in case wording ever changes.
+
+    2026-09-21: takbull.co.il's own official API docs site (found live, separately from the PDF
+    above) documents a DIFFERENT example shape for the same IPN/ValidateNotification concept —
+    {"Status": "Approved", "Amount": ..., "TransactionId": ..., ...} — genuinely a third
+    inconsistent shape alongside the PDF's own two (see create_subscription_checkout_url's own
+    2026-09-21 comment for the same pattern on a different endpoint). Recognized here too rather
+    than betting on only one source being the real one."""
     status_description = str(body.get("StatusDescription", "")).strip().lower()
     if status_description == "success":
+        return True
+    if str(body.get("Status", "")).strip().lower() == "approved":
         return True
     return body.get("StatusCode") == 0 and body.get("OrderStatus") is not None
 
