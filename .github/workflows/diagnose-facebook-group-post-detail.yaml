@@ -178,3 +178,67 @@ jobs:
               for k in keys:
                   print(f'  {k}: {truncate(obj[k])}')
           "
+
+      - name: Print full nodes by __typename (Story/TextWithEntities/Comment/Video) — the real post content
+        # 2026-09-21, added after the first run of this workflow: the generic key-substring scan
+        # above got swamped by ~1000s of unrelated framework/config dicts owning a key like "url"
+        # (video CDN configs, static JS asset lists) before reaching the real content nodes — but
+        # the run's own __typename frequency table already showed Story/TextWithEntities/Comment/
+        # Video nodes DO exist on this page (unlike the group landing page), and the page's own
+        # <title> already showed real post text ("יחידת הורים אחרונה ברחוב ששת הימים 7"). This scans
+        # by EXACT __typename instead (same technique facebook_client.py's own _find_nodes uses for
+        # Marketplace's MarketplaceFeedListingStory) to see the real field names directly.
+        run: |
+          STATUS=$(cat /tmp/fb_post_status.txt 2>/dev/null || echo "")
+          if [ "$STATUS" != "200" ]; then
+            echo "Skipping — fetch wasn't a 200 (status=$STATUS), nothing real to extract."
+            exit 0
+          fi
+          python3 -c "
+          import re, json
+
+          with open('/tmp/fb_post_body.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+
+          script_blocks = re.findall(r'<script type=\"application/json\"[^>]*>(.*?)</script>', html, re.S)
+
+          TARGET_TYPENAMES = ('Story', 'TextWithEntities', 'Comment', 'Video', 'ComposedUnstyledBlockWithEntities')
+          found = {t: [] for t in TARGET_TYPENAMES}
+
+          def walk(obj):
+              if isinstance(obj, dict):
+                  tn = obj.get('__typename')
+                  if tn in TARGET_TYPENAMES and len(found[tn]) < 3:
+                      found[tn].append(obj)
+                  for v in obj.values():
+                      walk(v)
+              elif isinstance(obj, list):
+                  for v in obj:
+                      walk(v)
+
+          for block in script_blocks:
+              block = block.strip()
+              if block.startswith('for (;;);'):
+                  block = block[len('for (;;);'):]
+              if block.startswith('<!--') and block.endswith('-->'):
+                  block = block[4:-3].strip()
+              if not block:
+                  continue
+              try:
+                  data = json.loads(block)
+              except json.JSONDecodeError:
+                  continue
+              walk(data)
+
+          def truncate(v, n=800):
+              s = json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else repr(v)
+              return s if len(s) <= n else s[:n] + '...(truncated)'
+
+          for tn in TARGET_TYPENAMES:
+              print(f'=== __typename={tn}: {len(found[tn])} sample(s) (of possibly more) ===')
+              for obj in found[tn]:
+                  keys = sorted(obj.keys())
+                  print(f'  keys: {keys}')
+                  print(f'  full: {truncate(obj)}')
+                  print()
+          "
