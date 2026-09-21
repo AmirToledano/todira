@@ -1,0 +1,106 @@
+name: Admin — rename live Postgres role/db dorin -> todira
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — added 2026-09-21.
+#
+# Renames the production Postgres role and database from the leftover "dorin" name (the original
+# reference-competitor codename, see the 2026-09-21 Dorin-removal PR #362) to "todira". Everything
+# that isn't the live DB objects themselves was already renamed in PR #362 — charts/todira/
+# values.yaml's postgres.user/dbname were deliberately left untouched there because renaming those
+# values alone, without first renaming the real role/database on the persistent volume, would break
+# DATABASE_URL on the next deploy. This workflow does that missing piece, live, before
+# values.yaml is updated in a follow-up PR.
+#
+# Owner explicitly approved doing this now ("לא באמת אכפת לי כי אף אחד לא משתמש בבוט כרגע" — nobody
+# is using the bot right now, a brief connection interruption during the rename is acceptable).
+#
+# Order matters: this MUST run and succeed BEFORE charts/todira/values.yaml's postgres.user/dbname
+# are changed to "todira" and deployed — otherwise the next deploy's DATABASE_URL would point at a
+# role/database that doesn't exist yet.
+#
+# ALTER DATABASE requires no other active session connected to that database, so this first
+# terminates every other backend connected to "dorin" (bot/website/scraper/backup connections) —
+# they reconnect on their own next query/health check, same as any brief DB restart, and the owner
+# confirmed that's fine right now.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Rename role + database, then verify
+        run: |
+          kubectl delete pod admin-rename-dorin -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: admin-rename-dorin
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: admin-rename-dorin
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    set -e
+                    # Same user/password/host as the app's own DATABASE_URL, but connect to the
+                    # always-present "postgres" admin database instead of "dorin" — you cannot
+                    # rename a database you're currently connected to.
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    ADMIN_CONN=$(echo "$CONN" | sed -E 's#^(.*)/[^/?]+(\??.*)$#\1/postgres\2#')
+
+                    echo "--- before: databases ---"
+                    psql "$ADMIN_CONN" -c "SELECT datname FROM pg_database WHERE datname NOT LIKE 'template%';"
+                    echo "--- before: roles ---"
+                    psql "$ADMIN_CONN" -c "SELECT rolname FROM pg_roles WHERE rolname = 'dorin';"
+
+                    echo "--- terminating other active connections to dorin ---"
+                    psql "$ADMIN_CONN" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'dorin' AND pid <> pg_backend_pid();"
+
+                    echo "--- renaming database dorin -> todira ---"
+                    psql "$ADMIN_CONN" -c "ALTER DATABASE dorin RENAME TO todira;"
+
+                    echo "--- renaming role dorin -> todira ---"
+                    psql "$ADMIN_CONN" -c "ALTER USER dorin RENAME TO todira;"
+
+                    echo "--- after: databases ---"
+                    psql "$ADMIN_CONN" -c "SELECT datname FROM pg_database WHERE datname NOT LIKE 'template%';"
+                    echo "--- after: roles ---"
+                    psql "$ADMIN_CONN" -c "SELECT rolname FROM pg_roles WHERE rolname = 'todira';"
+
+                    echo "--- sanity check: real data still there under the new name ---"
+                    NEW_CONN=$(echo "$ADMIN_CONN" | sed -E 's#/postgres(\??.*)$#/todira\1#')
+                    psql "$NEW_CONN" -c "SELECT count(*) AS listings_count FROM listings;"
+                    psql "$NEW_CONN" -c "SELECT count(*) AS filters_count FROM filters;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod admin-rename-dorin -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod output ---"
+          kubectl logs -n todira admin-rename-dorin
+          FINAL_PHASE=$(kubectl get pod admin-rename-dorin -n todira -o jsonpath='{.status.phase}')
+          kubectl delete pod admin-rename-dorin -n todira --ignore-not-found
+          if [ "$FINAL_PHASE" != "Succeeded" ]; then
+            echo "Rename pod did not succeed (phase=$FINAL_PHASE) — see log above."
+            exit 1
+          fi
