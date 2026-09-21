@@ -1,0 +1,121 @@
+name: Diagnose — extract full Story nodes (group+post+message) from the home feed (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-21.
+#
+# Follow-up to diagnose-facebook-home-feed-and-notifications.yaml's first run: the home feed
+# (https://www.facebook.com/) came back with 4 real Story __typename occurrences referencing 4
+# DISTINCT group ids in ONE fetch — a real, live-confirmed signal that one home-feed request can
+# discover new posts across every group the dedicated account has joined, instead of fetching each
+# group's own page separately. That run's regex only looked for a concatenated /groups/<gid>/posts/
+# <pid>/ URL shape and found none — this extracts full Story nodes by __typename directly (same
+# technique facebook_groups_client._find_story_node already uses) to get post_id/group_id/
+# creation_time/author cleanly, and checks whether the post's own message text (the
+# {__typename, text}-only TextWithEntities node facebook_groups_client.py's docstring documents) is
+# ALSO present right here on the home feed — if so, a single home-feed fetch might cover discovery
+# AND content in one request, skipping the extra per-post fetch entirely for most posts.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch the home feed, using the stored cookie
+        run: |
+          COOKIE=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.facebook-cookies}' | base64 -d)
+          echo "::add-mask::$COOKIE"
+          curl -sS --compressed -L --max-redirs 5 \
+            -o /tmp/fb_home_body.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 \
+            -H "Cookie: $COOKIE" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            -H "Upgrade-Insecure-Requests: 1" \
+            -H "Sec-Fetch-Site: none" \
+            -H "Sec-Fetch-Mode: navigate" \
+            -H "Sec-Fetch-User: ?1" \
+            -H "Sec-Fetch-Dest: document" \
+            -H "sec-ch-ua: \"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"" \
+            -H "sec-ch-ua-mobile: ?0" \
+            -H "sec-ch-ua-platform: \"Windows\"" \
+            "https://www.facebook.com/" || echo "curl_failed"
+
+      - name: Extract every real Story node found (group/post/author/time), and check for co-located message text
+        run: |
+          python3 -c "
+          import json, re
+
+          with open('/tmp/fb_home_body.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+
+          script_blocks = re.findall(r'<script type=\"application/json\"[^>]*>(.*?)</script>', html, re.S)
+          print(f'Scanning {len(script_blocks)} JSON script blocks...')
+
+          def iter_json(html_blocks):
+              for block in html_blocks:
+                  block = block.strip()
+                  if block.startswith('for (;;);'):
+                      block = block[len('for (;;);'):]
+                  if block.startswith('<!--') and block.endswith('-->'):
+                      block = block[4:-3].strip()
+                  if not block:
+                      continue
+                  try:
+                      yield json.loads(block)
+                  except json.JSONDecodeError:
+                      continue
+
+          stories = []
+
+          def walk(obj, path='root'):
+              if isinstance(obj, dict):
+                  if obj.get('__typename') == 'Story' and obj.get('post_id'):
+                      stories.append(obj)
+                  for k, v in obj.items():
+                      walk(v, path)
+              elif isinstance(obj, list):
+                  for v in obj:
+                      walk(v, path)
+
+          for block in iter_json(script_blocks):
+              walk(block)
+
+          print(f'=== {len(stories)} real Story node(s) with a post_id found ===')
+          for s in stories:
+              post_id = s.get('post_id')
+              feedback = s.get('feedback') if isinstance(s.get('feedback'), dict) else {}
+              group = feedback.get('associated_group') if isinstance(feedback.get('associated_group'), dict) else {}
+              owner = feedback.get('owning_profile') if isinstance(feedback.get('owning_profile'), dict) else {}
+              print(f'post_id={post_id} group_id={group.get(\"id\")} author={owner.get(\"name\")} creation_time={s.get(\"creation_time\")}')
+
+          # Does the home feed ALSO carry each post's own plain-body TextWithEntities
+          # ({__typename, text} only, same shape facebook_groups_client.py already relies on)?
+          bodies = []
+          def find_bodies(obj):
+              if isinstance(obj, dict):
+                  if obj.get('__typename') == 'TextWithEntities' and set(obj.keys()) == {'__typename', 'text'} and obj.get('text', '').strip():
+                      bodies.append(obj['text'])
+                  for v in obj.values():
+                      find_bodies(v)
+              elif isinstance(obj, list):
+                  for v in obj:
+                      find_bodies(v)
+
+          for block in iter_json(script_blocks):
+              find_bodies(block)
+
+          print(f'=== {len(bodies)} plain post-body TextWithEntities node(s) found on the home feed itself ===')
+          for b in bodies[:5]:
+              print(f'  {b[:150]!r}')
+          "
