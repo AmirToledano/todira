@@ -122,8 +122,13 @@ replicas: 1 # bot MUST stay at 1 — Telegram rejects concurrent getUpdates poll
 
 postgres:
   image: postgres:16-alpine
-  dbname: dorin
-  user: dorin
+  # 2026-09-21: renamed from "dorin" (leftover reference-competitor codename, see PR #362) to
+  # "todira" — the live role/database on the persistent volume were renamed first via the
+  # one-off rename-postgres-dorin-to-todira.yaml admin workflow (data verified intact: 16988
+  # listings, 9 filters, reachable under these exact new credentials) before this value changed,
+  # so this deploy's DATABASE_URL matches what actually exists.
+  dbname: todira
+  user: todira
   storageSize: 2Gi
 
 scraper:
