@@ -150,6 +150,22 @@ _BACK_FIXED_COLUMN_COUNT = 4  # price(-4) entry_date(-3) update_date(-2) details
 _DESCRIPTION_RE = re.compile(r'<meta name="Description" content="([^"]*)"', re.I)
 _OG_DESCRIPTION_RE = re.compile(r'<meta property="og:description" content="([^"]*)"')
 
+# 2026-09-21: real bug found live (owner's own Telegram screenshots + a DB dump confirming it,
+# diagnose-homeless-description-raw-chars.yaml) — 6 of a real 30-listing sample had the SITE'S OWN
+# generic description as their "description" instead of a real per-listing one. Not a fetch
+# failure: the page genuinely has this as its <meta name="Description"> content — some Homeless
+# listing pages simply never got a custom per-listing SEO description filled in, so the page falls
+# back to the site's own site-wide default from the base template, which this regex then
+# dutifully extracts as if it were real ad content. A substring check (not exact equality) on the
+# two most distinctive phrases — safer than pinning the exact full string, which this project has
+# only ever seen truncated (DB dumps here cut it at 80 chars) and could easily transcribe a stray
+# space/dash wrong.
+_GENERIC_SITE_DESCRIPTION_MARKERS = ("בלוח הומלס מחכה לך", "אינסוף מודעות עדכניות")
+
+
+def _is_generic_site_description(description: str) -> bool:
+    return all(marker in description for marker in _GENERIC_SITE_DESCRIPTION_MARKERS)
+
 
 class HomelessFetchError(RuntimeError):
     """The Fetch API call failed, timed out, or ZenRows itself errored — see the wrapped
@@ -329,4 +345,6 @@ def fetch_listing_description(url: str) -> str | None:
     if match is None:
         return None
     description = html.unescape(match.group(1)).strip()
-    return description or None
+    if not description or _is_generic_site_description(description):
+        return None
+    return description
