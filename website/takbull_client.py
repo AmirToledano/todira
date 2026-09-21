@@ -46,8 +46,14 @@ pawow2/takbull, base URL confirmed live against real request/response examples, 
 - GET /api/ExtranalAPI/CancelSubscription?uniqId={uniqId} to stop future auto-renewal.
 Requires the owner's account to have the API-key module enabled (₪99 one-time — see this module's
 history above: the hosted-page flow was deliberately built to NOT need it, but recurring billing
-genuinely requires the real API, there's no hosted-page equivalent) and real API_Key/API_Secret
-from app.takbull.co.il/api-setting. recurring_api_configured() gates every function below on both
+genuinely requires the real API, there's no hosted-page equivalent) and real API_Key/API_Secret.
+CORRECTED 2026-09-21 (the previous version of this line named a specific dashboard URL —
+app.takbull.co.il/api-setting — that was never actually confirmed against the PDF and should not
+have been stated as fact): the PDF's own Authentication section says only "Contact Takbull support
+to obtain sandbox credentials at app.takbull.co.il" — it does not document a self-service page for
+PRODUCTION keys. Where the owner actually gets the real API_Key/API_Secret from is genuinely
+unconfirmed; ask Takbull support directly rather than hunting for a menu that may not exist.
+recurring_api_configured() gates every function below on both
 being set — NOT YET LIVE-VERIFIED end to end (no real subscription has been created or renewed
 through this yet); the first real subscription checkout is what actually confirms these field
 names/response shapes, same "verify live, don't guess" posture as grow_client.py's own module
