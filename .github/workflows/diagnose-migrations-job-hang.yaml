@@ -1,0 +1,51 @@
+name: Diagnose — migrations Job erroring/hanging during dorin->todira deploy (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-21.
+#
+# CI/CD run #413 (PR #364, the dorin->todira Helm values fix) failed with:
+#   "Error: UPGRADE FAILED: pre-upgrade hooks failed: 1 error occurred: * timed out waiting for
+#   the condition"
+# The migrations Job (Alembic, runs as a pre-upgrade hook) spawned two pods: one ("thmwh") errored
+# almost immediately, a second ("xbks6") was left stuck in Running (not completing, not erroring)
+# for 100+ seconds when the workflow gave up waiting. Real, live cause not yet known — this pulls
+# both pods' actual logs/describe output instead of guessing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Inspect migrations Job + pods
+        run: |
+          echo "--- job/todira-migrations ---"
+          kubectl get job -n todira todira-migrations -o wide || true
+          kubectl describe job -n todira todira-migrations || true
+
+          echo "--- all migrations pods (current) ---"
+          kubectl get pods -n todira -l job-name=todira-migrations -o wide || true
+
+          for POD in $(kubectl get pods -n todira -l job-name=todira-migrations -o jsonpath='{.items[*].metadata.name}'); do
+            echo "=== describe $POD ==="
+            kubectl describe pod -n todira "$POD" || true
+            echo "=== logs $POD (current) ==="
+            kubectl logs -n todira "$POD" --tail=200 || true
+            echo "=== logs $POD (previous, if restarted) ==="
+            kubectl logs -n todira "$POD" --previous --tail=200 || true
+          done
+
+          echo "--- postgres pod status ---"
+          kubectl get pods -n todira -l app=todira-postgres -o wide || true
+          kubectl logs -n todira -l app=todira-postgres --tail=80 || true
+
+          echo "--- overall pod status ---"
+          kubectl get pods -n todira -o wide || true
