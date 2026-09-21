@@ -1,0 +1,86 @@
+name: Diagnose — does Yad2's forsale page work through ZenRows (same bypass as rent)? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-22.
+#
+# Follow-up to diagnose-yad2-sale-sublet-shape.yaml (run 2026-09-15/16): that workflow's DIRECT,
+# un-proxied fetch of https://www.yad2.co.il/realestate/forsale/tel-aviv-area got Yad2's own
+# Radware Bot Manager block page ("Radware Page", 0 real listing cards) — the same wall
+# yad2_client.py's whole rent-scraping history had to solve with ZenRows' Fetch API
+# (js_render=true + premium_proxy=true, see that module's own docstring). That diagnostic never
+# actually tried the forsale URL THROUGH ZenRows — this does, using the exact same params
+# yad2_client._fetch_search_html already uses successfully for rent, to see whether forsale needs
+# the identical bypass or something different.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the real forsale search page through ZenRows (same params as rent)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          echo "=== GET https://www.yad2.co.il/realestate/forsale/tel-aviv-area via ZenRows ==="
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.yad2.co.il/realestate/forsale/tel-aviv-area" \
+            --data-urlencode "js_render=true" \
+            --data-urlencode "premium_proxy=true" \
+            -o /tmp/forsale.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60 || true
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/forsale.html || true
+          echo
+          echo "--- verdict ---"
+          python3 -c "
+          with open('/tmp/forsale.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          import re
+          print(f'length={len(html)}')
+          title = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'title={title.group(1).strip() if title else \"?\"}')
+          card_count = len(re.findall(r'data-nagish=\"feed-item-layout-link\"', html))
+          print(f'real feed-item cards found (same marker yad2_client._CARD_RE looks for): {card_count}')
+          if card_count == 0:
+              # dump a wider slice so a genuinely different card marker (if forsale cards are
+              # structured differently) can be spotted by eye rather than guessed at
+              snippet_pos = html.find('feed-item')
+              print('--- context around first \"feed-item\" occurrence (if any) ---')
+              print(html[max(0, snippet_pos-200):snippet_pos+500] if snippet_pos != -1 else '(not found at all)')
+          "
+
+      - name: Also try the forsale MAP API through ZenRows (structured JSON, cheaper to parse if it works)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          URL="https://gw.yad2.co.il/realestate-feed/forsale/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+          echo "=== GET $URL via ZenRows ==="
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=$URL" \
+            --data-urlencode "js_render=true" \
+            --data-urlencode "premium_proxy=true" \
+            -o /tmp/forsale_map.json \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60 || true
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/forsale_map.json || true
+          echo
+          echo "--- verdict ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/forsale_map.json', encoding='utf-8') as f:
+                  data = json.load(f)
+              markers = data.get('data', {}).get('markers') if isinstance(data, dict) else None
+              if isinstance(markers, list):
+                  print(f'SUCCESS — {len(markers)} real forsale markers returned.')
+                  if markers:
+                      print('First marker keys:', sorted(markers[0].keys()))
+              else:
+                  print(f'Got JSON but no usable markers list — top-level keys: {list(data.keys()) if isinstance(data, dict) else type(data)}')
+          except Exception as exc:
+              print(f'NOT valid JSON — likely still blocked/challenged: {exc}')
+          "
