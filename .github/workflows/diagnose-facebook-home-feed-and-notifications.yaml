@@ -1,0 +1,143 @@
+name: Diagnose — does the home feed or the notifications page surface MULTIPLE real posts across groups? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-21.
+#
+# The owner's real ask: catch EVERY post that goes up in a tracked group, not just "whichever is
+# newest at poll time" — and he's fine with the bot "living inside" the group some other way, not
+# necessarily fetching the group's own page directly. Two real, untested ideas, neither of which is
+# the fragile GraphQL-reverse-engineering route (explicitly saved as a last resort):
+#
+# 1. HOME FEED (https://www.facebook.com/ , same Comet fetch mechanism already confirmed working for
+#    Marketplace/the group's own page) — a logged-in account's home feed aggregates posts from EVERY
+#    group/page it's a member of. If it server-renders MULTIPLE real Story nodes (not just one, like
+#    the single group page did), one fetch could cover every tracked group at once.
+# 2. NOTIFICATIONS (mbasic's lightweight /notifications.php, historically real server-rendered list
+#    items with direct links) — IF the account's notification setting for a group is set to "All
+#    posts" (a real, one-time, per-group manual toggle in the Facebook app/site — not something this
+#    diagnostic can turn on itself), Facebook would notify on every single post, and a notifications
+#    feed listing them could be a single, comprehensive, real-time-ish source across every group.
+#    This run just checks whether the page structure is even usable BEFORE asking the owner to do
+#    that manual per-group toggle — no point asking him to do it if the page turns out empty/blocked.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch the desktop home feed + mbasic notifications page, using the stored cookie
+        run: |
+          COOKIE=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.facebook-cookies}' | base64 -d)
+          echo "::add-mask::$COOKIE"
+          if [ -z "$COOKIE" ]; then
+            echo "facebook-cookies is empty in todira-bot-secret — nothing to test with."
+            exit 1
+          fi
+
+          echo "=== Fetching https://www.facebook.com/ (desktop Comet home feed) ==="
+          curl -sS --compressed -L --max-redirs 5 \
+            -D /tmp/fb_home_headers.txt \
+            -o /tmp/fb_home_body.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 \
+            -H "Cookie: $COOKIE" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            -H "Upgrade-Insecure-Requests: 1" \
+            -H "Sec-Fetch-Site: none" \
+            -H "Sec-Fetch-Mode: navigate" \
+            -H "Sec-Fetch-User: ?1" \
+            -H "Sec-Fetch-Dest: document" \
+            -H "sec-ch-ua: \"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"" \
+            -H "sec-ch-ua-mobile: ?0" \
+            -H "sec-ch-ua-platform: \"Windows\"" \
+            "https://www.facebook.com/" || echo "curl_failed"
+
+          echo "=== Fetching https://mbasic.facebook.com/notifications.php ==="
+          curl -sS --compressed -L --max-redirs 5 \
+            -D /tmp/fb_notif_headers.txt \
+            -o /tmp/fb_notif_body.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 \
+            -H "Cookie: $COOKIE" \
+            -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            "https://mbasic.facebook.com/notifications.php" || echo "curl_failed"
+
+      - name: Analyze the home feed (real Story nodes across groups?)
+        run: |
+          python3 -c "
+          import re
+          from collections import Counter
+
+          with open('/tmp/fb_home_body.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f'=== Home feed: length={len(html)} chars ===')
+          title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'Title: {title_match.group(1).strip() if title_match else \"(none)\"}')
+
+          typenames = re.findall(r'\"__typename\":\"([A-Za-z0-9_]+)\"', html)
+          counts = Counter(typenames)
+          story_count = counts.get('Story', 0)
+          print(f'Story __typename occurrences: {story_count}')
+
+          post_ids = sorted(set(re.findall(r'/groups/(\d+)/(?:posts|permalink)/(\d+)', html)))
+          print(f'Distinct (group_id, post_id) pairs found: {len(post_ids)}')
+          for gid, pid in post_ids[:20]:
+              print(f'  group={gid} post={pid}')
+
+          group_ids_mentioned = sorted(set(re.findall(r'/groups/(\d+)/', html)))
+          print(f'Distinct group ids referenced anywhere: {len(group_ids_mentioned)}')
+          print(f'  {group_ids_mentioned[:20]}')
+          "
+
+      - name: Analyze the notifications page (real per-post notification entries?)
+        run: |
+          python3 -c "
+          import re
+
+          with open('/tmp/fb_notif_body.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f'=== Notifications page: length={len(html)} chars ===')
+          title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'Title: {title_match.group(1).strip() if title_match else \"(none)\"}')
+
+          lower = html.lower()
+          login_signals = [s for s in ('log in to facebook', 'loginform', 'checkpoint', 'login.php') if s in lower]
+          print(f'Login/checkpoint signals: {login_signals or \"none\"}')
+
+          post_links = sorted(set(re.findall(r'href=\"([^\"]*/groups/\d+/(?:posts|permalink)[^\"]*)\"', html)))
+          print(f'Group post links found: {len(post_links)}')
+          for link in post_links[:15]:
+              print(f'  {link[:200]}')
+
+          all_hrefs = re.findall(r'href=\"([^\"]+)\"', html)
+          print(f'Total href= links on page: {len(all_hrefs)} (first 15 distinct):')
+          seen = set()
+          for href in all_hrefs:
+              if href not in seen:
+                  seen.add(href)
+                  print(f'  {href[:200]}')
+              if len(seen) >= 15:
+                  break
+          "
+
+      - name: Dump raw bodies if either fetch looks unusable (safe — generic pages, no private data beyond what's already ours to see)
+        run: |
+          HOME_STATUS_LINE=$(grep -o 'http_status=[0-9]*' /tmp/fb_home_headers.txt 2>/dev/null | head -1 || true)
+          echo "Home headers (first lines):"
+          head -5 /tmp/fb_home_headers.txt 2>/dev/null || true
+          echo
+          echo "Notifications headers (first lines):"
+          head -5 /tmp/fb_notif_headers.txt 2>/dev/null || true
