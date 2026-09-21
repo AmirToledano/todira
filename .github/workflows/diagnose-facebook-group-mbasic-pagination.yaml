@@ -87,16 +87,39 @@ jobs:
               print(f'Login/checkpoint signals: {login_signals or \"none\"}')
 
               post_ids = sorted(set(re.findall(r'/groups/\d+/(?:permalink|posts)/(\d+)', html)))
-              print(f'Distinct post ids found: {len(post_ids)}')
+              print(f'Distinct post ids found (groups/.../posts|permalink pattern): {len(post_ids)}')
               if post_ids:
                   print(f'  ids: {post_ids[:10]}')
 
+              # mbasic's own historically different URL shapes — never assumed, all checked.
+              story_fbid_ids = sorted(set(re.findall(r'story_fbid=(\d+)', html)))
+              print(f'story_fbid= occurrences: {len(story_fbid_ids)}')
+              if story_fbid_ids:
+                  print(f'  ids: {story_fbid_ids[:10]}')
+
               # mbasic/mobile-legacy pagination markers — real, well-known link text/params from
               # that era, checked generically rather than assumed present.
-              more_links = re.findall(r'href=\"([^\"]*(?:more_stories|cursor|next_max_id|refid=27)[^\"]*)\"', html, re.I)
-              print(f'Possible \"load more/pagination\" links found: {len(more_links)}')
-              for link in more_links[:5]:
-                  print(f'  {link[:200]}')
+              more_links = re.findall(r'href=\"([^\"]*(?:more_stories|cursor|next_max_id|refid=27|story\.php)[^\"]*)\"', html, re.I)
+              print(f'Possible \"load more/pagination/story\" links found: {len(more_links)}')
+              seen = set()
+              for link in more_links:
+                  if link not in seen:
+                      seen.add(link)
+                      print(f'  {link[:250]}')
+                  if len(seen) >= 8:
+                      break
+
+              # Generic net: every distinct href value at all, to eyeball the real link shapes on
+              # this specific page rather than guess at them.
+              all_hrefs = re.findall(r'href=\"([^\"]+)\"', html)
+              print(f'Total href= links on page: {len(all_hrefs)} (first 15 distinct, for eyeballing real shapes):')
+              seen2 = set()
+              for href in all_hrefs:
+                  if href not in seen2:
+                      seen2.add(href)
+                      print(f'  {href[:200]}')
+                  if len(seen2) >= 15:
+                      break
               print()
           "
 
