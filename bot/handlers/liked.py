@@ -14,11 +14,11 @@ from telegram import Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
 from config import WEBSITE_URL
-from dorin_common.access import has_full_access
-from dorin_common.cards import format_caption, send_listing_card
-from dorin_common.db import get_session
-from dorin_common.models import Listing, UserListingAction
-from dorin_common.users import get_or_create_user
+from todira_common.access import has_full_access
+from todira_common.cards import format_caption, send_listing_card
+from todira_common.db import get_session
+from todira_common.models import Listing, UserListingAction
+from todira_common.users import get_or_create_user
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
 
 def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[bool, list[Listing]]:
-    """(has_access, listings) — has_access (dorin_common.access.has_full_access) decides whether
+    """(has_access, listings) — has_access (todira_common.access.has_full_access) decides whether
     format_caption below shows the full card or the locked/teaser one, see that module's
     2026-09-05 comment."""
     with get_session() as session:

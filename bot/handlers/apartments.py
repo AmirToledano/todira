@@ -12,10 +12,10 @@ from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
 from config import WEBSITE_URL
-from dorin_common.db import get_session
-from dorin_common.enums import NotificationReason
-from dorin_common.matching import evaluate
-from dorin_common.models import Filter, Listing, SentNotification, User, UserListingAction
+from todira_common.db import get_session
+from todira_common.enums import NotificationReason
+from todira_common.matching import evaluate
+from todira_common.models import Filter, Listing, SentNotification, User, UserListingAction
 
 
 def find_matching_listings(

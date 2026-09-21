@@ -1,4 +1,4 @@
-"""Unit tests for dorin_common/cities.py's find_matches() - fuzzy city-name suggestion used in the
+"""Unit tests for todira_common/cities.py's find_matches() - fuzzy city-name suggestion used in the
 /filter conversation - and canonicalize_city() - the scraper-side spelling fixup applied to every
 listing's raw city text. Pure, dependency-free string matching, but with real documented bug
 history (the "ב"ש" alias was found missing only via manual testing against the live bot; Yad2's
@@ -6,7 +6,7 @@ own "קרית מוצקין" spelling vs. this list's "קריית מוצקין" w
 2026-09-02) - worth locking down so a future edit to the alias/spelling-normalization logic
 doesn't silently regress either.
 """
-from dorin_common.cities import CITIES, canonicalize_city, find_matches
+from todira_common.cities import CITIES, canonicalize_city, find_matches
 
 
 def test_empty_query_returns_no_matches():

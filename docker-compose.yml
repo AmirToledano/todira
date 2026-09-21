@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-dorin}
+      POSTGRES_USER: ${POSTGRES_USER:-todira}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-locally}
-      POSTGRES_DB: ${POSTGRES_DB:-dorin}
+      POSTGRES_DB: ${POSTGRES_DB:-todira}
     volumes:
-      - dorin_postgres_data:/var/lib/postgresql/data
+      - todira_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dorin}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-todira}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -51,4 +51,4 @@ services:
     profiles: ["manual"]
 
 volumes:
-  dorin_postgres_data:
+  todira_postgres_data:

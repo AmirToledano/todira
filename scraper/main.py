@@ -15,10 +15,10 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing
-from dorin_common import bright_data_client
-from dorin_common.db import get_session
-from dorin_common.enums import DealType, Source
-from dorin_common.models import Listing
+from todira_common import bright_data_client
+from todira_common.db import get_session
+from todira_common.enums import DealType, Source
+from todira_common.models import Listing
 from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
 from facebook_client import fetch_search_results as fetch_facebook_results
@@ -422,7 +422,7 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
 
     table = Listing.__table__
     # Plain (id, url) rows via Core, NOT ORM `Listing` objects — this session's factory is
-    # expire_on_commit=False (see dorin_common/db.py), so an ORM object loaded here would sit in
+    # expire_on_commit=False (see todira_common/db.py), so an ORM object loaded here would sit in
     # the identity map with its PRE-enrichment values and get handed back as-is to run_once()'s own
     # later `select(Listing)` for the same ids, silently undoing this whole function's work. Same
     # reason _upsert_listings/_mark_delisted already operate at the Core `table` level instead of

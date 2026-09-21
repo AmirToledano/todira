@@ -85,7 +85,7 @@ redesign session (all pushed straight to `main`, owner approved once for the who
 4. Owner sent over the actual full brand image (Tudy the dog in crown+cape with the gold
    "טודירה" wordmark baked in — previously only existed on the primary dev machine, never
    committed) — now at `website/static/todira-brand.webp`, shown on the home page.
-5. Owner referenced **Dorin's own landing page** (dorin.app) as the bar to hit — not just
+5. Owner referenced **the reference bot's own landing page** as the bar to hit — not just
    "pretty," specifically: layered elements, a hero visual with facts/stats floating over it,
    sections that visually connect rather than just stack. Reworked home.html structurally:
    the brand image now sits in a `.showcase-frame` with two floating `.float-badge` pills
@@ -120,8 +120,8 @@ and is worth doing whenever there's a slightly longer window than "20 minutes be
 
 ## Update 2026-08-30, autonomous continuation while owner was mid-flight
 Owner explicitly asked this assistant to keep working solo ("if there's things you can keep
-working on without me, run!") after two more rounds of visual feedback referencing Dorin's own
-landing page (dorin.app) as the bar — specifically: (1) it's dense with small info/stat boxes,
+working on without me, run!") after two more rounds of visual feedback referencing the reference bot's own
+landing page as the bar — specifically: (1) it's dense with small info/stat boxes,
 not sparse; (2) the hero visual should feel like part of the page (full-bleed background), not a
 framed photo "sitting" on top in a bordered card. Pushed straight to `main` under the owner's
 standing "run fast, don't stop" approval for this session; each commit was CI/CD-verified green
@@ -134,7 +134,7 @@ exact diffs). In order:
    became a 4-item `.hero-float-stats` row (scan cadence, AI, 24/7, free) that overlaps the
    hero's bottom edge via negative margin, so the hero visually bleeds into the next section.
 2. **New "why todira" comparison section** (`.compare`/`.compare-grid`): two boxed columns
-   (without/with todira) — the information-dense box-grid style Dorin's page has plenty of,
+   (without/with todira) — the information-dense box-grid style the reference bot's page has plenty of,
    written as honest behavioral claims, not fabricated stats (still no real user base to cite
    numbers about — this constraint hasn't changed).
 3. **Open Graph + Twitter Card meta tags** added to `base.html` (og:title/description/image/url,
@@ -171,7 +171,7 @@ main" standing approval.
    Commit `d24c857`, CI/CD run #30 — confirmed green.
 2. **Investigated further options while network-independent**: confirmed via `find` that the repo
    has **zero automated tests anywhere** (no `test_*.py`, `pytest.ini`, `conftest.py`,
-   `pyproject.toml`). `common/dorin_common/matching.py` is pure I/O-free business logic (matches
+   `pyproject.toml`). `common/todira_common/matching.py` is pure I/O-free business logic (matches
    listings to user filters — directly affects product correctness) and its own docstring says
    it's "fully unit-testable" — picked as the first real test target. Read `matching.py` and
    `models.py` in full to get exact field names for fixtures. **Done**: added
@@ -237,12 +237,12 @@ lands successfully.
 ## What this is
 Self-hosted Telegram bot (formerly "DirAmir", renamed "ToDira" 2026-08-29 — a Tudy+דירה pun,
 Tudy being the owner's dog) that scrapes apartment listings and notifies users matching their
-saved filter. Personal replacement for the paid "Dorin" bot (dorin.app). The owner (Amir) intends
+saved filter. Personal replacement for a paid reference-bot competitor. The owner (Amir) intends
 to eventually turn this into a real commercial product (website + WhatsApp + Telegram), not just
 a personal tool — keep that in mind when suggesting shortcuts vs. proper solutions.
 
 Full original design plan: `C:\Users\AmirT\.claude\plans\majestic-mapping-diffie.md` (local to the
-primary dev machine, still titled "Dorin-Clone" — frozen planning artifact).
+primary dev machine, still titled "Reference-Clone" — frozen planning artifact).
 
 ## Current infrastructure (all live as of 2026-08-29)
 - **k3s cluster** on a single AWS EC2 instance (t2/t3.micro, free tier, region `eu-north-1`
@@ -265,7 +265,7 @@ primary dev machine, still titled "Dorin-Clone" — frozen planning artifact).
   can deploy — a deliberate Phase-1 tradeoff, revisit before commercial launch.
 
 ## What's built and working
-- `common/dorin_common/` — shared SQLAlchemy models, Pydantic schemas, matching engine.
+- `common/todira_common/` — shared SQLAlchemy models, Pydantic schemas, matching engine.
 - `migrations/` — Alembic, applied via a Helm post-install/pre-upgrade hook Job.
 - `bot/` — full Telegram bot: `/filter` (menu-driven), `/apartments`, `/liked`, `/profile`, and
   **AI-powered onboarding** (see below).
@@ -362,7 +362,7 @@ the most promising remaining direction, more so than either piece alone.
   still literally named `c:\diramir` (not renamed) — don't assume the folder name matches.
 
 ## Explicitly deferred / not started
-- **Phase 2**: public website (FastAPI planned, reusing `dorin_common`). This is where the full
+- **Phase 2**: public website (FastAPI planned, reusing `todira_common`). This is where the full
   branded image, a proper gallery (vs. one photo per listing), and city landing pages belong.
 - **Phase 3**: more scraping sources (Komo, Facebook Marketplace/Groups).
 - **WhatsApp bot**: explicitly wanted by the owner (multi-channel vision: website + WhatsApp +
@@ -883,8 +883,8 @@ established pattern across every handler in `bot/handlers/` — follow it, don't
 blocking-call bug in a new file.
 
 ## Update 2026-08-31, later still: flood every current match as a real card (both save paths)
-Owner sent screenshots of the reference bot (Dorin)'s own Telegram bot: after saving/updating a
-filter — either through Dorin's guided form (its equivalent of `/filter`) or through free-text —
+Owner sent screenshots of the reference bot's own Telegram bot: after saving/updating a
+filter — either through the reference bot's guided form (its equivalent of `/filter`) or through free-text —
 it immediately floods the chat with every currently-matching listing as a full card, not just a
 count or a link to go check. He connected this directly to something discussed earlier in a prior
 session: a user should get "history of what could suit them, and of course still
@@ -892,8 +892,8 @@ available/relevant" right when they finish setting up a filter, not just future 
 
 Initially proposed splitting the behavior (flood only on the free-text `/start` onboarding path,
 keep count+link on the `/filter` guided-form path), based on an early screenshot that looked like
-Dorin's guided form opened a separate results page instead. Owner corrected this after sending
-more screenshots: on Dorin's Telegram bot specifically, **both** paths flood matches directly into
+the reference bot's guided form opened a separate results page instead. Owner corrected this after sending
+more screenshots: on the reference bot's Telegram bot specifically, **both** paths flood matches directly into
 the chat — the guided form (its side-browser filter editor) and free-text alike. Implemented the
 corrected, unified behavior for both.
 
@@ -1007,7 +1007,7 @@ public site — see the earlier egress-block note). Instead: (1) a throwaway scr
 route (`/`, `/terms`, `/privacy`, `/apartments`, `/liked`, `/filter`, both with and without a
 valid `uid`, plus a 404) through FastAPI's `TestClient` in all 5 languages — 46 requests, all
 either 200 or the expected 404, DB calls monkeypatched to fake in-memory `User`/`Filter`/
-`Listing` objects since `dorin_common.models` uses Postgres-only `ARRAY` columns SQLite can't
+`Listing` objects since `todira_common.models` uses Postgres-only `ARRAY` columns SQLite can't
 create; (2) grepped every one of those 46 rendered HTML responses for any literal
 `namespace.key`-shaped leftover text (would mean a `t()` call referenced a key with no entry in
 `TRANSLATIONS`, since the fallback silently prints the raw key instead of crashing) — zero
@@ -1079,13 +1079,13 @@ consistency/uniqueness checks pass unmodified against the expanded dict, since t
 a city count).
 
 ## Update 2026-08-31, later still: /contact form (pushes straight to owner's Telegram)
-Owner, after seeing Dorin's own contact page/form ("צור קשר עם דורין"), asked how people would
+Owner, after seeing the reference bot's own contact page/form ("צור קשר עם המתחרה"), asked how people would
 reach out if they had something to say, and whether to add something similar.
 
 **New**: `website/templates/contact.html` (name/email optional, message required) at `/contact`,
 linked from the nav and footer in every language. On submit, the message is:
 1. **Always** persisted to a new `contact_messages` table (new `ContactMessage` model in
-   `common/dorin_common/models.py`, migration `0002_add_contact_messages.py`) — durable no matter
+   `common/todira_common/models.py`, migration `0002_add_contact_messages.py`) — durable no matter
    what happens next, so a message is never silently lost to a transient failure.
 2. **Best-effort** pushed straight into the owner's own Telegram chat via a plain `httpx.post` to
    `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage` — reuses the *same* bot token
@@ -1404,7 +1404,7 @@ in `values.yaml` are the two knobs to turn back up — no other code changes nee
 ## Update 2026-08-31, near 2am: owner pushed back hard on the daily/6-city rotation — rightly
 Owner's reaction to the rotation fix above, verbatim in spirit: reducing to once/day + 6 cities is
 not acceptable — the whole point of the product is near-instant notification when a new listing
-appears (compared directly to the paid competitor, Dorin, and another one, Yaeli, both of which
+appears (compared directly to the paid competitor, the reference bot, and another one, Yaeli, both of which
 notify within minutes/seconds). **This was a mistake on this assistant's part**: throttling
 scan frequency is exactly the kind of judgment call that changes the product's core value
 proposition, and should have been brought to the owner as a decision, not made unilaterally and
@@ -1415,12 +1415,12 @@ because the ZenRows account is at 0/5,000 credits until Sep 29 regardless of wha
 citiesPerRun scraper/main.py uses. Nothing will scrape successfully until either that reset or a
 paid upgrade.
 
-**Honest answer on "is there a free way to do this like Dorin/Yaeli do"**: no, not to this
+**Honest answer on "is there a free way to do this like the reference bot/Yaeli do"**: no, not to this
 assistant's knowledge. Every service capable of reliably defeating Yad2's enterprise-grade
 Radware Bot Manager protection at real volume (Bright Data, Oxylabs, ScraperAPI, Zyte, Smartproxy,
 ZenRows itself) is a paid business, because real residential-IP bandwidth costs the provider real
 money — a free-forever high-volume version of that service would contradict its own business
-model. Dorin/Yaeli almost certainly either pay for exactly this, or have an official data
+model. the reference bot/Yaeli almost certainly either pay for exactly this, or have an official data
 relationship with Yad2 that isn't available to an early, unofficial project like this one.
 
 **Real tradeoff table worked out with the owner** (ZenRows dashboard, checked live: ~25 credits
@@ -1473,18 +1473,18 @@ Telegram bot has — describe what you're looking for in free text, Gemini extra
 turn until deal_type + a city are known, then a Filter row is created. Concretely:
 
 1. **Shared two modules that were Telegram-only before, now channel-agnostic**: `gemini_client.py`
-   and `cities.py` both moved from `bot/` into `common/dorin_common/` (imported identically by the
+   and `cities.py` both moved from `bot/` into `common/todira_common/` (imported identically by the
    bot, the website, and — for `cities.py` — already cross-checked by `scraper/`'s own tests). The
    bot's own imports (`bot/handlers/onboarding.py`, `bot/handlers/filter_conversation.py`) updated
-   to `from dorin_common import ...`; zero behavior change for Telegram, purely a location move.
-   `website/requirements.txt` gained `google-genai` (needed now that `dorin_common.gemini_client`
+   to `from todira_common import ...`; zero behavior change for Telegram, purely a location move.
+   `website/requirements.txt` gained `google-genai` (needed now that `todira_common.gemini_client`
    is reachable from the website process too).
 2. **Schema**: migration `0003_whatsapp_users` — `users.telegram_user_id` is now nullable (a
    WhatsApp-only user has none), added `whatsapp_phone_number` (unique, nullable) and
    `pending_onboarding_state` (JSONB, nullable). The JSONB column exists because the webhook is
    stateless between HTTP requests (no long-lived process + PicklePersistence like the bot has) —
    a multi-turn onboarding conversation's collected-so-far fields have to be persisted somewhere
-   between messages, so they live on the User row instead of in memory. `dorin_common/users.py`
+   between messages, so they live on the User row instead of in memory. `todira_common/users.py`
    gained `get_or_create_whatsapp_user`, mirroring the existing Telegram helper.
 3. **`website/whatsapp_client.py`**: thin `httpx` wrapper around the Cloud API's `POST
    /{phone_number_id}/messages` for free-form text replies. Fails soft (returns False, logs) —
@@ -1502,7 +1502,7 @@ turn until deal_type + a city are known, then a Filter row is created. Concretel
      `gemini_client.parse_onboarding_message` against `pending_onboarding_state`, replying with
      Gemini's own follow-up question until deal_type + a city are known, then creates the `Filter`
      row and clears the pending state.
-5. **`dorin_common/cards.py`** gained `format_caption_whatsapp` (WhatsApp's own `*bold*` markdown,
+5. **`todira_common/cards.py`** gained `format_caption_whatsapp` (WhatsApp's own `*bold*` markdown,
    no HTML — the Cloud API doesn't render Telegram-style HTML tags) alongside the existing
    Telegram `format_caption`, for future use.
 6. **Chart/CI wiring**: `charts/todira/templates/bot-secret.yaml` gained 4 new optional secret
@@ -1715,7 +1715,7 @@ that no apartments were ever showing up in the bot or website. Each fix uncovere
 underneath it — none alone explained "0 results," diagnosed by reading code/DB state only, no
 speculative scraper runs, per explicit instruction mid-session.
 1. **Spelling mismatch**: the scraper stored Yad2's raw city text, which sometimes used a
-   different כתיב מלא/חסר (full/defective) spelling than `dorin_common/cities.CITIES`'s canonical
+   different כתיב מלא/חסר (full/defective) spelling than `todira_common/cities.CITIES`'s canonical
    list, so `city not in filter.cities` never matched even for a correct filter. Fixed with
    `cities.canonicalize_city()` (normalizes then maps back to the canonical spelling) called from
    `scraper/normalize.py` at ingest time, plus the bot's `/filter` "type a city" flow no longer
@@ -1730,7 +1730,7 @@ speculative scraper runs, per explicit instruction mid-session.
    given time). Fixed by scoping both UPDATE queries to `city IN (scraped_city_names)`.
    `.github/workflows/backfill-specific-cities.yaml` re-scrapes specific cities in one Job to
    un-delist them faster than waiting for the full rotation; scoped to `jerusalem` only per request.
-4. **`property_type` matching bug** (`common/dorin_common/matching.py`), the actual final root
+4. **`property_type` matching bug** (`common/todira_common/matching.py`), the actual final root
    cause: the scraper never populates `NormalizedListing.property_type` (always `None`), but
    `_check_hard_filters` still did `listing_row.property_type not in filter_row.property_types`
    whenever a filter had any property types checked — `None not in [...]` is always `True`, so
@@ -1746,13 +1746,13 @@ the run log before an explicit `::add-mask::` step was added — caught same-day
 ## Update 2026-09-02, later: login redesign step 1 — Telegram deep-link instead of the OAuth widget
 User's real complaint: on iOS Safari's in-app floating browser, tapping "Log in with Telegram"
 (the `telegram-widget.js` embed, driving an oauth.telegram.org handshake) asked to re-verify by
-phone almost every single visit — it never stayed logged in. Studied dorin.app's actual reference
+phone almost every single visit — it never stayed logged in. Studied the reference bot's actual reference
 flow via screenshots: it splits auth into two independent mechanisms — real Google OAuth for a
 persistent browser session, and plain `t.me/<bot>` deep links for Telegram/WhatsApp (no OAuth
 handshake at all, just "go open the bot").
 
 Step 1 (shipped): replaced the widget embed in `base.html`'s header and `need_uid.html` with a
-plain link to `https://t.me/AmirDirotBot` — matches dorin.app's actual behavior for the
+plain link to `https://t.me/AmirDirotBot` — matches the reference bot's actual behavior for the
 Telegram/WhatsApp buttons. `/auth/telegram/callback` and `_verify_telegram_auth`
 (`website/main.py`) are left completely untouched (still fully tested) since nothing about the
 route itself was broken — only its trigger was. **Known gap in the meantime**: `/admin/messages`
@@ -1779,7 +1779,7 @@ original design), meaning any filter with even one of `require_parking`/`require
 `require_has_photos` turned on, or a non-"any" `safe_room_pref`/`furniture_pref`, matched **zero**
 listings — the exact same symptom as the property_type bug, just gated behind different filter
 toggles (all off/"any" by default, so it wasn't hit by every filter, but very plausibly was hit by
-this user's own). Fixed in `common/dorin_common/matching.py`: all of these now give an unknown
+this user's own). Fixed in `common/todira_common/matching.py`: all of these now give an unknown
 listing value the benefit of the doubt (same treatment property_type/is_broker_listing already
 had), except `require_has_photos` — `image_urls` is always `[]`, indistinguishable from "genuinely
 no photos", so that toggle is left completely inert (never rejects) until real photo scraping
@@ -1819,7 +1819,7 @@ entrance date, and broker/agency info. Far more reliable than scraping visible H
    request, so re-running it for an already-known listing would multiply cost for zero benefit.
    **Cost model**: bounded by "new listings per run," not "every listing every run" — scales with
    the existing SCRAPE_CITIES_PER_RUN rotation already in place, not on top of it.
-4. `dorin_common/cards.py`: both caption formatters gained a de-emphasized (italic) "🔑 פיצ'רים:"
+4. `todira_common/cards.py`: both caption formatters gained a de-emphasized (italic) "🔑 פיצ'רים:"
    line built from whatever amenity/safe-room/furniture fields are actually known — additive to
    the existing emoji row, not a replacement (the user's own "גם... בקטן" wording). New
    `send_listing_card(bot, chat_id, listing, caption)` is now the ONE place a listing is ever put
@@ -1978,7 +1978,7 @@ to one chat triggers): Telegram enforces roughly 1 message/sec *per chat*, and a
 now 2 API calls (the media group, then a separate follow-up message for the keyboard, since
 `sendMediaGroup` can't carry one) — twice the traffic per listing the old delay was tuned for.
 
-Fixed same-day: `dorin_common.cards.send_listing_card` now retries once on `RetryAfter`, honoring
+Fixed same-day: `todira_common.cards.send_listing_card` now retries once on `RetryAfter`, honoring
 Telegram's own wait time, before giving up like any other permanent failure. `SEND_DELAY_SECONDS`
 raised 0.05 -> 1.1s. The 4 notifications lost in this specific run are NOT recoverable after the
 fact (their `SentNotification` rows were never written, but the listings are no longer "new" for a
@@ -2019,10 +2019,10 @@ bare house emoji (website) or a plain text message (Telegram), show something ni
 - `scripts/generate_dachshund_art.py` — a one-off local script (PIL shapes, no external image API,
   no cost, not run at deploy/runtime) that draws 6 cute cartoon dachshunds in different color
   palettes (chocolate/golden/cream/black_tan/reddish/silver), written to BOTH
-  `common/dorin_common/assets/dachshunds/*.png` (read directly by the bot — `send_listing_card` in
+  `common/todira_common/assets/dachshunds/*.png` (read directly by the bot — `send_listing_card` in
   `cards.py` now sends this as a real Telegram photo, with the ❤️/🙈/🎉 keyboard, instead of a bare
   text message, when a listing has no images) and `website/static/dachshunds/*.png` (identical
-  copies — the website's Docker image only mounts `website/static/`, not the `dorin_common`
+  copies — the website's Docker image only mounts `website/static/`, not the `todira_common`
   package tree, so the art had to be duplicated there rather than served from one place).
 - Which of the 6 dogs a listing shows is deterministic (`listing.id % 6`), not random, so the same
   listing always shows the same dog everywhere.
@@ -2086,14 +2086,14 @@ Explicit follow-up ask after confirming the קרית/קריית מוצקין fix
 (כתיב מלא/חסר) tolerance and common-abbreviation coverage apply everywhere a Hebrew place name is
 matched — "עיר רחוב או כל דבר אחר" — not just the one city a bug report happened to surface.
 
-- `common/dorin_common/cities.py`'s `_ALIASES` expanded from 4 entries (בש/תא/פת/רג) to 12: added
+- `common/todira_common/cities.py`'s `_ALIASES` expanded from 4 entries (בש/תא/פת/רג) to 12: added
   `ראשלצ`->ראשון לציון (explicitly named), `כס`->כפר סבא, `קא`->קריית אתא, `קג`->קריית גת,
   `קמ`->קריית מוצקין, `קב`->קריית ביאליק, `רמהש`->רמת השרון, `בב`->בני ברק. Deliberately did NOT
   add an alias for בית שמש ("ב"ש" collides with the existing, far more common, באר שבע mapping —
   a second entry would just overwrite the first) or guess at anything not confidently a standard,
   unambiguous usage. With/without gershayim ("ראשל\"צ" vs "ראשלצ") already worked for free via the
   existing `_strip_quotes` — every new alias gets it automatically, nothing extra needed there.
-- `common/dorin_common/matching.py`: `normalize_spelling()` (previously only used by
+- `common/todira_common/matching.py`: `normalize_spelling()` (previously only used by
   `cities.find_matches`/`canonicalize_city`) is now also applied to the neighborhood and street
   hard-filter comparisons. Neither is reachable from any UI today (no menu screen for them yet —
   see `filter_conversation.py`'s module docstring), so this is future-proofing rather than a live
@@ -2106,14 +2106,14 @@ matched — "עיר רחוב או כל דבר אחר" — not just the one city 
 
 ## Update 2026-09-02, later still: dropped the media-group gallery + fixed price-line RTL bug
 Two real issues spotted from a live screenshot (a burst of real matches arriving), compared
-directly against dorin.app's own cleaner card style:
+directly against the reference bot's own cleaner card style:
 
 1. **The "⬆️ הדירה למעלה" follow-up message is gone.** It only existed because Telegram's
    `sendMediaGroup` can't carry an inline keyboard, so showing 2+ photos meant a second, separate
    message just to carry the ❤️/🙈/🎉 buttons. With several listings landing in a burst (each
    send spaced out by Telegram's own per-chat rate limit — see the `SEND_DELAY_SECONDS`/retry
    history above), that follow-up message no longer read as obviously "the listing right above"
-   by the time it arrived. `send_listing_card` (`dorin_common/cards.py`) now sends exactly ONE
+   by the time it arrived. `send_listing_card` (`todira_common/cards.py`) now sends exactly ONE
    `send_photo` per listing — the first real photo (or the dachshund fallback) with the caption
    and keyboard together, same as the reference bot's own single-message-per-listing style. The
    listing's other photos aren't lost — the caption's existing "🔗 לצפייה במודעה המלאה" link
@@ -2164,7 +2164,7 @@ more, directly in chat in batches of 5).
   Playwright screenshot before AND after this fix (the "after" is what actually shipped).
 - Selection is `todi_01.jpg` .. `todi_17.jpg`, still picked deterministically from `listing.id %
   17` (not random) exactly like the palette selection before it — same mechanism, different pool.
-- Personalized the caption too, in `common/dorin_common/cards.py` and all 5 of `website/i18n.py`'s
+- Personalized the caption too, in `common/todira_common/cards.py` and all 5 of `website/i18n.py`'s
   `card.no_image_caption` languages: "אבל הנה נקניקיה חמודה בשבילכם" (a cute sausage dog) →
   "אבל הנה טודי בשבילכם" (Todi, by name) — it's literally him now, not a generic stock dog.
 - The `todi-photos-raw` branch (the temporary GitHub-upload staging branch, holding the original
@@ -2177,8 +2177,8 @@ passing. Verified visually with a Playwright screenshot of the actual rendered c
 different listings showing three different real Todi photos) before shipping.
 
 ## Update 2026-09-02, later still: full Telegram/WhatsApp caption redesign + price-increase alerts
-A real user screenshot (comparing against the reference bot dorin.app) drove a full redo of
-`format_caption`/`format_caption_whatsapp` (`common/dorin_common/cards.py`), not just a tweak:
+A real user screenshot (comparing against the reference bot) drove a full redo of
+`format_caption`/`format_caption_whatsapp` (`common/todira_common/cards.py`), not just a tweak:
 
 - **Field order changed completely**, per an explicit spec: deal type first (🏠 שכירות/מכירה/
   סאבלט, plus "· תיווך" when `is_broker_listing`), then **location** ("אני חושב שהמיקום צריך
@@ -2189,7 +2189,7 @@ A real user screenshot (comparing against the reference bot dorin.app) drove a f
   חדרים:", "📐 שטח:", "🏢 קומה:", "📅 כניסה:") instead of one combined "X חדרים · Y מ"ר · קומה Z"
   line. Rooms/floor/size now use the SAME emoji the website's own card meta-row already uses
   (🛏️/🏢/📐 — see `_listing_card.html`) so the two surfaces read consistently, matching the
-  explicit ask to reach "בדיוק ויותר" (exactly and beyond) dorin.app's own polish.
+  explicit ask to reach "בדיוק ויותר" (exactly and beyond) the reference bot's own polish.
 - **Currency changed from ₪ to ש"ח** (written form), per an explicit request.
 - **The separate emoji-only amenity row is gone** — folded into the one "🔑 פיצ'רים:" line, now
   "|"-separated instead of ", "-separated, per the literal template given.
@@ -2205,7 +2205,7 @@ A real user screenshot (comparing against the reference bot dorin.app) drove a f
   - `scraper/main.py`'s `_upsert_listings`: the price-drop-only `item.price < old_price` check
     became `item.price != old_price`, returning `price_change_events` (renamed from
     `price_drop_events`) for either direction.
-  - `dorin_common/enums.py`: new `NotificationReason.PRICE_INCREASE` alongside the existing
+  - `todira_common/enums.py`: new `NotificationReason.PRICE_INCREASE` alongside the existing
     `PRICE_DROP` — tracked as fully separate reasons (not one combined "price changed" reason) so
     a listing that drops and later rises again can still notify for the increase even though its
     drop notification already went out, symmetric to how `PRICE_DROP` already worked relative to
@@ -2259,7 +2259,7 @@ excluding every one with a person in it.
   `PLAIN_SOURCES` vs. `CUTOUT_SOURCES`.
 - Net result: 17 → **27** photos (25 real cutouts + 2 plain originals), all saved as PNG (JPEG
   can't hold the cutouts' transparency; the 2 plain ones went PNG too for one uniform extension
-  rather than mixed-format path logic). `common/dorin_common/cards.py`'s `_TODI_PHOTO_COUNT` and
+  rather than mixed-format path logic). `common/todira_common/cards.py`'s `_TODI_PHOTO_COUNT` and
   `website/templates/_listing_card.html`'s `todi_photo_count` bumped to 27, `.jpg` → `.png`
   throughout. Same deterministic-per-listing-id selection mechanism as always.
 - `scripts/prepare_todi_photos.py` (v2) replaces the v1 plain-resize version entirely — the whole
@@ -2317,7 +2317,7 @@ use ALL 50 submitted photos, not just the 27 rembg could cleanly handle.
   of the raw soft alpha, cropping to just the cleanly-segmented head+neck (the body was too
   occluded by cage bars to recover).
 - Net result: 27 → **50** photos (all 50 submitted photos now used). `_TODI_PHOTO_COUNT` /
-  `todi_photo_count` bumped 27 → 50 in `dorin_common/cards.py` and `_listing_card.html`.
+  `todi_photo_count` bumped 27 → 50 in `todira_common/cards.py` and `_listing_card.html`.
   `scripts/prepare_todi_photos.py` rewritten to document both segmentation passes (rembg for
   photos 1–27, YOLOv8-seg for 28–50) and why each was chosen where it was, plus which of the
   YOLO-pass photos needed a manual fixup and why — the manual-fixup coordinates themselves aren't
@@ -2469,9 +2469,9 @@ unconditionally instead.
 ## 2026-09-02 (final word on the "no photos" placeholder): scrapped photos entirely — a designed Todi mascot, like the reference bot's own approach
 
 After the AI-generated photos still didn't land (quality complaints kept recurring across three
-separate photo-based attempts that same day), direct feedback pointed at the reference bot Dorin's
-own solution to the identical problem: "אצל דורין נגיד זה נראה כך, היא הוסיפה טקסט [confident
-one-liner] ותמונה של דורין מחזיקה אצבעות... צריך להיות יצירתיים באמת באמת לחשוב מחוץ לקופסה." Dorin
+separate photo-based attempts that same day), direct feedback pointed at the reference bot's
+own solution to the identical problem: "אצל המתחרה נגיד זה נראה כך, היא הוסיפה טקסט [confident
+one-liner] ותמונה של המתחרה מחזיקה אצבעות... צריך להיות יצירתיים באמת באמת לחשוב מחוץ לקופסה." the reference bot
 uses ONE consistent branded character illustration + a confident caption, not a real (or
 AI-generated) photo at all — a completely different kind of solution than anything tried so far.
 
@@ -2493,17 +2493,17 @@ AI-generated) photo at all — a completely different kind of solution than anyt
   `scripts/generate_todi_mascot.py` renders the identical markup to a PNG for Telegram/WhatsApp,
   which can only send a real image file, not inline SVG. `scripts/prepare_todi_photos.py` (every
   earlier photo-pipeline version) is deleted outright — nothing in it applies anymore.
-- Caption copy also updated to match Dorin's confident tone rather than the old neutral
+- Caption copy also updated to match the reference bot's confident tone rather than the old neutral
   "here's Todi for you" line — in all 5 site languages (`website/i18n.py`'s
   `card.no_image_caption`) plus the matching Telegram/WhatsApp suffix
-  (`cards.py`'s `_NO_PHOTOS_SUFFIX_HE`). Kept honest (no fabricated statistics like Dorin's "80%"
+  (`cards.py`'s `_NO_PHOTOS_SUFFIX_HE`). Kept honest (no fabricated statistics like the reference bot's "80%"
   claim, since that number isn't something this project actually has data for) while still being
   warm and Todi-branded, per the direct request ("אפילו משהו שקשור לטודי ועם משפט כלשהו").
 - 304 tests passing — the photo-randomness test replaced with a simple "resolves to the one real
   mascot asset" check; the caption-overlap and quality tests from the prior two passes needed no
   changes (this only touches which asset is shown and its file format, not `send_listing_card`'s
   logic). Verified visually via Playwright: the mascot renders cleanly inside the actual card
-  markup/CSS at production size, matching the Dorin-inspired layout (illustration filling the
+  markup/CSS at production size, matching the reference-bot-inspired layout (illustration filling the
   cover area, confident caption banner below it).
 
 ## 2026-09-02 (one more swap, same day): the crowned-mascot SVG replaced with a user-supplied illustration — Todi the detective
@@ -2544,7 +2544,7 @@ A long session covering several linked decisions, in the order they actually hap
 whole section before touching auth, payments, or listing-card rendering, since several of these
 land on top of each other.
 
-**1. Cross-channel account linking** (`dorin_common/channel_link.py`, migration `0007`) — matches
+**1. Cross-channel account linking** (`todira_common/channel_link.py`, migration `0007`) — matches
 the reference product's own confirmed UX (screenshotted live by the owner): the website's new
 `/account` page generates a short-lived `ref_xxxxxx` code for the logged-in user; sending it FROM
 a channel you want to add (a plain WhatsApp text message, or opened as a Telegram `/start`
@@ -2590,13 +2590,13 @@ secret) with an explicit "✅ שילמתי" confirmation that extends access at 
 code is untouched and still there** — `grow_client.is_configured()` gates which path `/upgrade`
 takes, so setting the three Grow secrets later switches back to real-gateway checkout with zero
 code changes. Pricing landed at the previously-agreed 3 tiers: weekly ₪15, biweekly ₪25, monthly
-₪40 (`dorin_common/access.py`'s `PLAN_PRICES_ILS`/`PLAN_DURATIONS`).
+₪40 (`todira_common/access.py`'s `PLAN_PRICES_ILS`/`PLAN_DURATIONS`).
 
 **5. Paid content is now genuinely gated — this was an explicit correction, not a refinement.**
-Earlier framing (comparing Dorin's own "view original listing" bypass) proposed keeping a free
+Earlier framing (comparing the reference bot's own "view original listing" bypass) proposed keeping a free
 escape hatch to the real listing. The owner rejected that outright: "אין פה שום עניין של נוחות...
 כל האינטרס של מנוי פרימיום זה שהפרטים יהיו מוחבאים ללא המנוי" — no convenience angle, the whole
-point of paying is that the details are hidden without it. `dorin_common/cards.py`'s
+point of paying is that the details are hidden without it. `todira_common/cards.py`'s
 `format_caption`/`format_caption_whatsapp` now take a **required** `has_access` argument (no
 default — every call site must explicitly decide, so a future forgotten call site fails closed by
 construction, not open) that strips the description and replaces the real listing link with a 🔒
@@ -2811,7 +2811,7 @@ common case.
 
 **Real fix, not a patch**: linking now happens entirely server-side, without needing ANY browser
 session to survive anything. New `pending_google_links` table (migration `0009_pending_google_
-links`) + `dorin_common/google_link.py` (`generate_google_link_token`/`resolve_google_link_token`,
+links`) + `todira_common/google_link.py` (`generate_google_link_token`/`resolve_google_link_token`,
 mirroring `channel_link.py`'s existing `ref_` pattern but for the reverse direction — an unclaimed
 Google identity waiting for whichever Telegram account claims it, rather than a known user waiting
 for a new channel). `auth_google_callback` now generates a `gl_xxxxx` token (15-min TTL, single
@@ -3117,7 +3117,7 @@ list/dispatch/read workflow runs and logs) and **Workflows** (needed to push cha
 Real user report mid-WhatsApp-testing: a successful onboarding reply took about a minute to arrive
 — reads as "the bot is broken" to someone actually searching for an apartment in real time, not an
 abstract latency number. Root cause, confirmed from production logs and the SDK's own field
-documentation: `dorin_common/gemini_client.py`'s `generate_content` call never set `http_options`,
+documentation: `todira_common/gemini_client.py`'s `generate_content` call never set `http_options`,
 so `HttpOptions.retry_options` silently used Google's own default — **up to 5 attempts on
 408/429/5xx with exponential backoff up to a 60-second max delay**. A live production log from
 tonight showed exactly the trigger: `google.genai.errors.ServerError: 503 UNAVAILABLE... This model
@@ -3225,7 +3225,7 @@ ambient environment.
 
 ## 2026-09-06 (same day): WhatsApp "typing…" indicator, after a live side-by-side comparison
 
-The owner compared this bot live against a competitor's ("דורין") and noticed its WhatsApp bot
+The owner compared this bot live against a competitor's ("המתחרה") and noticed its WhatsApp bot
 shows the native "typing…" bubble while it works, asked for the same, and separately asked to
 squeeze out any remaining reply latency after the ack-first fix above.
 
@@ -3281,7 +3281,7 @@ reply) even though both hit the identical host. Replaced with one module-level, 
 `httpx.Client(timeout=...)` (`_http_client`) that both functions now call through — HTTP
 keep-alive means only the first request per pod lifetime pays a full handshake; everything after
 reuses the warm connection. Mirrors the same "create once, reuse the connection pool" pattern
-`dorin_common/gemini_client.py` already used for its own `genai.Client`.
+`todira_common/gemini_client.py` already used for its own `genai.Client`.
 
 **Checked and deliberately NOT shipped — disabling Gemini's "thinking"**: `gemini-3.6-flash` calls
 via `google.genai` can, on SDK versions that expose it, skip internal chain-of-thought reasoning via
@@ -3305,9 +3305,9 @@ guessing a cap risks silently truncating the JSON output mid-generation (a parse
 for an unverified, likely-marginal gain; revisit with real production `response.text` lengths in
 hand if this becomes worth the actual measurement.
 
-**Already optimal, confirmed by reading the code, not touched**: `dorin_common/db.py`'s
+**Already optimal, confirmed by reading the code, not touched**: `todira_common/db.py`'s
 SQLAlchemy engine is `@lru_cache`d (one pooled engine, reused connections, not recreated per
-request); `dorin_common/gemini_client.py`'s `genai.Client` is likewise cached at module level, so
+request); `todira_common/gemini_client.py`'s `genai.Client` is likewise cached at module level, so
 its internal HTTP transport/connection pool already persists across calls exactly like the fix
 above does for `whatsapp_client.py` now.
 
@@ -3337,7 +3337,7 @@ same logs — NOT a duplicate/retried delivery of the same message (each 503 sit
 sent). This is independent, direct proof the ack-first fix from earlier today is working exactly as
 designed: one Gemini attempt per real message, no more Meta-retry-induced duplication.
 
-**Fix**: `dorin_common/gemini_client.py` now retries ONCE, specifically on
+**Fix**: `todira_common/gemini_client.py` now retries ONCE, specifically on
 `google.genai.errors.ServerError` (5xx), with a 1-second delay, before giving up and returning
 `None` (the existing fallback path). Google's own error message calls these spikes "usually
 temporary" — exactly the case a single retry is for. Deliberately scoped tight: only `ServerError`
@@ -3348,7 +3348,7 @@ in this function used to directly widen the window for Meta's own webhook redeli
 now that Meta is acked before this function is ever reached, a bounded retry only affects how long
 the already-backgrounded reply takes to arrive.
 
-**One honest tradeoff flagged, not fixed**: `dorin_common/gemini_client.py` is shared by the
+**One honest tradeoff flagged, not fixed**: `todira_common/gemini_client.py` is shared by the
 Telegram bot too (`bot/handlers/onboarding.py::_handle_freetext`), which calls it directly inside
 an `async def` handler with no `asyncio.to_thread`/executor wrapping — meaning the ENTIRE call
 (already up to 10s) blocks the bot's single event loop for every user, not just the one being
@@ -3418,8 +3418,8 @@ disconnected* account (a fresh `/start` with no link code creates a brand-new ro
 itself was completely unreachable — not a missing feature, a genuine identity dead end nobody could
 route around.
 
-The owner sent a screenshot of how the reference competitor bot ("דורין") handles this: its
-"עדכון סינון ⚙️" button opens a `dorin.app` webpage that's already signed in as the right person
+The owner sent a screenshot of how the reference competitor bot ("המתחרה") handles this: its
+"עדכון סינון ⚙️" button opens a `the reference bot` webpage that's already signed in as the right person
 ("שלום Amir Toledano FIFA") — a magic link, not a login screen — landing straight on a filter-editing
 form. Asked whether to build the same pattern; confirmed yes.
 
@@ -3461,7 +3461,7 @@ brand-new "נרשמת!" replies. Full suite: 505 passing (up from 499).
 ## 2026-09-06 (same day, one more round): the wid link now signs you in site-wide, not just on /filter
 
 Sent the owner the plan above; he came back with a screenshot of the competitor app's own top bar
-— clicking `dorin.app` there goes to a full home screen, and every other page (liked/hidden/search
+— clicking `the reference bot` there goes to a full home screen, and every other page (liked/hidden/search
 settings/profile) stays signed in as the same person no matter which one you land on or navigate to
 next. The `?wid=` fix above only made `/filter` itself reachable — every OTHER route
 (`/apartments`, `/liked`, `/account`, …) still only accepts `uid` or a real session, so clicking
@@ -3543,7 +3543,7 @@ call — `test_post_webhook_processes_a_real_text_message`, `test_a_redelivered_
 separately, since they're now two different calls, not two calls to the same function. Full suite:
 509 passing (up from 506).
 
-## 2026-09-06 (same day, one more polish round): the button WORKED live — then matched Dorin's exact wording
+## 2026-09-06 (same day, one more polish round): the button WORKED live — then matched the reference bot's exact wording
 
 Owner confirmed the cta_url button rendered correctly and worked end to end on a real device (the
 JSON shape guessed via web search, since developers.facebook.com was blocked, turned out right).
@@ -3729,7 +3729,7 @@ Worth a real look next session, not rushed in as tonight's ~20th shipped PR. Wha
 that Todira's own `/account` doesn't have yet: a subscription-status card with a toggle and
 "upgrade" CTA (Todira has `/upgrade` as a separate page, not surfaced on `/account` itself), a
 notifications-enabled toggle inline on the page (Todira's `notifications_enabled` field exists on
-`User` already — see `dorin_common/models.py` — just isn't exposed as a toggle anywhere on the
+`User` already — see `todira_common/models.py` — just isn't exposed as a toggle anywhere on the
 website yet, only implicitly via the bot), payment history (Todira already has a `Payment` model
 with real rows — just never rendered anywhere on the website), quick links to saved/hidden/matched
 listings and a broker-only filter shortcut (Todira has `no_brokers` as a Filter field and `liked`
@@ -4097,7 +4097,7 @@ filter editing inline via chat (not just chit-chat) — confirmed this means eve
 from an already-onboarded user now costs a Gemini call (previously free/instant on WhatsApp, and
 non-existent on Telegram), and confirmed OK given the existing free-tier Gemini key.
 
-**Shipped**: new `dorin_common/gemini_client.chat_with_existing_user(text, current_filter,
+**Shipped**: new `todira_common/gemini_client.chat_with_existing_user(text, current_filter,
 known_cities, first_name)` — channel-agnostic (same home as `parse_onboarding_message`, same
 fail-soft-on-None/retry contract). One call does two things: (1) if the message asks to change
 something about the filter (city/price/rooms/deal type/keywords), returns the full updated field
@@ -4181,7 +4181,7 @@ sufficient, discovered in this order:
    iOS user agent, which matched exactly. Removed the blur, kept the same background color/
    legibility. Owner: "זהו?" — tested again, still not fully stable.
 3. **Paginate with infinite scroll, matching the reference bot's own `/apartments`** (`3b5a589`).
-   The owner explicitly compared against dorin.app's own `/apartments`, which loads listings
+   The owner explicitly compared against the reference bot's own `/apartments`, which loads listings
    progressively while scrolling rather than all at once — that comparison was the actual missing
    piece. Up to 200 full listing-card subtrees (carousel, 2 reaction forms, meta/amenity rows) in
    one page is simply too much DOM for a weak mobile browser to build in one shot, independent of
@@ -4222,7 +4222,7 @@ making that possible:
   dashboard login for tracking deposits) — confirmed "success" message from UPAY itself.
 - **Cheap real-money test, not ₪15**: rather than spend a full ₪15 to verify the webhook,
   temporarily dropped the weekly plan's price to ₪1 both on Takbull's own product config and in
-  our own code (`common/dorin_common/access.py`'s amount check — the webhook route verifies the
+  our own code (`common/todira_common/access.py`'s amount check — the webhook route verifies the
   paid amount matches what we expect, so both sides had to move together; commit `c6fafd8`, tagged
   TEMPORARY, **still not reverted — revert both sides back to ₪15 once a real end-to-end payment is
   confirmed working**). Also, at the owner's own explicit request, split product selection so a
@@ -4282,8 +4282,8 @@ failures** — up from 3.23%. Closed as fixed at the time.
 detail page, doesn't it make sense that the *same* run could also give us the listing's full
 description — for free, in the same credits — rather than paying for a second, separate Bright
 Data fetch (`bright_data_client.py`'s per-listing on-demand call) just for content? His own
-reasoning: "אני בטוח שדורין עלתה על משהו אחר ולא משלמת גם על האיזורים וגם על התוכן מודעות... אולי
-היא מקבלת גם איזורים וגם תוכן באותם קרדיטים באותה ריצה" — Dorin almost certainly isn't paying
+reasoning: "אני בטוח שהמתחרה עלתה על משהו אחר ולא משלמת גם על האיזורים וגם על התוכן מודעות... אולי
+היא מקבלת גם איזורים וגם תוכן באותם קרדיטים באותה ריצה" — the reference bot almost certainly isn't paying
 twice for the same thing, so there's probably a way to get both region-discovery and content in one
 pass. That's a real, well-founded question, and led straight to a real second bug: Stage 2's
 **Parser code** (a separate script from the Interaction code fixed in Round 1) was still written for
@@ -4447,16 +4447,16 @@ scraper/notifier.py at the moment a listing first matches a PAYING user) to webs
 background thread per shown listing still missing a description, for any signed-in viewer with
 `has_access`, caching on `Listing.description` forever so the cost is bounded by distinct listings
 an actual paying viewer ever looks at (never blocking the page, never repeated per viewer). Moved
-`bright_data_client.py` from `scraper/` into `common/dorin_common/` since the scraper, bot, and
+`bright_data_client.py` from `scraper/` into `common/todira_common/` since the scraper, bot, and
 website pods are three separate Docker images (each copies only its own directory plus
-`dorin_common`) and this is now used by two of them. Also gave WhatsApp's real "תמיכה"/help-request
+`todira_common`) and this is now used by two of them. Also gave WhatsApp's real "תמיכה"/help-request
 messages a proper tappable CTA-URL button straight to `/contact` (previously fell through to
 `gemini_client.chat_with_existing_user` like any other free text and just described the contact
-page in words) — moved `looks_like_help_request` into `dorin_common/support.py` so both channels
+page in words) — moved `looks_like_help_request` into `todira_common/support.py` so both channels
 share one definition, checked before both the existing-filter chat branch and onboarding parsing.
 
 **2. The owner asked a sharper question**: why fetch content only lazily per-viewer at all, instead
-of getting it for every listing up front, "like Dorin" (screenshotted Dorin's own listing-detail
+of getting it for every listing up front, "like the reference bot" (screenshotted the reference bot's own listing-detail
 page + its upgrade-wall modal for non-subscribers — which, note, already matches exactly what
 `_listing_card.html`'s existing `has_access` gate does: full content + original link for paying
 users, a locked 🔒 button to `/upgrade` for everyone else). He asked a second AI to analyze the
@@ -4608,7 +4608,7 @@ real open item** — see below.
 - **Takbull real-payment test**: still blocked on the above (UPAY terminal not active) — the
   `processOrder` JS crash / "לא קיים מספר סודר" errors documented in the 2026-09-06 entries above
   are a direct symptom of this same missing-terminal state, not a separate bug.
-- **The TEMPORARY ₪1 weekly-plan price** (`common/dorin_common/access.py`, commit `c6fafd8`,
+- **The TEMPORARY ₪1 weekly-plan price** (`common/todira_common/access.py`, commit `c6fafd8`,
   flagged repeatedly in the 2026-09-06 entries) is STILL live and STILL not reverted — revert both
   the code and Takbull's own product config back to ₪15 once a real end-to-end payment actually
   completes through the now-fixed webhook.
@@ -4649,7 +4649,7 @@ anything — verify against `git log origin/main` before building on top of one,
 itself proves.**
 
 **PR #181 — real bugs found across all 3 audits:**
-- **Keywords filter matched zero listings, always** (`dorin_common/matching.py`) — `Listing.
+- **Keywords filter matched zero listings, always** (`todira_common/matching.py`) — `Listing.
   description` is unset for the free feed enrichment; the only code that ever populates it
   (`notifier.py`) runs AFTER matching already happened. Same "missing data = failure" bug class as
   the 2026-09-02 property_type/amenities incident, just undiscovered until now for this field. Now
@@ -4661,7 +4661,7 @@ itself proves.**
   neighborhood (an f-string embedding Python's literal `None`) — latent, not reachable from any UI
   yet, fixed alongside the keywords fix in the same file.
 - **Telegram captions and owner-notification messages never escaped HTML** despite being sent
-  with `parse_mode=HTML` — `dorin_common/cards.py` (city/neighborhood/street/description/url, all
+  with `parse_mode=HTML` — `todira_common/cards.py` (city/neighborhood/street/description/url, all
   scraped from Yad2/Bright Data) and all three owner-notification paths (`bot/handlers/support.py`'s
   `escalate_to_owner`, `website/main.py`'s `_notify_owner_sync`, `website/whatsapp_webhook.py`'s
   `_notify_owner_of_help_request` — the last three carry fully attacker-controlled text: a contact-
@@ -4759,7 +4759,7 @@ itself proves.**
   validation that min ≤ max, unlike `filter_conversation.py`'s own menu-driven edits (which have
   `FRIENDLY_VALIDATION_MESSAGES` catching exactly this). An inverted range hard-fails every listing
   forever — same silent-zero-matches bug class as the keywords/studio fixes above, just reachable
-  from the chat-driven path instead of the menu. Added `dorin_common.matching.safe_range_update`,
+  from the chat-driven path instead of the menu. Added `todira_common.matching.safe_range_update`,
   shared by both call sites, which refuses to apply an update that would invert the range.
 
 **PR #185 — WhatsApp batch-message error isolation:**
@@ -4804,7 +4804,7 @@ judged lower-value-per-effort or higher-risk than the above — pick up whicheve
   one) — never resumed this session either; still exactly where it was left.
 - Older still-open items, unchanged since the entry above: **UPAY** documents/signature (owner
   action), **Takbull real-payment test** (blocked on UPAY), the **TEMPORARY ₪1 weekly price**
-  (`common/dorin_common/access.py`) not yet reverted, and confirming **Meta's WhatsApp Business
+  (`common/todira_common/access.py`) not yet reverted, and confirming **Meta's WhatsApp Business
   Verification** review outcome.
 
 ## Update 2026-09-08: pre-launch reliability pass, a WhatsApp policy scare that turned out fine, and a 4th confirmed scraping source
@@ -4851,7 +4851,7 @@ automatic recovery. Added:
   can't report on its own host's death.
 
 **A competitor's WhatsApp shutdown notice, investigated, turned out not to apply here.** The owner
-found dorin.app (the reference product) announcing it's shutting down its own WhatsApp
+found the reference bot (the reference product) announcing it's shutting down its own WhatsApp
 notification service Sep 30 2026, blaming a Meta policy change, and asked whether this is a real
 risk to Todira. Checked properly rather than guessing: (1) confirmed via `website/whatsapp_client.py`
 and `scraper/notifier.py` that Todira's WhatsApp integration sends ZERO proactive/automated
@@ -4862,7 +4862,7 @@ general-purpose chatbots (doesn't apply — Todira is a structured, purpose-buil
 still allowed), a real Oct 1 2026 pricing change (service/utility messages inside the 24h window,
 previously free, start being charged — worth revisiting once in effect, not urgent now), and a
 real, well-documented crackdown specifically on UNSOLICITED bulk real-estate messaging to cold
-lists without consent (large EU fines cited) — which is exactly what dorin.app's own proactive
+lists without consent (large EU fines cited) — which is exactly what the reference bot's own proactive
 push-to-non-consenting-numbers model was doing, and exactly what Todira structurally is NOT doing
 (every message is either a reply, or — the day proactive WhatsApp pushes are ever built — will
 need a pre-approved message template + explicit opt-in, already noted as a requirement in
@@ -4871,9 +4871,9 @@ pricing change once it takes effect, and remember the template+consent requireme
 WhatsApp ever gets its own proactive "new match" push built.
 
 **4th scraping source confirmed via real evidence, not a guess: homeless.co.il.** The owner sent
-screenshots of dorin.app's own listing cards, each showing a small per-card source badge — Yad2,
+screenshots of the reference bot's own listing cards, each showing a small per-card source badge — Yad2,
 Facebook, קומו (Komo), and הומלס (Homeless), confirming all four as real, currently-live sources
-dorin.app aggregates from. Added `Source.HOMELESS = "homeless"` to `dorin_common/enums.py`
+the reference bot aggregates from. Added `Source.HOMELESS = "homeless"` to `todira_common/enums.py`
 (`Source.ALL` now includes it) — schema-only, no scraper built yet, same "source-agnostic by
 design" pattern Komo/Facebook already had reserved. homeless.co.il's own URL shape looks similarly
 scrapeable to Komo's (query-param-driven, e.g. `homeless.co.il/rent/city=<name>`, confirmed via
@@ -4937,22 +4937,22 @@ stability before launch, not another moving part. Revisit later, once the S3 bac
 future migration meaningfully safer (restore from backup + redeploy the whole chart from git,
 rather than a from-scratch rebuild).
 
-**Also investigated properly, not guessed**: the owner found dorin.app (reference product)
+**Also investigated properly, not guessed**: the owner found the reference bot (reference product)
 announcing its own WhatsApp notification service shutting down Sep 30 2026, citing a Meta policy
 change, and asked whether Todira is exposed to the same risk. Checked the actual code
 (`whatsapp_client.py`, `scraper/notifier.py`) and real 2026 Meta policy changes via websearch:
 Todira sends ZERO proactive/automated WhatsApp notifications today (every message is a reply
 within the 24h window, the compliant case) — the "new listing matches" push only exists on
-Telegram — so the specific unsolicited-bulk-messaging crackdown dorin.app cited doesn't apply
+Telegram — so the specific unsolicited-bulk-messaging crackdown the reference bot cited doesn't apply
 here. No action needed now; the one real, verified upcoming change (Meta starts charging for
 in-window service/utility messages from Oct 1 2026) is worth revisiting once it's actually in
 effect, not before.
 
 **One more real scraping source, confirmed via evidence not guesswork**: the owner sent
-screenshots of dorin.app's own listing cards, each showing a small per-card source badge — Yad2,
+screenshots of the reference bot's own listing cards, each showing a small per-card source badge — Yad2,
 Facebook, קומו (Komo), and הומלס (Homeless, homeless.co.il — a real, well-known Israeli
 classifieds board, confirmed via websearch). Added `Source.HOMELESS = "homeless"` to
-`dorin_common/enums.py` (schema-only, no scraper yet — same pattern Komo/Facebook already had).
+`todira_common/enums.py` (schema-only, no scraper yet — same pattern Komo/Facebook already had).
 **Komo/Homeless/Facebook scraping is still blocked on the exact same thing as every prior entry
 on this**: this coding session's own network egress blocks direct access to all three sites AND
 to `api.zenrows.com` itself, so nothing can be fetched or tested from here — genuinely unchanged,
@@ -4987,7 +4987,7 @@ Every choice below was made defensively with that in mind, not just to make the 
    (`/account/whatsapp-notifications`, `website/main.py`). A real UI toggle is both a better
    consent record and immune to misreading a one-word freeform reply.
 
-3. **`website/whatsapp_client.py` moved to `dorin_common/whatsapp_client.py`** (used by both
+3. **`website/whatsapp_client.py` moved to `todira_common/whatsapp_client.py`** (used by both
    `website/whatsapp_webhook.py` and now `scraper/notifier.py`, same pattern as `cards.py`/
    `bright_data_client.py` already being shared) and gained `send_template_message()` — the Cloud
    API's `type: "template"` payload shape, separate from the existing free-form
@@ -5374,7 +5374,7 @@ Data's shape. Confirmed this with a real-shaped test
 built from tonight's actual confirmed field names/values (token `dgne1po1`) — passes with zero
 changes to `enrich_from_detail` itself.
 
-What WAS added (`common/dorin_common/bright_data_client.py`):
+What WAS added (`common/todira_common/bright_data_client.py`):
 - Refactored `fetch_listing_description`'s trigger/poll/snapshot mechanics into a shared
   `_trigger_and_fetch_first_row(url) -> dict | None` helper.
 - New `fetch_listing_detail_via_bright_data(url) -> dict | None` — same helper, but returns the
@@ -5422,7 +5422,7 @@ live, a brand-new listing's first notification already carries its real descript
 amenities, not just the search-card fields.
 
 **Caught a real bug before it ever ran, worth flagging for future sessions touching this file**:
-this project's session factory is `expire_on_commit=False` (`dorin_common/db.py`) — a first draft
+this project's session factory is `expire_on_commit=False` (`todira_common/db.py`) — a first draft
 that pre-loaded ORM `Listing` objects inside the new enrichment function, then updated the DB via
 Core `table.update()`, would have silently handed `run_once()`'s later notification query back the
 STALE pre-enrichment ORM objects from the session's identity map (Core-level updates don't touch
@@ -5522,7 +5522,7 @@ seen in the curl example), so the fix tries several plausible key names defensiv
 (`collection_id`/`response_id`/`job_id`/`id`) rather than guess one blind — same hedging pattern
 this file already used for the description field name.
 
-**Fixed for real** (`common/dorin_common/bright_data_client.py`, commit `ec69f99`): rewrote
+**Fixed for real** (`common/todira_common/bright_data_client.py`, commit `ec69f99`): rewrote
 `_trigger_and_fetch_first_row` to use the real `/dca/...` endpoints. Renamed
 `BRIGHT_DATA_DATASET_ID` → `BRIGHT_DATA_COLLECTOR_ID` everywhere it appeared (Helm `values.yaml`/
 templates, CI/CD workflow, `.env.example`) since "dataset_id" no longer describes what this is —
@@ -5598,7 +5598,7 @@ deleting it) with a note that it's superseded, matching this file's own conventi
 decision history rather than erasing it.
 
 **Changed, consistently, everywhere a listing renders** (PR #210, merged, CI/CD run #259):
-- `common/dorin_common/cards.py` — both `format_caption` (Telegram) and `format_caption_whatsapp`:
+- `common/todira_common/cards.py` — both `format_caption` (Telegram) and `format_caption_whatsapp`:
   the description is now built unconditionally (previously `if has_access else ""`); only the
   footer (the actual link, or the lock-line replacing it) still checks `has_access`. Footer copy
   reworded since "full details AND direct link" was no longer accurate once details became free —
@@ -5609,7 +5609,7 @@ decision history rather than erasing it.
 - `website/i18n.py` — `card.locked_btn` reworded across all 5 languages ("Upgrade to view" →
   "Upgrade for original link" / "שדרג/י לצפייה" → "שדרג/י לקישור למקור") to match — the button no
   longer gates viewing anything, just the outbound link.
-- `has_access` itself is untouched everywhere (`dorin_common/access.py`'s `has_full_access`,
+- `has_access` itself is untouched everywhere (`todira_common/access.py`'s `has_full_access`,
   every call site computing it) — still exactly the same trial/paid/owner check as before; only
   what it's allowed to hide got narrower.
 
@@ -5991,7 +5991,7 @@ not guessed:
   their `RECENT_LISTINGS_SCANNED=500`/`.limit(500)` SQL caps; `limit` is now genuinely optional.
 - Even fully unconstrained, the owner's own filter still only matched 2,634 of 3,794 — a live query
   found exactly why: 1,153 active rent listings are in real towns (אריאל, חריש, נשר, קרית שמונה,
-  גבעת זאב, מעלה אדומים, ...) that simply aren't in `dorin_common.cities.CITIES`' curated ~42-city
+  גבעת זאב, מעלה אדומים, ...) that simply aren't in `todira_common.cities.CITIES`' curated ~42-city
   list. Not a matching-logic bug — `cities=[]` already means "no city restriction at all" (both the
   bot's root summary and the website's own field hint already said so) — the real gap was that there
   was no way to REACH that true "all" state once any city had been added, short of removing every
@@ -6574,7 +6574,7 @@ what survives a context-compaction summary, now flagged explicitly so it's harde
 
 **Code change shipped**: `scraper/yad2_client.py`'s `_fetch_direct` (the function
 `fetch_map_markers` already calls, used for every one of the 7 `REGION_SLUGS`) now calls
-`dorin_common.bright_data_client.fetch_via_web_unlocker(url)` instead of an un-proxied
+`todira_common.bright_data_client.fetch_via_web_unlocker(url)` instead of an un-proxied
 `httpx.get` — that function already existed, fully built and tested since 2026-09-13, just never
 reachable in practice until tonight's KYC-wall retest. Kept the function name `_fetch_direct`
 despite it no longer being direct/un-proxied (every test monkeypatches it as a whole, not its

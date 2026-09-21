@@ -7,7 +7,7 @@ exact same names.
 
 IMPORTANT caveat (see scraper/YAD2_NOTES.md): the matcher compares `filters.cities` values
 against `listings.city` verbatim (array-overlap / exact string equality — see
-dorin_common.matching's city check and scraper/notifier.py's SQL pre-filter). Whatever string a
+todira_common.matching's city check and scraper/notifier.py's SQL pre-filter). Whatever string a
 user picks here must match the string Yad2 actually puts in a listing's `city` field, or matching
 silently fails. CONFIRMED live 2026-09-02 (not guessed): Yad2's own page text for Kiryat Motzkin
 is "קרית מוצקין" (1 yud, כתיב חסר), not this list's "קריית מוצקין" (2 yuds, כתיב מלא) — every one
@@ -100,7 +100,7 @@ def canonicalize_city(raw_city: str | None) -> str | None:
     מוצקין"). Used by scraper/normalize.py at the data-ingestion boundary, once per scraped
     listing, so `listings.city` always agrees with whatever spelling `filters.cities` stores
     (chosen from THIS list, never typed freely) — both the SQL array-overlap pre-filter in
-    scraper/notifier.py and the Python equality check in dorin_common.matching stay plain exact-
+    scraper/notifier.py and the Python equality check in todira_common.matching stay plain exact-
     string comparisons; neither needs to know about spelling variants.
 
     Uses an EQUALITY check after normalizing (not find_matches' containment check, which is meant

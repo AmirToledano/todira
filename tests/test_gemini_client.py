@@ -1,4 +1,4 @@
-"""Unit tests for dorin_common/gemini_client.py's parse_onboarding_message() post-processing.
+"""Unit tests for todira_common/gemini_client.py's parse_onboarding_message() post-processing.
 
 The Gemini call itself is mocked out (no network, no real API key) - what's under test is the
 module's own defensive logic around that call: filtering out cities the model hallucinates
@@ -12,7 +12,7 @@ from unittest.mock import patch
 import requests
 from google.genai import errors
 
-from dorin_common import gemini_client
+from todira_common import gemini_client
 
 
 class _FakeResponse:

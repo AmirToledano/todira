@@ -3,7 +3,7 @@
 Backs the cross-channel account-linking flow: a short code generated on the website for an
 already-logged-in user, then sent from a NEW channel (WhatsApp text message, or a Telegram
 /start deep-link payload) to attach that channel to the SAME row instead of creating a new one.
-See common/dorin_common/channel_link.py.
+See common/todira_common/channel_link.py.
 
 Revision ID: 0007_channel_link_code
 Revises: 0006_paid_access

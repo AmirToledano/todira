@@ -1,4 +1,4 @@
-"""Unit tests for dorin_common/access.py — the paid-access gate (2026-09-04 pricing decision).
+"""Unit tests for todira_common/access.py — the paid-access gate (2026-09-04 pricing decision).
 SimpleNamespace stands in for a real User row, same approach test_matching.py/test_cards.py use.
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dorin_common.access import PLAN_DURATIONS, extend_paid_until, has_full_access
+from todira_common.access import PLAN_DURATIONS, extend_paid_until, has_full_access
 
 NOW = dt.datetime.now(dt.timezone.utc)
 PAST = NOW - dt.timedelta(days=1)

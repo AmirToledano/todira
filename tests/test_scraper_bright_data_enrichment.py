@@ -5,7 +5,7 @@ normalize._compute_detail_updates onto that DB row.
 Same importlib-loading + fake-session approach as test_scraper_upsert.py, with one deliberate
 extra check: the fake session here has NO `scalars()` method at all, only `execute()`. This is a
 regression guard for a real bug caught before it ever ran (see PROJECT_STATE.md, 2026-09-12): this
-project's session factory is `expire_on_commit=False` (dorin_common/db.py), so loading ORM
+project's session factory is `expire_on_commit=False` (todira_common/db.py), so loading ORM
 `Listing` objects here, updating the DB via Core `table.update()`, then having run_once() later
 re-query those same ids would silently hand back the STALE pre-enrichment ORM objects from the
 identity map. The fix was to fetch plain (id, url) tuples via Core `select(...)` instead of ORM

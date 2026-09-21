@@ -15,7 +15,7 @@ import secrets
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from dorin_common.models import User
+from todira_common.models import User
 
 CODE_PREFIX = "ref_"
 _CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"

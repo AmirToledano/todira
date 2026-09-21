@@ -1,5 +1,5 @@
 """ToDira public website (Phase 2) — FastAPI, server-rendered Jinja2 templates, reuses
-common/dorin_common (same models/matching/db as the bot and scraper).
+common/todira_common (same models/matching/db as the bot and scraper).
 
 AUTH: three ways in, and all three resolve to the same signed session cookie in the end.
   1. Real login via Google — /auth/google/start + /auth/google/callback (2026-09-04), the actual
@@ -25,7 +25,7 @@ AUTH: three ways in, and all three resolve to the same signed session cookie in 
      still fully tested) as a fallback login path even though #1 is now the header's own button.
   3. `?uid=` query param, via a direct `https://t.me/AmirDirotBot` deep link (bot onboarding/filter
      flows already send these) — the ONLY way in from Telegram now, matching how the reference
-     product (dorin.app) treats "Continue with Telegram": open the bot directly, no OAuth handshake
+     product (the reference bot) treats "Continue with Telegram": open the bot directly, no OAuth handshake
      at all. Not secure on its own (anyone who knows/guesses a uid can view that user's
      filter/liked listings via a raw link), but the real session cookie above is what protects a
      page once you've actually logged in via #1 or #2 — and is also exactly the trust level #1's
@@ -47,15 +47,15 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-from dorin_common import bright_data_client
-from dorin_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_access
-from dorin_common.channel_link import generate_link_code
-from dorin_common.cities import CITIES
-from dorin_common.db import get_session
-from dorin_common.enums import Source
-from dorin_common.google_link import generate_google_link_token
-from dorin_common.matching import evaluate
-from dorin_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
+from todira_common import bright_data_client
+from todira_common.access import PLAN_PRICES_ILS, extend_paid_until, has_full_access
+from todira_common.channel_link import generate_link_code
+from todira_common.cities import CITIES
+from todira_common.db import get_session
+from todira_common.enums import Source
+from todira_common.google_link import generate_google_link_token
+from todira_common.matching import evaluate
+from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from fastapi import FastAPI, Form, Request
 
 import grow_client
@@ -633,7 +633,7 @@ def auth_google_callback(
         # google_pending.html now offers both explicitly instead of assuming one:
         #  (a) this person already has a Telegram/WhatsApp-created account, just not reachable
         #      from this browser/session right now — they should LINK, not duplicate. The
-        #      google_link_token (dorin_common/google_link.py) below completes that the instant
+        #      google_link_token (todira_common/google_link.py) below completes that the instant
         #      they do /start in the bot, entirely server-side, regardless of which browser/app
         #      they're in when they get there (found live 2026-09-05: the session-cookie-only
         #      version alone never actually worked for this, since Telegram's own in-app browser
@@ -873,7 +873,7 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
         # 2026-09-06: rendering all (up to 200) matches into one page crashed real visitors'
         # browsers — up to 200 full card subtrees (carousel, reaction forms, badges) is too much
         # DOM at once on a weak mobile device, independent of the backdrop-filter fix just above
-        # in git history. Paginated instead, matching the reference bot dorin.app's own /apartments
+        # in git history. Paginated instead, matching the reference bot's own /apartments
         # (listings load in as you scroll, not all at once) — see PROJECT_STATE.md.
         page_items = matches[offset : offset + APARTMENTS_PAGE_SIZE]
         next_offset = offset + APARTMENTS_PAGE_SIZE
@@ -1554,7 +1554,7 @@ async def webhooks_takbull(request: Request, secret: str):
 
 @app.get("/account")
 def account(request: Request, uid: int | None = None, wid: str | None = None):
-    """Cross-channel linking (dorin_common/channel_link.py) — same uid/wid/session resolution as
+    """Cross-channel linking (todira_common/channel_link.py) — same uid/wid/session resolution as
     /apartments, /liked, /upgrade, /filter. Shows which channels are already linked to this user,
     and — for whichever aren't — a fresh 15-minute link code plus ready-to-use WhatsApp/Telegram
     deep links to send it from that channel, matching the reference product's own confirmed UX.

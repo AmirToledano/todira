@@ -2,8 +2,8 @@
 /apartments and /liked kick off a fire-and-forget fetch for any listing shown to a PAYING viewer
 whose description is still missing — extends scraper/notifier.py's original discovery-time-only
 trigger to also cover a listing whose paying match happened AFTER discovery (a filter edited later,
-a user who upgraded after the listing was scraped). See common/dorin_common/bright_data_client.py's
-own module docstring for why this lives in dorin_common (shared by the scraper and website images)
+a user who upgraded after the listing was scraped). See common/todira_common/bright_data_client.py's
+own module docstring for why this lives in todira_common (shared by the scraper and website images)
 rather than the old scraper/bright_data_client.py.
 
 Same importlib-loading approach as the other website test files (see test_website_paid_access.py's
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-from dorin_common.enums import Source
+from todira_common.enums import Source
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 

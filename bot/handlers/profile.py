@@ -9,8 +9,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
-from dorin_common.db import get_session
-from dorin_common.models import Filter, SentNotification, User
+from todira_common.db import get_session
+from todira_common.models import Filter, SentNotification, User
 
 
 def _profile_text(user: User, filter_row: Filter | None, notifications_sent: int) -> str:

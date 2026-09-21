@@ -7,7 +7,7 @@
 # `patchright install chromium` step, no more Playwright base image.
 FROM python:3.12-slim
 WORKDIR /app
-COPY common/dorin_common ./dorin_common
+COPY common/todira_common ./todira_common
 COPY scraper/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY scraper/ .

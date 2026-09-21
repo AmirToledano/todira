@@ -7,13 +7,13 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# dorin_common lives as a sibling directory to migrations/ both when run locally from the repo
-# root (todira/common/dorin_common) and inside the bot container (/app/dorin_common,
-# /app/migrations) — insert the parent dir so `import dorin_common` resolves in both cases.
+# todira_common lives as a sibling directory to migrations/ both when run locally from the repo
+# root (todira/common/todira_common) and inside the bot container (/app/todira_common,
+# /app/migrations) — insert the parent dir so `import todira_common` resolves in both cases.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "common"))
 sys.path.insert(0, os.path.dirname(__file__) + "/..")
 
-from dorin_common.models import Base  # noqa: E402
+from todira_common.models import Base  # noqa: E402
 
 config = context.config
 

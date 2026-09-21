@@ -27,22 +27,22 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from dorin_common import bright_data_client, whatsapp_client
-from dorin_common.access import has_full_access
-from dorin_common.cards import format_caption, send_listing_card
-from dorin_common.enums import NotificationReason, Source
-from dorin_common.matching import evaluate
-from dorin_common.models import Filter, Listing, SentNotification, User
+from todira_common import bright_data_client, whatsapp_client
+from todira_common.access import has_full_access
+from todira_common.cards import format_caption, send_listing_card
+from todira_common.enums import NotificationReason, Source
+from todira_common.matching import evaluate
+from todira_common.models import Filter, Listing, SentNotification, User
 
 logger = logging.getLogger(__name__)
 
 # Mirrors website/main.py's WEBSITE_URL/_is_owner_id and bot/handlers/start.py's own copies — a
 # proactive push notification needs both to build the same "🔒 upgrade to see this" lock line the
-# bot's own on-demand handlers show (dorin_common.cards.format_caption, 2026-09-05).
+# bot's own on-demand handlers show (todira_common.cards.format_caption, 2026-09-05).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
-# Proactive WhatsApp Message Template push (2026-09-08) — see dorin_common/whatsapp_client.py's
+# Proactive WhatsApp Message Template push (2026-09-08) — see todira_common/whatsapp_client.py's
 # module docstring for why a template (not free-form text) is required outside the 24h window.
 # Both unset by default, matching this project's "optional secret, safe until set" convention
 # (bot-secret.yaml): with no template name configured, _whatsapp_eligible below is never true and
@@ -78,7 +78,7 @@ SEND_DELAY_SECONDS = 1.1
 
 def _candidate_filters(session: Session, listing: Listing) -> list[Filter]:
     """Cheap SQL pre-filter (deal_type + city overlap via the GIN index on filters.cities)
-    before the full per-field Python evaluation in dorin_common.matching.evaluate."""
+    before the full per-field Python evaluation in todira_common.matching.evaluate."""
     stmt = (
         select(Filter)
         .join(User, User.id == Filter.user_id)
@@ -172,7 +172,7 @@ def _send_whatsapp_match_template(user: User, listing: Listing) -> bool:
 
 
 async def _maybe_fetch_description(session: Session, listing: Listing, recipients: list[User]) -> None:
-    """Bright Data on-demand enrichment (2026-09-05, common/dorin_common/bright_data_client.py) —
+    """Bright Data on-demand enrichment (2026-09-05, common/todira_common/bright_data_client.py) —
     fetches and caches the listing's real description, but ONLY when it's worth the cost: this is
     called after matching is already done, with the actual list of users about to be notified, and
     does nothing unless at least one of them is a PAYING user (has_access) who would actually see

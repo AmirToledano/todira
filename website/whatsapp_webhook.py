@@ -2,7 +2,7 @@
 webhook URL + verify token are configured in the app dashboard); POST delivers real events
 (incoming messages, delivery/read receipts) going forward.
 
-Onboarding reuses dorin_common.gemini_client.parse_onboarding_message — the exact same
+Onboarding reuses todira_common.gemini_client.parse_onboarding_message — the exact same
 channel-agnostic parser the Telegram bot's free-text onboarding uses (bot/handlers/onboarding.py)
 — so a WhatsApp user gets the identical "describe what you want in your own words" experience.
 The one real difference: this webhook is stateless between requests (no long-lived process +
@@ -14,7 +14,7 @@ Proactive "a new listing matches your filter" pushes (2026-09-08): WhatsApp only
 replies within 24 hours of the user's last message (the "customer service window") — fine for
 this webhook's own replies (always responding to something just received), but a proactive push
 outside that window needs a pre-approved Message Template, which is what
-dorin_common.whatsapp_client.send_template_message + scraper/notifier.py use, gated on the user's
+todira_common.whatsapp_client.send_template_message + scraper/notifier.py use, gated on the user's
 own explicit User.whatsapp_notifications_opted_in — collected right here, at the end of
 onboarding (_send_notifications_optin_prompt below), not assumed.
 """
@@ -29,13 +29,13 @@ import threading
 from collections import OrderedDict
 
 import httpx
-from dorin_common import cities, gemini_client, whatsapp_client
-from dorin_common.channel_link import resolve_link_code
-from dorin_common.db import get_session
-from dorin_common.matching import safe_range_update
-from dorin_common.models import ContactMessage, Filter, User
-from dorin_common.support import looks_like_help_request
-from dorin_common.users import get_or_create_whatsapp_user
+from todira_common import cities, gemini_client, whatsapp_client
+from todira_common.channel_link import resolve_link_code
+from todira_common.db import get_session
+from todira_common.matching import safe_range_update
+from todira_common.models import ContactMessage, Filter, User
+from todira_common.support import looks_like_help_request
+from todira_common.users import get_or_create_whatsapp_user
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
@@ -173,7 +173,7 @@ def _handle_help_request(wa_id: str, profile_name: str | None, text: str) -> Non
 
 # Meta redelivers a webhook it didn't get a prompt 200 for — and used to, here: the whole
 # onboarding turn (DB roundtrip + a Gemini call that can legitimately take up to the 10s timeout
-# in dorin_common/gemini_client.py, longer under Gemini's own retries before that fix) used to run
+# in todira_common/gemini_client.py, longer under Gemini's own retries before that fix) used to run
 # INSIDE the request/response cycle below, so a slow or high-demand Gemini call meant Meta's own
 # retry fired before we ever answered — producing the exact live symptom the owner reported
 # 2026-09-06: two different bot replies to what looked like one message, and a "technical hiccup"
@@ -255,7 +255,7 @@ def _fire_typing_indicator(message_id: str) -> None:
 
 def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) -> None:
     with get_session() as session:
-        # Channel linking (see dorin_common/channel_link.py): a `ref_xxxxxx` code generated on
+        # Channel linking (see todira_common/channel_link.py): a `ref_xxxxxx` code generated on
         # the website's /account page for an already-logged-in user, sent here as a plain text
         # message to attach THIS WhatsApp number to that same existing account. Checked before
         # get_or_create_whatsapp_user below so a first-time sender linking an account never gets

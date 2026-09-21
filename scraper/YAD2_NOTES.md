@@ -283,7 +283,7 @@ tinkering has documented diminishing returns against Radware-class enterprise bo
 realistic next options at that point are (a) a paid captcha-solving service (2Captcha,
 Anti-Captcha, CapSolver — cheap per-solve, fully automated, and a categorically smaller cost than
 a full unblocking API since patchright already gets past the fingerprint layer on its own), (b) a
-full paid unblocking API (Bright Data, ScraperAPI — likely what Dorin itself uses, per its own
+full paid unblocking API (Bright Data, ScraperAPI — likely what the reference bot itself uses, per its own
 "500+ sources" marketing claim), or (c) deprioritizing Yad2 specifically and focusing effort on
 less-protected sources (Phase 3) while parking this as a known, documented limitation.
 

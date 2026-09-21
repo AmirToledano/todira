@@ -3,7 +3,7 @@ pass has_access through to _listing_card.html, which then replaces the real list
 locked "upgrade" button for a lite/expired user. The description itself is shown to everyone as of
 2026-09-12 (reversing the original 2026-09-05 decision to hide it too) — see tests/test_cards.py
 for the equivalent bot-side (Telegram/WhatsApp caption) gating, and
-common/dorin_common/cards.py's format_caption docstring for that history.
+common/todira_common/cards.py's format_caption docstring for that history.
 
 Same importlib-loading approach as the other website test files (see test_website_paid_access.py's
 own comment) — website/main.py shares a basename with scraper/main.py so it can't go through a
@@ -161,7 +161,7 @@ def test_apartments_shows_description_and_url_for_a_trial_user(client):
 
 
 def test_apartments_edit_filter_link_omits_uid_for_a_session_only_standalone_user():
-    """Real bug found live (2026-09-05): a Google-only standalone account (dorin_common.models.
+    """Real bug found live (2026-09-05): a Google-only standalone account (todira_common.models.
     User, created via /auth/google/create-account) has no telegram_user_id at all, so `uid` in the
     template context is None for a visitor resolved purely via their session cookie. apartments.
     html's "ערוך סינון" link used to string-interpolate it unconditionally (`?uid={{ uid }}`), and
@@ -281,7 +281,7 @@ def test_apartments_fragment_request_returns_only_the_next_batch_no_page_layout(
 
 
 class SimpleNamespaceFilter:
-    """A minimal stand-in for dorin_common.models.Filter — /apartments only reads .cities off it
+    """A minimal stand-in for todira_common.models.Filter — /apartments only reads .cities off it
     in the template's filter-bar, and passes the whole object to evaluate() (mocked in these
     tests, so its own fields never actually matter for the matching itself)."""
 

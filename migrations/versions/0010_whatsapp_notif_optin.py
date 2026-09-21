@@ -3,7 +3,7 @@ feature
 
 Explicit opt-in for proactive WhatsApp Message Template pushes, separate from the existing
 (Telegram-only) notifications_enabled column. Defaults to False for every existing row — see
-common/dorin_common/models.py's User.whatsapp_notifications_opted_in docstring for why this can't
+common/todira_common/models.py's User.whatsapp_notifications_opted_in docstring for why this can't
 just reuse notifications_enabled or default to True.
 
 Revision id kept short deliberately (25 chars, not the full field name) — found live, the hard

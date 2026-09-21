@@ -1,6 +1,6 @@
 """Cross-source duplicate detection — the same real-world apartment posted on more than one
 source (e.g. Yad2 AND Komo) should surface to a user as ONE listing, not two independently
-notified rows. See common/dorin_common/models.py's Listing.duplicate_of_id docstring for how the
+notified rows. See common/todira_common/models.py's Listing.duplicate_of_id docstring for how the
 result of find_duplicate_listing is actually used (only at INSERT time — scraper/main.py's
 _upsert_listings).
 
@@ -34,8 +34,8 @@ import re
 
 from sqlalchemy import select
 
-from dorin_common.models import Listing
-from dorin_common.schemas import NormalizedListing
+from todira_common.models import Listing
+from todira_common.schemas import NormalizedListing
 
 # A same-real-address street name can be spelled slightly differently across sites - a leading
 # "רחוב"/"רח'" prefix one source includes and another doesn't, or a geresh/gershayim mark used

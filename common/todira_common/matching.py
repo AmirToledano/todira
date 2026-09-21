@@ -9,7 +9,7 @@ one may fail.
 
 "Miss at most one requirement" (not "exactly one") is a deliberate reading of the reference
 bot's slightly ambiguous "flexible filter" description — the more user-friendly interpretation.
-Revisit if it doesn't feel right once weighed against real dorin.app behavior.
+Revisit if it doesn't feel right once weighed against real reference-bot behavior.
 
 Every mandatory-criteria field except no_brokers now gives an unknown (None/missing) listing value
 the benefit of the doubt, i.e. never fails on it — see `_check_mandatory_criteria`'s own comment.
@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from dorin_common.cities import normalize_spelling
+from todira_common.cities import normalize_spelling
 
 
 @dataclass

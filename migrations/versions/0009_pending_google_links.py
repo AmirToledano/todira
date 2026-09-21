@@ -4,7 +4,7 @@ Lets a pending Google sign-in (one with no home yet — no google_sub match, no 
 active session) complete the link entirely server-side the moment the visitor does /start with a
 matching token, instead of relying on a session cookie surviving the round-trip through Telegram's
 own in-app browser — a separate cookie jar from whatever browser/app the sign-in started in. See
-common/dorin_common/models.py's PendingGoogleLink docstring and google_link.py for the mechanism.
+common/todira_common/models.py's PendingGoogleLink docstring and google_link.py for the mechanism.
 
 Revision ID: 0009_pending_google_links
 Revises: 0008_payments

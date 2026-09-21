@@ -4,7 +4,7 @@ name: Diagnose Komo — is there a real photo on its details page? (read-only)
 #
 # komo_client.py's _parse_details_html has never extracted an image field at all — every Komo
 # listing this project shows currently has zero photos (falls back to the Todi mascot card, see
-# common/dorin_common/cards.py's _NO_PHOTOS_PREFIX_HE), and this was never actually checked
+# common/todira_common/cards.py's _NO_PHOTOS_PREFIX_HE), and this was never actually checked
 # against a real fetched page before now (the earlier diagnostic runs #9-#13, 2026-09-12, only
 # ever grepped for price/rooms/floor/size/address — never img/photo/gallery). Reuses the SAME
 # already-confirmed real listing (modaaNum=4471462) — zero new ZenRows cost beyond the one 1-

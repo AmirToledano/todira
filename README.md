@@ -1,7 +1,7 @@
 # ToDira
 
 A self-hosted Telegram bot that scrapes apartment listings (starting with Yad2) and notifies you
-when one matches your saved filter — a personal replacement for the paid "Dorin" bot (dorin.app).
+when one matches your saved filter — a personal replacement for a paid reference-bot competitor.
 
 Full design/roadmap: see the plan at
 `C:\Users\AmirT\.claude\plans\majestic-mapping-diffie.md` (Phase 1 = this repo's current scope:
@@ -10,7 +10,7 @@ scraping sources.)
 
 ## Project layout
 
-- `common/dorin_common/` — shared package: DB models, Pydantic schemas, enums, and the pure
+- `common/todira_common/` — shared package: DB models, Pydantic schemas, enums, and the pure
   filter-matching function. Imported by both `scraper` and `bot`.
 - `migrations/` — Alembic migrations for the shared Postgres schema.
 - `scraper/` — one-shot job: fetch Yad2 listings, upsert into Postgres, match against active

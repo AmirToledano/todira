@@ -6,7 +6,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from dorin_common.models import User
+from todira_common.models import User
 
 
 def get_or_create_user(session: Session, tg_user) -> User:

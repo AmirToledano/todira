@@ -25,11 +25,11 @@ from __future__ import annotations
 
 import asyncio
 
-from dorin_common import cities, gemini_client
-from dorin_common.db import get_session
-from dorin_common.matching import safe_range_update
-from dorin_common.models import Filter
-from dorin_common.users import get_or_create_user
+from todira_common import cities, gemini_client
+from todira_common.db import get_session
+from todira_common.matching import safe_range_update
+from todira_common.models import Filter
+from todira_common.users import get_or_create_user
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
 from telegram import Update

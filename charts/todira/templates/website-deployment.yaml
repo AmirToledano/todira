@@ -123,7 +123,7 @@ spec:
             # derived from the incoming request (Caddy terminates TLS in front of this pod).
             - name: WEBSITE_URL
               value: "https://{{ .Values.website.domain }}"
-            # On-demand listing-description enrichment via Bright Data (common/dorin_common/
+            # On-demand listing-description enrichment via Bright Data (common/todira_common/
             # bright_data_client.py — moved here from scraper/ 2026-09-07 so both pods can use it):
             # /apartments and /liked (website/main.py's _fill_missing_descriptions_in_background)
             # lazily fetch a still-missing description for a paying viewer, same optional secrets

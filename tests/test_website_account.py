@@ -1,4 +1,4 @@
-"""Tests for website/main.py's /account — the cross-channel linking page (dorin_common/
+"""Tests for website/main.py's /account — the cross-channel linking page (todira_common/
 channel_link.py): shows which channels (Telegram/WhatsApp/Google) are already linked to the
 resolved user, and generates a fresh code + deep links for whichever aren't.
 

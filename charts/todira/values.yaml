@@ -47,7 +47,7 @@
 #                             earlier informal click-trust flow (a Bit transfer outside this
 #                             system), exactly as before this feature shipped.)
 #   brightDataApiKey         (optional — on-demand listing-description enrichment for paying
-#   brightDataCollectorId     users, common/dorin_common/bright_data_client.py, 2026-09-05 (used by
+#   brightDataCollectorId     users, common/todira_common/bright_data_client.py, 2026-09-05 (used by
 #                             both the scraper and website pods since 2026-09-07; renamed from
 #                             brightDataDatasetId 2026-09-12 once the real Bright Data API in use
 #                             was confirmed — Data Collector API `/dca/...`, not the "Web Scraper
@@ -142,7 +142,7 @@ scraper:
   # selection or rotation needed anymore, so citiesPerRun/cities are gone from here; the region
   # list itself lives in yad2_client.py's REGION_SLUGS, not configured per-deploy.
   # 2026-09-03: bumped from once-daily (03:00 UTC) to every 2 hours during the reference bot
-  # dorin.app's own apparent active window (established live via the owner's own WhatsApp
+  # the reference bot's own apparent active window (established live via the owner's own WhatsApp
   # screenshots of it: listings start arriving ~08:00 and continue until ~00:00 Israel time, then
   # stop overnight — presumably deliberate, so a notification doesn't land while people are
   # asleep). 8 runs/day (08:00,10:00,...,22:00 Israel time — scraper-cronjob.yaml's `timeZone`
@@ -225,7 +225,7 @@ scraper:
   # listing to exist) was found stuck grinding through hundreds of genuinely new Yad2 listings,
   # returning the exact same wrong cached record (orderId=57346371, token='rccfe1nk',
   # adNumber=83125484 — a Dizengoff St. sublet) for every one of them. The existing adNumber
-  # cross-check in common/dorin_common/bright_data_client.py was correctly catching and discarding
+  # cross-check in common/todira_common/bright_data_client.py was correctly catching and discarding
   # every single wrong result — NO data corruption ever reached a real listing row — but nothing
   # ever got the RIGHT data either, for 75+ minutes straight.
   #

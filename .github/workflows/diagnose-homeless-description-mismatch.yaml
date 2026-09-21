@@ -54,7 +54,7 @@ jobs:
           print(f"  <meta Description>: {desc.group(1)[:200] if desc else '(none)'}")
           print(f"  <meta og:description>: {og_desc.group(1)[:200] if og_desc else '(none)'}")
           print(f"  id {id_!r} appears literally in the page: {id_ in html}")
-          print(f"  looks like the generic homepage blurb (הענק בדורין in text): {'הלוח הראשון' in html}")
+          print(f"  looks like the generic homepage blurb (הענק בהמתחרה in text): {'הלוח הראשון' in html}")
           # A real listing page almost certainly has its own price ("₪") and rooms markup somewhere;
           # the homepage (a search results table) does too, so also check for a listing-page-
           # specific marker: the Hebrew word for "publisher"/contact area, or a "viewad" self-link.

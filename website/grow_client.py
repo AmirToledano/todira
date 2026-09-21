@@ -18,7 +18,7 @@ first real sandbox call tells us exactly what to fix here. Before ever setting G
      comes back, not this guess.
 
 Scope: a single ONE-TIME charge per plan purchase (paymentNum=1), not an auto-renewing
-subscription — extend_paid_until (dorin_common/access.py) already models a plan as "extend
+subscription — extend_paid_until (todira_common/access.py) already models a plan as "extend
 paid_until by N days from one payment," and the bot's own renewal nudge (bot/handlers/start.py's
 RENEWAL_NEEDED) already assumes the user manually re-purchases when access runs out. True
 recurring billing (הוראת קבע, silently re-charging without a fresh user action) is a materially

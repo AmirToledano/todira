@@ -136,7 +136,7 @@ def test_successful_save_redirects_to_apartments_not_back_to_filter(client, fake
 
 
 def test_filter_page_renders_every_bundled_city_as_a_checkbox(client, fake_user):
-    from dorin_common.cities import CITIES
+    from todira_common.cities import CITIES
 
     resp = client.get(f"/filter?uid={fake_user.telegram_user_id}")
     assert resp.status_code == 200
@@ -148,7 +148,7 @@ def test_filter_page_renders_cities_in_alphabetical_order(client, fake_user):
     # Real user feedback (2026-09-02): the raw CITIES list isn't alphabetized, making the
     # checkbox grid hard to scan - display order should be sorted even though CITIES itself
     # (used by matching/the bot's own picker) stays in its original order.
-    from dorin_common.cities import CITIES
+    from todira_common.cities import CITIES
 
     resp = client.get(f"/filter?uid={fake_user.telegram_user_id}")
     positions = [resp.text.index(f'value="{city}"') for city in sorted(CITIES)]

@@ -1,5 +1,5 @@
 /* טודירה — design system. Teal + a gold accent (a nod to Todi's crown) on warm cream — 2026-09-03
-   redesign, inspired by the reference bot dorin.app's clean/modern look but its own identity.
+   redesign, inspired by the reference bot's clean/modern look but its own identity.
    Rubik for display headings/price/buttons (rounded, friendly, full Hebrew support), Heebo for
    body/UI text. Replaces the earlier wine + Frank Ruhl Libre look. */
 
@@ -114,7 +114,7 @@ header.site {
 @keyframes float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-3px) rotate(-4deg); } }
 
 /* ---------- nav: single hamburger toggle, panel pushes the page down (no overlay) ----------
-   2026-09-03 request, matching the reference bot dorin.app's own nav: one button instead of a
+   2026-09-03 request, matching the reference bot's own nav: one button instead of a
    crowded inline row of nav links + lang switcher + auth box (which is what this used to be —
    the old `.nav-group`/`nav.site-nav`/`nav.lang-switcher`/`.auth-box` rules, now replaced).
    `.nav-panel` lives inside `header.site` itself (a normal-flow block, not `position: absolute`),
@@ -267,7 +267,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   .hero-split .hero-image-full img { height: 480px; width: auto; max-width: 100%; }
 }
 /* Blend the brand image's flat-color top/bottom margins into the page background instead of a
-   hard rectangle edge (2026-09-03 request, inspired by dorin.app's illustration melting into its
+   hard rectangle edge (2026-09-03 request, inspired by the reference bot's illustration melting into its
    own page). The fade window is deliberately tight — only the plain background strip above the
    crown (~0-3% of the image's height) and below the "טודירה" wordmark (~95-100%) — so the crown
    and the caption text stay fully visible; this must never be widened without re-checking that. */
@@ -509,7 +509,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   text-align: center; line-height: 1.3;
 }
 /* Top-left badge stack (source + broker) — 2026-09-03 request, matching the reference bot
-   dorin.app's own card (no price shown over the photo at all — .price-badge/.gold-text removed
+   the reference bot's own card (no price shown over the photo at all — .price-badge/.gold-text removed
    the same day, price only lives in .listing-price below now). A flex column so a listing with
    BOTH badges (source always shown, broker only for is_broker_listing) stacks them with a small
    gap instead of needing hand-tuned per-badge pixel offsets; a listing with only the source badge

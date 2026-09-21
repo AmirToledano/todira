@@ -3,7 +3,7 @@ name: Diagnose — is poster contact info (name/phone) already present in fetche
 # ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-13.
 #
 # Real owner question: building a real "contact person" section (name + WhatsApp/phone) in a new
-# website listing-detail drawer, matching dorin.app's own UX — but does it cost EXTRA fetches, or
+# website listing-detail drawer, matching the reference bot's own UX — but does it cost EXTRA fetches, or
 # is the contact info already sitting in pages this project already fetches for other reasons
 # (Yad2: Bright Data DCA description enrichment; Komo/Homeless: the mandatory per-new-listing
 # detail-page fetch)? Checks all three sources' ALREADY-FETCHED pages specifically for name/phone

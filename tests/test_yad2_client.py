@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 import yad2_client
-from dorin_common.cities import CITIES
+from todira_common.cities import CITIES
 from yad2_client import (
     BLOCKED_RESOURCE_TYPES,
     CITY_SLUG_TO_HEBREW_NAME,
@@ -39,11 +39,11 @@ def test_every_slug_has_a_hebrew_name():
 
 def test_every_mapped_hebrew_name_is_a_real_bot_city():
     # Catches a typo'd Hebrew name that would otherwise silently never match anything in
-    # dorin_common/cities.py's CITIES list (the strings a user actually picks in /filter).
+    # todira_common/cities.py's CITIES list (the strings a user actually picks in /filter).
     for slug, hebrew_name in CITY_SLUG_TO_HEBREW_NAME.items():
         assert (
             hebrew_name in CITIES
-        ), f"{slug!r} -> {hebrew_name!r} is not in dorin_common/cities.py CITIES"
+        ), f"{slug!r} -> {hebrew_name!r} is not in todira_common/cities.py CITIES"
 
 
 def test_city_ids_are_unique():

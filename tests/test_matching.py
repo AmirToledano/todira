@@ -1,4 +1,4 @@
-"""Unit tests for common/dorin_common/matching.py - the core listing/filter matching logic.
+"""Unit tests for common/todira_common/matching.py - the core listing/filter matching logic.
 
 Pure I/O-free logic, so plain SimpleNamespace stand-ins are enough (no DB, no SQLAlchemy needed)
 - matching.evaluate() only ever accesses attributes, exactly as the module's own docstring says
@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dorin_common.matching import evaluate, safe_range_update
+from todira_common.matching import evaluate, safe_range_update
 
 
 def make_filter(**overrides):

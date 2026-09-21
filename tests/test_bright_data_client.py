@@ -1,4 +1,4 @@
-"""Tests for common/dorin_common/bright_data_client.py — the Bright Data Data Collector API
+"""Tests for common/todira_common/bright_data_client.py — the Bright Data Data Collector API
 (`/dca/...`) trigger/poll flow (confirmed real 2026-09-12, see that module's own docstring for the
 earlier wrong-API-guess this replaced), and fetch_listing_description()'s tolerant field-name
 parsing / failure modes.
@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from dorin_common import bright_data_client
+from todira_common import bright_data_client
 
 
 @pytest.fixture(autouse=True)

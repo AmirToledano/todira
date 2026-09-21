@@ -1,6 +1,6 @@
 # Only what tests/ needs to import - kept as light as each test module allows, but not literally
 # dependency-free: test_filter_conversation_reentry.py imports handlers.filter_conversation,
-# which transitively imports dorin_common.models (for the Filter/User ORM classes), which needs
+# which transitively imports todira_common.models (for the Filter/User ORM classes), which needs
 # sqlalchemy even though no test here actually opens a DB connection.
 pytest>=8.0,<9.0
 pydantic>=2.5,<3.0
@@ -22,10 +22,10 @@ httpx>=0.27,<1.0
 jinja2>=3.1,<4.0
 python-multipart>=0.0.9,<1.0
 itsdangerous>=2.1,<3.0
-# Pillow: test_cards.py imports dorin_common.cards, which imports PIL at module level
+# Pillow: test_cards.py imports todira_common.cards, which imports PIL at module level
 # (_build_collage_sync, 2026-09-03) - pinned to match bot/scraper's own pin.
 Pillow>=10.0,<12.0
-# requests: dorin_common/gemini_client.py (2026-09-06) imports it directly to catch
+# requests: todira_common/gemini_client.py (2026-09-06) imports it directly to catch
 # requests.exceptions.Timeout by name - pinned to match bot/website's own pin.
 requests>=2.31,<3.0
 # PyYAML: test_helm_template_yaml_validity.py (2026-09-09) parses every chart template as YAML

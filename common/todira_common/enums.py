@@ -70,7 +70,7 @@ class Source:
     KOMO = "komo"
     FACEBOOK_MARKETPLACE = "facebook_marketplace"
     FACEBOOK_GROUPS = "facebook_groups"
-    # Added 2026-09-08 — the owner sent real screenshots of the reference bot dorin.app showing
+    # Added 2026-09-08 — the owner sent real screenshots of the reference bot showing
     # its own per-card source badges (Yad2/Facebook/Komo/Homeless), confirming homeless.co.il as a
     # 4th real source to eventually cover, not a guess. See PROJECT_STATE.md for scraping status.
     HOMELESS = "homeless"

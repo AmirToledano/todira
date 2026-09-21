@@ -3,7 +3,7 @@
 The same real-world apartment posted on more than one source (Yad2 + Komo, say) used to create a
 fully separate `listings` row per source, each independently matched/notified. This column lets
 scraper/dedup.find_duplicate_listing flag a newly-inserted row as a duplicate of an existing
-OTHER-source row — see common/dorin_common/models.py's Listing.duplicate_of_id docstring for the
+OTHER-source row — see common/todira_common/models.py's Listing.duplicate_of_id docstring for the
 full reasoning, matching heuristic pointer, and the one known gap this doesn't solve (a duplicate
 row isn't promoted back to canonical if its canonical sibling later gets delisted).
 

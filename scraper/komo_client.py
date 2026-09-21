@@ -72,7 +72,7 @@ KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN credits/run for new listings) for Yad2, the 
 under real credit pressure (see PROJECT_STATE.md's ongoing ZenRows-budget entries).
 
 Requires BRIGHT_DATA_ISP_HOST/BRIGHT_DATA_ISP_USER/BRIGHT_DATA_ISP_PASS (see
-dorin_common.bright_data_client's own module docstring) — the same three env vars
+todira_common.bright_data_client's own module docstring) — the same three env vars
 scraper-cronjob.yaml already wires in for Yad2's tel-aviv-area migration. No longer needs
 ZENROWS_API_KEY at all for anything in this file.
 
