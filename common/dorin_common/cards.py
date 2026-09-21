@@ -38,6 +38,43 @@ _COLLAGE_TILE_PX = 400
 _COLLAGE_DOWNLOAD_TIMEOUT_S = 10.0
 
 
+def _download_photo_sync(url: str) -> Image.Image | None:
+    """Downloads and decodes one photo URL, returning None on ANY failure — a dead link, a
+    timeout, a non-image response, a corrupt file. Shared by _build_collage_sync (which needs
+    several) and _first_downloadable_photo_jpeg_bytes below (which just needs the first working
+    one) so both paths agree on what counts as "this photo actually works," instead of one of
+    them trusting a URL the other already proved was dead."""
+    try:
+        response = httpx.get(url, timeout=_COLLAGE_DOWNLOAD_TIMEOUT_S)
+        response.raise_for_status()
+        return Image.open(io.BytesIO(response.content)).convert("RGB")
+    except Exception:
+        logger.warning("Photo failed to download/decode: %s", url)
+        return None
+
+
+def _first_downloadable_photo_jpeg_bytes(image_urls: list[str]) -> bytes | None:
+    """2026-09-21: real bug, live screenshot — a listing with exactly one photo (or 2+ that all
+    failed to collage) used to hand that photo's raw URL straight to bot.send_photo without ever
+    checking it actually loads. Telegram's own send_photo doesn't validate a URL synchronously —
+    it accepts the message and tries to fetch it server-side afterward, so a dead URL (confirmed
+    here: Komo's own showPic endpoint intermittently 404s/times out — the exact same URLs this
+    module's own collage step already logs as "failed to download/decode") renders as a generic
+    broken-image placeholder instead of falling back to the Todi mascot, which only ever
+    triggered for a listing with ZERO photo URLs, not one where every URL is simply unreachable.
+    Tries each of up to _COLLAGE_MAX_PHOTOS candidate URLs in order and returns the first one that
+    actually downloads, re-encoded as JPEG bytes (never the raw URL) so Telegram is never hand a
+    link it might fail to fetch itself. None means every candidate failed — caller falls back to
+    the mascot, same contract as _build_collage_sync."""
+    for url in image_urls[:_COLLAGE_MAX_PHOTOS]:
+        photo = _download_photo_sync(url)
+        if photo is not None:
+            buffer = io.BytesIO()
+            photo.save(buffer, format="JPEG", quality=90)
+            return buffer.getvalue()
+    return None
+
+
 def _build_collage_sync(image_urls: list[str]) -> bytes | None:
     """Downloads up to _COLLAGE_MAX_PHOTOS listing photos and composites them into a single JPEG
     grid image (2 columns, as many rows as needed). Returns None on ANY failure — a bad photo URL,
@@ -53,12 +90,8 @@ def _build_collage_sync(image_urls: list[str]) -> bytes | None:
     made directly on it freezes every other user's interaction too, not just this one."""
     tiles: list[Image.Image] = []
     for url in image_urls[:_COLLAGE_MAX_PHOTOS]:
-        try:
-            response = httpx.get(url, timeout=_COLLAGE_DOWNLOAD_TIMEOUT_S)
-            response.raise_for_status()
-            photo = Image.open(io.BytesIO(response.content)).convert("RGB")
-        except Exception:
-            logger.warning("Skipping one collage photo that failed to download/decode: %s", url)
+        photo = _download_photo_sync(url)
+        if photo is None:
             continue
         # Center-crop to square first so tiles line up in a clean grid regardless of each source
         # photo's own aspect ratio, then resize every tile to the same fixed size.
@@ -443,8 +476,11 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     identically everywhere instead of each call site reinventing send_photo/send_message.
 
     ONE message per listing: a generated photo collage (2+ real photos — see
-    _build_collage_sync above), the single real photo (exactly 1), or the Todi fallback (0) — with
-    the caption and the ❤️/🙈/🎉 keyboard all on it via a plain send_photo. Deliberately NOT a
+    _build_collage_sync above), the single real photo (exactly 1, or 2+ that couldn't collage —
+    see _first_downloadable_photo_jpeg_bytes above), or the Todi fallback (0 photo URLs, OR 1+
+    that all failed to download — 2026-09-21 real bug, a dead photo URL used to render as
+    Telegram's own generic broken-image placeholder instead of falling back here) — with the
+    caption and the ❤️/🙈/🎉 keyboard all on it via a plain send_photo. Deliberately NOT a
     multi-photo sendMediaGroup gallery anymore (2026-09-02, real
     user report + a direct ask to match the reference bot dorin.app's own cleaner single-message
     style): sendMediaGroup can't carry an inline keyboard at all, so showing 2+ photos meant a
@@ -464,28 +500,35 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     image_url = listing.image_urls[0] if listing.image_urls else None
 
     async def _do_send() -> None:
+        photo: str | bytes | None = None
         if image_url is not None:
-            photo: str | bytes = image_url
+            # asyncio.to_thread for both — real network downloads + CPU-bound resizing/encoding;
+            # see _build_collage_sync's own docstring for why this must never run directly on the
+            # event loop.
             if len(listing.image_urls) > 1:
-                # asyncio.to_thread — _build_collage_sync does real network downloads + CPU-bound
-                # resizing; see its own docstring for why this must never run directly on the
-                # event loop.
-                collage = await asyncio.to_thread(_build_collage_sync, listing.image_urls)
-                if collage is not None:
-                    photo = collage
-            await bot.send_photo(
-                chat_id=chat_id,
-                photo=photo,
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=keyboard,
-            )
-        else:
+                photo = await asyncio.to_thread(_build_collage_sync, listing.image_urls)
+            if photo is None:
+                # Either exactly 1 photo, or 2+ that all failed to collage — try each candidate
+                # URL in turn and send back real, already-validated bytes, never a URL that might
+                # still be dead (2026-09-21: this is the real bug fix — previously this branch
+                # just trusted image_url as a string with no download attempt at all).
+                photo = await asyncio.to_thread(
+                    _first_downloadable_photo_jpeg_bytes, listing.image_urls
+                )
+        if photo is None:
             no_photo_caption = (_NO_PHOTOS_PREFIX_HE + caption)[:CAPTION_LIMIT]
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=_dachshund_photo_path(),
                 caption=no_photo_caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+            )
+        else:
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=photo,
+                caption=caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=keyboard,
             )

@@ -478,13 +478,21 @@ def test_send_listing_card_no_images_sends_a_todi_photo():
     assert kwargs["photo"].name.endswith(".jpg")
 
 
-def test_send_listing_card_one_image_uses_send_photo_with_keyboard():
+def test_send_listing_card_one_image_uses_send_photo_with_keyboard(monkeypatch):
+    # 2026-09-21: the single photo is now downloaded/validated (see
+    # _first_downloadable_photo_jpeg_bytes) rather than its raw URL handed straight to
+    # bot.send_photo — monkeypatched here for the same network-free-unit-test reason as the
+    # collage tests below.
+    monkeypatch.setattr(
+        cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: b"fake-jpeg-bytes"
+    )
     bot = _make_bot()
     listing = make_listing(image_urls=["https://img.yad2.co.il/a.jpg"])
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
     assert ok is True
     bot.send_photo.assert_awaited_once()
     assert bot.send_photo.await_args.kwargs["reply_markup"] is not None
+    assert bot.send_photo.await_args.kwargs["photo"] == b"fake-jpeg-bytes"
     bot.send_media_group.assert_not_awaited()
 
 
@@ -514,10 +522,18 @@ def test_send_listing_card_multiple_images_sends_a_generated_collage(monkeypatch
     bot.send_message.assert_not_awaited()
 
 
-def test_send_listing_card_falls_back_to_first_photo_when_collage_build_fails(monkeypatch):
+def test_send_listing_card_falls_back_to_first_downloadable_photo_when_collage_build_fails(
+    monkeypatch,
+):
     # _build_collage_sync returns None on any failure (a bad URL, a timeout, a corrupt image) — a
     # collage is a nice-to-have, never something that should block sending the listing at all.
+    # 2026-09-21: the fallback itself is now validated bytes (_first_downloadable_photo_jpeg_bytes),
+    # not the raw first URL blindly trusted — see that function's own docstring for the real bug
+    # this replaced.
     monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: None)
+    monkeypatch.setattr(
+        cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: b"fake-jpeg-bytes"
+    )
 
     bot = _make_bot()
     listing = make_listing(
@@ -526,7 +542,7 @@ def test_send_listing_card_falls_back_to_first_photo_when_collage_build_fails(mo
     ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
     assert ok is True
     kwargs = bot.send_photo.await_args.kwargs
-    assert kwargs["photo"] == "https://img.yad2.co.il/a.jpg"
+    assert kwargs["photo"] == b"fake-jpeg-bytes"
 
 
 def test_send_listing_card_single_image_never_attempts_a_collage(monkeypatch):
@@ -535,6 +551,9 @@ def test_send_listing_card_single_image_never_attempts_a_collage(monkeypatch):
     monkeypatch.setattr(
         cards_module, "_build_collage_sync", lambda urls: called.append(urls) or None
     )
+    monkeypatch.setattr(
+        cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: b"fake-jpeg-bytes"
+    )
 
     bot = _make_bot()
     listing = make_listing(image_urls=["https://img.yad2.co.il/a.jpg"])
@@ -542,7 +561,24 @@ def test_send_listing_card_single_image_never_attempts_a_collage(monkeypatch):
     assert ok is True
     assert called == []
     kwargs = bot.send_photo.await_args.kwargs
-    assert kwargs["photo"] == "https://img.yad2.co.il/a.jpg"
+    assert kwargs["photo"] == b"fake-jpeg-bytes"
+
+
+def test_send_listing_card_falls_back_to_mascot_when_every_photo_url_is_dead(monkeypatch):
+    # 2026-09-21: real bug, live screenshot — a listing WITH photo URLs that all fail to download
+    # used to hand the (dead) first URL straight to bot.send_photo, which Telegram then rendered
+    # as a generic broken-image placeholder instead of falling back to the Todi mascot. The mascot
+    # fallback must now also trigger when every candidate photo fails to download, not just when
+    # image_urls is empty.
+    monkeypatch.setattr(cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: None)
+
+    bot = _make_bot()
+    listing = make_listing(image_urls=["https://www.komo.co.il/dead-photo.jpg"])
+    ok = asyncio.run(send_listing_card(bot, 555, listing, "caption"))
+    assert ok is True
+    kwargs = bot.send_photo.await_args.kwargs
+    assert kwargs["photo"].name.endswith(".jpg")
+    assert "למפרסם" in kwargs["caption"]
 
 
 def test_send_listing_card_returns_false_on_telegram_error():
