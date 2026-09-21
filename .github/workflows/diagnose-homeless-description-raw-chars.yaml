@@ -1,0 +1,72 @@
+name: Diagnose — real Homeless descriptions, raw chars (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-21.
+#
+# Real owner report + screenshots (tonight's Telegram cards): some Homeless listings show the
+# SITE's own generic marketing copy ("מחפש? בלוח הומלס מחכה לך...") instead of a real per-listing
+# description, and some multi-paragraph real descriptions (e.g. "על הבית:" / "בחוץ:" sections)
+# still don't render fully right-aligned on Telegram despite the 2026-09-18 per-line RTL embedding
+# fix (cards.py's _force_rtl_block, PR #353) already being live for days by the time these
+# messages were sent. Two real possibilities to rule out, not guess at:
+#   1. fetch_listing_description's regex (homeless_client.py's _OG_DESCRIPTION_RE) is grabbing a
+#      generic/category-page og:description instead of the real per-listing one for some listings
+#      — would show up here as the exact same boilerplate text repeated across unrelated listings.
+#   2. The raw scraped description contains something OTHER than a plain "\n" line separator (a
+#      literal "\r\n", a "<br>" tag never stripped, a non-breaking space, etc.) that cards.py's
+#      _force_rtl_block (which only splits on "\n") doesn't handle — would show up here as visible
+#      escape sequences in the raw text dump below.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Dump recent Homeless descriptions with raw escape sequences visible
+        run: |
+          kubectl delete pod diag-homeless-desc -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-homeless-desc
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-homeless-desc
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- how many distinct description texts among the last 30 Homeless listings (low count = boilerplate suspected) ---"
+                    psql "$CONN" -c "SELECT count(DISTINCT description) AS distinct_descriptions, count(*) AS total FROM (SELECT description FROM listings WHERE source='homeless' AND description IS NOT NULL ORDER BY id DESC LIMIT 30) sub;"
+                    echo "--- most common description texts among the last 30 (repeats = boilerplate) ---"
+                    psql "$CONN" -c "SELECT left(description, 80) AS description_start, count(*) FROM (SELECT description FROM listings WHERE source='homeless' AND description IS NOT NULL ORDER BY id DESC LIMIT 30) sub GROUP BY description ORDER BY count(*) DESC LIMIT 10;"
+                    echo "--- raw bytes of 5 recent multi-line-looking descriptions (escape() reveals \\r, <br>, etc.) ---"
+                    psql "$CONN" -c "SELECT id, url, encode(description::bytea, 'escape') AS raw_description FROM listings WHERE source='homeless' AND description IS NOT NULL AND description LIKE '%חדרים%' ORDER BY id DESC LIMIT 5;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-homeless-desc -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-homeless-desc || true
+          kubectl delete pod diag-homeless-desc -n todira --ignore-not-found
