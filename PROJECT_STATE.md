@@ -7103,8 +7103,57 @@ authoritative timestamp this conversation's own history doesn't reliably pin dow
 
 ### 5. Everything else from this file's earlier "Still open" lists remains genuinely untouched this
 session: Yad2/Komo/Homeless/Facebook-Marketplace sale-category confirmation+wiring (tasks never
-started), Homeless ZenRows RESP001 (still broken), Telegram caption RTL alignment inconsistency.
-Bright Data's own API key WAS re-checked live tonight (`diagnose-bright-data-account-status.yaml`)
-and is genuinely fine right now — real `200`, balance `4.4` — no action needed there. The `/dca/
-collectors` endpoints continue to 404 outright, consistent with the DCA collector's already-
-documented permanent dead-end status (Free Trial tier); not re-investigated further, not worth it.
+started), Homeless ZenRows RESP001 (still broken), Telegram caption RTL alignment inconsistency
+(already fixed in an earlier session — see that entry — not re-touched tonight). Bright Data's own
+API key WAS re-checked live tonight (`diagnose-bright-data-account-status.yaml`) and is genuinely
+fine right now — real `200`, balance `4.4` — no action needed there. The `/dca/collectors`
+endpoints continue to 404 outright, consistent with the DCA collector's already-documented
+permanent dead-end status (Free Trial tier); not re-investigated further, not worth it.
+
+### 6. Session closing, 2026-09-21 late night — owner's own call on priority: wait for Upay, then
+### resume. Full prioritized punch list for whoever picks this back up, in order:
+
+**Blocked on an external party, nothing further to do in code right now:**
+1. Takbull/Upay recurring-billing API keys — see section 3 above in full. Owner's own framing
+   tonight, closing the session: "אחכה שUPAY יאשרו, זה כנראה כל הסיפור, ואז יהיה אפשר לחייב" (I'll
+   wait for Upay to approve, that's probably the whole story, and then billing will be possible) —
+   i.e. this is now the owner's own accepted working theory, not just this file's hypothesis. Two
+   messages were drafted this session (to Takbull support and to Upay support), each explicitly
+   telling the other company that the owner is also asking the other one in parallel, so neither
+   side assumes exclusive ownership of the delay. NOT confirmed sent as of this entry — check
+   whether the owner actually sent them before assuming a reply is pending.
+2. Meta/WhatsApp Business Verification (ID 5069506759292592) — "In review," 2-10 business days,
+   no action possible, see section 4 above.
+
+**Ready to resume immediately, no blockers, in the order a returning session should probably tackle
+them:**
+3. Wire `facebook_groups_client.py`/`facebook_groups_text_parser.py` (both fully built and tested
+   this session, see section 2 above) into `scraper/main.py` — needs a tracked-group-ids config
+   decision (env var is the simplest, most consistent-with-this-project option; a DB table was
+   considered but not chosen), a `_scrape_facebook_groups()` function mirroring `_scrape_facebook`'s
+   shape, and adding it to `_ALL_SOURCE_SCRAPERS` behind the same `SCRAPE_SOURCES` kill-switch
+   Marketplace already uses (same dedicated, sensitive Facebook account). The owner said he'd send
+   more group links via a PDF — not received yet as of this entry; only one real group
+   (פשפשוק - דירות להשכרה, group_id=1665476640352771) is confirmed so far, others can be added to
+   the tracked-ids config the moment the PDF arrives, no code changes needed per group.
+4. Rebuild the Yad2 forsale diagnostic using the REAL mechanism (Bright Data Web Unlocker) —
+   `diagnose-yad2-forsale-via-zenrows.yaml` (PR #368) tested the wrong, dead mechanism; its
+   "success" finding doesn't reflect production. Once confirmed live, wire Yad2 sale-listing
+   scraping into `scraper/main.py`.
+5. Same discover-then-wire pattern for Komo, Homeless, and Facebook Marketplace's own sale/sublet
+   categories — none of these were even looked at this session; likely each needs its own
+   `diagnose-*-sale-*.yaml` first, same "never guess a page structure" discipline as every other
+   source in this project's history.
+6. Homeless's own `ZenRows RESP001` failure (its regular RENTAL scraping, unrelated to the sale-
+   listing item above) — tracked for a while now, not investigated this session at all.
+
+**Confirmed fine, no action needed:** Bright Data API key (live `200`, balance `4.4`,
+re-checked tonight). Komo needs no proxy at all anymore. Telegram caption RTL was already fixed in
+an earlier session.
+
+**The Takbull GET-IPN code fix itself** (website/main.py + website/takbull_client.py, section 3
+above) is committed and pushed to `claude/todira-project-status-7c3o7w` but **deliberately NOT
+merged to main / deployed** — real production payment-webhook code, held for explicit owner
+approval before the next deploy. Merging it does not unblock anything by itself (still needs the
+real API keys to ever actually fire), so there's no urgency to merge it before the keys exist —
+but don't forget it's sitting there uncommitted-to-main when the keys do arrive.
