@@ -191,6 +191,20 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: takbull-webhook-secret
                   optional: true
+            # Real recurring-billing API (2026-09-21) — see takbull_client.py's module docstring
+            # and bot-secret.yaml's own comment on these two.
+            - name: TAKBULL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: takbull-api-key
+                  optional: true
+            - name: TAKBULL_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: takbull-api-secret
+                  optional: true
           # Added 2026-09-08 (pre-launch reliability pass) — this Deployment had NO probe at all
           # before this, so a hung-but-still-running process (an event loop deadlock, a DB
           # connection that dies and never recovers) would sit "Running" forever with zero

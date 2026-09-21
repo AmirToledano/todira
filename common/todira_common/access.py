@@ -1,29 +1,36 @@
-"""Paid-access gate — a 3-day free trial, then a weekly/biweekly/monthly plan (₪15/₪25/₪40,
-2026-09-05 pricing revision). Payment itself is website/grow_client.py's job (Grow/Meshulam,
-2026-09-05 — real gateway once the owner's עוסק פטור registration + Grow account are ready;
-website/main.py's /upgrade falls back to the earlier informal click-trust model when Grow isn't
-configured yet, see that module's own comment). This module only answers "does this user get the
+"""Paid-access gate — a 3-day free trial, then a single recurring ₪49.90/month subscription
+(2026-09-21 SaaS pivot, replacing the earlier one-time weekly/biweekly/monthly plans — those two
+keys are kept below ONLY so historical Payment rows priced under them still mean something; /upgrade
+no longer offers them). Payment itself is website/takbull_client.py's job (Takbull's recurring-
+order API, DealType=4 — see that module's own comment for the real API docs this is built from);
+website/main.py's /upgrade falls back to Grow, then the earlier informal click-trust model, when
+Takbull's recurring API isn't configured yet. This module only answers "does this user get the
 real thing, or the free lite tier" and "how long does a given plan extend access for" — bot/
 website/notifier all call it rather than re-deriving the rule themselves.
 """
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 from todira_common.models import User
 
+SUBSCRIPTION_PLAN = "monthly_subscription"
+
 PLAN_DURATIONS: dict[str, dt.timedelta] = {
+    # Kept for historical Payment rows only — no longer offered on /upgrade (2026-09-21).
     "weekly": dt.timedelta(days=7),
     "biweekly": dt.timedelta(days=14),
     "monthly": dt.timedelta(days=30),
+    SUBSCRIPTION_PLAN: dt.timedelta(days=30),
 }
-PLAN_PRICES_ILS: dict[str, int] = {
-    # TEMPORARY 2026-09-06: weekly dropped to 1 to end-to-end test the real Takbull webhook with a
-    # real ₪1 charge instead of a real ₪15 one (owner's own product price in Takbull was dropped to
-    # match). Revert both back to 15 once the test confirms the webhook marks the payment paid.
-    "weekly": 1,
-    "biweekly": 25,
-    "monthly": 40,
+PLAN_PRICES_ILS: dict[str, Decimal] = {
+    # Kept for historical Payment rows only — no longer offered on /upgrade (2026-09-21).
+    "weekly": Decimal("1"),
+    "biweekly": Decimal("25"),
+    "monthly": Decimal("40"),
+    # The only plan /upgrade actually offers now — single recurring monthly subscription.
+    SUBSCRIPTION_PLAN: Decimal("49.90"),
 }
 
 

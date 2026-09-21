@@ -11,6 +11,7 @@ import importlib.util
 import os
 import sys
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -44,6 +45,8 @@ class _FakeUser:
         self.trial_ends_at = overrides.get("trial_ends_at", _NOW + dt.timedelta(days=1))
         self.paid_until = overrides.get("paid_until")
         self.free_access_granted = overrides.get("free_access_granted", False)
+        self.takbull_subscription_uniqid = overrides.get("takbull_subscription_uniqid")
+        self.cancel_at_period_end = overrides.get("cancel_at_period_end", False)
 
 
 class _FakeSession:
@@ -186,10 +189,7 @@ def test_upgrade_page_shows_plan_options_for_a_real_user():
         resp = c.get("/upgrade", params={"uid": 222})
 
     assert resp.status_code == 200
-    # TEMPORARY 2026-09-06: weekly is ₪1 during the real Takbull webhook test, see access.py.
-    assert "₪1" in resp.text
-    assert "₪25" in resp.text
-    assert "₪40" in resp.text
+    assert "₪49.90" in resp.text
 
 
 def test_upgrade_page_shows_value_anchor_below_plan_cards():
@@ -227,10 +227,10 @@ def test_upgrade_page_renders_in_english_when_lang_param_is_set():
 
     assert resp.status_code == 200
     assert "Upgrade subscription" in resp.text
-    assert "Weekly" in resp.text
-    assert "Choose Weekly" in resp.text
+    assert "Monthly subscription" in resp.text
+    assert "Choose Monthly subscription" in resp.text
     assert "שדרוג המנוי" not in resp.text
-    # value-anchor callout (2026-09-10) must translate too, not just the plan cards above it
+    # value-anchor callout (2026-09-10) must translate too, not just the plan card above it
     assert "Less than a daily coffee" in resp.text
     assert "פחות מכוס קפה" not in resp.text
 
@@ -249,10 +249,13 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instruction
 
     with (
         patch.object(website_main, "get_session", _fake_get_session),
+        patch.object(website_main.takbull_client, "recurring_api_configured", lambda: False),
         patch.object(website_main.grow_client, "is_configured", lambda: False),
     ):
         c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
-        resp = c.post("/upgrade", data={"plan": "weekly", "uid": "222", "terms_agreed": "on"})
+        resp = c.post(
+            "/upgrade", data={"plan": "monthly_subscription", "uid": "222", "terms_agreed": "on"}
+        )
 
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/upgrade/pay?payment_id=")
@@ -262,7 +265,7 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instruction
     payment = fake_session.added[0]
     assert payment.status == "pending"
     assert payment.gateway is None
-    assert payment.amount_ils == 1  # TEMPORARY 2026-09-06, see access.py
+    assert payment.amount_ils == Decimal("49.90")
 
 
 def test_upgrade_submit_rejects_unknown_plan():

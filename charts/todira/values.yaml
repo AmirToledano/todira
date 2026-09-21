@@ -72,6 +72,13 @@
 #                             /upgrade to offer this path; without it, /upgrade falls back to Grow
 #                             if configured, else the informal click-trust flow, exactly as before
 #                             this feature shipped.)
+#   takbullApiKey,           (optional, required TOGETHER — Takbull's real recurring-billing API
+#   takbullApiSecret          for the ₪49.90/month subscription (2026-09-21), from
+#                             app.takbull.co.il/api-setting once the owner's account has the
+#                             API-key module enabled (₪99 one-time — see takbull_client.py's
+#                             module docstring). Without both, /upgrade falls back to Grow if
+#                             configured, else the informal click-trust flow, same fallback chain
+#                             as takbullWebhookSecret above.)
 
 # "true" (default) hits Grow's sandbox checkout endpoint instead of the real one — see
 # website/grow_client.py's module docstring for why (the integration is unverified against Grow's
@@ -350,6 +357,9 @@ resources:
   backup:
     requests: { cpu: "50m", memory: "64Mi" }
     limits: { cpu: "250m", memory: "256Mi" }
+  subscriptionHousekeeping:
+    requests: { cpu: "25m", memory: "64Mi" }
+    limits: { cpu: "100m", memory: "128Mi" }
 
 # healthcheck-cronjob.yaml — a self-hosted watchdog that DMs the owner on Telegram when
 # /healthz fails, added 2026-09-08 (pre-launch reliability pass). Complements the new liveness
@@ -363,6 +373,12 @@ resources:
 # signup only the owner can do, not something deployable from here.
 healthcheck:
   schedule: "*/15 * * * *"
+
+# subscription-housekeeping-cronjob.yaml — daily, actually cancels a stopped-auto-renew
+# subscription with Takbull once its paid_until really passes (2026-09-21). See
+# website/subscription_housekeeping.py's own docstring.
+subscriptionHousekeeping:
+  schedule: "0 4 * * *"
 
 # backup-cronjob.yaml — daily off-node Postgres backup to S3, added 2026-09-08 closing the single
 # biggest operational risk this project had (see RUNBOOK.md's top warning): the DB lives on the

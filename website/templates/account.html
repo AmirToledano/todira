@@ -24,9 +24,27 @@
       {% else %}
         <p class="amc-status amc-status-warn" style="font-size:.95rem;font-weight:600">{{ t('account.subscription_expired') }}</p>
       {% endif %}
+      {% if has_active_subscription %}
+        {% if cancel_at_period_end %}
+          <p class="field-hint" style="margin-top:6px">{{ t('account.subscription_will_not_renew') }}</p>
+          <form method="post" action="/account/resume-subscription" style="margin-top:10px">
+            {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+            {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
+            <button type="submit" class="btn gold block">{{ t('account.resume_subscription_cta') }}</button>
+          </form>
+        {% else %}
+          <p class="field-hint" style="margin-top:6px">{{ t('account.subscription_auto_renews') }}</p>
+          <form method="post" action="/account/cancel-subscription" style="margin-top:10px">
+            {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+            {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
+            <button type="submit" class="btn outline block">{{ t('account.cancel_subscription_cta') }}</button>
+          </form>
+        {% endif %}
+      {% else %}
       <a class="btn gold block" style="margin-top:10px" href="/upgrade{{ '?uid=' ~ uid if uid else ('?wid=' ~ wid if wid else '') }}">
         {{ t('account.upgrade_cta_renew') if has_access else t('account.upgrade_cta_start') }}
       </a>
+      {% endif %}
     </div>
     {% endif %}
     <div class="field" style="text-align:center">
@@ -118,7 +136,7 @@
       {# 2026-09-10 fix: was plan_labels.get(...), a Hebrew-only backend dict — same pattern as
          the payment-status dict on the next line, but built from the real i18n keys so this
          renders in the visitor's own language. #}
-      <span class="payment-plan">{{ {'weekly': t('upgrade.plan_weekly'), 'biweekly': t('upgrade.plan_biweekly'), 'monthly': t('upgrade.plan_monthly')}.get(payment.plan, payment.plan) }}</span>
+      <span class="payment-plan">{{ {'weekly': t('upgrade.plan_weekly'), 'biweekly': t('upgrade.plan_biweekly'), 'monthly': t('upgrade.plan_monthly'), 'monthly_subscription': t('upgrade.plan_subscription')}.get(payment.plan, payment.plan) }}</span>
       <span class="payment-amount">₪{{ payment.amount_ils }}</span>
       <span class="payment-date">{{ (payment.paid_at or payment.created_at).strftime('%d/%m/%Y') }}</span>
       <span class="amc-status {{ 'amc-status-ok' if payment.status == 'paid' else ('amc-status-warn' if payment.status == 'pending' else 'amc-status-bad') }}">

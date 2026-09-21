@@ -1,7 +1,7 @@
-"""Tests for the Takbull payment-gateway path (website/main.py + website/takbull_client.py): a
-₪0/month alternative to Grow (see takbull_client.py's module docstring for why), tried first in
-/upgrade's fallback chain. Covers /upgrade when Takbull is configured and /webhooks/takbull/{secret}
-— the server-to-server confirmation that actually grants access.
+"""Tests for the Takbull payment-gateway path (website/main.py + website/takbull_client.py): the
+real recurring ₪49.90/month subscription API (2026-09-21, tried first in /upgrade's fallback
+chain), plus /webhooks/takbull/{secret} — the server-to-server confirmation that actually grants
+access, for both the initial charge and a renewal cycle.
 
 Same importlib-loading approach and fake-session pattern as test_website_grow_payments.py (see
 that file's comment) — kept as its own module rather than sharing fakes, matching this repo's
@@ -14,6 +14,7 @@ import importlib.util
 import os
 import sys
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -46,13 +47,15 @@ class _FakeUser:
         self.trial_ends_at = overrides.get("trial_ends_at", _NOW - dt.timedelta(days=1))
         self.paid_until = overrides.get("paid_until")
         self.free_access_granted = overrides.get("free_access_granted", False)
+        self.takbull_subscription_uniqid = overrides.get("takbull_subscription_uniqid")
+        self.cancel_at_period_end = overrides.get("cancel_at_period_end", False)
 
 
 class _FakePayment:
     _next_id = 1
 
     def __init__(self, **kwargs):
-        self.id = _FakePayment._next_id
+        self.id = kwargs.get("id") or _FakePayment._next_id
         _FakePayment._next_id += 1
         self.user_id = kwargs.get("user_id")
         self.plan = kwargs.get("plan")
@@ -62,6 +65,7 @@ class _FakePayment:
         self.gateway_transaction_id = kwargs.get("gateway_transaction_id")
         self.webhook_token = kwargs.get("webhook_token")
         self.paid_at = kwargs.get("paid_at")
+        self.subscription_uniqid = kwargs.get("subscription_uniqid")
 
 
 class _FakeSession:
@@ -104,46 +108,50 @@ def client():
     return TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
 
 
-# --- /upgrade: the Takbull path (tried before Grow) ---
+# --- /upgrade: the real recurring Takbull API path ---
 
 
-def test_upgrade_submit_prefers_takbull_over_grow_when_both_configured(client):
+def test_upgrade_submit_uses_recurring_takbull_when_configured(client):
     user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main.takbull_client, "is_configured", lambda: True),
+        patch.object(website_main.takbull_client, "recurring_api_configured", lambda: True),
         patch.object(
             website_main.takbull_client,
-            "build_checkout_url",
-            lambda **kw: "https://paypage.takbull.co.il/4BPyx?order_reference=1",
+            "create_subscription_checkout_url",
+            lambda **kw: ("https://api.takbull.co.il/PaymentGateway?orderUniqId=sub-123", "sub-123"),
         ),
-        patch.object(website_main.grow_client, "is_configured", lambda: True),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "weekly", "uid": "222", "terms_agreed": "on"})
+        resp = client.post(
+            "/upgrade", data={"plan": "monthly_subscription", "uid": "222", "terms_agreed": "on"}
+        )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "https://paypage.takbull.co.il/4BPyx?order_reference=1"
+    assert resp.headers["location"] == "https://api.takbull.co.il/PaymentGateway?orderUniqId=sub-123"
     assert user.paid_until is None  # NOT granted yet — only the webhook does that
     payment = fake_session.added[0]
     assert payment.status == "pending"
     assert payment.gateway == "takbull"
-    assert payment.amount_ils == 1  # TEMPORARY 2026-09-06, see access.py
+    assert payment.amount_ils == Decimal("49.90")
+    assert payment.subscription_uniqid == "sub-123"
 
 
-def test_upgrade_submit_marks_payment_failed_and_502s_when_takbull_url_build_fails(client):
+def test_upgrade_submit_marks_payment_failed_and_502s_when_takbull_call_fails(client):
     user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main.takbull_client, "is_configured", lambda: True),
-        patch.object(website_main.takbull_client, "build_checkout_url", lambda **kw: None),
+        patch.object(website_main.takbull_client, "recurring_api_configured", lambda: True),
+        patch.object(website_main.takbull_client, "create_subscription_checkout_url", lambda **kw: None),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222", "terms_agreed": "on"})
+        resp = client.post(
+            "/upgrade", data={"plan": "monthly_subscription", "uid": "222", "terms_agreed": "on"}
+        )
 
     assert resp.status_code == 502
     payment = fake_session.added[0]
@@ -165,10 +173,17 @@ def test_webhook_rejects_when_secret_not_configured(client, monkeypatch):
     assert resp.status_code == 404
 
 
-def test_webhook_grants_access_on_recognized_success_payload(client, monkeypatch):
+def test_webhook_grants_access_on_recognized_success_payload_and_stores_subscription(client, monkeypatch):
     monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
     user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
-    payment = _FakePayment(user_id=2, plan="weekly", amount_ils=15, status="pending", gateway="takbull")
+    payment = _FakePayment(
+        user_id=2,
+        plan="monthly_subscription",
+        amount_ils=Decimal("49.90"),
+        status="pending",
+        gateway="takbull",
+        subscription_uniqid="sub-123",
+    )
     fake_session = _FakeSession(scalar_results=[payment], get_map={(website_main.User, 2): user})
 
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
@@ -179,7 +194,7 @@ def test_webhook_grants_access_on_recognized_success_payload(client, monkeypatch
                 "StatusDescription": "Success",
                 "StatusCode": 0,
                 "OrderStatus": 2,
-                "OrderTotalSum": 15,
+                "OrderTotalSum": "49.90",
                 "uniqId": "a1b2c3",
             },
         )
@@ -188,8 +203,59 @@ def test_webhook_grants_access_on_recognized_success_payload(client, monkeypatch
     assert payment.status == "paid"
     assert payment.gateway_transaction_id == "a1b2c3"
     assert user.paid_until is not None
-    assert user.paid_until > _NOW + dt.timedelta(days=6)
+    assert user.paid_until > _NOW + dt.timedelta(days=28)
+    assert user.takbull_subscription_uniqid == "sub-123"
     assert fake_session.committed is True
+
+
+def test_webhook_accepts_decimal_order_total_now_that_amount_ils_is_numeric(client, monkeypatch):
+    # Found live 2026-09-07, fixed 2026-09-21: a whole-shekel amount arriving as a decimal string
+    # (e.g. "40.00") used to raise ValueError under int() parsing and get treated as "leave
+    # pending" — the real bug this guarded against. Now that amount_ils is Numeric and the webhook
+    # parses OrderTotalSum as Decimal, "40.00" correctly equals 40 and grants access, which matters
+    # a lot more now that a real recurring price ("49.90") is never a whole number to begin with.
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
+    payment = _FakePayment(
+        user_id=2, plan="monthly_subscription", amount_ils=Decimal("40"), status="pending", gateway="takbull"
+    )
+    fake_session = _FakeSession(scalar_results=[payment], get_map={(website_main.User, 2): user})
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={
+                "order_reference": str(payment.id),
+                "StatusDescription": "Success",
+                "OrderTotalSum": "40.00",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert payment.status == "paid"
+
+
+def test_webhook_leaves_payment_pending_on_unparseable_order_total_instead_of_crashing(client, monkeypatch):
+    # A truly malformed value (not just a decimal string) must still fail safe, not crash or grant.
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    payment = _FakePayment(
+        user_id=2, plan="monthly_subscription", amount_ils=Decimal("49.90"), status="pending", gateway="takbull"
+    )
+    fake_session = _FakeSession(scalar_results=[payment])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={
+                "order_reference": str(payment.id),
+                "StatusDescription": "Success",
+                "OrderTotalSum": "not-a-number",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert payment.status == "pending"
+    assert fake_session.committed is False
 
 
 def test_webhook_ignores_missing_order_reference(client, monkeypatch):
@@ -219,37 +285,13 @@ def test_webhook_ignores_unknown_order_reference(client, monkeypatch):
     assert fake_session.committed is False
 
 
-def test_webhook_leaves_payment_pending_on_non_integer_order_total_instead_of_crashing(
-    client, monkeypatch
-):
-    # Found live 2026-09-07: int("40.00") raises ValueError uncaught, so a decimal-string
-    # OrderTotalSum (plausible for a currency field even though every real example seen so far
-    # has been a clean int) used to 500 instead of failing safe like every other suspicious
-    # payload on this endpoint.
-    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
-    payment = _FakePayment(user_id=2, plan="weekly", amount_ils=40, status="pending", gateway="takbull")
-    fake_session = _FakeSession(scalar_results=[payment])
-
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.post(
-            "/webhooks/takbull/real-secret",
-            json={
-                "order_reference": str(payment.id),
-                "StatusDescription": "Success",
-                "OrderTotalSum": "40.00",
-            },
-        )
-
-    assert resp.status_code == 200
-    assert payment.status == "pending"
-    assert fake_session.committed is False
-
-
 def test_webhook_leaves_payment_pending_when_order_total_missing_entirely(client, monkeypatch):
     # Takbull's own documented order-success payload always includes OrderTotalSum — a payload
     # missing it is itself suspicious, not something to trust our own pre-recorded amount for.
     monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
-    payment = _FakePayment(user_id=2, plan="weekly", amount_ils=15, status="pending", gateway="takbull")
+    payment = _FakePayment(
+        user_id=2, plan="monthly_subscription", amount_ils=Decimal("49.90"), status="pending", gateway="takbull"
+    )
     fake_session = _FakeSession(scalar_results=[payment])
 
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
@@ -265,7 +307,9 @@ def test_webhook_leaves_payment_pending_when_order_total_missing_entirely(client
 
 def test_webhook_leaves_payment_pending_when_no_success_signal_recognized(client, monkeypatch):
     monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
-    payment = _FakePayment(user_id=2, plan="weekly", amount_ils=15, status="pending", gateway="takbull")
+    payment = _FakePayment(
+        user_id=2, plan="monthly_subscription", amount_ils=Decimal("49.90"), status="pending", gateway="takbull"
+    )
     fake_session = _FakeSession(scalar_results=[payment])
 
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
@@ -283,7 +327,9 @@ def test_webhook_leaves_payment_pending_when_amount_does_not_match(client, monke
     """The customer picks their own item on Takbull's shared multi-plan page — if what they
     actually paid doesn't match what this payment row expects, grant nothing rather than guess."""
     monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
-    payment = _FakePayment(user_id=2, plan="weekly", amount_ils=15, status="pending", gateway="takbull")
+    payment = _FakePayment(
+        user_id=2, plan="monthly_subscription", amount_ils=Decimal("49.90"), status="pending", gateway="takbull"
+    )
     fake_session = _FakeSession(scalar_results=[payment])
 
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
@@ -301,17 +347,130 @@ def test_webhook_leaves_payment_pending_when_amount_does_not_match(client, monke
     assert fake_session.committed is False
 
 
-def test_webhook_does_not_double_credit_an_already_paid_payment(client, monkeypatch):
-    """A replayed/duplicate webhook for an already-"paid" payment finds nothing to act on — the
-    fake session's queued scalar_results=[None] stands in for the real query's own
-    `Payment.status == "pending"` filter no longer matching."""
+def test_webhook_does_not_double_credit_an_already_paid_payment_with_no_subscription(client, monkeypatch):
+    """A replayed/duplicate webhook for an already-"paid", non-subscription payment finds nothing
+    to act on: the pending-query misses (already paid) and the renewal-lookup requires a non-null
+    subscription_uniqid, which a one-time-plan payment never has."""
     monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
-    fake_session = _FakeSession(scalar_results=[None])
+    fake_session = _FakeSession(scalar_results=[None, None])
 
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.post(
             "/webhooks/takbull/real-secret",
             json={"order_reference": "1", "StatusDescription": "Success"},
+        )
+
+    assert resp.status_code == 200
+    assert fake_session.committed is False
+
+
+# --- renewal charges (month 2+, Takbull's own recurring engine firing automatically) ---
+
+
+def test_webhook_grants_a_renewal_charge_as_a_new_payment_row(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=_NOW + dt.timedelta(days=2))
+    original = _FakePayment(
+        id=7,
+        user_id=2,
+        plan="monthly_subscription",
+        amount_ils=Decimal("49.90"),
+        status="paid",
+        gateway="takbull",
+        subscription_uniqid="sub-123",
+        gateway_transaction_id="first-charge-id",
+    )
+    # First scalar() call is the "pending" lookup (misses, already paid); second is the
+    # renewal-eligible "paid" lookup (matches); third is the idempotency check by
+    # gateway_transaction_id (misses — this is a genuinely new transaction id).
+    fake_session = _FakeSession(
+        scalar_results=[None, original, None], get_map={(website_main.User, 2): user}
+    )
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={
+                "order_reference": str(original.id),
+                "StatusDescription": "Success",
+                "OrderTotalSum": "49.90",
+                "IsSubscriptionPayment": True,
+                "uniqId": "renewal-charge-id",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert fake_session.committed is True
+    assert len(fake_session.added) == 1
+    renewal = fake_session.added[0]
+    assert renewal.status == "paid"
+    assert renewal.gateway_transaction_id == "renewal-charge-id"
+    assert renewal.subscription_uniqid == "sub-123"
+    # extend_paid_until stacks on top of the existing future paid_until, not from "now"
+    assert user.paid_until > _NOW + dt.timedelta(days=29)
+
+
+def test_webhook_ignores_a_replayed_renewal_webhook_for_the_same_cycle(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=_NOW + dt.timedelta(days=2))
+    original = _FakePayment(
+        id=7,
+        user_id=2,
+        plan="monthly_subscription",
+        amount_ils=Decimal("49.90"),
+        status="paid",
+        gateway="takbull",
+        subscription_uniqid="sub-123",
+    )
+    already_processed = _FakePayment(
+        id=8,
+        user_id=2,
+        plan="monthly_subscription",
+        amount_ils=Decimal("49.90"),
+        status="paid",
+        gateway="takbull",
+        subscription_uniqid="sub-123",
+        gateway_transaction_id="renewal-charge-id",
+    )
+    fake_session = _FakeSession(
+        scalar_results=[None, original, already_processed],
+        get_map={(website_main.User, 2): user},
+    )
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={
+                "order_reference": str(original.id),
+                "StatusDescription": "Success",
+                "OrderTotalSum": "49.90",
+                "IsSubscriptionPayment": True,
+                "uniqId": "renewal-charge-id",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert fake_session.committed is False
+    assert fake_session.added == []
+
+
+def test_webhook_ignores_renewal_flagged_payload_when_no_matching_subscription_found(client, monkeypatch):
+    """IsSubscriptionPayment=true alone isn't enough — without a matching "paid" +
+    subscription_uniqid row to attach the renewal to (the real query's own WHERE clause, not
+    reproducible at this fake-session mocking layer, is what actually enforces that shape; this
+    confirms the route's own fallback when that lookup comes back empty either way)."""
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    fake_session = _FakeSession(scalar_results=[None, None])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={
+                "order_reference": "5",
+                "StatusDescription": "Success",
+                "OrderTotalSum": "49.90",
+                "IsSubscriptionPayment": True,
+            },
         )
 
     assert resp.status_code == 200

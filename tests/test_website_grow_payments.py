@@ -13,6 +13,7 @@ import importlib.util
 import os
 import sys
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,6 +46,8 @@ class _FakeUser:
         self.trial_ends_at = overrides.get("trial_ends_at", _NOW - dt.timedelta(days=1))
         self.paid_until = overrides.get("paid_until")
         self.free_access_granted = overrides.get("free_access_granted", False)
+        self.takbull_subscription_uniqid = overrides.get("takbull_subscription_uniqid")
+        self.cancel_at_period_end = overrides.get("cancel_at_period_end", False)
 
 
 class _FakePayment:
@@ -61,6 +64,7 @@ class _FakePayment:
         self.gateway_transaction_id = kwargs.get("gateway_transaction_id")
         self.webhook_token = kwargs.get("webhook_token")
         self.paid_at = kwargs.get("paid_at")
+        self.subscription_uniqid = kwargs.get("subscription_uniqid")
 
 
 class _FakeSession:
@@ -116,13 +120,17 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_grow_checkout(c
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main.takbull_client, "recurring_api_configured", lambda: False),
         patch.object(website_main.grow_client, "is_configured", lambda: True),
         patch.object(
             website_main.grow_client, "create_checkout_url", lambda **kw: "https://grow.example/checkout/abc"
         ),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222", "terms_agreed": "on"})
+        resp = client.post(
+            "/upgrade",
+            data={"plan": "monthly_subscription", "uid": "222", "terms_agreed": "on"},
+        )
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "https://grow.example/checkout/abc"
@@ -131,7 +139,7 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_grow_checkout(c
     payment = fake_session.added[0]
     assert payment.status == "pending"
     assert payment.gateway == "grow"
-    assert payment.amount_ils == 40
+    assert payment.amount_ils == Decimal("49.90")
     assert payment.webhook_token  # a real per-payment secret was generated
 
 
@@ -141,11 +149,15 @@ def test_upgrade_submit_marks_payment_failed_and_502s_when_grow_call_fails(clien
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main.takbull_client, "recurring_api_configured", lambda: False),
         patch.object(website_main.grow_client, "is_configured", lambda: True),
         patch.object(website_main.grow_client, "create_checkout_url", lambda **kw: None),
         patch.object(website_main, "Payment", _FakePayment),
     ):
-        resp = client.post("/upgrade", data={"plan": "monthly", "uid": "222", "terms_agreed": "on"})
+        resp = client.post(
+            "/upgrade",
+            data={"plan": "monthly_subscription", "uid": "222", "terms_agreed": "on"},
+        )
 
     assert resp.status_code == 502
     payment = fake_session.added[0]

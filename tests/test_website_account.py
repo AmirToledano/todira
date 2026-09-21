@@ -44,6 +44,8 @@ class _FakeUser:
         paid_until=None,
         notifications_enabled=True,
         whatsapp_notifications_opted_in=False,
+        takbull_subscription_uniqid=None,
+        cancel_at_period_end=False,
     ):
         self.id = id
         self.telegram_user_id = telegram_user_id
@@ -54,6 +56,8 @@ class _FakeUser:
         self.paid_until = paid_until
         self.notifications_enabled = notifications_enabled
         self.whatsapp_notifications_opted_in = whatsapp_notifications_opted_in
+        self.takbull_subscription_uniqid = takbull_subscription_uniqid
+        self.cancel_at_period_end = cancel_at_period_end
 
 
 class _FakeSession:
@@ -89,12 +93,13 @@ def _fake_get_session(session):
 
 
 class _FakePayment:
-    def __init__(self, plan, amount_ils, status, created_at, paid_at=None):
+    def __init__(self, plan, amount_ils, status, created_at, paid_at=None, subscription_uniqid=None):
         self.plan = plan
         self.amount_ils = amount_ils
         self.status = status
         self.created_at = created_at
         self.paid_at = paid_at
+        self.subscription_uniqid = subscription_uniqid
 
 
 def test_account_requires_a_resolvable_user(client):

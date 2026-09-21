@@ -1,0 +1,57 @@
+# Daily job (2026-09-21) that actually stops Takbull's recurring engine once a cancelled
+# subscription's paid period really ends — see website/subscription_housekeeping.py's own
+# docstring for why this is deferred rather than done at cancel-click time.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-subscription-housekeeping
+  labels:
+    app: {{ .Release.Name }}-subscription-housekeeping
+spec:
+  schedule: {{ .Values.subscriptionHousekeeping.schedule | quote }}
+  timeZone: "Asia/Jerusalem"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-subscription-housekeeping
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: subscription-housekeeping
+              image: "{{ .Values.websiteImage.repository }}:{{ .Values.websiteImage.tag | default "latest" }}"
+              command: ["python", "subscription_housekeeping.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: database-url
+                - name: TAKBULL_WEBHOOK_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: takbull-webhook-secret
+                      optional: true
+                - name: TAKBULL_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: takbull-api-key
+                      optional: true
+                - name: TAKBULL_API_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: takbull-api-secret
+                      optional: true
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.subscriptionHousekeeping.requests.cpu }}
+                  memory: {{ .Values.resources.subscriptionHousekeeping.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.subscriptionHousekeeping.limits.cpu }}
+                  memory: {{ .Values.resources.subscriptionHousekeeping.limits.memory }}
