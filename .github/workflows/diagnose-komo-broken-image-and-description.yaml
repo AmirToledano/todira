@@ -1,0 +1,68 @@
+name: Diagnose — Komo broken image-preview + description raw chars (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-21.
+#
+# Real owner report + screenshot: a Komo listing (modaaNum=4929804) rendered a generic grey
+# broken-image placeholder icon on Telegram instead of either a real photo or the Todi mascot
+# fallback — checking whether image_urls is genuinely empty (mascot logic should have fired,
+# meaning a real bug in send_listing_card/cards.py) or non-empty with a dead/unreachable URL
+# (Telegram's own async image-fetch failing silently, a data-quality issue from komo_client.py,
+# not a bug in our own send logic). Also re-checks a second Komo listing's raw description bytes
+# the same way diagnose-homeless-description-raw-chars.yaml did for Homeless, in case Komo has
+# its own non-"\n" line separator quirk too (the 2026-09-21 cards.py fix now uses splitlines(),
+# which should already cover it, but confirming rather than assuming).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Query the real reported listings
+        run: |
+          kubectl delete pod diag-komo-image -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-komo-image
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-komo-image
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- the exact reported listing (modaaNum=4929804) — image_urls + raw description ---"
+                    psql "$CONN" -c "SELECT id, url, image_urls, encode(description::bytea, 'escape') AS raw_description FROM listings WHERE source='komo' AND url LIKE '%4929804%';"
+                    echo "--- how many recent Komo listings have EMPTY image_urls vs non-empty-but-maybe-dead ---"
+                    psql "$CONN" -c "SELECT (image_urls = '{}' OR image_urls IS NULL) AS no_photos, count(*) FROM (SELECT image_urls FROM listings WHERE source='komo' ORDER BY id DESC LIMIT 50) sub GROUP BY 1;"
+                    echo "--- 5 recent Komo descriptions, raw bytes (checking for a non-\\n separator like Homeless had) ---"
+                    psql "$CONN" -c "SELECT id, encode(description::bytea, 'escape') AS raw_description FROM listings WHERE source='komo' AND description IS NOT NULL ORDER BY id DESC LIMIT 5;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-komo-image -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-komo-image || true
+          kubectl delete pod diag-komo-image -n todira --ignore-not-found
