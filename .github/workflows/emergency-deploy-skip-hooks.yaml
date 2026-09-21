@@ -1,0 +1,121 @@
+name: Emergency deploy — skip hooks (dorin->todira outage fix)
+
+# ONE-OFF, manual-only (workflow_dispatch, never on push) — added 2026-09-21.
+#
+# Root cause of CI/CD run #413's failure (found via diagnose-migrations-job-hang.yaml, not
+# guessed): migrations-job.yaml is annotated "helm.sh/hook: post-install,pre-upgrade" — on an
+# upgrade, Helm runs pre-upgrade hooks BEFORE applying the release's regular resources, including
+# postgres-secret.yaml. So the migrations Job always authenticates with the SECRET AS IT EXISTED
+# BEFORE this upgrade (still user=dorin), never the new todira values from PR #364 — and because
+# Helm aborts the ENTIRE upgrade when a hook fails, the Secret/Deployments never got updated
+# either. That's why the already-running bot/website pods are also failing: the live Postgres role
+# was already renamed dorin -> todira (rename-postgres-dorin-to-todira.yaml, both runs succeeded,
+# data verified intact) but the cluster's Secret is still stuck on the old value.
+#
+# Fix: run the exact same `helm upgrade` ci-cd.yaml runs, with --no-hooks added — this ONE time
+# only, to let the Secret/Deployments update to the correct todira values without the pre-upgrade
+# migrations hook blocking on them. Safe: no Alembic migration changed this session, so skipping it
+# once loses nothing; the very next normal deploy (ci-cd.yaml, hooks enabled as always) will run
+# migrations again and succeed, since by then the secret will already be correct.
+#
+# Uses the same already-built image tag from CI/CD run #413 (all three images built+pushed
+# successfully there; only the deploy step itself failed).
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (already-built SHA)"
+        required: true
+        default: "50e85a14c62f6ea9ee966fd738b01e0fe7e5d615"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v3.16.4"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Helm upgrade, pass 1 (--no-hooks — fixes the Secret/Deployments only)
+        run: |
+          helm upgrade --install todira charts/todira \
+            -f charts/todira/values.yaml \
+            --set botImage.repository="ghcr.io/amirtoledano/todira-bot" \
+            --set botImage.tag="${{ github.event.inputs.image_tag }}" \
+            --set scraperImage.repository="ghcr.io/amirtoledano/todira-scraper" \
+            --set scraperImage.tag="${{ github.event.inputs.image_tag }}" \
+            --set websiteImage.repository="ghcr.io/amirtoledano/todira-website" \
+            --set websiteImage.tag="${{ github.event.inputs.image_tag }}" \
+            --set postgres.password="${{ secrets.POSTGRES_PASSWORD }}" \
+            --set telegramBotToken="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            --set geminiApiKey="${{ secrets.GEMINI_API_KEY }}" \
+            --set zenrowsApiKey="${{ secrets.ZENROWS_API_KEY }}" \
+            --set ownerTelegramUserId="${{ secrets.OWNER_TELEGRAM_USER_ID }}" \
+            --set sessionSecretKey="${{ secrets.SESSION_SECRET_KEY }}" \
+            --set whatsappAccessToken="${{ secrets.WHATSAPP_ACCESS_TOKEN }}" \
+            --set whatsappPhoneNumberId="${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" \
+            --set whatsappWebhookVerifyToken="${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}" \
+            --set whatsappAppSecret="${{ secrets.WHATSAPP_APP_SECRET }}" \
+            --set googleClientId="${{ secrets.GOOGLE_CLIENT_ID }}" \
+            --set googleClientSecret="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            --set growPageCode="${{ secrets.GROW_PAGE_CODE }}" \
+            --set growUserId="${{ secrets.GROW_USER_ID }}" \
+            --set growApiKey="${{ secrets.GROW_API_KEY }}" \
+            --set brightDataApiKey="${{ secrets.BRIGHT_DATA_API_KEY }}" \
+            --set brightDataCollectorId="${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}" \
+            --set brightDataDescriptionField="${{ secrets.BRIGHT_DATA_DESCRIPTION_FIELD }}" \
+            --set takbullWebhookSecret="${{ secrets.TAKBULL_WEBHOOK_SECRET }}" \
+            --set awsAccessKeyId="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --set awsSecretAccessKey="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --namespace todira --create-namespace \
+            --no-hooks
+
+      - name: Helm upgrade, pass 2 (normal — migrations hook now sees the correct secret)
+        run: |
+          helm upgrade --install todira charts/todira \
+            -f charts/todira/values.yaml \
+            --set botImage.repository="ghcr.io/amirtoledano/todira-bot" \
+            --set botImage.tag="${{ github.event.inputs.image_tag }}" \
+            --set scraperImage.repository="ghcr.io/amirtoledano/todira-scraper" \
+            --set scraperImage.tag="${{ github.event.inputs.image_tag }}" \
+            --set websiteImage.repository="ghcr.io/amirtoledano/todira-website" \
+            --set websiteImage.tag="${{ github.event.inputs.image_tag }}" \
+            --set postgres.password="${{ secrets.POSTGRES_PASSWORD }}" \
+            --set telegramBotToken="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            --set geminiApiKey="${{ secrets.GEMINI_API_KEY }}" \
+            --set zenrowsApiKey="${{ secrets.ZENROWS_API_KEY }}" \
+            --set ownerTelegramUserId="${{ secrets.OWNER_TELEGRAM_USER_ID }}" \
+            --set sessionSecretKey="${{ secrets.SESSION_SECRET_KEY }}" \
+            --set whatsappAccessToken="${{ secrets.WHATSAPP_ACCESS_TOKEN }}" \
+            --set whatsappPhoneNumberId="${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" \
+            --set whatsappWebhookVerifyToken="${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}" \
+            --set whatsappAppSecret="${{ secrets.WHATSAPP_APP_SECRET }}" \
+            --set googleClientId="${{ secrets.GOOGLE_CLIENT_ID }}" \
+            --set googleClientSecret="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            --set growPageCode="${{ secrets.GROW_PAGE_CODE }}" \
+            --set growUserId="${{ secrets.GROW_USER_ID }}" \
+            --set growApiKey="${{ secrets.GROW_API_KEY }}" \
+            --set brightDataApiKey="${{ secrets.BRIGHT_DATA_API_KEY }}" \
+            --set brightDataCollectorId="${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}" \
+            --set brightDataDescriptionField="${{ secrets.BRIGHT_DATA_DESCRIPTION_FIELD }}" \
+            --set takbullWebhookSecret="${{ secrets.TAKBULL_WEBHOOK_SECRET }}" \
+            --set awsAccessKeyId="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --set awsSecretAccessKey="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --namespace todira --create-namespace
+
+      - name: Verify pods are healthy
+        if: always()
+        run: |
+          echo "--- pods ---"
+          kubectl get pods -n todira -o wide || true
+          echo "--- bot logs ---"
+          kubectl logs -n todira -l app=todira-bot --tail=60 || true
+          echo "--- website logs ---"
+          kubectl logs -n todira -l app=todira-website --tail=60 || true
