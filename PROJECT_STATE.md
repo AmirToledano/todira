@@ -7269,8 +7269,22 @@ ZenRows' own suggested fix (`js_render=true`) directly against the real endpoint
 whether it actually returns real rows AND its real `X-Request-Credits` cost (js_render is
 meaningfully more expensive — this project specifically chose Homeless/Komo for their cheap
 1-credit plain tier, same cost reasoning as Yad2's own `YAD2_NOTES.md`/module-docstring js_render
-saga) — **result not yet read as of this entry, check the `diagnose-homeless-pagination.yaml`
-run dispatched right before this file was written.**
+saga).
+
+**Real result: js_render=true is NOT a clean fix.** It DID get a genuine 200 (255,645 chars, zero
+ZenRows error code this time) at a real cost of **5 credits** (vs. the plain tier's 1 — a 5x
+increase) — but the same `<tr id="ad_...">` row regex still found **zero** rows in that
+successfully-rendered page. So js_render=true clears the RESP001 error itself, but doesn't
+actually deliver a page with real listing rows in the shape this project's parser expects — either
+Homeless's own markup genuinely changed shape recently (independent of the RESP001 saga), or the
+render fired before the listing grid finished loading (a real, previously-seen ZenRows pattern —
+see this file's own 2026-09-16/17-era entries on Yad2's `wait`/`wait_for` struggles with the exact
+same symptom). **Not solved tonight** — needs one more real diagnostic that actually dumps the raw
+js_render=true HTML body (not just counts) to see what changed, before deciding whether a `wait`/
+`wait_for` param, a different selector, or something else is the real fix. Do not switch
+production to js_render=true based on tonight's finding alone — it doesn't fix the actual problem,
+it just trades one failure mode (a clean RESP001 error) for a quieter, more expensive one (a real
+200 with no usable content).
 
 **Homeless sale category — confirmed to exist, NOT yet wired**: `homeless.co.il/sale/` is real
 (200, 257KB, title "דירות למכירה | הומלס") — but the current `<tr id="ad_...">` row regex found
@@ -7341,12 +7355,15 @@ they aren't lost, not because they're not real):
 
 **Ready to resume immediately once code is on main (or via more read-only diagnostics before
 then):**
-3. Read the `diagnose-homeless-pagination.yaml` run's js_render=true result (dispatched right
-   before this entry) — decide whether to actually switch Homeless's plain fetch to js_render=true
-   (real cost increase) based on that real answer, not the ZenRows error message alone.
+3. Homeless RESP001 is still genuinely unsolved — js_render=true clears the ZenRows error itself
+   but returns a real 200 with zero usable listing rows (5x the cost for a quieter failure, not a
+   fix — see section 5 above for the full real finding). Needs a diagnostic that dumps the actual
+   raw HTML body (not just counts) to see what's really in a js_render=true response before trying
+   `wait`/`wait_for` or anything else.
 4. One more diagnostic on `homeless.co.il/sale/`'s real markup (dump actual HTML around a listing,
-   same as this project's very first Homeless build) — the row regex found 0 matches, meaning it's
-   a real but differently-shaped page, not confirmed how yet.
+   same as this project's very first Homeless build) — the row regex found 0 matches there too,
+   meaning it's a real but differently-shaped page, not confirmed how yet. Worth doing together
+   with #3 above since both need the same kind of raw-HTML-dump diagnostic.
 5. Facebook Groups' own sale category (if it has one) was never checked — lower priority, no owner
    ask for it yet.
 6. The two lower-severity bugs from section 6 above (account-creation/like-hide races, `/filter`
