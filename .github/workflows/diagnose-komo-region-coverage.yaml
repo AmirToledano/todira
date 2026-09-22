@@ -191,3 +191,44 @@ jobs:
           else:
               print("Could not get a base sessionToken for the iska= test - see candidate 2 output above.")
           PYEOF
+
+      # 2026-09-22: iska=2 came back with a real, comparably-large, disjoint id set from iska=1
+      # (rent) — strong evidence it's the sale category. Before wiring komo_client.py to reuse its
+      # EXISTING detail-page parser (_parse_details_html: _PRICE_RE/_OG_TITLE_RE/_ROOMS_RE/
+      # _OG_TITLE_CITY_RE) for these ids too, this confirms a REAL sale listing's own detail page
+      # actually matches those same regexes — never assumed just because it's the same site/host.
+      - name: Confirm a real iska=2 (candidate sale) listing's detail page matches komo_client's existing parser regexes
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import re
+          import urllib.parse
+          import urllib.request
+
+          API_KEY = os.environ["ZENROWS_API_KEY"]
+          FETCH_URL = "https://api.zenrows.com/v1/"
+          # Real ids from tonight's own iska=2 result (not invented) - apartments-for-sale.asp's
+          # own coordinate set.
+          CANDIDATE_IDS = ["4766790", "4927807", "4921733"]
+
+          PRICE_RE = re.compile(r'class="price modaaWPrice"[^>]*>\s*<span[^>]*>([\d,]+)')
+          OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]+)"')
+
+          for modaa_num in CANDIDATE_IDS:
+              url = f"https://www.komo.co.il/code/nadlan/details/?modaaNum={modaa_num}"
+              qs = {"apikey": API_KEY, "url": url}
+              full = f"{FETCH_URL}?{urllib.parse.urlencode(qs)}"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(full), timeout=100) as resp:
+                      status, html = resp.status, resp.read().decode("utf-8", errors="replace")
+              except Exception as exc:
+                  print(f"[modaaNum={modaa_num}] request failed: {exc}")
+                  continue
+              price_m = PRICE_RE.search(html)
+              title_m = OG_TITLE_RE.search(html)
+              print(f"[modaaNum={modaa_num}] status={status} len={len(html)} "
+                    f"price_match={price_m.group(1) if price_m else None} "
+                    f"og_title={title_m.group(1) if title_m else None}")
+          PYEOF
