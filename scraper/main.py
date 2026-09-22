@@ -29,6 +29,7 @@ from facebook_groups_client import fetch_post_detail as fetch_facebook_group_pos
 from homeless_client import HomelessFetchError
 from homeless_client import fetch_listing_description as fetch_homeless_description
 from homeless_client import fetch_search_results as fetch_homeless_results
+import komo_client
 from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import _compute_detail_updates, normalize
@@ -745,28 +746,58 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     _KOMO_DETAIL_FETCH_CONCURRENCY (see that constant's own comment for why this is safe — Komo has
     already been confirmed to have no bot-challenge wall of its own) — same _fetch_concurrently
     helper _scrape_homeless uses. Previously these ran one at a time, sequentially, which is what
-    made a run with many new Komo listings take a real, avoidable extra chunk of wall-clock time."""
+    made a run with many new Komo listings take a real, avoidable extra chunk of wall-clock time.
+
+    2026-09-22: task #3/#4 — also fetches Komo's real sale coordinate list (iska=2 via
+    SALE_SEARCH_PAGE_URL, confirmed live — see fetch_coordinate_ids' own docstring) alongside the
+    rent one (iska=1, unchanged). Both share the SAME known_ids/processed_this_run/detail-fetch cap
+    — a modaaNum is globally unique regardless of deal type, and the cap is a real ZenRows-credit
+    budget on total new detail fetches this run, not a per-category allowance. `sale_ids` tracks
+    which of processed_this_run's new ids came from the sale list, so the right DealType is applied
+    when normalizing — _parse_details_html's own regexes need no changes (confirmed live against 3
+    real sale listings' detail pages). A failed sale fetch (KomoFetchError) is logged/counted but
+    does not discard whatever the rent fetch already found."""
     normalized_items = []
     seen_external_ids: set[str] = set()
 
     known_ids = _fetch_known_external_ids(Source.KOMO)
     processed_this_run: set[str] = set(known_ids)
     max_new_detail_fetches = _komo_max_new_detail_fetches_per_run()
+    errors = 0
+    all_succeeded = True
 
     logger.info("Fetching Komo's nationwide coordinate list (one call, confirmed city-independent)")
     try:
-        coordinates = fetch_all_coordinate_ids()
+        rent_coordinates = fetch_all_coordinate_ids()
     except KomoFetchError:
-        logger.exception("Failed to fetch Komo's coordinate list — skipping Komo entirely this run")
+        logger.exception("Failed to fetch Komo's rent coordinate list — skipping Komo entirely this run")
         return normalized_items, seen_external_ids, 0, 1, False
 
+    logger.info("Fetching Komo's nationwide SALE coordinate list (iska=2, one call)")
+    try:
+        sale_coordinates = fetch_all_coordinate_ids(
+            iska="2", search_page_url=komo_client.SALE_SEARCH_PAGE_URL
+        )
+    except KomoFetchError:
+        logger.exception(
+            "Failed to fetch Komo's sale coordinate list — continuing with rent results only"
+        )
+        sale_coordinates = []
+        errors += 1
+        all_succeeded = False
+
+    sale_ids: set[str] = set()
     new_ids_to_fetch: list[str] = []
-    for coordinate in coordinates:
+    for coordinate, is_sale in [(c, False) for c in rent_coordinates] + [
+        (c, True) for c in sale_coordinates
+    ]:
         modaa_num = coordinate.get("id")
         if not modaa_num:
             continue
         modaa_num = str(modaa_num)
         seen_external_ids.add(modaa_num)
+        if is_sale:
+            sale_ids.add(modaa_num)
         if modaa_num in processed_this_run:
             continue  # already known from a prior run, or a duplicate within this run's own list
         processed_this_run.add(modaa_num)
@@ -776,27 +807,27 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     if len(new_ids_to_fetch) > max_new_detail_fetches:
         logger.warning(
             "Komo hit its per-run new-detail-fetch safety cap (%s=%d) — remaining new "
-            "listings this run are skipped and will be picked up in a later run "
-            "instead of spending unbounded ZenRows credits in one shot.",
+            "listings this run (across rent and sale) are skipped and will be picked up in a "
+            "later run instead of spending unbounded ZenRows credits in one shot.",
             _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
         )
 
     fetched = len(ids_to_fetch)
-    errors = 0
     details = asyncio.run(
         _fetch_concurrently(ids_to_fetch, fetch_komo_listing_detail, _KOMO_DETAIL_FETCH_CONCURRENCY)
     )
-    for detail in details:
+    for modaa_num, detail in zip(ids_to_fetch, details):
         if detail is None:
             errors += 1
             continue
-        normalized = normalize(detail, source=Source.KOMO, deal_type=DealType.RENT)
+        deal_type = DealType.SALE if modaa_num in sale_ids else DealType.RENT
+        normalized = normalize(detail, source=Source.KOMO, deal_type=deal_type)
         if normalized is not None:
             normalized_items.append(normalized)
         else:
             errors += 1
 
-    return normalized_items, seen_external_ids, fetched, errors, True
+    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
 def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:

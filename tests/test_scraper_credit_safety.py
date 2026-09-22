@@ -87,6 +87,17 @@ def test_notifications_suspended_false_for_other_values(monkeypatch):
 # --- _scrape_komo cap enforcement -----------------------------------------------------------------
 
 
+def _rent_coordinates_only(items: list):
+    """2026-09-22: _scrape_komo now calls fetch_all_coordinate_ids twice — once for rent (no
+    kwargs, unchanged) and once for sale (iska="2", search_page_url=SALE_SEARCH_PAGE_URL). These
+    existing tests only care about the rent call's own behavior, so the sale call is a real,
+    separate call that must be handled (not just ignored), but returns nothing — every assertion
+    below about counts/caps stays exactly as it was pre-sale-loop."""
+    def _fake(*, iska: str = "1", search_page_url: str | None = None):
+        return items if iska == "1" else []
+    return _fake
+
+
 def test_scrape_komo_stops_new_detail_fetches_at_the_cap(monkeypatch):
     """3 never-before-seen listings (all from ONE fetch_all_coordinate_ids call — confirmed
     nationwide, see komo_client.py), cap=2: the 3rd listing's detail should never be fetched, but
@@ -97,7 +108,7 @@ def test_scrape_komo_stops_new_detail_fetches_at_the_cap(monkeypatch):
     monkeypatch.setattr(
         scraper_main,
         "fetch_all_coordinate_ids",
-        lambda: [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+        _rent_coordinates_only([{"id": "1"}, {"id": "2"}, {"id": "3"}]),
     )
 
     fetched_detail_ids = []
@@ -121,7 +132,7 @@ def test_scrape_komo_never_caps_when_no_new_listings_exist(monkeypatch):
     way) — a regression guard against the cap accidentally blocking already-known listings."""
     monkeypatch.setenv(scraper_main._KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "0")
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
-    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", lambda: [{"id": "1"}])
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _rent_coordinates_only([{"id": "1"}]))
 
     def _fail_if_called(modaa_num):
         raise AssertionError("should never fetch an already-known listing's detail")
@@ -283,6 +294,78 @@ def test_scrape_komo_fails_gracefully_when_the_one_discovery_call_fails(monkeypa
     assert fetched == 0
     assert errors == 1
     assert all_succeeded is False
+
+
+# --- _scrape_komo: sale coordinate loop, via iska=2/SALE_SEARCH_PAGE_URL (2026-09-22, task #3/#4) --
+
+
+def test_scrape_komo_upserts_a_new_sale_listing_with_sale_deal_type(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_coordinates(*, iska: str = "1", search_page_url=None):
+        return [{"id": "sale-1"}] if iska == "2" else []
+
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _fake_coordinates)
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_komo_listing_detail",
+        lambda modaa_num: {"id": modaa_num, "url": f"https://komo.co.il/{modaa_num}", "price": 2500000},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_komo()
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
+    assert seen_external_ids == {"sale-1"}
+    assert all_succeeded is True
+
+
+def test_scrape_komo_sale_failure_does_not_discard_the_rent_loops_own_result(monkeypatch):
+    """A broken sale coordinate fetch must not lose or corrupt what the rent fetch already found."""
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_coordinates(*, iska: str = "1", search_page_url=None):
+        if iska == "2":
+            raise scraper_main.KomoFetchError("simulated sale discovery failure")
+        return [{"id": "rent-1"}]
+
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _fake_coordinates)
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_komo_listing_detail",
+        lambda modaa_num: {"id": modaa_num, "url": f"https://komo.co.il/{modaa_num}", "price": 4000},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_komo()
+
+    assert seen_external_ids == {"rent-1"}
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.RENT
+    assert all_succeeded is False  # the sale fetch genuinely failed, must surface as such
+    assert errors == 1
+
+
+def test_scrape_komo_shares_one_detail_fetch_cap_across_rent_and_sale(monkeypatch):
+    monkeypatch.setenv(scraper_main._KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "1")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_coordinates(*, iska: str = "1", search_page_url=None):
+        return [{"id": "rent-1"}] if iska == "1" else [{"id": "sale-1"}]
+
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _fake_coordinates)
+    detail_calls = []
+
+    def _fake_detail(modaa_num):
+        detail_calls.append(modaa_num)
+        return {"id": modaa_num, "url": f"https://komo.co.il/{modaa_num}", "price": 4000}
+
+    monkeypatch.setattr(scraper_main, "fetch_komo_listing_detail", _fake_detail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_komo()
+
+    assert detail_calls == ["rent-1"]  # cap=1, spent on the rent id (fetched first)
+    assert seen_external_ids == {"rent-1", "sale-1"}
+    assert len(normalized_items) == 1
 
 
 # --- _scrape_yad2: a failing region gets ONE retry before delisting is skipped (2026-09-14) -------
