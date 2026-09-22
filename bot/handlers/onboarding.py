@@ -29,6 +29,7 @@ import asyncio
 from config import WEBSITE_URL
 from todira_common import cities, gemini_client
 from todira_common.db import get_session
+from todira_common.matching import safe_range_update
 from todira_common.models import Filter
 from todira_common.users import get_or_create_user
 from handlers.apartments import find_new_matches_to_show
@@ -153,9 +154,30 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return AWAIT_FREETEXT
 
+    # rooms_min/rooms_max and price_min/price_max go through safe_range_update, not the plain
+    # per-key overwrite every other field uses — found live-code-review 2026-09-22: a multi-turn
+    # onboarding conversation ("up to 3000" then later "actually not less than 5000") could merge
+    # into price_min=5000, price_max=3000 with nothing catching it before _save_filter_sync writes
+    # it. Same bug class (and same fix) already caught and applied to the identical Gemini-driven
+    # merge in contact_fallback.py/whatsapp_webhook.py's own filter-editing paths — an inverted
+    # range isn't cosmetic, it hard-fails every listing forever, indistinguishable from "no
+    # current matches" (see safe_range_update's own docstring).
     for key in _EMPTY_STATE:
+        if key in ("rooms_min", "rooms_max", "price_min", "price_max"):
+            continue
         if key in result:
             state[key] = result[key]
+
+    if "rooms_min" in result or "rooms_max" in result:
+        state["rooms_min"], state["rooms_max"] = safe_range_update(
+            state["rooms_min"], state["rooms_max"],
+            result.get("rooms_min"), result.get("rooms_max"),
+        )
+    if "price_min" in result or "price_max" in result:
+        state["price_min"], state["price_max"] = safe_range_update(
+            state["price_min"], state["price_max"],
+            result.get("price_min"), result.get("price_max"),
+        )
 
     # The keyword pre-check above only catches obvious explicit phrasings ("support"/"נציג") — this
     # catches everything else, since Gemini already reads the full message semantically as part of
