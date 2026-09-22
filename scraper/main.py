@@ -38,6 +38,7 @@ from yad2_client import (
     REGIONS_ON_MAP_API,
     Yad2FetchError,
     Yad2MapFetchError,
+    fetch_forsale_region,
     fetch_listing_detail_via_web_unlocker,
     fetch_region_pages,
     fetch_region_via_map_api,
@@ -664,6 +665,49 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
             # after the LAST region too; harmless, just a few seconds of otherwise-idle time before
             # this function returns).
             time.sleep(_MAP_API_REGION_PACING_SECONDS)
+
+    # 2026-09-22: task #1/#2 — forsale, confirmed live for all 7 REGION_SLUGS via the search-page +
+    # Web Unlocker mechanism (see fetch_forsale_region's own docstring). No map-API fast path here
+    # (Bright Data's own KYC wall blocks gw.yad2.co.il/realestate-feed/forsale/map specifically,
+    # confirmed live, unrelated to rent's own map API which is unaffected) — always one search-page
+    # fetch per region, same shape fetch_all_listings used for rent before REGIONS_ON_MAP_API
+    # existed. Shares known_ids with the rent loop above (a Yad2 token is globally unique regardless
+    # of deal type, so no cross-deal-type collision risk) — a listing seen in EITHER loop this run
+    # counts as seen for delisting purposes.
+    logger.info("Scraping %d Yad2 forsale regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
+    for region in REGION_SLUGS:
+        region_succeeded = False
+        for attempt in range(1, _YAD2_MAX_FETCH_ATTEMPTS + 1):
+            try:
+                for raw_item in fetch_forsale_region(region):
+                    fetched += 1
+                    normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.SALE)
+                    if normalized is not None:
+                        normalized_items.append(normalized)
+                        seen_external_ids.add(normalized.external_id)
+                    else:
+                        errors += 1
+                region_succeeded = True
+                break
+            except Yad2MapFetchError as exc:
+                if attempt < _YAD2_MAX_FETCH_ATTEMPTS:
+                    logger.warning(
+                        "Yad2 forsale fetch failed for region=%s (attempt %d/%d) — retrying in "
+                        "%.0fs: %s", region, attempt, _YAD2_MAX_FETCH_ATTEMPTS,
+                        _REGION_RETRY_DELAY_SECONDS, exc,
+                    )
+                    time.sleep(_REGION_RETRY_DELAY_SECONDS)
+                else:
+                    logger.exception(
+                        "Failed to fetch Yad2 forsale results for region=%s after %d attempts — "
+                        "skipping this region", region, _YAD2_MAX_FETCH_ATTEMPTS,
+                    )
+        if not region_succeeded:
+            errors += 1
+            all_succeeded = False
+        # Same pacing as the rent loop's own map-API requests above — this also goes through
+        # Bright Data Web Unlocker, same target site, same anti-detection reasoning.
+        time.sleep(_MAP_API_REGION_PACING_SECONDS)
 
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 

@@ -310,6 +310,11 @@ def test_scrape_yad2_retries_once_on_transient_failure_and_succeeds(monkeypatch)
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -333,6 +338,11 @@ def test_scrape_yad2_gives_up_after_retry_also_fails(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -356,6 +366,11 @@ def test_scrape_yad2_does_not_retry_on_auth004_quota_error(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -382,6 +397,11 @@ def test_scrape_yad2_multiple_regions_each_get_their_own_independent_retry(monke
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls_per_region: dict[str, int] = {}
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -399,6 +419,77 @@ def test_scrape_yad2_multiple_regions_each_get_their_own_independent_retry(monke
     assert seen_external_ids == {"tel-aviv-area-1", "jerusalem-area-1"}
 
 
+# --- _scrape_yad2: forsale loop, via fetch_forsale_region (2026-09-22, task #1/#2) ---------------
+
+
+def test_scrape_yad2_forsale_upserts_with_sale_deal_type(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", lambda region, known_ids, **kw: iter([]))
+    monkeypatch.setattr(
+        scraper_main, "fetch_forsale_region", lambda region: iter([_fake_yad2_item("sale-1")])
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
+    assert seen_external_ids == {"sale-1"}
+    assert all_succeeded is True
+
+
+def test_scrape_yad2_forsale_retries_once_on_transient_failure(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", lambda region, known_ids, **kw: iter([]))
+    calls = []
+
+    def _fake_fetch_forsale_region(region):
+        calls.append(region)
+        if len(calls) == 1:
+            raise scraper_main.Yad2MapFetchError("Web Unlocker failed: transient")
+        yield _fake_yad2_item("sale-1")
+
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", _fake_fetch_forsale_region)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(calls) == 2  # a real retry happened
+    assert all_succeeded is True
+    assert seen_external_ids == {"sale-1"}
+
+
+def test_scrape_yad2_forsale_failure_does_not_affect_the_rent_loops_own_result(monkeypatch):
+    """A broken forsale region must not lose or corrupt what the rent loop already found."""
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
+    monkeypatch.setattr(
+        scraper_main, "fetch_region_pages", lambda region, known_ids, **kw: iter([_fake_yad2_item("rent-1")])
+    )
+
+    def _fail(region):
+        raise scraper_main.Yad2MapFetchError("Web Unlocker failed: persistent")
+        yield  # pragma: no cover - makes this a generator, never reached
+
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", _fail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert seen_external_ids == {"rent-1"}
+    assert any(item.deal_type == scraper_main.DealType.RENT for item in normalized_items)
+    assert all_succeeded is False  # the forsale region genuinely failed, must surface as such
+    assert errors == 1
+
+
 # --- _scrape_yad2: regions on REGIONS_ON_MAP_API use the Bright Data map API, not ZenRows -------
 # (2026-09-14 — the real, partial migration; see yad2_client.REGIONS_ON_MAP_API's own comment)
 
@@ -408,6 +499,11 @@ def test_scrape_yad2_uses_the_map_api_for_regions_on_it(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"tel-aviv-area": {}})
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     map_calls = []
     zenrows_calls = []
 
@@ -708,6 +804,11 @@ def test_scrape_yad2_map_api_region_retries_on_yad2_map_fetch_error(monkeypatch)
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"tel-aviv-area": {}})
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_via_map_api(region):
