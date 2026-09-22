@@ -328,6 +328,20 @@ scraper:
     # live evidence (several successful runs, no account warnings) supports a higher number.
     # maxNewDetailFetchesPerRun: 15
 
+  facebookGroups:
+    # 2026-09-22: comma-separated Facebook numeric group ids to track (see
+    # scraper/main.py's own _FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR comment) — deliberately left
+    # UNSET here. _scrape_facebook_groups() is a genuine no-op with no group ids configured, so
+    # this whole block being absent is safe even though facebook_groups is already in
+    # scraper.facebook's own SCRAPE_SOURCES value above (runs on the same schedule/suspend as
+    # Marketplace — same dedicated, sensitive account, no reason for a second CronJob). Only one
+    # real group is confirmed as of this writing (פשפשוק - דירות להשכרה, id 1665476640352771) —
+    # the owner said more would follow via a PDF of links; add each new id to this
+    # comma-separated string once confirmed, never guessed at.
+    # trackedIds: "1665476640352771"
+    # Left unset — scraper/main.py's own Python-side default (15) applies.
+    # maxNewDetailFetchesPerRun: 15
+
 resources:
   bot:
     requests: { cpu: "50m", memory: "128Mi" }
