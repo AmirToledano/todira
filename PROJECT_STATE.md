@@ -7157,3 +7157,203 @@ merged to main / deployed** — real production payment-webhook code, held for e
 approval before the next deploy. Merging it does not unblock anything by itself (still needs the
 real API keys to ever actually fire), so there's no urgency to merge it before the keys exist —
 but don't forget it's sitting there uncommitted-to-main when the keys do arrive.
+
+## Update 2026-09-22, continuation of the 2026-09-21 session: an accidental production deploy
+## incident (found + fixed), then a long autonomous "continue building" stretch — Yad2/Komo/
+## Facebook Marketplace sale-category scraping wired (3 of 4 sources), Homeless's RESP001
+## confirmed still genuinely broken live, and two real bugs fixed via a full code review pass.
+
+### 1. Incident: PR #377's squash-merge accidentally deployed the held-back Takbull code, and the
+### resulting deploy failed on an unrelated real bug of its own — both now fixed and disclosed
+
+Picking this session back up, the owner said "כל מה שאתה יכול להמשיך לעשות... תמשיך" (continue
+whatever you can without me). Merging PR #377 (intended as ONLY the Yad2 forsale diagnostic
+rebuild) squash-merged the entire feature branch instead — including the Takbull GET-IPN webhook
+fix from section 3 above, which was explicitly being held back pending owner approval. Real,
+owned mistake in merge scope, not intentional.
+
+The resulting production deploy (run 35796719451) then failed at the Helm upgrade step — but NOT
+because of Takbull. Real root cause: `charts/todira/templates/facebook-scraper-cronjob.yaml`'s own
+`{{- if .Values.scraper.facebookGroups.trackedIds }}` blew up with `nil pointer evaluating
+interface {}.trackedIds` — `values.yaml`'s `scraper.facebookGroups:` block has every real key
+commented out, so it parses as `nil`, not an empty map, and Go templates can't dot into a nil
+interface's field. Fixed by swapping to `{{- with .Values.scraper.facebookGroups }}` (treats nil
+as falsy, skips the block) instead of the direct `.trackedIds` access.
+
+Verified live, not assumed, before/after the fix: Helm's own upgrade failure happens at template-
+render time, BEFORE touching the cluster — the failed deploy never partially applied anything, and
+`todira-bot`/`todira-website` stayed on the pre-#377 image the whole time. Also re-ran
+`diagnose-takbull-recurring-config-status.yaml` fresh: `TAKBULL_API_KEY`/`TAKBULL_API_SECRET` were
+(and still are) completely unset in both GitHub secrets and the live k8s secret — so even once the
+Helm fix deploys and the Takbull code goes live in source, it stays functionally inert with zero
+real payment risk until those keys exist. Disclosed the full incident to the owner in chat before
+continuing (see that session's own transcript) — **the Helm fix itself is committed and pushed to
+`claude/todira-project-status-7c3o7w`, but main is still on the broken pre-fix commit as of this
+entry: merging to main is still pending explicit owner approval**, same standing rule as the
+Takbull code itself, since the same merge would also be the first time Takbull's code actually
+goes live (still harmless without the keys, but a real production deploy nonetheless).
+
+### 2. Yad2 forsale — CONFIRMED and WIRED (tasks #1/#2 from the punch list above)
+
+Rebuilt `diagnose-yad2-forsale-via-web-unlocker.yaml` against the real mechanism (Bright Data Web
+Unlocker, not the dead ZenRows one PR #368 tested). First run used a 60s curl timeout — shorter
+than production's own real 90s (`bright_data_client._WEB_UNLOCKER_TIMEOUT_SECONDS`) — and just
+timed out with no real answer; fixed and re-ran at 90s. Confirmed live for **all 7 REGION_SLUGS**:
+every `yad2.co.il/realestate/forsale/<region>` search page returns a real 200 with 44-51 real
+`data-nagish="feed-item-layout-link"` cards and a real `__NEXT_DATA__` blob — the exact same
+markup `_parse_cards`/`_extract_feed_records` already parse for rent. The forsale MAP API
+(`gw.yad2.co.il/realestate-feed/forsale/map`) is a confirmed, separate dead end: a real Bright
+Data KYC wall ("Residential Failed (bad_endpoint)... in accordance with robots.txt"), unrelated to
+and unfixable from this project's own code — rent's own map API doesn't have this wall, forsale's
+specifically does.
+
+Wired: `yad2_client.fetch_forsale_region(region)` (new — `_fetch_direct` + the existing
+`_parse_cards`, raises `Yad2MapFetchError` on failure). `scraper/main.py`'s `_scrape_yad2()` now
+runs a second per-region loop after the rent one, same retry/pacing shape, `deal_type=SALE`,
+sharing `known_ids` with the rent loop (a Yad2 token is globally unique regardless of deal type).
+3 new tests + 6 existing tests updated with a no-op forsale default. Committed
+(`c455110`), not yet merged to main.
+
+### 3. Facebook Marketplace forsale — CONFIRMED and WIRED (tasks #7/#8)
+
+Dispatched the existing `diagnose-facebook-marketplace-page-structure.yaml` with
+`url_path=category/propertyforsale/` (that workflow already took `url_path` as an input — no new
+file needed). Confirmed live: a real, separate feed — 200, 24 real `MarketplaceFeedListingStory`
+nodes wrapping a `GroupCommerceProductItem` listing type with real `listing_price`/
+`strikethrough_price`/`min_listing_price`/`max_listing_price` fields a rental listing never
+carries (one sample was even a real Arabic listing, "أرض للبيع" — land for sale — confirming this
+category genuinely spans beyond Hebrew rental content).
+
+Wired: `_scrape_facebook()` now loops `_FACEBOOK_MARKETPLACE_CATEGORIES` (rent + forsale) instead
+of just rent. Both categories share ONE `known_ids` set and, importantly, ONE combined
+`_facebook_max_new_detail_fetches_per_run()` budget/pacing counter — this is a real
+account-safety cap on total new requests against the dedicated, sensitive Facebook account this
+run, not a per-category allowance, so adding a second category does not silently double real
+exposure against that account. 2 new tests + fixed 4 existing tests whose mocks needed the new
+`url_path` arg. Committed (`cc66153`).
+
+### 4. Komo sale — CONFIRMED and WIRED (tasks #3/#4)
+
+Extended `diagnose-komo-region-coverage.yaml` (already registered, so dispatchable without a
+merge) with real candidate tests instead of guessing: `apartments-for-sale.asp` is confirmed real
+(200, real `sessionToken`, real title "דירות למכירה בתל אביב יפו - לוח קומו") — `houses-for-
+sale.asp`/`nadlan-for-sale.asp` are real 404s, ruled out. `nehes=` on the coordinates POST does
+**NOT** select deal type (nehes=1/2/3 on the same rent page all returned the identical 10657-id
+set) — `iska=` does: iska=2 returned a real, comparably-large (10522), fully DISJOINT id set from
+iska=1's rent set. Cross-checked 3 real iska=2 ids' own detail pages in a follow-up run: real sale
+prices (₪2,790,000 / ₪2,400,000 / ₪1,800,000) and real "למכירה" (for-sale, not "להשכרה") og:titles,
+matched cleanly by `_parse_details_html`'s existing regexes with zero changes needed.
+
+Wired: `komo_client.fetch_coordinate_ids`/`fetch_all_coordinate_ids` gained `iska`/
+`search_page_url` params (default unchanged — every existing rent caller unaffected). New
+`SALE_SEARCH_PAGE_URL` constant. `_scrape_komo()` now also fetches the sale coordinate list
+(iska=2) alongside rent, sharing `known_ids`/`processed_this_run`/the detail-fetch cap (same
+account-safety-style reasoning as Facebook above, though here the constraint is ZenRows credits,
+not account risk — Komo itself has no bot-challenge wall). 5 new tests + fixed 3 existing tests
+whose mocks needed the new kwargs. Committed (`03e25f8`).
+
+### 5. Homeless — sale category confirmed to EXIST but not yet parseable; RESP001 confirmed STILL
+### genuinely broken live, right now (task #14, tracked since 2026-09-17, finally re-checked)
+
+Extended the existing `diagnose-homeless-pagination.yaml` (already registered) rather than writing
+a new file — a brand-new workflow file can't be `workflow_dispatch`-triggered until it exists on
+main, and merging to main is blocked on the owner's Takbull-approval decision above, so every
+diagnostic this session reused an already-registered file.
+
+**RESP001 is real and current, not stale**: the exact same plain ZenRows GET of
+`homeless.co.il/rent/` production makes right now returns `http_status=422`, ZenRows' own error
+body `code='RESP001' title='Could not get content. try enabling javascript rendering for a higher
+success rate (RESP001)'`. This is THE live production bug — Homeless's regular rental scraping is
+genuinely down right now, not a stale/already-resolved tracking entry. A follow-up run tested
+ZenRows' own suggested fix (`js_render=true`) directly against the real endpoint, checking both
+whether it actually returns real rows AND its real `X-Request-Credits` cost (js_render is
+meaningfully more expensive — this project specifically chose Homeless/Komo for their cheap
+1-credit plain tier, same cost reasoning as Yad2's own `YAD2_NOTES.md`/module-docstring js_render
+saga) — **result not yet read as of this entry, check the `diagnose-homeless-pagination.yaml`
+run dispatched right before this file was written.**
+
+**Homeless sale category — confirmed to exist, NOT yet wired**: `homeless.co.il/sale/` is real
+(200, 257KB, title "דירות למכירה | הומלס") — but the current `<tr id="ad_...">` row regex found
+**zero** rows on it, meaning sale listings use a different markup shape than rent's table rows
+(not confirmed what shape yet — `/buy/`/`/forsale/` were also tried and are real 404s, ruled out).
+Tasks #5/#6 remain open: needs one more real diagnostic dumping the actual markup around a sale
+listing before writing a parser (same discipline as everywhere else — never guess the shape).
+
+### 6. Two real bugs found via a full website+bot code-review pass, both fixed
+
+Spawned two background Explore-agent reviews (read-only, no code written by them) covering
+`website/main.py`/`grow_client.py`/`subscription_housekeeping.py` and every `bot/handlers/*.py` —
+explicitly told to report only concrete, verified behavioral bugs, not style. Two were fixed this
+session (both safe, well-scoped, unrelated to payment code):
+
+- **`bot/keyboards.py`'s `render_root_summary`** rendered `draft["keywords"]` (genuine free user
+  text — typed directly, or Gemini-extracted) unescaped into a message always sent with
+  `parse_mode=ParseMode.HTML`. A keyword like "AC & heating" made Telegram's HTML parser reject
+  the message outright — and since this same render is what `/filter` always shows first
+  (including every submenu's "⬅️ חזרה" button), that made `/filter` **permanently unusable** for
+  that user, no way to even reach Save again, until the DB row was fixed manually. Fixed with
+  `html.escape()`, same pattern already used everywhere else user text meets `parse_mode=HTML` in
+  this project (`todira_common/cards.py`, `handlers/support.py`) — just never applied here. 2 new
+  tests. Committed (`3bb633e`).
+
+- **`bot/handlers/onboarding.py`'s `_handle_freetext`** merged each Gemini-extracted field
+  independently every turn, with NO cross-field validation — the one Gemini-driven merge path in
+  this codebase that lacked the `safe_range_update` guard `contact_fallback.py`/
+  `website/whatsapp_webhook.py` already use for the identical bug class (see that function's own
+  docstring — a real 2026-09-07 incident: an inverted min>max range hard-fails every listing
+  forever, indistinguishable from "no current matches"). A multi-turn onboarding conversation ("up
+  to 3000" then later "actually not less than 5000") could merge into `price_min=5000,
+  price_max=3000` with nothing catching it before `_save_filter_sync` ever wrote it. Fixed: rooms
+  and price now go through `safe_range_update` when merging into onboarding's accumulated state,
+  same as everywhere else. 4 new tests. Committed (`5c32821`).
+
+Two more real findings from the same review passes were NOT fixed this session (documented here so
+they aren't lost, not because they're not real):
+- **`website/main.py`'s `/upgrade`** can let a user open a brand-new Takbull subscription while a
+  "cancelled but not yet lapsed" one is still live (`cancel_at_period_end=True` but
+  `takbull_subscription_uniqid` still set — deliberately left set until `paid_until` passes, see
+  `subscription_housekeeping.py`). `/upgrade`'s own `has_active_subscription` check
+  (`user.takbull_subscription_uniqid is not None and not user.cancel_at_period_end`) treats that
+  user as having no active subscription, so `upgrade_submit` never checks for the old uniqid before
+  opening a new order; when the new one confirms, the webhook overwrites
+  `user.takbull_subscription_uniqid`, permanently losing the DB's only reference to the still-live
+  old Takbull subscription — real double-billing with no way to cancel the orphaned one. Not fixed
+  tonight: real payment-flow logic, genuinely blocked on Takbull actually being connected before
+  this is even reachable in practice (recurring API keys still unset), and touching subscription/
+  billing code without the owner's own review felt like the wrong call to make unilaterally.
+- Two lower-severity findings (Google account-creation race / `/react` like-hide race, both a
+  plain SELECT-then-INSERT racing a real DB unique constraint into an unhandled 500 on a genuine
+  double-click/concurrent request; `/filter`'s numeric fields crash on non-numeric POST input) —
+  real but lower-traffic edge cases, not fixed tonight, worth a future pass.
+
+### 7. Current overall status, for whoever picks this up next
+
+**Blocked on the owner's own explicit approval, nothing further to do in code:**
+1. Merge `claude/todira-project-status-7c3o7w` to `main` — this single merge would fix the
+   currently-broken CI/deploy (the Helm nil-pointer fix), actually deploy tonight's real feature
+   work (Yad2/Facebook/Komo sale scraping, the two bug fixes), AND be the first time the
+   already-merged-into-main-via-#377 Takbull GET-IPN code goes functionally live (still harmless —
+   confirmed live tonight that `TAKBULL_API_KEY`/`TAKBULL_API_SECRET` are still unset). All of this
+   is one merge decision now, not several — see section 1 above for the full incident this
+   entangles with.
+2. Takbull/Upay recurring-billing API keys, Meta Business Verification — unchanged from section 6
+   above, still externally blocked.
+
+**Ready to resume immediately once code is on main (or via more read-only diagnostics before
+then):**
+3. Read the `diagnose-homeless-pagination.yaml` run's js_render=true result (dispatched right
+   before this entry) — decide whether to actually switch Homeless's plain fetch to js_render=true
+   (real cost increase) based on that real answer, not the ZenRows error message alone.
+4. One more diagnostic on `homeless.co.il/sale/`'s real markup (dump actual HTML around a listing,
+   same as this project's very first Homeless build) — the row regex found 0 matches, meaning it's
+   a real but differently-shaped page, not confirmed how yet.
+5. Facebook Groups' own sale category (if it has one) was never checked — lower priority, no owner
+   ask for it yet.
+6. The two lower-severity bugs from section 6 above (account-creation/like-hide races, `/filter`
+   numeric-input crash) and the `/upgrade` orphaned-subscription bug (higher severity, but
+   genuinely blocked on Takbull being connected) remain open, undocumented anywhere but this entry
+   before now.
+
+**Confirmed fine, no action needed:** the Helm fix, Yad2/Facebook/Komo sale wiring, and both
+keyword-escaping/onboarding-range bug fixes are all committed, tested (958+ tests passing, ruff
+clean throughout), and pushed — genuinely done, just not yet on main.
