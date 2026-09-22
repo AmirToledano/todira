@@ -40,17 +40,27 @@ jobs:
           fi
 
           echo "=== POST api.brightdata.com/request for https://www.yad2.co.il/realestate/forsale/tel-aviv-area (zone=web_unlocker1) ==="
+          # --max-time 90, matching todira_common.bright_data_client._WEB_UNLOCKER_TIMEOUT_SECONDS
+          # exactly — production's own real timeout for this call. First run of this diagnostic used
+          # 60s and hit curl's own timeout (0 bytes, no real verdict) before Bright Data itself ever
+          # answered; that told us nothing about whether forsale actually works, only that 60s wasn't
+          # enough. Retrying at the real production timeout instead of guessing from an
+          # under-timed run.
           curl -sS -X POST "https://api.brightdata.com/request" \
             -H "Authorization: Bearer $API_KEY" \
             -H "Content-Type: application/json" \
             -d '{"zone": "web_unlocker1", "url": "https://www.yad2.co.il/realestate/forsale/tel-aviv-area", "format": "raw"}' \
             -o /tmp/forsale.html \
             -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-            --max-time 60 || true
+            --max-time 90 || true
           echo "--- first 500 chars ---"
           head -c 500 /tmp/forsale.html || true
           echo
           echo "--- verdict ---"
+          if [ ! -f /tmp/forsale.html ]; then
+            echo "curl produced no output file at all (timed out again, or a connection-level failure) — nothing to verdict on."
+            exit 0
+          fi
           python3 -c "
           with open('/tmp/forsale.html', encoding='utf-8', errors='replace') as f:
               html = f.read()
@@ -81,7 +91,7 @@ jobs:
             --data-raw "$(python3 -c "import json,sys; print(json.dumps({'zone':'web_unlocker1','url':sys.argv[1],'format':'raw'}))" "$URL")" \
             -o /tmp/forsale_map.json \
             -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
-            --max-time 60 || true
+            --max-time 90 || true
           echo "--- first 500 chars ---"
           head -c 500 /tmp/forsale_map.json || true
           echo
