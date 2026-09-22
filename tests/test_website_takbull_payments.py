@@ -173,6 +173,106 @@ def test_webhook_rejects_when_secret_not_configured(client, monkeypatch):
     assert resp.status_code == 404
 
 
+# --- /webhooks/takbull/{secret} GET — the REAL Takbull IPN mechanism (found live 2026-09-21) ---
+
+
+def test_webhook_get_rejects_wrong_secret(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    resp = client.get("/webhooks/takbull/wrong-secret", params={"uniqId": "x", "order_reference": "1"})
+    assert resp.status_code == 404
+
+
+def test_webhook_get_grants_access_via_validate_notification(client, monkeypatch):
+    # The GET IPN itself carries no amount — this confirms the full real flow: statusCode=0 from
+    # the IPN query params triggers a ValidateNotification call, and ITS response's amount/
+    # isSubscriptionPayment are what actually get trusted for crediting.
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
+    payment = _FakePayment(
+        user_id=2,
+        plan="monthly_subscription",
+        amount_ils=Decimal("49.90"),
+        status="pending",
+        gateway="takbull",
+        subscription_uniqid="sub-123",
+    )
+    fake_session = _FakeSession(scalar_results=[payment], get_map={(website_main.User, 2): user})
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(
+            website_main.takbull_client,
+            "validate_notification",
+            lambda uniqid: {"amount": "49.90", "isSubscriptionPayment": True, "orderStatus": 2},
+        ),
+    ):
+        resp = client.get(
+            "/webhooks/takbull/real-secret",
+            params={
+                "uniqId": "a1b2c3",
+                "order_reference": str(payment.id),
+                "statusCode": "0",
+                "transactionInternalNumber": "000001003",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert payment.status == "paid"
+    assert payment.gateway_transaction_id == "a1b2c3"
+    assert user.paid_until is not None
+    assert user.takbull_subscription_uniqid == "sub-123"
+
+
+def test_webhook_get_ignores_nonzero_status_code(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    fake_session = _FakeSession()
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main.takbull_client, "validate_notification") as mock_validate,
+    ):
+        resp = client.get(
+            "/webhooks/takbull/real-secret",
+            params={"uniqId": "a1b2c3", "order_reference": "1", "statusCode": "1"},
+        )
+
+    assert resp.status_code == 200
+    mock_validate.assert_not_called()
+    assert fake_session.committed is False
+
+
+def test_webhook_get_leaves_pending_when_validate_notification_fails(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    payment = _FakePayment(
+        user_id=2, plan="monthly_subscription", amount_ils=Decimal("49.90"), status="pending", gateway="takbull"
+    )
+    fake_session = _FakeSession(scalar_results=[payment])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main.takbull_client, "validate_notification", lambda uniqid: None),
+    ):
+        resp = client.get(
+            "/webhooks/takbull/real-secret",
+            params={"uniqId": "a1b2c3", "order_reference": str(payment.id), "statusCode": "0"},
+        )
+
+    assert resp.status_code == 200
+    assert payment.status == "pending"
+    assert fake_session.committed is False
+
+
+def test_webhook_get_ignores_missing_uniq_id_or_order_reference(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    fake_session = _FakeSession()
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/webhooks/takbull/real-secret", params={"statusCode": "0"})
+
+    assert resp.status_code == 200
+    assert fake_session.committed is False
+
+
 def test_webhook_grants_access_on_recognized_success_payload_and_stores_subscription(client, monkeypatch):
     monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
     user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)

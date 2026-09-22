@@ -128,3 +128,35 @@ def test_fetch_post_detail_returns_none_on_fetch_failure(monkeypatch):
     result = facebook_groups_client.fetch_post_detail("1665476640352771", "4728400380727033")
 
     assert result is None
+
+
+def _home_feed_story(*, post_id: str, group_id: str | None, author: str | None = "Someone") -> dict:
+    feedback: dict = {}
+    if group_id is not None:
+        feedback["associated_group"] = {"id": group_id}
+    if author is not None:
+        feedback["owning_profile"] = {"__typename": "User", "name": author}
+    return {"__typename": "Story", "post_id": post_id, "creation_time": 111, "feedback": feedback}
+
+
+def test_fetch_home_feed_post_ids_returns_only_tracked_groups(monkeypatch):
+    monkeypatch.setenv("FACEBOOK_COOKIES", "c_user=1; xs=fake")
+    blocks = [
+        _home_feed_story(post_id="1728205471811554", group_id="266774507954665"),
+        # Real, live-confirmed shape: a followed Page's post has no associated_group at all.
+        _home_feed_story(post_id="1662526462549755", group_id=None, author="Bits of Gold"),
+        # A real post from a group we're simply not tracking.
+        _home_feed_story(post_id="999", group_id="1111111"),
+    ]
+    html = "<html><body>" + "".join(_script_wrap(b) for b in blocks) + "</body></html>"
+    monkeypatch.setattr(facebook_groups_client, "_fetch", lambda url, **kw: html)
+
+    result = facebook_groups_client.fetch_home_feed_post_ids({"266774507954665", "1665476640352771"})
+
+    assert result == [("266774507954665", "1728205471811554")]
+
+
+def test_fetch_home_feed_post_ids_raises_without_cookie(monkeypatch):
+    monkeypatch.delenv("FACEBOOK_COOKIES", raising=False)
+    with pytest.raises(FacebookGroupsFetchError):
+        facebook_groups_client.fetch_home_feed_post_ids({"1665476640352771"})

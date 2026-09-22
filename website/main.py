@@ -1474,32 +1474,119 @@ def _looks_like_a_successful_takbull_payload(body: dict) -> bool:
     (Id/uniqId/OrderNumber/order_reference/CustomerFullName/CustomerEmail/CustomerPhone/
     OrderStatus/StatusCode/StatusDescription/OrderTotalSum/Action/IsSubscriptionPayment) —
     confirmed from their docs, not guessed. StatusDescription=="Success" is the clearest signal;
-    StatusCode==0 backs it up in case wording ever changes."""
+    StatusCode==0 backs it up in case wording ever changes.
+
+    2026-09-21: takbull.co.il's own official API docs site (found live, separately from the PDF
+    above) documents a DIFFERENT example shape for the same IPN/ValidateNotification concept —
+    {"Status": "Approved", "Amount": ..., "TransactionId": ..., ...} — genuinely a third
+    inconsistent shape alongside the PDF's own two (see create_subscription_checkout_url's own
+    2026-09-21 comment for the same pattern on a different endpoint). Recognized here too rather
+    than betting on only one source being the real one."""
     status_description = str(body.get("StatusDescription", "")).strip().lower()
     if status_description == "success":
+        return True
+    if str(body.get("Status", "")).strip().lower() == "approved":
         return True
     return body.get("StatusCode") == 0 and body.get("OrderStatus") is not None
 
 
-@app.post("/webhooks/takbull/{secret}")
-async def webhooks_takbull(request: Request, secret: str):
-    """Takbull's server-to-server payment confirmation. Takbull configures ONE static webhook URL
-    for all orders (unlike Grow's per-transaction notifyUrl) and has no signature/HMAC scheme (see
-    takbull_client.py's module docstring) — `secret` is a fixed, unguessable path segment standing
-    in for that missing authentication, checked against TAKBULL_WEBHOOK_SECRET below. Always
-    returns 200 so Takbull doesn't retry-storm this endpoint (matches whatsapp_webhook.py's and
-    /webhooks/grow's own documented always-200 contract), except for a bad secret — that's a 404,
-    not a 200, since it isn't a payload Takbull would ever legitimately retry."""
+def _check_takbull_secret(secret: str) -> bool:
     expected_secret = os.environ.get(takbull_client.WEBHOOK_SECRET_ENV_VAR, "").strip()
-    if not expected_secret or not hmac.compare_digest(secret, expected_secret):
+    return bool(expected_secret) and hmac.compare_digest(secret, expected_secret)
+
+
+@app.get("/webhooks/takbull/{secret}")
+async def webhooks_takbull_get(request: Request, secret: str):
+    """The REAL Takbull IPN mechanism — found live 2026-09-21 (owner: "האם זה קשור בכלל לGET?"),
+    confirmed against the PDF's own Authentication/IPN section, word for word: "GET — IPN —
+    Instant Payment Notification... Takbull calls your IPNAddress..." with a real example URL
+    shaped as query params (uniqId/order_reference/statusCode/statusDescription/takbullAction/
+    transactionInternalNumber), NOT a POST with a JSON body. The @app.post handler below was built
+    on an assumed payload shape that was never actually confirmed against this section — almost
+    certainly the real reason the webhook "never fires" was reported earlier: every real GET from
+    Takbull would have hit this same path as a POST-only route and been rejected outright (405),
+    silently, this whole time. Every "successful" test before this was a manual POST simulating a
+    payload shape this project guessed at, not a real Takbull-triggered call.
+
+    The GET ping itself carries no amount/subscription info — the PDF is explicit: "On receiving
+    the IPN, call ValidateNotification with the uniqId to confirm payment details" — so this calls
+    takbull_client.validate_notification for the authoritative amount/IsSubscriptionPayment, but
+    trusts THIS request's own statusCode==0 (confirmed-documented meaning, at three separate points
+    in the PDF) for the actual success signal, never a guessed-at field from ValidateNotification's
+    own response shape (its real "success" encoding isn't confirmed anywhere in the docs).
+
+    NOT YET LIVE-VERIFIED against a real Takbull-triggered call — recurring_api_configured() is
+    still False in production (TAKBULL_API_KEY/TAKBULL_API_SECRET never set, see
+    set-takbull-api-key-secret.yaml), itself blocked on Upay's pending KYC approval for this
+    account. Real end-to-end confirmation has to wait for that."""
+    if not _check_takbull_secret(secret):
+        return Response(status_code=404)
+
+    params = dict(request.query_params)
+    logger.info("Takbull GET IPN raw query params: %r", params)
+
+    uniq_id = params.get("uniqId")
+    order_reference = params.get("order_reference")
+    status_code = params.get("statusCode")
+
+    if not uniq_id or not order_reference:
+        logger.warning(
+            "Takbull GET IPN missing uniqId/order_reference (got %r) — nothing usable to process",
+            params,
+        )
+        return Response(status_code=200)
+
+    if status_code != "0":
+        logger.info(
+            "Takbull GET IPN for order_reference=%s had statusCode=%r (not '0') — not a success "
+            "signal, ignoring",
+            order_reference, status_code,
+        )
+        return Response(status_code=200)
+
+    validated = takbull_client.validate_notification(uniq_id)
+    if validated is None:
+        logger.warning(
+            "Takbull GET IPN for order_reference=%s had statusCode=0 but ValidateNotification "
+            "didn't return usable data (see the error logged above) — left pending, no amount to "
+            "safely trust",
+            order_reference,
+        )
+        return Response(status_code=200)
+
+    body = {
+        "order_reference": order_reference,
+        "uniqId": uniq_id,
+        "OrderNumber": params.get("transactionInternalNumber"),
+        "StatusDescription": "Success",
+        "OrderTotalSum": validated.get("amount"),
+        "IsSubscriptionPayment": validated.get("isSubscriptionPayment"),
+    }
+    return await _process_takbull_payload(body)
+
+
+@app.post("/webhooks/takbull/{secret}")
+async def webhooks_takbull_post(request: Request, secret: str):
+    """Kept as a defensive fallback alongside the real GET flow above (see that handler's own
+    docstring) — in case a future Takbull event genuinely does POST a rich payload directly, or for
+    the existing diagnose-takbull-webhook-manual-post.yaml-style manual reconciliation. Same
+    always-200-except-bad-secret contract."""
+    if not _check_takbull_secret(secret):
         return Response(status_code=404)
 
     try:
         body = dict(await request.json())
     except Exception:
         body = dict(await request.form())
-    logger.info("Takbull webhook raw payload: %r", body)
+    logger.info("Takbull POST webhook raw payload: %r", body)
+    return await _process_takbull_payload(body)
 
+
+async def _process_takbull_payload(body: dict) -> Response:
+    """Shared by both the real GET IPN flow and the defensive POST fallback above — everything
+    past secret-checking and payload-shape-normalization was already correct and tested (16 tests
+    in test_website_takbull_payments.py), so this is an extraction, not a rewrite of the actual
+    matching/crediting logic."""
     order_reference = body.get("order_reference")
     try:
         payment_id = int(order_reference)

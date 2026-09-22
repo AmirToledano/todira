@@ -6872,3 +6872,288 @@ work; this only prevents the NEXT run from stalling the same way.
 3. Everything from the previous several entries' "Still open" lists (Homeless ZenRows RESP001,
    Telegram caption RTL alignment inconsistency, DCA collector permanently dead-ended, etc.) is
    still open too.
+
+## Update 2026-09-21, late night, long continuous session: corrected a stale ZenRows assumption for
+## Yad2 (real mechanism is Bright Data Web Unlocker, confirmed in code not guessed), built the whole
+## Facebook Groups pipeline (discovery via home feed across ALL joined groups + regex field
+## extraction, owner's explicit no-LLM-cost decision), and found + partially fixed the REAL root
+## cause of the Takbull webhook automation mystery (GET IPN, not POST) — still blocked end-to-end on
+## TAKBULL_API_KEY/TAKBULL_API_SECRET never being set, itself blocked on Upay's pending KYC approval
+
+**Context for whoever/whatever reads this next (including a future compacted version of this same
+session)**: this was one long, unbroken conversation. The owner explicitly asked, at the very end,
+to make sure everything here survives a context compaction — this entry is written for that.
+
+### 1. Yad2's real current scraping mechanism — corrected a wrong assumption, confirmed in the actual code
+
+Early this session, a stale internal task-tracker note plus still-present (but actually DEAD)
+ZenRows code in `yad2_client.py` led to building and running a diagnostic assuming ZenRows was still
+Yad2's live bypass. The owner corrected this sharply and correctly: ZenRows was cancelled for Yad2
+specifically. Verified directly in the code, not from memory: `scraper/main.py` only imports
+`fetch_region_via_map_api` and `fetch_listing_detail_via_web_unlocker` from `yad2_client.py` — both
+Bright-Data-based. `fetch_region_pages` (the ZenRows-based function) still exists but is dead in
+practice: it only runs for a region NOT in `REGIONS_ON_MAP_API`, and all 7 `REGION_SLUGS` are on that
+list today. **Real current state: 100% of live Yad2 traffic goes through Bright Data Web Unlocker**
+(see the 2026-09-16/17 entries above for how that migration happened).
+
+Also confirmed live in code (not guessed) which sources still use ZenRows at all:
+- **Komo: NONE** — migrated fully off ZenRows, then off Bright Data ISP proxy too (see
+  `komo_client.py`'s own docstring, 2026-09-15) — runs on plain, unproxied direct requests now.
+- **Homeless: YES, still the real mechanism** — and it's the one source that's actually broken
+  right now (`ZenRows RESP001` on its own search-page fetch, tracked separately, not fixed this
+  session).
+
+`diagnose-yad2-forsale-via-zenrows.yaml` (from PR #368, merged earlier this session before the
+correction) tested the wrong mechanism — its "success" finding is real but irrelevant to production.
+**Not yet rebuilt** with the real mechanism (Bright Data Web Unlocker) — still open, see below.
+
+### 2. Facebook Groups — full pipeline built this session, NOT yet wired into scraper/main.py
+
+The owner gave a real group URL ("פשפשוק - דירות להשכרה", group_id=1665476640352771) and later said
+he'd send more via a PDF of links (not yet received as of this entry).
+
+**Post-detail structure — CONFIRMED live**, twice
+(`diagnose-facebook-group-post-detail.yaml`, real post_id=4728400380727033): a group post's own
+permalink page (`facebook.com/groups/<gid>/posts/<pid>/`) embeds the real content as a `Story` node
+(post_id/creation_time/`feedback.owning_profile.name`=author/`feedback.associated_group.id`) plus a
+`TextWithEntities` node carrying the real free-text body. The post's own body is reliably
+distinguishable from a comment/mention's own `TextWithEntities` on the SAME page: the post body has
+EXACTLY `{__typename, text}` as its keys, while every comment/mention node carries extra
+`ranges`/`aggregated_ranges`/etc keys even when empty — confirmed on two separate real posts, never
+ambiguous. Real example post text extracted: full Hebrew rental ad, price "1,350ש\"ח", contact name
++ phone, all in one free-text block.
+
+**Discovery — the group's OWN landing page is a real dead end** (confirmed twice,
+`diagnose-facebook-group-page-structure.yaml`): only ONE post id is ever server-rendered; the rest
+loads via client-side GraphQL this project deliberately did not reverse-engineer (owner: "תשאיר את
+זה לאופציה סופית", GraphQL stays a last resort).
+
+**Discovery — the REAL fix is the account's own HOME FEED, confirmed live**
+(`diagnose-facebook-home-feed-story-extraction.yaml`): a plain GET of `https://www.facebook.com/`
+(same fetch mechanism, no group_id needed) server-rendered Story nodes from **2 distinct real posts
+from 2 distinct real groups in ONE request** — including one post's full text right there on the
+feed. Also confirmed the feed mixes in non-group content (a followed Page's post, no
+`feedback.associated_group` at all) that has to be filtered out. Two lighter-weight alternatives were
+tried and ruled out first: `mbasic.facebook.com`/`m.facebook.com` both returned real 200s but with
+zero usable content links (framework/JS-shell pages, not the classic lightweight HTML Facebook used
+to serve), and `mbasic.facebook.com/notifications.php` redirected to a login wall.
+
+**Code shipped** (scraper/facebook_groups_client.py, scraper/facebook_groups_text_parser.py — NEW
+files, not yet imported by scraper/main.py):
+- `fetch_home_feed_post_ids(tracked_group_ids: set[str]) -> list[(group_id, post_id)]` — ONE fetch
+  covers every joined group; only returns pairs whose group_id is in the caller-supplied tracked
+  set (a Story missing `feedback.associated_group.id` entirely, or pointing at an untracked group,
+  is silently skipped). Deliberately does NOT trust the home feed's own co-located text for
+  attribution (several posts on one page, not provably safe to match text to the right post_id the
+  way a single post's own permalink page is) — text always comes from a follow-up
+  `fetch_post_detail` call, same two-stage "discover cheap, enrich only what's new" pattern
+  `facebook_client.py`/`yad2_client.py` already use.
+- `fetch_post_detail(group_id, post_id)` — the per-post fetch, returns a normalize()-ready flat
+  dict (id/url/description/dateAdded/price/rooms/floor/square_meters/city/neighborhood/street/
+  images), description including the author's name appended.
+- `fetch_group_post_ids(group_url)` — the older per-group-landing-page discovery, kept as a
+  simpler fallback (real limitation: only the newest post per call, see above).
+- **`facebook_groups_text_parser.parse_listing_fields(text) -> dict`** — regex/keyword extraction
+  of price/rooms/floor/square_meters/parking/elevator/balcony/renovated/roommates/petsAllowed from
+  the free Hebrew text. **Explicit owner decision, asked directly and answered directly**: regex,
+  not a per-post LLM call — this project has never made an LLM API call anywhere, and the owner
+  weighed the real per-post cost against regex's imperfect recall and chose free/imperfect. Tested
+  against the two real posts already confirmed live. One real Hebrew orthography trap caught before
+  shipping: "משופץ" (masculine, ends in sofit-ץ) is NOT a substring match for "משופצ" (the root
+  before a suffixed ת/ים uses regular צ) — both forms enumerated explicitly. City/neighborhood/
+  street deliberately NOT attempted (real addresses are too free-form in casual posts — the live
+  example never even mentioned a city, only "15 minutes from the university").
+- Wired into `fetch_post_detail`: every returned dict already has whatever `parse_listing_fields`
+  could extract merged in.
+
+14 new tests total (`test_facebook_groups_client.py`, `test_facebook_groups_text_parser.py`), all
+pass; 933 tests pass full suite; ruff clean.
+
+**Still open, explicitly not done this session**:
+1. **Not wired into scraper/main.py at all yet** — needs: (a) a source of tracked group ids (env
+   var, simplest option consistent with this project's other config, vs. a DB table — not decided),
+   (b) a `_scrape_facebook_groups()` scrape function mirroring `_scrape_facebook`'s shape, (c) added
+   to `_ALL_SOURCE_SCRAPERS` behind the SAME `SCRAPE_SOURCES` kill-switch Marketplace already uses
+   (same dedicated, sensitive account).
+2. `matching.py`/notification logic has NOT been checked for whether a listing with `price=None`
+   (always true for a Group post — there is no structured price field, only whatever the regex
+   parser found, which may itself be None) is handled safely against a saved search's price-range
+   filter. Flagged, not resolved.
+3. Owner has NOT yet sent the promised PDF of additional group links — only one group confirmed so
+   far.
+
+### 3. Takbull — found the REAL root cause of the automation mystery (GET, not POST), partially fixed, still blocked on missing keys
+
+**The real finding, confirmed independently from THREE separate Takbull sources tonight** (the
+original Postman/PDF doc, AND takbull.co.il's own official public API docs site, found live later
+in the same conversation): Takbull's real IPN mechanism is a **GET** request with query-string
+params (`?uniqId=...&order_reference=...&statusCode=...`), not a POST with a JSON body. The
+project's existing `/webhooks/takbull/{secret}` route was `@app.post`-only, built on an assumed
+payload shape that was never actually confirmed against this specific section of the docs.
+**Almost certainly the real reason the webhook "never fires" was reported weeks ago** — every real
+GET from Takbull would have hit a POST-only route and been rejected outright (405), silently, this
+whole time. Every earlier "successful" webhook test was a manual POST simulating a payload shape
+this project guessed at, never a real Takbull-triggered call.
+
+The GET ping itself carries no amount/subscription info — Takbull's own docs are explicit: "On
+receiving the IPN, call ValidateNotification with the uniqId to confirm payment details" — and
+separately, the official docs site's own Best Practices section says the same thing even more
+strongly: "תמיד לבצע Validate לאחר IPN, וגם כאשר הלקוח מגיע מדווח 'שילמתי'... לא להסתמך על
+Redirect בלבד."
+
+**Real, live-confirmed inconsistency across the three Takbull doc sources** (not resolved by
+guessing at one): the PDF's own `GetTakbullPaymentPageRedirectUrl` response example is
+`{"responseCode": 0, "uniqId": "..."}`; the official docs site's own example for the SAME endpoint
+is `{"Status": 1, "uniqId": "...", "PaymentPageUrl": "..."}` (opposite 0/1 success polarity, plus a
+direct page URL this project was constructing itself). The official docs site's `ValidateNotification`
+example response is `{"Status": "Approved", "Amount": ..., "TransactionId": ..., ...}` — yet ANOTHER
+different shape from the PDF's own `{"orderStatus": 0, "internalCode": ..., "amount": 0.0, ...}`
+example (that one from a deliberately-invalid test call, not a real success case). Status enum
+values ARE confirmed from the official site: `Approved`/`Declined`/`Pending`/`Refunded`.
+
+**Code shipped** (all committed, NOT yet merged to main/deployed — real production payment code,
+deliberately held for explicit approval before a deploy):
+- `website/main.py`: new `@app.get("/webhooks/takbull/{secret}")` handler implementing the real
+  flow — reads `uniqId`/`order_reference`/`statusCode` from query params, trusts THIS request's own
+  `statusCode==0` (confirmed-documented at three separate points across the sources) as the actual
+  success signal (never a guessed-at field from ValidateNotification's own inconsistent response
+  shape), then calls `takbull_client.validate_notification(uniqId)` for the authoritative
+  amount/subscription info the GET ping itself never carries. The existing POST handler is kept as
+  a defensive fallback; both share the same already-tested matching/crediting logic via a new
+  `_process_takbull_payload` extraction.
+- `_looks_like_a_successful_takbull_payload` extended to also recognize `Status=="Approved"`
+  (the official-docs-site shape) alongside the existing `StatusDescription=="Success"`/
+  `StatusCode==0` signals (the PDF shape) — defensive, not a bet on one source.
+- `website/takbull_client.py`: new `validate_notification(uniqid) -> dict | None` (POST to
+  ValidateNotification, same auth pattern as the other ExternalAPI calls).
+  `create_subscription_checkout_url` made defensive against BOTH documented response shapes
+  (`responseCode==0` OR `Status==1`; prefers a real returned `PaymentPageUrl` when present, falls
+  back to constructing the URL when the response doesn't include one).
+- Also corrected a real, unverified claim this project's own code had stated as fact: the module
+  docstring used to say real API_Key/API_Secret come from `app.takbull.co.il/api-setting` — that
+  URL was never actually confirmed against the PDF (grepped the full extracted text, it wasn't
+  there) and should not have been asserted. It turned out, coincidentally, to be the RIGHT url
+  after all (the owner found it by clicking through the dashboard) — but the methodology of
+  asserting an unverified fact was still wrong at the time, worth remembering.
+- New safe, form-based `set-takbull-api-key-secret.yaml` (mirrors `set-bright-data-api-key-secret.yaml`'s
+  masked-input pattern) so the owner can type the real key/secret directly into the GitHub Actions
+  UI once he has them, never through chat — also restarts the website Deployment afterward (unlike
+  the scraper's CronJob, an already-running Deployment pod won't pick up a patched secret on its
+  own).
+- New read-only `diagnose-takbull-recurring-config-status.yaml` — confirmed LIVE tonight that
+  `TAKBULL_API_KEY`/`TAKBULL_API_SECRET` are empty at every layer that matters: not set as GitHub
+  Actions repo secrets, not set in the live k8s secret, and the actual running website pod's own
+  env only has `TAKBULL_PAYMENT_PAGE_URL`/`TAKBULL_WEBHOOK_SECRET` (the OLD flow's vars). Confirms
+  `recurring_api_configured()` is False in production right now — the whole recurring-subscription
+  feature built earlier this session has never actually been reachable in production.
+
+30 tests total in the Takbull test files (21 in `test_website_takbull_payments.py` after 5 new GET-
+flow tests), all pass; 933 tests pass full suite; ruff clean.
+
+**Real, live-confirmed root cause for WHY the keys were never set — traced all the way down,
+not guessed**: the owner navigated the actual Takbull dashboard live, screen-shared, step by step:
+"הגדרות סליקת אשראי" (terminal/payment-gateway config, upay+PayPal — not it) → "ממשקים"/`api-setting`
+page's "כללי" tab, which DOES have the real "צור מפתחות חדשים" (create new API keys) button — but
+the "מסוף" (Terminal) dropdown above it is **completely empty** ("אין נתונים להצגה"), blocking key
+creation entirely. Separately, the owner found a real "Welcome to Upay" onboarding email (from
+`info@upay.co.il`, dated 5 days before this entry, requesting KYC documents — ID, business
+registration, voided check, direct debit authorization) which he'd already responded to with the
+requested documents; no reply yet, and there was a public holiday in between. **Working hypothesis,
+not confirmed**: the empty terminal dropdown is plausibly gated on Upay finishing this KYC review —
+basic checkout already works (a real charge was already processed successfully through the existing
+₪0/month hosted-page flow), but full API-level terminal access may need Upay's own approval to
+complete first. Not provable without asking either company directly.
+
+Also confirmed from Takbull's own official docs, independently of the dashboard exploration: **"את
+המפתחות תקבלו מצוות התמיכה בעת פתיחת החשבון"** — i.e. keys are NOT meant to be self-service at all;
+they're issued by Takbull support when the account is opened. This matches (and was initially
+guessed, then walked back, then vindicated by this independent source) the very first "contact
+support" recommendation given hours earlier in this same conversation.
+
+**A specific, ready-to-send support message was drafted** (not yet confirmed sent by the owner as of
+this entry) describing the exact empty-dropdown symptom, asking Takbull to either link the upay
+terminal to the API-key module or issue the key/secret directly.
+
+**Still open**:
+1. Owner to send the drafted message to Takbull support, and separately follow up with Upay by
+   phone/WhatsApp (both only reachable during business hours, which had passed by the time this was
+   being investigated tonight) — the two open questions (is Upay KYC really blocking the Takbull
+   terminal dropdown, and when will keys actually be issued) are external, not something this
+   project's own code can resolve further.
+2. Once `TAKBULL_API_KEY`/`TAKBULL_API_SECRET` are real and set via `set-takbull-api-key-secret.yaml`,
+   the whole GET/ValidateNotification flow built tonight needs a REAL end-to-end test (a real
+   subscription purchase) — genuinely not live-verified yet, same honest caveat as everywhere else
+   in this feature's build history.
+3. The GET webhook fix itself (website/main.py + takbull_client.py changes) is committed and pushed
+   to `claude/todira-project-status-7c3o7w` but **deliberately NOT merged to main / deployed** —
+   real production payment-webhook code, held for explicit owner approval before the next deploy,
+   unlike the many read-only diagnostics merged freely earlier in this same session.
+
+### 4. Meta/WhatsApp Business Verification — in review, nothing to do but wait
+
+Verification (ID 5069506759292592) confirmed via Meta's own in-dashboard AI assistant (not a guess,
+authenticated first-party answer) as "In review," standard 2-10 business day window, explicit
+"no further action required" and "avoid duplicate submissions" (a resubmission would only delay the
+existing one further). Best available estimate (not fully confirmed — the exact final-submission
+timestamp wasn't pinned down precisely from this conversation's own history) is that the form-filling
+happened 2026-09-07, putting tonight (2026-09-21) at roughly the upper edge of that normal window.
+Real recommended next step, if the owner wants a precise answer rather than this estimate: ask Meta's
+own in-dashboard AI directly for the real submission date and whether it's now overdue — it has the
+authoritative timestamp this conversation's own history doesn't reliably pin down.
+
+### 5. Everything else from this file's earlier "Still open" lists remains genuinely untouched this
+session: Yad2/Komo/Homeless/Facebook-Marketplace sale-category confirmation+wiring (tasks never
+started), Homeless ZenRows RESP001 (still broken), Telegram caption RTL alignment inconsistency
+(already fixed in an earlier session — see that entry — not re-touched tonight). Bright Data's own
+API key WAS re-checked live tonight (`diagnose-bright-data-account-status.yaml`) and is genuinely
+fine right now — real `200`, balance `4.4` — no action needed there. The `/dca/collectors`
+endpoints continue to 404 outright, consistent with the DCA collector's already-documented
+permanent dead-end status (Free Trial tier); not re-investigated further, not worth it.
+
+### 6. Session closing, 2026-09-21 late night — owner's own call on priority: wait for Upay, then
+### resume. Full prioritized punch list for whoever picks this back up, in order:
+
+**Blocked on an external party, nothing further to do in code right now:**
+1. Takbull/Upay recurring-billing API keys — see section 3 above in full. Owner's own framing
+   tonight, closing the session: "אחכה שUPAY יאשרו, זה כנראה כל הסיפור, ואז יהיה אפשר לחייב" (I'll
+   wait for Upay to approve, that's probably the whole story, and then billing will be possible) —
+   i.e. this is now the owner's own accepted working theory, not just this file's hypothesis. Two
+   messages were drafted this session (to Takbull support and to Upay support), each explicitly
+   telling the other company that the owner is also asking the other one in parallel, so neither
+   side assumes exclusive ownership of the delay. NOT confirmed sent as of this entry — check
+   whether the owner actually sent them before assuming a reply is pending.
+2. Meta/WhatsApp Business Verification (ID 5069506759292592) — "In review," 2-10 business days,
+   no action possible, see section 4 above.
+
+**Ready to resume immediately, no blockers, in the order a returning session should probably tackle
+them:**
+3. Wire `facebook_groups_client.py`/`facebook_groups_text_parser.py` (both fully built and tested
+   this session, see section 2 above) into `scraper/main.py` — needs a tracked-group-ids config
+   decision (env var is the simplest, most consistent-with-this-project option; a DB table was
+   considered but not chosen), a `_scrape_facebook_groups()` function mirroring `_scrape_facebook`'s
+   shape, and adding it to `_ALL_SOURCE_SCRAPERS` behind the same `SCRAPE_SOURCES` kill-switch
+   Marketplace already uses (same dedicated, sensitive Facebook account). The owner said he'd send
+   more group links via a PDF — not received yet as of this entry; only one real group
+   (פשפשוק - דירות להשכרה, group_id=1665476640352771) is confirmed so far, others can be added to
+   the tracked-ids config the moment the PDF arrives, no code changes needed per group.
+4. Rebuild the Yad2 forsale diagnostic using the REAL mechanism (Bright Data Web Unlocker) —
+   `diagnose-yad2-forsale-via-zenrows.yaml` (PR #368) tested the wrong, dead mechanism; its
+   "success" finding doesn't reflect production. Once confirmed live, wire Yad2 sale-listing
+   scraping into `scraper/main.py`.
+5. Same discover-then-wire pattern for Komo, Homeless, and Facebook Marketplace's own sale/sublet
+   categories — none of these were even looked at this session; likely each needs its own
+   `diagnose-*-sale-*.yaml` first, same "never guess a page structure" discipline as every other
+   source in this project's history.
+6. Homeless's own `ZenRows RESP001` failure (its regular RENTAL scraping, unrelated to the sale-
+   listing item above) — tracked for a while now, not investigated this session at all.
+
+**Confirmed fine, no action needed:** Bright Data API key (live `200`, balance `4.4`,
+re-checked tonight). Komo needs no proxy at all anymore. Telegram caption RTL was already fixed in
+an earlier session.
+
+**The Takbull GET-IPN code fix itself** (website/main.py + website/takbull_client.py, section 3
+above) is committed and pushed to `claude/todira-project-status-7c3o7w` but **deliberately NOT
+merged to main / deployed** — real production payment-webhook code, held for explicit owner
+approval before the next deploy. Merging it does not unblock anything by itself (still needs the
+real API keys to ever actually fire), so there's no urgency to merge it before the keys exist —
+but don't forget it's sitting there uncommitted-to-main when the keys do arrive.

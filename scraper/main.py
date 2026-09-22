@@ -22,6 +22,9 @@ from todira_common.models import Listing
 from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
 from facebook_client import fetch_search_results as fetch_facebook_results
+from facebook_groups_client import FacebookGroupsFetchError
+from facebook_groups_client import fetch_home_feed_post_ids
+from facebook_groups_client import fetch_post_detail as fetch_facebook_group_post_detail
 from homeless_client import HomelessFetchError
 from homeless_client import fetch_listing_description as fetch_homeless_description
 from homeless_client import fetch_search_results as fetch_homeless_results
@@ -205,6 +208,41 @@ _FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE = (2.0, 6.0)
 # schedule, with its own `suspend` — the main scraper's own CronJob never sets this var at all, so
 # its default (every source except Facebook) is exactly today's existing behavior, unchanged.
 _SCRAPE_SOURCES_ENV_VAR = "SCRAPE_SOURCES"
+
+# 2026-09-22: comma-separated Facebook numeric group ids to track — deliberately an env var, not a
+# DB table, matching this project's existing config style (e.g. SCRAPE_SOURCES itself) rather than
+# adding new schema for what's currently one group. `fetch_home_feed_post_ids` (see
+# facebook_groups_client.py's own docstring) uses this set to filter the account's home feed down
+# to only the groups actually wanted — a Story from any other group (or non-group content, like a
+# followed Page's post) is silently skipped. Empty/unset means "no groups configured" — the scrape
+# function below is a no-op in that case, never an error.
+_FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR = "FACEBOOK_GROUPS_TRACKED_IDS"
+# Same account-safety reasoning as _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN above, just a
+# smaller default — the home feed's own real per-run yield was 2 new posts across 2 groups in the
+# one live test so far (see PROJECT_STATE.md, 2026-09-21/22), nowhere near Marketplace's ~25;
+# raise this only with real evidence a legitimate run is actually hitting the cap.
+_FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_ENV_VAR = "FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN"
+_DEFAULT_FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN = 15
+
+
+def _facebook_groups_tracked_ids() -> set[str]:
+    raw = os.environ.get(_FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR, "").strip()
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
+def _facebook_groups_max_new_detail_fetches_per_run() -> int:
+    raw = os.environ.get(_FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "").strip()
+    if not raw:
+        return _DEFAULT_FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r (not an int) — using default %d",
+            _FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_ENV_VAR, raw,
+            _DEFAULT_FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN,
+        )
+        return _DEFAULT_FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN
 
 
 def _homeless_max_new_description_fetches_per_run() -> int:
@@ -877,6 +915,77 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, True
 
 
+def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
+    """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
+    shape as _scrape_yad2. A genuine no-op (returns immediately, all_succeeded=True) when
+    _facebook_groups_tracked_ids() is empty — no group ids configured is not an error, just nothing
+    to do yet (see PROJECT_STATE.md, 2026-09-21/22: only one real group confirmed as of this
+    writing, more to be added to FACEBOOK_GROUPS_TRACKED_IDS as the owner sends them).
+
+    Two-stage, same "discover cheap, enrich only what's genuinely new" pattern as _scrape_facebook:
+    fetch_home_feed_post_ids covers every tracked group in ONE request, then
+    fetch_facebook_group_post_detail is only called for a post_id not already in known_ids. Unlike
+    _scrape_facebook, there's no "skip if enrichment fails" requirement for city (a Group post never
+    has one at all — see facebook_groups_client.py's own module docstring) — a failed detail fetch
+    here is just a real error, retried automatically next run since the post_id never enters
+    known_ids."""
+    fetched = 0
+    errors = 0
+    normalized_items = []
+    seen_external_ids: set[str] = set()
+
+    tracked_group_ids = _facebook_groups_tracked_ids()
+    if not tracked_group_ids:
+        return normalized_items, seen_external_ids, fetched, errors, True
+
+    known_ids = _fetch_known_external_ids(Source.FACEBOOK_GROUPS)
+    max_new_detail_fetches = _facebook_groups_max_new_detail_fetches_per_run()
+    new_detail_fetches_this_run = 0
+    cap_logged = False
+
+    try:
+        pairs = fetch_home_feed_post_ids(tracked_group_ids)
+    except FacebookGroupsFetchError:
+        logger.exception(
+            "Failed to fetch Facebook home feed for Groups discovery — skipping this source this run"
+        )
+        return normalized_items, seen_external_ids, fetched, 1, False
+
+    for group_id, post_id in pairs:
+        fetched += 1
+        seen_external_ids.add(post_id)
+
+        if post_id in known_ids:
+            continue
+
+        if new_detail_fetches_this_run >= max_new_detail_fetches:
+            if not cap_logged:
+                logger.warning(
+                    "Facebook Groups hit its per-run new-detail-fetch safety cap (%s=%d) — "
+                    "remaining new posts this run are skipped and will be picked up in a later "
+                    "run instead of making unbounded requests against the live account in one shot.",
+                    _FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
+                )
+                cap_logged = True
+            continue
+
+        if new_detail_fetches_this_run > 0:
+            time.sleep(random.uniform(*_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE))
+        new_detail_fetches_this_run += 1
+        detail = fetch_facebook_group_post_detail(group_id, post_id)
+        if detail is None:
+            errors += 1
+            continue
+
+        normalized = normalize(detail, source=Source.FACEBOOK_GROUPS, deal_type=DealType.RENT)
+        if normalized is not None:
+            normalized_items.append(normalized)
+        else:
+            errors += 1
+
+    return normalized_items, seen_external_ids, fetched, errors, True
+
+
 # 2026-09-13: one entry per source this project scrapes — each a (source, scrape_fn) pair, where
 # scrape_fn takes no arguments and returns _scrape_yad2's own (normalized_items, seen_external_ids,
 # fetched, errors, all_succeeded) shape. run_once() below loops over this list generically instead
@@ -888,17 +997,21 @@ _ALL_SOURCE_SCRAPERS: tuple[tuple[str, Callable[[], tuple]], ...] = (
     (Source.KOMO, _scrape_komo),
     (Source.HOMELESS, _scrape_homeless),
     (Source.FACEBOOK_MARKETPLACE, _scrape_facebook),
+    (Source.FACEBOOK_GROUPS, _scrape_facebook_groups),
 )
+
+_FACEBOOK_KILL_SWITCHED_SOURCES = (Source.FACEBOOK_MARKETPLACE, Source.FACEBOOK_GROUPS)
 
 
 def _active_source_scrapers() -> tuple[tuple[str, Callable[[], tuple]], ...]:
-    """Which sources THIS run actually scrapes. Facebook is a real kill-switch case, not just
-    another source — see _SCRAPE_SOURCES_ENV_VAR's own comment: it never runs unless explicitly
-    opted into via SCRAPE_SOURCES, so neither deploying this code nor FACEBOOK_COOKIES existing in
-    the secret can, by itself, start hitting the live Facebook account. The main scraper's own
-    CronJob never sets SCRAPE_SOURCES at all, so its default here (every source except Facebook)
-    is exactly today's existing behavior, unchanged; a separate CronJob sets
-    SCRAPE_SOURCES=facebook_marketplace explicitly, on its own schedule."""
+    """Which sources THIS run actually scrapes. Facebook (both Marketplace and Groups) is a real
+    kill-switch case, not just another source — see _SCRAPE_SOURCES_ENV_VAR's own comment: neither
+    ever runs unless explicitly opted into via SCRAPE_SOURCES, so neither deploying this code nor
+    FACEBOOK_COOKIES existing in the secret can, by itself, start hitting the live Facebook account.
+    The main scraper's own CronJob never sets SCRAPE_SOURCES at all, so its default here (every
+    source except both Facebook ones) is exactly today's existing behavior, unchanged; a separate
+    CronJob sets SCRAPE_SOURCES=facebook_marketplace (or ...,facebook_groups) explicitly, on its
+    own schedule."""
     raw = os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip()
     if raw:
         wanted = {s.strip() for s in raw.split(",") if s.strip()}
@@ -906,7 +1019,7 @@ def _active_source_scrapers() -> tuple[tuple[str, Callable[[], tuple]], ...]:
     return tuple(
         (source, fn)
         for source, fn in _ALL_SOURCE_SCRAPERS
-        if source != Source.FACEBOOK_MARKETPLACE
+        if source not in _FACEBOOK_KILL_SWITCHED_SOURCES
     )
 
 

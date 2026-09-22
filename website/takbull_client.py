@@ -184,15 +184,65 @@ def create_subscription_checkout_url(
         "Takbull GetTakbullPaymentPageRedirectUrl (recurring) raw response for payment_id=%s: %r",
         payment_id, data,
     )
+    # 2026-09-21: TWO different documented response shapes were found for this same endpoint —
+    # the Postman/PDF doc the owner originally supplied shows {"responseCode": 0, "uniqId": "..."}
+    # (no page URL — this project builds one), while takbull.co.il's own official API docs site
+    # (found live, separately, later) shows {"Status": 1, "uniqId": "...", "PaymentPageUrl": "..."}
+    # (1 = success, 0 = failure — opposite polarity from responseCode's 0-means-success). Neither
+    # has been confirmed against a real live call yet (still blocked on TAKBULL_API_KEY/
+    # TAKBULL_API_SECRET), so rather than guess which one the real API actually returns, this
+    # accepts either success signal and prefers a real PaymentPageUrl from the response when one is
+    # present, falling back to constructing the URL (the only option the PDF's own shape allows).
     uniqid = data.get("uniqId")
-    if data.get("responseCode") != 0 or not uniqid:
+    success = data.get("responseCode") == 0 or data.get("Status") == 1
+    if not success or not uniqid:
         logger.error(
             "Takbull GetTakbullPaymentPageRedirectUrl (recurring) response had no usable uniqId "
             "(payment_id=%s) — see the raw payload logged above",
             payment_id,
         )
         return None
-    return f"{_API_BASE_URL}/PaymentGateway?orderUniqId={uniqid}", uniqid
+    payment_page_url = data.get("PaymentPageUrl") or f"{_API_BASE_URL}/PaymentGateway?orderUniqId={uniqid}"
+    return payment_page_url, uniqid
+
+
+def validate_notification(uniqid: str) -> dict | None:
+    """Calls Takbull's real ValidateNotification API and returns its raw response dict, or None on
+    any failure (not configured, network error, non-200) — never raises.
+
+    2026-09-21 addition, found live by re-reading the PDF's own IPN section carefully after the
+    owner asked "is this about GET?": Takbull's real IPN callback (see website/main.py's
+    /webhooks/takbull GET handler) is a lightweight GET ping carrying only uniqId/order_reference/
+    a basic statusCode — genuinely no amount, no IsSubscriptionPayment, nothing needed to safely
+    grant access. The PDF is explicit: "On receiving the IPN, call ValidateNotification with the
+    uniqId to confirm payment details" — this function IS that call. The docs' own example response
+    shape (for a deliberately-invalid test uniqId) is {"orderId", "internalCode",
+    "internalDescription", "providerCode", "doNotRetry", "isSubscriptionPayment", "saveToken",
+    "documentId", "amount", "dealType", "orderStatus", "tranSactionStatus"} — NOT yet live-verified
+    against a real successful uniqId (this whole recurring API is still blocked on
+    TAKBULL_API_KEY/TAKBULL_API_SECRET never having been set — see PROJECT_STATE.md/the owner
+    conversation this was found in), so website/main.py's own webhook handler treats `amount`/
+    `isSubscriptionPayment` from this response as the authoritative payment details, but still
+    trusts the ORIGINAL IPN's own documented-and-confirmed `statusCode==0` for the actual
+    success/failure signal, rather than guessing at what value of `orderStatus`/`internalCode` this
+    endpoint uses for "successful" — that specific mapping is NOT confirmed anywhere in the PDF."""
+    if not recurring_api_configured():
+        logger.error("validate_notification called but the recurring API isn't configured")
+        return None
+    try:
+        response = httpx.post(
+            f"{_API_BASE_URL}/api/ExtranalAPI/ValidateNotification",
+            json={"uniqId": uniqid},
+            headers=_api_headers(),
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (httpx.HTTPError, ValueError):
+        logger.exception("Takbull ValidateNotification call failed for uniqid=%s", uniqid)
+        return None
+    logger.info("Takbull ValidateNotification raw response for uniqid=%s: %r", uniqid, data)
+    return data if isinstance(data, dict) else None
 
 
 def cancel_subscription(uniqid: str) -> bool:

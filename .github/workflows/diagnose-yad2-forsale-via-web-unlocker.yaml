@@ -1,0 +1,104 @@
+name: Diagnose — does Yad2's forsale work through the REAL mechanism (Bright Data Web Unlocker)? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-22.
+#
+# Corrects diagnose-yad2-forsale-via-zenrows.yaml (PR #368): that diagnostic tested ZenRows, which
+# the owner confirmed was cancelled for Yad2 specifically (see PROJECT_STATE.md, 2026-09-21/22
+# entry, and yad2_client.py's own module docstring — production Yad2 traffic runs 100% through
+# Bright Data Web Unlocker since the 2026-09-16/17 migration; scraper/main.py doesn't even import
+# the ZenRows-based functions anymore). This tests the forsale search page AND map API through the
+# SAME mechanism yad2_client._fetch_direct actually uses in production
+# (bright_data_client.fetch_via_web_unlocker — a single POST to api.brightdata.com/request, zone
+# web_unlocker1), using the exact same real tel-aviv-area bbox/area/region/zoom values already
+# confirmed live for rent in yad2_client.REGIONS_ON_MAP_API, just with the URL path swapped from
+# rent to forsale — never guessed at, this is literally Yad2's own site navigation pattern (the
+# forsale search page already 200s per the earlier diagnostic, this just checks the SAME real
+# mechanism our own code uses, not a diagnostic-only bypass).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch the real forsale search page through Bright Data Web Unlocker
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+          if [ -z "$API_KEY" ]; then
+            echo "bright-data-api-key is empty in todira-bot-secret — nothing to test with."
+            exit 1
+          fi
+
+          echo "=== POST api.brightdata.com/request for https://www.yad2.co.il/realestate/forsale/tel-aviv-area (zone=web_unlocker1) ==="
+          curl -sS -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"zone": "web_unlocker1", "url": "https://www.yad2.co.il/realestate/forsale/tel-aviv-area", "format": "raw"}' \
+            -o /tmp/forsale.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60 || true
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/forsale.html || true
+          echo
+          echo "--- verdict ---"
+          python3 -c "
+          with open('/tmp/forsale.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          import re
+          print(f'length={len(html)}')
+          title = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'title={title.group(1).strip() if title else \"?\"}')
+          card_count = len(re.findall(r'data-nagish=\"feed-item-layout-link\"', html))
+          print(f'real feed-item cards found (same marker yad2_client._CARD_RE looks for): {card_count}')
+          has_next_data = '__NEXT_DATA__' in html
+          print(f'__NEXT_DATA__ blob present: {has_next_data}')
+          if card_count == 0:
+              snippet_pos = html.find('feed-item')
+              print('--- context around first \"feed-item\" occurrence (if any) ---')
+              print(html[max(0, snippet_pos-200):snippet_pos+500] if snippet_pos != -1 else '(not found at all)')
+          "
+
+      - name: Also try the forsale MAP API through Bright Data Web Unlocker (real tel-aviv-area bbox from yad2_client.REGIONS_ON_MAP_API)
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+
+          URL="https://gw.yad2.co.il/realestate-feed/forsale/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+          echo "=== POST api.brightdata.com/request for $URL ==="
+          curl -sS -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer $API_KEY" \
+            -H "Content-Type: application/json" \
+            --data-raw "$(python3 -c "import json,sys; print(json.dumps({'zone':'web_unlocker1','url':sys.argv[1],'format':'raw'}))" "$URL")" \
+            -o /tmp/forsale_map.json \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60 || true
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/forsale_map.json || true
+          echo
+          echo "--- verdict ---"
+          python3 -c "
+          import json
+          try:
+              with open('/tmp/forsale_map.json', encoding='utf-8') as f:
+                  data = json.load(f)
+              markers = data.get('data', {}).get('markers') if isinstance(data, dict) else None
+              if isinstance(markers, list):
+                  print(f'SUCCESS — {len(markers)} real forsale markers returned.')
+                  if markers:
+                      print('First marker keys:', sorted(markers[0].keys()))
+                      print('First marker (truncated):', {k: markers[0][k] for k in list(markers[0])[:8]})
+              else:
+                  print(f'Got JSON but no usable markers list — top-level keys: {list(data.keys()) if isinstance(data, dict) else type(data)}')
+          except Exception as exc:
+              print(f'NOT valid JSON — likely still blocked/challenged/KYC-walled: {exc}')
+          "

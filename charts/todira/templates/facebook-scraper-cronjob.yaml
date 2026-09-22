@@ -41,8 +41,12 @@ spec:
               env:
                 # Fixed (not a secret) — see scraper/main.py's _active_source_scrapers: this is
                 # the actual opt-in that makes this CronJob's own run touch Facebook at all.
+                # 2026-09-22: facebook_groups added — genuinely inert on its own even once
+                # deployed, since _scrape_facebook_groups() is a real no-op whenever
+                # FACEBOOK_GROUPS_TRACKED_IDS (below) is unset/empty, same "safe to merge before
+                # it's actually configured" pattern as every optional cap in this file.
                 - name: SCRAPE_SOURCES
-                  value: "facebook_marketplace"
+                  value: "facebook_marketplace,facebook_groups"
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef:
@@ -99,6 +103,18 @@ spec:
                 {{- if .Values.scraper.facebook.maxNewDetailFetchesPerRun }}
                 - name: FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN
                   value: {{ .Values.scraper.facebook.maxNewDetailFetchesPerRun | quote }}
+                {{- end }}
+                # 2026-09-22: comma-separated Facebook numeric group ids to track — see
+                # scraper/main.py's own _FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR comment. Left unset
+                # here (no default) until the owner confirms which groups to track; unset/empty
+                # means _scrape_facebook_groups() is a genuine no-op, never an error.
+                {{- if .Values.scraper.facebookGroups.trackedIds }}
+                - name: FACEBOOK_GROUPS_TRACKED_IDS
+                  value: {{ .Values.scraper.facebookGroups.trackedIds | quote }}
+                {{- end }}
+                {{- if .Values.scraper.facebookGroups.maxNewDetailFetchesPerRun }}
+                - name: FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN
+                  value: {{ .Values.scraper.facebookGroups.maxNewDetailFetchesPerRun | quote }}
                 {{- end }}
                 # Same flag/value as the main scraper-cronjob.yaml uses — one shared kill switch
                 # for "no real Telegram/WhatsApp sends this run", not a separate Facebook-only one.

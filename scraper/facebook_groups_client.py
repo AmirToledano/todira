@@ -8,17 +8,31 @@ STATUS 2026-09-21: post-detail structure CONFIRMED live via
 page structure" discipline as facebook_client.py/yad2_client.py/komo_client.py/homeless_client.py —
 every field name below was seen in a real, live response before this file was written.
 
-DISCOVERY (diagnose-facebook-group-page-structure.yaml): a plain HTTPS GET of a group's own URL
-(same Cookie + browser client-hint headers facebook_client.py already uses for Marketplace) returns
-a real 200 HTML page with the group's real title. BUT — genuinely important, real limitation, not
-worked around yet: the group's own landing page only server-renders ONE real post permalink id in
-its embedded JSON (confirmed twice, same single id both times) — the rest of the feed is lazy-loaded
-client-side (GraphQL pagination calls this project hasn't diagnosed yet). fetch_group_post_ids below
-is therefore honest about only returning what one plain fetch actually contains, same "reads exactly
-what one plain fetch of the given path returns, nothing more" contract facebook_client.py's own
-fetch_search_results already documents for Marketplace. See PROJECT_STATE.md/the owner conversation
-this was flagged in for the open question of whether that's an acceptable production limitation
-(catches only the newest post per scrape run) or needs real pagination work.
+DISCOVERY, per-group (diagnose-facebook-group-page-structure.yaml): a plain HTTPS GET of a group's
+own URL (same Cookie + browser client-hint headers facebook_client.py already uses for Marketplace)
+returns a real 200 HTML page with the group's real title. BUT — genuinely important, real limitation:
+the group's own landing page only server-renders ONE real post permalink id in its embedded JSON
+(confirmed twice, same single id both times) — the rest of the feed is lazy-loaded client-side
+(GraphQL pagination, explicitly left as a last-resort option, not attempted). fetch_group_post_ids
+below is honest about only returning what one plain fetch actually contains.
+
+DISCOVERY, real fix — the HOME FEED covers every joined group in ONE request (confirmed live
+2026-09-21, diagnose-facebook-home-feed-story-extraction.yaml): a plain GET of
+https://www.facebook.com/ (same fetch mechanism, no group_id needed at all) server-renders MULTIPLE
+real Story nodes from MULTIPLE DIFFERENT groups the dedicated account has joined — confirmed with 2
+distinct real posts from 2 distinct real groups in one fetch, PLUS each post's own full free-text
+body (the same {__typename, text}-only TextWithEntities shape documented below) co-located right on
+the home feed itself. The home feed also mixes in non-group content (a followed Page's post showed
+up in the same fetch, `feedback.associated_group` absent entirely) — fetch_home_feed_post_ids below
+only returns a post when `feedback.associated_group.id` is genuinely present, and only when that id
+is in the caller-supplied `tracked_group_ids` set, so untracked/non-group noise never reaches the
+scraper. Deliberately does NOT trust the home feed's own co-located message text for attribution
+(with several posts on one page, matching the right text to the right post_id isn't guaranteed safe
+the way it is on a single post's own permalink page, which has exactly one candidate) — it only
+extracts (group_id, post_id) pairs; the caller re-fetches each genuinely-new one via
+fetch_post_detail below, which unambiguously ties one page fetch to one specific post_id, same
+"discover cheap, enrich only what's genuinely new" two-stage pattern facebook_client.py/yad2_client.py
+already use.
 
 POST DETAIL (diagnose-facebook-group-post-detail.yaml): fetching a post's own permalink page
 (https://www.facebook.com/groups/<group_id>/posts/<post_id>/ — no /groups/<gid>/permalink/<pid>/
@@ -64,6 +78,8 @@ import re
 from typing import Any, Iterator
 
 import httpx
+
+import facebook_groups_text_parser
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +181,46 @@ def fetch_group_post_ids(group_url: str) -> list[str]:
     return sorted(set(_POST_PERMALINK_RE.findall(html)))
 
 
+_HOME_FEED_URL = "https://www.facebook.com/"
+
+
+def _iter_story_nodes(obj: Any) -> Iterator[dict[str, Any]]:
+    if isinstance(obj, dict):
+        if obj.get("__typename") == "Story" and obj.get("post_id"):
+            yield obj
+        for value in obj.values():
+            yield from _iter_story_nodes(value)
+    elif isinstance(obj, list):
+        for entry in obj:
+            yield from _iter_story_nodes(entry)
+
+
+def fetch_home_feed_post_ids(tracked_group_ids: set[str]) -> list[tuple[str, str]]:
+    """Returns distinct (group_id, post_id) pairs found on ONE fetch of the dedicated account's own
+    home feed, restricted to `tracked_group_ids` — see module docstring for why this is the real
+    fix for "only one post per group" (covers every joined group in one request) and why it only
+    returns ids, never the co-located text (attribution across several posts on one page isn't
+    provably safe the way a single post's own permalink page is). Caller is expected to pass this
+    every group id it actually wants posts from; a Story whose `feedback.associated_group.id` is
+    missing (non-group content — e.g. a followed Page's post, confirmed live to appear in the same
+    feed) or not in `tracked_group_ids` is silently skipped, never guessed at."""
+    html = _fetch(_HOME_FEED_URL, context_label="home feed")
+    pairs: set[tuple[str, str]] = set()
+    for block in _iter_json_blocks(html):
+        for story in _iter_story_nodes(block):
+            post_id = story.get("post_id")
+            feedback = story.get("feedback")
+            group = feedback.get("associated_group") if isinstance(feedback, dict) else None
+            group_id = group.get("id") if isinstance(group, dict) else None
+            if (
+                isinstance(post_id, str)
+                and isinstance(group_id, str)
+                and group_id in tracked_group_ids
+            ):
+                pairs.add((group_id, post_id))
+    return sorted(pairs)
+
+
 def _parse_post_message(blocks: Iterator[Any]) -> str | None:
     for block in blocks:
         result = _find_post_body_text(block)
@@ -264,7 +320,7 @@ def fetch_post_detail(group_id: str, post_id: str) -> dict[str, Any] | None:
     if author_name:
         description = f"{message}\n\n(מפרסם/ת: {author_name})"
 
-    return {
+    result: dict[str, Any] = {
         "id": str(post_id),
         "url": url,
         "description": description,
@@ -278,3 +334,10 @@ def fetch_post_detail(group_id: str, post_id: str) -> dict[str, Any] | None:
         "street": None,
         "images": [],
     }
+    # 2026-09-21, explicit owner decision: regex/keyword extraction, not a per-post LLM call (this
+    # project has never made one; the owner weighed cost vs. accuracy and chose free/imperfect) —
+    # see facebook_groups_text_parser.py's own module docstring. Only ever OVERWRITES one of the
+    # structured-field placeholders above with something a pattern actually matched in the real
+    # message text — never touches description/url/id/dateAdded.
+    result.update(facebook_groups_text_parser.parse_listing_fields(message))
+    return result
