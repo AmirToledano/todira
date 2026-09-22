@@ -433,6 +433,17 @@ def test_scrape_yad2_uses_the_map_api_for_regions_on_it(monkeypatch):
 # --- _scrape_facebook: account-safety cap + required city enrichment (2026-09-15) ----------------
 
 
+def _rent_only(items: list):
+    """2026-09-22: _scrape_facebook now calls fetch_facebook_results once per category (rent +
+    forsale, see _FACEBOOK_MARKETPLACE_CATEGORIES) sharing one cap/pacing budget — these existing
+    tests only care about the rent path's own behavior, so the forsale call is a real, separate
+    call that must be handled (not just ignored), but returns nothing, keeping every assertion
+    below about counts/caps exactly as it was pre-category-loop."""
+    def _fake(url_path):
+        return iter(items) if url_path == scraper_main.facebook_client.DEFAULT_URL_PATH else iter([])
+    return _fake
+
+
 def _fake_facebook_item(external_id: str) -> dict:
     return {
         "id": external_id,
@@ -474,7 +485,7 @@ def test_scrape_facebook_skips_already_known_listings_entirely(monkeypatch):
     here (city=None at discovery) would clobber its already-good city on the UPDATE path."""
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
 
     def _fail_if_called(item_id):
@@ -496,7 +507,7 @@ def test_scrape_facebook_upserts_a_new_listing_with_its_real_detail_city(monkeyp
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
     monkeypatch.setattr(
         scraper_main,
@@ -520,7 +531,7 @@ def test_scrape_facebook_skips_a_new_listing_with_no_confirmed_city(monkeypatch)
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
     monkeypatch.setattr(
         scraper_main,
@@ -541,7 +552,7 @@ def test_scrape_facebook_returns_none_detail_gracefully(monkeypatch):
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
     monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", lambda item_id: None)
 
@@ -560,9 +571,7 @@ def test_scrape_facebook_stops_new_detail_fetches_at_the_cap(monkeypatch):
     monkeypatch.setattr(
         scraper_main,
         "fetch_facebook_results",
-        lambda: iter(
-            [_fake_facebook_item("1"), _fake_facebook_item("2"), _fake_facebook_item("3")]
-        ),
+        _rent_only([_fake_facebook_item("1"), _fake_facebook_item("2"), _fake_facebook_item("3")]),
     )
 
     detail_calls = []
@@ -584,9 +593,12 @@ def test_scrape_facebook_stops_new_detail_fetches_at_the_cap(monkeypatch):
 
 
 def test_scrape_facebook_fails_gracefully_when_discovery_fails(monkeypatch):
+    """2026-09-22: _scrape_facebook now tries BOTH categories (rent + forsale) — a broken
+    account/cookie fails discovery for both, so this simulates that (not just one), and errors
+    reflects both failed categories."""
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
 
-    def _fail():
+    def _fail(url_path):
         raise scraper_main.FacebookFetchError("simulated discovery failure")
         yield  # pragma: no cover - makes this a generator, never reached
 
@@ -598,8 +610,69 @@ def test_scrape_facebook_fails_gracefully_when_discovery_fails(monkeypatch):
 
     assert normalized_items == []
     assert seen_external_ids == set()
-    assert errors == 1
+    assert errors == 2  # both categories failed
     assert all_succeeded is False
+
+
+# --- _scrape_facebook: forsale category (2026-09-22) -----------------------------------------
+
+
+def test_scrape_facebook_upserts_a_new_forsale_listing_with_sale_deal_type(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
+
+    def _fake_results(url_path):
+        if url_path == "category/propertyforsale/":
+            return iter([_fake_facebook_item("sale-1")])
+        return iter([])
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_results", _fake_results)
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_facebook_listing_detail",
+        lambda item_id: {"city": "הרצליה", "description": "דירה למכירה"},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
+    assert seen_external_ids == {"sale-1"}
+    assert errors == 0
+    assert all_succeeded is True
+
+
+def test_scrape_facebook_shares_one_detail_fetch_cap_across_both_categories(monkeypatch):
+    """The account-safety cap is on TOTAL new-detail-fetches this run, not per category — two
+    categories must not double the real request budget against the live account."""
+    monkeypatch.setenv(scraper_main._FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "1")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
+
+    def _fake_results(url_path):
+        if url_path == scraper_main.facebook_client.DEFAULT_URL_PATH:
+            return iter([_fake_facebook_item("rent-1")])
+        return iter([_fake_facebook_item("sale-1")])
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_results", _fake_results)
+    detail_calls = []
+
+    def _fake_detail(item_id):
+        detail_calls.append(item_id)
+        return {"city": "הרצליה", "description": None}
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", _fake_detail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert detail_calls == ["rent-1"]  # cap=1, spent on the first (rent) category entirely
+    assert seen_external_ids == {"rent-1", "sale-1"}
+    assert len(normalized_items) == 1
+    assert fetched == 2
 
 
 # --- _active_source_scrapers: Facebook is opt-in only, a real kill-switch (2026-09-15) ------------

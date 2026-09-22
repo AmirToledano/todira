@@ -19,6 +19,7 @@ from todira_common import bright_data_client
 from todira_common.db import get_session
 from todira_common.enums import DealType, Source
 from todira_common.models import Listing
+import facebook_client
 from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
 from facebook_client import fetch_search_results as fetch_facebook_results
@@ -839,6 +840,19 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
+# 2026-09-22: task #7/#8 (never started before tonight) — confirmed live
+# (diagnose-facebook-marketplace-page-structure.yaml, url_path=category/propertyforsale/) that
+# Facebook Marketplace's real for-sale category is a genuine, separate feed at this exact path:
+# real 200, 24 real MarketplaceFeedListingStory nodes wrapping a real GroupCommerceProductItem
+# listing type (distinct from rentals' own listing type), with real listing_price/
+# strikethrough_price/min_listing_price/max_listing_price fields a rental listing never carries.
+# Never guessed — same "diagnose before wiring" discipline as every other source in this project.
+_FACEBOOK_MARKETPLACE_CATEGORIES: tuple[tuple[str, str], ...] = (
+    (facebook_client.DEFAULT_URL_PATH, DealType.RENT),
+    ("category/propertyforsale/", DealType.SALE),
+)
+
+
 def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
     shape as _scrape_yad2. Unlike every other source, a Facebook listing's real CITY is genuinely
@@ -855,64 +869,75 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     _upsert_listings. Not worth the complexity of a separate "refresh price only" path yet at this
     project's current, tiny expected Facebook volume — revisit if that turns out wrong.
 
-    Enforces _facebook_max_new_detail_fetches_per_run() — an ACCOUNT-SAFETY cap, not a credit-cost
-    one (see that function's own comment) — and paces each detail fetch by a RANDOMIZED interval
-    within _FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE, both specifically because every request
-    here runs through the dedicated account's own real, authenticated session."""
+    2026-09-22: now loops over _FACEBOOK_MARKETPLACE_CATEGORIES (rent + forsale) instead of just
+    rent — both categories share ONE known_ids set (a Facebook item id is globally unique
+    regardless of category, so no cross-category collision risk) and, more importantly, ONE
+    combined _facebook_max_new_detail_fetches_per_run() budget and ONE shared pacing counter: this
+    is an ACCOUNT-SAFETY cap on total new requests against the dedicated account this run, not a
+    per-category allowance, so adding a second category must not silently double the account's
+    real request exposure. A failure fetching one category's search results (FacebookFetchError)
+    is logged and counted but does not abort the other category — same "one failed sub-fetch
+    doesn't kill the whole run" convention as _scrape_yad2's per-region loop."""
     fetched = 0
     errors = 0
     normalized_items = []
     seen_external_ids: set[str] = set()
+    all_succeeded = True
 
     known_ids = _fetch_known_external_ids(Source.FACEBOOK_MARKETPLACE)
     max_new_detail_fetches = _facebook_max_new_detail_fetches_per_run()
     new_detail_fetches_this_run = 0
     cap_logged = False
 
-    try:
-        raw_items = list(fetch_facebook_results())
-    except FacebookFetchError:
-        logger.exception(
-            "Failed to fetch Facebook Marketplace search results — skipping this source this run"
-        )
-        return normalized_items, seen_external_ids, fetched, 1, False
-
-    for raw_item in raw_items:
-        fetched += 1
-        external_id = raw_item["id"]
-        seen_external_ids.add(external_id)
-
-        if external_id in known_ids:
-            continue  # not re-upserted this run — see this function's own docstring
-
-        if new_detail_fetches_this_run >= max_new_detail_fetches:
-            if not cap_logged:
-                logger.warning(
-                    "Facebook hit its per-run new-detail-fetch safety cap (%s=%d) — remaining "
-                    "new listings this run are skipped and will be picked up in a later run "
-                    "instead of making unbounded requests against the live account in one shot.",
-                    _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
-                )
-                cap_logged = True
+    for url_path, deal_type in _FACEBOOK_MARKETPLACE_CATEGORIES:
+        try:
+            raw_items = list(fetch_facebook_results(url_path))
+        except FacebookFetchError:
+            logger.exception(
+                "Failed to fetch Facebook Marketplace search results for url_path=%r — "
+                "skipping this category this run", url_path,
+            )
+            errors += 1
+            all_succeeded = False
             continue
 
-        if new_detail_fetches_this_run > 0:
-            time.sleep(random.uniform(*_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE))
-        new_detail_fetches_this_run += 1
-        detail = fetch_facebook_listing_detail(external_id)
-        if detail is None or not detail.get("city"):
-            errors += 1
-            continue  # no real city to place it in any city-scoped filter — retried next run
+        for raw_item in raw_items:
+            fetched += 1
+            external_id = raw_item["id"]
+            seen_external_ids.add(external_id)
 
-        raw_item["city"] = detail["city"]
-        raw_item["description"] = detail.get("description")
-        normalized = normalize(raw_item, source=Source.FACEBOOK_MARKETPLACE, deal_type=DealType.RENT)
-        if normalized is not None:
-            normalized_items.append(normalized)
-        else:
-            errors += 1
+            if external_id in known_ids:
+                continue  # not re-upserted this run — see this function's own docstring
 
-    return normalized_items, seen_external_ids, fetched, errors, True
+            if new_detail_fetches_this_run >= max_new_detail_fetches:
+                if not cap_logged:
+                    logger.warning(
+                        "Facebook hit its per-run new-detail-fetch safety cap (%s=%d) — "
+                        "remaining new listings this run (across both categories) are skipped "
+                        "and will be picked up in a later run instead of making unbounded "
+                        "requests against the live account in one shot.",
+                        _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
+                    )
+                    cap_logged = True
+                continue
+
+            if new_detail_fetches_this_run > 0:
+                time.sleep(random.uniform(*_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE))
+            new_detail_fetches_this_run += 1
+            detail = fetch_facebook_listing_detail(external_id)
+            if detail is None or not detail.get("city"):
+                errors += 1
+                continue  # no real city to place it in any city-scoped filter — retried next run
+
+            raw_item["city"] = detail["city"]
+            raw_item["description"] = detail.get("description")
+            normalized = normalize(raw_item, source=Source.FACEBOOK_MARKETPLACE, deal_type=deal_type)
+            if normalized is not None:
+                normalized_items.append(normalized)
+            else:
+                errors += 1
+
+    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
 def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
