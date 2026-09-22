@@ -108,13 +108,22 @@ spec:
                 # scraper/main.py's own _FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR comment. Left unset
                 # here (no default) until the owner confirms which groups to track; unset/empty
                 # means _scrape_facebook_groups() is a genuine no-op, never an error.
-                {{- if .Values.scraper.facebookGroups.trackedIds }}
+                #
+                # 2026-09-22 fix: `with` (not `if .Values.scraper.facebookGroups.trackedIds`
+                # directly) — when every key under values.yaml's scraper.facebookGroups: block is
+                # commented out, that key parses as nil, not an empty map, and Go templates can't
+                # dot into a nil interface's field. `with` treats a nil/zero value as falsy and
+                # skips its body instead of erroring, so this stays a real no-op either way. This
+                # exact nil pointer broke `helm upgrade` in production run 35796719451.
+                {{- with .Values.scraper.facebookGroups }}
+                {{- if .trackedIds }}
                 - name: FACEBOOK_GROUPS_TRACKED_IDS
-                  value: {{ .Values.scraper.facebookGroups.trackedIds | quote }}
+                  value: {{ .trackedIds | quote }}
                 {{- end }}
-                {{- if .Values.scraper.facebookGroups.maxNewDetailFetchesPerRun }}
+                {{- if .maxNewDetailFetchesPerRun }}
                 - name: FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN
-                  value: {{ .Values.scraper.facebookGroups.maxNewDetailFetchesPerRun | quote }}
+                  value: {{ .maxNewDetailFetchesPerRun | quote }}
+                {{- end }}
                 {{- end }}
                 # Same flag/value as the main scraper-cronjob.yaml uses — one shared kill switch
                 # for "no real Telegram/WhatsApp sends this run", not a separate Facebook-only one.
