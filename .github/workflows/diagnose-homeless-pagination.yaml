@@ -103,3 +103,39 @@ jobs:
           "
             echo
           done
+
+      # 2026-09-22: the step above just confirmed RESP001 is real and happening RIGHT NOW in
+      # production (not stale/already-fixed) — ZenRows' own error text suggests "try enabling
+      # javascript rendering". js_render=true is a real cost increase (this project chose
+      # Homeless specifically for its cheap 1-credit plain tier, same reasoning as Yad2's own
+      # expensive js_render saga in yad2_client.py) — testing whether it actually fixes this
+      # before treating a cost change as the answer, not assuming it will just because ZenRows'
+      # own error message suggests it.
+      - name: Test whether js_render=true actually fixes the RESP001 failure (cost implication — testing only, not switching production)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            --data-urlencode "js_render=true" \
+            -D /tmp/homeless_jsrender.headers \
+            -o /tmp/homeless_jsrender.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 100 || true
+          echo "--- real ZenRows credits this ONE request cost (X-Request-Credits header) ---"
+          grep -i "^x-request-credits:" /tmp/homeless_jsrender.headers || echo "(header not found)"
+          python3 -c "
+          import re
+          with open('/tmp/homeless_jsrender.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          rows = len(re.findall(r'<tr id=\"ad_\d+\"', html))
+          code_m = re.search(r'\"code\":\"([A-Z0-9]+)\"', html)
+          print(f'length={len(html)} rows={rows} zenrows_error={code_m.group(1) if code_m else None}')
+          if rows > 0:
+              print('js_render=true DOES fix it — real rows came back.')
+          elif code_m:
+              print(f'js_render=true does NOT fix it either — still {code_m.group(1)}.')
+          else:
+              print('Ambiguous — no rows and no ZenRows error code; inspect further.')
+          "
