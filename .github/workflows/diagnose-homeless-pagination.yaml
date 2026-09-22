@@ -62,4 +62,44 @@ jobs:
           print(f"'עמוד N' / 'הבא' (next) style hits: {len(next_hits)}")
           for h in next_hits[:10]:
               print("  ", re.sub(r'\s+', ' ', h))
+
+          print()
+          print("=== 2026-09-22: is the RESP001 failure (task #14, tracked since 2026-09-17, never")
+          print("re-checked live) still happening on this exact call right now? ===")
+          code_m = re.search(r'"code":"([A-Z0-9]+)"', html)
+          title_m = re.search(r'"title":"([^"]*)"', html)
+          if code_m:
+              print(f"STILL BROKEN — ZenRows error body: code={code_m.group(1)!r} title={(title_m.group(1) if title_m else '?')!r}")
+          elif row_ids:
+              print(f"WORKING — {len(row_ids)} real listing rows came back, RESP001 is NOT happening right now.")
+          else:
+              print("Unclear — no ZenRows error code AND no real rows found; inspect the raw fetch above.")
           PYEOF
+
+      # 2026-09-22: task #5/#6 (never started) — before wiring Homeless sale scraping, checks
+      # whether a real sale-category page even exists at the obvious /rent/ -> /sale/ URL swap
+      # (Homeless's own site navigation pattern, same discipline as every other source: never guess
+      # a page structure, fetch it for real first).
+      - name: Try a candidate Homeless sale-category URL (never guessed at without checking)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          for CANDIDATE in "sale" "buy" "forsale"; do
+            echo "=== https://www.homeless.co.il/$CANDIDATE/ ==="
+            curl -sS -G "https://api.zenrows.com/v1/" \
+              --data-urlencode "apikey=$ZENROWS_API_KEY" \
+              --data-urlencode "url=https://www.homeless.co.il/$CANDIDATE/" \
+              -o "/tmp/homeless_$CANDIDATE.html" \
+              -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+              --max-time 100 || true
+            python3 -c "
+          import re
+          with open('/tmp/homeless_$CANDIDATE.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          rows = len(re.findall(r'<tr id=\"ad_\d+\"', html))
+          title = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          code_m = re.search(r'\"code\":\"([A-Z0-9]+)\"', html)
+          print(f'  length={len(html)} rows={rows} title={title.group(1).strip() if title else \"?\"!r} zenrows_error={code_m.group(1) if code_m else None}')
+          "
+            echo
+          done
