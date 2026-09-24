@@ -3,10 +3,13 @@ name: Check — real identity of the Facebook account behind FACEBOOK_COOKIES (r
 # ONE-OFF, READ-ONLY, manual-only. Real trigger: before enabling the Facebook scraper CronJob for
 # the first time, the owner asked to confirm the account is the dedicated one ("Dror Benjamin"),
 # not a todira-branded account — verified live, not assumed, per this project's own discipline.
-# Uses the exact same cookie/header fetch shape already confirmed working
-# (diagnose-facebook-home-feed-and-notifications.yaml) — facebook.com/me/ redirects straight to
-# the logged-in account's own profile URL, and the home feed's own <title> carries the account's
-# real display name.
+#
+# 2026-09-24, first run: an earlier version of this check fetched /me/ plus a trimmed header set
+# and got Facebook's own generic "Sorry, something went wrong" error page on BOTH fetches — not a
+# login/checkpoint signal, just a plain server error, most likely from missing the
+# Sec-Fetch-*/sec-ch-ua client-hint headers the ALREADY proven-working fetch
+# (diagnose-facebook-home-feed-and-notifications.yaml) sends. This version drops /me/ (never
+# proven to work) and reuses that exact full header set for the plain home feed fetch instead.
 on:
   workflow_dispatch: {}
 
@@ -23,7 +26,7 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
 
-      - name: Fetch facebook.com/me/ and the home feed, using the stored cookie
+      - name: Fetch the home feed, using the stored cookie and the exact proven header set
         run: |
           COOKIE=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.facebook-cookies}' | base64 -d)
           echo "::add-mask::$COOKIE"
@@ -32,20 +35,6 @@ jobs:
             exit 1
           fi
 
-          echo "=== Fetching https://www.facebook.com/me/ (redirects to the logged-in account's own profile) ==="
-          curl -sS --compressed -L --max-redirs 5 \
-            -D /tmp/fb_me_headers.txt \
-            -o /tmp/fb_me_body.html \
-            -w "http_status=%{http_code} size_bytes=%{size_download} final_url=%{url_effective}\n" \
-            --max-time 30 \
-            -H "Cookie: $COOKIE" \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
-            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
-            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
-            -H "Upgrade-Insecure-Requests: 1" \
-            "https://www.facebook.com/me/" || echo "curl_failed"
-
-          echo "=== Also fetching https://www.facebook.com/ (home feed) for its <title> ==="
           curl -sS --compressed -L --max-redirs 5 \
             -o /tmp/fb_home_body.html \
             -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
@@ -54,51 +43,37 @@ jobs:
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
             -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
             -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            -H "Upgrade-Insecure-Requests: 1" \
+            -H "Sec-Fetch-Site: none" \
+            -H "Sec-Fetch-Mode: navigate" \
+            -H "Sec-Fetch-User: ?1" \
+            -H "Sec-Fetch-Dest: document" \
+            -H "sec-ch-ua: \"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"" \
+            -H "sec-ch-ua-mobile: ?0" \
+            -H "sec-ch-ua-platform: \"Windows\"" \
             "https://www.facebook.com/" || echo "curl_failed"
 
-      - name: Dump the raw error bodies (real content, generic pages/errors only — no private data)
+      - name: Dump the raw body (generic page content only — no private data beyond what's already ours to see)
         run: |
-          echo "=== /me/ body ==="
-          cat /tmp/fb_me_body.html 2>/dev/null || echo "(no body)"
-          echo
-          echo "=== home feed body ==="
           cat /tmp/fb_home_body.html 2>/dev/null || echo "(no body)"
 
-      - name: Extract the account's own name/title from both fetches
+      - name: Extract the account's own name from the fetch
         run: |
           python3 -c "
           import re
-          print('=== /me/ redirect ===')
-          try:
-              with open('/tmp/fb_me_headers.txt', encoding='utf-8', errors='replace') as f:
-                  headers = f.read()
-              locations = re.findall(r'(?i)^location:\s*(.+)$', headers, re.M)
-              print('Redirect chain (Location headers):', locations)
-          except FileNotFoundError:
-              print('(no headers file)')
-          try:
-              with open('/tmp/fb_me_body.html', encoding='utf-8', errors='replace') as f:
-                  body = f.read()
-              print(f'length={len(body)}')
-              title_match = re.search(r'<title[^>]*>(.*?)</title>', body, re.S)
-              print(f'Title: {title_match.group(1).strip() if title_match else \"(none)\"}')
-              og_title = re.search(r'<meta property=\"og:title\" content=\"([^\"]*)\"', body)
-              print(f'og:title: {og_title.group(1) if og_title else \"(none)\"}')
-          except FileNotFoundError:
-              print('(no body file)')
+          with open('/tmp/fb_home_body.html', encoding='utf-8', errors='replace') as f:
+              body = f.read()
+          print(f'length={len(body)}')
+          title_match = re.search(r'<title[^>]*>(.*?)</title>', body, re.S)
+          print(f'Title: {title_match.group(1).strip() if title_match else \"(none)\"}')
 
-          print()
-          print('=== home feed ===')
-          try:
-              with open('/tmp/fb_home_body.html', encoding='utf-8', errors='replace') as f:
-                  body = f.read()
-              print(f'length={len(body)}')
-              title_match = re.search(r'<title[^>]*>(.*?)</title>', body, re.S)
-              print(f'Title: {title_match.group(1).strip() if title_match else \"(none)\"}')
-              # The logged-in account's own name/id often appears in embedded JSON as
-              # ACCOUNT_ID / USER_ID / a CurrentUserInitialData-shaped node.
-              name_hits = re.findall(r'\"(?:NAME|name)\":\"([^\"]{2,40})\"', body)[:10]
-              print('First few \"name\" JSON values seen:', name_hits)
-          except FileNotFoundError:
-              print('(no home feed body file)')
+          lower = body.lower()
+          login_signals = [s for s in ('log in to facebook', 'loginform', 'checkpoint', 'login.php') if s in lower]
+          print(f'Login/checkpoint signals: {login_signals or \"none\"}')
+
+          # The logged-in account's own name commonly appears in embedded JSON as a plain
+          # NAME/name key (CurrentUserInitialData-shaped nodes elsewhere in this project's own
+          # confirmed Facebook fetches use the same key casing).
+          name_hits = re.findall(r'\"(?:NAME|name)\":\"([^\"]{2,40})\"', body)[:15]
+          print('First few \"name\" JSON values seen:', name_hits)
           "
