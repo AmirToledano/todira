@@ -1,0 +1,104 @@
+name: Diagnose — POST /filter downloading as filter.txt instead of redirecting (real owner report)
+
+# Real owner report just now: on their real device (WebKit), submitting the filter form
+# (POST /filter, which should 303-redirect to /apartments per website/main.py's filter_update)
+# instead shows a "filter.txt" download prompt with a blank page — happened twice in a row, right
+# after editing their own filter's cities. website/main.py's filter_update ends with a plain
+# `RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)` — no
+# Content-Type or Content-Disposition is set explicitly anywhere in that path, so this checks the
+# EXACT raw response (not following redirects) for the POST itself, from both curl and a real
+# WebKit browser, to see what's actually being returned right now.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Real curl POST to /filter (raw response, no redirect follow)
+        run: |
+          echo "=== GET /filter first, to see the real form + confirm status ==="
+          curl -sD - -o /tmp/filter_get.html "https://todira.app/filter?uid=6984931854"
+          echo
+          echo "--- first 500 bytes of GET body ---"
+          head -c 500 /tmp/filter_get.html
+          echo
+          echo
+          echo "=== POST /filter (raw, -i, NOT following redirects) ==="
+          curl -sD - -o /tmp/filter_post.bin -X POST "https://todira.app/filter" \
+            --data-urlencode "uid=6984931854" \
+            --data-urlencode "cities=אור יהודה" \
+            --data-urlencode "price_min=" \
+            --data-urlencode "price_max=" \
+            --data-urlencode "rooms_min=" \
+            --data-urlencode "rooms_max=" \
+            --data-urlencode "floor_min=" \
+            --data-urlencode "floor_max=" \
+            --data-urlencode "safe_room_pref=any" \
+            --data-urlencode "furniture_pref=any" \
+            --data-urlencode "min_area_sqm=" \
+            --data-urlencode "keywords="
+          echo
+          echo "--- POST response body (first 500 bytes, should be empty for a real 303) ---"
+          head -c 500 /tmp/filter_post.bin
+          echo
+          echo "--- POST response body size ---"
+          wc -c /tmp/filter_post.bin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright WebKit
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.47.0 >/dev/null 2>&1
+          npx playwright install --with-deps webkit >/dev/null 2>&1
+
+      - name: Real WebKit browser — submit the actual filter form like a real user
+        run: |
+          cat <<'JS' > check.js
+          const { webkit, devices } = require('playwright');
+          (async () => {
+            const browser = await webkit.launch();
+            const context = await browser.newContext({ ...devices['iPhone 13'], acceptDownloads: true });
+            const page = await context.newPage();
+
+            const responses = [];
+            page.on('response', async (resp) => {
+              responses.push(`${resp.status()} ${resp.request().method()} ${resp.url()} :: content-type=${resp.headers()['content-type']} content-disposition=${resp.headers()['content-disposition'] || '(none)'}`);
+            });
+
+            let downloadInfo = null;
+            page.on('download', (dl) => { downloadInfo = { suggestedFilename: dl.suggestedFilename(), url: dl.url() }; });
+
+            console.log('=== loading /filter ===');
+            await page.goto('https://todira.app/filter?uid=6984931854', { waitUntil: 'networkidle', timeout: 30000 });
+
+            console.log('=== toggling a city checkbox then submitting the real form ===');
+            const cityCheckbox = page.locator('input[type=checkbox][name=cities]').first();
+            const cityCount = await page.locator('input[type=checkbox][name=cities]').count();
+            console.log('city checkbox count:', cityCount);
+            if (cityCount > 0) {
+              await cityCheckbox.click();
+            }
+
+            try {
+              await Promise.race([
+                page.click('button[type=submit]'),
+                new Promise((resolve) => setTimeout(resolve, 100)),
+              ]);
+              await page.waitForTimeout(4000);
+            } catch (e) {
+              console.log('submit click error:', String(e));
+            }
+
+            console.log('=== current URL after submit ===', page.url());
+            console.log('=== download triggered? ===', JSON.stringify(downloadInfo));
+            console.log('=== all responses in order ===');
+            responses.forEach(r => console.log('  ' + r));
+
+            await browser.close();
+          })();
+          JS
+          node check.js
