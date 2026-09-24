@@ -139,6 +139,39 @@ def test_upgrade_submit_uses_recurring_takbull_when_configured(client):
     assert payment.subscription_uniqid == "sub-123"
 
 
+def test_upgrade_submit_refuses_a_second_order_for_a_user_with_an_existing_subscription(client):
+    """2026-09-24 real bug fix: a user whose subscription was cancelled but hasn't lapsed yet
+    (cancel_at_period_end=True) still has a REAL, still-billing Takbull subscription — Takbull's
+    own side isn't cancelled until the period actually ends (see account_cancel_subscription's own
+    comment). Letting them open a SECOND recurring order here would orphan the first one (the
+    webhook overwrites takbull_subscription_uniqid, losing the only reference this app had to it —
+    real, unrecoverable double-billing). Server-side backstop for whatever hid this on the GET page
+    (see that route's own has_active_subscription fix) not catching it — same "don't trust the
+    client alone" reasoning as the terms_agreed check just above this one in main.py."""
+    user = _FakeUser(
+        id=2, telegram_user_id=222, takbull_subscription_uniqid="already-subscribed-uniqid",
+        cancel_at_period_end=True,
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main.takbull_client, "recurring_api_configured", lambda: True),
+        patch.object(
+            website_main.takbull_client,
+            "create_subscription_checkout_url",
+            lambda **kw: pytest.fail("must never open a new order for an already-subscribed user"),
+        ),
+    ):
+        resp = client.post(
+            "/upgrade", data={"plan": "monthly_subscription", "uid": "222", "terms_agreed": "on"}
+        )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/account?uid=222"
+    assert fake_session.added == []  # no new Payment ever created
+
+
 def test_upgrade_submit_marks_payment_failed_and_502s_when_takbull_call_fails(client):
     user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})

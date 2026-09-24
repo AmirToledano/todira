@@ -70,6 +70,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
@@ -690,9 +691,23 @@ def auth_google_create_account(request: Request, next: str = "/apartments"):
             request.session["user_id"] = existing.id
             return RedirectResponse(_safe_next(next), status_code=303)
 
+        # 2026-09-24 real bug fix: the SELECT above only rules out the common case — two requests
+        # racing this same double-click can BOTH pass it (neither sees the other's row yet), then
+        # both try to INSERT the same google_sub and one hits the DB's unique constraint, which
+        # used to bubble up as an unhandled 500 instead of the graceful "log them into the account
+        # the other request just created" this whole function is otherwise built for. Catching it
+        # here closes that actual race window, not just the comment above claiming to.
         user = User(google_sub=pending_google_sub, first_name=first_name or None)
         session.add(user)
-        session.flush()
+        try:
+            session.flush()
+        except IntegrityError:
+            session.rollback()
+            existing = session.scalar(select(User).where(User.google_sub == pending_google_sub))
+            if existing is None:
+                raise  # some other integrity error — don't silently swallow it
+            request.session["user_id"] = existing.id
+            return RedirectResponse(_safe_next(next), status_code=303)
         session.add(Filter(user_id=user.id))
         session.commit()
         user_pk = user.id
@@ -1026,9 +1041,20 @@ def react_toggle(
         )
         if existing_id is not None:
             session.execute(delete(UserListingAction).where(UserListingAction.id == existing_id))
+            session.commit()
         else:
+            # 2026-09-24 real bug fix: a genuine double-click/double-tap fires two near-simultaneous
+            # POSTs for the SAME listing_id+action — both can pass the existing_id SELECT above
+            # before either commits (neither sees the other's row yet), so the second one to commit
+            # hits UserListingAction's own unique constraint (uq_user_listing_actions) and used to
+            # 500 instead of just... the action already being on, which is exactly what the user
+            # wanted from either click. A DELETE never has this problem (deleting an already-deleted
+            # row is a normal no-op, not an error), so only this INSERT branch needs the guard.
             session.add(UserListingAction(user_id=user.id, listing_id=listing_id, action=db_action))
-        session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
 
     # same-origin relative path only — `next` is attacker-controllable form input, never redirect
     # anywhere else with it.
@@ -1219,8 +1245,19 @@ def upgrade(request: Request, uid: int | None = None):
             "paid_until": user.paid_until,
             "subscription_plan": SUBSCRIPTION_PLAN,
             "subscription_price": PLAN_PRICES_ILS[SUBSCRIPTION_PLAN],
-            "has_active_subscription": user.takbull_subscription_uniqid is not None
-            and not user.cancel_at_period_end,
+            # 2026-09-24 real bug fix: this used to also require `not user.cancel_at_period_end`,
+            # which meant a subscription the user had CANCELLED (but whose current paid period
+            # hasn't lapsed yet — see account_cancel_subscription's own comment: Takbull's own
+            # subscription stays live and billing until then, only a local flag changes) read as
+            # "no active subscription" here. That let a user land back on this page and open a
+            # SECOND new Takbull recurring order while the first one was still actively billing —
+            # the webhook below then overwrites user.takbull_subscription_uniqid with the new
+            # order's id, permanently losing the only reference this app had to the still-live old
+            # one (no uniqid on file, so the daily housekeeping job that's supposed to cancel it
+            # once the period ends has nothing to call Takbull's CancelSubscription API with) —
+            # real, unrecoverable double-billing. /account's own has_active_subscription (below,
+            # unchanged) never had this exception — this brings /upgrade in line with it.
+            "has_active_subscription": user.takbull_subscription_uniqid is not None,
             "recurring_configured": takbull_client.recurring_api_configured(),
         },
     )
@@ -1270,6 +1307,19 @@ def upgrade_submit(
         user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "upgrade"})
+
+        # 2026-09-24 real bug fix, server-side backstop for the same reason as the terms_agreed
+        # check above ("don't trust the client alone") — the GET /upgrade page already hides this
+        # form once has_active_subscription is true (see that route's own comment for the full
+        # incident), but a stale page, a direct POST, or a race could still reach here. A user with
+        # ANY existing takbull_subscription_uniqid — cancelled-but-not-lapsed included — already has
+        # a real, still-billing Takbull subscription; opening a second one here is exactly the
+        # orphaned-subscription double-billing bug this whole comment chain documents. Redirect to
+        # /account, where resume/cancel for the EXISTING subscription already live.
+        if user.takbull_subscription_uniqid is not None:
+            redirect_uid = user.telegram_user_id
+            uid_qs = f"?uid={redirect_uid}" if redirect_uid else ""
+            return RedirectResponse(f"/account{uid_qs}", status_code=303)
 
         if takbull_client.recurring_api_configured():
             payment = Payment(
@@ -1940,6 +1990,34 @@ def filter_view(
         )
 
 
+def _parse_int_or_none(raw: str) -> int | None:
+    """2026-09-24 real bug fix: filter_update's numeric fields are deliberately plain `str = Form`
+    (not `int = Form`) so an empty string means "no limit" instead of FastAPI 422ing the whole
+    form — but that also means a non-numeric value (a stray character, a pasted "5,000" with a
+    comma, a tampered/non-browser request) skipped FastAPI's own type coercion entirely and hit a
+    bare `int(...)` below, which raised an uncaught ValueError → an unhandled 500 on every save,
+    not just that one field. Trims the same way the call sites already did, but treats anything
+    that still doesn't parse as "no limit" (None) rather than crashing — the same fallback an empty
+    field already got, not silently rejecting the rest of the form the user just filled in."""
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _parse_float_or_none(raw: str) -> float | None:
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
 @app.post("/filter")
 def filter_update(
     request: Request,
@@ -1980,13 +2058,13 @@ def filter_update(
 
         f: Filter = user.filter
         f.cities = [c for c in cities if c in CITIES]
-        f.price_min = int(price_min) if price_min.strip() else None
-        f.price_max = int(price_max) if price_max.strip() else None
-        f.rooms_min = float(rooms_min) if rooms_min.strip() else None
-        f.rooms_max = float(rooms_max) if rooms_max.strip() else None
+        f.price_min = _parse_int_or_none(price_min)
+        f.price_max = _parse_int_or_none(price_max)
+        f.rooms_min = _parse_float_or_none(rooms_min)
+        f.rooms_max = _parse_float_or_none(rooms_max)
         f.property_types = [p for p in property_types if p in PROPERTY_TYPE_LABELS[DEFAULT_LANG]]
-        f.floor_min = int(floor_min) if floor_min.strip() else None
-        f.floor_max = int(floor_max) if floor_max.strip() else None
+        f.floor_min = _parse_int_or_none(floor_min)
+        f.floor_max = _parse_int_or_none(floor_max)
         f.ground_floor_only = ground_floor_only is not None
         f.require_parking = require_parking is not None
         f.require_elevator = require_elevator is not None
@@ -1998,7 +2076,7 @@ def filter_update(
         f.no_brokers = no_brokers is not None
         f.safe_room_pref = safe_room_pref if safe_room_pref in SAFE_ROOM_LABELS[DEFAULT_LANG] else "any"
         f.furniture_pref = furniture_pref if furniture_pref in FURNITURE_LABELS[DEFAULT_LANG] else "any"
-        f.min_area_sqm = int(min_area_sqm) if min_area_sqm.strip() else None
+        f.min_area_sqm = _parse_int_or_none(min_area_sqm)
         f.keywords = [k.strip() for k in keywords.split(",") if k.strip()]
         f.flexible_match = flexible_match is not None
         session.commit()

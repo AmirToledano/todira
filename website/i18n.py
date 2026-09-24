@@ -1768,11 +1768,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "يتجدد تلقائيًا كل شهر. يمكن الإلغاء في أي وقت من /account — يبقى الوصول حتى نهاية الفترة المدفوعة بالفعل.",
     },
     "upgrade.already_subscribed": {
-        "he": "יש לך כבר מנוי פעיל. ניתן לנהל אותו בעמוד /account.",
-        "en": "You already have an active subscription. Manage it from the /account page.",
-        "ru": "У вас уже есть активная подписка. Управляйте ею на странице /account.",
-        "fr": "Vous avez déjà un abonnement actif. Gérez-le depuis la page /account.",
-        "ar": "لديك بالفعل اشتراك نشط. يمكنك إدارته من صفحة /account.",
+        "he": "יש לך כבר מנוי פעיל.", "en": "You already have an active subscription.",
+        "ru": "У вас уже есть активная подписка.", "fr": "Vous avez déjà un abonnement actif.",
+        "ar": "لديك بالفعل اشتراك نشط.",
+    },
+    # 2026-09-24: split off from upgrade.already_subscribed's own text so this renders as a real
+    # <a href="/account"> link (real bug fix — see that route's own comment: a user whose
+    # subscription is cancelled-but-not-yet-lapsed used to be able to land back on THIS page and
+    # open a second Takbull order, orphaning the still-billing original) rather than a plain-text
+    # mention of the path.
+    "upgrade.manage_subscription_link": {
+        "he": "לניהול המנוי", "en": "Manage subscription", "ru": "Управление подпиской",
+        "fr": "Gérer l'abonnement", "ar": "إدارة الاشتراك",
     },
     "upgrade.choose_plan_cta": {
         "he": "בחר {plan}", "en": "Choose {plan}", "ru": "Выбрать {plan}", "fr": "Choisir {plan}",
