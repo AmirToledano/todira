@@ -26,6 +26,7 @@ from facebook_client import fetch_search_results as fetch_facebook_results
 from facebook_groups_client import FacebookGroupsFetchError
 from facebook_groups_client import fetch_home_feed_post_ids
 from facebook_groups_client import fetch_post_detail as fetch_facebook_group_post_detail
+import homeless_client
 from homeless_client import HomelessFetchError
 from homeless_client import fetch_listing_description as fetch_homeless_description
 from homeless_client import fetch_search_results as fetch_homeless_results
@@ -857,7 +858,15 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     _HOMELESS_DESCRIPTION_FETCH_CONCURRENCY (see that constant's own comment — these go through
     ZenRows either way, a managed proxy built for concurrent traffic, so this doesn't change the
     request rate OUR OWN IP presents to homeless.co.il at all) — same _fetch_concurrently helper
-    _scrape_komo uses. Previously these ran one at a time, sequentially."""
+    _scrape_komo uses. Previously these ran one at a time, sequentially.
+
+    2026-09-24: task #5/#6 — also fetches Homeless's real sale listings (SALE_SEARCH_PAGE_URL,
+    confirmed live — see homeless_client.py's own module docstring for the real site-redesign
+    story this rewrite was built against) alongside rent, tagging each with the right DealType.
+    Both categories share ONE known_ids set (a Homeless ad id is globally unique regardless of
+    deal type) and ONE combined new-description-fetch cap — a real ZenRows-credit budget on total
+    new fetches this run, not a per-category allowance. A failed category (HomelessFetchError) is
+    logged/counted but doesn't discard whatever the other category already found."""
     errors = 0
     normalized_items = []
     seen_external_ids: set[str] = set()
@@ -866,18 +875,26 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     known_ids = _fetch_known_external_ids(Source.HOMELESS)
     max_new_description_fetches = _homeless_max_new_description_fetches_per_run()
 
-    logger.info("Fetching Homeless listings")
     raw_items: list[dict] = []
-    try:
-        for raw_item in fetch_homeless_results():
-            raw_items.append(raw_item)
-    except HomelessFetchError:
-        # A partial list (whatever was already yielded before the failure) is still processed
-        # below, same as before this change — a mid-iteration failure never discarded what had
-        # already been fetched.
-        logger.exception("Failed to fetch Homeless listings — skipping the rest of this source")
-        errors += 1
-        all_succeeded = False
+    for url, deal_type in (
+        (homeless_client.SEARCH_PAGE_URL, DealType.RENT),
+        (homeless_client.SALE_SEARCH_PAGE_URL, DealType.SALE),
+    ):
+        logger.info("Fetching Homeless listings (deal_type=%s)", deal_type)
+        try:
+            for raw_item in fetch_homeless_results(url):
+                raw_item["_deal_type"] = deal_type
+                raw_items.append(raw_item)
+        except HomelessFetchError:
+            # A partial list (whatever was already yielded before the failure) is still processed
+            # below, same as before this change — a mid-iteration failure never discarded what had
+            # already been fetched, and a failed category doesn't discard the other's results.
+            logger.exception(
+                "Failed to fetch Homeless listings (deal_type=%s) — skipping the rest of this "
+                "category", deal_type,
+            )
+            errors += 1
+            all_succeeded = False
 
     fetched = len(raw_items)
     for raw_item in raw_items:
@@ -888,8 +905,8 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     if len(new_items) > max_new_description_fetches:
         logger.warning(
             "Homeless hit its per-run new-description-fetch safety cap (%s=%d) — "
-            "remaining new listings this run get no description and will be picked "
-            "up in a later run instead of spending unbounded ZenRows credits in one "
+            "remaining new listings this run (across rent and sale) are skipped and will be "
+            "picked up in a later run instead of spending unbounded ZenRows credits in one "
             "shot.",
             _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR,
             max_new_description_fetches,
@@ -906,7 +923,8 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
         item["description"] = description
 
     for raw_item in raw_items:
-        normalized = normalize(raw_item, source=Source.HOMELESS, deal_type=DealType.RENT)
+        deal_type = raw_item.pop("_deal_type")
+        normalized = normalize(raw_item, source=Source.HOMELESS, deal_type=deal_type)
         if normalized is not None:
             normalized_items.append(normalized)
         else:

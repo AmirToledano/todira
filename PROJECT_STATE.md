@@ -7355,22 +7355,75 @@ they aren't lost, not because they're not real):
 
 **Ready to resume immediately once code is on main (or via more read-only diagnostics before
 then):**
-3. Homeless RESP001 is still genuinely unsolved — js_render=true clears the ZenRows error itself
-   but returns a real 200 with zero usable listing rows (5x the cost for a quieter failure, not a
-   fix — see section 5 above for the full real finding). Needs a diagnostic that dumps the actual
-   raw HTML body (not just counts) to see what's really in a js_render=true response before trying
-   `wait`/`wait_for` or anything else.
-4. One more diagnostic on `homeless.co.il/sale/`'s real markup (dump actual HTML around a listing,
-   same as this project's very first Homeless build) — the row regex found 0 matches there too,
-   meaning it's a real but differently-shaped page, not confirmed how yet. Worth doing together
-   with #3 above since both need the same kind of raw-HTML-dump diagnostic.
-5. Facebook Groups' own sale category (if it has one) was never checked — lower priority, no owner
+3. Facebook Groups' own sale category (if it has one) was never checked — lower priority, no owner
    ask for it yet.
-6. The two lower-severity bugs from section 6 above (account-creation/like-hide races, `/filter`
+4. The two lower-severity bugs from section 6 above (account-creation/like-hide races, `/filter`
    numeric-input crash) and the `/upgrade` orphaned-subscription bug (higher severity, but
    genuinely blocked on Takbull being connected) remain open, undocumented anywhere but this entry
    before now.
+5. `fetch_listing_description` (the per-listing detail-page fetch, still on the plain ZenRows
+   tier) was never re-tested against the same redesign that broke the search page — if it turns
+   out to need js_render too, descriptions would start silently returning None instead of
+   erroring (that function's own contract already treats any failure as "no description," so this
+   would be silent, not a crash) — worth a real check, not urgent (descriptions are optional
+   enrichment).
 
 **Confirmed fine, no action needed:** the Helm fix, Yad2/Facebook/Komo sale wiring, and both
 keyword-escaping/onboarding-range bug fixes are all committed, tested (958+ tests passing, ruff
 clean throughout), and pushed — genuinely done, just not yet on main.
+
+### 8. Update, same night: Homeless SOLVED — the real root cause was a full site redesign, not a
+### transient ZenRows issue; task #5/#6/#14 all closed together
+
+Continuing past section 7's "still genuinely unsolved" note: dumped the actual RAW HTML body (not
+just regex counts) from both the js_render=true /rent/ response and /sale/ — the real fix this
+project's own history should have reached for immediately (every prior source here was solved by
+looking at real markup, never guessed). Found real, conclusive content in both: real listing cards,
+real ₪ prices, real Cloudflare Rocket Loader markers in the page's own form markup
+(`__cfRLUnblockHandlers`, `data-cf-modified-...`).
+
+**Real root cause, confirmed live, two parts:**
+1. Homeless's search page no longer server-renders its listing grid into plain HTML — Rocket
+   Loader defers real script execution, and a plain (non-JS) ZenRows fetch now gets RESP001.
+   `js_render=true` DOES get the real page — confirmed live — at a real, meaningfully higher cost:
+   **5 ZenRows credits vs. the old plain tier's 1** (confirmed via the real X-Request-Credits
+   header). This is a genuine, necessary cost increase — the alternative is Homeless staying
+   completely broken — not a casual choice.
+2. The listing grid's own markup moved from a `<table>` of `<tr id="ad_<id>">` rows to a
+   `<div>`-based card grid (`<div id="ad_<id>" class="image-carousel">...<a href="/rent/viewad,
+   <id>.aspx" title="<type>, <rooms> חדרים, <street>, <city>">...<div class="price">N,NNN
+   ₪</div><h3>...<div class="custom-divider"></div>...<rooms> חדרים • <sqm> מ"ר • קומה
+   <floor>...</h3></a></div>`, confirmed against several real cards on BOTH /rent/ and /sale/.
+   Earlier tonight's "0 rows" reading (section 5/7 above) was a false negative — checking for the
+   OLD `<tr>` pattern against markup that had already moved to `<div>`, not a real absence of
+   content.
+
+**Real upside found along the way**: the new card markup carries square meters (`מ"ר`) directly —
+the old `<table>` never had this field at all (no מ"ר column existed anywhere in its header row),
+so `square_meters` was always `None` from this source before tonight. It's a real, populated field
+now, confirmed against real cards (e.g. a real sale card: `164 מ"ר`).
+
+**Fixed**: `homeless_client.py` fully rewritten against the confirmed real markup —
+`SALE_SEARCH_PAGE_URL` added, `fetch_search_results(url)` now takes the URL explicitly (same
+`url_path`-style pattern `facebook_client.py` already uses), `_parse_cards` (replacing the old
+`_parse_rows`) extracts city/street from the `<a title="...">` attribute's clean comma-separated
+string and rooms/sqm/floor/neighborhood from the `<h3>`'s own two-line structure, searching each
+field independently (never by fixed segment position) — same defensive approach as
+`yad2_client._parse_info_line_2`, so a missing field degrades to `None` instead of misreading a
+neighbor (this replaces the old fixed-`<td>`-position approach that needed special-casing for
+"Tivuch" brokered rows — the new approach doesn't need that special-casing at all, a real
+simplification). `scraper/main.py`'s `_scrape_homeless()` now fetches both rent and sale, sharing
+`known_ids` and the description-fetch cap, mirroring the exact pattern used tonight for
+Yad2/Facebook/Komo's own sale wiring. Every parser change verified against the exact real card
+markup captured live BEFORE writing a single regex — 20 `homeless_client` tests + 4 new
+`_scrape_homeless` tests, all real-data-driven. 963 tests pass full suite; ruff clean. Committed
+(`64853b3`), not yet merged to main.
+
+**Not yet re-checked**: whether `fetch_listing_description` (the per-listing detail-page fetch,
+still on the plain ZenRows tier) also needs `js_render=true` after this same redesign — left as-is
+since it's optional enrichment and untested, not urgent (see section 7, item 5 above).
+
+**Tasks #5, #6, and #14 are now all CLOSED** — Homeless rent scraping is fixed (was fully broken),
+and Homeless sale scraping is newly wired (was never built before). The one real decision left for
+the owner: accepting Homeless's real per-run cost going from 1 to 5 ZenRows credits (via merging
+this work to main) — the only alternative is leaving Homeless permanently broken.

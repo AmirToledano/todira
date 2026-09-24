@@ -74,3 +74,21 @@ jobs:
           fi
           echo "Pod: $POD"
           kubectl exec -n todira "$POD" -- env 2>/dev/null | grep -o '^TAKBULL_[A-Z_]*' | sort -u || echo "(no TAKBULL_* env vars found on the live pod)"
+
+      # 2026-09-24: owner reported the Telegram bot hasn't responded since 2026-09-21 — checks the
+      # bot pod's real current state/logs live, right now, rather than guessing. The bot pod was
+      # confirmed to have Restart Count: 0 the whole time in the last deploy's own diagnostics (no
+      # crash loop) — this checks whether it's actively polling/heartbeating right now, post-deploy.
+      - name: Check the live bot pod's current status and recent logs (owner reports it's been unresponsive since 2026-09-21)
+        run: |
+          echo "=== bot pod status ==="
+          kubectl get pods -n todira -l app=todira-bot -o wide
+          echo
+          echo "=== bot pod age/restarts/ready (precise) ==="
+          kubectl get pods -n todira -l app=todira-bot -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}started={.status.startTime}{"\t"}ready={.status.containerStatuses[0].ready}{"\t"}restarts={.status.containerStatuses[0].restartCount}{"\n"}{end}'
+          echo
+          echo "=== last 60 lines of bot pod logs (is it heartbeating? any exceptions?) ==="
+          kubectl logs -n todira -l app=todira-bot --tail=60 || true
+          echo
+          echo "=== any exceptions/errors anywhere in the bot pod's full available log ==="
+          kubectl logs -n todira -l app=todira-bot --tail=5000 2>/dev/null | grep -iE "error|exception|traceback|conflict|unauthorized|forbidden" | tail -30 || echo "(no error/exception/conflict lines found in available logs)"

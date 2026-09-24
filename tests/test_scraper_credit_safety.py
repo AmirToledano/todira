@@ -205,12 +205,22 @@ def _fake_homeless_item(external_id: str) -> dict:
     }
 
 
+def _homeless_rent_only(items: list):
+    """2026-09-24: _scrape_homeless now calls fetch_homeless_results once per category (rent +
+    sale, see homeless_client.SEARCH_PAGE_URL/SALE_SEARCH_PAGE_URL) — these existing tests only
+    care about the rent path's own behavior, so the sale call is a real, separate call that must
+    be handled (not just ignored), but returns nothing, keeping every assertion below unchanged."""
+    def _fake(url):
+        return iter(items) if url == scraper_main.homeless_client.SEARCH_PAGE_URL else iter([])
+    return _fake
+
+
 def test_scrape_homeless_fetches_description_only_for_genuinely_new_listings(monkeypatch):
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
     monkeypatch.setattr(
         scraper_main,
         "fetch_homeless_results",
-        lambda: iter([_fake_homeless_item("1"), _fake_homeless_item("2")]),
+        _homeless_rent_only([_fake_homeless_item("1"), _fake_homeless_item("2")]),
     )
 
     description_calls = []
@@ -247,7 +257,9 @@ def test_scrape_homeless_stops_new_description_fetches_at_the_cap(monkeypatch):
     monkeypatch.setattr(
         scraper_main,
         "fetch_homeless_results",
-        lambda: iter([_fake_homeless_item("1"), _fake_homeless_item("2"), _fake_homeless_item("3")]),
+        _homeless_rent_only(
+            [_fake_homeless_item("1"), _fake_homeless_item("2"), _fake_homeless_item("3")]
+        ),
     )
 
     description_calls = []
@@ -272,6 +284,52 @@ def test_scrape_homeless_stops_new_description_fetches_at_the_cap(monkeypatch):
     assert seen_external_ids == {"1", "2", "3"}
     assert len(normalized_items) == 3
     assert all_succeeded is True
+
+
+# --- _scrape_homeless: sale category (2026-09-24, task #5/#6) ------------------------------------
+
+
+def test_scrape_homeless_upserts_a_new_sale_listing_with_sale_deal_type(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_results(url):
+        if url == scraper_main.homeless_client.SALE_SEARCH_PAGE_URL:
+            return iter([_fake_homeless_item("sale-1")])
+        return iter([])
+
+    monkeypatch.setattr(scraper_main, "fetch_homeless_results", _fake_results)
+    monkeypatch.setattr(scraper_main, "fetch_homeless_description", lambda url: None)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_homeless()
+    )
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
+    assert seen_external_ids == {"sale-1"}
+    assert all_succeeded is True
+
+
+def test_scrape_homeless_sale_failure_does_not_discard_the_rent_results(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_results(url):
+        if url == scraper_main.homeless_client.SALE_SEARCH_PAGE_URL:
+            raise scraper_main.HomelessFetchError("simulated sale discovery failure")
+        return iter([_fake_homeless_item("rent-1")])
+
+    monkeypatch.setattr(scraper_main, "fetch_homeless_results", _fake_results)
+    monkeypatch.setattr(scraper_main, "fetch_homeless_description", lambda url: None)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_homeless()
+    )
+
+    assert seen_external_ids == {"rent-1"}
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.RENT
+    assert all_succeeded is False
+    assert errors == 1
 
 
 def test_scrape_komo_fails_gracefully_when_the_one_discovery_call_fails(monkeypatch):
