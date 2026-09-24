@@ -1,0 +1,50 @@
+name: Check — real-time website pod health + /healthz (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only. Real trigger: the owner's own Telegram health-check bot fired
+# "todira 🚨: /healthz not responding correctly" tonight. Checks the actual live pod status
+# (restarts, ready state, recent events) and the real current response from todira.app/healthz
+# itself, rather than digging through old deploy-job logs.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Website Deployment/Pod status right now
+        run: |
+          echo "=== Deployment ==="
+          kubectl get deployment todira-website -n todira -o wide || true
+          echo
+          echo "=== Pods ==="
+          kubectl get pods -n todira -l app=todira-website -o wide || true
+          echo
+          echo "=== Pod describe (events, restarts, probe failures) ==="
+          POD=$(kubectl get pods -n todira -l app=todira-website --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -n "$POD" ]; then
+            kubectl describe pod "$POD" -n todira | tail -60
+          fi
+
+      - name: Most recent website pod's own logs (last 150 lines)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No website pod found at all."
+            exit 0
+          fi
+          kubectl logs -n todira "$POD" --tail=150 || true
+
+      - name: Real curl of https://todira.app/healthz right now
+        run: |
+          curl -sS -o /tmp/healthz.txt -w "http_status=%{http_code} time_total=%{time_total}s\n" https://todira.app/healthz --max-time 20 || echo "curl itself failed (timeout/connection error)"
+          echo "--- body ---"
+          cat /tmp/healthz.txt 2>/dev/null || echo "(no body)"

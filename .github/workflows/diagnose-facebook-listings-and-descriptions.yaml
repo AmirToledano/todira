@@ -1,0 +1,111 @@
+name: Diagnose — real Facebook Marketplace + Groups listing/description coverage (read-only)
+
+# Real owner question, same night as the Yad2/Komo/Homeless description-coverage check: "and of
+# course Facebook listings + groups + marketplace too — both listings AND descriptions, very
+# important." Read-only — checks whether the Facebook scraper CronJob is actually enabled (it
+# defaults to suspended, a deliberate separate kill-switch from the main scraper — see
+# facebook-scraper-cronjob.yaml's own comment on why), whether FACEBOOK_GROUPS_TRACKED_IDS is
+# actually configured (facebook_groups is a real no-op without it), how many real
+# facebook_marketplace/facebook_groups listings exist in the DB right now, their description
+# coverage, and the most recent Facebook scraper pod's own logs for a real live signal.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Is the Facebook scraper CronJob actually enabled right now?
+        run: |
+          echo "=== todira-facebook-scraper CronJob ==="
+          kubectl get cronjob todira-facebook-scraper -n todira -o wide 2>/dev/null || echo "CronJob not found"
+          echo
+          echo "=== suspend flag + schedule + configured env (SCRAPE_SOURCES, tracked group ids) ==="
+          kubectl get cronjob todira-facebook-scraper -n todira -o json 2>/dev/null | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          print('suspend:', d['spec']['suspend'])
+          print('schedule:', d['spec']['schedule'])
+          print('last schedule time:', d['status'].get('lastScheduleTime'))
+          print('last successful time:', d['status'].get('lastSuccessfulTime'))
+          envs = d['spec']['jobTemplate']['spec']['template']['spec']['containers'][0].get('env', [])
+          for e in envs:
+              if e.get('name') in ('SCRAPE_SOURCES', 'FACEBOOK_GROUPS_TRACKED_IDS', 'FACEBOOK_GROUPS_SALE_TRACKED_IDS'):
+                  print(f\"{e['name']}: {e.get('value', '(from secret/other ref)')!r}\")
+          " || echo "could not parse cronjob spec"
+
+      - name: Facebook Marketplace + Groups jobs/pods, and the most recent Facebook pod's own logs
+        run: |
+          echo "=== Facebook scraper jobs ==="
+          kubectl get jobs -n todira -l app=todira-facebook-scraper -o wide || true
+          echo "--- pods ---"
+          kubectl get pods -n todira -l app=todira-facebook-scraper -o wide || true
+          echo
+          POD=$(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No Facebook scraper pod has EVER run — the CronJob has not fired yet (consistent with suspend=true, or hasn't hit its schedule since being enabled)."
+          else
+            echo "=== Logs for $POD (last 200 lines) ==="
+            kubectl logs -n todira "$POD" --tail=200 || true
+          fi
+
+      - name: Real listing counts + description coverage for facebook_marketplace and facebook_groups
+        run: |
+          kubectl delete pod diag-fb-coverage -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-fb-coverage
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-fb-coverage
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- total + active + description coverage, facebook_marketplace and facebook_groups ---"
+                    psql "$CONN" -c "
+                      SELECT source,
+                             count(*) AS total_ever,
+                             count(*) FILTER (WHERE is_delisted = false) AS active_now,
+                             count(description) FILTER (WHERE is_delisted = false) AS active_with_description,
+                             max(scraped_at) AS most_recent_scrape
+                      FROM listings
+                      WHERE source IN ('facebook_marketplace', 'facebook_groups')
+                      GROUP BY source
+                      ORDER BY source;
+                    "
+                    echo "--- a real sample per source (if any exist) ---"
+                    psql "$CONN" -c "
+                      SELECT DISTINCT ON (source) source, id, url, deal_type, left(description, 200) AS sample
+                      FROM listings
+                      WHERE source IN ('facebook_marketplace', 'facebook_groups')
+                      ORDER BY source, scraped_at DESC;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-fb-coverage -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-fb-coverage || true
+          kubectl delete pod diag-fb-coverage -n todira --ignore-not-found
