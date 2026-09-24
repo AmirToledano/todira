@@ -1,0 +1,28 @@
+name: Check — real HTTP response headers for /apartments (read-only)
+
+# Ruling out a caching theory: ran the exact same /apartments?uid=<owner> page through both a real
+# Chromium and a real WebKit engine (Playwright, fresh browser context each time) and BOTH show 24
+# real, fully-visible listing cards with zero JS errors — yet the owner's own real devices (both
+# Telegram's in-app browser and their regular phone browser) show none, even after a full close and
+# reopen. A fresh Playwright context never has any prior cache, so if the server is sending a
+# Cache-Control header that lets a REAL repeat-visit browser serve a stale complete HTML page from
+# disk cache (not just cache the static assets, which was already fixed for style.css), a fresh
+# context would never reproduce it while the owner's real, previously-visited browser would. This
+# just curls the real production URL and dumps every response header to check for exactly that.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump real response headers for /apartments
+        run: |
+          echo "=== First request (cold) ==="
+          curl -sD - -o /dev/null "https://todira.app/apartments?uid=6984931854"
+          echo
+          echo "=== Second request (checking for any conditional/cache behavior) ==="
+          curl -sD - -o /dev/null "https://todira.app/apartments?uid=6984931854"
+          echo
+          echo "=== Static asset headers for comparison (style.css) ==="
+          curl -sD - -o /dev/null "https://todira.app/static/style.css"
