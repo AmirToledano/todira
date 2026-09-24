@@ -196,6 +196,8 @@ def normalize(
             city=cities.canonicalize_city(_get(raw_item, "city", "cityText")),
             neighborhood=_get(raw_item, "neighborhood", "neighborhoodText"),
             street=_get(raw_item, "street", "streetText"),
+            latitude=_to_float(_get(raw_item, "latitude")),
+            longitude=_to_float(_get(raw_item, "longitude")),
             has_parking=_to_bool(_get(raw_item, "parking")),
             has_elevator=_to_bool(_get(raw_item, "elevator")),
             has_balcony=_to_bool(_get(raw_item, "balcony")),

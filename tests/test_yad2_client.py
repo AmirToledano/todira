@@ -653,6 +653,8 @@ def test_marker_to_raw_item_extracts_the_real_confirmed_shape():
         "neighborhood": "ג'סי כהן",
         "city": "חולון",
         "images": ["https://img.yad2.co.il/1.jpeg", "https://img.yad2.co.il/2.jpeg"],
+        "latitude": 32.012712,
+        "longitude": 34.763276,
     }
 
 

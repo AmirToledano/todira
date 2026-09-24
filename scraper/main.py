@@ -788,6 +788,11 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
         all_succeeded = False
 
     sale_ids: set[str] = set()
+    # Real lat/lng per id, straight off the SAME coordinates-list response already being paid
+    # for — confirmed live nationwide (both rent/sale, see module docstring) — no separate fetch
+    # needed. Only used below for genuinely-new ids (an already-known listing's coordinates don't
+    # change and aren't worth a re-normalize just to refresh them).
+    coords_by_id: dict[str, tuple[float, float]] = {}
     new_ids_to_fetch: list[str] = []
     for coordinate, is_sale in [(c, False) for c in rent_coordinates] + [
         (c, True) for c in sale_coordinates
@@ -799,6 +804,9 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
         seen_external_ids.add(modaa_num)
         if is_sale:
             sale_ids.add(modaa_num)
+        lat, lng = coordinate.get("lat"), coordinate.get("lng")
+        if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+            coords_by_id[modaa_num] = (lat, lng)
         if modaa_num in processed_this_run:
             continue  # already known from a prior run, or a duplicate within this run's own list
         processed_this_run.add(modaa_num)
@@ -822,6 +830,9 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
             errors += 1
             continue
         deal_type = DealType.SALE if modaa_num in sale_ids else DealType.RENT
+        coords = coords_by_id.get(modaa_num)
+        if coords is not None:
+            detail["latitude"], detail["longitude"] = coords
         normalized = normalize(detail, source=Source.KOMO, deal_type=deal_type)
         if normalized is not None:
             normalized_items.append(normalized)
