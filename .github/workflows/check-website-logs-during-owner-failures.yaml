@@ -1,0 +1,58 @@
+name: URGENT — real website pod logs around the owner's exact failure timestamps (read-only)
+
+# Owner hit the "downloads as a .txt file instead of rendering" bug TWICE on their real device
+# tonight (filter.txt ~23:34 IL / 20:34 UTC, apartments.txt ~23:41 IL / 20:41 UTC) — but every
+# remote diagnostic from GitHub Actions (curl with real headers, Playwright Chromium, Playwright
+# real WebKit) gets a clean 200 text/html response every single time, with zero reproduction. That
+# 100%-fail-on-real-device vs 100%-pass-on-remote-check split means the bug is specific to
+# something about the owner's real request path that a synthetic external fetch doesn't replicate.
+# Pulling the actual website pod's own logs for exactly those minutes is the one source of truth
+# that captures what the SERVER itself saw for the owner's real requests, not a reconstruction.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Full recent website pod logs (covers 20:25-20:45 UTC tonight)
+        run: |
+          echo "=== current website pod(s) ==="
+          kubectl get pods -n todira -l app=todira-website -o wide
+          echo
+          echo "=== FULL logs, current container, since 20:20 UTC ==="
+          kubectl logs -n todira -l app=todira-website --since-time="2026-09-24T20:20:00Z" --timestamps || true
+          echo
+          echo "=== Caddy logs, since 20:20 UTC (catches 502s/backend errors at the proxy level) ==="
+          kubectl logs -n todira -l app=todira-caddy --since-time="2026-09-24T20:20:00Z" --timestamps --tail=500 || true
+
+      - name: Grep specifically around the owner's two failure timestamps
+        run: |
+          echo "=== website logs, lines mentioning /filter or /apartments requests, with surrounding context ==="
+          kubectl logs -n todira -l app=todira-website --since-time="2026-09-24T20:20:00Z" --timestamps 2>/dev/null | grep -E "filter|apartments|ERROR|Error|Traceback|Exception" || echo "(no matches)"
+
+      - name: Real curl with actual mobile Safari headers (Accept-Encoding br, real Accept/UA) — rules out compression-negotiation
+        run: |
+          curl -sD - -o /tmp/real_headers.bin \
+            -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -H "Accept-Encoding: gzip, deflate, br" \
+            -H "Accept-Language: he-IL,he;q=0.9" \
+            "https://todira.app/apartments?uid=6984931854"
+          echo
+          echo "--- body first 300 bytes ---"
+          head -c 300 /tmp/real_headers.bin
+          echo
+          echo "--- body size ---"
+          wc -c /tmp/real_headers.bin
+          echo "--- is it valid gzip/brotli or plain text? ---"
+          file /tmp/real_headers.bin || true
