@@ -127,6 +127,12 @@ class NormalizedListing(BaseModel):
     neighborhood: str | None = None
     street: str | None = None
 
+    # 2026-09-24: real pin coordinates for /apartments' map view — see models.Listing's own
+    # comment for which sources currently populate these (Komo nationwide, Yad2 map-API regions
+    # only); None for any source/listing without a real coordinate, never geocoded/approximated.
+    latitude: float | None = None
+    longitude: float | None = None
+
     has_parking: bool | None = None
     has_elevator: bool | None = None
     has_balcony: bool | None = None

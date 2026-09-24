@@ -3,7 +3,9 @@
 {# animate=false for cards fetched in later /apartments "load more" pages — the base.html
    IntersectionObserver that adds .is-visible only runs once, at initial page load, so a card
    appended afterward would never lose its .reveal opacity:0 and stay invisible forever. #}
-<div class="listing-card{{ ' reveal' if animate else '' }}" style="transition-delay:{{ delay }}ms">
+<div class="listing-card{{ ' reveal' if animate else '' }}" style="transition-delay:{{ delay }}ms"
+     data-listing-id="{{ l.id }}"
+     {% if l.latitude is defined and l.longitude is defined and l.latitude is not none and l.longitude is not none %}data-lat="{{ l.latitude }}" data-lng="{{ l.longitude }}"{% endif %}>
   <div class="listing-cover-wrap">
     <div class="card-reactions">
       <form method="post" action="/react" class="card-reaction-form">

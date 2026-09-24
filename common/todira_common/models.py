@@ -226,6 +226,12 @@ class Listing(Base):
     neighborhood: Mapped[str | None] = mapped_column(Text)
     street: Mapped[str | None] = mapped_column(Text)
 
+    # 2026-09-24: real pin coordinates for /apartments' map view — NULL for any source/listing
+    # that never carries real coordinates (never geocoded/approximated — see migration
+    # 0013_listing_coords's own docstring for exactly which sources currently populate this).
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+
     # tri-state: NULL = source didn't say, not "false"
     has_parking: Mapped[bool | None] = mapped_column(Boolean)
     has_elevator: Mapped[bool | None] = mapped_column(Boolean)

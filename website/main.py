@@ -832,6 +832,7 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
 
 @app.get("/apartments")
 def apartments(request: Request, uid: int | None = None, offset: int = 0, fragment: bool = False):
+    lang = get_lang(request)
     with get_session() as session:
         user = _resolve_user(request, session, uid)
         if user is None:
@@ -910,6 +911,19 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
         # AJAX "load more" request (see apartments.html's own script) — just the next batch of
         # cards plus a fresh sentinel, no base.html layout at all.
         return _render(request, "_listing_cards_fragment.html", context)
+
+    # 2026-09-24: sidebar filter panel (dorin.app-style layout the owner asked for) reuses the
+    # SAME field partial /filter's own full-page form does (_filter_form_fields.html) — needs the
+    # same label dicts that route already builds, see filter_view above.
+    context.update(
+        {
+            "f": user.filter,
+            "cities_list": sorted(CITIES),
+            "property_type_labels": PROPERTY_TYPE_LABELS.get(lang, PROPERTY_TYPE_LABELS[DEFAULT_LANG]),
+            "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
+            "furniture_labels": FURNITURE_LABELS.get(lang, FURNITURE_LABELS[DEFAULT_LANG]),
+        }
+    )
 
     return _render(
         request,

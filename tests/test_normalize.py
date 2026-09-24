@@ -110,6 +110,20 @@ def test_location_fields_and_alternate_keys():
     assert result.street == "הרכבת"
 
 
+def test_latitude_longitude_passed_through_when_present():
+    result = normalize({"id": "1", "latitude": 32.012712, "longitude": 34.763276})
+    assert result.latitude == 32.012712
+    assert result.longitude == 34.763276
+
+
+def test_latitude_longitude_default_to_none_when_absent():
+    # Homeless/Facebook items never carry these — must stay None, never a guessed/approximated
+    # coordinate (see models.Listing's own comment on this).
+    result = normalize({"id": "1"})
+    assert result.latitude is None
+    assert result.longitude is None
+
+
 def test_city_spelling_is_canonicalized():
     # confirmed live 2026-09-02: Yad2's own page text for Kiryat Motzkin is "קרית מוצקין" (1 yud),
     # not cities.py's bundled "קריית מוצקין" (2 yuds) - normalize() must fix this up so a saved

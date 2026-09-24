@@ -127,6 +127,29 @@ def test_scrape_komo_stops_new_detail_fetches_at_the_cap(monkeypatch):
     assert len(normalized_items) == 2
 
 
+def test_scrape_komo_attaches_real_coords_from_the_coordinates_list(monkeypatch):
+    """2026-09-24: lat/lng ride along for free on the SAME coordinates-list response already
+    fetched (confirmed nationwide, see komo_client.py) — a genuinely new listing's normalized
+    item must carry them, no separate fetch."""
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_all_coordinate_ids",
+        _rent_coordinates_only([{"id": "1", "lat": 32.05, "lng": 34.77}]),
+    )
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_komo_listing_detail",
+        lambda modaa_num: {"id": modaa_num, "url": f"https://komo.co.il/{modaa_num}", "price": 4000},
+    )
+
+    normalized_items, *_ = scraper_main._scrape_komo()
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].latitude == 32.05
+    assert normalized_items[0].longitude == 34.77
+
+
 def test_scrape_komo_never_caps_when_no_new_listings_exist(monkeypatch):
     """Every id already known -> the cap should never even matter (0 new detail fetches either
     way) — a regression guard against the cap accidentally blocking already-known listings."""

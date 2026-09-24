@@ -819,6 +819,39 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "{count} appartements supplémentaires chargés",
         "ar": "تم تحميل {count} شقق إضافية",
     },
+    # ---------- apartments map/filter workspace (2026-09-24, dorin.app-style layout) ----------
+    "apartments.map_aria_label": {
+        "he": "מפת הדירות התואמות", "en": "Map of matching apartments",
+        "ru": "Карта подходящих квартир", "fr": "Carte des appartements correspondants",
+        "ar": "خريطة الشقق المطابقة",
+    },
+    "apartments.map_pins_count": {
+        "he": "{shown} דירות על המפה (מתוך {total})",
+        "en": "{shown} apartments on the map (out of {total})",
+        "ru": "{shown} квартир на карте (из {total})",
+        "fr": "{shown} appartements sur la carte (sur {total})",
+        "ar": "{shown} شقق على الخريطة (من {total})",
+    },
+    "apartments.map_no_pins": {
+        "he": "לאף אחת מהדירות המוצגות כרגע אין מיקום מדויק על המפה.",
+        "en": "None of the currently shown apartments have an exact map location.",
+        "ru": "Ни одна из показанных сейчас квартир не имеет точного местоположения на карте.",
+        "fr": "Aucun des appartements actuellement affichés n'a d'emplacement exact sur la carte.",
+        "ar": "لا تحتوي أي من الشقق المعروضة حاليًا على موقع دقيق على الخريطة.",
+    },
+    "apartments.resize_map_label": {
+        "he": "שנה את רוחב המפה", "en": "Resize the map panel",
+        "ru": "Изменить ширину карты", "fr": "Redimensionner le panneau de la carte",
+        "ar": "تغيير حجم لوحة الخريطة",
+    },
+    "apartments.resize_filter_label": {
+        "he": "שנה את רוחב הסינון", "en": "Resize the filter panel",
+        "ru": "Изменить ширину фильтра", "fr": "Redimensionner le panneau de filtre",
+        "ar": "تغيير حجم لوحة الفلتر",
+    },
+    "apartments.filter_panel_title": {
+        "he": "סינון", "en": "Filter", "ru": "Фильтр", "fr": "Filtre", "ar": "فلتر",
+    },
     # ---------- liked page ----------
     "liked.title": {
         "he": "דירות שמורות ❤️", "en": "Saved apartments ❤️", "ru": "Сохранённые квартиры ❤️",

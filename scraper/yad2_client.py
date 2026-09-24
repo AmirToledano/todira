@@ -805,6 +805,15 @@ def _marker_to_raw_item(marker: dict[str, Any]) -> dict[str, Any] | None:
     }
     if image_urls:
         item["images"] = image_urls
+    # Real coords, confirmed live on every map-API marker this project has seen (see module
+    # docstring / _REAL_MARKER in tests) — only this marker source carries them; the regular
+    # search-page card parser (_parse_cards) has no coordinate field at all.
+    coords = address.get("coords")
+    if isinstance(coords, dict):
+        lat, lon = coords.get("lat"), coords.get("lon")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+            item["latitude"] = lat
+            item["longitude"] = lon
     return item
 
 

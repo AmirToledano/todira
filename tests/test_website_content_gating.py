@@ -51,8 +51,13 @@ class _FakeUser:
 
 
 class _FakeListing:
-    def __init__(self, id, description="תיאור סודי מאוד", url="https://yad2.co.il/item/secret999"):
+    def __init__(
+        self, id, description="תיאור סודי מאוד", url="https://yad2.co.il/item/secret999",
+        latitude=None, longitude=None,
+    ):
         self.id = id
+        self.latitude = latitude
+        self.longitude = longitude
         self.image_urls = []
         self.is_broker_listing = False
         self.source = "יד2"
@@ -158,6 +163,31 @@ def test_apartments_shows_description_and_url_for_a_trial_user(client):
     assert resp.status_code == 200
     assert "תיאור סודי" in resp.text
     assert "secret999" in resp.text
+
+
+def test_apartments_map_workspace_renders_with_pins_for_listings_that_have_coords(client):
+    """2026-09-24: the map+filter sidebar workspace (dorin.app-style layout) — a listing with real
+    coordinates gets data-lat/data-lng on its card (read by the map's own JS, see apartments.html's
+    script), a listing without them gets neither attribute at all (never a blank data-lat="")."""
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    with_coords = _FakeListing(id=1, latitude=32.0853, longitude=34.7818)
+    without_coords = _FakeListing(id=2)
+    fake_session = _FakeSession(user, listings=[with_coords, without_coords])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'class="apt-workspace' in resp.text
+    assert 'id="apt-map"' in resp.text
+    assert 'id="apt-filter-pane"' in resp.text
+    assert 'data-lat="32.0853" data-lng="34.7818"' in resp.text
+    assert 'data-lat=""' not in resp.text
+    assert 'data-lng=""' not in resp.text
 
 
 def test_apartments_edit_filter_link_omits_uid_for_a_session_only_standalone_user():

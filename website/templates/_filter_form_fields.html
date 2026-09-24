@@ -1,0 +1,141 @@
+{% macro filter_form_fields(f, cities_list, property_type_labels, safe_room_labels, furniture_labels) %}
+{# Shared filter form body — used by filter.html's own full-page form AND apartments.html's
+   sidebar panel (2026-09-24, dorin.app-style layout the owner asked for), so the two never drift
+   apart into two separately-maintained copies of the same ~20 fields. Callers wrap this in their
+   own <form method="post" action="/filter"> (+ uid/wid hidden inputs + submit button) — this
+   macro is only the fields themselves. Needs `with context` on import (matches _listing_card.html's
+   own convention) since t()/request are read from the caller's context, not passed explicitly. #}
+<div class="field">
+  <label for="f-cities-search"><span class="field-icon" aria-hidden="true">📍</span> {{ t('filter.cities_label') }}</label>
+  <input id="f-cities-search" type="text" placeholder="{{ t('filter.cities_placeholder') }}" oninput="filterCityChips(this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">
+  <div class="checkbox-grid checkbox-grid-scroll" id="f-cities-grid">
+    {% for city in cities_list %}
+    <label class="check-chip" data-city-name="{{ city }}">
+      <input type="checkbox" name="cities" value="{{ city }}" {{ 'checked' if city in f.cities }}>
+      {{ city }}
+    </label>
+    {% endfor %}
+  </div>
+  <div class="field-hint">
+    {{ t('filter.cities_hint') }} ·
+    <button type="button" class="link-btn" onclick="clearAllCities(this)">{{ t('filter.cities_clear_all') }}</button>
+  </div>
+</div>
+
+<div class="field-row">
+  <div class="field">
+    <label for="f-price-min"><span class="field-icon" aria-hidden="true">💰</span> {{ t('filter.price_min_label') }}</label>
+    <input id="f-price-min" type="number" name="price_min" value="{{ f.price_min or '' }}" placeholder="0">
+  </div>
+  <div class="field">
+    <label for="f-price-max"><span class="field-icon" aria-hidden="true">💰</span> {{ t('filter.price_max_label') }}</label>
+    <input id="f-price-max" type="number" name="price_max" value="{{ f.price_max or '' }}" placeholder="{{ t('filter.price_max_placeholder') }}">
+  </div>
+</div>
+<div class="field-row">
+  <div class="field">
+    <label for="f-rooms-min"><span class="field-icon" aria-hidden="true">🛏️</span> {{ t('filter.rooms_min_label') }}</label>
+    <input id="f-rooms-min" type="number" step="0.5" name="rooms_min" value="{{ f.rooms_min or '' }}">
+  </div>
+  <div class="field">
+    <label for="f-rooms-max"><span class="field-icon" aria-hidden="true">🛏️</span> {{ t('filter.rooms_max_label') }}</label>
+    <input id="f-rooms-max" type="number" step="0.5" name="rooms_max" value="{{ f.rooms_max or '' }}">
+  </div>
+</div>
+
+<div class="field-section-title">{{ t('filter.property_type_section') }}</div>
+<div class="field">
+  <div class="checkbox-grid">
+    {% for value, label in property_type_labels.items() %}
+    <label class="check-chip">
+      <input type="checkbox" name="property_types" value="{{ value }}" {{ 'checked' if value in f.property_types }}>
+      {{ label }}
+    </label>
+    {% endfor %}
+  </div>
+  <div class="field-hint">{{ t('filter.property_type_hint') }}</div>
+</div>
+
+<div class="field-section-title">{{ t('filter.floor_section') }}</div>
+<div class="field-row">
+  <div class="field">
+    <label for="f-floor-min"><span class="field-icon" aria-hidden="true">🏢</span> {{ t('filter.floor_min_label') }}</label>
+    <input id="f-floor-min" type="number" name="floor_min" value="{{ f.floor_min if f.floor_min is not none else '' }}">
+  </div>
+  <div class="field">
+    <label for="f-floor-max"><span class="field-icon" aria-hidden="true">🏢</span> {{ t('filter.floor_max_label') }}</label>
+    <input id="f-floor-max" type="number" name="floor_max" value="{{ f.floor_max if f.floor_max is not none else '' }}">
+  </div>
+</div>
+<div class="field">
+  <label class="check-chip">
+    <input type="checkbox" name="ground_floor_only" {{ 'checked' if f.ground_floor_only }}>
+    {{ t('filter.ground_floor_only') }}
+  </label>
+</div>
+
+<div class="field-section-title">{{ t('filter.amenities_section') }}</div>
+<div class="field">
+  <div class="checkbox-grid">
+    <label class="check-chip"><input type="checkbox" name="require_parking" {{ 'checked' if f.require_parking }}> {{ t('filter.amenity_parking') }}</label>
+    <label class="check-chip"><input type="checkbox" name="require_elevator" {{ 'checked' if f.require_elevator }}> {{ t('filter.amenity_elevator') }}</label>
+    <label class="check-chip"><input type="checkbox" name="require_balcony" {{ 'checked' if f.require_balcony }}> {{ t('filter.amenity_balcony') }}</label>
+    <label class="check-chip"><input type="checkbox" name="require_pets_allowed" {{ 'checked' if f.require_pets_allowed }}> {{ t('filter.amenity_pets') }}</label>
+    <label class="check-chip"><input type="checkbox" name="require_renovated" {{ 'checked' if f.require_renovated }}> {{ t('filter.amenity_renovated') }}</label>
+    <label class="check-chip"><input type="checkbox" name="require_roommate_friendly" {{ 'checked' if f.require_roommate_friendly }}> {{ t('filter.amenity_roommates') }}</label>
+    <label class="check-chip"><input type="checkbox" name="require_has_photos" {{ 'checked' if f.require_has_photos }}> {{ t('filter.amenity_photos') }}</label>
+    <label class="check-chip"><input type="checkbox" name="no_brokers" {{ 'checked' if f.no_brokers }}> {{ t('filter.amenity_no_brokers') }}</label>
+  </div>
+</div>
+
+<div class="field-row">
+  <div class="field">
+    <label for="f-safe-room"><span class="field-icon" aria-hidden="true">🛡️</span> {{ t('filter.safe_room_label') }}</label>
+    <select id="f-safe-room" name="safe_room_pref">
+      {% for value, label in safe_room_labels.items() %}
+      <option value="{{ value }}" {{ 'selected' if f.safe_room_pref == value }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="f-furniture"><span class="field-icon" aria-hidden="true">🛋️</span> {{ t('filter.furniture_label') }}</label>
+    <select id="f-furniture" name="furniture_pref">
+      {% for value, label in furniture_labels.items() %}
+      <option value="{{ value }}" {{ 'selected' if f.furniture_pref == value }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<div class="field">
+  <label for="f-min-area"><span class="field-icon" aria-hidden="true">📐</span> {{ t('filter.min_area_label') }}</label>
+  <input id="f-min-area" type="number" name="min_area_sqm" value="{{ f.min_area_sqm if f.min_area_sqm is not none else '' }}">
+</div>
+
+<div class="field">
+  <label for="f-keywords"><span class="field-icon" aria-hidden="true">🔑</span> {{ t('filter.keywords_label') }}</label>
+  <input id="f-keywords" type="text" name="keywords" value="{{ f.keywords|join(', ') }}" placeholder="{{ t('filter.keywords_placeholder') }}">
+  <div class="field-hint">{{ t('filter.keywords_hint') }}</div>
+</div>
+
+<div class="field">
+  <label class="check-chip">
+    <input type="checkbox" name="flexible_match" {{ 'checked' if f.flexible_match }}>
+    {{ t('filter.flexible_match_label') }}
+  </label>
+</div>
+{% endmacro %}
+
+<script>
+  function filterCityChips(query) {
+    var q = query.trim();
+    document.querySelectorAll('.check-chip[data-city-name]').forEach(function (chip) {
+      chip.hidden = q.length > 0 && chip.dataset.cityName.indexOf(q) === -1;
+    });
+  }
+  function clearAllCities(btn) {
+    btn.closest('.field').querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.checked = false;
+    });
+  }
+</script>
