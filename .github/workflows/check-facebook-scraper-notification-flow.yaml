@@ -1,0 +1,67 @@
+name: Check — did the Facebook scraper run actually send real Telegram notifications? (read-only)
+
+# Real owner question: new Facebook listings were scraped tonight (confirmed in the DB), but the
+# owner reports never getting a Telegram notification about them, despite their own filter being
+# broad enough to match. Checks the real, full logs of the actual Facebook scraper pod that ran
+# (not a partial capture), specifically for run_once()'s own notification-related log lines and
+# summary, plus the live NOTIFICATIONS_SUSPENDED value on both CronJobs.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Live NOTIFICATIONS_SUSPENDED value on both CronJobs
+        run: |
+          echo "=== main scraper (todira-scraper) ==="
+          kubectl get cronjob todira-scraper -n todira -o json 2>/dev/null | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          envs = d['spec']['jobTemplate']['spec']['template']['spec']['containers'][0].get('env', [])
+          for e in envs:
+              if e.get('name') in ('NOTIFICATIONS_SUSPENDED', 'OWNER_TELEGRAM_USER_ID'):
+                  print(f\"{e['name']}: {e.get('value', '(from secret/other ref)')!r}\")
+          "
+          echo "=== facebook scraper (todira-facebook-scraper) ==="
+          kubectl get cronjob todira-facebook-scraper -n todira -o json 2>/dev/null | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          envs = d['spec']['jobTemplate']['spec']['template']['spec']['containers'][0].get('env', [])
+          for e in envs:
+              if e.get('name') in ('NOTIFICATIONS_SUSPENDED', 'OWNER_TELEGRAM_USER_ID'):
+                  print(f\"{e['name']}: {e.get('value', '(from secret/other ref)')!r}\")
+          "
+
+      - name: FULL logs of every recent Facebook scraper pod/job (not just the latest, in case it already completed and got replaced)
+        run: |
+          echo "=== Facebook scraper jobs (all, sorted oldest first) ==="
+          kubectl get jobs -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o wide || true
+          echo
+          echo "=== Facebook scraper pods (all, sorted oldest first) ==="
+          kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o wide || true
+          echo
+          for POD in $(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+            echo "=== FULL logs for $POD ==="
+            kubectl logs -n todira "$POD" --tail=1000 || true
+            echo
+          done
+
+      - name: Most recent MAIN scraper pod's own logs too (in case notifications ran there instead)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -n "$POD" ]; then
+            echo "=== Logs for $POD (last 300 lines) ==="
+            kubectl logs -n todira "$POD" --tail=300 || true
+          else
+            echo "No main scraper pod found."
+          fi
