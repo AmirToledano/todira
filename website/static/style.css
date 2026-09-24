@@ -1148,11 +1148,11 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;
   padding: 5px 12px; font-size: .78rem; color: var(--text-muted); box-shadow: var(--shadow-sm);
 }
-/* Collapse/expand toggle for the map pane (2026-09-24, real owner request comparing against
-   dorin.app) — a small arrow at the map's own top-left corner collapses it; once collapsed, a
-   pill-shaped "תצוגת מפה" button takes its place at the workspace's own left edge to reopen it.
-   Both live OUTSIDE .apt-map (a plain sibling button, not a Leaflet control) so they work even if
-   the map itself failed to load (see .apt-map-fallback above). */
+/* Collapse toggle for the map pane (2026-09-24, real owner request comparing against dorin.app;
+   restructured same day — see .apt-toolbar-map-toggle below for why the reopen control moved out
+   of here entirely) — a small arrow at the map's own top-left corner collapses it. Lives OUTSIDE
+   .apt-map (a plain sibling button, not a Leaflet control) so it works even if the map itself
+   failed to load (see .apt-map-fallback above). */
 .apt-map-collapse-btn {
   position: absolute; top: 10px; left: 10px; z-index: 401;
   width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
@@ -1160,13 +1160,6 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
 }
 .apt-map-collapse-btn:hover { background: var(--teal-tint); }
-.apt-map-reopen-btn {
-  display: none; flex: 0 0 auto; align-self: flex-start; margin: 18px 0 0 18px;
-  align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--card); color: var(--text);
-  font-size: .82rem; font-weight: 600; cursor: pointer; box-shadow: var(--shadow-sm);
-}
-.apt-workspace.map-collapsed .apt-map-reopen-btn { display: flex; }
 .apt-workspace.map-collapsed .apt-resize-handle[data-target="map"] { display: none; }
 
 /* Map-settings popover (2026-09-24, real owner request) — native <details>/<summary>, same reason
@@ -1203,6 +1196,16 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   cursor: pointer;
 }
 .apt-map-pin:hover { background: var(--gold); }
+/* Marker-cluster bubbles (2026-09-24, real owner request matching dorin.app's own numbered-circle
+   clusters) — Leaflet.markercluster's default classes restyled to the site's own teal brand
+   instead of its plugin-default yellow/orange, same "match the site, not the library's own
+   defaults" treatment already given to the zoom control/scale bar below. */
+.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
+  background-color: color-mix(in srgb, var(--teal) 22%, transparent);
+}
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+  background-color: var(--teal); color: #fff; font-weight: 700; font-family: inherit;
+}
 /* Leaflet's own container sets a specific font-family — match the site's instead so the
    attribution/zoom-control text doesn't look like a foreign embed. Zoom control/scale bar restyled
    to match the site's own brand (real owner report: the default Leaflet chrome "doesn't look
@@ -1233,14 +1236,37 @@ html[data-theme="dark"] .leaflet-control-attribution a { color: var(--text) !imp
 /* Grip icon on both resize handles (2026-09-24, real owner request — a plain 6px color bar alone
    didn't read as "draggable" enough compared to dorin.app's own visible grip dots) — three dots
    stacked via box-shadow on a single ::after pseudo-element, centered vertically. */
-.apt-resize-handle { flex: 0 0 6px; cursor: col-resize; background: var(--border); position: relative; }
-.apt-resize-handle:hover, .apt-resize-handle.dragging { background: var(--teal); }
+/* 2026-09-24 real owner report, comparing directly against dorin.app's own screenshot: the
+   earlier plain thin bar (with 3 small dots drawn on it) didn't read as "draggable" clearly
+   enough at a glance — dorin's own handle is a distinctly-shaped, elevated rounded pill that
+   protrudes from the divider line, not just a slightly-different-colored strip. Restructured so
+   the divider itself stays a thin 1px line (::before) while a separate, much more visible floating
+   pill (::after, elevated with a real shadow) sits centered on it — the actual 6px flex-basis stays
+   the pointer hit-area, unchanged, so drag/keyboard behavior (apartments.html's own script) needs
+   no changes at all, only the visual got bigger and more distinct. */
+.apt-resize-handle { flex: 0 0 6px; cursor: col-resize; background: transparent; position: relative; }
+.apt-resize-handle::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: var(--border); transform: translateX(-50%);
+}
+.apt-resize-handle:hover::before, .apt-resize-handle.dragging::before { background: var(--teal); }
 .apt-resize-handle:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
 .apt-resize-handle::after {
-  content: ''; position: absolute; top: 50%; left: 50%;
-  width: 3px; height: 3px; border-radius: 50%; background: var(--card);
-  box-shadow: 0 -7px 0 var(--card), 0 7px 0 var(--card);
+  content: ''; position: absolute; top: 50%; left: 50%; width: 22px; height: 46px;
+  background-color: var(--card);
+  background-image:
+    radial-gradient(circle, var(--text-muted) 1.4px, transparent 1.4px),
+    radial-gradient(circle, var(--text-muted) 1.4px, transparent 1.4px),
+    radial-gradient(circle, var(--text-muted) 1.4px, transparent 1.4px);
+  background-position: center calc(50% - 7px), center center, center calc(50% + 7px);
+  background-repeat: no-repeat;
+  border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: var(--shadow-md);
   transform: translate(-50%, -50%);
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.apt-resize-handle:hover::after, .apt-resize-handle.dragging::after {
+  background-color: var(--teal-tint); border-color: var(--teal);
 }
 
 /* direction:ltr on both scrolling panes — same reasoning as .checkbox-grid-scroll above: keeps
@@ -1259,27 +1285,58 @@ html[data-theme="dark"] .leaflet-control-attribution a { color: var(--text) !imp
 .apt-filter-pane .apt-filter-title { margin: 0 0 14px; font-size: 1.05rem; }
 .apt-filter-pane form .btn.block { margin-top: 8px; }
 
-/* Listing-detail drawer (2026-09-24, real owner request, dorin.app-style) — .apt-filter-view and
-   .apt-listing-detail-view are siblings inside .apt-filter-pane-inner; only one is ever visible
-   ([hidden] toggled by apartments.html's own script), so switching between them never reloads the
-   page or loses the filter form's own in-progress state. */
-.apt-detail-header { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
-.apt-detail-header .apt-filter-title { margin: 0; }
-.apt-detail-back-btn {
-  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border);
-  background: var(--card); color: var(--text); cursor: pointer; font-size: 1.1rem;
-  display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+/* Listing-detail MODAL (2026-09-24, real owner request explicitly correcting an earlier version
+   that swapped the filter sidebar's own content in place — see apartments.html's own template
+   comment on the modal markup for the full context) — a real floating window on top of the whole
+   page, same on desktop and mobile, direction:rtl throughout (no ltr/rtl split needed here — this
+   isn't a native-scrollbar-position situation like the panes below, just a centered overlay). */
+.apt-listing-modal {
+  position: fixed; inset: 0; z-index: 2000; direction: rtl;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
 }
-.apt-detail-back-btn:hover { background: var(--teal-tint); }
-/* The detail view's content is a live clone of the clicked .listing-card (see the script) — reset
-   the grid-item styling that only makes sense inside .listing-grid (hover lift, fixed transition
-   delay) so it reads as a single detail panel, not a stray grid card floating in the sidebar. */
-#apt-listing-detail-content .listing-card {
+.apt-listing-modal[hidden] { display: none; }
+.apt-listing-modal-backdrop { position: absolute; inset: 0; background: rgba(20, 30, 28, .6); }
+/* body scroll lock while the modal is open (toggled by apartments.html's own script) — otherwise
+   the page behind a full-screen mobile modal keeps scrolling underneath it, a common "floating
+   window" glitch the owner's own past feedback on this project has flagged before. */
+body.apt-modal-open { overflow: hidden; }
+.apt-listing-modal-panel {
+  position: relative; z-index: 1; background: var(--card); color: var(--text);
+  width: min(720px, 100%); max-height: 88vh; border-radius: var(--radius-md); overflow: hidden;
+  display: flex; flex-direction: column; box-shadow: var(--shadow-lg);
+}
+/* The close control IS the whole top bar (real owner request: "close it by tapping at the top of
+   the screen") — a plain <button> spanning the panel's full width, not just a small ✕ in a corner,
+   so there's no need to aim precisely for it on a phone. */
+.apt-listing-modal-header {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 14px 16px; border: none; border-bottom: 1px solid var(--border);
+  background: var(--surface-tint); color: var(--text); cursor: pointer;
+  font: inherit; text-align: start;
+}
+.apt-listing-modal-header:hover { background: var(--teal-tint); }
+.apt-listing-modal-close {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--card); display: flex; align-items: center; justify-content: center; font-size: .9rem;
+}
+.apt-listing-modal-title { font-weight: 700; }
+.apt-listing-modal-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
+/* The modal's content is a live clone of the clicked .listing-card (see the script) — reset the
+   grid-item styling that only makes sense inside .listing-grid (hover lift, fixed transition
+   delay) so it reads as a single detail panel, not a stray grid card floating in a dialog. */
+#apt-listing-modal-body .listing-card {
   width: 100%; margin: 0; transition: none; transition-delay: 0s !important;
 }
-#apt-listing-detail-content .listing-card:hover { transform: none; box-shadow: var(--shadow-sm); }
-#apt-listing-detail-content .listing-desc {
+#apt-listing-modal-body .listing-card:hover { transform: none; box-shadow: var(--shadow-sm); }
+#apt-listing-modal-body .listing-desc {
   display: block; -webkit-line-clamp: unset; overflow: visible;
+}
+@media (max-width: 640px) {
+  /* Real owner request (matching a floating-browser pattern already asked for elsewhere on the
+     site's mobile experience): full-screen on a phone, same close-at-the-top principle, no
+     separate mobile-only code path — this is the SAME modal, just sized to fill the viewport. */
+  .apt-listing-modal { padding: 0; }
+  .apt-listing-modal-panel { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
 }
 
 .apt-card-highlight { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--radius-md); }
@@ -1309,10 +1366,9 @@ html[data-theme="dark"] .leaflet-control-attribution a { color: var(--text) !imp
   .apt-listings-pane { overflow: visible; max-height: none; }
 
   /* Map collapse/expand + settings on mobile (2026-09-24) — the pane's forced height:320px above
-     needs its own override to actually reach 0 when collapsed; the reopen pill is centered full-
-     width instead of hugging a "left edge" that doesn't mean anything in a stacked mobile layout. */
+     needs its own override to actually reach 0 when collapsed (the toolbar toggle itself already
+     works fine unchanged on mobile, same slim single-row toolbar as desktop). */
   .apt-map-pane.collapsed { height: 0 !important; min-height: 0; border: 0; }
-  .apt-map-reopen-btn { margin: 14px auto 0; align-self: center; }
   .apt-map-settings-panel { min-width: 170px; }
 
   /* Listing-detail drawer on mobile (2026-09-24) — the filter pane is a fixed height:320px box

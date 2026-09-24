@@ -195,12 +195,13 @@ def test_apartments_map_workspace_renders_with_pins_for_listings_that_have_coord
     assert 'data-lng=""' not in resp.text
 
 
-def test_apartments_workspace_has_map_toggle_settings_and_detail_drawer_markup(client):
+def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(client):
     """2026-09-24: real owner request batch — map collapse/reopen toggle, a map-settings age
-    filter, and the listing-detail drawer (clicking a card swaps the filter pane for its details,
-    with a back arrow restoring the filter form — see apartments.html's own script comment). This
-    only checks the markup these features' JS depends on actually renders; the JS/CSS behavior
-    itself is covered by manual Playwright verification (no headless browser in this test suite)."""
+    filter, and the listing-detail modal (clicking a card opens a real floating window on top of
+    the page — see apartments.html's own script comment; this replaced an earlier sidebar-swap
+    version after the owner explicitly said that wasn't what they meant). This only checks the
+    markup these features' JS depends on actually renders; the JS/CSS behavior itself is covered
+    by manual Playwright verification (no headless browser in this test suite)."""
     user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
                       trial_ends_at=_NOW + dt.timedelta(days=2))
     listing = _FakeListing(
@@ -217,17 +218,22 @@ def test_apartments_workspace_has_map_toggle_settings_and_detail_drawer_markup(c
         resp = client.get("/apartments", params={"uid": 222})
 
     assert resp.status_code == 200
-    # Collapse/reopen toggle
+    # Collapse toggle (in-pane arrow) + the toolbar toggle that replaced the old floating reopen
+    # pill (2026-09-24 real owner report: the map took up too much page space by default — the
+    # single show/hide control now lives in the always-visible toolbar, and the map starts collapsed).
     assert 'id="apt-map-collapse-btn"' in resp.text
-    assert 'id="apt-map-reopen-btn"' in resp.text
+    assert 'id="apt-toolbar-map-toggle"' in resp.text
+    assert 'class="apt-workspace reveal map-collapsed"' in resp.text
+    assert 'class="apt-map-pane collapsed"' in resp.text
     # Map-settings age filter popover
     assert 'id="apt-map-settings"' in resp.text
     assert 'id="apt-map-age-select"' in resp.text
-    # Listing-detail drawer — two sibling views, only the filter one visible by default
-    assert 'id="apt-filter-view"' in resp.text
-    assert 'id="apt-listing-detail-view" hidden' in resp.text
-    assert 'id="apt-detail-back-btn"' in resp.text
-    # The card carries the data the drawer's JS reads: full (untruncated) description + posted date
+    # Listing-detail modal — a real floating overlay, hidden by default, closed via its own top bar
+    assert 'id="apt-listing-modal" hidden' in resp.text
+    assert 'id="apt-listing-modal-backdrop"' in resp.text
+    assert 'id="apt-listing-modal-header"' in resp.text
+    assert 'id="apt-listing-modal-body"' in resp.text
+    # The card carries the data the modal's JS reads: full (untruncated) description + posted date
     assert 'data-description-full="תיאור ארוך' in resp.text
     assert f'data-posted-at="{listing.posted_at.isoformat()}"' in resp.text
 

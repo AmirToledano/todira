@@ -23,6 +23,18 @@
     </button>
   </form>
   {% endif %}
+  {# 2026-09-24 real owner report: the map used to be open by default and permanently took up a
+     large, fixed chunk of page height regardless of state — "takes a lot of room, gets in the way
+     of the listings." Single toggle now lives HERE, in the always-visible slim toolbar, rather
+     than as a small arrow buried inside the map pane itself (easy to miss) plus a separate
+     floating "reopen" pill at the workspace's edge (an unusual, easy-to-lose place) — one clear
+     control, in one place, that's never hidden by its own on/off state. The map itself defaults to
+     COLLAPSED on page load (see #apt-workspace/#apt-map-pane's own classes below) so it never
+     costs page space unless the visitor actually asks for it. #}
+  <button type="button" class="chip chip-toggle" id="apt-toolbar-map-toggle" aria-pressed="false"
+          data-show-label="{{ t('apartments.map_reopen_label') }}" data-hide-label="{{ t('apartments.map_hide_label') }}">
+    <span aria-hidden="true">🗺️</span> <span id="apt-toolbar-map-toggle-label">{{ t('apartments.map_reopen_label') }}</span>
+  </button>
   <span class="apt-toolbar-count"><b>{{ total_count }}</b> {{ t('apartments.results_label') }}</span>
 </div>
 
@@ -37,11 +49,8 @@
    models.Listing's own comment on which sources currently populate that) — never a
    geocoded/approximated pin — so on a fresh deploy, before a scrape run has populated any
    coordinates, the map legitimately starts empty rather than faking pins. #}
-<div class="apt-workspace reveal" id="apt-workspace">
-  <button type="button" class="apt-map-reopen-btn" id="apt-map-reopen-btn">
-    <span aria-hidden="true">🗺️</span> {{ t('apartments.map_reopen_label') }}
-  </button>
-  <div class="apt-map-pane" id="apt-map-pane">
+<div class="apt-workspace reveal map-collapsed" id="apt-workspace">
+  <div class="apt-map-pane collapsed" id="apt-map-pane">
     <button type="button" class="apt-map-collapse-btn" id="apt-map-collapse-btn"
             aria-label="{{ t('apartments.map_collapse_label') }}">‹</button>
     <details class="apt-map-settings" id="apt-map-settings">
@@ -102,32 +111,36 @@
        aria-label="{{ t('apartments.resize_filter_label') }}" tabindex="0"></div>
   <aside class="apt-filter-pane" id="apt-filter-pane">
    <div class="apt-filter-pane-inner">
-    {# 2026-09-24: listing-detail drawer — real owner request, matching dorin.app's own pattern.
-       Clicking a listing card (anywhere except its own interactive bits — like/hide buttons, the
-       "לצפייה במודעה" outbound link) swaps this pane's content for that listing's details instead
-       of the filter form, with a back arrow next to "פרטי הדירה" to restore it. Two sibling views,
-       only one ever visible ([hidden] toggled by the script below) — never two separate pages/routes,
-       so no navigation/reload and the filter form's own state is untouched while browsing details. #}
-    <div class="apt-filter-view" id="apt-filter-view">
-      <h2 class="apt-filter-title">{{ t('apartments.filter_panel_title') }}</h2>
-      {% if user and user.filter %}
-      <form method="post" action="/filter">
-        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        {{ filter_form_fields(f, cities_list, property_type_labels, safe_room_labels, furniture_labels) }}
-        <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
-      </form>
-      {% endif %}
-    </div>
-    <div class="apt-listing-detail-view" id="apt-listing-detail-view" hidden>
-      <div class="apt-detail-header">
-        <button type="button" class="apt-detail-back-btn" id="apt-detail-back-btn"
-                aria-label="{{ t('apartments.detail_back_label') }}">→</button>
-        <h2 class="apt-filter-title">{{ t('apartments.detail_view_title') }}</h2>
-      </div>
-      <div id="apt-listing-detail-content"></div>
-    </div>
+    <h2 class="apt-filter-title">{{ t('apartments.filter_panel_title') }}</h2>
+    {% if user and user.filter %}
+    <form method="post" action="/filter">
+      {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+      {{ filter_form_fields(f, cities_list, property_type_labels, safe_room_labels, furniture_labels) }}
+      <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
+    </form>
+    {% endif %}
    </div>
   </aside>
+</div>
+
+{# 2026-09-24: listing-detail as a real floating modal — real owner request, explicitly correcting
+   an earlier version of this feature that swapped the filter sidebar's own content for the
+   listing's details in place. The owner's actual ask (matching a floating-browser pattern already
+   requested for mobile elsewhere on the site): a real overlay on TOP of the whole page, on both
+   desktop and mobile, closed by tapping a control fixed at the top of the screen — not confined to
+   the sidebar's own width/position. Lives as a sibling of .apt-workspace (not nested inside the
+   filter pane) so its position:fixed covers the full viewport regardless of where in the layout
+   the listing card that opened it happens to be. #}
+<div class="apt-listing-modal" id="apt-listing-modal" hidden>
+  <div class="apt-listing-modal-backdrop" id="apt-listing-modal-backdrop"></div>
+  <div class="apt-listing-modal-panel" role="dialog" aria-modal="true" aria-labelledby="apt-listing-modal-title">
+    <button type="button" class="apt-listing-modal-header" id="apt-listing-modal-header"
+            aria-label="{{ t('apartments.detail_close_label') }}">
+      <span class="apt-listing-modal-close" aria-hidden="true">✕</span>
+      <span class="apt-listing-modal-title" id="apt-listing-modal-title">{{ t('apartments.detail_view_title') }}</span>
+    </button>
+    <div class="apt-listing-modal-body" id="apt-listing-modal-body"></div>
+  </div>
 </div>
 
 <script>
@@ -247,22 +260,29 @@
     // CSS transition on .apt-map-pane's flex-basis needs a matching delay before invalidateSize()
     // so Leaflet measures the pane's FINAL size, not its mid-transition one.
     var collapseBtn = document.getElementById('apt-map-collapse-btn');
-    var reopenBtn = document.getElementById('apt-map-reopen-btn');
+    var toolbarToggle = document.getElementById('apt-toolbar-map-toggle');
+    var toolbarToggleLabel = document.getElementById('apt-toolbar-map-toggle-label');
     function afterMapTransition() {
       setTimeout(function () { if (window.__aptMap) { window.__aptMap.invalidateSize(); } }, 200);
     }
-    if (collapseBtn && mapPane) {
-      collapseBtn.addEventListener('click', function () {
-        mapPane.classList.add('collapsed');
-        workspace.classList.add('map-collapsed');
-        afterMapTransition();
-      });
+    function setMapCollapsed(collapsed) {
+      mapPane.classList.toggle('collapsed', collapsed);
+      workspace.classList.toggle('map-collapsed', collapsed);
+      if (toolbarToggle && toolbarToggleLabel) {
+        toolbarToggle.classList.toggle('active', !collapsed);
+        toolbarToggle.setAttribute('aria-pressed', String(!collapsed));
+        toolbarToggleLabel.textContent = collapsed
+          ? toolbarToggle.dataset.showLabel
+          : toolbarToggle.dataset.hideLabel;
+      }
+      afterMapTransition();
     }
-    if (reopenBtn && mapPane) {
-      reopenBtn.addEventListener('click', function () {
-        mapPane.classList.remove('collapsed');
-        workspace.classList.remove('map-collapsed');
-        afterMapTransition();
+    if (collapseBtn && mapPane) {
+      collapseBtn.addEventListener('click', function () { setMapCollapsed(true); });
+    }
+    if (toolbarToggle && mapPane) {
+      toolbarToggle.addEventListener('click', function () {
+        setMapCollapsed(!mapPane.classList.contains('collapsed'));
       });
     }
   })();
@@ -270,56 +290,71 @@
 
 <script>
   (function () {
-    // Listing-detail drawer (2026-09-24, real owner request comparing directly against dorin.app):
-    // clicking a listing card used to be reachable ONLY through its outbound "לצפייה במודעה" link,
-    // jumping straight off-site with no way to preview details in-page first. Clicking the card
-    // itself now swaps the filter pane's content for that listing's own details, with a back arrow
-    // to restore the filter form — the card's existing interactive elements (like/hide reaction
-    // buttons, the outbound link) are explicitly excluded so they keep working exactly as before.
+    // Listing-detail modal (2026-09-24, real owner request — explicitly correcting an earlier
+    // version of this feature that swapped the filter sidebar's own content in place instead of
+    // opening a real overlay; see apartments.html's own template comment on the modal markup for
+    // the full context). Clicking a listing card opens a floating window on TOP of the whole page,
+    // on both desktop and mobile, closed by tapping the bar/✕ fixed at its own top — the card's
+    // existing interactive elements (like/hide reaction buttons, the outbound link) are explicitly
+    // excluded so they keep working exactly as before, never hijacked into opening the modal.
     var grid = document.getElementById('listing-grid');
-    var filterView = document.getElementById('apt-filter-view');
-    var detailView = document.getElementById('apt-listing-detail-view');
-    var detailContent = document.getElementById('apt-listing-detail-content');
-    var backBtn = document.getElementById('apt-detail-back-btn');
-    var filterPane = document.getElementById('apt-filter-pane');
-    if (!grid || !filterView || !detailView || !detailContent || !backBtn) { return; }
+    var modal = document.getElementById('apt-listing-modal');
+    var modalBackdrop = document.getElementById('apt-listing-modal-backdrop');
+    var modalHeader = document.getElementById('apt-listing-modal-header');
+    var modalBody = document.getElementById('apt-listing-modal-body');
+    if (!grid || !modal || !modalBackdrop || !modalHeader || !modalBody) { return; }
+
+    var lastFocusedEl = null;
 
     function openListingDetail(card) {
       var clone = card.cloneNode(true);
       clone.classList.remove('reveal');
       clone.removeAttribute('style');
       // The grid card truncates the description to 140 chars (see _listing_card.html) — the
-      // detail view has room to show it in full, using the untruncated text stashed on the card.
+      // modal has room to show it in full, using the untruncated text stashed on the card.
       var desc = clone.querySelector('.listing-desc');
       if (desc && card.dataset.descriptionFull) { desc.textContent = card.dataset.descriptionFull; }
-      detailContent.innerHTML = '';
-      detailContent.appendChild(clone);
-      filterView.hidden = true;
-      detailView.hidden = false;
-      if (filterPane) { filterPane.scrollTop = 0; }
-      backBtn.focus();
+      modalBody.innerHTML = '';
+      modalBody.appendChild(clone);
+      modalBody.scrollTop = 0;
+      lastFocusedEl = document.activeElement;
+      modal.hidden = false;
+      document.body.classList.add('apt-modal-open'); // blocks background scroll while open
+      modalHeader.focus();
     }
     window.__aptOpenListingDetail = openListingDetail; // read by the Leaflet script below, on pin click
+
+    function closeListingDetail() {
+      modal.hidden = true;
+      document.body.classList.remove('apt-modal-open');
+      if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') { lastFocusedEl.focus(); }
+    }
 
     grid.addEventListener('click', function (e) {
       // Never hijack the card's own interactive elements — like/hide reaction buttons (<button>
       // inside a <form>) and the outbound "לצפייה במודעה"/"שדרג" link (<a>) must keep working
-      // exactly as before; only a click on the card's own inert surface opens the drawer.
+      // exactly as before; only a click on the card's own inert surface opens the modal.
       if (e.target.closest('a, button, input, label')) { return; }
       var card = e.target.closest('.listing-card');
       if (!card) { return; }
       openListingDetail(card);
     });
 
-    backBtn.addEventListener('click', function () {
-      detailView.hidden = true;
-      filterView.hidden = false;
+    // Close via the top header bar (tap/click anywhere on it, including its own ✕), the backdrop,
+    // or Escape — several equally-obvious ways out, matching how a real floating window behaves.
+    modalHeader.addEventListener('click', closeListingDetail);
+    modalBackdrop.addEventListener('click', closeListingDetail);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !modal.hidden) { closeListingDetail(); }
     });
   })();
 </script>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
   (function () {
     // 2026-09-24: switched from MapLibre GL JS to Leaflet — real production report (owner's own
@@ -328,9 +363,18 @@
     // a WebGL rendering issue this sandbox has no way to reproduce or debug further (no live
     // network access to the actual failing browser). Leaflet renders raster tiles as plain <img>
     // elements and markers as plain DOM nodes — no WebGL involved anywhere — which removes this
-    // entire failure class rather than trying to chase it blind. Same OpenStreetMap tile endpoint
-    // as before (see the earlier CARTO->OSM switch, still the right call for ad/privacy-blocker
-    // avoidance either way).
+    // entire failure class rather than trying to chase it blind.
+    //
+    // Tile source (2026-09-24, real owner report comparing directly against dorin.app's own map:
+    // plain OSM standard tiles "don't look good/flow well" next to dorin's cleaner, more modern
+    // style) — switched from tile.openstreetmap.org to CARTO's Voyager style. The earlier OSM
+    // choice was a precaution against a THEORY (a third-party tile CDN more likely to be on an ad/
+    // privacy-blocker list) made in the same session as the real MapLibre/WebGL blank-map bug —
+    // that theory was never actually confirmed as a real failure once the true root cause (WebGL,
+    // fixed by switching to Leaflet entirely) was found. CARTO's basemap CDN is core map-tile
+    // infrastructure (not ads/tracking) and is what dorin.app's own cleaner look is closest to
+    // among freely-available raster styles; .apt-map-fallback below still covers a genuine load
+    // failure from any cause, tile source included.
     var mapEl = document.getElementById('apt-map');
     if (!mapEl) { return; }
     function showMapFallback(reason) {
@@ -348,9 +392,9 @@
       // stacking-context separation between them). Added back explicitly at topright instead.
       map = L.map(mapEl, { attributionControl: true, zoomControl: false })
         .setView([32.0853, 34.7818], 7); // Tel Aviv — sensible default center for an Israel-wide listing set
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19, subdomains: 'abcd',
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank">CARTO</a>'
       }).addTo(map);
       L.control.zoom({ position: 'topright' }).addTo(map);
       // Meters scale indicator (real owner request, comparing against dorin.app's own map chrome) —
@@ -378,9 +422,18 @@
     }
 
     var pinIcon = L.divIcon({ className: 'apt-map-pin', iconSize: [14, 14] });
+    // Marker clustering (2026-09-24, real owner request comparing against dorin.app's own map —
+    // numbered bubbles grouping nearby pins instead of a dense unreadable cloud of individual
+    // markers once a city has dozens of listings). Falls back to plain individual markers if the
+    // plugin's own CDN didn't load — same "never let an optional layer take the whole map down
+    // with it" principle as the rest of this page's error handling.
+    var hasCluster = typeof L.markerClusterGroup === 'function';
+    var clusterGroup = hasCluster ? L.markerClusterGroup({ spiderfyOnMaxZoom: true, showCoverageOnHover: false }) : null;
+    if (clusterGroup) { map.addLayer(clusterGroup); }
     var markers = [];
     function syncPins() {
-      markers.forEach(function (m) { map.removeLayer(m); });
+      if (clusterGroup) { clusterGroup.clearLayers(); }
+      else { markers.forEach(function (m) { map.removeLayer(m); }); }
       markers = [];
       var cards = document.querySelectorAll('#listing-grid .listing-card[data-lat][data-lng]');
       var points = [];
@@ -389,7 +442,7 @@
         var lat = parseFloat(card.dataset.lat);
         var lng = parseFloat(card.dataset.lng);
         if (isNaN(lat) || isNaN(lng)) { return; }
-        var marker = L.marker([lat, lng], { icon: pinIcon }).addTo(map);
+        var marker = L.marker([lat, lng], { icon: pinIcon });
         marker.on('click', function () {
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
           card.classList.add('apt-card-highlight');
@@ -398,6 +451,7 @@
           // reads the drawer-open function stashed by the earlier script rather than duplicating it.
           if (window.__aptOpenListingDetail) { window.__aptOpenListingDetail(card); }
         });
+        if (clusterGroup) { clusterGroup.addLayer(marker); } else { marker.addTo(map); }
         markers.push(marker);
         points.push([lat, lng]);
       });
