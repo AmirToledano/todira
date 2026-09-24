@@ -1073,6 +1073,40 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Cette annonce n'a pas encore de photos — ça vaut le coup de demander au contact ! 🕵️",
         "ar": "لا توجد صور لهذا العرض بعد — يستحق التواصل مع المعلن لطلبها! 🕵️",
     },
+    # 2026-09-24: property-type badge on the card, real owner request comparing against dorin.app's
+    # own card (a "דירה"/"סטודיו"/etc. badge alongside rooms/floor/sqm). A self-contained mirror of
+    # PROPERTY_TYPE_LABELS' own text (website/i18n.py) under the card.* namespace rather than
+    # passing that dict through every listing_card() caller — hidden.html/liked.html/apartments.html
+    # don't all build the same context, and t() (unlike a passed variable) is already a Jinja
+    # global available in every one of them without extra wiring.
+    "card.type_apartment": {"he": "דירה", "en": "Apartment", "ru": "Квартира", "fr": "Appartement", "ar": "شقة"},
+    "card.type_garden_apartment": {
+        "he": "דירת גן", "en": "Garden apartment", "ru": "Квартира с садом",
+        "fr": "Appartement avec jardin", "ar": "شقة حديقة",
+    },
+    "card.type_penthouse": {"he": "פנטהאוז", "en": "Penthouse", "ru": "Пентхаус", "fr": "Penthouse", "ar": "بنتهاوس"},
+    "card.type_studio": {"he": "סטודיו", "en": "Studio", "ru": "Студия", "fr": "Studio", "ar": "استوديو"},
+    "card.type_housing_unit": {
+        "he": "יחידת דיור", "en": "Housing unit", "ru": "Жилая единица",
+        "fr": "Unité de logement", "ar": "وحدة سكنية",
+    },
+    "card.type_private_house": {
+        "he": "בית פרטי", "en": "Private house", "ru": "Частный дом", "fr": "Maison privée", "ar": "بيت خاص",
+    },
+    "card.type_shared_room": {
+        "he": "חדר בדירת שותפים", "en": "Room in a shared apartment", "ru": "Комната в общей квартире",
+        "fr": "Chambre en colocation", "ar": "غرفة في شقة مشتركة",
+    },
+    "card.move_in_date": {
+        "he": "כניסה: {date}", "en": "Move in: {date}", "ru": "Заезд: {date}",
+        "fr": "Entrée: {date}", "ar": "الدخول: {date}",
+    },
+    # Price-change badge (2026-09-24, real owner request comparing against dorin.app's own card —
+    # a struck-through previous price + a colored percentage badge next to the current one). Only
+    # the sign-free number goes here; the +/- and color are decided in the template/CSS from
+    # whether the price went down or up (see _listing_card.html's own comment).
+    "card.price_change_badge": {"he": "{sign}{percent}%", "en": "{sign}{percent}%", "ru": "{sign}{percent}%",
+                                 "fr": "{sign}{percent}%", "ar": "{sign}{percent}%"},
     # ---------- filter page ----------
     "filter.title": {
         "he": "הסינון שלי ⚙️", "en": "My filter ⚙️", "ru": "Мой фильтр ⚙️",

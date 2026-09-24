@@ -346,7 +346,11 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
     direction; the caller (notifier.py) compares old vs. new to decide 📉 drop vs. 📈 increase.
     Originally drop-only (added after the user pointed out the reference bot's "📉 ירידת מחיר!"
     re-notification, which the original DO-NOTHING design missed); generalized to increases too
-    2026-09-02 per an explicit request that both directions get a re-notification. This is a
+    2026-09-02 per an explicit request that both directions get a re-notification. A detected
+    change is also persisted onto the row itself (previous_price/price_changed_at, 2026-09-24) —
+    price_change_events is consumed once by notifier.py and gone after this call returns, so
+    without persisting it there'd be nothing left for the website card's own price-drop/increase
+    badge to read on a later page load. This is a
     per-item SELECT-then-INSERT/UPDATE rather than a single bulk `INSERT ... ON CONFLICT DO
     NOTHING` — less efficient at scale, but DO NOTHING can't see what the previous value was, and
     seeing it is exactly what price-change detection needs. Fine at this project's scale — a
@@ -390,10 +394,17 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
             continue
 
         existing_id, old_price = existing
+        update_values = item.model_dump()
         if item.price is not None and old_price is not None and item.price != old_price:
             price_change_events.append((existing_id, old_price))
+            # 2026-09-24: persist the change itself (previous_price/price_changed_at), not just
+            # the event — the website card's own price-drop/increase badge (real owner request,
+            # matching dorin.app's card) reads these after the fact; price_change_events above is
+            # consumed once by notifier.py and gone, this is what's left for the card to render.
+            update_values["previous_price"] = old_price
+            update_values["price_changed_at"] = func.now()
 
-        session.execute(table.update().where(table.c.id == existing_id).values(**item.model_dump()))
+        session.execute(table.update().where(table.c.id == existing_id).values(**update_values))
 
     session.commit()
     return new_ids, price_change_events

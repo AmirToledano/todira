@@ -16,8 +16,19 @@
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
         {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
         <input type="hidden" name="next" value="{{ _next }}">
-        <button type="submit" class="card-reaction-btn {{ 'active' if l.id in (liked_ids | default([])) else '' }}" title="{{ t('card.like_btn') }}" aria-label="{{ t('card.like_btn') }}">
-          {{ '💔' if l.id in (liked_ids | default([])) else '❤️' }}
+        {# 2026-09-24 real owner report, comparing directly against dorin.app's own card: the
+           emoji-only button "looks blurry, not clean/professional" — same bug class the homepage
+           icons were already fixed for (2026-09-24 earlier that day, see home.html) applied here
+           too. Outline heart when not liked, the SAME verified path solid-filled (fill=currentColor,
+           no stroke) when liked — reuses the exact heart path already proven to render correctly
+           on the homepage rather than risking a hand-transcribed "solid heart" path. #}
+        {% set _liked = l.id in (liked_ids | default([])) %}
+        <button type="submit" class="card-reaction-btn {{ 'active' if _liked else '' }}" title="{{ t('card.like_btn') }}" aria-label="{{ t('card.like_btn') }}">
+          {% if _liked %}
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+          {% endif %}
         </button>
       </form>
       <form method="post" action="/react" class="card-reaction-form">
@@ -26,8 +37,16 @@
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
         {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
         <input type="hidden" name="next" value="{{ _next }}">
-        <button type="submit" class="card-reaction-btn {{ 'active' if l.id in (hidden_ids | default([])) else '' }}" title="{{ t('card.hide_btn') if l.id not in (hidden_ids | default([])) else t('card.unhide_btn') }}" aria-label="{{ t('card.hide_btn') if l.id not in (hidden_ids | default([])) else t('card.unhide_btn') }}">
-          {{ '👀' if l.id in (hidden_ids | default([])) else '🙈' }}
+        {# Simple two-curve eye (open) / eye+diagonal-line (hidden) — plain geometry rather than a
+           hand-transcribed icon-font path, so there's nothing here that needs verifying against
+           an external reference. #}
+        {% set _hidden = l.id in (hidden_ids | default([])) %}
+        <button type="submit" class="card-reaction-btn {{ 'active' if _hidden else '' }}" title="{{ t('card.hide_btn') if not _hidden else t('card.unhide_btn') }}" aria-label="{{ t('card.hide_btn') if not _hidden else t('card.unhide_btn') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12C2.25 12 5.5 5.5 12 5.5C18.5 5.5 21.75 12 21.75 12C21.75 12 18.5 18.5 12 18.5C5.5 18.5 2.25 12 2.25 12Z" />
+            <circle cx="12" cy="12" r="3" />
+            {% if _hidden %}<line x1="3" y1="3" x2="21" y2="21" stroke-linecap="round" />{% endif %}
+          </svg>
         </button>
       </form>
     </div>
@@ -68,26 +87,65 @@
   </div>
   {% if not l.image_urls %}<div class="no-image-caption">{{ t('card.no_image_caption') }}</div>{% endif %}
   <div class="listing-body">
-    <div class="listing-price">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</div>
-    <div class="listing-loc">
-      {{ l.city or t('card.no_city') }}{% if l.neighborhood %}<span class="muted">, {{ l.neighborhood }}</span>{% endif %}
-    </div>
-    <div class="meta-row">
-      {% if l.rooms %}<span>{{ l.rooms }} {{ t('card.rooms') }} 🛏️</span>{% endif %}
-      {% if l.floor is not none %}<span>{{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %} 🏢</span>{% endif %}
-      {% if l.size_sqm %}<span>{{ l.size_sqm }} {{ t('card.sqm') }} 📐</span>{% endif %}
-    </div>
-    {% if l.has_parking or l.has_elevator or l.has_balcony or l.pets_allowed or l.is_renovated or l.safe_room_type in ('safe_room', 'building_shelter') or l.furniture == 'furnished' %}
-    <div class="amenity-row">
-      {% if l.has_parking %}<span class="amenity">{{ t('card.amenity_parking') }} 🚗</span>{% endif %}
-      {% if l.has_elevator %}<span class="amenity">{{ t('card.amenity_elevator') }} 🛗</span>{% endif %}
-      {% if l.has_balcony %}<span class="amenity">{{ t('card.amenity_balcony') }} 🌿</span>{% endif %}
-      {% if l.pets_allowed %}<span class="amenity">{{ t('card.amenity_pets') }} 🐾</span>{% endif %}
-      {% if l.is_renovated %}<span class="amenity">{{ t('card.amenity_renovated') }} ✨</span>{% endif %}
-      {% if l.safe_room_type in ('safe_room', 'building_shelter') %}<span class="amenity">{{ t('card.amenity_safe_room') }} 🛡️</span>{% endif %}
-      {% if l.furniture == 'furnished' %}<span class="amenity">{{ t('card.amenity_furnished') }} 🛋️</span>{% endif %}
-    </div>
+    {# 2026-09-24 real owner request, matching dorin.app's own card: a previous-price + %-change
+       badge next to the current price, when scraper/main.py._upsert_listings detected a real
+       change (previous_price/price_changed_at — see that function's own comment). Division only
+       happens once previous_price is confirmed truthy (never 0/None) and different from the
+       current price, so there's no zero-division or a same-price badge ever rendered. #}
+    {% set _price_changed = l.previous_price and l.price and l.previous_price != l.price %}
+    {% if _price_changed %}
+      {% set _dropped = l.previous_price > l.price %}
+      {% set _pct_raw = (l.previous_price - l.price) / l.previous_price * 100 %}
+      {% set _pct = (_pct_raw if _pct_raw >= 0 else -_pct_raw) | round | int %}
     {% endif %}
+    <div class="listing-price-row">
+      <div class="listing-price">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</div>
+      {% if _price_changed %}
+      <div class="price-change {{ 'price-drop' if _dropped else 'price-rise' }}">
+        <span class="price-change-old">{{ "%d ₪"|format(l.previous_price) }}</span>
+        {# dir="ltr" — without it, the RTL page context bidi-reorders "+20%"/"-5%" so the sign
+           visually lands AFTER the number ("20%+") instead of before it, real bug caught in the
+           very first screenshot of this feature. Isolating this one span as LTR keeps the
+           sign-number-percent sequence in its written order regardless of surrounding text. #}
+        <span class="price-change-badge" dir="ltr">{{ t('card.price_change_badge', sign=('-' if _dropped else '+'), percent=_pct) }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {# City first and prominent, then neighborhood, then street — real owner request comparing
+       against dorin.app's own card, where the city reads as the primary, highlighted fact and
+       neighborhood/street are secondary detail. l.street already existed on the model (used by
+       dedup.find_duplicate_listing) but was never actually shown on the card until now. #}
+    <div class="listing-loc">
+      <span class="loc-city">{{ l.city or t('card.no_city') }}</span>
+      {% if l.neighborhood %}<span class="loc-sep">·</span><span class="loc-area">{{ l.neighborhood }}</span>{% endif %}
+      {% if l.street %}<span class="loc-sep">·</span><span class="loc-street">{{ l.street }}</span>{% endif %}
+    </div>
+    {# 2026-09-24: property-type + rooms/floor/sqm/move-in + amenities unified into ONE row of
+       outlined chip badges (real owner request, matching dorin.app's own card — previously two
+       visually-different rows, a plain meta-row and a pill-background amenity-row). move_in_date
+       only renders when the source actually gave us a real date — same "never fabricate a value
+       we don't have" rule the Telegram caption already follows (see cards.py's own move_in_date
+       line), so a missing date is just omitted rather than shown as a fake "immediate". #}
+    {% set _type_label = {
+      'apartment': t('card.type_apartment'), 'garden_apartment': t('card.type_garden_apartment'),
+      'penthouse': t('card.type_penthouse'), 'studio': t('card.type_studio'),
+      'housing_unit': t('card.type_housing_unit'), 'private_house': t('card.type_private_house'),
+      'shared_room': t('card.type_shared_room'),
+    }.get(l.property_type) %}
+    <div class="feature-badges">
+      {% if _type_label %}<span class="feature-badge">{{ _type_label }} 🏠</span>{% endif %}
+      {% if l.rooms %}<span class="feature-badge">{{ l.rooms }} {{ t('card.rooms') }} 🛏️</span>{% endif %}
+      {% if l.floor is not none %}<span class="feature-badge">{{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %} 🏢</span>{% endif %}
+      {% if l.size_sqm %}<span class="feature-badge">{{ l.size_sqm }} {{ t('card.sqm') }} 📐</span>{% endif %}
+      {% if l.move_in_date %}<span class="feature-badge">{{ t('card.move_in_date', date=l.move_in_date.strftime('%d.%m.%y')) }} 📅</span>{% endif %}
+      {% if l.has_parking %}<span class="feature-badge">{{ t('card.amenity_parking') }} 🚗</span>{% endif %}
+      {% if l.has_elevator %}<span class="feature-badge">{{ t('card.amenity_elevator') }} 🛗</span>{% endif %}
+      {% if l.has_balcony %}<span class="feature-badge">{{ t('card.amenity_balcony') }} 🌿</span>{% endif %}
+      {% if l.pets_allowed %}<span class="feature-badge">{{ t('card.amenity_pets') }} 🐾</span>{% endif %}
+      {% if l.is_renovated %}<span class="feature-badge">{{ t('card.amenity_renovated') }} ✨</span>{% endif %}
+      {% if l.safe_room_type in ('safe_room', 'building_shelter') %}<span class="feature-badge">{{ t('card.amenity_safe_room') }} 🛡️</span>{% endif %}
+      {% if l.furniture == 'furnished' %}<span class="feature-badge">{{ t('card.amenity_furnished') }} 🛋️</span>{% endif %}
+    </div>
     {# 2026-09-12 policy change: the description itself is shown to EVERY viewer, paying or not —
        only the outbound link to the listing's original source (Yad2/Komo/Homeless/Facebook/etc)
        stays gated. This reverses the 2026-09-05 decision (see todira_common/cards.py's

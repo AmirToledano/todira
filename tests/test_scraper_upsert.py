@@ -137,6 +137,46 @@ def test_price_increase_on_existing_listing_is_reported():
     assert price_changes == [(42, 5000)]
 
 
+def test_price_change_persists_previous_price_and_changed_at_onto_the_row():
+    """2026-09-24: price_change_events alone is consumed once by notifier.py and gone — the
+    website card's own price-drop/increase badge (real owner request, matching dorin.app's card)
+    needs the old value to still be readable on a LATER page load, so the same detected change
+    must also land in the UPDATE's own values, not just the returned tuple."""
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, price dropped 5000 -> 4000
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
+
+    _upsert_listings(session, [existing_item])
+
+    update_stmt = session.executed_stmts[-1]
+    compiled = update_stmt.compile()
+    assert compiled.params.get("previous_price") == 5000
+    # func.now() compiles to a literal SQL expression, not a bound param — see this test's own
+    # inline check against the compiled SQL text rather than .params.
+    assert "price_changed_at=now()" in str(compiled).replace(" ", "")
+
+
+def test_update_with_no_price_change_leaves_previous_price_untouched():
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=5000)
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, same price
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
+
+    _upsert_listings(session, [existing_item])
+
+    update_stmt = session.executed_stmts[-1]
+    compiled = update_stmt.compile()
+    assert "previous_price" not in compiled.params
+    assert "price_changed_at" not in str(compiled)
+
+
 def test_mixed_new_and_existing_items_in_one_call():
     new_item = _make_item("new-1", "https://example.com/new-1")
     existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)

@@ -560,28 +560,55 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer;
   /* No backdrop-filter — see .photo-count-badge's own comment just above; this button exists
      twice per card (like + hide), so it's the biggest single contributor to that count. */
-  background: rgba(255,255,255,.94);
-  font-size: 1rem; line-height: 1; display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.94); color: var(--teal-dark);
+  line-height: 1; display: flex; align-items: center; justify-content: center;
   box-shadow: var(--shadow-sm); transition: transform .12s ease;
 }
+/* 2026-09-24: emoji glyphs replaced with inline SVGs (real owner report comparing against
+   dorin.app's own card — "looks blurry/unprofessional, not clean like a real button"), same fix
+   class as the homepage icons (see home.html) — icon color now follows the button (currentColor),
+   not whatever the emoji font happened to render. */
+.card-reaction-btn svg { width: 18px; height: 18px; }
 .card-reaction-btn:hover { transform: scale(1.08); }
 .card-reaction-btn:active { transform: scale(.94); }
-.card-reaction-btn.active { background: var(--gold); }
+.card-reaction-btn.active { background: var(--gold); color: var(--teal-dark); }
 
 .listing-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.listing-price-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .listing-price {
   font-family: 'Rubik', sans-serif; font-weight: 800; font-size: 1.5rem; color: var(--teal);
 }
-.listing-loc { font-weight: 700; font-size: 1.02rem; }
-.listing-loc .muted { color: var(--text-muted); font-weight: 400; font-size: .9rem; }
+/* Price-change badge (2026-09-24, real owner request matching dorin.app's own card) — the
+   previous price struck through, plus a colored %-change pill. A DROP is good news for a renter
+   (green, ↓); an INCREASE is a real cost/urgency signal (an orange/red tone, ↑) — deliberately
+   NOT the same red used for form errors elsewhere on the site, so it doesn't read as "something's
+   wrong" on a page with zero actual errors. */
+.price-change { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; }
+.price-change-old { color: var(--text-muted); text-decoration: line-through; }
+.price-change-badge { font-weight: 700; border-radius: 999px; padding: 2px 8px; }
+.price-drop .price-change-badge { background: #e3f5ea; color: #1c7a41; }
+.price-rise .price-change-badge { background: #fdece3; color: #b8501c; }
+html:not([data-theme="light"]) .price-drop .price-change-badge,
+html[data-theme="dark"] .price-drop .price-change-badge { background: #163826; color: #6fd99a; }
+html:not([data-theme="light"]) .price-rise .price-change-badge,
+html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; color: #f0a677; }
 
-.meta-row { display: flex; gap: 14px; flex-wrap: wrap; font-size: .87rem; color: var(--text-muted); }
-.meta-row span { display: inline-flex; align-items: center; gap: 4px; }
+/* City first and prominent (bold, brand teal), neighborhood/street secondary — real owner request
+   comparing against dorin.app's own card, where the city is the highlighted headline fact. */
+.listing-loc { font-size: 1rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.listing-loc .loc-city { font-weight: 800; color: var(--teal); }
+.listing-loc .loc-sep { color: var(--text-muted); }
+.listing-loc .loc-area, .listing-loc .loc-street { color: var(--text-muted); font-weight: 400; font-size: .9rem; }
 
-.amenity-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.amenity {
-  font-size: .74rem; background: var(--surface-tint); color: var(--text-muted);
-  border-radius: 999px; padding: 3px 10px; display: inline-flex; align-items: center; gap: 4px;
+/* Unified feature-badge row (2026-09-24, real owner request matching dorin.app's own card) —
+   property type + rooms/floor/sqm/move-in + amenities, all in ONE consistently-styled row of
+   outlined chips (previously two visually different rows: a plain meta-row and a pill-background
+   amenity-row, which read as two different UI languages on the same card). */
+.feature-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.feature-badge {
+  font-size: .78rem; color: var(--text); background: var(--card);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
 }
 
 .listing-desc { color: var(--text-muted); font-size: .87rem; margin: 0; flex: 1;
@@ -1099,7 +1126,17 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   border-bottom: 1px solid var(--border);
   background: var(--card);
 }
-.apt-map-pane { direction: ltr; position: relative; flex: 0 0 340px; min-width: 0; background: var(--surface-tint); transition: flex-basis .18s ease; }
+/* 2026-09-24 real owner report: opening the accessibility widget (#a11y-widget, z-index:200,
+   position:fixed) while scrolled to the map hid the newly-opened panel BEHIND the map. Root cause:
+   position:relative alone does NOT create a new CSS stacking context (only position + an explicit
+   z-index does) — so Leaflet's own internal panes/controls (its own default z-index values run
+   200-1000+: tile pane 200, marker pane 600, popup pane 700, controls ~800-1000) were competing
+   directly against #a11y-widget in the PAGE's root stacking context, not contained within this
+   pane. The explicit `z-index: 0` here (new, everything else on this rule is unchanged) makes
+   .apt-map-pane itself the local stacking-context root — all of Leaflet's internal z-index soup
+   plus this pane's own collapse/settings buttons now stay contained under this ONE z-index:0 slot
+   in the page's stacking order, well below #a11y-widget's 200, regardless of scroll position. */
+.apt-map-pane { direction: ltr; position: relative; z-index: 0; flex: 0 0 340px; min-width: 0; background: var(--surface-tint); transition: flex-basis .18s ease; }
 .apt-map-pane.collapsed { flex: 0 0 0px; overflow: hidden; }
 .apt-map { position: absolute; inset: 0; }
 .apt-map-fallback {
@@ -1134,8 +1171,12 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 
 /* Map-settings popover (2026-09-24, real owner request) — native <details>/<summary>, same reason
    as the filter accordion above: no JS needed for the open/close itself, keyboard-operable for
-   free. Sits top-right of the map (collapse arrow already owns top-left). */
-.apt-map-settings { position: absolute; top: 10px; right: 10px; z-index: 401; direction: rtl; }
+   free. Bottom-left, stacked above the pin-count pill (2026-09-24 real owner report: this used to
+   sit top-right, which is exactly where Leaflet's own zoom control now lives — see
+   apartments.html's own script comment for why zoomControl moved there — so the two were fighting
+   for the same corner). Panel opens UPWARD (bottom:34px, not top:34px) since this corner is near
+   the pane's own bottom edge. */
+.apt-map-settings { position: absolute; bottom: 48px; left: 10px; z-index: 401; direction: rtl; }
 .apt-map-settings-btn {
   width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
   background: var(--card); color: var(--text); cursor: pointer; font-size: .95rem;
@@ -1145,7 +1186,7 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 .apt-map-settings-btn::-webkit-details-marker { display: none; }
 .apt-map-settings-btn:hover { background: var(--teal-tint); }
 .apt-map-settings-panel {
-  position: absolute; top: 34px; right: 0; min-width: 190px;
+  position: absolute; bottom: 34px; left: 0; min-width: 190px;
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg); padding: 10px 12px; font-size: .8rem;
 }
@@ -1180,19 +1221,14 @@ html:not([data-theme="light"]) .leaflet-control-attribution,
 html[data-theme="dark"] .leaflet-control-attribution { background: rgba(24,36,34,.75) !important; color: var(--text) !important; }
 html:not([data-theme="light"]) .leaflet-control-attribution a,
 html[data-theme="dark"] .leaflet-control-attribution a { color: var(--text) !important; }
-/* Dark-mode map tiles (2026-09-24, real owner report: the map "doesn't look good") — the tile
-   source itself is always plain light-mode OpenStreetMap raster (see apartments.html's own script
-   comment for why: universally allow-listed, no API key, the safest choice for reliability), so
-   without this a bright white map sits inside an otherwise dark page. A CSS filter inverting +
-   hue-rotating the raster tiles is the standard technique for this — same idea as this file's own
-   earlier --teal-dark contrast fixes, applied to a map instead of an SVG/text color. Only the TILE
-   layer is filtered, never the marker/control layers above it (those already carry their own
-   theme-aware colors), so pins and controls keep their real, unshifted colors.
-   */
-html:not([data-theme="light"]) .leaflet-tile-pane,
-html[data-theme="dark"] .leaflet-tile-pane {
-  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.85);
-}
+/* 2026-09-24 real owner report, reversing the invert/hue-rotate dark-mode tile filter this rule
+   used to carry: that filter recolored the map into an unnatural, hard-to-read palette the owner
+   directly compared to Google Maps' SATELLITE view rather than its plain default street view —
+   exactly the opposite of what was wanted. Real map embeds (the owner's own dorin.app reference
+   included) keep the map in its natural light cartographic style regardless of the surrounding
+   page's theme — inverting real cartographic colors (green landuse, blue water, white/gray roads)
+   essentially always looks worse, not better, than just leaving it alone. The map now renders
+   identically in light and dark mode: plain OpenStreetMap tiles, no filter. */
 
 /* Grip icon on both resize handles (2026-09-24, real owner request — a plain 6px color bar alone
    didn't read as "draggable" enough compared to dorin.app's own visible grip dots) — three dots
