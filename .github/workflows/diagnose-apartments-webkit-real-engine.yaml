@@ -1,0 +1,86 @@
+name: Diagnose — /apartments on a REAL WebKit engine (owner reports blank on BOTH Telegram + regular browser)
+
+# The owner tested /apartments in two separate real browsers on their device (Telegram's in-app
+# browser AND their regular phone browser, both iOS-chrome-looking per their screenshot) and BOTH
+# show zero listing cards, even after a full close+reopen (ruling out simple disk-cache staleness,
+# already checked). The previous diagnostic used Playwright's Chromium engine with iPhone emulation
+# (viewport/UA only — NOT a real rendering engine) and found 24 real cards present AND visible.
+# Since both of the owner's real browsers share iOS's actual WebKit engine, this reruns the exact
+# same live check using Playwright's real WebKit browser, and specifically inspects whether each
+# .listing-card actually GAINS the .is-visible class (base.html's IntersectionObserver-driven
+# reveal animation: cards start at opacity:0 via .reveal and only become visible once JS adds
+# .is-visible — if that JS silently fails only under WebKit, cards would be in the DOM, matching
+# the "8576 תוצאות" count rendering fine, yet permanently invisible, exactly matching the report).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright + real WebKit engine
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.47.0 >/dev/null 2>&1
+          npx playwright install --with-deps webkit >/dev/null 2>&1
+
+      - name: Real live check against production using WebKit (Safari's actual engine)
+        run: |
+          cat <<'JS' > check.js
+          const { webkit, devices } = require('playwright');
+
+          (async () => {
+            const browser = await webkit.launch();
+
+            for (const [label, deviceName] of [['mobile-webkit', 'iPhone 13'], ['desktop-webkit', null]]) {
+              const opts = deviceName ? { ...devices[deviceName] } : { viewport: { width: 1440, height: 900 } };
+              const context = await browser.newContext(opts);
+              const page = await context.newPage();
+
+              const consoleErrors = [];
+              const pageErrors = [];
+              page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+              page.on('pageerror', err => pageErrors.push(String(err)));
+
+              console.log(`\n=== [${label}] loading /apartments?uid=6984931854 ===`);
+              const resp = await page.goto('https://todira.app/apartments?uid=6984931854', { waitUntil: 'networkidle', timeout: 30000 });
+              console.log(`[${label}] top-level response status: ${resp.status()}`);
+
+              await page.waitForTimeout(3000);
+
+              const cardCount = await page.locator('.listing-card').count();
+              console.log(`[${label}] .listing-card count in DOM: ${cardCount}`);
+
+              if (cardCount > 0) {
+                const first = page.locator('.listing-card').first();
+                const isVisible = await first.isVisible();
+                const classAttr = await first.getAttribute('class');
+                const opacity = await first.evaluate(el => getComputedStyle(el).opacity);
+                const displayVal = await first.evaluate(el => getComputedStyle(el).display);
+                const rect = await first.boundingBox();
+                console.log(`[${label}] first card isVisible(): ${isVisible}`);
+                console.log(`[${label}] first card class attr: ${classAttr}`);
+                console.log(`[${label}] first card computed opacity: ${opacity}`);
+                console.log(`[${label}] first card computed display: ${displayVal}`);
+                console.log(`[${label}] first card boundingBox: ${JSON.stringify(rect)}`);
+
+                const visibleCount = await page.locator('.listing-card.is-visible').count();
+                console.log(`[${label}] .listing-card.is-visible count: ${visibleCount}`);
+              }
+
+              console.log(`[${label}] console errors (${consoleErrors.length}):`);
+              consoleErrors.slice(0, 20).forEach(e => console.log('  ' + e));
+              console.log(`[${label}] uncaught page errors (${pageErrors.length}):`);
+              pageErrors.slice(0, 20).forEach(e => console.log('  ' + e));
+
+              await context.close();
+            }
+
+            await browser.close();
+          })();
+          JS
+          node check.js
