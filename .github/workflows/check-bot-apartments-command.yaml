@@ -1,0 +1,96 @@
+name: Check — bot pod health + recent /apartments command activity (read-only)
+
+# Real owner report: checked /apartments in the Telegram bot itself (not the website) and saw no
+# listings at all. Checks the bot pod's real status/recent logs for errors around apartments
+# handling, and separately confirms via DB whether the owner's own filter has any real matches at
+# all right now (same matching logic the bot's own find_matching_listings uses).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Bot Deployment/Pod status right now
+        run: |
+          echo "=== Deployment ==="
+          kubectl get deployment todira-bot -n todira -o wide || true
+          echo
+          echo "=== Pods ==="
+          kubectl get pods -n todira -l app=todira-bot -o wide || true
+
+      - name: Most recent bot pod's own logs (last 300 lines, filtered for apartments/errors)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No bot pod found at all."
+            exit 0
+          fi
+          echo "=== Full last 300 lines ==="
+          kubectl logs -n todira "$POD" --tail=300 || true
+
+      - name: Real DB check — the owner's own filter and whether ANY active listing exists to match against
+        run: |
+          kubectl delete pod diag-bot-apts -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-bot-apts
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-bot-apts
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- owner telegram_user_id: $OWNER_TELEGRAM_USER_ID ---"
+                    echo "--- owner's own filter row ---"
+                    psql "$CONN" -c "
+                      SELECT u.telegram_user_id, f.deal_type, f.cities, f.rooms_min, f.rooms_max, f.price_min, f.price_max
+                      FROM users u JOIN filters f ON f.user_id = u.id
+                      WHERE u.telegram_user_id = '$OWNER_TELEGRAM_USER_ID';
+                    "
+                    echo "--- total ACTIVE (not delisted, not a duplicate) listings right now, overall and by deal_type ---"
+                    psql "$CONN" -c "
+                      SELECT deal_type, count(*) FROM listings
+                      WHERE is_delisted = false AND duplicate_of_id IS NULL
+                      GROUP BY deal_type;
+                    "
+                    echo "--- most recent 5 active listings overall (sanity: does ANYTHING exist right now) ---"
+                    psql "$CONN" -c "
+                      SELECT id, source, deal_type, city, price, scraped_at FROM listings
+                      WHERE is_delisted = false AND duplicate_of_id IS NULL
+                      ORDER BY scraped_at DESC LIMIT 5;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-bot-apts -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-bot-apts || true
+          kubectl delete pod diag-bot-apts -n todira --ignore-not-found
