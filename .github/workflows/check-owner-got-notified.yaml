@@ -1,0 +1,83 @@
+name: Check — did the owner specifically get a SentNotification for tonight's new Facebook listings? (read-only)
+
+# The Facebook scraper run's own summary confirmed real activity: matched=9, notifications_sent=3,
+# NOTIFICATIONS_SUSPENDED=false on both CronJobs. This checks the actual SentNotification rows for
+# the owner's own user id against the 3 new facebook_marketplace listing ids from that run, to
+# settle definitively whether the owner was one of the 3 real recipients or not.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real DB check — SentNotification rows for the owner against tonight's new listings
+        run: |
+          kubectl delete pod diag-owner-notif -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-owner-notif
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-owner-notif
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- owner telegram_user_id: $OWNER_TELEGRAM_USER_ID ---"
+                    echo "--- ALL SentNotification rows created in the last hour, with recipient telegram_user_id ---"
+                    psql "$CONN" -c "
+                      SELECT sn.id, u.telegram_user_id, sn.listing_id, sn.reason, sn.sent_at, l.source, l.city, l.price
+                      FROM sent_notifications sn
+                      JOIN users u ON u.id = sn.user_id
+                      JOIN listings l ON l.id = sn.listing_id
+                      WHERE sn.sent_at > now() - interval '1 hour'
+                      ORDER BY sn.sent_at DESC;
+                    "
+                    echo "--- specifically: did the owner get one for a facebook_marketplace listing? ---"
+                    psql "$CONN" -c "
+                      SELECT sn.id, sn.listing_id, sn.reason, sn.sent_at, l.source, l.city, l.price, l.deal_type
+                      FROM sent_notifications sn
+                      JOIN users u ON u.id = sn.user_id
+                      JOIN listings l ON l.id = sn.listing_id
+                      WHERE u.telegram_user_id = '$OWNER_TELEGRAM_USER_ID'
+                      ORDER BY sn.sent_at DESC LIMIT 10;
+                    "
+                    echo "--- real evaluate()-relevant fields for the 3 new facebook_marketplace listings ---"
+                    psql "$CONN" -c "
+                      SELECT id, source, deal_type, city, price, rooms, is_delisted, duplicate_of_id
+                      FROM listings WHERE source = 'facebook_marketplace' ORDER BY id DESC LIMIT 5;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-owner-notif -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-owner-notif || true
+          kubectl delete pod diag-owner-notif -n todira --ignore-not-found
