@@ -3,6 +3,7 @@
 {% block title %}{{ t('meta.title_apartments') }}{% endblock %}
 {% block content %}
 {% from "_listing_card.html" import listing_card with context %}
+{% from "_filter_form_fields.html" import filter_form_fields with context %}
 
 <div class="page-banner reveal">
   <div class="pb-text">
@@ -32,30 +33,63 @@
       {{ t('apartments.no_brokers_on') if user.filter.no_brokers else t('apartments.no_brokers_off') }}
     </button>
   </form>
-  <a class="btn outline" href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('apartments.edit_filter_btn') }}</a>
 </div>
 {% endif %}
 
-{% if not listings %}
-  <div class="empty-state">
-    <div class="glyph" aria-hidden="true">🔍</div>
-    <p>{{ t('apartments.empty_title') }}</p>
-    <p class="hint">{{ t('apartments.empty_hint') }}</p>
+{# 2026-09-24: map (left) + listings (middle) + filter (right) workspace, dorin.app-style layout
+   the owner asked for — see style.css's own .apt-workspace comment for the RTL/LTR reasoning.
+   Panel widths are user-resizable (.apt-resize-handle, drag or arrow keys) via the script below.
+   The map only ever plots listings that carry a REAL latitude/longitude (see
+   models.Listing's own comment on which sources currently populate that) — never a
+   geocoded/approximated pin — so on a fresh deploy, before a scrape run has populated any
+   coordinates, the map legitimately starts empty rather than faking pins. #}
+<div class="apt-workspace reveal" id="apt-workspace">
+  <div class="apt-map-pane" id="apt-map-pane">
+    <div id="apt-map" class="apt-map" role="img" aria-label="{{ t('apartments.map_aria_label') }}"></div>
+    <div class="apt-map-count" id="apt-map-count"
+         data-template="{{ t('apartments.map_pins_count', shown='__SHOWN__', total='__TOTAL__') }}"
+         data-empty-text="{{ t('apartments.map_no_pins') }}"></div>
   </div>
-{% else %}
-  {# Announces each infinite-scroll batch to screen readers (2026-09-07 audit fix) — the new cards
-     below are otherwise inserted completely silently by JS, with no page navigation to trigger a
-     re-announcement the way a normal "next page" link would. role="status" + aria-live="polite"
-     means it's read out without interrupting whatever the user is doing, once they're idle. #}
-  <div id="apartments-live-region" class="visually-hidden" role="status" aria-live="polite"
-       data-announcement-template="{{ t('apartments.more_loaded_announcement', count='__COUNT__') }}"></div>
-  <div class="listing-grid" id="listing-grid">
-    {% for l in listings %}{{ listing_card(l, (loop.index0 % 6) * 60) }}{% endfor %}
-    {% if has_more %}
-    <div class="load-more-sentinel" data-next-offset="{{ next_offset }}"></div>
+  <div class="apt-resize-handle" data-target="map" role="separator" aria-orientation="vertical"
+       aria-label="{{ t('apartments.resize_map_label') }}" tabindex="0"></div>
+
+  <div class="apt-listings-pane">
+    {% if not listings %}
+      <div class="empty-state">
+        <div class="glyph" aria-hidden="true">🔍</div>
+        <p>{{ t('apartments.empty_title') }}</p>
+        <p class="hint">{{ t('apartments.empty_hint') }}</p>
+      </div>
+    {% else %}
+      {# Announces each infinite-scroll batch to screen readers (2026-09-07 audit fix) — the new
+         cards below are otherwise inserted completely silently by JS, with no page navigation to
+         trigger a re-announcement the way a normal "next page" link would. role="status" +
+         aria-live="polite" means it's read out without interrupting whatever the user is doing,
+         once they're idle. #}
+      <div id="apartments-live-region" class="visually-hidden" role="status" aria-live="polite"
+           data-announcement-template="{{ t('apartments.more_loaded_announcement', count='__COUNT__') }}"></div>
+      <div class="listing-grid" id="listing-grid">
+        {% for l in listings %}{{ listing_card(l, (loop.index0 % 6) * 60) }}{% endfor %}
+        {% if has_more %}
+        <div class="load-more-sentinel" data-next-offset="{{ next_offset }}"></div>
+        {% endif %}
+      </div>
     {% endif %}
   </div>
-{% endif %}
+
+  <div class="apt-resize-handle" data-target="filter" role="separator" aria-orientation="vertical"
+       aria-label="{{ t('apartments.resize_filter_label') }}" tabindex="0"></div>
+  <aside class="apt-filter-pane" id="apt-filter-pane">
+    <h2 class="apt-filter-title">{{ t('apartments.filter_panel_title') }}</h2>
+    {% if user and user.filter %}
+    <form method="post" action="/filter">
+      {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+      {{ filter_form_fields(f, cities_list, property_type_labels, safe_room_labels, furniture_labels) }}
+      <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
+    </form>
+    {% endif %}
+  </aside>
+</div>
 
 <script>
   (function () {
@@ -101,6 +135,143 @@
 
     var initialSentinel = grid.querySelector('.load-more-sentinel');
     if (initialSentinel) { io.observe(initialSentinel); }
+  })();
+</script>
+
+<script>
+  (function () {
+    // Drag-to-resize + arrow-key resize for the map/filter panes (the middle listings pane just
+    // takes whatever space is left, via flex: 1 1 auto — see style.css). Deliberately independent
+    // of whether the map library below loads — a slow/blocked map CDN must never take panel
+    // resizing down with it (real bug caught in testing: the resize handles used to live INSIDE
+    // the maplibregl-guarded block below and silently did nothing at all whenever that CDN was
+    // unreachable).
+    function makeResizable(handle, pane, opts, onResize) {
+      var dragging = false, startX = 0, startWidth = 0;
+      function apply(width) {
+        pane.style.flexBasis = Math.min(opts.max, Math.max(opts.min, width)) + 'px';
+        if (onResize) { onResize(); }
+      }
+      function onMove(e) {
+        if (!dragging) { return; }
+        var delta = (e.clientX - startX) * (opts.reverse ? -1 : 1);
+        apply(startWidth + delta);
+      }
+      function onUp() {
+        if (!dragging) { return; }
+        dragging = false;
+        handle.classList.remove('dragging');
+        document.body.style.userSelect = '';
+      }
+      handle.addEventListener('mousedown', function (e) {
+        dragging = true;
+        startX = e.clientX;
+        startWidth = pane.getBoundingClientRect().width;
+        handle.classList.add('dragging');
+        document.body.style.userSelect = 'none';
+      });
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      handle.addEventListener('keydown', function (e) {
+        var step = 24, delta = 0;
+        if (e.key === 'ArrowLeft') { delta = opts.reverse ? step : -step; }
+        else if (e.key === 'ArrowRight') { delta = opts.reverse ? -step : step; }
+        else { return; }
+        e.preventDefault();
+        apply(pane.getBoundingClientRect().width + delta);
+      });
+    }
+
+    var workspace = document.getElementById('apt-workspace');
+    if (!workspace) { return; }
+    var mapPane = document.getElementById('apt-map-pane');
+    var filterPane = document.getElementById('apt-filter-pane');
+    var mapHandle = workspace.querySelector('.apt-resize-handle[data-target="map"]');
+    var filterHandle = workspace.querySelector('.apt-resize-handle[data-target="filter"]');
+    if (mapPane && mapHandle) {
+      makeResizable(mapHandle, mapPane, { min: 200, max: 700, reverse: false }, function () {
+        if (window.__aptMap) { window.__aptMap.resize(); }
+      });
+    }
+    if (filterPane && filterHandle) {
+      makeResizable(filterHandle, filterPane, { min: 220, max: 620, reverse: true });
+    }
+  })();
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+  (function () {
+    var mapEl = document.getElementById('apt-map');
+    if (!mapEl || typeof maplibregl === 'undefined') { return; } // CDN unreachable — map area just stays empty, rest of the page (including resize, above) is unaffected
+
+    // Free, no-API-key raster basemap — same provider/attribution the owner's own dorin.app
+    // reference screenshots showed ("MapLibre © CARTO, OpenStreetMap contributors").
+    var map = new maplibregl.Map({
+      container: 'apt-map',
+      style: {
+        version: 8,
+        sources: {
+          carto: {
+            type: 'raster',
+            tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
+            tileSize: 256,
+            attribution: '© <a href="https://carto.com/attributions" target="_blank">CARTO</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+          }
+        },
+        layers: [{ id: 'carto', type: 'raster', source: 'carto', minzoom: 0, maxzoom: 20 }]
+      },
+      center: [34.7818, 32.0853], // Tel Aviv — sensible default center for an Israel-wide listing set
+      zoom: 7,
+    });
+    map.addControl(new maplibregl.NavigationControl(), 'top-left');
+    window.__aptMap = map; // read by the resize-handle script above, loaded earlier in the page
+
+    var markers = [];
+    function syncPins() {
+      markers.forEach(function (m) { m.remove(); });
+      markers = [];
+      var cards = document.querySelectorAll('#listing-grid .listing-card[data-lat][data-lng]');
+      var bounds = new maplibregl.LngLatBounds();
+      var any = false;
+      cards.forEach(function (card) {
+        var lat = parseFloat(card.dataset.lat);
+        var lng = parseFloat(card.dataset.lng);
+        if (isNaN(lat) || isNaN(lng)) { return; }
+        var el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'apt-map-pin';
+        var marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+        el.addEventListener('click', function () {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('apt-card-highlight');
+          setTimeout(function () { card.classList.remove('apt-card-highlight'); }, 1500);
+        });
+        markers.push(marker);
+        bounds.extend([lng, lat]);
+        any = true;
+      });
+      var countEl = document.getElementById('apt-map-count');
+      if (countEl) {
+        var allCards = document.querySelectorAll('#listing-grid .listing-card').length;
+        countEl.textContent = any
+          ? countEl.dataset.template.replace('__SHOWN__', markers.length).replace('__TOTAL__', allCards)
+          : countEl.dataset.emptyText;
+      }
+      if (any && !bounds.isEmpty()) {
+        map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 0 });
+      }
+    }
+
+    map.on('load', syncPins);
+    // Re-sync whenever infinite-scroll (the script earlier in this page) appends a new batch of
+    // cards — a plain MutationObserver on the grid, decoupled from that script entirely rather
+    // than threading a callback through it.
+    var grid = document.getElementById('listing-grid');
+    if (grid && 'MutationObserver' in window) {
+      new MutationObserver(function () { syncPins(); }).observe(grid, { childList: true });
+    }
   })();
 </script>
 {% endblock %}
