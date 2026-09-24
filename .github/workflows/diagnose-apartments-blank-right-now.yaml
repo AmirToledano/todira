@@ -1,0 +1,78 @@
+name: Diagnose — /apartments showing zero cards right now (owner's real report, read-only)
+
+# Real owner report just now: /apartments shows the "8576 תוצאות" count and the temporary-access
+# banner, but NO listing cards at all, on mobile. They suspect the map or the modal/gallery changes
+# (PR #387/#390/#391) broke card rendering. This hits the REAL production site with the owner's
+# own uid (confirmed live earlier: telegram_user_id=6984931854) via Playwright and inspects the
+# actual DOM: card count, console errors, network failures, and the exact HTML around the card
+# container, to find the real root cause rather than guessing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.47.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null 2>&1
+
+      - name: Real live check against production
+        run: |
+          cat <<'JS' > check.js
+          const { chromium, devices } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch();
+
+            for (const [label, deviceName] of [['mobile', 'iPhone 13'], ['desktop', null]]) {
+              const opts = deviceName ? { ...devices[deviceName] } : { viewport: { width: 1440, height: 900 } };
+              const context = await browser.newContext(opts);
+              const page = await context.newPage();
+
+              const consoleErrors = [];
+              const failedRequests = [];
+              page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+              page.on('requestfailed', req => failedRequests.push(`${req.url()} :: ${req.failure()?.errorText}`));
+              page.on('response', async resp => {
+                if (resp.status() >= 400) failedRequests.push(`${resp.status()} ${resp.url()}`);
+              });
+
+              console.log(`\n=== [${label}] loading /apartments?uid=6984931854 ===`);
+              const resp = await page.goto('https://todira.app/apartments?uid=6984931854', { waitUntil: 'networkidle', timeout: 30000 });
+              console.log(`[${label}] top-level response status: ${resp.status()}`);
+
+              await page.waitForTimeout(2000);
+
+              const cardCount = await page.locator('.listing-card').count();
+              console.log(`[${label}] .listing-card count in DOM: ${cardCount}`);
+
+              const styleHref = await page.locator('link[rel=stylesheet]').first().getAttribute('href').catch(() => null);
+              console.log(`[${label}] first stylesheet href: ${styleHref}`);
+
+              const resultsCountText = await page.locator('.apt-toolbar-count').first().innerText().catch(() => '(not found)');
+              console.log(`[${label}] toolbar count text: ${resultsCountText}`);
+
+              const gridHtml = await page.locator('#apt-results, .apt-results, .listings-grid, main').first().innerHTML().catch(() => '(container not found)');
+              console.log(`[${label}] results-container innerHTML length: ${gridHtml.length}`);
+              console.log(`[${label}] results-container innerHTML (first 1500 chars):\n${gridHtml.slice(0, 1500)}`);
+
+              console.log(`[${label}] console errors (${consoleErrors.length}):`);
+              consoleErrors.slice(0, 20).forEach(e => console.log('  ' + e));
+
+              console.log(`[${label}] failed/4xx/5xx requests (${failedRequests.length}):`);
+              failedRequests.slice(0, 20).forEach(e => console.log('  ' + e));
+
+              await context.close();
+            }
+
+            await browser.close();
+          })();
+          JS
+          node check.js
