@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import Delete
+from sqlalchemy.exc import IntegrityError
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
@@ -93,13 +94,21 @@ class _FakeSession:
     tests pass [user, existing_id_or_None] and this fake hands them out in that order, same trick
     other website test files use for their own two-scalar-calls-per-request routes."""
 
-    def __init__(self, user, scalar_queue=None, listings=None):
+    def __init__(self, user, scalar_queue=None, listings=None, commit_raises=None):
         self.user = user
         self._scalar_queue = list(scalar_queue) if scalar_queue is not None else [user]
         self._listings = listings or []
         self.added: list = []
         self.deleted_ids: list[int] = []
         self.committed = False
+        self.rolled_back = False
+        # 2026-09-24: simulates UserListingAction's own unique-constraint violation on a genuine
+        # double-click race (two concurrent POSTs for the same listing_id+action both pass the
+        # existing_id SELECT before either commits) — see
+        # test_react_like_recovers_from_a_genuine_concurrent_insert_race below. Only the FIRST
+        # commit() raises, matching a real DB (a retry after rollback succeeds).
+        self._commit_raises = commit_raises
+        self._commit_calls = 0
 
     def scalar(self, stmt):
         return self._scalar_queue.pop(0) if self._scalar_queue else None
@@ -125,7 +134,13 @@ class _FakeSession:
         self.added.append(obj)
 
     def commit(self):
+        self._commit_calls += 1
+        if self._commit_raises is not None and self._commit_calls == 1:
+            raise self._commit_raises
         self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
 
 
 def _fake_get_session(session):
@@ -172,6 +187,30 @@ def test_react_like_removes_the_action_when_already_liked(client):
     assert resp.status_code == 303
     assert fake_session.deleted_ids == ["deleted"]
     assert fake_session.added == []
+
+
+def test_react_like_recovers_from_a_genuine_concurrent_insert_race(client):
+    """2026-09-24 real bug fix: a genuine double-click/double-tap fires two near-simultaneous
+    POSTs for the same listing_id+action — both can pass the existing_id SELECT before either
+    commits (neither sees the other's row yet), so the second one to commit hits
+    UserListingAction's own unique constraint (uq_user_listing_actions). That used to bubble up
+    as an unhandled 500 instead of just... the action already being on, which is exactly what
+    either click wanted — this confirms it degrades to a clean redirect instead."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(
+        user, scalar_queue=[user, None],  # None = no existing row seen — the race window
+        commit_raises=IntegrityError("insert", {}, Exception("unique violation")),
+    )
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/react",
+            data={"listing_id": 5, "action": "like", "uid": 222, "next": "/apartments?uid=222"},
+        )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/apartments?uid=222"
+    assert fake_session.rolled_back is True
 
 
 def test_react_hide_adds_a_hidden_action(client):

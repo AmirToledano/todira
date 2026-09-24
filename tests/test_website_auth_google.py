@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
@@ -52,11 +53,18 @@ class _FakeSession:
     `users_by_pk` backs the third fallback path — session.get(User, session_user_id) — used when
     the visitor already has an authenticated session but no usable link_uid."""
 
-    def __init__(self, scalar_results, users_by_pk: dict | None = None):
+    def __init__(self, scalar_results, users_by_pk: dict | None = None, flush_raises=None):
         self._scalar_results = list(scalar_results)
         self._users_by_pk = users_by_pk or {}
         self.committed = False
+        self.rolled_back = False
         self.added: list = []
+        # 2026-09-24: simulates the DB's own unique-constraint violation on a genuine race (two
+        # concurrent requests both pass the existing-user SELECT before either one's INSERT lands)
+        # — see test_create_account_recovers_from_a_genuine_concurrent_insert_race below. Only the
+        # FIRST flush() call raises (matching a real DB: retrying after rollback succeeds).
+        self._flush_raises = flush_raises
+        self._flush_calls = 0
 
     def scalar(self, stmt):
         return self._scalar_results.pop(0) if self._scalar_results else None
@@ -68,7 +76,12 @@ class _FakeSession:
         self.added.append(obj)
 
     def flush(self):
-        pass
+        self._flush_calls += 1
+        if self._flush_raises is not None and self._flush_calls == 1:
+            raise self._flush_raises
+
+    def rollback(self):
+        self.rolled_back = True
 
     def get(self, model, pk):
         return self._users_by_pk.get(pk)
@@ -462,3 +475,48 @@ def test_create_account_logs_into_an_existing_user_instead_of_duplicating_on_a_d
     assert resp.status_code == 303
     assert fake_session.added == []  # no new user/filter created
     assert request.session.get("user_id") == 42
+
+
+def test_create_account_recovers_from_a_genuine_concurrent_insert_race():
+    """2026-09-24 real bug fix: the double-submit test above covers the SEQUENTIAL case (the
+    existing-user SELECT already finds the row from an earlier request). This covers the actual
+    RACE — two concurrent requests for the same pending_google_sub can both pass that SELECT
+    before either one's INSERT lands (neither sees the other's row yet), so the second one to
+    flush() hits the DB's own unique constraint on google_sub. That used to bubble up as an
+    unhandled 500 instead of the graceful "log them into the account the other request just
+    created" behavior this whole function already has for the sequential case."""
+    from starlette.requests import Request as StarletteRequest
+
+    winner = _FakeUser(id=99, google_sub="google-sub-race")
+    fake_session = _FakeSession(
+        # 1st scalar(): the existing-user check, before either INSERT — finds nothing (the race).
+        # 2nd scalar(): the post-IntegrityError recovery lookup — finds the row the OTHER
+        # concurrent request just committed.
+        scalar_results=[None, winner],
+        flush_raises=IntegrityError("insert", {}, Exception("unique violation")),
+    )
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/google/create-account",
+        "session": {"pending_google_sub": "google-sub-race", "pending_google_first_name": "Amir"},
+        "query_string": b"",
+        "headers": [],
+        "app": website_main.app,
+    }
+    request = StarletteRequest(scope)
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        resp = website_main.auth_google_create_account(request, next="/apartments")
+
+    assert resp.status_code == 303
+    assert fake_session.rolled_back is True
+    # The Filter for our own losing INSERT must never be added — only the User row (which never
+    # actually committed) was added before flush() raised.
+    assert len(fake_session.added) == 1
+    assert request.session.get("user_id") == 99  # logged into the WINNING request's user, not ours

@@ -192,6 +192,36 @@ def test_upgrade_page_shows_plan_options_for_a_real_user():
     assert "₪49.90" in resp.text
 
 
+def test_upgrade_page_hides_plan_form_for_a_cancelled_but_not_yet_lapsed_subscription():
+    """2026-09-24 real bug fix: has_active_subscription used to also require
+    `not cancel_at_period_end`, so a user who clicked "cancel" (a local flag only — Takbull's own
+    subscription stays live and billing until the current paid period actually ends, see
+    account_cancel_subscription's own comment) would see the purchase form again here and could
+    open a SECOND Takbull recurring order while the first was still billing. The webhook then
+    overwrites takbull_subscription_uniqid with the new order's id, permanently orphaning the
+    still-live original — real, unrecoverable double-billing. The plan form must stay hidden
+    (already_subscribed shown instead) for ANY existing subscription, cancelled or not."""
+    user = _FakeUser(
+        id=2, telegram_user_id=222, takbull_subscription_uniqid="live-uniqid",
+        cancel_at_period_end=True,
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = c.get("/upgrade", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "כבר מנוי פעיל" in resp.text
+    assert 'href="/account?uid=222"' in resp.text
+    assert "בחר מנוי חודשי" not in resp.text  # the plan-selection form's own CTA, hidden
+    assert "terms_agreed" not in resp.text
+
+
 def test_upgrade_page_shows_value_anchor_below_plan_cards():
     """2026-09-10 addition: a price-context callout under the plan cards, reframing the
     subscription price against what people already know a broker fee costs."""

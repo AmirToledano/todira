@@ -22,7 +22,10 @@
 {% if not display_is_owner %}
 <div class="settings-card reveal">
   {% if has_active_subscription %}
-  <p class="field-hint" style="text-align:center">{{ t('upgrade.already_subscribed') }}</p>
+  <p class="field-hint" style="text-align:center">
+    {{ t('upgrade.already_subscribed') }}
+    <a href="/account{{ '?uid=' ~ uid if uid else '' }}">{{ t('upgrade.manage_subscription_link') }}</a>
+  </p>
   {% else %}
   <div class="field-row">
     <div class="field" style="text-align:center">

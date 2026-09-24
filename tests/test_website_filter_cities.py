@@ -161,3 +161,53 @@ def test_filter_page_city_search_box_does_not_submit_the_form_on_enter(client, f
     resp = client.get(f"/filter?uid={fake_user.telegram_user_id}")
     assert "onkeydown" in resp.text
     assert "f-cities-search" in resp.text
+
+
+# --- non-numeric input on the numeric fields (2026-09-24 real bug fix) ---
+# price_min/price_max/rooms_min/rooms_max/floor_min/floor_max/min_area_sqm are deliberately plain
+# `str = Form` (not `int = Form`), so an empty string can mean "no limit" without FastAPI 422ing
+# the whole form — but that also meant a non-numeric value skipped FastAPI's own type coercion
+# entirely and hit a bare int()/float() in filter_update, raising an uncaught ValueError on every
+# save (not just that field) instead of just... having no limit, same as an empty field already got.
+
+
+def test_non_numeric_price_min_is_treated_as_no_limit_not_a_500(client, fake_user):
+    resp = client.post(
+        "/filter", data=_base_form(fake_user.telegram_user_id, price_min="לא מספר")
+    )
+    assert resp.status_code == 303
+    assert fake_user.filter.price_min is None
+
+
+def test_non_numeric_rooms_max_is_treated_as_no_limit_not_a_500(client, fake_user):
+    resp = client.post(
+        "/filter", data=_base_form(fake_user.telegram_user_id, rooms_max="abc")
+    )
+    assert resp.status_code == 303
+    assert fake_user.filter.rooms_max is None
+
+
+def test_comma_formatted_price_is_treated_as_no_limit_not_a_500(client, fake_user):
+    # A real, plausible way to hit this without any malice at all — a user pasting "5,000" from
+    # somewhere with thousands separators. int("5,000") raises ValueError just like garbage text.
+    resp = client.post(
+        "/filter", data=_base_form(fake_user.telegram_user_id, price_max="5,000")
+    )
+    assert resp.status_code == 303
+    assert fake_user.filter.price_max is None
+
+
+def test_non_numeric_input_does_not_prevent_the_rest_of_the_form_from_saving(client, fake_user):
+    # The real regression this whole bug caused: ONE bad numeric field used to 500 the entire
+    # save, silently discarding every other real change (cities, amenities, etc.) in the same
+    # submission along with it.
+    resp = client.post(
+        "/filter",
+        data=_base_form(
+            fake_user.telegram_user_id, floor_min="oops", cities=["רמת גן"], no_brokers="on",
+        ),
+    )
+    assert resp.status_code == 303
+    assert fake_user.filter.floor_min is None
+    assert fake_user.filter.cities == ["רמת גן"]
+    assert fake_user.filter.no_brokers is True
