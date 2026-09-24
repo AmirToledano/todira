@@ -1,0 +1,101 @@
+name: Diagnose — real browser reproduction of the mobile /apartments download bug (read-only)
+
+# Follow-up to diagnose-apartments-mobile-download-bug.yaml: plain curl against every angle
+# (iOS/Android/desktop UA, no-compression, HEAD) came back completely clean — real 200, real
+# text/html, no Content-Disposition, nothing that should trigger a download. The owner then sent an
+# actual screenshot of the real Safari "apartments.txt from todira.app" download sheet, so the bug
+# is real and reproducible on their device even though curl can't see it — curl doesn't replicate a
+# real browser's own content-type-sniffing/download-heuristics or run any client-side JS. This uses
+# a REAL headless browser (Playwright/Chromium, with a mobile Safari device emulation profile) to
+# navigate the live production site exactly the way a visitor would — load the homepage, click the
+# real "דירות" nav link — and captures whether a download event actually fires, and if so, its
+# real suggested filename/URL, so the true trigger can be seen instead of guessed at further.
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Playwright + Chromium
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Reproduce in a real browser (mobile Safari emulation) — click the real nav link
+        run: |
+          python3 - <<'PYEOF'
+          from playwright.sync_api import sync_playwright
+
+          with sync_playwright() as p:
+              iphone = p.devices['iPhone 13']
+              browser = p.chromium.launch()
+              context = browser.new_context(**iphone)
+              page = context.new_page()
+
+              downloads = []
+              page.on("download", lambda d: downloads.append((d.suggested_filename, d.url)))
+
+              responses = []
+              page.on("response", lambda r: responses.append((r.status, r.url, r.headers.get("content-type"))))
+
+              print("=== Navigating to https://todira.app/ ===")
+              page.goto("https://todira.app/", wait_until="networkidle", timeout=30000)
+              print("Landed on:", page.url)
+
+              print("=== Looking for the real nav link to /apartments ===")
+              link = page.locator('a[href^="/apartments"]').first
+              href = link.get_attribute("href")
+              print("Found nav link href:", href)
+
+              print("=== Clicking it, exactly as a real visitor would ===")
+              try:
+                  with page.expect_navigation(timeout=10000):
+                      link.click()
+              except Exception as e:
+                  print("No normal navigation occurred (may be a download instead):", e)
+
+              page.wait_for_timeout(2000)
+              print("Final page.url after click:", page.url)
+              print("Downloads triggered:", downloads)
+
+              print("=== All responses observed during this whole run ===")
+              for status, url, ctype in responses:
+                  print(status, ctype, url)
+
+              context.close()
+              browser.close()
+          PYEOF
+
+      - name: Also try direct navigation to /apartments (mobile Safari emulation, no nav-link click)
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          from playwright.sync_api import sync_playwright
+
+          with sync_playwright() as p:
+              iphone = p.devices['iPhone 13']
+              browser = p.chromium.launch()
+              context = browser.new_context(**iphone)
+              page = context.new_page()
+
+              downloads = []
+              page.on("download", lambda d: downloads.append((d.suggested_filename, d.url)))
+
+              print("=== Direct goto https://todira.app/apartments ===")
+              try:
+                  page.goto("https://todira.app/apartments", wait_until="networkidle", timeout=30000)
+                  print("Landed on:", page.url)
+                  print("Page title:", page.title())
+              except Exception as e:
+                  print("goto raised (could be a download):", e)
+
+              page.wait_for_timeout(2000)
+              print("Downloads triggered:", downloads)
+              context.close()
+              browser.close()
+          PYEOF
