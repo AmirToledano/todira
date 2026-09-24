@@ -69,6 +69,14 @@
         <div class="load-more-sentinel" data-next-offset="{{ next_offset }}"></div>
         {% endif %}
       </div>
+      {# 2026-09-24: real owner report — new cards from infinite scroll used to just silently pop
+         in after a real few-second delay with zero visual cue, reading as a stall/bug rather than
+         a real "please wait" moment. This is a single persistent element (outside #listing-grid,
+         so the grid's own innerHTML swap on each fetch never touches or duplicates it) toggled by
+         the script below — never re-templated per fragment. #}
+      <div id="apartments-loading-indicator" class="apt-loading-indicator" hidden>
+        <span class="apt-spinner" aria-hidden="true"></span> {{ t('apartments.loading_more') }}
+      </div>
     {% endif %}
    </div>
   </div>
@@ -97,6 +105,7 @@
     // last child) scrolls into view, matching the reference bot's own /apartments.
     var grid = document.getElementById('listing-grid');
     if (!grid || !('IntersectionObserver' in window)) { return; }
+    var loadingIndicator = document.getElementById('apartments-loading-indicator');
 
     var loading = false;
     var io = new IntersectionObserver(function (entries) {
@@ -106,6 +115,7 @@
       }
       if (loading) { return; }
       loading = true;
+      if (loadingIndicator) { loadingIndicator.hidden = false; }
       var nextOffset = sentinel.dataset.nextOffset;
       var url = new URL(window.location.href);
       url.searchParams.set('offset', nextOffset);
@@ -128,7 +138,10 @@
           if (newSentinel) { io.observe(newSentinel); }
         })
         .catch(function () { /* network error — the sentinel is still there to retry later */ })
-        .finally(function () { loading = false; });
+        .finally(function () {
+          loading = false;
+          if (loadingIndicator) { loadingIndicator.hidden = true; }
+        });
     }, { rootMargin: '400px 0px' });
 
     var initialSentinel = grid.querySelector('.load-more-sentinel');
@@ -188,7 +201,7 @@
     var filterHandle = workspace.querySelector('.apt-resize-handle[data-target="filter"]');
     if (mapPane && mapHandle) {
       makeResizable(mapHandle, mapPane, { min: 200, max: 700, reverse: false }, function () {
-        if (window.__aptMap) { window.__aptMap.resize(); }
+        if (window.__aptMap) { window.__aptMap.invalidateSize(); }
       });
     }
     if (filterPane && filterHandle) {
@@ -197,94 +210,74 @@
   })();
 </script>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   (function () {
+    // 2026-09-24: switched from MapLibre GL JS to Leaflet — real production report (owner's own
+    // screenshots) that MapLibre's own map.on('load') fired and syncPins() ran correctly (the pin
+    // count text updated as new cards loaded), yet the map canvas itself stayed visually blank —
+    // a WebGL rendering issue this sandbox has no way to reproduce or debug further (no live
+    // network access to the actual failing browser). Leaflet renders raster tiles as plain <img>
+    // elements and markers as plain DOM nodes — no WebGL involved anywhere — which removes this
+    // entire failure class rather than trying to chase it blind. Same OpenStreetMap tile endpoint
+    // as before (see the earlier CARTO->OSM switch, still the right call for ad/privacy-blocker
+    // avoidance either way).
     var mapEl = document.getElementById('apt-map');
     if (!mapEl) { return; }
     function showMapFallback(reason) {
-      // 2026-09-24: real report (owner, production) that the map area rendered blank — most likely
-      // an ad/privacy blocker treating cartocdn.com as a tracking-adjacent CDN (a known false
-      // positive on some filter lists) rather than a code bug, but there was previously no visible
-      // signal either way — a silent blank box gives no way to tell "still loading" from "broken"
-      // apart from opening devtools. Now switched to tile.openstreetmap.org (the single most
-      // widely allow-listed public tile endpoint, used by the overwhelming majority of OSM-based
-      // sites, essentially never blocked) as the real fix, plus this visible fallback text for any
-      // OTHER reason it might still fail (offline, a future CDN change, etc).
       mapEl.innerHTML = '<div class="apt-map-fallback">{{ t("apartments.map_load_failed") }}</div>';
       if (window.console && console.warn) { console.warn('todira map failed to load:', reason); }
     }
-    if (typeof maplibregl === 'undefined') { showMapFallback('maplibre-gl.js did not load'); return; }
+    if (typeof L === 'undefined') { showMapFallback('leaflet.js did not load'); return; }
 
-    // Free, no-API-key raster basemap. OpenStreetMap's own canonical tile server — deliberately
-    // NOT a third-party CDN (like the CARTO tiles this used before) since those are more likely to
-    // be caught by an ad/privacy blocker's filter list; this is the same endpoint the overwhelming
-    // majority of OSM-based sites use and is essentially never blocked.
     var map;
     try {
-      map = new maplibregl.Map({
-        container: 'apt-map',
-        style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: 'raster',
-              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-              tileSize: 256,
-              attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
-            }
-          },
-          layers: [{ id: 'osm', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
-        },
-        center: [34.7818, 32.0853], // Tel Aviv — sensible default center for an Israel-wide listing set
-        zoom: 7,
-      });
+      map = L.map(mapEl, { attributionControl: true, zoomControl: true })
+        .setView([32.0853, 34.7818], 7); // Tel Aviv — sensible default center for an Israel-wide listing set
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+      }).addTo(map);
     } catch (e) {
-      showMapFallback(e); // e.g. WebGL unsupported/disabled
+      showMapFallback(e);
       return;
     }
-    map.addControl(new maplibregl.NavigationControl(), 'top-left');
-    map.on('error', function (e) { showMapFallback((e && e.error && e.error.message) || e); });
     window.__aptMap = map; // read by the resize-handle script above, loaded earlier in the page
 
+    var pinIcon = L.divIcon({ className: 'apt-map-pin', iconSize: [14, 14] });
     var markers = [];
     function syncPins() {
-      markers.forEach(function (m) { m.remove(); });
+      markers.forEach(function (m) { map.removeLayer(m); });
       markers = [];
       var cards = document.querySelectorAll('#listing-grid .listing-card[data-lat][data-lng]');
-      var bounds = new maplibregl.LngLatBounds();
-      var any = false;
+      var points = [];
       cards.forEach(function (card) {
         var lat = parseFloat(card.dataset.lat);
         var lng = parseFloat(card.dataset.lng);
         if (isNaN(lat) || isNaN(lng)) { return; }
-        var el = document.createElement('button');
-        el.type = 'button';
-        el.className = 'apt-map-pin';
-        var marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
-        el.addEventListener('click', function () {
+        var marker = L.marker([lat, lng], { icon: pinIcon }).addTo(map);
+        marker.on('click', function () {
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
           card.classList.add('apt-card-highlight');
           setTimeout(function () { card.classList.remove('apt-card-highlight'); }, 1500);
         });
         markers.push(marker);
-        bounds.extend([lng, lat]);
-        any = true;
+        points.push([lat, lng]);
       });
       var countEl = document.getElementById('apt-map-count');
       if (countEl) {
         var allCards = document.querySelectorAll('#listing-grid .listing-card').length;
-        countEl.textContent = any
-          ? countEl.dataset.template.replace('__SHOWN__', markers.length).replace('__TOTAL__', allCards)
+        countEl.textContent = points.length > 0
+          ? countEl.dataset.template.replace('__SHOWN__', points.length).replace('__TOTAL__', allCards)
           : countEl.dataset.emptyText;
       }
-      if (any && !bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 0 });
+      if (points.length > 0) {
+        map.fitBounds(points, { padding: [60, 60], maxZoom: 14 });
       }
     }
 
-    map.on('load', syncPins);
+    syncPins();
     // Re-sync whenever infinite-scroll (the script earlier in this page) appends a new batch of
     // cards — a plain MutationObserver on the grid, decoupled from that script entirely rather
     // than threading a callback through it.

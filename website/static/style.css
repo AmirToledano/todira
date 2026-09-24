@@ -1110,12 +1110,17 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;
   padding: 5px 12px; font-size: .78rem; color: var(--text-muted); box-shadow: var(--shadow-sm);
 }
+/* Leaflet div-icon marker (2026-09-24, switched from MapLibre GL — see apartments.html's own
+   script comment for why) — a plain div, not a button, so no padding/appearance reset needed. */
 .apt-map-pin {
   width: 14px; height: 14px; border-radius: 50%;
   background: var(--teal); border: 2px solid var(--card); box-shadow: var(--shadow-sm);
-  cursor: pointer; padding: 0;
+  cursor: pointer;
 }
-.apt-map-pin:hover, .apt-map-pin:focus-visible { background: var(--gold); }
+.apt-map-pin:hover { background: var(--gold); }
+/* Leaflet's own container sets a specific font-family — match the site's instead so the
+   attribution/zoom-control text doesn't look like a foreign embed. */
+.leaflet-container { font-family: inherit; }
 
 .apt-resize-handle { flex: 0 0 6px; cursor: col-resize; background: var(--border); }
 .apt-resize-handle:hover, .apt-resize-handle.dragging { background: var(--teal); }
@@ -1138,6 +1143,24 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 .apt-filter-pane form .btn.block { margin-top: 8px; }
 
 .apt-card-highlight { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--radius-md); }
+
+/* 2026-09-24: real owner report — new infinite-scroll cards used to just silently pop in after a
+   real few-second delay with no visual cue at all, reading as a stall. Shown/hidden by
+   apartments.html's own script, never re-templated per fetched fragment (see that element's own
+   template comment). */
+.apt-loading-indicator {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 20px; color: var(--text-muted); font-size: .85rem;
+}
+.apt-spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--teal);
+  animation: apt-spin .7s linear infinite;
+}
+@keyframes apt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .apt-spinner { animation: none; }
+}
 
 @media (max-width: 900px) {
   .apt-workspace { flex-direction: column; height: auto; margin: 14px 0; width: auto; }
