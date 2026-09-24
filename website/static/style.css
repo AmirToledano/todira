@@ -1099,16 +1099,60 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   border-bottom: 1px solid var(--border);
   background: var(--card);
 }
-.apt-map-pane { direction: ltr; position: relative; flex: 0 0 340px; min-width: 0; background: var(--surface-tint); }
+.apt-map-pane { direction: ltr; position: relative; flex: 0 0 340px; min-width: 0; background: var(--surface-tint); transition: flex-basis .18s ease; }
+.apt-map-pane.collapsed { flex: 0 0 0px; overflow: hidden; }
 .apt-map { position: absolute; inset: 0; }
 .apt-map-fallback {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   direction: rtl; text-align: center; padding: 24px; color: var(--text-muted); font-size: .85rem;
 }
 .apt-map-count {
-  position: absolute; bottom: 10px; left: 10px; z-index: 1;
+  position: absolute; bottom: 10px; left: 10px; z-index: 400;
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;
   padding: 5px 12px; font-size: .78rem; color: var(--text-muted); box-shadow: var(--shadow-sm);
+}
+/* Collapse/expand toggle for the map pane (2026-09-24, real owner request comparing against
+   dorin.app) — a small arrow at the map's own top-left corner collapses it; once collapsed, a
+   pill-shaped "תצוגת מפה" button takes its place at the workspace's own left edge to reopen it.
+   Both live OUTSIDE .apt-map (a plain sibling button, not a Leaflet control) so they work even if
+   the map itself failed to load (see .apt-map-fallback above). */
+.apt-map-collapse-btn {
+  position: absolute; top: 10px; left: 10px; z-index: 401;
+  width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); cursor: pointer; font-size: 1rem;
+  display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+}
+.apt-map-collapse-btn:hover { background: var(--teal-tint); }
+.apt-map-reopen-btn {
+  display: none; flex: 0 0 auto; align-self: flex-start; margin: 18px 0 0 18px;
+  align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+  font-size: .82rem; font-weight: 600; cursor: pointer; box-shadow: var(--shadow-sm);
+}
+.apt-workspace.map-collapsed .apt-map-reopen-btn { display: flex; }
+.apt-workspace.map-collapsed .apt-resize-handle[data-target="map"] { display: none; }
+
+/* Map-settings popover (2026-09-24, real owner request) — native <details>/<summary>, same reason
+   as the filter accordion above: no JS needed for the open/close itself, keyboard-operable for
+   free. Sits top-right of the map (collapse arrow already owns top-left). */
+.apt-map-settings { position: absolute; top: 10px; right: 10px; z-index: 401; direction: rtl; }
+.apt-map-settings-btn {
+  width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); cursor: pointer; font-size: .95rem;
+  display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+  list-style: none;
+}
+.apt-map-settings-btn::-webkit-details-marker { display: none; }
+.apt-map-settings-btn:hover { background: var(--teal-tint); }
+.apt-map-settings-panel {
+  position: absolute; top: 34px; right: 0; min-width: 190px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg); padding: 10px 12px; font-size: .8rem;
+}
+.apt-map-settings-panel label { display: block; margin-bottom: 6px; color: var(--text-muted); }
+.apt-map-settings-panel select {
+  width: 100%; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface-tint); color: var(--text); font-size: .8rem;
 }
 /* Leaflet div-icon marker (2026-09-24, switched from MapLibre GL — see apartments.html's own
    script comment for why) — a plain div, not a button, so no padding/appearance reset needed. */
@@ -1119,12 +1163,49 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 }
 .apt-map-pin:hover { background: var(--gold); }
 /* Leaflet's own container sets a specific font-family — match the site's instead so the
-   attribution/zoom-control text doesn't look like a foreign embed. */
-.leaflet-container { font-family: inherit; }
+   attribution/zoom-control text doesn't look like a foreign embed. Zoom control/scale bar restyled
+   to match the site's own brand (real owner report: the default Leaflet chrome "doesn't look
+   good") rather than left at Leaflet's own plain default appearance. */
+.leaflet-container { font-family: inherit; background: var(--surface-tint); }
+.leaflet-control-zoom { border: 1px solid var(--border) !important; box-shadow: var(--shadow-sm) !important; }
+.leaflet-control-zoom a {
+  background: var(--card) !important; color: var(--text) !important; border-color: var(--border) !important;
+}
+.leaflet-control-zoom a:hover { background: var(--teal-tint) !important; }
+.leaflet-control-scale-line {
+  background: var(--card) !important; border-color: var(--text) !important; color: var(--text) !important;
+}
+.leaflet-control-attribution { background: rgba(255,255,255,.75) !important; font-size: .7rem !important; }
+html:not([data-theme="light"]) .leaflet-control-attribution,
+html[data-theme="dark"] .leaflet-control-attribution { background: rgba(24,36,34,.75) !important; color: var(--text) !important; }
+html:not([data-theme="light"]) .leaflet-control-attribution a,
+html[data-theme="dark"] .leaflet-control-attribution a { color: var(--text) !important; }
+/* Dark-mode map tiles (2026-09-24, real owner report: the map "doesn't look good") — the tile
+   source itself is always plain light-mode OpenStreetMap raster (see apartments.html's own script
+   comment for why: universally allow-listed, no API key, the safest choice for reliability), so
+   without this a bright white map sits inside an otherwise dark page. A CSS filter inverting +
+   hue-rotating the raster tiles is the standard technique for this — same idea as this file's own
+   earlier --teal-dark contrast fixes, applied to a map instead of an SVG/text color. Only the TILE
+   layer is filtered, never the marker/control layers above it (those already carry their own
+   theme-aware colors), so pins and controls keep their real, unshifted colors.
+   */
+html:not([data-theme="light"]) .leaflet-tile-pane,
+html[data-theme="dark"] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.85);
+}
 
-.apt-resize-handle { flex: 0 0 6px; cursor: col-resize; background: var(--border); }
+/* Grip icon on both resize handles (2026-09-24, real owner request — a plain 6px color bar alone
+   didn't read as "draggable" enough compared to dorin.app's own visible grip dots) — three dots
+   stacked via box-shadow on a single ::after pseudo-element, centered vertically. */
+.apt-resize-handle { flex: 0 0 6px; cursor: col-resize; background: var(--border); position: relative; }
 .apt-resize-handle:hover, .apt-resize-handle.dragging { background: var(--teal); }
 .apt-resize-handle:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+.apt-resize-handle::after {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  width: 3px; height: 3px; border-radius: 50%; background: var(--card);
+  box-shadow: 0 -7px 0 var(--card), 0 7px 0 var(--card);
+  transform: translate(-50%, -50%);
+}
 
 /* direction:ltr on both scrolling panes — same reasoning as .checkbox-grid-scroll above: keeps
    each pane's native scrollbar on ITS OWN right edge (real bug found live, 2026-09-24: with
@@ -1141,6 +1222,29 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 .apt-filter-pane-inner { direction: rtl; }
 .apt-filter-pane .apt-filter-title { margin: 0 0 14px; font-size: 1.05rem; }
 .apt-filter-pane form .btn.block { margin-top: 8px; }
+
+/* Listing-detail drawer (2026-09-24, real owner request, dorin.app-style) — .apt-filter-view and
+   .apt-listing-detail-view are siblings inside .apt-filter-pane-inner; only one is ever visible
+   ([hidden] toggled by apartments.html's own script), so switching between them never reloads the
+   page or loses the filter form's own in-progress state. */
+.apt-detail-header { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
+.apt-detail-header .apt-filter-title { margin: 0; }
+.apt-detail-back-btn {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); cursor: pointer; font-size: 1.1rem;
+  display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+}
+.apt-detail-back-btn:hover { background: var(--teal-tint); }
+/* The detail view's content is a live clone of the clicked .listing-card (see the script) — reset
+   the grid-item styling that only makes sense inside .listing-grid (hover lift, fixed transition
+   delay) so it reads as a single detail panel, not a stray grid card floating in the sidebar. */
+#apt-listing-detail-content .listing-card {
+  width: 100%; margin: 0; transition: none; transition-delay: 0s !important;
+}
+#apt-listing-detail-content .listing-card:hover { transform: none; box-shadow: var(--shadow-sm); }
+#apt-listing-detail-content .listing-desc {
+  display: block; -webkit-line-clamp: unset; overflow: visible;
+}
 
 .apt-card-highlight { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--radius-md); }
 
@@ -1167,4 +1271,18 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   .apt-map-pane, .apt-filter-pane { flex-basis: auto !important; width: 100% !important; height: 320px; }
   .apt-resize-handle { display: none; }
   .apt-listings-pane { overflow: visible; max-height: none; }
+
+  /* Map collapse/expand + settings on mobile (2026-09-24) — the pane's forced height:320px above
+     needs its own override to actually reach 0 when collapsed; the reopen pill is centered full-
+     width instead of hugging a "left edge" that doesn't mean anything in a stacked mobile layout. */
+  .apt-map-pane.collapsed { height: 0 !important; min-height: 0; border: 0; }
+  .apt-map-reopen-btn { margin: 14px auto 0; align-self: center; }
+  .apt-map-settings-panel { min-width: 170px; }
+
+  /* Listing-detail drawer on mobile (2026-09-24) — the filter pane is a fixed height:320px box
+     above for compact stacking, which is far too short for a full listing (photos, meta,
+     description) once the drawer opens; grow it while the detail view is the visible child.
+     :has() is well-supported in every current mobile browser (Safari 15.4+/Chrome 105+) and keeps
+     this scoped to exactly the drawer-open state, without a JS height toggle to keep in sync. */
+  .apt-filter-pane:has(#apt-listing-detail-view:not([hidden])) { height: auto; max-height: 80vh; }
 }
