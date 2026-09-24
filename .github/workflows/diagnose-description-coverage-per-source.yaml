@@ -1,0 +1,98 @@
+name: Diagnose — real per-source description coverage (Yad2/Komo/Homeless) (read-only)
+
+# Real owner question: "did we manage to pull descriptions from Homeless and Komo? most
+# importantly Yad2 too?" Read-only DB check, same pattern as
+# diagnose-homeless-description-raw-chars.yaml — reports, per source, what fraction of recent
+# active listings actually have a real (non-null) description, rather than trusting the scraper
+# code's own intent without live evidence.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Per-source description coverage among recent active listings
+        run: |
+          kubectl delete pod diag-desc-coverage -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-desc-coverage
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-desc-coverage
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- description coverage among the 100 most-recently-scraped active listings, per source ---"
+                    psql "$CONN" -c "
+                      SELECT source,
+                             count(*) AS total,
+                             count(description) AS with_description,
+                             round(100.0 * count(description) / count(*), 1) AS pct_with_description
+                      FROM (
+                        SELECT source, description
+                        FROM listings
+                        WHERE is_delisted = false
+                        ORDER BY scraped_at DESC
+                        LIMIT 500
+                      ) sub
+                      GROUP BY source
+                      ORDER BY source;
+                    "
+                    echo "--- a real sample description per source (first 200 chars) ---"
+                    psql "$CONN" -c "
+                      SELECT DISTINCT ON (source) source, id, url, left(description, 200) AS sample
+                      FROM listings
+                      WHERE description IS NOT NULL AND is_delisted = false
+                      ORDER BY source, scraped_at DESC;
+                    "
+                    echo "--- Yad2 specifically: is Bright Data enrichment even configured/enabled right now? ---"
+                    echo "(checked separately below via the bot secret, not the DB)"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-desc-coverage -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-desc-coverage || true
+          kubectl delete pod diag-desc-coverage -n todira --ignore-not-found
+
+      - name: Is Bright Data enrichment actually enabled right now (key set, not suspended)?
+        run: |
+          HAS_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.bright-data-api-key}' 2>/dev/null | base64 -d | wc -c || echo 0)
+          echo "bright-data-api-key length in todira-bot-secret: $HAS_KEY (0 = not set)"
+          SUSPENDED=$(kubectl get cronjob todira-scraper -n todira -o json 2>/dev/null | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          envs = d['spec']['jobTemplate']['spec']['template']['spec']['containers'][0].get('env', [])
+          for e in envs:
+              if e.get('name') == 'BRIGHT_DATA_ENRICHMENT_SUSPENDED':
+                  print(e.get('value'))
+                  break
+          else:
+              print('(not set — enrichment NOT suspended by default)')
+          " || echo "could not read cronjob spec")
+          echo "BRIGHT_DATA_ENRICHMENT_SUSPENDED: $SUSPENDED"
