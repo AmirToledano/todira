@@ -190,6 +190,64 @@ def test_apartments_map_workspace_renders_with_pins_for_listings_that_have_coord
     assert 'data-lng=""' not in resp.text
 
 
+def test_apartments_workspace_has_map_toggle_settings_and_detail_drawer_markup(client):
+    """2026-09-24: real owner request batch — map collapse/reopen toggle, a map-settings age
+    filter, and the listing-detail drawer (clicking a card swaps the filter pane for its details,
+    with a back arrow restoring the filter form — see apartments.html's own script comment). This
+    only checks the markup these features' JS depends on actually renders; the JS/CSS behavior
+    itself is covered by manual Playwright verification (no headless browser in this test suite)."""
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(
+        id=1, latitude=32.0853, longitude=34.7818,
+        description="תיאור ארוך של הדירה " * 10,
+    )
+    listing.posted_at = _NOW - dt.timedelta(days=3)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    # Collapse/reopen toggle
+    assert 'id="apt-map-collapse-btn"' in resp.text
+    assert 'id="apt-map-reopen-btn"' in resp.text
+    # Map-settings age filter popover
+    assert 'id="apt-map-settings"' in resp.text
+    assert 'id="apt-map-age-select"' in resp.text
+    # Listing-detail drawer — two sibling views, only the filter one visible by default
+    assert 'id="apt-filter-view"' in resp.text
+    assert 'id="apt-listing-detail-view" hidden' in resp.text
+    assert 'id="apt-detail-back-btn"' in resp.text
+    # The card carries the data the drawer's JS reads: full (untruncated) description + posted date
+    assert 'data-description-full="תיאור ארוך' in resp.text
+    assert f'data-posted-at="{listing.posted_at.isoformat()}"' in resp.text
+
+
+def test_apartments_listing_card_omits_posted_at_and_description_full_when_absent(client):
+    """Mirrors the existing data-lat/data-lng guard (never a blank attribute for a listing that
+    just doesn't have the field) — a listing with no posted_at/description must not render
+    data-posted-at="" or data-description-full=""."""
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1, description=None)
+    listing.posted_at = None
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'data-posted-at=""' not in resp.text
+    assert 'data-description-full=""' not in resp.text
+
+
 def test_apartments_edit_filter_link_omits_uid_for_a_session_only_standalone_user():
     """Real bug found live (2026-09-05): a Google-only standalone account (todira_common.models.
     User, created via /auth/google/create-account) has no telegram_user_id at all, so `uid` in the

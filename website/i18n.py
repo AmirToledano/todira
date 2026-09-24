@@ -866,6 +866,58 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "apartments.filter_panel_title": {
         "he": "סינון", "en": "Filter", "ru": "Фильтр", "fr": "Filtre", "ar": "فلتر",
     },
+    # Map collapse/expand toggle (2026-09-24, real owner request) — a small arrow at the map's own
+    # top-left corner collapses it; once collapsed, a pill button at the workspace's left edge
+    # reopens it, so the map doesn't have to stay permanently open for users who'd rather not have it.
+    "apartments.map_collapse_label": {
+        "he": "סגור את תצוגת המפה", "en": "Close the map view",
+        "ru": "Закрыть карту", "fr": "Fermer la vue carte",
+        "ar": "إغلاق عرض الخريطة",
+    },
+    "apartments.map_reopen_label": {
+        "he": "תצוגת מפה", "en": "Map view", "ru": "Показать карту", "fr": "Vue carte",
+        "ar": "عرض الخريطة",
+    },
+    # Listing-detail drawer inside the filter pane (2026-09-24, real owner request comparing
+    # directly against dorin.app: clicking a card used to only be reachable through the outbound
+    # "view" link, jumping straight off-site — now clicking the card itself swaps the filter pane's
+    # own content for the listing's details in-page, with a back arrow to restore the filter form).
+    "apartments.detail_back_label": {
+        "he": "חזרה לסינון", "en": "Back to filter",
+        "ru": "Назад к фильтру", "fr": "Retour au filtre",
+        "ar": "العودة إلى الفلتر",
+    },
+    "apartments.detail_view_title": {
+        "he": "פרטי הדירה", "en": "Apartment details",
+        "ru": "Информация о квартире", "fr": "Détails de l'appartement",
+        "ar": "تفاصيل الشقة",
+    },
+    # Map settings popover — filters which PINS show by listing age, without touching the listing
+    # list itself (real owner request, lower detail/priority than the rest of this batch, referencing
+    # a dorin.app screenshot of an equivalent control).
+    "apartments.map_settings_label": {
+        "he": "הגדרות מפה", "en": "Map settings",
+        "ru": "Настройки карты", "fr": "Paramètres de la carte",
+        "ar": "إعدادات الخريطة",
+    },
+    "apartments.map_age_filter_label": {
+        "he": "הסתר מודעות ישנות מ-", "en": "Hide listings older than",
+        "ru": "Скрыть объявления старше", "fr": "Masquer les annonces de plus de",
+        "ar": "إخفاء الإعلانات الأقدم من",
+    },
+    "apartments.map_age_all": {
+        "he": "הצג הכל", "en": "Show all", "ru": "Показать все", "fr": "Tout afficher",
+        "ar": "عرض الكل",
+    },
+    "apartments.map_age_7": {
+        "he": "7 ימים", "en": "7 days", "ru": "7 дней", "fr": "7 jours", "ar": "7 أيام",
+    },
+    "apartments.map_age_14": {
+        "he": "14 ימים", "en": "14 days", "ru": "14 дней", "fr": "14 jours", "ar": "14 يومًا",
+    },
+    "apartments.map_age_30": {
+        "he": "30 יום", "en": "30 days", "ru": "30 дней", "fr": "30 jours", "ar": "30 يومًا",
+    },
     # ---------- liked page ----------
     "liked.title": {
         "he": "דירות שמורות ❤️", "en": "Saved apartments ❤️", "ru": "Сохранённые квартиры ❤️",

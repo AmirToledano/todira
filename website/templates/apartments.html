@@ -38,7 +38,24 @@
    geocoded/approximated pin — so on a fresh deploy, before a scrape run has populated any
    coordinates, the map legitimately starts empty rather than faking pins. #}
 <div class="apt-workspace reveal" id="apt-workspace">
+  <button type="button" class="apt-map-reopen-btn" id="apt-map-reopen-btn">
+    <span aria-hidden="true">🗺️</span> {{ t('apartments.map_reopen_label') }}
+  </button>
   <div class="apt-map-pane" id="apt-map-pane">
+    <button type="button" class="apt-map-collapse-btn" id="apt-map-collapse-btn"
+            aria-label="{{ t('apartments.map_collapse_label') }}">‹</button>
+    <details class="apt-map-settings" id="apt-map-settings">
+      <summary class="apt-map-settings-btn" aria-label="{{ t('apartments.map_settings_label') }}">⚙️</summary>
+      <div class="apt-map-settings-panel">
+        <label for="apt-map-age-select">{{ t('apartments.map_age_filter_label') }}</label>
+        <select id="apt-map-age-select">
+          <option value="0">{{ t('apartments.map_age_all') }}</option>
+          <option value="7">{{ t('apartments.map_age_7') }}</option>
+          <option value="14">{{ t('apartments.map_age_14') }}</option>
+          <option value="30">{{ t('apartments.map_age_30') }}</option>
+        </select>
+      </div>
+    </details>
     <div id="apt-map" class="apt-map" role="img" aria-label="{{ t('apartments.map_aria_label') }}"></div>
     <div class="apt-map-count" id="apt-map-count"
          data-template="{{ t('apartments.map_pins_count', shown='__SHOWN__', total='__TOTAL__') }}"
@@ -85,14 +102,30 @@
        aria-label="{{ t('apartments.resize_filter_label') }}" tabindex="0"></div>
   <aside class="apt-filter-pane" id="apt-filter-pane">
    <div class="apt-filter-pane-inner">
-    <h2 class="apt-filter-title">{{ t('apartments.filter_panel_title') }}</h2>
-    {% if user and user.filter %}
-    <form method="post" action="/filter">
-      {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-      {{ filter_form_fields(f, cities_list, property_type_labels, safe_room_labels, furniture_labels) }}
-      <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
-    </form>
-    {% endif %}
+    {# 2026-09-24: listing-detail drawer — real owner request, matching dorin.app's own pattern.
+       Clicking a listing card (anywhere except its own interactive bits — like/hide buttons, the
+       "לצפייה במודעה" outbound link) swaps this pane's content for that listing's details instead
+       of the filter form, with a back arrow next to "פרטי הדירה" to restore it. Two sibling views,
+       only one ever visible ([hidden] toggled by the script below) — never two separate pages/routes,
+       so no navigation/reload and the filter form's own state is untouched while browsing details. #}
+    <div class="apt-filter-view" id="apt-filter-view">
+      <h2 class="apt-filter-title">{{ t('apartments.filter_panel_title') }}</h2>
+      {% if user and user.filter %}
+      <form method="post" action="/filter">
+        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+        {{ filter_form_fields(f, cities_list, property_type_labels, safe_room_labels, furniture_labels) }}
+        <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="apt-listing-detail-view" id="apt-listing-detail-view" hidden>
+      <div class="apt-detail-header">
+        <button type="button" class="apt-detail-back-btn" id="apt-detail-back-btn"
+                aria-label="{{ t('apartments.detail_back_label') }}">→</button>
+        <h2 class="apt-filter-title">{{ t('apartments.detail_view_title') }}</h2>
+      </div>
+      <div id="apt-listing-detail-content"></div>
+    </div>
    </div>
   </aside>
 </div>
@@ -207,6 +240,81 @@
     if (filterPane && filterHandle) {
       makeResizable(filterHandle, filterPane, { min: 220, max: 620, reverse: true });
     }
+
+    // Map collapse/expand toggle (2026-09-24, real owner request) — independent of the map
+    // library too, same reasoning as the resize handles above: a small arrow at the map's own
+    // top-left corner collapses it; a pill button at the workspace's left edge reopens it. The
+    // CSS transition on .apt-map-pane's flex-basis needs a matching delay before invalidateSize()
+    // so Leaflet measures the pane's FINAL size, not its mid-transition one.
+    var collapseBtn = document.getElementById('apt-map-collapse-btn');
+    var reopenBtn = document.getElementById('apt-map-reopen-btn');
+    function afterMapTransition() {
+      setTimeout(function () { if (window.__aptMap) { window.__aptMap.invalidateSize(); } }, 200);
+    }
+    if (collapseBtn && mapPane) {
+      collapseBtn.addEventListener('click', function () {
+        mapPane.classList.add('collapsed');
+        workspace.classList.add('map-collapsed');
+        afterMapTransition();
+      });
+    }
+    if (reopenBtn && mapPane) {
+      reopenBtn.addEventListener('click', function () {
+        mapPane.classList.remove('collapsed');
+        workspace.classList.remove('map-collapsed');
+        afterMapTransition();
+      });
+    }
+  })();
+</script>
+
+<script>
+  (function () {
+    // Listing-detail drawer (2026-09-24, real owner request comparing directly against dorin.app):
+    // clicking a listing card used to be reachable ONLY through its outbound "לצפייה במודעה" link,
+    // jumping straight off-site with no way to preview details in-page first. Clicking the card
+    // itself now swaps the filter pane's content for that listing's own details, with a back arrow
+    // to restore the filter form — the card's existing interactive elements (like/hide reaction
+    // buttons, the outbound link) are explicitly excluded so they keep working exactly as before.
+    var grid = document.getElementById('listing-grid');
+    var filterView = document.getElementById('apt-filter-view');
+    var detailView = document.getElementById('apt-listing-detail-view');
+    var detailContent = document.getElementById('apt-listing-detail-content');
+    var backBtn = document.getElementById('apt-detail-back-btn');
+    var filterPane = document.getElementById('apt-filter-pane');
+    if (!grid || !filterView || !detailView || !detailContent || !backBtn) { return; }
+
+    function openListingDetail(card) {
+      var clone = card.cloneNode(true);
+      clone.classList.remove('reveal');
+      clone.removeAttribute('style');
+      // The grid card truncates the description to 140 chars (see _listing_card.html) — the
+      // detail view has room to show it in full, using the untruncated text stashed on the card.
+      var desc = clone.querySelector('.listing-desc');
+      if (desc && card.dataset.descriptionFull) { desc.textContent = card.dataset.descriptionFull; }
+      detailContent.innerHTML = '';
+      detailContent.appendChild(clone);
+      filterView.hidden = true;
+      detailView.hidden = false;
+      if (filterPane) { filterPane.scrollTop = 0; }
+      backBtn.focus();
+    }
+    window.__aptOpenListingDetail = openListingDetail; // read by the Leaflet script below, on pin click
+
+    grid.addEventListener('click', function (e) {
+      // Never hijack the card's own interactive elements — like/hide reaction buttons (<button>
+      // inside a <form>) and the outbound "לצפייה במודעה"/"שדרג" link (<a>) must keep working
+      // exactly as before; only a click on the card's own inert surface opens the drawer.
+      if (e.target.closest('a, button, input, label')) { return; }
+      var card = e.target.closest('.listing-card');
+      if (!card) { return; }
+      openListingDetail(card);
+    });
+
+    backBtn.addEventListener('click', function () {
+      detailView.hidden = true;
+      filterView.hidden = false;
+    });
   })();
 </script>
 
@@ -239,11 +347,29 @@
         maxZoom: 19,
         attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
       }).addTo(map);
+      // Meters scale indicator (real owner request, comparing against dorin.app's own map chrome) —
+      // bottomright so it never overlaps the #apt-map-count pill, which is pinned bottomleft.
+      L.control.scale({ metric: true, imperial: false, position: 'bottomright' }).addTo(map);
     } catch (e) {
       showMapFallback(e);
       return;
     }
     window.__aptMap = map; // read by the resize-handle script above, loaded earlier in the page
+
+    // Map-settings age filter (2026-09-24, real owner request, lower detail than the rest of this
+    // batch — referencing a dorin.app screenshot of an equivalent control) — hides PINS for
+    // listings older than the chosen cutoff without touching the listing list itself; a listing
+    // with no known posted date is never hidden by it (nothing to compare against).
+    var ageSelect = document.getElementById('apt-map-age-select');
+    function passesAgeFilter(card) {
+      if (!ageSelect || ageSelect.value === '0') { return true; }
+      var postedAt = card.dataset.postedAt;
+      if (!postedAt) { return true; }
+      var postedDate = new Date(postedAt);
+      if (isNaN(postedDate.getTime())) { return true; }
+      var maxAgeMs = parseInt(ageSelect.value, 10) * 86400000;
+      return (Date.now() - postedDate.getTime()) <= maxAgeMs;
+    }
 
     var pinIcon = L.divIcon({ className: 'apt-map-pin', iconSize: [14, 14] });
     var markers = [];
@@ -253,6 +379,7 @@
       var cards = document.querySelectorAll('#listing-grid .listing-card[data-lat][data-lng]');
       var points = [];
       cards.forEach(function (card) {
+        if (!passesAgeFilter(card)) { return; }
         var lat = parseFloat(card.dataset.lat);
         var lng = parseFloat(card.dataset.lng);
         if (isNaN(lat) || isNaN(lng)) { return; }
@@ -261,6 +388,9 @@
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
           card.classList.add('apt-card-highlight');
           setTimeout(function () { card.classList.remove('apt-card-highlight'); }, 1500);
+          // Clicking a pin opens the listing itself, not just a highlight (real owner request) —
+          // reads the drawer-open function stashed by the earlier script rather than duplicating it.
+          if (window.__aptOpenListingDetail) { window.__aptOpenListingDetail(card); }
         });
         markers.push(marker);
         points.push([lat, lng]);
@@ -278,6 +408,7 @@
     }
 
     syncPins();
+    if (ageSelect) { ageSelect.addEventListener('change', syncPins); }
     // Re-sync whenever infinite-scroll (the script earlier in this page) appends a new batch of
     // cards — a plain MutationObserver on the grid, decoupled from that script entirely rather
     // than threading a callback through it.
