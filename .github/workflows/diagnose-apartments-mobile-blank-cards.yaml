@@ -1,0 +1,150 @@
+name: Diagnose — real owner report, blank/invisible listing cards + map tiles on mobile (read-only)
+
+# Real owner report (with screenshots): (1) the map now shows CARTO's own "API KEY REQUIRED"
+# watermark instead of real tiles, (2) on mobile the /apartments page can be scrolled but no
+# listing cards are visible at all, and (3) clicking a card to open the detail modal on mobile
+# shows nothing. This is read-only against production — no writes, no state changes — gathering
+# concrete evidence (console errors, computed styles, bounding boxes, actual tile response) before
+# changing any code, per this project's own "never guess, verify live" discipline.
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Playwright + Chromium
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Mobile (iPhone 13) — console errors, card visibility, modal-open, toolbar layout
+        run: |
+          python3 - <<'PYEOF'
+          from playwright.sync_api import sync_playwright
+          import json
+
+          with sync_playwright() as p:
+              iphone = p.devices['iPhone 13']
+              browser = p.chromium.launch()
+              context = browser.new_context(**iphone)
+              page = context.new_page()
+
+              console_msgs = []
+              page.on("console", lambda m: console_msgs.append((m.type, m.text)))
+              page_errors = []
+              page.on("pageerror", lambda e: page_errors.append(str(e)))
+              tile_responses = []
+              def on_response(r):
+                  if "cartocdn" in r.url or "basemaps" in r.url:
+                      tile_responses.append((r.status, r.headers.get("content-type"), r.headers.get("content-length"), r.url))
+              page.on("response", on_response)
+
+              print("=== goto https://todira.app/apartments (iPhone 13 emulation) ===")
+              page.goto("https://todira.app/apartments", wait_until="networkidle", timeout=30000)
+              page.wait_for_timeout(2500)  # let IntersectionObserver / Leaflet settle
+
+              page.screenshot(path="mobile_apartments_full.png", full_page=True)
+
+              print("=== console messages (errors/warnings only) ===")
+              for t, text in console_msgs:
+                  if t in ("error", "warning"):
+                      print(t, text[:300])
+              print("=== uncaught page errors ===")
+              for e in page_errors:
+                  print(e[:500])
+
+              print("=== tile responses (carto) ===")
+              for status, ctype, clen, url in tile_responses[:5]:
+                  print(status, ctype, clen, url)
+              print("total tile responses seen:", len(tile_responses))
+
+              print("=== listing card visibility (first 5 .listing-card) ===")
+              cards = page.locator(".listing-card").all()
+              print("card count found:", len(cards))
+              for i, c in enumerate(cards[:5]):
+                  cls = c.get_attribute("class")
+                  box = c.bounding_box()
+                  opacity = c.evaluate("el => getComputedStyle(el).opacity")
+                  print(f"card[{i}] class={cls!r} opacity={opacity} box={box}")
+
+              print("=== toolbar chip bounding boxes (left-to-right X positions) ===")
+              for sel in ["#apt-toolbar-map-toggle", ".apt-toolbar-count", ".apt-toolbar-no-brokers", ".apt-toolbar-title"]:
+                  loc = page.locator(sel).first
+                  if loc.count() > 0:
+                      box = loc.bounding_box()
+                      print(sel, box)
+                  else:
+                      print(sel, "NOT FOUND")
+
+              print("=== clicking first listing card, checking if modal opens ===")
+              modal = page.locator("#apt-listing-modal")
+              if cards:
+                  try:
+                      cards[0].click(timeout=5000, force=True)
+                      page.wait_for_timeout(800)
+                      hidden_attr = modal.get_attribute("hidden")
+                      modal_box = modal.bounding_box()
+                      body_html_len = len(page.locator("#apt-listing-modal-body").inner_html())
+                      print("modal hidden attr:", hidden_attr, "modal box:", modal_box, "modal body html length:", body_html_len)
+                      page.screenshot(path="mobile_apartments_modal.png", full_page=False)
+                  except Exception as e:
+                      print("click/modal check raised:", e)
+
+              context.close()
+              browser.close()
+          PYEOF
+
+      - name: Desktop (1440x900) — toolbar layout + map tiles, for comparison
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          from playwright.sync_api import sync_playwright
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              context = browser.new_context(viewport={"width": 1440, "height": 900})
+              page = context.new_page()
+
+              tile_responses = []
+              def on_response(r):
+                  if "cartocdn" in r.url or "basemaps" in r.url:
+                      tile_responses.append((r.status, r.headers.get("content-type"), r.headers.get("content-length"), r.url))
+              page.on("response", on_response)
+
+              print("=== goto https://todira.app/apartments (desktop 1440x900) ===")
+              page.goto("https://todira.app/apartments", wait_until="networkidle", timeout=30000)
+              page.wait_for_timeout(2000)
+              page.screenshot(path="desktop_apartments_full.png", full_page=False)
+
+              print("=== tile responses (carto) ===")
+              for status, ctype, clen, url in tile_responses[:5]:
+                  print(status, ctype, clen, url)
+
+              print("=== toolbar chip bounding boxes (left-to-right X positions) ===")
+              for sel in ["#apt-toolbar-map-toggle", ".apt-toolbar-count", ".apt-toolbar-no-brokers", ".apt-toolbar-title"]:
+                  loc = page.locator(sel).first
+                  if loc.count() > 0:
+                      box = loc.bounding_box()
+                      print(sel, box)
+                  else:
+                      print(sel, "NOT FOUND")
+
+              context.close()
+              browser.close()
+          PYEOF
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-screenshots
+          path: |
+            mobile_apartments_full.png
+            mobile_apartments_modal.png
+            desktop_apartments_full.png
+          if-no-files-found: warn

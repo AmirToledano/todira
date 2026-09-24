@@ -23,6 +23,7 @@
     </button>
   </form>
   {% endif %}
+  <span class="apt-toolbar-count"><b>{{ total_count }}</b> {{ t('apartments.results_label') }}</span>
   {# 2026-09-24 real owner report: the map used to be open by default and permanently took up a
      large, fixed chunk of page height regardless of state — "takes a lot of room, gets in the way
      of the listings." Single toggle now lives HERE, in the always-visible slim toolbar, rather
@@ -30,12 +31,13 @@
      floating "reopen" pill at the workspace's edge (an unusual, easy-to-lose place) — one clear
      control, in one place, that's never hidden by its own on/off state. The map itself defaults to
      COLLAPSED on page load (see #apt-workspace/#apt-map-pane's own classes below) so it never
-     costs page space unless the visitor actually asks for it. #}
+     costs page space unless the visitor actually asks for it. Placed LAST in the toolbar (2026-09-24
+     follow-up owner report: it needed to sit further along than the results count, not before it) so
+     it's the outermost chip, past every other toolbar element. #}
   <button type="button" class="chip chip-toggle" id="apt-toolbar-map-toggle" aria-pressed="false"
           data-show-label="{{ t('apartments.map_reopen_label') }}" data-hide-label="{{ t('apartments.map_hide_label') }}">
     <span aria-hidden="true">🗺️</span> <span id="apt-toolbar-map-toggle-label">{{ t('apartments.map_reopen_label') }}</span>
   </button>
-  <span class="apt-toolbar-count"><b>{{ total_count }}</b> {{ t('apartments.results_label') }}</span>
 </div>
 
 {% if not via_session %}
@@ -365,16 +367,15 @@
     // elements and markers as plain DOM nodes — no WebGL involved anywhere — which removes this
     // entire failure class rather than trying to chase it blind.
     //
-    // Tile source (2026-09-24, real owner report comparing directly against dorin.app's own map:
-    // plain OSM standard tiles "don't look good/flow well" next to dorin's cleaner, more modern
-    // style) — switched from tile.openstreetmap.org to CARTO's Voyager style. The earlier OSM
-    // choice was a precaution against a THEORY (a third-party tile CDN more likely to be on an ad/
-    // privacy-blocker list) made in the same session as the real MapLibre/WebGL blank-map bug —
-    // that theory was never actually confirmed as a real failure once the true root cause (WebGL,
-    // fixed by switching to Leaflet entirely) was found. CARTO's basemap CDN is core map-tile
-    // infrastructure (not ads/tracking) and is what dorin.app's own cleaner look is closest to
-    // among freely-available raster styles; .apt-map-fallback below still covers a genuine load
-    // failure from any cause, tile source included.
+    // Tile source (2026-09-24, real owner report with a live screenshot of CARTO's own tiles
+    // rendering nothing but a repeated "API KEY REQUIRED" watermark in production) — CARTO retired
+    // free/anonymous access to basemaps.cartocdn.com's raster tiles (the endpoint this page used),
+    // so every tile request there now returns that watermark placeholder instead of a real map.
+    // Switched to Esri's World_Street_Map tiles — a long-standing free, no-API-key raster service
+    // with a clean, modern cartographic style close to what CARTO's own Voyager style looked like
+    // before it required a key — rather than falling back to plain OSM mapnik tiles, which the
+    // owner already compared unfavourably against dorin.app's cleaner look. .apt-map-fallback below
+    // still covers a genuine load failure from any cause, tile source included.
     var mapEl = document.getElementById('apt-map');
     if (!mapEl) { return; }
     function showMapFallback(reason) {
@@ -392,9 +393,9 @@
       // stacking-context separation between them). Added back explicitly at topright instead.
       map = L.map(mapEl, { attributionControl: true, zoomControl: false })
         .setView([32.0853, 34.7818], 7); // Tel Aviv — sensible default center for an Israel-wide listing set
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19, subdomains: 'abcd',
-        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank">CARTO</a>'
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '© <a href="https://www.esri.com" target="_blank">Esri</a> — Esri, HERE, Garmin, FAO, NOAA, USGS'
       }).addTo(map);
       L.control.zoom({ position: 'topright' }).addTo(map);
       // Meters scale indicator (real owner request, comparing against dorin.app's own map chrome) —
