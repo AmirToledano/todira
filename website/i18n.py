@@ -878,14 +878,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "תצוגת מפה", "en": "Map view", "ru": "Показать карту", "fr": "Vue carte",
         "ar": "عرض الخريطة",
     },
+    # 2026-09-24: the toolbar toggle's own label swaps between this (map hidden) and
+    # map_reopen_label above (map hidden -> shown) depending on current state.
+    "apartments.map_hide_label": {
+        "he": "הסתר מפה", "en": "Hide map", "ru": "Скрыть карту", "fr": "Masquer la carte",
+        "ar": "إخفاء الخريطة",
+    },
     # Listing-detail drawer inside the filter pane (2026-09-24, real owner request comparing
     # directly against dorin.app: clicking a card used to only be reachable through the outbound
-    # "view" link, jumping straight off-site — now clicking the card itself swaps the filter pane's
-    # own content for the listing's details in-page, with a back arrow to restore the filter form).
-    "apartments.detail_back_label": {
-        "he": "חזרה לסינון", "en": "Back to filter",
-        "ru": "Назад к фильтру", "fr": "Retour au filtre",
-        "ar": "العودة إلى الفلتر",
+    # "view" link, jumping straight off-site — now clicking the card opens a real floating modal
+    # with the listing's own details, closed via the bar spanning its own top (2026-09-24: this key
+    # originally read "back to filter" for an earlier sidebar-swap version of this feature, replaced
+    # with a real modal — see the modal markup's own comment).
+    "apartments.detail_close_label": {
+        "he": "סגור וחזור", "en": "Close",
+        "ru": "Закрыть", "fr": "Fermer",
+        "ar": "إغلاق",
     },
     "apartments.detail_view_title": {
         "he": "פרטי הדירה", "en": "Apartment details",
