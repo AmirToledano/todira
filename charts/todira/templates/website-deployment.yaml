@@ -34,6 +34,15 @@ spec:
           ports:
             - containerPort: 8000
           env:
+            # 2026-09-24: cache-busting for /static/style.css (see base.html's own <link> and
+            # website/main.py's STATIC_VERSION) — real owner report the same night several deploys
+            # in a row each changed style.css, and the owner's own real mobile browser kept showing
+            # stale/broken layouts a fresh Playwright browser never reproduced (no cache to begin
+            # with). style.css was the one static asset linked with no cache-busting query string
+            # at all, unlike todira-brand.webp's own ?v=4. Reuses the same git SHA already used as
+            # this image's own tag — already unique per deploy, no separate value to keep in sync.
+            - name: GIT_SHA
+              value: {{ .Values.websiteImage.tag | default "dev" | quote }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
