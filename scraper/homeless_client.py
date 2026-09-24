@@ -6,18 +6,29 @@ Confirmed live (diagnose-homeless-pagination.yaml) two separate, related changes
 side:
 
 1. The search page no longer server-renders its listing grid into plain HTML a non-JS fetch can
-   read — a PLAIN ZenRows fetch (the original 1-credit tier this module used to run on) now returns
-   ZenRows' own `RESP001 "Could not get content"` error, confirmed happening live, not a stale
-   tracking entry. The page's own markup carries real Cloudflare Rocket Loader markers
-   (`__cfRLUnblockHandlers`, `data-cf-modified-...` on the search form) — Rocket Loader defers
-   script execution until real JS runs, which is almost certainly why a non-JS fetch no longer gets
-   real content. `js_render=true` (ZenRows renders with a real browser) DOES get the real page back
-   — confirmed live: a real 200 with real listing cards and real ₪ prices — at a real, meaningfully
-   higher cost (5 ZenRows credits vs. the old plain tier's 1, confirmed via the real
-   X-Request-Credits response header). This module now always sends js_render=true for the SEARCH
-   page. The per-listing DETAIL page (fetch_listing_description) was NOT re-tested against this
-   same redesign — left on the plain tier for now since it's optional enrichment; revisit if it
-   turns out to need js_render too.
+   read — a PLAIN ZenRows fetch with ZenRows' own DEFAULT request headers (the original 1-credit
+   tier this module used to run on) now returns ZenRows' own `RESP001 "Could not get content"`
+   error, confirmed happening live, not a stale tracking entry. The page's own markup carries real
+   Cloudflare Rocket Loader markers (`__cfRLUnblockHandlers`, `data-cf-modified-...` on the search
+   form), which first looked like the real cause — `js_render=true` (ZenRows renders with a real
+   headless browser) DOES get the real page back, confirmed live at a real 5 ZenRows credits (vs.
+   the old plain tier's 1). BUT (2026-09-24, same night, owner pushed back on paying 5x without
+   trying cheaper alternatives first — a fair ask, tested live before accepting it):
+   `custom_headers=true` + real browser headers (a real `User-Agent`/`Accept-Language`/`Accept`,
+   see `_REAL_BROWSER_HEADERS`) on the PLAIN tier ALSO fixes RESP001 — confirmed live
+   (diagnose-homeless-pagination.yaml run 36001744006): real 200, 8 real `ad_<id>` cards parsed,
+   at the SAME 1-credit cost as before (confirmed via X-Request-Credits). So RESP001 was ZenRows'
+   own default headers looking bot-like to Homeless's Cloudflare, not Homeless genuinely requiring
+   JS execution to render its listings — js_render=true was never actually necessary. (Two other
+   candidates were tested and rejected the same run: `premium_proxy=true` alone also returns a real
+   200 with 8 cards, but at 10 credits — worse than js_render, not better; a fully DIRECT fetch with
+   no ZenRows at all, real headers, got a real Cloudflare "Just a moment..." 403 — genuinely
+   blocked, confirming ZenRows' proxy layer is still required, just not js_render specifically.)
+   This module now always sends custom_headers=true (never js_render) for the SEARCH page, at the
+   original 1-credit cost. The per-listing DETAIL page (fetch_listing_description) was NOT
+   re-tested against this same redesign — left on the plain tier (no custom headers) for now since
+   it's optional enrichment and has shown no RESP001 failure of its own; revisit if evidence emerges
+   it needs the same treatment.
 
 2. The listing grid's own markup changed from a plain HTML <table> of <tr id="ad_<id>"> rows (the
    original 2026-09-13 finding) to a <div>-based card grid — confirmed live against several real
@@ -104,8 +115,9 @@ _DETAIL_PAGE_BASE = "https://www.homeless.co.il"
 ZENROWS_API_KEY_ENV_VAR = "ZENROWS_API_KEY"
 ZENROWS_FETCH_API_URL = "https://api.zenrows.com/v1/"
 
-# 2026-09-24: js_render's own real round-trip is noticeably slower than the old plain tier's —
-# widened from the original plain-tier value (60s) to give real headroom.
+# 2026-09-24: widened from the original plain-tier value (60s) to give real headroom — kept even
+# after moving off js_render (back to the plain tier + custom_headers=true) since it only bounds
+# the max wait, never an actual sleep, and costs nothing to keep generous.
 PAGE_LOAD_TIMEOUT_S = 90
 
 # Same shape/reasoning as yad2_client._ZENROWS_ERROR_CODE_RE/_ZENROWS_ERROR_TITLE_RE and
@@ -197,8 +209,9 @@ class HomelessFetchError(RuntimeError):
     """The Fetch API call failed, timed out, or ZenRows itself errored — see the wrapped
     exception. Homeless has shown no bot-challenge wall of its own in any live run so far (unlike
     Yad2's Radware wall) — every failure seen has been a plain HTTP/ZenRows-side problem (most
-    recently, RESP001 on a plain fetch of the search page — see module docstring — now worked
-    around with js_render=true, not a wall this project needs to defeat itself)."""
+    recently, RESP001 on a plain fetch of the search page with ZenRows' own default headers — see
+    module docstring — now worked around with custom_headers=true + real browser headers, not a
+    wall this project needs to defeat itself)."""
 
 
 def _clean(text: str) -> str:
@@ -268,19 +281,41 @@ def _get_zenrows_api_key() -> str:
     return api_key
 
 
-def _zenrows_get(url: str, *, context_label: str, js_render: bool = False) -> str:
-    """Shared fetch-through-ZenRows mechanics. js_render=True is required for the search page
-    since the 2026-09-24 redesign (see module docstring, point 1) — real, meaningfully higher cost
-    (5 credits vs. 1), so callers that don't need it (the per-listing detail page, still untested
-    against this same redesign) default to the cheaper plain tier."""
+# Real browser headers — sent to ZenRows itself, which forwards THESE (via custom_headers=true)
+# to Homeless instead of ZenRows' own default headers. Confirmed live
+# (diagnose-homeless-pagination.yaml run 36001744006, 2026-09-24) this alone fixes the RESP001
+# failure at the plain tier's normal cost (1 credit) — see module docstring for the full story of
+# why js_render=true (5 credits) turned out to be unnecessary.
+_REAL_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+}
+
+
+def _zenrows_get(url: str, *, context_label: str, custom_headers: bool = False) -> str:
+    """Shared fetch-through-ZenRows mechanics. custom_headers=True sends _REAL_BROWSER_HEADERS
+    through ZenRows to the target site — required for the search page since the 2026-09-24
+    redesign (see module docstring, point 1), at the SAME cost as the plain tier (1 credit) —
+    js_render=true was tested live and confirmed NOT required."""
     api_key = _get_zenrows_api_key()
 
     params = {"apikey": api_key, "url": url}
-    if js_render:
-        params["js_render"] = "true"
+    request_headers = None
+    if custom_headers:
+        params["custom_headers"] = "true"
+        request_headers = _REAL_BROWSER_HEADERS
 
     try:
-        response = httpx.get(ZENROWS_FETCH_API_URL, params=params, timeout=PAGE_LOAD_TIMEOUT_S)
+        response = httpx.get(
+            ZENROWS_FETCH_API_URL,
+            params=params,
+            headers=request_headers,
+            timeout=PAGE_LOAD_TIMEOUT_S,
+        )
     except httpx.HTTPError as exc:
         raise HomelessFetchError(
             f"ZenRows Fetch API request failed for {context_label}: {exc}"
@@ -303,7 +338,7 @@ def _zenrows_get(url: str, *, context_label: str, js_render: bool = False) -> st
 
 
 def _fetch_search_html(url: str) -> str:
-    return _zenrows_get(url, context_label=f"Homeless search page url={url!r}", js_render=True)
+    return _zenrows_get(url, context_label=f"Homeless search page url={url!r}", custom_headers=True)
 
 
 def _parse_cards(search_html: str) -> Iterator[dict[str, Any]]:
@@ -357,10 +392,11 @@ def fetch_search_results(url: str = SEARCH_PAGE_URL) -> Iterator[dict[str, Any]]
     """Yields raw listing dicts (normalize()-ready, same flat shape as yad2_client._parse_cards)
     for every real listing card found on ONE js_render=true fetch of `url` (SEARCH_PAGE_URL for
     rent, SALE_SEARCH_PAGE_URL for sale — same URL-per-call pattern facebook_client.py's own
-    fetch_search_results uses for its rent/forsale categories) — confirmed live at 5 ZenRows
-    credits (see module docstring for the real cost/redesign story). See module docstring for the
-    real, still-open question of whether this single fetch already covers every current listing or
-    whether the site paginates beyond it."""
+    fetch_search_results uses for its rent/forsale categories) — confirmed live at 1 ZenRows
+    credit, the SAME cost as before the 2026-09-24 redesign (see module docstring for the real
+    cost/redesign story — js_render=true's 5-credit cost was tested and found unnecessary). See
+    module docstring for the real, still-open question of whether this single fetch already covers
+    every current listing or whether the site paginates beyond it."""
     search_html = _fetch_search_html(url)
     yield from _parse_cards(search_html)
 

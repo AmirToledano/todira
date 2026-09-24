@@ -210,15 +210,19 @@ def test_missing_api_key_raises_without_any_http_call(monkeypatch):
         list(fetch_search_results())
 
 
-def test_successful_fetch_sends_js_render_true_and_parses_cards(monkeypatch):
-    # 2026-09-24: js_render=true is now REQUIRED (real site redesign — see module docstring, point
-    # 1) — a plain fetch gets ZenRows' own RESP001 error now, confirmed live.
+def test_successful_fetch_sends_custom_headers_true_and_parses_cards(monkeypatch):
+    # 2026-09-24: custom_headers=true (+ real browser headers) is REQUIRED for the search page
+    # (real site redesign — see module docstring, point 1) — a plain fetch with ZenRows' own
+    # default headers gets ZenRows' own RESP001 error, confirmed live. js_render=true is NOT used —
+    # tested live and confirmed unnecessary (custom_headers=true fixes RESP001 at the same 1-credit
+    # cost as before; js_render would cost 5x for no real benefit).
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
     captured = {}
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         captured["url"] = url
         captured["params"] = params
+        captured["headers"] = headers
         return httpx.Response(
             200, text=_REAL_RENT_CARD_NO_NEIGHBORHOOD, request=httpx.Request("GET", url)
         )
@@ -232,14 +236,17 @@ def test_successful_fetch_sends_js_render_true_and_parses_cards(monkeypatch):
     assert captured["url"] == "https://api.zenrows.com/v1/"
     assert captured["params"]["apikey"] == "fake-key"
     assert captured["params"]["url"] == SEARCH_PAGE_URL
-    assert captured["params"]["js_render"] == "true"
+    assert captured["params"]["custom_headers"] == "true"
+    assert "js_render" not in captured["params"]
+    assert captured["headers"]["User-Agent"]
+    assert captured["headers"]["Accept-Language"]
 
 
 def test_fetch_search_results_accepts_the_sale_url_explicitly(monkeypatch):
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
     captured = {}
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         captured["params"] = params
         return httpx.Response(
             200, text=_REAL_SALE_CARD_WITH_NEIGHBORHOOD, request=httpx.Request("GET", url)
@@ -252,14 +259,14 @@ def test_fetch_search_results_accepts_the_sale_url_explicitly(monkeypatch):
     assert len(items) == 1
     assert items[0]["id"] == "253432"
     assert captured["params"]["url"] == SALE_SEARCH_PAGE_URL
-    assert captured["params"]["js_render"] == "true"
+    assert captured["params"]["custom_headers"] == "true"
 
 
 def test_zenrows_error_body_raises_with_code_and_title(monkeypatch):
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
     error_body = '{"code":"AUTH004","title":"Usage exceeded (AUTH004)"}'
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         return httpx.Response(200, text=error_body, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx, "get", fake_get)
@@ -278,7 +285,7 @@ def test_resp001_error_body_raises_with_code_and_title(monkeypatch):
         'rendering for a higher success rate (RESP001)"}'
     )
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         return httpx.Response(200, text=error_body, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx, "get", fake_get)
@@ -290,7 +297,7 @@ def test_resp001_error_body_raises_with_code_and_title(monkeypatch):
 def test_non_200_status_raises_homeless_fetch_error(monkeypatch):
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         return httpx.Response(500, text="internal error", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx, "get", fake_get)
@@ -302,7 +309,7 @@ def test_non_200_status_raises_homeless_fetch_error(monkeypatch):
 def test_network_failure_fails_soft_as_homeless_fetch_error(monkeypatch):
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         raise httpx.ConnectTimeout("timed out")
 
     monkeypatch.setattr(httpx, "get", fake_get)
@@ -318,7 +325,7 @@ def test_fetch_listing_description_extracts_the_real_confirmed_description(monke
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
     captured = {}
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         captured["params"] = params
         return httpx.Response(
             200, text=_REAL_DETAIL_PAGE_HTML, request=httpx.Request("GET", url)
@@ -346,7 +353,7 @@ def test_fetch_listing_description_extracts_the_real_confirmed_description(monke
 def test_fetch_listing_description_missing_meta_tags_returns_none(monkeypatch):
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         return httpx.Response(200, text="<html><body>no meta here</body></html>", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx, "get", fake_get)
@@ -364,7 +371,7 @@ def test_fetch_listing_description_rejects_the_sites_own_generic_description(mon
         'ועוד הרבה נדלן אחרות מתוך אינסוף מודעות עדכניות. הומלס - הרבה יותר מלוחות."></head></html>'
     )
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         return httpx.Response(200, text=generic_html, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx, "get", fake_get)
@@ -382,7 +389,7 @@ def test_fetch_listing_description_missing_api_key_returns_none_not_raises(monke
 def test_fetch_listing_description_network_failure_returns_none_not_raises(monkeypatch):
     monkeypatch.setenv(ZENROWS_API_KEY_ENV_VAR, "fake-key")
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, headers, timeout):
         raise httpx.ConnectTimeout("timed out")
 
     monkeypatch.setattr(httpx, "get", fake_get)
