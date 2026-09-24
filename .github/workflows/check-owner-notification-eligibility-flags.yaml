@@ -1,0 +1,75 @@
+name: Check — the owner's own is_active/notifications_enabled flags (read-only)
+
+# scraper/notifier.py's own _candidate_filters requires User.is_active AND
+# User.notifications_enabled to both be true for ANY notification to ever reach a user,
+# completely independent of how well their filter matches — this is the real, definitive check
+# for why the owner got zero notifications tonight despite clearly having real, broad matches
+# (confirmed via /apartments on the website) and despite the notifier sending 34+3 real
+# notifications to OTHER users during the exact same runs.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real DB check — the owner's own User row
+        run: |
+          kubectl delete pod diag-owner-flags -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-owner-flags
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-owner-flags
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- owner telegram_user_id: $OWNER_TELEGRAM_USER_ID ---"
+                    psql "$CONN" -c "
+                      SELECT id, telegram_user_id, is_active, notifications_enabled,
+                             whatsapp_phone_number, whatsapp_notifications_opted_in,
+                             trial_ends_at, takbull_subscription_uniqid, cancel_at_period_end
+                      FROM users WHERE telegram_user_id = '$OWNER_TELEGRAM_USER_ID';
+                    "
+                    echo "--- for comparison: how many OTHER users have notifications_enabled=false or is_active=false right now ---"
+                    psql "$CONN" -c "
+                      SELECT count(*) FILTER (WHERE is_active = false) AS inactive_users,
+                             count(*) FILTER (WHERE notifications_enabled = false) AS notifications_disabled_users,
+                             count(*) AS total_users
+                      FROM users;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-owner-flags -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-owner-flags || true
+          kubectl delete pod diag-owner-flags -n todira --ignore-not-found
