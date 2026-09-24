@@ -49,6 +49,16 @@ def test_facebook_groups_tracked_ids_parses_comma_separated(monkeypatch):
     assert scraper_main._facebook_groups_tracked_ids() == {"111", "222", "333"}
 
 
+def test_facebook_groups_sale_tracked_ids_empty_when_unset(monkeypatch):
+    monkeypatch.delenv(scraper_main._FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR, raising=False)
+    assert scraper_main._facebook_groups_sale_tracked_ids() == set()
+
+
+def test_facebook_groups_sale_tracked_ids_parses_comma_separated(monkeypatch):
+    monkeypatch.setenv(scraper_main._FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR, "444, 555")
+    assert scraper_main._facebook_groups_sale_tracked_ids() == {"444", "555"}
+
+
 def test_facebook_groups_cap_defaults_when_env_var_unset(monkeypatch):
     monkeypatch.delenv(scraper_main._FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_ENV_VAR, raising=False)
     assert (
@@ -99,6 +109,41 @@ def test_scrape_facebook_groups_upserts_a_new_post(monkeypatch):
     assert normalized_items[0].external_id == "999"
     assert normalized_items[0].description == "תיאור אמיתי"
     assert normalized_items[0].price is None
+    # A group not listed in FACEBOOK_GROUPS_SALE_TRACKED_IDS defaults to RENT — today's existing
+    # single-rent-group behavior, unchanged by adding sale-group support.
+    assert normalized_items[0].deal_type == scraper_main.DealType.RENT
+    assert errors == 0
+    assert all_succeeded is True
+
+
+def test_scrape_facebook_groups_tags_a_sale_tracked_group_as_sale(monkeypatch):
+    """2026-09-24: a group listed in FACEBOOK_GROUPS_SALE_TRACKED_IDS (not the plain rent-only
+    FACEBOOK_GROUPS_TRACKED_IDS) must normalize its posts as DealType.SALE, not the hardcoded RENT
+    every tracked group used to get regardless of the group's own real purpose — the real gap task
+    #37 flagged (no group has been confirmed sale-focused live yet, so this is config-shape
+    coverage, not a live-verified group id)."""
+    monkeypatch.delenv(scraper_main._FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR, raising=False)
+    monkeypatch.setenv(scraper_main._FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR, "777")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_home_feed_post_ids",
+        lambda tracked_ids: [("777", "888")],
+    )
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_facebook_group_post_detail",
+        lambda group_id, post_id: _fake_group_post_detail(post_id),
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook_groups()
+    )
+
+    assert fetched == 1
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
     assert errors == 0
     assert all_succeeded is True
 

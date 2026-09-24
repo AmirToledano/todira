@@ -339,6 +339,11 @@ scraper:
     # the owner said more would follow via a PDF of links; add each new id to this
     # comma-separated string once confirmed, never guessed at.
     # trackedIds: "1665476640352771"
+    # 2026-09-24: same shape, for a SALE-focused group's own id(s) — see scraper/main.py's own
+    # _FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR comment. A group id belongs in EITHER this or
+    # trackedIds above, never both — it decides whether that group's posts normalize as
+    # DealType.SALE or DealType.RENT. Left unset — no real sale group confirmed yet.
+    # saleTrackedIds: ""
     # Left unset — scraper/main.py's own Python-side default (15) applies.
     # maxNewDetailFetchesPerRun: 15
 

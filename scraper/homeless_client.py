@@ -25,10 +25,13 @@ side:
    no ZenRows at all, real headers, got a real Cloudflare "Just a moment..." 403 — genuinely
    blocked, confirming ZenRows' proxy layer is still required, just not js_render specifically.)
    This module now always sends custom_headers=true (never js_render) for the SEARCH page, at the
-   original 1-credit cost. The per-listing DETAIL page (fetch_listing_description) was NOT
-   re-tested against this same redesign — left on the plain tier (no custom headers) for now since
-   it's optional enrichment and has shown no RESP001 failure of its own; revisit if evidence emerges
-   it needs the same treatment.
+   original 1-credit cost. The per-listing DETAIL page (fetch_listing_description) was RE-TESTED
+   against this same redesign on 2026-09-24 (diagnose-homeless-description-fetch-live-status.yaml,
+   run against a real current /sale/viewad,<id>.aspx URL fetched fresh from the DB): plain ZenRows,
+   still on the ORIGINAL tier (no custom_headers, no js_render), still returns a real 200 with the
+   real per-listing description in its <meta name="Description"> tag — confirmed CLEAN, no RESP001.
+   Left as-is; the detail page's own Cloudflare posture evidently wasn't affected by whatever
+   changed on the search page.
 
 2. The listing grid's own markup changed from a plain HTML <table> of <tr id="ad_<id>"> rows (the
    original 2026-09-13 finding) to a <div>-based card grid — confirmed live against several real
@@ -409,8 +412,9 @@ def fetch_listing_description(url: str) -> str | None:
     (see that module's own cost note): Homeless's search-results card already has everything else
     this project needs, so a failed description fetch simply means a listing without a
     description, exactly as before this feature existed. Still on the plain (cheaper) ZenRows
-    tier — not yet confirmed whether the detail page also needs js_render after the 2026-09-24
-    search-page redesign (see module docstring, point 1); revisit if evidence emerges it does."""
+    tier — confirmed live 2026-09-24 (see module docstring, point 1) that this still works clean
+    against the post-redesign site, no js_render needed here despite the search page needing a
+    fix."""
     try:
         page_html = _zenrows_get(url, context_label=f"Homeless details url={url!r}")
     except HomelessFetchError:
