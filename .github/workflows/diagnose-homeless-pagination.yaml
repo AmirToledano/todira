@@ -205,3 +205,38 @@ jobs:
           start = body_m.end() if body_m else 0
           print(html[start:start+800])
           "
+
+      # 2026-09-24: CONFIRMED — Homeless's real markup moved from <tr id="ad_..."> (table rows,
+      # what homeless_client.py's _ROW_RE still expects) to <div id="ad_..." class="image-carousel">
+      # (card-based), a real site redesign. Before rewriting the parser, this dumps the FULL real
+      # markup for several complete cards (not just the price/title snippet already seen) — both a
+      # promoted and a regular (non-promoted) one, since Yad2's own history shows promoted/regular
+      # cards can carry different fields — to see real city/neighborhood/street/rooms/floor markup.
+      - name: Dump full real card markup (rent + sale) — city/rooms/floor fields, promoted vs regular
+        run: |
+          for KIND in jsrender sale; do
+            echo "############################################"
+            echo "### full card dump: $KIND"
+            echo "############################################"
+            python3 -c "
+          import re
+          path = '/tmp/homeless_$KIND.html'
+          with open(path, encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          # Every real ad_<id> card, full span (div ... matching close div is unreliable with plain
+          # regex, so just grab a generous fixed window from each id occurrence instead).
+          matches = list(re.finditer(r'<div id=\"ad_(\d+)\" class=\"([^\"]*)\"', html))
+          print(f'{len(matches)} real ad_<id> div cards found')
+          seen_kinds = {}
+          for m in matches:
+              card_id, card_class = m.group(1), m.group(2)
+              is_promoted = 'promotedAd' in html[m.end():m.end()+600]
+              kind = 'promoted' if is_promoted else 'regular'
+              if kind in seen_kinds:
+                  continue
+              seen_kinds[kind] = True
+              print(f'--- {kind} card (id={card_id}, div class={card_class!r}) ---')
+              print(html[m.start():m.start()+1500])
+              print()
+          "
+          done
