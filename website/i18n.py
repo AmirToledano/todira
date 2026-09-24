@@ -812,6 +812,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # fix) — without this, a screen-reader user got zero indication that new listings had appeared
     # below the ones they'd already heard, since the new cards are inserted silently by JS with no
     # page navigation to re-announce anything.
+    "apartments.loading_more": {
+        "he": "עוד רגע, טוען דירות נוספות...",
+        "en": "One moment, loading more apartments...",
+        "ru": "Секунду, загружаем ещё квартиры...",
+        "fr": "Un instant, chargement d'autres appartements...",
+        "ar": "لحظة واحدة، جارٍ تحميل المزيد من الشقق...",
+    },
     "apartments.more_loaded_announcement": {
         "he": "{count} דירות נוספות נטענו",
         "en": "{count} more apartments loaded",
