@@ -120,6 +120,14 @@ spec:
                 - name: FACEBOOK_GROUPS_TRACKED_IDS
                   value: {{ .trackedIds | quote }}
                 {{- end }}
+                # 2026-09-24: separate rent/sale group id lists — see scraper/main.py's own
+                # _FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR comment for why a group needs its own
+                # deal_type rather than the single hardcoded RENT every tracked group used to get.
+                # Same no-default/left-unset pattern as trackedIds above.
+                {{- if .saleTrackedIds }}
+                - name: FACEBOOK_GROUPS_SALE_TRACKED_IDS
+                  value: {{ .saleTrackedIds | quote }}
+                {{- end }}
                 {{- if .maxNewDetailFetchesPerRun }}
                 - name: FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN
                   value: {{ .maxNewDetailFetchesPerRun | quote }}

@@ -220,7 +220,21 @@ _SCRAPE_SOURCES_ENV_VAR = "SCRAPE_SOURCES"
 # to only the groups actually wanted — a Story from any other group (or non-group content, like a
 # followed Page's post) is silently skipped. Empty/unset means "no groups configured" — the scrape
 # function below is a no-op in that case, never an error.
+#
+# RENT vs SALE (2026-09-24): unlike every other source this project scrapes, a Facebook Group has
+# no per-post deal-type field at all (see facebook_groups_client.py's own docstring) — a group is
+# rent-focused or sale-focused (or mixed) by its own name/purpose, not by anything in a post's own
+# payload. Only ever confirmed one real group so far ("פשפשוק - דירות להשכרה" — a RENT group), so
+# _scrape_facebook_groups below used to hardcode DealType.RENT for every post from every tracked
+# group; a sale-focused group added to the ORIGINAL env var would have had its own listings silently
+# mislabeled as rentals. Kept as two separate env vars (not one var + a per-id suffix) — same
+# already-established rent/sale-as-separate-inputs shape every other source in this project uses
+# (yad2_client.SEARCH_PAGE_URL/SALE_SEARCH_PAGE_URL, komo_client, homeless_client, facebook_client's
+# own category split) — rather than inventing a new per-source convention here. Empty (the default,
+# today's actual state — no real sale group id has been provided yet) means exactly today's existing
+# single-rent-group behavior, unchanged.
 _FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR = "FACEBOOK_GROUPS_TRACKED_IDS"
+_FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR = "FACEBOOK_GROUPS_SALE_TRACKED_IDS"
 # Same account-safety reasoning as _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN above, just a
 # smaller default — the home feed's own real per-run yield was 2 new posts across 2 groups in the
 # one live test so far (see PROJECT_STATE.md, 2026-09-21/22), nowhere near Marketplace's ~25;
@@ -231,6 +245,11 @@ _DEFAULT_FACEBOOK_GROUPS_MAX_NEW_DETAIL_FETCHES_PER_RUN = 15
 
 def _facebook_groups_tracked_ids() -> set[str]:
     raw = os.environ.get(_FACEBOOK_GROUPS_TRACKED_IDS_ENV_VAR, "").strip()
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
+def _facebook_groups_sale_tracked_ids() -> set[str]:
+    raw = os.environ.get(_FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR, "").strip()
     return {s.strip() for s in raw.split(",") if s.strip()}
 
 
@@ -1057,10 +1076,12 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
 
 def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
-    shape as _scrape_yad2. A genuine no-op (returns immediately, all_succeeded=True) when
-    _facebook_groups_tracked_ids() is empty — no group ids configured is not an error, just nothing
-    to do yet (see PROJECT_STATE.md, 2026-09-21/22: only one real group confirmed as of this
-    writing, more to be added to FACEBOOK_GROUPS_TRACKED_IDS as the owner sends them).
+    shape as _scrape_yad2. A genuine no-op (returns immediately, all_succeeded=True) when both
+    _facebook_groups_tracked_ids() and _facebook_groups_sale_tracked_ids() are empty — no group ids
+    configured is not an error, just nothing to do yet (see PROJECT_STATE.md, 2026-09-21/22: only
+    one real RENT group confirmed as of this writing; a sale-focused group's real id goes in
+    FACEBOOK_GROUPS_SALE_TRACKED_IDS instead — see that env var's own comment above for why they're
+    separate — as the owner sends one).
 
     Two-stage, same "discover cheap, enrich only what's genuinely new" pattern as _scrape_facebook:
     fetch_home_feed_post_ids covers every tracked group in ONE request, then
@@ -1074,7 +1095,9 @@ def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
     normalized_items = []
     seen_external_ids: set[str] = set()
 
-    tracked_group_ids = _facebook_groups_tracked_ids()
+    rent_group_ids = _facebook_groups_tracked_ids()
+    sale_group_ids = _facebook_groups_sale_tracked_ids()
+    tracked_group_ids = rent_group_ids | sale_group_ids
     if not tracked_group_ids:
         return normalized_items, seen_external_ids, fetched, errors, True
 
@@ -1117,7 +1140,10 @@ def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
             errors += 1
             continue
 
-        normalized = normalize(detail, source=Source.FACEBOOK_GROUPS, deal_type=DealType.RENT)
+        # A group not explicitly in sale_group_ids defaults to RENT — preserves today's exact
+        # single-rent-group behavior unchanged when FACEBOOK_GROUPS_SALE_TRACKED_IDS is unset.
+        deal_type = DealType.SALE if group_id in sale_group_ids else DealType.RENT
+        normalized = normalize(detail, source=Source.FACEBOOK_GROUPS, deal_type=deal_type)
         if normalized is not None:
             normalized_items.append(normalized)
         else:
