@@ -1,0 +1,76 @@
+name: Diagnose — real owner report, /apartments downloads as apartments.txt on mobile (read-only)
+
+# Real owner report (2026-09-24): opening "הדירות שלי" (the apartments page) on their phone shows a
+# download prompt for "apartments.txt from todira.app" instead of rendering the page — nothing
+# displays. This curls the REAL production site with several User-Agents (iOS Safari, Android
+# Chrome, plain curl) and dumps the full raw response headers (Content-Type, Content-Disposition,
+# Content-Encoding, Transfer-Encoding) plus the first bytes of the body, to see exactly what the
+# phone is actually receiving — never guessed from local code alone, same discipline as every other
+# source diagnosed in this project. Read-only: GET requests only, changes nothing.
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /apartments with an iOS Safari User-Agent — full response headers
+        run: |
+          curl -sS -D - -o /tmp/ios_body.html \
+            -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1" \
+            "https://todira.app/apartments" \
+            -w "\n--- curl exit=%{exitcode} http_code=%{http_code} content_type=%{content_type} size_download=%{size_download} ---\n"
+          echo "=== first 500 bytes of body ==="
+          head -c 500 /tmp/ios_body.html
+          echo ""
+
+      - name: GET /apartments with an Android Chrome User-Agent — full response headers
+        if: always()
+        run: |
+          curl -sS -D - -o /tmp/android_body.html \
+            -A "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36" \
+            "https://todira.app/apartments" \
+            -w "\n--- curl exit=%{exitcode} http_code=%{http_code} content_type=%{content_type} size_download=%{size_download} ---\n"
+          echo "=== first 500 bytes of body ==="
+          head -c 500 /tmp/android_body.html
+          echo ""
+
+      - name: GET /apartments with a plain desktop curl User-Agent — for comparison
+        if: always()
+        run: |
+          curl -sS -D - -o /tmp/desktop_body.html \
+            "https://todira.app/apartments" \
+            -w "\n--- curl exit=%{exitcode} http_code=%{http_code} content_type=%{content_type} size_download=%{size_download} ---\n"
+          echo "=== first 500 bytes of body ==="
+          head -c 500 /tmp/desktop_body.html
+          echo ""
+
+      - name: GET /apartments with no Accept-Encoding (rules out a compression/proxy corruption issue)
+        if: always()
+        run: |
+          curl -sS -D - -o /tmp/noenc_body.html \
+            -H "Accept-Encoding: identity" \
+            -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1" \
+            "https://todira.app/apartments" \
+            -w "\n--- curl exit=%{exitcode} http_code=%{http_code} content_type=%{content_type} size_download=%{size_download} ---\n"
+          echo "=== first 500 bytes of body ==="
+          head -c 500 /tmp/noenc_body.html
+          echo ""
+
+      - name: GET / (homepage) with iOS Safari UA — for comparison, to see if this is /apartments-specific
+        if: always()
+        run: |
+          curl -sS -D - -o /tmp/home_body.html \
+            -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1" \
+            "https://todira.app/" \
+            -w "\n--- curl exit=%{exitcode} http_code=%{http_code} content_type=%{content_type} size_download=%{size_download} ---\n"
+          echo "=== first 300 bytes of body ==="
+          head -c 300 /tmp/home_body.html
+          echo ""
+
+      - name: HEAD /apartments — headers only, no redirect-following, raw as the very first byte on the wire
+        if: always()
+        run: |
+          curl -sS -I \
+            -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1" \
+            "https://todira.app/apartments"
