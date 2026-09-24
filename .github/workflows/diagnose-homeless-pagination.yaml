@@ -206,6 +206,84 @@ jobs:
           print(html[start:start+800])
           "
 
+      # 2026-09-24: owner explicitly asked to find a cheaper alternative to js_render=true (5
+      # credits vs. the old plain tier's 1) before accepting that cost increase — real, fair ask,
+      # not yet actually tried. Tests real cheaper candidates instead of assuming js_render is the
+      # only way past whatever's blocking the plain fetch: (1) a plain ZenRows fetch with
+      # custom_headers=true + a real browser's own header set (maybe RESP001 is ZenRows' own
+      # default headers looking bot-like, not a real JS-execution requirement), (2)
+      # premium_proxy=true alone without js_render (a different antibot tier, cheaper than full
+      # rendering), (3) a fully DIRECT fetch (no ZenRows at all) with the same real browser headers
+      # — free if it works, same as how Komo/Yad2's own map API turned out to need no proxy at all
+      # once actually tested instead of assumed.
+      - name: Test cheaper alternatives to js_render=true (custom headers, premium_proxy alone, fully direct)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+          echo "############################################"
+          echo "### candidate 1: plain ZenRows + custom_headers=true (real browser UA/Accept-Language)"
+          echo "############################################"
+          curl -sS -X POST "https://api.zenrows.com/v1/?apikey=${ZENROWS_API_KEY}&url=https%3A%2F%2Fwww.homeless.co.il%2Frent%2F&custom_headers=true" \
+            -H "User-Agent: $UA" \
+            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -D /tmp/c1.headers -o /tmp/c1.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 100 || true
+          echo "--- credits used ---"
+          grep -i "^x-request-credits:" /tmp/c1.headers || echo "(header not found)"
+          python3 -c "
+          import re
+          with open('/tmp/c1.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          rows = len(re.findall(r'<div id=\"ad_\d+\"', html))
+          code_m = re.search(r'\"code\":\"([A-Z0-9]+)\"', html)
+          print(f'length={len(html)} real_ad_div_cards={rows} zenrows_error={code_m.group(1) if code_m else None}')
+          "
+
+          echo
+          echo "############################################"
+          echo "### candidate 2: ZenRows premium_proxy=true alone (no js_render)"
+          echo "############################################"
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$ZENROWS_API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            --data-urlencode "premium_proxy=true" \
+            -D /tmp/c2.headers -o /tmp/c2.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" --max-time 100 || true
+          echo "--- credits used ---"
+          grep -i "^x-request-credits:" /tmp/c2.headers || echo "(header not found)"
+          python3 -c "
+          import re
+          with open('/tmp/c2.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          rows = len(re.findall(r'<div id=\"ad_\d+\"', html))
+          code_m = re.search(r'\"code\":\"([A-Z0-9]+)\"', html)
+          print(f'length={len(html)} real_ad_div_cards={rows} zenrows_error={code_m.group(1) if code_m else None}')
+          "
+
+          echo
+          echo "############################################"
+          echo "### candidate 3: fully DIRECT fetch (no ZenRows at all), real browser headers"
+          echo "############################################"
+          curl -sS -L --max-redirs 5 \
+            -H "User-Agent: $UA" \
+            -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+            -H "Upgrade-Insecure-Requests: 1" \
+            -o /tmp/c3.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 30 "https://www.homeless.co.il/rent/" || true
+          python3 -c "
+          import re
+          with open('/tmp/c3.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          rows = len(re.findall(r'<div id=\"ad_\d+\"', html))
+          title = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'length={len(html)} real_ad_div_cards={rows} title={title.group(1).strip() if title else \"?\"!r}')
+          "
+
       # 2026-09-24: CONFIRMED — Homeless's real markup moved from <tr id="ad_..."> (table rows,
       # what homeless_client.py's _ROW_RE still expects) to <div id="ad_..." class="image-carousel">
       # (card-based), a real site redesign. Before rewriting the parser, this dumps the FULL real
