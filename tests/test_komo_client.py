@@ -285,8 +285,10 @@ def test_fetch_coordinate_ids_not_json_raises(monkeypatch):
 def test_fetch_all_coordinate_ids_delegates_to_a_fixed_valid_city_slug(monkeypatch):
     captured = {}
 
-    def fake_fetch_coordinate_ids(city):
+    def fake_fetch_coordinate_ids(city, *, iska="1", search_page_url=None):
         captured["city"] = city
+        captured["iska"] = iska
+        captured["search_page_url"] = search_page_url
         return [{"id": "123"}]
 
     monkeypatch.setattr(komo_client, "fetch_coordinate_ids", fake_fetch_coordinate_ids)
@@ -295,6 +297,25 @@ def test_fetch_all_coordinate_ids_delegates_to_a_fixed_valid_city_slug(monkeypat
 
     assert captured["city"] == komo_client._NATIONWIDE_COVERAGE_CITY_SLUG
     assert result == [{"id": "123"}]
+
+
+def test_fetch_all_coordinate_ids_passes_through_iska_and_search_page_url(monkeypatch):
+    """2026-09-22: sale support — fetch_all_coordinate_ids(iska="2", search_page_url=...) must
+    reach fetch_coordinate_ids unchanged, not silently fall back to the rent defaults."""
+    captured = {}
+
+    def fake_fetch_coordinate_ids(city, *, iska="1", search_page_url=None):
+        captured["iska"] = iska
+        captured["search_page_url"] = search_page_url
+        return [{"id": "sale-1"}]
+
+    monkeypatch.setattr(komo_client, "fetch_coordinate_ids", fake_fetch_coordinate_ids)
+
+    result = fetch_all_coordinate_ids(iska="2", search_page_url=komo_client.SALE_SEARCH_PAGE_URL)
+
+    assert captured["iska"] == "2"
+    assert captured["search_page_url"] == komo_client.SALE_SEARCH_PAGE_URL
+    assert result == [{"id": "sale-1"}]
 
 
 # --- fetch_listing_detail (stage 3) ---

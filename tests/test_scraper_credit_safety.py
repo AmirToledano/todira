@@ -87,6 +87,17 @@ def test_notifications_suspended_false_for_other_values(monkeypatch):
 # --- _scrape_komo cap enforcement -----------------------------------------------------------------
 
 
+def _rent_coordinates_only(items: list):
+    """2026-09-22: _scrape_komo now calls fetch_all_coordinate_ids twice — once for rent (no
+    kwargs, unchanged) and once for sale (iska="2", search_page_url=SALE_SEARCH_PAGE_URL). These
+    existing tests only care about the rent call's own behavior, so the sale call is a real,
+    separate call that must be handled (not just ignored), but returns nothing — every assertion
+    below about counts/caps stays exactly as it was pre-sale-loop."""
+    def _fake(*, iska: str = "1", search_page_url: str | None = None):
+        return items if iska == "1" else []
+    return _fake
+
+
 def test_scrape_komo_stops_new_detail_fetches_at_the_cap(monkeypatch):
     """3 never-before-seen listings (all from ONE fetch_all_coordinate_ids call — confirmed
     nationwide, see komo_client.py), cap=2: the 3rd listing's detail should never be fetched, but
@@ -97,7 +108,7 @@ def test_scrape_komo_stops_new_detail_fetches_at_the_cap(monkeypatch):
     monkeypatch.setattr(
         scraper_main,
         "fetch_all_coordinate_ids",
-        lambda: [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+        _rent_coordinates_only([{"id": "1"}, {"id": "2"}, {"id": "3"}]),
     )
 
     fetched_detail_ids = []
@@ -121,7 +132,7 @@ def test_scrape_komo_never_caps_when_no_new_listings_exist(monkeypatch):
     way) — a regression guard against the cap accidentally blocking already-known listings."""
     monkeypatch.setenv(scraper_main._KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "0")
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
-    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", lambda: [{"id": "1"}])
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _rent_coordinates_only([{"id": "1"}]))
 
     def _fail_if_called(modaa_num):
         raise AssertionError("should never fetch an already-known listing's detail")
@@ -285,6 +296,78 @@ def test_scrape_komo_fails_gracefully_when_the_one_discovery_call_fails(monkeypa
     assert all_succeeded is False
 
 
+# --- _scrape_komo: sale coordinate loop, via iska=2/SALE_SEARCH_PAGE_URL (2026-09-22, task #3/#4) --
+
+
+def test_scrape_komo_upserts_a_new_sale_listing_with_sale_deal_type(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_coordinates(*, iska: str = "1", search_page_url=None):
+        return [{"id": "sale-1"}] if iska == "2" else []
+
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _fake_coordinates)
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_komo_listing_detail",
+        lambda modaa_num: {"id": modaa_num, "url": f"https://komo.co.il/{modaa_num}", "price": 2500000},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_komo()
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
+    assert seen_external_ids == {"sale-1"}
+    assert all_succeeded is True
+
+
+def test_scrape_komo_sale_failure_does_not_discard_the_rent_loops_own_result(monkeypatch):
+    """A broken sale coordinate fetch must not lose or corrupt what the rent fetch already found."""
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_coordinates(*, iska: str = "1", search_page_url=None):
+        if iska == "2":
+            raise scraper_main.KomoFetchError("simulated sale discovery failure")
+        return [{"id": "rent-1"}]
+
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _fake_coordinates)
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_komo_listing_detail",
+        lambda modaa_num: {"id": modaa_num, "url": f"https://komo.co.il/{modaa_num}", "price": 4000},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_komo()
+
+    assert seen_external_ids == {"rent-1"}
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.RENT
+    assert all_succeeded is False  # the sale fetch genuinely failed, must surface as such
+    assert errors == 1
+
+
+def test_scrape_komo_shares_one_detail_fetch_cap_across_rent_and_sale(monkeypatch):
+    monkeypatch.setenv(scraper_main._KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "1")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+
+    def _fake_coordinates(*, iska: str = "1", search_page_url=None):
+        return [{"id": "rent-1"}] if iska == "1" else [{"id": "sale-1"}]
+
+    monkeypatch.setattr(scraper_main, "fetch_all_coordinate_ids", _fake_coordinates)
+    detail_calls = []
+
+    def _fake_detail(modaa_num):
+        detail_calls.append(modaa_num)
+        return {"id": modaa_num, "url": f"https://komo.co.il/{modaa_num}", "price": 4000}
+
+    monkeypatch.setattr(scraper_main, "fetch_komo_listing_detail", _fake_detail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_komo()
+
+    assert detail_calls == ["rent-1"]  # cap=1, spent on the rent id (fetched first)
+    assert seen_external_ids == {"rent-1", "sale-1"}
+    assert len(normalized_items) == 1
+
+
 # --- _scrape_yad2: a failing region gets ONE retry before delisting is skipped (2026-09-14) -------
 
 
@@ -310,6 +393,11 @@ def test_scrape_yad2_retries_once_on_transient_failure_and_succeeds(monkeypatch)
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -333,6 +421,11 @@ def test_scrape_yad2_gives_up_after_retry_also_fails(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -356,6 +449,11 @@ def test_scrape_yad2_does_not_retry_on_auth004_quota_error(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -382,6 +480,11 @@ def test_scrape_yad2_multiple_regions_each_get_their_own_independent_retry(monke
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})  # see comment above, same reason
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls_per_region: dict[str, int] = {}
 
     def _fake_fetch_region_pages(region, known_ids, **kwargs):
@@ -399,6 +502,77 @@ def test_scrape_yad2_multiple_regions_each_get_their_own_independent_retry(monke
     assert seen_external_ids == {"tel-aviv-area-1", "jerusalem-area-1"}
 
 
+# --- _scrape_yad2: forsale loop, via fetch_forsale_region (2026-09-22, task #1/#2) ---------------
+
+
+def test_scrape_yad2_forsale_upserts_with_sale_deal_type(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", lambda region, known_ids, **kw: iter([]))
+    monkeypatch.setattr(
+        scraper_main, "fetch_forsale_region", lambda region: iter([_fake_yad2_item("sale-1")])
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
+    assert seen_external_ids == {"sale-1"}
+    assert all_succeeded is True
+
+
+def test_scrape_yad2_forsale_retries_once_on_transient_failure(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", lambda region, known_ids, **kw: iter([]))
+    calls = []
+
+    def _fake_fetch_forsale_region(region):
+        calls.append(region)
+        if len(calls) == 1:
+            raise scraper_main.Yad2MapFetchError("Web Unlocker failed: transient")
+        yield _fake_yad2_item("sale-1")
+
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", _fake_fetch_forsale_region)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert len(calls) == 2  # a real retry happened
+    assert all_succeeded is True
+    assert seen_external_ids == {"sale-1"}
+
+
+def test_scrape_yad2_forsale_failure_does_not_affect_the_rent_loops_own_result(monkeypatch):
+    """A broken forsale region must not lose or corrupt what the rent loop already found."""
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
+    monkeypatch.setattr(
+        scraper_main, "fetch_region_pages", lambda region, known_ids, **kw: iter([_fake_yad2_item("rent-1")])
+    )
+
+    def _fail(region):
+        raise scraper_main.Yad2MapFetchError("Web Unlocker failed: persistent")
+        yield  # pragma: no cover - makes this a generator, never reached
+
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", _fail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = scraper_main._scrape_yad2()
+
+    assert seen_external_ids == {"rent-1"}
+    assert any(item.deal_type == scraper_main.DealType.RENT for item in normalized_items)
+    assert all_succeeded is False  # the forsale region genuinely failed, must surface as such
+    assert errors == 1
+
+
 # --- _scrape_yad2: regions on REGIONS_ON_MAP_API use the Bright Data map API, not ZenRows -------
 # (2026-09-14 — the real, partial migration; see yad2_client.REGIONS_ON_MAP_API's own comment)
 
@@ -408,6 +582,11 @@ def test_scrape_yad2_uses_the_map_api_for_regions_on_it(monkeypatch):
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"tel-aviv-area": {}})
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     map_calls = []
     zenrows_calls = []
 
@@ -431,6 +610,17 @@ def test_scrape_yad2_uses_the_map_api_for_regions_on_it(monkeypatch):
 
 
 # --- _scrape_facebook: account-safety cap + required city enrichment (2026-09-15) ----------------
+
+
+def _rent_only(items: list):
+    """2026-09-22: _scrape_facebook now calls fetch_facebook_results once per category (rent +
+    forsale, see _FACEBOOK_MARKETPLACE_CATEGORIES) sharing one cap/pacing budget — these existing
+    tests only care about the rent path's own behavior, so the forsale call is a real, separate
+    call that must be handled (not just ignored), but returns nothing, keeping every assertion
+    below about counts/caps exactly as it was pre-category-loop."""
+    def _fake(url_path):
+        return iter(items) if url_path == scraper_main.facebook_client.DEFAULT_URL_PATH else iter([])
+    return _fake
 
 
 def _fake_facebook_item(external_id: str) -> dict:
@@ -474,7 +664,7 @@ def test_scrape_facebook_skips_already_known_listings_entirely(monkeypatch):
     here (city=None at discovery) would clobber its already-good city on the UPDATE path."""
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: {"1"})
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
 
     def _fail_if_called(item_id):
@@ -496,7 +686,7 @@ def test_scrape_facebook_upserts_a_new_listing_with_its_real_detail_city(monkeyp
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
     monkeypatch.setattr(
         scraper_main,
@@ -520,7 +710,7 @@ def test_scrape_facebook_skips_a_new_listing_with_no_confirmed_city(monkeypatch)
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
     monkeypatch.setattr(
         scraper_main,
@@ -541,7 +731,7 @@ def test_scrape_facebook_returns_none_detail_gracefully(monkeypatch):
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
     monkeypatch.setattr(
-        scraper_main, "fetch_facebook_results", lambda: iter([_fake_facebook_item("1")])
+        scraper_main, "fetch_facebook_results", _rent_only([_fake_facebook_item("1")])
     )
     monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", lambda item_id: None)
 
@@ -560,9 +750,7 @@ def test_scrape_facebook_stops_new_detail_fetches_at_the_cap(monkeypatch):
     monkeypatch.setattr(
         scraper_main,
         "fetch_facebook_results",
-        lambda: iter(
-            [_fake_facebook_item("1"), _fake_facebook_item("2"), _fake_facebook_item("3")]
-        ),
+        _rent_only([_fake_facebook_item("1"), _fake_facebook_item("2"), _fake_facebook_item("3")]),
     )
 
     detail_calls = []
@@ -584,9 +772,12 @@ def test_scrape_facebook_stops_new_detail_fetches_at_the_cap(monkeypatch):
 
 
 def test_scrape_facebook_fails_gracefully_when_discovery_fails(monkeypatch):
+    """2026-09-22: _scrape_facebook now tries BOTH categories (rent + forsale) — a broken
+    account/cookie fails discovery for both, so this simulates that (not just one), and errors
+    reflects both failed categories."""
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
 
-    def _fail():
+    def _fail(url_path):
         raise scraper_main.FacebookFetchError("simulated discovery failure")
         yield  # pragma: no cover - makes this a generator, never reached
 
@@ -598,8 +789,69 @@ def test_scrape_facebook_fails_gracefully_when_discovery_fails(monkeypatch):
 
     assert normalized_items == []
     assert seen_external_ids == set()
-    assert errors == 1
+    assert errors == 2  # both categories failed
     assert all_succeeded is False
+
+
+# --- _scrape_facebook: forsale category (2026-09-22) -----------------------------------------
+
+
+def test_scrape_facebook_upserts_a_new_forsale_listing_with_sale_deal_type(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
+
+    def _fake_results(url_path):
+        if url_path == "category/propertyforsale/":
+            return iter([_fake_facebook_item("sale-1")])
+        return iter([])
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_results", _fake_results)
+    monkeypatch.setattr(
+        scraper_main,
+        "fetch_facebook_listing_detail",
+        lambda item_id: {"city": "הרצליה", "description": "דירה למכירה"},
+    )
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert len(normalized_items) == 1
+    assert normalized_items[0].deal_type == scraper_main.DealType.SALE
+    assert seen_external_ids == {"sale-1"}
+    assert errors == 0
+    assert all_succeeded is True
+
+
+def test_scrape_facebook_shares_one_detail_fetch_cap_across_both_categories(monkeypatch):
+    """The account-safety cap is on TOTAL new-detail-fetches this run, not per category — two
+    categories must not double the real request budget against the live account."""
+    monkeypatch.setenv(scraper_main._FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, "1")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
+
+    def _fake_results(url_path):
+        if url_path == scraper_main.facebook_client.DEFAULT_URL_PATH:
+            return iter([_fake_facebook_item("rent-1")])
+        return iter([_fake_facebook_item("sale-1")])
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_results", _fake_results)
+    detail_calls = []
+
+    def _fake_detail(item_id):
+        detail_calls.append(item_id)
+        return {"city": "הרצליה", "description": None}
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", _fake_detail)
+
+    normalized_items, seen_external_ids, fetched, errors, all_succeeded = (
+        scraper_main._scrape_facebook()
+    )
+
+    assert detail_calls == ["rent-1"]  # cap=1, spent on the first (rent) category entirely
+    assert seen_external_ids == {"rent-1", "sale-1"}
+    assert len(normalized_items) == 1
+    assert fetched == 2
 
 
 # --- _active_source_scrapers: Facebook is opt-in only, a real kill-switch (2026-09-15) ------------
@@ -635,6 +887,11 @@ def test_scrape_yad2_map_api_region_retries_on_yad2_map_fetch_error(monkeypatch)
     monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"tel-aviv-area": {}})
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    # 2026-09-22: _scrape_yad2 now also runs a forsale loop after the rent loop (task #1/#2) — a
+    # clean no-op default so these existing rent-only tests' assertions are unaffected; pacing
+    # zeroed so the forsale loop's own per-region sleep doesn't slow every test down.
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", lambda region: iter([]))
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
     calls = []
 
     def _fake_fetch_region_via_map_api(region):

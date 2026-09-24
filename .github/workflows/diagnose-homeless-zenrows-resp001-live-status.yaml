@@ -1,0 +1,77 @@
+name: Diagnose — is Homeless's real ZenRows fetch still RESP001 right now? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-22.
+#
+# Task #14 on tonight's punch list (PROJECT_STATE.md, "Homeless ZenRows RESP001" — tracked since
+# 2026-09-17, never actually re-checked live since). Before touching homeless_client.py at all,
+# this runs the EXACT SAME call production makes — a plain ZenRows GET of
+# https://www.homeless.co.il/rent/, same URL, same params (apikey + url, no js_render/premium_proxy,
+# matching homeless_client._zenrows_get/_fetch_search_html) — using the SAME live key production
+# reads (todira-bot-secret's zenrows-api-key, via kubectl, not a possibly-stale GitHub Actions repo
+# secret of the same name), and reports the real, current outcome: a genuine 200 with real listing
+# rows, a ZenRows RESP001/other error body, or something else. Also ran
+# diagnose-komo-homeless-direct-request.yaml tonight first: a plain, unproxied request to the same
+# URL from a GitHub Actions runner IP got a real Cloudflare "Just a moment..." 403 — so unlike Komo,
+# Homeless does need some form of proxy/unlocker; going fully direct is not an available fix here,
+# only relevant if THIS run also fails.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Plain ZenRows GET of homeless.co.il/rent/ — the exact call homeless_client._fetch_search_html makes in production
+        run: |
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.zenrows-api-key}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+          if [ -z "$API_KEY" ]; then
+            echo "zenrows-api-key is empty in todira-bot-secret — nothing to test with."
+            exit 1
+          fi
+
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$API_KEY" \
+            --data-urlencode "url=https://www.homeless.co.il/rent/" \
+            -o /tmp/homeless.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 60 || true
+
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/homeless.html 2>/dev/null || echo "(no output file — request failed at the connection level)"
+          echo
+          echo "--- verdict ---"
+          if [ ! -f /tmp/homeless.html ]; then
+            echo "No output file — curl itself failed (timeout or connection error), not a ZenRows-level error."
+            exit 0
+          fi
+          python3 -c "
+          import re
+          with open('/tmp/homeless.html', encoding='utf-8', errors='replace') as f:
+              body = f.read()
+          print(f'length={len(body)}')
+          # Same shape homeless_client._ZENROWS_ERROR_CODE_RE/_ZENROWS_ERROR_TITLE_RE look for —
+          # ZenRows' own JSON error body, not wrapped in any HTML shell.
+          code_m = re.search(r'\"code\":\"([A-Z0-9]+)\"', body)
+          title_m = re.search(r'\"title\":\"([^\"]*)\"', body)
+          if code_m:
+              title = title_m.group(1) if title_m else '?'
+              print(f'ZenRows error body detected: code={code_m.group(1)!r} title={title!r}')
+          rows = len(re.findall(r'<tr[^>]*\bid=\"ad_\d+\"', body))
+          print(f'real Homeless listing rows found (same marker homeless_client._ROW_RE looks for): {rows}')
+          if rows > 0:
+              print('VERDICT: SUCCESS — real listing rows came back, RESP001 is NOT happening right now.')
+          elif code_m:
+              print(f'VERDICT: STILL BROKEN — ZenRows itself returned an error ({code_m.group(1)}), matching the RESP001 pattern.')
+          else:
+              print('VERDICT: got a 200-shaped body but no listing rows and no ZenRows error code — inspect the first-500-chars dump above.')
+          "

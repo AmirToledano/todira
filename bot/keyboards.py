@@ -4,6 +4,8 @@ implements, and handlers/filter_conversation.py for the state machine that drive
 """
 from __future__ import annotations
 
+import html
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from todira_common import cities
@@ -90,7 +92,15 @@ def render_root_summary(draft: dict) -> str:
         "🛡️ מיגון: " + SAFE_ROOM_LABELS.get(draft["safe_room_pref"], "הכל"),
         "🛋️ ריהוט: " + FURNITURE_LABELS.get(draft["furniture_pref"], "הכל"),
         "📏 שטח מינימלי: " + (f"{draft['min_area_sqm']} מ\"ר" if draft["min_area_sqm"] else "—"),
-        "🔍 מילות מפתח: " + (", ".join(draft["keywords"]) or "—"),
+        # html.escape — unlike every other field rendered here, keywords is genuine free user
+        # text (typed directly or extracted by Gemini from free text, see onboarding.py/
+        # filter_conversation.py), and this whole summary is always sent with parse_mode=HTML.
+        # An unescaped "<"/"&" here (e.g. a keyword like "AC & heating") makes Telegram's HTML
+        # parser reject the message outright — and since this same render is what /filter always
+        # shows first, that would make /filter permanently unusable for that user until the DB
+        # row is fixed manually. Same fix already applied everywhere else user text meets
+        # parse_mode=HTML in this project (see todira_common/cards.py, handlers/support.py).
+        "🔍 מילות מפתח: " + (", ".join(html.escape(kw) for kw in draft["keywords"]) or "—"),
         "📅 כניסה: " + _fmt_range(draft["move_in_earliest"], draft["move_in_latest"]),
         "⚙️ ללא תיווך: "
         + ("✔" if draft["no_brokers"] else "✘")

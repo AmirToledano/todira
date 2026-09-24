@@ -114,6 +114,12 @@ logger = logging.getLogger(__name__)
 # an empty/wrong search page rather than erroring — worth spot-checking a few more before relying
 # on this for every SCRAPE_CITIES entry.
 SEARCH_PAGE_URL = "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp"
+# 2026-09-22: task #3/#4 (never started before tonight) — confirmed live
+# (diagnose-komo-region-coverage.yaml): a real, separate search page at this exact path (200, a
+# real sessionToken, real title "דירות למכירה בתל אביב יפו - לוח קומו"). Candidate paths
+# "houses-for-sale.asp"/"nadlan-for-sale.asp" were also tried and are real 404s — this is the one
+# real match, mirroring rent's own URL pattern exactly (apartments-for-<rent|sale>.asp).
+SALE_SEARCH_PAGE_URL = "https://www.komo.co.il/code/nadlan/apartments-for-sale.asp"
 ADSCOORDINATES_URL = "https://www.komo.co.il/api/modaotservice/adscoordinates/list/"
 DETAILS_PAGE_URL = "https://www.komo.co.il/code/nadlan/details/"
 
@@ -253,7 +259,9 @@ def _extract_session_token(search_page_html: str) -> str | None:
     return match.group(1) if match else None
 
 
-def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
+def fetch_coordinate_ids(
+    city: str, *, iska: str = "1", search_page_url: str = SEARCH_PAGE_URL
+) -> list[dict[str, str]]:
     """Stage 1+2: resolves `city` (a slug from this project's own SCRAPE_CITIES, e.g. "jerusalem")
     to Komo's search page, extracts its embedded sessionToken, then POSTs that token to Komo's own
     map-pins endpoint. Returns the raw `list` array — each item a dict with (at least) "id" (the
@@ -270,6 +278,19 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
     fetch_all_coordinate_ids() below instead of looping this per city — see that function and
     scraper/main.py's _scrape_komo for the real cost this fixed (84 credits/run -> 2).
 
+    2026-09-22: `iska`/`search_page_url` — confirmed live (diagnose-komo-region-coverage.yaml)
+    that `iska` on the adscoordinates POST is the real deal-type selector, not `nehes` (nehes=1/2/3
+    on the SAME rent page all returned the identical 10657-id set — nehes doesn't filter deal type
+    at all): iska=1 (default, unchanged) returned that same 10657-id rent set; iska=2 returned a
+    real, comparably-large, DISJOINT 10522-id set. Cross-checked 3 real iska=2 ids' own detail
+    pages: real sale prices (₪2,790,000 / ₪2,400,000 / ₪1,800,000) and real "למכירה" (for-sale, not
+    "להשכרה"/for-rent) og:titles, both matched cleanly by _parse_details_html's existing regexes
+    with zero changes needed. search_page_url defaults to the rent page (unchanged callers) —
+    fetch_all_coordinate_ids passes SALE_SEARCH_PAGE_URL for a sale call, matching the real page
+    Komo's own site actually uses for that category, even though a rent page's own sessionToken
+    was found to also work with iska=2 in testing (not relied on here — using the semantically
+    correct page per category is more robust against Komo tightening validation later).
+
     Two real requests through Bright Data's flat-rate ISP proxy (2026-09-14 — see module docstring's
     STATUS entry) — zero per-request cost either way, unlike the ZenRows credits this used to
     spend; this function is cheap to call for every SCRAPE_CITIES entry every run regardless."""
@@ -281,7 +302,7 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
             "own top-level comment for why)."
         )
 
-    search_url = f"{SEARCH_PAGE_URL}?nehes=1&cityName={hebrew_name}"
+    search_url = f"{search_page_url}?nehes=1&cityName={hebrew_name}"
     search_html = _isp_proxy_get(search_url, context_label=f"komo search page city={city!r}")
 
     session_token = _extract_session_token(search_html)
@@ -294,8 +315,8 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
 
     body = _isp_proxy_post(
         ADSCOORDINATES_URL,
-        {"iska": "1", "sessionToken": session_token},
-        context_label=f"komo adscoordinates city={city!r}",
+        {"iska": iska, "sessionToken": session_token},
+        context_label=f"komo adscoordinates city={city!r} iska={iska!r}",
     )
 
     try:
@@ -325,14 +346,19 @@ def fetch_coordinate_ids(city: str) -> list[dict[str, str]]:
 _NATIONWIDE_COVERAGE_CITY_SLUG = "tel-aviv"
 
 
-def fetch_all_coordinate_ids() -> list[dict[str, str]]:
+def fetch_all_coordinate_ids(
+    *, iska: str = "1", search_page_url: str = SEARCH_PAGE_URL
+) -> list[dict[str, str]]:
     """Komo's adscoordinates endpoint is confirmed nationwide regardless of which city is queried
     (see fetch_coordinate_ids' own docstring) — this is the one real call scraper/main.py's
     _scrape_komo should make per run instead of looping over every tracked city (this used to
     matter for ZenRows credits — 84/run vs 2/run — before the 2026-09-14 ISP-proxy migration made
     it free either way; still the right call, one real request pair instead of 42 identical ones).
-    Returns exactly what fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG) would."""
-    return fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG)
+    Returns exactly what fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG) would.
+
+    2026-09-22: `iska`/`search_page_url` pass straight through to fetch_coordinate_ids — see that
+    function's own docstring for the confirmed iska=2/SALE_SEARCH_PAGE_URL sale finding."""
+    return fetch_coordinate_ids(_NATIONWIDE_COVERAGE_CITY_SLUG, iska=iska, search_page_url=search_page_url)
 
 
 def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | None:

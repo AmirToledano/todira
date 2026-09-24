@@ -19,6 +19,7 @@ from todira_common import bright_data_client
 from todira_common.db import get_session
 from todira_common.enums import DealType, Source
 from todira_common.models import Listing
+import facebook_client
 from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
 from facebook_client import fetch_search_results as fetch_facebook_results
@@ -28,6 +29,7 @@ from facebook_groups_client import fetch_post_detail as fetch_facebook_group_pos
 from homeless_client import HomelessFetchError
 from homeless_client import fetch_listing_description as fetch_homeless_description
 from homeless_client import fetch_search_results as fetch_homeless_results
+import komo_client
 from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import _compute_detail_updates, normalize
@@ -37,6 +39,7 @@ from yad2_client import (
     REGIONS_ON_MAP_API,
     Yad2FetchError,
     Yad2MapFetchError,
+    fetch_forsale_region,
     fetch_listing_detail_via_web_unlocker,
     fetch_region_pages,
     fetch_region_via_map_api,
@@ -664,6 +667,49 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
             # this function returns).
             time.sleep(_MAP_API_REGION_PACING_SECONDS)
 
+    # 2026-09-22: task #1/#2 — forsale, confirmed live for all 7 REGION_SLUGS via the search-page +
+    # Web Unlocker mechanism (see fetch_forsale_region's own docstring). No map-API fast path here
+    # (Bright Data's own KYC wall blocks gw.yad2.co.il/realestate-feed/forsale/map specifically,
+    # confirmed live, unrelated to rent's own map API which is unaffected) — always one search-page
+    # fetch per region, same shape fetch_all_listings used for rent before REGIONS_ON_MAP_API
+    # existed. Shares known_ids with the rent loop above (a Yad2 token is globally unique regardless
+    # of deal type, so no cross-deal-type collision risk) — a listing seen in EITHER loop this run
+    # counts as seen for delisting purposes.
+    logger.info("Scraping %d Yad2 forsale regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
+    for region in REGION_SLUGS:
+        region_succeeded = False
+        for attempt in range(1, _YAD2_MAX_FETCH_ATTEMPTS + 1):
+            try:
+                for raw_item in fetch_forsale_region(region):
+                    fetched += 1
+                    normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.SALE)
+                    if normalized is not None:
+                        normalized_items.append(normalized)
+                        seen_external_ids.add(normalized.external_id)
+                    else:
+                        errors += 1
+                region_succeeded = True
+                break
+            except Yad2MapFetchError as exc:
+                if attempt < _YAD2_MAX_FETCH_ATTEMPTS:
+                    logger.warning(
+                        "Yad2 forsale fetch failed for region=%s (attempt %d/%d) — retrying in "
+                        "%.0fs: %s", region, attempt, _YAD2_MAX_FETCH_ATTEMPTS,
+                        _REGION_RETRY_DELAY_SECONDS, exc,
+                    )
+                    time.sleep(_REGION_RETRY_DELAY_SECONDS)
+                else:
+                    logger.exception(
+                        "Failed to fetch Yad2 forsale results for region=%s after %d attempts — "
+                        "skipping this region", region, _YAD2_MAX_FETCH_ATTEMPTS,
+                    )
+        if not region_succeeded:
+            errors += 1
+            all_succeeded = False
+        # Same pacing as the rent loop's own map-API requests above — this also goes through
+        # Bright Data Web Unlocker, same target site, same anti-detection reasoning.
+        time.sleep(_MAP_API_REGION_PACING_SECONDS)
+
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
@@ -700,28 +746,58 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     _KOMO_DETAIL_FETCH_CONCURRENCY (see that constant's own comment for why this is safe — Komo has
     already been confirmed to have no bot-challenge wall of its own) — same _fetch_concurrently
     helper _scrape_homeless uses. Previously these ran one at a time, sequentially, which is what
-    made a run with many new Komo listings take a real, avoidable extra chunk of wall-clock time."""
+    made a run with many new Komo listings take a real, avoidable extra chunk of wall-clock time.
+
+    2026-09-22: task #3/#4 — also fetches Komo's real sale coordinate list (iska=2 via
+    SALE_SEARCH_PAGE_URL, confirmed live — see fetch_coordinate_ids' own docstring) alongside the
+    rent one (iska=1, unchanged). Both share the SAME known_ids/processed_this_run/detail-fetch cap
+    — a modaaNum is globally unique regardless of deal type, and the cap is a real ZenRows-credit
+    budget on total new detail fetches this run, not a per-category allowance. `sale_ids` tracks
+    which of processed_this_run's new ids came from the sale list, so the right DealType is applied
+    when normalizing — _parse_details_html's own regexes need no changes (confirmed live against 3
+    real sale listings' detail pages). A failed sale fetch (KomoFetchError) is logged/counted but
+    does not discard whatever the rent fetch already found."""
     normalized_items = []
     seen_external_ids: set[str] = set()
 
     known_ids = _fetch_known_external_ids(Source.KOMO)
     processed_this_run: set[str] = set(known_ids)
     max_new_detail_fetches = _komo_max_new_detail_fetches_per_run()
+    errors = 0
+    all_succeeded = True
 
     logger.info("Fetching Komo's nationwide coordinate list (one call, confirmed city-independent)")
     try:
-        coordinates = fetch_all_coordinate_ids()
+        rent_coordinates = fetch_all_coordinate_ids()
     except KomoFetchError:
-        logger.exception("Failed to fetch Komo's coordinate list — skipping Komo entirely this run")
+        logger.exception("Failed to fetch Komo's rent coordinate list — skipping Komo entirely this run")
         return normalized_items, seen_external_ids, 0, 1, False
 
+    logger.info("Fetching Komo's nationwide SALE coordinate list (iska=2, one call)")
+    try:
+        sale_coordinates = fetch_all_coordinate_ids(
+            iska="2", search_page_url=komo_client.SALE_SEARCH_PAGE_URL
+        )
+    except KomoFetchError:
+        logger.exception(
+            "Failed to fetch Komo's sale coordinate list — continuing with rent results only"
+        )
+        sale_coordinates = []
+        errors += 1
+        all_succeeded = False
+
+    sale_ids: set[str] = set()
     new_ids_to_fetch: list[str] = []
-    for coordinate in coordinates:
+    for coordinate, is_sale in [(c, False) for c in rent_coordinates] + [
+        (c, True) for c in sale_coordinates
+    ]:
         modaa_num = coordinate.get("id")
         if not modaa_num:
             continue
         modaa_num = str(modaa_num)
         seen_external_ids.add(modaa_num)
+        if is_sale:
+            sale_ids.add(modaa_num)
         if modaa_num in processed_this_run:
             continue  # already known from a prior run, or a duplicate within this run's own list
         processed_this_run.add(modaa_num)
@@ -731,27 +807,27 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     if len(new_ids_to_fetch) > max_new_detail_fetches:
         logger.warning(
             "Komo hit its per-run new-detail-fetch safety cap (%s=%d) — remaining new "
-            "listings this run are skipped and will be picked up in a later run "
-            "instead of spending unbounded ZenRows credits in one shot.",
+            "listings this run (across rent and sale) are skipped and will be picked up in a "
+            "later run instead of spending unbounded ZenRows credits in one shot.",
             _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
         )
 
     fetched = len(ids_to_fetch)
-    errors = 0
     details = asyncio.run(
         _fetch_concurrently(ids_to_fetch, fetch_komo_listing_detail, _KOMO_DETAIL_FETCH_CONCURRENCY)
     )
-    for detail in details:
+    for modaa_num, detail in zip(ids_to_fetch, details):
         if detail is None:
             errors += 1
             continue
-        normalized = normalize(detail, source=Source.KOMO, deal_type=DealType.RENT)
+        deal_type = DealType.SALE if modaa_num in sale_ids else DealType.RENT
+        normalized = normalize(detail, source=Source.KOMO, deal_type=deal_type)
         if normalized is not None:
             normalized_items.append(normalized)
         else:
             errors += 1
 
-    return normalized_items, seen_external_ids, fetched, errors, True
+    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
 def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
@@ -839,6 +915,19 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
+# 2026-09-22: task #7/#8 (never started before tonight) — confirmed live
+# (diagnose-facebook-marketplace-page-structure.yaml, url_path=category/propertyforsale/) that
+# Facebook Marketplace's real for-sale category is a genuine, separate feed at this exact path:
+# real 200, 24 real MarketplaceFeedListingStory nodes wrapping a real GroupCommerceProductItem
+# listing type (distinct from rentals' own listing type), with real listing_price/
+# strikethrough_price/min_listing_price/max_listing_price fields a rental listing never carries.
+# Never guessed — same "diagnose before wiring" discipline as every other source in this project.
+_FACEBOOK_MARKETPLACE_CATEGORIES: tuple[tuple[str, str], ...] = (
+    (facebook_client.DEFAULT_URL_PATH, DealType.RENT),
+    ("category/propertyforsale/", DealType.SALE),
+)
+
+
 def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
     shape as _scrape_yad2. Unlike every other source, a Facebook listing's real CITY is genuinely
@@ -855,64 +944,75 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     _upsert_listings. Not worth the complexity of a separate "refresh price only" path yet at this
     project's current, tiny expected Facebook volume — revisit if that turns out wrong.
 
-    Enforces _facebook_max_new_detail_fetches_per_run() — an ACCOUNT-SAFETY cap, not a credit-cost
-    one (see that function's own comment) — and paces each detail fetch by a RANDOMIZED interval
-    within _FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE, both specifically because every request
-    here runs through the dedicated account's own real, authenticated session."""
+    2026-09-22: now loops over _FACEBOOK_MARKETPLACE_CATEGORIES (rent + forsale) instead of just
+    rent — both categories share ONE known_ids set (a Facebook item id is globally unique
+    regardless of category, so no cross-category collision risk) and, more importantly, ONE
+    combined _facebook_max_new_detail_fetches_per_run() budget and ONE shared pacing counter: this
+    is an ACCOUNT-SAFETY cap on total new requests against the dedicated account this run, not a
+    per-category allowance, so adding a second category must not silently double the account's
+    real request exposure. A failure fetching one category's search results (FacebookFetchError)
+    is logged and counted but does not abort the other category — same "one failed sub-fetch
+    doesn't kill the whole run" convention as _scrape_yad2's per-region loop."""
     fetched = 0
     errors = 0
     normalized_items = []
     seen_external_ids: set[str] = set()
+    all_succeeded = True
 
     known_ids = _fetch_known_external_ids(Source.FACEBOOK_MARKETPLACE)
     max_new_detail_fetches = _facebook_max_new_detail_fetches_per_run()
     new_detail_fetches_this_run = 0
     cap_logged = False
 
-    try:
-        raw_items = list(fetch_facebook_results())
-    except FacebookFetchError:
-        logger.exception(
-            "Failed to fetch Facebook Marketplace search results — skipping this source this run"
-        )
-        return normalized_items, seen_external_ids, fetched, 1, False
-
-    for raw_item in raw_items:
-        fetched += 1
-        external_id = raw_item["id"]
-        seen_external_ids.add(external_id)
-
-        if external_id in known_ids:
-            continue  # not re-upserted this run — see this function's own docstring
-
-        if new_detail_fetches_this_run >= max_new_detail_fetches:
-            if not cap_logged:
-                logger.warning(
-                    "Facebook hit its per-run new-detail-fetch safety cap (%s=%d) — remaining "
-                    "new listings this run are skipped and will be picked up in a later run "
-                    "instead of making unbounded requests against the live account in one shot.",
-                    _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
-                )
-                cap_logged = True
+    for url_path, deal_type in _FACEBOOK_MARKETPLACE_CATEGORIES:
+        try:
+            raw_items = list(fetch_facebook_results(url_path))
+        except FacebookFetchError:
+            logger.exception(
+                "Failed to fetch Facebook Marketplace search results for url_path=%r — "
+                "skipping this category this run", url_path,
+            )
+            errors += 1
+            all_succeeded = False
             continue
 
-        if new_detail_fetches_this_run > 0:
-            time.sleep(random.uniform(*_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE))
-        new_detail_fetches_this_run += 1
-        detail = fetch_facebook_listing_detail(external_id)
-        if detail is None or not detail.get("city"):
-            errors += 1
-            continue  # no real city to place it in any city-scoped filter — retried next run
+        for raw_item in raw_items:
+            fetched += 1
+            external_id = raw_item["id"]
+            seen_external_ids.add(external_id)
 
-        raw_item["city"] = detail["city"]
-        raw_item["description"] = detail.get("description")
-        normalized = normalize(raw_item, source=Source.FACEBOOK_MARKETPLACE, deal_type=DealType.RENT)
-        if normalized is not None:
-            normalized_items.append(normalized)
-        else:
-            errors += 1
+            if external_id in known_ids:
+                continue  # not re-upserted this run — see this function's own docstring
 
-    return normalized_items, seen_external_ids, fetched, errors, True
+            if new_detail_fetches_this_run >= max_new_detail_fetches:
+                if not cap_logged:
+                    logger.warning(
+                        "Facebook hit its per-run new-detail-fetch safety cap (%s=%d) — "
+                        "remaining new listings this run (across both categories) are skipped "
+                        "and will be picked up in a later run instead of making unbounded "
+                        "requests against the live account in one shot.",
+                        _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
+                    )
+                    cap_logged = True
+                continue
+
+            if new_detail_fetches_this_run > 0:
+                time.sleep(random.uniform(*_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE))
+            new_detail_fetches_this_run += 1
+            detail = fetch_facebook_listing_detail(external_id)
+            if detail is None or not detail.get("city"):
+                errors += 1
+                continue  # no real city to place it in any city-scoped filter — retried next run
+
+            raw_item["city"] = detail["city"]
+            raw_item["description"] = detail.get("description")
+            normalized = normalize(raw_item, source=Source.FACEBOOK_MARKETPLACE, deal_type=deal_type)
+            if normalized is not None:
+                normalized_items.append(normalized)
+            else:
+                errors += 1
+
+    return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
 def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:

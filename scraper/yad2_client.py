@@ -974,6 +974,32 @@ REGIONS_ON_MAP_API: dict[str, list[dict[str, int | str]]] = {
 }
 
 
+# 2026-09-22: task #1/#2 (never started before tonight) — confirmed live, all 7 REGION_SLUGS
+# (diagnose-yad2-forsale-via-web-unlocker.yaml, run 3): every one of Yad2's forsale search pages
+# (https://www.yad2.co.il/realestate/forsale/<region>) returns a real 200 through Bright Data Web
+# Unlocker (the SAME mechanism _fetch_direct already uses for rent), each with 44-51 real
+# feed-item cards and a real __NEXT_DATA__ blob — same card markup _parse_cards already parses,
+# just a different deal_type. The forsale MAP API (gw.yad2.co.il/realestate-feed/forsale/map) is
+# a real, separate dead end — Bright Data's own KYC wall ("Residential Failed (bad_endpoint)...
+# in accordance with robots.txt"), re-confirmed the same run, unrelated to and unfixable from this
+# project's own code — so forsale uses the search-page mechanism only, no map-API fast path (fine:
+# fetch_all_listings/rent's own ZenRows fallback already worked the same way before
+# REGIONS_ON_MAP_API existed).
+def fetch_forsale_region(region: str) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts (same flat shape as fetch_all_listings) for one region's forsale
+    search page, via Bright Data Web Unlocker (_fetch_direct) — confirmed live for all 7
+    REGION_SLUGS (see comment above). Raises Yad2MapFetchError (not Yad2FetchError — this uses
+    _fetch_direct, not ZenRows) on a failed fetch, same "raise on failure, don't silently yield
+    nothing" convention as fetch_map_markers, since this is a primary discovery source."""
+    html = _fetch_direct(f"https://www.yad2.co.il/realestate/forsale/{region}")
+    if html is None:
+        raise Yad2MapFetchError(
+            f"Direct (Bright Data Web Unlocker) request failed to fetch Yad2's forsale search "
+            f"page for region={region!r}"
+        )
+    yield from _parse_cards(html)
+
+
 def fetch_region_via_map_api(region: str) -> Iterator[dict[str, Any]]:
     """Yields raw listing dicts for one region by fetching EVERY sub-area config listed for it in
     REGIONS_ON_MAP_API above (see that dict's own comment for why a region can need more than one)

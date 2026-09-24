@@ -104,3 +104,131 @@ jobs:
               else:
                   print("VERDICT: mostly disjoint - cityName DOES filter this endpoint for real.")
           PYEOF
+
+      # 2026-09-22: task #3 on tonight's punch list (Komo sale-category confirmation, never
+      # started). komo_client.py hardcodes nehes=1 on the search page and iska=1 on the
+      # adscoordinates POST — neither param's real meaning is documented anywhere in this project;
+      # both are plausible deal-type selectors ("נכס"/"עסקה"), never actually tested against a
+      # second value. Rather than guess a URL/param for "sale" and wire it blind, this tests real
+      # candidates and reports what Komo's own site actually does with each.
+      - name: Test candidate sale-category URLs/params against Komo's real site (never guessed at, just tried)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import urllib.parse
+          import urllib.request
+          import os
+
+          API_KEY = os.environ["ZENROWS_API_KEY"]
+          FETCH_URL = "https://api.zenrows.com/v1/"
+          COORDS_URL = "https://www.komo.co.il/api/modaotservice/adscoordinates/list/"
+          CITY = "תל אביב יפו"
+
+          def zenrows_get(target_url):
+              qs = {"apikey": API_KEY, "url": target_url}
+              full = f"{FETCH_URL}?{urllib.parse.urlencode(qs)}"
+              req = urllib.request.Request(full, method="GET")
+              try:
+                  with urllib.request.urlopen(req, timeout=100) as resp:
+                      return resp.status, resp.read().decode("utf-8", errors="replace")
+              except urllib.error.HTTPError as e:
+                  return e.code, e.read().decode("utf-8", errors="replace")
+
+          def zenrows_post(target_url, body):
+              qs = {"apikey": API_KEY, "url": target_url}
+              full = f"{FETCH_URL}?{urllib.parse.urlencode(qs)}"
+              data = urllib.parse.urlencode(body).encode()
+              req = urllib.request.Request(full, data=data, method="POST")
+              with urllib.request.urlopen(req, timeout=100) as resp:
+                  return resp.status, resp.read().decode("utf-8", errors="replace")
+
+          import re, urllib.error
+
+          # Candidate 1: does a "for-sale" ASP page even exist at the obvious rent->sale URL swap?
+          for candidate_path in ["apartments-for-sale.asp", "houses-for-sale.asp", "nadlan-for-sale.asp"]:
+              url = f"https://www.komo.co.il/code/nadlan/{candidate_path}?nehes=1&cityName={urllib.parse.quote(CITY)}"
+              status, html = zenrows_get(url)
+              has_token = bool(re.search(r'sessionToken', html))
+              print(f"[{candidate_path}] status={status} len={len(html)} has_sessionToken={has_token} title_snippet={html[:200]!r}")
+
+          # Candidate 2: does nehes= itself select deal type? Try nehes=2 on the KNOWN-real rent page.
+          for nehes_value in ["1", "2", "3"]:
+              url = f"https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes={nehes_value}&cityName={urllib.parse.quote(CITY)}"
+              status, html = zenrows_get(url)
+              m = re.search(r'sessionToken["\']?\s*[:=]\s*["\']?([A-Za-z0-9]{16,64})', html)
+              print(f"[nehes={nehes_value}] status={status} len={len(html)} token_found={bool(m)}")
+              if not m:
+                  continue
+              token = m.group(1)
+              status, body = zenrows_post(COORDS_URL, {"iska": "1", "sessionToken": token})
+              try:
+                  payload = json.loads(body)
+                  items = payload.get("list") if isinstance(payload, dict) else None
+                  count = len(items) if isinstance(items, list) else "unexpected shape"
+              except json.JSONDecodeError:
+                  count = "not JSON"
+              print(f"[nehes={nehes_value}] adscoordinates real count={count}")
+
+          # Candidate 3: does iska= itself select deal type? Try iska=2/3 with a real, known-good
+          # rent-page sessionToken (iska=1 is what production already uses and works).
+          status, html = zenrows_get(
+              f"https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?nehes=1&cityName={urllib.parse.quote(CITY)}"
+          )
+          m = re.search(r'sessionToken["\']?\s*[:=]\s*["\']?([A-Za-z0-9]{16,64})', html)
+          if m:
+              base_token = m.group(1)
+              for iska_value in ["1", "2", "3"]:
+                  status, body = zenrows_post(COORDS_URL, {"iska": iska_value, "sessionToken": base_token})
+                  try:
+                      payload = json.loads(body)
+                      items = payload.get("list") if isinstance(payload, dict) else None
+                      ids = {str(i.get("id")) for i in items if isinstance(i, dict) and i.get("id")} if isinstance(items, list) else set()
+                      print(f"[iska={iska_value}] real count={len(ids)} sample_ids={list(ids)[:3]}")
+                  except json.JSONDecodeError:
+                      print(f"[iska={iska_value}] not JSON, status={status}, body[:200]={body[:200]!r}")
+          else:
+              print("Could not get a base sessionToken for the iska= test - see candidate 2 output above.")
+          PYEOF
+
+      # 2026-09-22: iska=2 came back with a real, comparably-large, disjoint id set from iska=1
+      # (rent) — strong evidence it's the sale category. Before wiring komo_client.py to reuse its
+      # EXISTING detail-page parser (_parse_details_html: _PRICE_RE/_OG_TITLE_RE/_ROOMS_RE/
+      # _OG_TITLE_CITY_RE) for these ids too, this confirms a REAL sale listing's own detail page
+      # actually matches those same regexes — never assumed just because it's the same site/host.
+      - name: Confirm a real iska=2 (candidate sale) listing's detail page matches komo_client's existing parser regexes
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import re
+          import urllib.parse
+          import urllib.request
+
+          API_KEY = os.environ["ZENROWS_API_KEY"]
+          FETCH_URL = "https://api.zenrows.com/v1/"
+          # Real ids from tonight's own iska=2 result (not invented) - apartments-for-sale.asp's
+          # own coordinate set.
+          CANDIDATE_IDS = ["4766790", "4927807", "4921733"]
+
+          PRICE_RE = re.compile(r'class="price modaaWPrice"[^>]*>\s*<span[^>]*>([\d,]+)')
+          OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]+)"')
+
+          for modaa_num in CANDIDATE_IDS:
+              url = f"https://www.komo.co.il/code/nadlan/details/?modaaNum={modaa_num}"
+              qs = {"apikey": API_KEY, "url": url}
+              full = f"{FETCH_URL}?{urllib.parse.urlencode(qs)}"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(full), timeout=100) as resp:
+                      status, html = resp.status, resp.read().decode("utf-8", errors="replace")
+              except Exception as exc:
+                  print(f"[modaaNum={modaa_num}] request failed: {exc}")
+                  continue
+              price_m = PRICE_RE.search(html)
+              title_m = OG_TITLE_RE.search(html)
+              print(f"[modaaNum={modaa_num}] status={status} len={len(html)} "
+                    f"price_match={price_m.group(1) if price_m else None} "
+                    f"og_title={title_m.group(1) if title_m else None}")
+          PYEOF
