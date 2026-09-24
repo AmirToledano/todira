@@ -5,35 +5,29 @@
 {% from "_listing_card.html" import listing_card with context %}
 {% from "_filter_form_fields.html" import filter_form_fields with context %}
 
-<div class="page-banner reveal">
-  <div class="pb-text">
-    <h1>{{ t('apartments.title') }}</h1>
-    <p>{{ t('apartments.subtitle') }}</p>
-  </div>
-  <div class="pb-count"><b>{{ total_count }}</b><span>{{ t('apartments.results_label') }}</span></div>
-</div>
-
-{% if not via_session %}
-<div class="notice">{{ t('apartments.notice') }}</div>
-{% endif %}
-
-{% if user and user.filter %}
-<div class="filter-bar">
-  <span class="label">{{ t('apartments.filter_label') }}</span>
-  {% for c in user.filter.cities %}<span class="chip">{{ c }} 📍</span>{% endfor %}
-  {% if user.filter.rooms_min or user.filter.rooms_max %}
-    <span class="chip">{{ user.filter.rooms_min or '?' }}–{{ user.filter.rooms_max or '?' }} {{ t('apartments.rooms_suffix') }} 🛏️</span>
-  {% endif %}
-  {% if user.filter.price_min or user.filter.price_max %}
-    <span class="chip">{{ user.filter.price_min or 0 }}–{{ user.filter.price_max or '∞' }} ₪ 💰</span>
-  {% endif %}
-  <form method="post" action="/apartments/no-brokers" style="display:inline">
+{# 2026-09-24: replaces the old big .page-banner (title+subtitle+count card) + separate
+   .filter-bar (a read-only chip summary of cities/rooms/price) — real owner feedback, comparing
+   directly against dorin.app's own compact single-line toolbar: the old pair took up real vertical
+   space and largely duplicated what the new sidebar (right) already shows and lets you edit
+   directly, so a full second read-only copy of the same cities/rooms/price above the workspace was
+   pure clutter. This is one slim line: title, the no-brokers quick-toggle (kept — it's the one
+   real one-click action here the sidebar's own full-page-reload checkbox doesn't beat), and the
+   live count. #}
+<div class="apt-toolbar reveal">
+  <h1 class="apt-toolbar-title">{{ t('apartments.title') }}</h1>
+  {% if user and user.filter %}
+  <form method="post" action="/apartments/no-brokers" class="apt-toolbar-no-brokers">
     {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
     <button type="submit" class="chip chip-toggle {{ 'active' if user.filter.no_brokers else '' }}">
       {{ t('apartments.no_brokers_on') if user.filter.no_brokers else t('apartments.no_brokers_off') }}
     </button>
   </form>
+  {% endif %}
+  <span class="apt-toolbar-count"><b>{{ total_count }}</b> {{ t('apartments.results_label') }}</span>
 </div>
+
+{% if not via_session %}
+<div class="notice">{{ t('apartments.notice') }}</div>
 {% endif %}
 
 {# 2026-09-24: map (left) + listings (middle) + filter (right) workspace, dorin.app-style layout
@@ -54,6 +48,7 @@
        aria-label="{{ t('apartments.resize_map_label') }}" tabindex="0"></div>
 
   <div class="apt-listings-pane">
+   <div class="apt-listings-pane-inner">
     {% if not listings %}
       <div class="empty-state">
         <div class="glyph" aria-hidden="true">🔍</div>
@@ -75,11 +70,13 @@
         {% endif %}
       </div>
     {% endif %}
+   </div>
   </div>
 
   <div class="apt-resize-handle" data-target="filter" role="separator" aria-orientation="vertical"
        aria-label="{{ t('apartments.resize_filter_label') }}" tabindex="0"></div>
   <aside class="apt-filter-pane" id="apt-filter-pane">
+   <div class="apt-filter-pane-inner">
     <h2 class="apt-filter-title">{{ t('apartments.filter_panel_title') }}</h2>
     {% if user and user.filter %}
     <form method="post" action="/filter">
@@ -88,6 +85,7 @@
       <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
     </form>
     {% endif %}
+   </div>
   </aside>
 </div>
 
@@ -204,28 +202,50 @@
 <script>
   (function () {
     var mapEl = document.getElementById('apt-map');
-    if (!mapEl || typeof maplibregl === 'undefined') { return; } // CDN unreachable — map area just stays empty, rest of the page (including resize, above) is unaffected
+    if (!mapEl) { return; }
+    function showMapFallback(reason) {
+      // 2026-09-24: real report (owner, production) that the map area rendered blank — most likely
+      // an ad/privacy blocker treating cartocdn.com as a tracking-adjacent CDN (a known false
+      // positive on some filter lists) rather than a code bug, but there was previously no visible
+      // signal either way — a silent blank box gives no way to tell "still loading" from "broken"
+      // apart from opening devtools. Now switched to tile.openstreetmap.org (the single most
+      // widely allow-listed public tile endpoint, used by the overwhelming majority of OSM-based
+      // sites, essentially never blocked) as the real fix, plus this visible fallback text for any
+      // OTHER reason it might still fail (offline, a future CDN change, etc).
+      mapEl.innerHTML = '<div class="apt-map-fallback">{{ t("apartments.map_load_failed") }}</div>';
+      if (window.console && console.warn) { console.warn('todira map failed to load:', reason); }
+    }
+    if (typeof maplibregl === 'undefined') { showMapFallback('maplibre-gl.js did not load'); return; }
 
-    // Free, no-API-key raster basemap — same provider/attribution the owner's own dorin.app
-    // reference screenshots showed ("MapLibre © CARTO, OpenStreetMap contributors").
-    var map = new maplibregl.Map({
-      container: 'apt-map',
-      style: {
-        version: 8,
-        sources: {
-          carto: {
-            type: 'raster',
-            tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
-            tileSize: 256,
-            attribution: '© <a href="https://carto.com/attributions" target="_blank">CARTO</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
-          }
+    // Free, no-API-key raster basemap. OpenStreetMap's own canonical tile server — deliberately
+    // NOT a third-party CDN (like the CARTO tiles this used before) since those are more likely to
+    // be caught by an ad/privacy blocker's filter list; this is the same endpoint the overwhelming
+    // majority of OSM-based sites use and is essentially never blocked.
+    var map;
+    try {
+      map = new maplibregl.Map({
+        container: 'apt-map',
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: 'raster',
+              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tileSize: 256,
+              attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+            }
+          },
+          layers: [{ id: 'osm', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
         },
-        layers: [{ id: 'carto', type: 'raster', source: 'carto', minzoom: 0, maxzoom: 20 }]
-      },
-      center: [34.7818, 32.0853], // Tel Aviv — sensible default center for an Israel-wide listing set
-      zoom: 7,
-    });
+        center: [34.7818, 32.0853], // Tel Aviv — sensible default center for an Israel-wide listing set
+        zoom: 7,
+      });
+    } catch (e) {
+      showMapFallback(e); // e.g. WebGL unsupported/disabled
+      return;
+    }
     map.addControl(new maplibregl.NavigationControl(), 'top-left');
+    map.on('error', function (e) { showMapFallback((e && e.error && e.error.message) || e); });
     window.__aptMap = map; // read by the resize-handle script above, loaded earlier in the page
 
     var markers = [];

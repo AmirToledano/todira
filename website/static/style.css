@@ -323,7 +323,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   flex: 1 1 140px; min-width: 140px;
 }
 .float-stat .fs-icon { font-size: 1.3rem; display: inline-flex; }
-.float-stat .fs-icon svg { width: 20px; height: 20px; color: var(--teal-dark); }
+/* --heading, not --teal-dark — --teal-dark is frozen dark across both themes (see its own :root
+   comment) while .float-stat's own background is --card, which goes dark in dark mode — a fixed
+   dark icon on a dark card is near-invisible there. Real bug found live (owner's own dark-mode
+   screenshot, 2026-09-24), same class of bug .link-btn was already fixed for. */
+.float-stat .fs-icon svg { width: 20px; height: 20px; color: var(--heading); }
 .float-stat b { display: block; font-family: 'Rubik', sans-serif; color: var(--teal); font-size: 1.05rem; line-height: 1.2; }
 .float-stat .label-sm { font-size: .72rem; color: var(--text-muted); }
 @media (max-width: 480px) {
@@ -363,7 +367,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   background: var(--teal-tint); display: flex; align-items: center; justify-content: center;
   font-size: 1.4rem; margin-bottom: 14px;
 }
-.feature-card .icon svg { width: 24px; height: 24px; color: var(--teal-dark); }
+/* --heading, not --teal-dark — same reasoning as .float-stat .fs-icon svg above: this icon's own
+   background (--teal-tint) goes dark in dark mode, but --teal-dark is frozen dark across both
+   themes, so the icon nearly disappeared there. */
+.feature-card .icon svg { width: 24px; height: 24px; color: var(--heading); }
 .feature-card h3 { font-size: 1.08rem; margin-bottom: 6px; }
 .feature-card p { color: var(--text-muted); font-size: .92rem; margin: 0; }
 
@@ -377,7 +384,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .ai-demo-arrow { color: var(--text-muted); font-size: .85rem; margin: 6px 0; }
 .ai-demo-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .ai-demo-chip {
-  font-size: .78rem; font-weight: 600; color: var(--teal-dark); background: var(--teal-tint);
+  /* --heading, not --teal-dark — same frozen-dark-on-dark-tint bug as the icons above; this is
+     the specific chip row the owner's own dark-mode screenshot showed looking broken. */
+  font-size: .78rem; font-weight: 600; color: var(--heading); background: var(--teal-tint);
   border-radius: 999px; padding: 5px 11px;
 }
 
@@ -604,7 +613,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   padding: 10px 16px; border-radius: var(--radius-sm); font-size: .86rem; margin-bottom: 20px;
 }
 .welcome-banner {
-  background: var(--teal-tint); border: 1px solid var(--teal); color: var(--teal-dark);
+  /* --heading, not --teal-dark — same frozen-dark-on-dark-tint bug fixed elsewhere in this file. */
+  background: var(--teal-tint); border: 1px solid var(--teal); color: var(--heading);
   padding: 12px 18px; border-radius: var(--radius-sm); font-size: .92rem; font-weight: 600;
   margin-bottom: 20px; text-align: center;
 }
@@ -677,7 +687,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   background: var(--teal-tint); border-radius: var(--radius-md);
   padding: 20px 24px; margin-top: 20px; text-align: center; max-width: 560px; margin-inline: auto;
 }
-.value-anchor h2 { font-family: 'Rubik', sans-serif; font-size: 1.05rem; color: var(--teal-dark); margin: 0 0 6px; }
+/* --heading, not --teal-dark — same frozen-dark-on-dark-tint bug fixed elsewhere in this file. */
+.value-anchor h2 { font-family: 'Rubik', sans-serif; font-size: 1.05rem; color: var(--heading); margin: 0 0 6px; }
 .value-anchor p { margin: 0; color: var(--text-muted); font-size: .85rem; line-height: 1.5; }
 
 /* toggle-chip checkboxes (amenities, property types, etc) */
@@ -699,14 +710,39 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 /* the cities grid (~40 options) gets its own scrollable box so the page doesn't get huge;
    the shorter amenity/property-type grids stay unbounded */
 .checkbox-grid-scroll {
+  /* direction:ltr — scroll shell only, see this element's own template comment for why. */
+  direction: ltr;
   max-height: 220px; overflow-y: auto; padding: 4px;
   border: 1px solid var(--border); border-radius: 12px;
 }
+.checkbox-grid-scroll .checkbox-grid { direction: rtl; }
 .field-section-title {
   font-weight: 700; font-size: .82rem; color: var(--text-muted); text-transform: uppercase;
   letter-spacing: .04em; margin: 28px 0 14px; padding-top: 20px; border-top: 1px solid var(--border);
 }
 .field-section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* Collapsible filter sections (2026-09-24) — real owner feedback comparing directly against
+   dorin.app's own filter panel: grouped, collapsible sections read much better than one long flat
+   column of ~20 fields. Native <details>/<summary> — keyboard-operable and exposed to assistive
+   tech with no extra ARIA needed, and the expand/collapse itself needs no JS. */
+.filter-section { border-bottom: 1px solid var(--border); padding: 14px 0; }
+.filter-section:first-of-type { padding-top: 0; }
+.filter-section:last-of-type { border-bottom: none; padding-bottom: 0; }
+.filter-section summary {
+  cursor: pointer; font-weight: 700; font-size: .88rem; color: var(--heading);
+  list-style: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 2px 0; -webkit-tap-highlight-color: transparent;
+}
+.filter-section summary::-webkit-details-marker { display: none; }
+.filter-section summary::after {
+  content: '›'; font-size: 1.2rem; line-height: 1; color: var(--text-muted);
+  transition: transform .15s; margin-inline-start: 8px;
+}
+.filter-section[open] summary::after { transform: rotate(90deg); }
+.filter-section summary:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 4px; }
+.filter-section > :not(summary) { margin-top: 14px; }
+.filter-section .field:last-child, .filter-section .field-row:last-child { margin-bottom: 0; }
 
 /* ---------- /account channel-linking tiles (Telegram/WhatsApp/Google brand badges) ---------- */
 .channel-tile { text-align: center; }
@@ -1037,6 +1073,15 @@ html[data-theme="dark"] .amc-status-warn { color: #f0b169; }
 html[data-theme="dark"] .amc-status-ok { color: #6fd897; }
 html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 
+/* Slim single-line toolbar replacing the old big page-banner+filter-bar pair on /apartments only
+   (other pages, e.g. /liked, keep their own .page-banner as before) — see apartments.html's own
+   template comment. */
+.apt-toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.apt-toolbar-title { font-size: clamp(1.15rem, 2.6vw, 1.4rem); margin: 0; }
+.apt-toolbar-no-brokers { margin-inline-start: auto; }
+.apt-toolbar-count { font-size: .85rem; color: var(--text-muted); white-space: nowrap; }
+.apt-toolbar-count b { color: var(--teal); font-family: 'Rubik', sans-serif; }
+
 /* ---------- /apartments map+filter workspace (2026-09-24, dorin.app-style layout) ----------
    direction: ltr on the outer flex container keeps the map physically on the LEFT and the filter
    panel physically on the RIGHT regardless of the page's own RTL — the same map-app convention
@@ -1056,6 +1101,10 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 }
 .apt-map-pane { direction: ltr; position: relative; flex: 0 0 340px; min-width: 0; background: var(--surface-tint); }
 .apt-map { position: absolute; inset: 0; }
+.apt-map-fallback {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  direction: rtl; text-align: center; padding: 24px; color: var(--text-muted); font-size: .85rem;
+}
 .apt-map-count {
   position: absolute; bottom: 10px; left: 10px; z-index: 1;
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;
@@ -1072,11 +1121,19 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 .apt-resize-handle:hover, .apt-resize-handle.dragging { background: var(--teal); }
 .apt-resize-handle:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
 
-.apt-listings-pane { direction: rtl; flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 16px; }
+/* direction:ltr on both scrolling panes — same reasoning as .checkbox-grid-scroll above: keeps
+   each pane's native scrollbar on ITS OWN right edge (real bug found live, 2026-09-24: with
+   direction:rtl straight on the scrolling element, its scrollbar rendered on the visual LEFT edge
+   of the pane instead — for the filter pane specifically, that put it awkwardly in the middle of
+   the screen, between the listings and filter panes, instead of hugging the browser's true right
+   edge). The *-inner wrapper carries direction:rtl back for the actual Hebrew content/layout. */
+.apt-listings-pane { direction: ltr; flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 16px; }
+.apt-listings-pane-inner { direction: rtl; }
 .apt-listings-pane .listing-grid { margin: 0; }
 .apt-listings-pane .empty-state { margin: 40px auto; }
 
-.apt-filter-pane { direction: rtl; flex: 0 0 320px; min-width: 0; overflow-y: auto; padding: 18px; background: var(--surface-tint); }
+.apt-filter-pane { direction: ltr; flex: 0 0 320px; min-width: 0; overflow-y: auto; padding: 18px; background: var(--surface-tint); }
+.apt-filter-pane-inner { direction: rtl; }
 .apt-filter-pane .apt-filter-title { margin: 0 0 14px; font-size: 1.05rem; }
 .apt-filter-pane form .btn.block { margin-top: 8px; }
 

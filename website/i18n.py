@@ -832,6 +832,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "{shown} appartements sur la carte (sur {total})",
         "ar": "{shown} شقق على الخريطة (من {total})",
     },
+    "apartments.map_load_failed": {
+        "he": "לא ניתן לטעון את המפה כרגע (ייתכן שחוסם פרסומות/פרטיות בדפדפן חוסם אותה) — הדירות עצמן עדיין מוצגות ברשימה.",
+        "en": "The map couldn't load right now (an ad/privacy blocker may be blocking it) — the apartments themselves are still shown in the list.",
+        "ru": "Не удалось загрузить карту (возможно, её блокирует блокировщик рекламы/приватности) — сами квартиры всё ещё показаны в списке.",
+        "fr": "La carte n'a pas pu se charger (un bloqueur de publicités/confidentialité la bloque peut-être) — les appartements restent affichés dans la liste.",
+        "ar": "تعذّر تحميل الخريطة الآن (ربما يحظرها مانع إعلانات/خصوصية) — الشقق نفسها لا تزال معروضة في القائمة.",
+    },
     "apartments.map_no_pins": {
         "he": "לאף אחת מהדירות המוצגות כרגע אין מיקום מדויק על המפה.",
         "en": "None of the currently shown apartments have an exact map location.",
@@ -1089,6 +1096,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "filter.rooms_max_label": {
         "he": "חדרים מקסימום", "en": "Maximum rooms", "ru": "Максимум комнат",
         "fr": "Pièces maximum", "ar": "الحد الأقصى للغرف",
+    },
+    "filter.location_section": {
+        "he": "מיקום", "en": "Location", "ru": "Местоположение", "fr": "Emplacement", "ar": "الموقع",
+    },
+    "filter.price_section": {
+        "he": "טווח מחירים", "en": "Price range", "ru": "Диапазон цен",
+        "fr": "Fourchette de prix", "ar": "نطاق السعر",
+    },
+    "filter.rooms_section": {
+        "he": "חדרים", "en": "Rooms", "ru": "Комнаты", "fr": "Pièces", "ar": "الغرف",
+    },
+    "filter.advanced_section": {
+        "he": "אפשרויות מתקדמות", "en": "Advanced options", "ru": "Дополнительные параметры",
+        "fr": "Options avancées", "ar": "خيارات متقدمة",
     },
     "filter.property_type_section": {
         "he": "סוג נכס", "en": "Property type", "ru": "Тип недвижимости",
