@@ -56,7 +56,11 @@ jobs:
                 args:
                   - |
                     CONN="postgresql://${DATABASE_URL#*://}"
-                    psql "$CONN" -t -A -c "SELECT u.telegram_user_id FROM users u JOIN filters f ON f.user_id = u.id WHERE u.telegram_user_id IS NOT NULL ORDER BY u.id DESC LIMIT 1;"
+                    # A user with a filter row alone can easily have zero real matches (confirmed
+                    # live, first run of this workflow: real session, real toolbar/map, but 0 cards
+                    # — an unmatched filter, not a bug). A user behind a REAL like/hide action is a
+                    # much stronger "actually has matching listings to browse" signal.
+                    psql "$CONN" -t -A -c "SELECT u.telegram_user_id FROM users u JOIN user_listing_actions a ON a.user_id = u.id WHERE u.telegram_user_id IS NOT NULL ORDER BY a.id DESC LIMIT 1;"
           PODYAML
           for i in $(seq 1 30); do
             PHASE=$(kubectl get pod diag-apt-uid -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
