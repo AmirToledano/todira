@@ -1,0 +1,53 @@
+name: URGENT — real root cause of website pod restarting on its own (read-only)
+
+# BREAKTHROUGH from the previous diagnostic: Caddy's own error logs show the owner's TWO real
+# failures (filter.txt at 20:33:10 UTC, apartments.txt at 20:41:35 UTC) were BOTH genuine
+# "dial tcp ...:8000: connect: connection refused" -> 502 responses, from the owner's own real IP
+# and real Chrome-iOS user agent, matching their screenshots' timestamps exactly (23:33 / 23:41
+# Israel time). Crucially, the CURRENT website pod shows RESTARTS: 2, most recent ~2m51s before a
+# 20:44:26 check — i.e. right around 20:41:35, the SECOND failure. No new CI/CD deploy ran after
+# PR #409's fix (confirmed: #410/#411/#412 were workflow-only, no new image tag), so this pod is
+# crash-looping / dying ON ITS OWN, independent of any deploy. This pulls the pod's own previous-
+# container logs (its last words before dying) and a full describe (exit code, OOMKilled or not,
+# reason) to find the REAL cause.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Full describe of the current website pod (restart count, last state, exit code, OOM)
+        run: |
+          kubectl get pods -n todira -l app=todira-website -o wide
+          echo
+          kubectl describe pod -n todira -l app=todira-website
+
+      - name: Resource requests/limits vs actual usage (rules out OOM)
+        run: |
+          kubectl get deployment todira-website -n todira -o jsonpath='{.spec.template.spec.containers[0].resources}'
+          echo
+          kubectl top pods -n todira -l app=todira-website 2>&1 || echo "(metrics unavailable)"
+
+      - name: Previous container's own logs (its last words before it died/restarted)
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[*].metadata.name}'); do
+            echo "=== $POD --previous (the crashed instance's own logs) ==="
+            kubectl logs -n todira "$POD" --previous --timestamps --tail=300 || echo "(no previous instance / not retained)"
+          done
+
+      - name: Node-level events (OOM killer, node pressure, eviction)
+        run: |
+          kubectl get events -n todira --field-selector involvedObject.name --sort-by=.lastTimestamp 2>/dev/null | tail -80 || true
+          echo
+          echo "=== node conditions (memory/disk pressure) ==="
+          kubectl describe node ip-172-31-43-244 2>/dev/null | grep -A 20 "Conditions:" || true
