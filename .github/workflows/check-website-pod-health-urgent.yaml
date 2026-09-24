@@ -1,0 +1,61 @@
+name: URGENT — check website pod health (real 502s just confirmed live)
+
+# Just confirmed live: 2 of 3 real curl requests to https://todira.app/apartments and
+# /static/style.css got a real HTTP 502 from Caddy (empty body, content-length: 0) — meaning the
+# website backend itself is intermittently unreachable/crashing right now, not a caching or JS
+# issue. This explains the owner's report far better than any client-side theory: a real user
+# hitting the site during one of these gaps would see a broken/incomplete page. Checking pod
+# status, restart counts, recent events, and resource usage to find the actual cause (crash loop,
+# OOM, readiness flapping, etc).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Website + Caddy pod status, restarts, events, resources
+        run: |
+          echo "=== website pods ==="
+          kubectl get pods -n todira -l app=todira-website -o wide
+          echo
+          echo "=== caddy pods ==="
+          kubectl get pods -n todira -l app=todira-caddy -o wide
+          echo
+          echo "=== website deployment describe (replicas, conditions) ==="
+          kubectl describe deployment todira-website -n todira | tail -40
+          echo
+          echo "=== recent events in todira namespace (last 60) ==="
+          kubectl get events -n todira --sort-by=.lastTimestamp | tail -60
+          echo
+          echo "=== website pod resource usage (if metrics-server available) ==="
+          kubectl top pods -n todira -l app=todira-website 2>&1 || echo "(metrics unavailable)"
+          echo
+          echo "=== website pod restart counts + last state ==="
+          kubectl get pods -n todira -l app=todira-website -o json | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          for p in d['items']:
+              name = p['metadata']['name']
+              for cs in p['status'].get('containerStatuses', []):
+                  print(f\"{name}: restarts={cs['restartCount']} ready={cs['ready']} state={list(cs['state'].keys())}\")
+                  if 'lastState' in cs and cs['lastState']:
+                      print(f\"  lastState: {cs['lastState']}\")
+          "
+          echo
+          echo "=== FULL recent logs from each website pod (last 200 lines) ==="
+          for POD in $(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[*].metadata.name}'); do
+            echo "--- $POD (current) ---"
+            kubectl logs -n todira "$POD" --tail=200 || true
+            echo "--- $POD (previous, if it restarted) ---"
+            kubectl logs -n todira "$POD" --previous --tail=200 2>/dev/null || echo "(no previous instance)"
+          done
