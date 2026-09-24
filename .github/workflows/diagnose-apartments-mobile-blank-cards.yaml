@@ -6,6 +6,16 @@ name: Diagnose — real owner report, blank/invisible listing cards + map tiles 
 # shows nothing. This is read-only against production — no writes, no state changes — gathering
 # concrete evidence (console errors, computed styles, bounding boxes, actual tile response) before
 # changing any code, per this project's own "never guess, verify live" discipline.
+#
+# IMPORTANT (found the hard way on the first run of this workflow): a plain anonymous
+# goto("https://todira.app/apartments") with no ?uid= and no session cookie never reaches the real
+# listings workspace at all — website/main.py's own /apartments route resolves no user and renders
+# need_uid.html instead (a totally different, much smaller page), which is why the first run of
+# this diagnostic found 0 .listing-card and every toolbar selector "NOT FOUND" on BOTH mobile and
+# desktop — that was this diagnostic testing the wrong page, not a real bug. This version first
+# looks up a real user (one with a filter already set, so /apartments renders the actual workspace
+# rather than no_filter.html either) straight from the DB and passes their real telegram_user_id as
+# ?uid=... , exactly like a real bot-issued deep link would.
 on:
   workflow_dispatch:
 
@@ -13,6 +23,51 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Get a real user's telegram_user_id (one with a filter already set) from the DB
+        id: uid
+        run: |
+          kubectl delete pod diag-apt-uid -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-apt-uid
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-apt-uid
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -t -A -c "SELECT u.telegram_user_id FROM users u JOIN filters f ON f.user_id = u.id WHERE u.telegram_user_id IS NOT NULL ORDER BY u.id DESC LIMIT 1;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-apt-uid -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          REAL_UID=$(kubectl logs -n todira diag-apt-uid | tail -1)
+          echo "real telegram_user_id: $REAL_UID"
+          echo "real_uid=$REAL_UID" >> "$GITHUB_OUTPUT"
+          kubectl delete pod diag-apt-uid -n todira --ignore-not-found
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -23,10 +78,15 @@ jobs:
           playwright install --with-deps chromium
 
       - name: Mobile (iPhone 13) — console errors, card visibility, modal-open, toolbar layout
+        env:
+          REAL_UID: ${{ steps.uid.outputs.real_uid }}
         run: |
           python3 - <<'PYEOF'
+          import os
           from playwright.sync_api import sync_playwright
-          import json
+
+          uid = os.environ["REAL_UID"]
+          url = f"https://todira.app/apartments?uid={uid}"
 
           with sync_playwright() as p:
               iphone = p.devices['iPhone 13']
@@ -40,13 +100,14 @@ jobs:
               page.on("pageerror", lambda e: page_errors.append(str(e)))
               tile_responses = []
               def on_response(r):
-                  if "cartocdn" in r.url or "basemaps" in r.url:
+                  if "cartocdn" in r.url or "basemaps" in r.url or "arcgisonline" in r.url:
                       tile_responses.append((r.status, r.headers.get("content-type"), r.headers.get("content-length"), r.url))
               page.on("response", on_response)
 
-              print("=== goto https://todira.app/apartments (iPhone 13 emulation) ===")
-              page.goto("https://todira.app/apartments", wait_until="networkidle", timeout=30000)
+              print(f"=== goto {url} (iPhone 13 emulation) ===")
+              page.goto(url, wait_until="networkidle", timeout=30000)
               page.wait_for_timeout(2500)  # let IntersectionObserver / Leaflet settle
+              print("landed on:", page.url, "title:", page.title())
 
               page.screenshot(path="mobile_apartments_full.png", full_page=True)
 
@@ -58,9 +119,9 @@ jobs:
               for e in page_errors:
                   print(e[:500])
 
-              print("=== tile responses (carto) ===")
-              for status, ctype, clen, url in tile_responses[:5]:
-                  print(status, ctype, clen, url)
+              print("=== tile responses ===")
+              for status, ctype, clen, turl in tile_responses[:5]:
+                  print(status, ctype, clen, turl)
               print("total tile responses seen:", len(tile_responses))
 
               print("=== listing card visibility (first 5 .listing-card) ===")
@@ -94,6 +155,8 @@ jobs:
                       page.screenshot(path="mobile_apartments_modal.png", full_page=False)
                   except Exception as e:
                       print("click/modal check raised:", e)
+              else:
+                  print("no cards to click — see card count above")
 
               context.close()
               browser.close()
@@ -101,9 +164,15 @@ jobs:
 
       - name: Desktop (1440x900) — toolbar layout + map tiles, for comparison
         if: always()
+        env:
+          REAL_UID: ${{ steps.uid.outputs.real_uid }}
         run: |
           python3 - <<'PYEOF'
+          import os
           from playwright.sync_api import sync_playwright
+
+          uid = os.environ["REAL_UID"]
+          url = f"https://todira.app/apartments?uid={uid}"
 
           with sync_playwright() as p:
               browser = p.chromium.launch()
@@ -112,18 +181,19 @@ jobs:
 
               tile_responses = []
               def on_response(r):
-                  if "cartocdn" in r.url or "basemaps" in r.url:
+                  if "cartocdn" in r.url or "basemaps" in r.url or "arcgisonline" in r.url:
                       tile_responses.append((r.status, r.headers.get("content-type"), r.headers.get("content-length"), r.url))
               page.on("response", on_response)
 
-              print("=== goto https://todira.app/apartments (desktop 1440x900) ===")
-              page.goto("https://todira.app/apartments", wait_until="networkidle", timeout=30000)
+              print(f"=== goto {url} (desktop 1440x900) ===")
+              page.goto(url, wait_until="networkidle", timeout=30000)
               page.wait_for_timeout(2000)
+              print("landed on:", page.url, "title:", page.title())
               page.screenshot(path="desktop_apartments_full.png", full_page=False)
 
-              print("=== tile responses (carto) ===")
-              for status, ctype, clen, url in tile_responses[:5]:
-                  print(status, ctype, clen, url)
+              print("=== tile responses ===")
+              for status, ctype, clen, turl in tile_responses[:5]:
+                  print(status, ctype, clen, turl)
 
               print("=== toolbar chip bounding boxes (left-to-right X positions) ===")
               for sel in ["#apt-toolbar-map-toggle", ".apt-toolbar-count", ".apt-toolbar-no-brokers", ".apt-toolbar-title"]:

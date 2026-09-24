@@ -7,7 +7,12 @@
      data-listing-id="{{ l.id }}"
      {% if l.latitude is defined and l.longitude is defined and l.latitude is not none and l.longitude is not none %}data-lat="{{ l.latitude }}" data-lng="{{ l.longitude }}"{% endif %}
      {% if l.posted_at is defined and l.posted_at is not none %}data-posted-at="{{ l.posted_at.isoformat() }}"{% endif %}
-     {% if l.description %}data-description-full="{{ l.description }}"{% endif %}>
+     {% if l.description %}data-description-full="{{ l.description }}"{% endif %}
+     {# Full photo list for the detail modal's own gallery (2026-09-24) — the card's own
+        .listing-cover only ever needs its lazy-loaded <img> slides for the small card carousel;
+        the modal builds a real main-photo+thumbnails gallery from this instead of cloning those,
+        so it isn't limited to whichever slides happened to already be in the DOM/loaded. #}
+     {% if l.image_urls %}data-image-urls='{{ l.image_urls | tojson }}'{% endif %}>
   <div class="listing-cover-wrap">
     <div class="card-reactions">
       <form method="post" action="/react" class="card-reaction-form">

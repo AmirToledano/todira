@@ -1331,6 +1331,44 @@ body.apt-modal-open { overflow: hidden; }
 #apt-listing-modal-body .listing-desc {
   display: block; -webkit-line-clamp: unset; overflow: visible;
 }
+/* Real photo gallery for the detail modal (2026-09-24, real owner request comparing against
+   dorin.app's own listing panel — the modal used to just clone the card's own small swipe
+   carousel, reading as "a bigger card", not a genuinely detailed view). Built by apartments.html's
+   own script from the card's full data-image-urls list, replacing the cloned .listing-cover
+   entirely — a big main photo with a clickable thumbnail strip underneath, the actual photo count
+   already obvious from the thumbnails so the card's own small "N 📷" badge is redundant here. */
+#apt-listing-modal-body .photo-count-badge { display: none; }
+.apt-modal-gallery { display: flex; flex-direction: column; gap: 8px; background: var(--surface-tint); }
+.apt-modal-gallery-main {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; object-position: center; display: block;
+}
+.apt-modal-gallery-thumbs {
+  display: flex; gap: 8px; overflow-x: auto; padding: 0 12px 10px; scrollbar-width: thin;
+}
+.apt-modal-gallery-thumb {
+  flex: 0 0 auto; width: 56px; height: 56px; padding: 0; border-radius: var(--radius-sm);
+  border: 2px solid transparent; overflow: hidden; cursor: pointer; opacity: .7; background: none;
+}
+.apt-modal-gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.apt-modal-gallery-thumb:hover { opacity: 1; }
+.apt-modal-gallery-thumb.active { border-color: var(--teal); opacity: 1; }
+/* The outbound "view original listing" button is the real point of contact with the poster on
+   todira (see _listing_card.html's own comment — the poster's own phone/agent details aren't
+   stored at all, by deliberate design; that's the paid product's differentiator, not something
+   this modal fakes). Sized as a proper primary call-to-action here, matching how prominent dorin's
+   own contact block is in its equivalent panel, rather than the small inline footer link the card
+   itself uses. */
+#apt-listing-modal-body .listing-footer { margin-top: 4px; }
+#apt-listing-modal-body .view-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+  padding: 13px 16px; border-radius: var(--radius-md); font-size: 1rem; font-weight: 700;
+  text-decoration: none; background: var(--teal); color: #fff !important;
+  box-shadow: var(--shadow-sm); transition: background .12s ease, transform .12s ease;
+}
+#apt-listing-modal-body .view-btn:hover { background: var(--teal-dark); text-decoration: none; }
+#apt-listing-modal-body .view-btn.locked {
+  background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark) !important;
+}
 @media (max-width: 640px) {
   /* Real owner request (matching a floating-browser pattern already asked for elsewhere on the
      site's mobile experience): full-screen on a phone, same close-at-the-top principle, no

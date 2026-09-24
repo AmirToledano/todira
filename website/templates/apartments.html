@@ -308,6 +308,46 @@
 
     var lastFocusedEl = null;
 
+    // Real photo gallery (2026-09-24, real owner request — the modal used to just clone the
+    // card's own small swipe carousel, which read as "a bigger card" rather than a genuinely
+    // detailed view). Built from the listing's full image-URL list (stashed on the card as JSON —
+    // see _listing_card.html's own comment), independent of which carousel slide(s) happened to
+    // already be loaded on the card itself: one big main photo, a clickable thumbnail strip below.
+    function buildGallery(imageUrls, altText) {
+      var wrap = document.createElement('div');
+      wrap.className = 'apt-modal-gallery';
+      var main = document.createElement('img');
+      main.className = 'apt-modal-gallery-main';
+      main.loading = 'lazy';
+      main.decoding = 'async';
+      main.alt = altText || '';
+      main.src = imageUrls[0];
+      wrap.appendChild(main);
+      if (imageUrls.length > 1) {
+        var thumbs = document.createElement('div');
+        thumbs.className = 'apt-modal-gallery-thumbs';
+        imageUrls.forEach(function (url, i) {
+          var thumb = document.createElement('button');
+          thumb.type = 'button';
+          thumb.className = 'apt-modal-gallery-thumb' + (i === 0 ? ' active' : '');
+          var thumbImg = document.createElement('img');
+          thumbImg.src = url;
+          thumbImg.loading = 'lazy';
+          thumbImg.decoding = 'async';
+          thumbImg.alt = '';
+          thumb.appendChild(thumbImg);
+          thumb.addEventListener('click', function () {
+            main.src = url;
+            thumbs.querySelectorAll('.apt-modal-gallery-thumb').forEach(function (t) { t.classList.remove('active'); });
+            thumb.classList.add('active');
+          });
+          thumbs.appendChild(thumb);
+        });
+        wrap.appendChild(thumbs);
+      }
+      return wrap;
+    }
+
     function openListingDetail(card) {
       var clone = card.cloneNode(true);
       clone.classList.remove('reveal');
@@ -316,6 +356,16 @@
       // modal has room to show it in full, using the untruncated text stashed on the card.
       var desc = clone.querySelector('.listing-desc');
       if (desc && card.dataset.descriptionFull) { desc.textContent = card.dataset.descriptionFull; }
+      var oldCover = clone.querySelector('.listing-cover');
+      if (oldCover && card.dataset.imageUrls) {
+        try {
+          var urls = JSON.parse(card.dataset.imageUrls);
+          if (urls.length) {
+            var firstSlide = oldCover.querySelector('.cover-slide');
+            oldCover.replaceWith(buildGallery(urls, firstSlide ? firstSlide.alt : ''));
+          }
+        } catch (e) { /* malformed/missing data — leave the cloned carousel as a fallback */ }
+      }
       modalBody.innerHTML = '';
       modalBody.appendChild(clone);
       modalBody.scrollTop = 0;
