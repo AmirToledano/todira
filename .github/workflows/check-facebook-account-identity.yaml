@@ -56,6 +56,14 @@ jobs:
             -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
             "https://www.facebook.com/" || echo "curl_failed"
 
+      - name: Dump the raw error bodies (real content, generic pages/errors only — no private data)
+        run: |
+          echo "=== /me/ body ==="
+          cat /tmp/fb_me_body.html 2>/dev/null || echo "(no body)"
+          echo
+          echo "=== home feed body ==="
+          cat /tmp/fb_home_body.html 2>/dev/null || echo "(no body)"
+
       - name: Extract the account's own name/title from both fetches
         run: |
           python3 -c "
