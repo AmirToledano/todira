@@ -114,6 +114,16 @@ BASE_DIR = Path(__file__).parent
 # be forgeable, so this must never actually be used outside local dev/tests.
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "dev-only-insecure-session-key")
 
+# 2026-09-24 real bug found live: /static/style.css (linked with no cache-busting query string at
+# all, unlike todira-brand.webp's own ?v=4) got rewritten heavily across several deploys in one
+# night — the owner's own real mobile browser kept showing stale/broken layouts a fresh Playwright
+# browser (no prior cache) never reproduced. GIT_SHA is set to the same git commit SHA already
+# used as this deploy's own image tag (charts/todira/templates/website-deployment.yaml) — already
+# unique per deploy, so appending it as ?v=<sha> to style.css (see base.html) forces every browser
+# to fetch the new file instead of serving a stale cached one after a deploy. "dev" outside a real
+# deploy (local run, tests) is harmless — it's just a stable cache key, not a real version.
+GIT_SHA = os.environ.get("GIT_SHA", "dev")
+
 # 2026-09-24 real production bug, confirmed live via a real headless-browser diagnostic against
 # todira.app itself (not guessed): StaticFiles guesses each served file's Content-Type from
 # Python's own mimetypes module, which reads its registry from the underlying OS's /etc/mime.types
@@ -269,6 +279,7 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "supported_langs": SUPPORTED_LANGS,
             "lang_labels": LANG_LABELS,
             "current_user": current_user,
+            "static_version": GIT_SHA,
             "is_owner": is_real_owner and not _preview_as_free(request),
             "is_real_owner": is_real_owner,
             "preview_as_free": _preview_as_free(request),
