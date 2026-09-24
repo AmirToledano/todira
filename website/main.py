@@ -39,6 +39,7 @@ import hashlib
 import hmac
 import html
 import logging
+import mimetypes
 import os
 import secrets
 import threading
@@ -112,6 +113,23 @@ BASE_DIR = Path(__file__).parent
 # (see charts/todira/templates/bot-secret.yaml) — a login session signed with the fallback would
 # be forgeable, so this must never actually be used outside local dev/tests.
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "dev-only-insecure-session-key")
+
+# 2026-09-24 real production bug, confirmed live via a real headless-browser diagnostic against
+# todira.app itself (not guessed): StaticFiles guesses each served file's Content-Type from
+# Python's own mimetypes module, which reads its registry from the underlying OS's /etc/mime.types
+# — and the production container's own copy doesn't know .webp at all, so every .webp under
+# /static (the site's own brand/logo image included) was served as generic
+# application/octet-stream instead of image/webp. A browser that can't recognize a response's
+# content-type falls back to offering it as a raw file download rather than rendering it — which
+# is the real, confirmed mechanism behind the owner's own screenshot of a phone Safari download
+# prompt for a todira.app resource. Registering the type explicitly in code removes the dependency
+# on whatever mimetypes database happens to ship in a given base image entirely, so it can't
+# silently regress again on a future image/OS change. .webmanifest (base.html's own PWA manifest
+# link) is the other modern/niche extension actually worth defending the same way — every other
+# extension under /static (.css/.ico/.jpg/.png) is old enough to be universally present in any
+# real mimetypes database, confirmed unaffected by this same production gap.
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 app = FastAPI(title="טודירה")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
