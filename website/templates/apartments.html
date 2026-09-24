@@ -341,12 +341,18 @@
 
     var map;
     try {
-      map = L.map(mapEl, { attributionControl: true, zoomControl: true })
+      // zoomControl: false — Leaflet's own default zoom control sits topleft, exactly where our
+      // own collapse-arrow button (a plain sibling DOM button, see style.css's own comment) also
+      // sits — real owner report: the collapse button was invisible/unclickable in production,
+      // silently covered by Leaflet's control (added to the DOM after our button, same corner, no
+      // stacking-context separation between them). Added back explicitly at topright instead.
+      map = L.map(mapEl, { attributionControl: true, zoomControl: false })
         .setView([32.0853, 34.7818], 7); // Tel Aviv — sensible default center for an Israel-wide listing set
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
       }).addTo(map);
+      L.control.zoom({ position: 'topright' }).addTo(map);
       // Meters scale indicator (real owner request, comparing against dorin.app's own map chrome) —
       // bottomright so it never overlaps the #apt-map-count pill, which is pinned bottomleft.
       L.control.scale({ metric: true, imperial: false, position: 'bottomright' }).addTo(map);

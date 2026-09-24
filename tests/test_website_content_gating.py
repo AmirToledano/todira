@@ -53,7 +53,8 @@ class _FakeUser:
 class _FakeListing:
     def __init__(
         self, id, description="תיאור סודי מאוד", url="https://yad2.co.il/item/secret999",
-        latitude=None, longitude=None,
+        latitude=None, longitude=None, street=None, property_type=None,
+        previous_price=None, move_in_date=None,
     ):
         self.id = id
         self.latitude = latitude
@@ -64,6 +65,8 @@ class _FakeListing:
         self.price = 5000
         self.city = "תל אביב"
         self.neighborhood = None
+        self.street = street
+        self.property_type = property_type
         self.rooms = 3
         self.floor = 1
         self.floor_total = 3
@@ -77,6 +80,8 @@ class _FakeListing:
         self.furniture = None
         self.description = description
         self.posted_at = None
+        self.move_in_date = move_in_date
+        self.previous_price = previous_price
         self.url = url
 
 
@@ -246,6 +251,68 @@ def test_apartments_listing_card_omits_posted_at_and_description_full_when_absen
     assert resp.status_code == 200
     assert 'data-posted-at=""' not in resp.text
     assert 'data-description-full=""' not in resp.text
+
+
+def test_apartments_card_shows_street_property_type_and_price_drop_badge(client):
+    """2026-09-24 real owner request batch (comparing against dorin.app's own card): the location
+    block shows city/neighborhood/street, a property-type badge appears among the feature badges,
+    and a real price DROP renders the old price struck through + a green '-X%' badge."""
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(
+        id=1, street="הרצל 12", property_type="apartment", previous_price=5000,
+    )
+    listing.price = 4000  # dropped from previous_price=5000 -> 4000, a real 20% drop
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "הרצל 12" in resp.text
+    assert 'class="loc-city"' in resp.text
+    assert "דירה" in resp.text  # card.type_apartment
+    assert '5,000 ₪' in resp.text or "5000 ₪" in resp.text
+    assert "price-drop" in resp.text
+    assert "-20%" in resp.text
+
+
+def test_apartments_card_shows_price_rise_badge_with_correct_sign(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1, previous_price=4000)
+    listing.price = 5000  # rose from previous_price=4000 -> 5000, a real 25% rise
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "price-rise" in resp.text
+    assert "+25%" in resp.text
+
+
+def test_apartments_card_omits_price_change_badge_when_price_unchanged(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1, previous_price=5000)
+    listing.price = 5000  # same price -> no badge, ever
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda f, l: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "price-change" not in resp.text
 
 
 def test_apartments_edit_filter_link_omits_uid_for_a_session_only_standalone_user():

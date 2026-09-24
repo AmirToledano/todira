@@ -232,6 +232,14 @@ class Listing(Base):
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
 
+    # 2026-09-24: the LAST price change only (not a full history table — nothing here asks for a
+    # price-history chart, just the website card's "-5%" badge, dorin.app-style). Set by
+    # scraper/main.py._upsert_listings at the same moment it already detects a price change for
+    # the Telegram re-notification (price_change_events) — previously that old value was simply
+    # discarded once the UPDATE ran, so there was nothing left to show on the card afterward.
+    previous_price: Mapped[int | None] = mapped_column(Integer)
+    price_changed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
     # tri-state: NULL = source didn't say, not "false"
     has_parking: Mapped[bool | None] = mapped_column(Boolean)
     has_elevator: Mapped[bool | None] = mapped_column(Boolean)
