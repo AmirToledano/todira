@@ -369,8 +369,21 @@ resources:
     # messages (not just onboarding), where two requests landing close together could plausibly add
     # cgroup CPU-throttling delay on top of Gemini's own latency. Cheap, safe precaution, not a
     # proven fix for that specific incident.
-    requests: { cpu: "100m", memory: "128Mi" }
-    limits: { cpu: "500m", memory: "256Mi" }
+    #
+    # 2026-09-24: memory bumped 256Mi -> 768Mi — confirmed real, ongoing production outage, not
+    # guessed: `kubectl describe pod` showed the live website pod OOMKilled (exit code 137),
+    # restarting on a roughly 8-minute cycle under completely ordinary traffic (no unusual load),
+    # each restart's ~10s startup gap serving real Caddy 502s to real visitors — two of which
+    # matched the owner's own screenshots (a "filter.txt"/"apartments.txt" download prompt instead
+    # of a rendered page) to the exact second in Caddy's own access logs. 256Mi was set when
+    # /apartments was a much lighter page; it now renders large listing datasets (an unfiltered
+    # match set can be 8000+ rows materialized as ORM objects per request before pagination — see
+    # website/main.py's apartments() route) plus the newer photo-gallery/map features, well past
+    # what 256Mi can hold under real concurrent traffic. This does not address that underlying
+    # per-request memory cost (a real follow-up: paginate the DB query itself instead of slicing an
+    # in-memory list of every match), only gives the process enough headroom to stop crashing now.
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits: { cpu: "500m", memory: "768Mi" }
   caddy:
     requests: { cpu: "25m", memory: "32Mi" }
     limits: { cpu: "100m", memory: "96Mi" }
