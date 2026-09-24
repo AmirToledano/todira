@@ -1,0 +1,49 @@
+name: Check — /apartments live right now, real user-facing verification (read-only)
+
+# Owner asked "did you already merge? because right now I see nothing" a few minutes after the
+# CI/CD-trigger-scoping fix (PR #409) deployed. Confirms current server health (curl) AND actual
+# rendered content (Playwright, real WebKit engine, fresh context, owner's real uid) in one go, to
+# give an accurate right-now answer rather than relying on an earlier check.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Real curl check right now
+        run: |
+          for i in 1 2 3; do
+            echo "=== request $i ==="
+            curl -sD - -o /dev/null "https://todira.app/apartments?uid=6984931854"
+            echo
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright WebKit
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.47.0 >/dev/null 2>&1
+          npx playwright install --with-deps webkit >/dev/null 2>&1
+
+      - name: Real live render check (WebKit, owner's uid)
+        run: |
+          cat <<'JS' > check.js
+          const { webkit, devices } = require('playwright');
+          (async () => {
+            const browser = await webkit.launch();
+            const context = await browser.newContext({ ...devices['iPhone 13'] });
+            const page = await context.newPage();
+            const resp = await page.goto('https://todira.app/apartments?uid=6984931854', { waitUntil: 'networkidle', timeout: 30000 });
+            console.log('status:', resp.status());
+            await page.waitForTimeout(2000);
+            const cardCount = await page.locator('.listing-card').count();
+            const visibleCount = await page.locator('.listing-card.is-visible').count();
+            console.log('card count:', cardCount, 'visible count:', visibleCount);
+            await browser.close();
+          })();
+          JS
+          node check.js
