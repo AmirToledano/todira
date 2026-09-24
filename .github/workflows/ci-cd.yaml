@@ -3,6 +3,27 @@ name: CI/CD
 on:
   push:
     branches: [main]
+    # 2026-09-24: confirmed live tonight — every push to main was rebuilding+redeploying all three
+    # services, even for changes that only add/edit a read-only diagnostic workflow file under
+    # .github/workflows/ with zero app-code changes. Since every deploy re-tags images with
+    # github.sha, Helm sees a "new" image every single time and rolls the website Deployment
+    # (replicas: 1) even though the image content is byte-identical to before — confirmed via a
+    # live kubectl events dump showing 10+ website rollouts in under an hour, each with a real
+    # "Liveness probe failed: connection refused" window during pod startup, matching the owner's
+    # own real-device report of a blank /apartments page. This paths filter keeps CI/CD scoped to
+    # changes that can actually affect what's running: app code, the Helm chart, dependency
+    # manifests, and this workflow file itself. A pure new-diagnostic-workflow commit (like this
+    # very filter's own sibling files) no longer triggers a deploy at all.
+    paths:
+      - "bot/**"
+      - "scraper/**"
+      - "website/**"
+      - "common/**"
+      - "migrations/**"
+      - "charts/todira/**"
+      - "requirements*.txt"
+      - "**/Dockerfile"
+      - ".github/workflows/ci-cd.yaml"
 
 env:
   REGISTRY: ghcr.io
