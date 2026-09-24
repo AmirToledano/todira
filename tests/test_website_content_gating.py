@@ -209,6 +209,7 @@ def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(cl
         description="תיאור ארוך של הדירה " * 10,
     )
     listing.posted_at = _NOW - dt.timedelta(days=3)
+    listing.image_urls = ["https://img.example/1.jpg", "https://img.example/2.jpg"]
     fake_session = _FakeSession(user, listings=[listing])
 
     with (
@@ -228,14 +229,21 @@ def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(cl
     # Map-settings age filter popover
     assert 'id="apt-map-settings"' in resp.text
     assert 'id="apt-map-age-select"' in resp.text
+    # Toolbar chip order (2026-09-24 follow-up owner report): the map toggle must sit further along
+    # the toolbar than the results count, not before it.
+    assert resp.text.index('apt-toolbar-count') < resp.text.index('apt-toolbar-map-toggle')
     # Listing-detail modal — a real floating overlay, hidden by default, closed via its own top bar
     assert 'id="apt-listing-modal" hidden' in resp.text
     assert 'id="apt-listing-modal-backdrop"' in resp.text
     assert 'id="apt-listing-modal-header"' in resp.text
     assert 'id="apt-listing-modal-body"' in resp.text
-    # The card carries the data the modal's JS reads: full (untruncated) description + posted date
+    # The card carries the data the modal's JS reads: full (untruncated) description, posted date,
+    # and the full photo list (2026-09-24) the modal's own gallery is built from.
     assert 'data-description-full="תיאור ארוך' in resp.text
     assert f'data-posted-at="{listing.posted_at.isoformat()}"' in resp.text
+    assert "data-image-urls=" in resp.text
+    assert "https://img.example/1.jpg" in resp.text
+    assert "https://img.example/2.jpg" in resp.text
 
 
 def test_apartments_listing_card_omits_posted_at_and_description_full_when_absent(client):

@@ -1,0 +1,106 @@
+name: Diagnose — is Homeless's plain-tier detail-page description fetch still working post-redesign? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push).
+#
+# Task from tonight's punch list: homeless_client.py's own module docstring (2026-09-24 redesign
+# note, point 1) explicitly flags this as unconfirmed — the SEARCH page needed custom_headers=true
+# to stop returning ZenRows' RESP001 after Homeless's site redesign, but fetch_listing_description
+# (the per-listing DETAIL page fetch, .../viewad,<id>.aspx) was left on the plain tier (no
+# custom_headers, no js_render) "since it's shown no RESP001 failure of its own; revisit if
+# evidence emerges it needs the same treatment." This runs the EXACT SAME call
+# fetch_listing_description makes in production (plain ZenRows GET, no custom_headers, no
+# js_render) against a REAL current listing URL (pulled fresh from the DB) and reports whether the
+# real per-listing description still comes back, or whether it now needs the same fix the search
+# page did.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Get a real, current Homeless listing URL from the DB
+        id: url
+        run: |
+          kubectl delete pod diag-homeless-url -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-homeless-url
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-homeless-url
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -t -A -c "SELECT url FROM listings WHERE source='homeless' AND is_delisted=false ORDER BY id DESC LIMIT 1;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-homeless-url -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          URL=$(kubectl logs -n todira diag-homeless-url | tail -1)
+          echo "real listing url: $URL"
+          echo "listing_url=$URL" >> "$GITHUB_OUTPUT"
+          kubectl delete pod diag-homeless-url -n todira --ignore-not-found
+
+      - name: Plain ZenRows GET of that listing's detail page — the exact call fetch_listing_description makes in production
+        run: |
+          LISTING_URL="${{ steps.url.outputs.listing_url }}"
+          if [ -z "$LISTING_URL" ]; then
+            echo "No real Homeless listing URL found in the DB — nothing to test against."
+            exit 1
+          fi
+          API_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.zenrows-api-key}' | base64 -d)
+          echo "::add-mask::$API_KEY"
+
+          curl -sS -G "https://api.zenrows.com/v1/" \
+            --data-urlencode "apikey=$API_KEY" \
+            --data-urlencode "url=$LISTING_URL" \
+            -o /tmp/detail.html \
+            -w "http_status=%{http_code} size_bytes=%{size_download}\n" \
+            --max-time 90 || true
+
+          echo "--- first 500 chars ---"
+          head -c 500 /tmp/detail.html 2>/dev/null || echo "(no output file — request failed at the connection level)"
+          echo
+          echo "--- verdict (same regexes homeless_client.py's fetch_listing_description uses) ---"
+          python3 -c "
+          import re, html
+          with open('/tmp/detail.html', encoding='utf-8', errors='replace') as f:
+              body = f.read()
+          print(f'length={len(body)}')
+          code_m = re.search(r'\"code\":\"([A-Z0-9]+)\"', body)
+          title_m = re.search(r'\"title\":\"([^\"]*)\"', body)
+          if code_m and len(body) < 1000:
+              title = title_m.group(1) if title_m else '?'
+              print(f'VERDICT: STILL BROKEN — ZenRows itself returned an error (code={code_m.group(1)!r} title={title!r}), matching the RESP001 pattern the search page had.')
+          else:
+              desc_m = re.search(r'<meta name=\"Description\" content=\"([^\"]*)\"', body, re.I) or re.search(r'<meta property=\"og:description\" content=\"([^\"]*)\"', body)
+              if desc_m:
+                  desc = html.unescape(desc_m.group(1)).strip()
+                  print(f'VERDICT: SUCCESS — real description found ({len(desc)} chars): {desc[:200]!r}')
+              else:
+                  print('VERDICT: got a 200-shaped body but NO description meta tag found — the detail page markup itself may have changed too (separate from RESP001). First 1500 chars dumped below for inspection.')
+                  print(body[:1500])
+          "
