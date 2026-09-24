@@ -20,7 +20,18 @@ spec:
   # Defaults to suspended (true) if unset — the opposite fail-safe direction from the main
   # scraper's own `| default false`, deliberately: Facebook scraping must never start just because
   # this key was accidentally omitted from a values override.
-  suspend: {{ .Values.scraper.facebook.suspended | default true }}
+  #
+  # 2026-09-24 REAL BUG FOUND LIVE: `| default true` looks right but Sprig's `default` substitutes
+  # whenever the piped-in value is the Go ZERO VALUE for its type — and `false` IS the zero value
+  # for a bool. So `.Values.scraper.facebook.suspended: false | default true` was silently
+  # evaluating to `true` regardless — explicitly setting `suspended: false` in values.yaml (done in
+  # #323, "Turn on the Facebook Marketplace CronJob") never actually took effect on the deployed
+  # CronJob. Confirmed live: values.yaml has said `false` since #323, yet `kubectl get cronjob
+  # todira-facebook-scraper -o jsonpath='{.spec.suspend}'` still read `true` tonight — the Facebook
+  # scraper has never actually run in production. `hasKey` checks whether the key is PRESENT in the
+  # map at all, independent of its boolean value, so an explicit `false` is respected while an
+  # omitted key still safely defaults to suspended.
+  suspend: {{ if hasKey .Values.scraper.facebook "suspended" }}{{ .Values.scraper.facebook.suspended }}{{ else }}true{{ end }}
   timeZone: "Asia/Jerusalem"
   concurrencyPolicy: Forbid
   jobTemplate:
