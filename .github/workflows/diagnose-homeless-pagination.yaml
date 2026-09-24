@@ -139,3 +139,69 @@ jobs:
           else:
               print('Ambiguous — no rows and no ZenRows error code; inspect further.')
           "
+
+      # 2026-09-24: neither the plain fetch (RESP001) nor js_render=true (real 200, 0 rows) is
+      # currently understood — this dumps REAL raw content (not just counts) from both the
+      # js_render=true /rent/ response and the real /sale/ page, so the actual current markup can
+      # be read instead of guessed at further.
+      - name: Dump real raw content around where listings should be (js_render=true /rent/, and /sale/)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          echo "############################################"
+          echo "### /rent/ with js_render=true — real raw content"
+          echo "############################################"
+          python3 -c "
+          import re
+          with open('/tmp/homeless_jsrender.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f'length={len(html)}')
+          title = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+          print(f'title={title.group(1).strip() if title else \"?\"!r}')
+          # Any React/Vue/Angular/Next SPA root markers - would mean the real listing grid is
+          # client-side rendered and js_render's own wait timing just isn't long enough yet.
+          for marker in ('__NEXT_DATA__', 'ng-version', 'data-reactroot', 'id=\"app\"', 'id=\"root\"', 'window.__INITIAL_STATE__'):
+              print(f'{marker} present: {marker in html}')
+          # Any real captcha/consent/bot-wall text.
+          lower = html.lower()
+          for signal in ('captcha', 'are you human', 'cloudflare', 'access denied', 'robot'):
+              if signal in lower:
+                  print(f'WALL SIGNAL FOUND: {signal!r}')
+          # Real price signs anywhere at all (₪)?
+          price_hits = len(re.findall(r'₪', html))
+          print(f'real ₪ occurrences anywhere in the page: {price_hits}')
+          if price_hits:
+              pos = html.find('₪')
+              print('--- context around first ₪ ---')
+              print(html[max(0,pos-300):pos+100])
+          print('--- first 800 chars of <body> (or start of doc if no body found) ---')
+          body_m = re.search(r'<body[^>]*>', html)
+          start = body_m.end() if body_m else 0
+          print(html[start:start+800])
+          "
+
+          echo
+          echo "############################################"
+          echo "### /sale/ — real raw content"
+          echo "############################################"
+          python3 -c "
+          import re
+          with open('/tmp/homeless_sale.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          print(f'length={len(html)}')
+          # Does /sale/ use a DIFFERENT id prefix than rent's ad_<id> (e.g. sale_<id>, s_<id>)?
+          id_like = re.findall(r'<tr[^>]*\bid=\"([a-zA-Z_]+_?\d+)\"', html)
+          print(f'ANY <tr id=\"...\"> rows (any prefix, not just ad_): {len(id_like)}')
+          if id_like:
+              print('sample ids:', id_like[:10])
+          price_hits = len(re.findall(r'₪', html))
+          print(f'real ₪ occurrences anywhere in the page: {price_hits}')
+          if price_hits:
+              pos = html.find('₪')
+              print('--- context around first ₪ (walking back for the nearest real row/card markup) ---')
+              print(html[max(0,pos-500):pos+100])
+          print('--- first 800 chars of <body> ---')
+          body_m = re.search(r'<body[^>]*>', html)
+          start = body_m.end() if body_m else 0
+          print(html[start:start+800])
+          "
