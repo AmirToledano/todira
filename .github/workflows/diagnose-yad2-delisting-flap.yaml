@@ -1,0 +1,108 @@
+name: Diagnose — do Yad2 listings flap between delisted/active (proof of the truncation theory)? (read-only)
+
+# A direct probe against Yad2's map API (even routed through the cluster's own node) got a real
+# Radware/Reblaze 302 challenge — repeating that risks damaging the real scraper's own IP
+# reputation (see yad2_client.py's own documented history of exactly this happening to a fresh
+# IP). Checking for proof entirely from the DB instead, no external request needed: if
+# fetch_map_markers genuinely truncates below a city's real active-listing count, a listing that's
+# outside one run's capped ~200-marker response but still genuinely active would get marked
+# is_delisted=True that run, then is_delisted=False again the moment it happens to reappear in a
+# later run's response — a real, checkable "flap" pattern. A high flap count for busy Yad2 rent
+# cities (Tel Aviv, etc.) that ISN'T explained by genuine relist activity would be real evidence.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real active Yad2 rent listing counts per city, and current delisted counts
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No website pod found for a DB check."
+            exit 0
+          fi
+          kubectl exec -n todira "$POD" -- python3 -c "
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ['DATABASE_URL'])
+          with engine.connect() as conn:
+              print('=== Top 15 cities by real ACTIVE Yad2 rent listing count ===')
+              rows = conn.execute(text('''
+                  SELECT city, count(*) AS active_count
+                  FROM listings
+                  WHERE source = 'yad2' AND deal_type = 'rent' AND is_delisted = false
+                  GROUP BY city
+                  ORDER BY active_count DESC
+                  LIMIT 15
+              ''')).fetchall()
+              for r in rows:
+                  print(r)
+
+              print()
+              print('=== Top 15 cities by DELISTED Yad2 rent listing count (currently marked gone) ===')
+              rows = conn.execute(text('''
+                  SELECT city, count(*) AS delisted_count
+                  FROM listings
+                  WHERE source = 'yad2' AND deal_type = 'rent' AND is_delisted = true
+                  GROUP BY city
+                  ORDER BY delisted_count DESC
+                  LIMIT 15
+              ''')).fetchall()
+              for r in rows:
+                  print(r)
+
+              print()
+              print('=== Total Yad2 rent: active vs delisted, overall ===')
+              row = conn.execute(text('''
+                  SELECT is_delisted, count(*) FROM listings
+                  WHERE source = 'yad2' AND deal_type = 'rent'
+                  GROUP BY is_delisted
+              ''')).fetchall()
+              for r in row:
+                  print(r)
+          " || true
+
+      - name: Real flap evidence — Yad2 rent listings whose scraped_at keeps advancing while repeatedly toggling is_delisted (needs a history table; falls back to a proxy signal)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            exit 0
+          fi
+          kubectl exec -n todira "$POD" -- python3 -c "
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ['DATABASE_URL'])
+          with engine.connect() as conn:
+              print('=== Yad2 rent listings currently ACTIVE but scraped >6h ago (never re-seen in a recent run despite being active) ===')
+              rows = conn.execute(text('''
+                  SELECT city, count(*) FROM listings
+                  WHERE source = 'yad2' AND deal_type = 'rent' AND is_delisted = false
+                    AND scraped_at < now() - interval '6 hours'
+                  GROUP BY city ORDER BY count(*) DESC LIMIT 15
+              ''')).fetchall()
+              for r in rows:
+                  print(r)
+              print()
+              print('=== Yad2 rent listings DELISTED but delisted_at is itself old (>24h) vs recently (<2h) — a fresh wave suggests routine churn, not a stable steady-state ===')
+              rows = conn.execute(text('''
+                  SELECT
+                    count(*) FILTER (WHERE delisted_at > now() - interval '2 hours') AS delisted_last_2h,
+                    count(*) FILTER (WHERE delisted_at <= now() - interval '2 hours' AND delisted_at > now() - interval '24 hours') AS delisted_2_to_24h,
+                    count(*) FILTER (WHERE delisted_at <= now() - interval '24 hours') AS delisted_over_24h
+                  FROM listings
+                  WHERE source = 'yad2' AND deal_type = 'rent' AND is_delisted = true
+              ''')).fetchall()
+              for r in rows:
+                  print(r)
+          " || true
