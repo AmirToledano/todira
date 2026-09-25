@@ -96,6 +96,7 @@
 </head>
 <body>
   <div class="site-ambient" aria-hidden="true"></div>
+  <div class="film-grain" aria-hidden="true"></div>
   <div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
   <a class="skip-link" href="#main-content">{{ t('a11y.skip_to_content') }}</a>
   <div class="cookie-notice" id="cookie-notice" hidden>
@@ -536,19 +537,29 @@
       }, { passive: true });
     })();
     (function () {
-      // Scroll progress bar (--scroll-progress read by .scroll-progress in style.css). rAF-
-      // throttled rather than driven directly off the scroll event: scroll fires far faster than
-      // the screen can repaint, so writing the custom property on every single event would just
-      // queue up redundant style recalculations the browser throws away anyway — one write per
-      // animation frame is the actual ceiling of what's ever visible.
+      // Scroll progress bar (--scroll-progress read by .scroll-progress in style.css) AND the
+      // site-wide ambient glow's slow color drift (--scroll-hue, read by .site-ambient below) —
+      // one shared rAF-throttled listener drives both custom properties together rather than
+      // attaching a second scroll listener, since they're computed from the exact same scroll
+      // position on the exact same frame anyway. rAF-throttled rather than driven directly off the
+      // scroll event: scroll fires far faster than the screen can repaint, so writing either custom
+      // property on every single event would just queue up redundant style recalculations the
+      // browser throws away anyway — one write per animation frame is the actual ceiling of what's
+      // ever visible.
       var bar = document.getElementById('scroll-progress');
-      if (!bar) { return; }
+      var ambient = document.querySelector('.site-ambient');
+      if (!bar && !ambient) { return; }
       var ticking = false;
       function update() {
         var doc = document.documentElement;
         var max = doc.scrollHeight - doc.clientHeight;
         var progress = max > 0 ? Math.min(1, Math.max(0, doc.scrollTop / max)) : 0;
-        bar.style.setProperty('--scroll-progress', progress);
+        if (bar) { bar.style.setProperty('--scroll-progress', progress); }
+        // -20deg..20deg across a full page scroll — a slow, subtle color drift (the "camera
+        // moving through a colored scene" feel from the reference reels this was based on), not a
+        // literal rainbow cycle; kept small enough that the ambient glow never leaves the brand's
+        // own teal/gold family at any scroll position.
+        if (ambient) { ambient.style.setProperty('--scroll-hue', (progress * 40 - 20) + 'deg'); }
         ticking = false;
       }
       update();

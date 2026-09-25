@@ -172,10 +172,31 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .site-ambient::before, .site-ambient::after { animation: none; }
 }
+/* --scroll-hue (base.html's shared scroll listener, same one that drives .scroll-progress below)
+   drifts the whole glow's hue a small amount across a full page scroll — the "camera moving
+   through a colored scene" feel from the 3D/WebGL reference reels this was adapted from, kept
+   subtle enough (±20deg) that it never leaves the brand's own teal/gold family. Scroll-driven, not
+   a self-playing animation — same class of effect as .scroll-progress itself, which also isn't
+   gated under prefers-reduced-motion: it deterministically follows the visitor's own scroll input
+   rather than running on its own timeline. */
+.site-ambient { filter: hue-rotate(var(--scroll-hue, 0deg)); }
 /* High-contrast a11y mode exists specifically to strip out anything that could reduce legibility
    — a decorative glow has no place there, same reasoning as that mode's own pure-black override
    a few hundred lines below. */
 html.a11y-contrast .site-ambient { display: none; }
+/* Subtle film-grain texture over the whole page — a cheap SVG feTurbulence filter, not an image,
+   so it costs no network request and scales to any viewport. mix-blend-mode:overlay + very low
+   opacity means it never actually obscures anything; the goal is the "shot on film" texture the
+   reference reels' 3D product sites had, not a visible pattern.  z-index:960 sits just above
+   .scroll-progress (950, see its own comment on why) so grain reads over the header/nav too, but
+   stays below the listing-detail modal's z-index:2000 — a modal is its own overlay context, no
+   need for texture bleeding into it. Fully inert: pointer-events:none, aria-hidden. */
+.film-grain {
+  position: fixed; inset: 0; z-index: 960; pointer-events: none;
+  opacity: .035; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+html.a11y-contrast .film-grain { display: none; }
 h1, h2, h3, .display {
   font-family: 'Rubik', Arial, sans-serif;
   font-weight: 700;
