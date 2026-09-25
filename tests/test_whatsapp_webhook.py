@@ -26,6 +26,7 @@ if str(_WEBSITE_DIR) not in sys.path:
 import whatsapp_webhook  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from todira_common.wid_token import verify_wid_token  # noqa: E402
 
 
 @pytest.fixture
@@ -611,8 +612,17 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     # _send_notifications_optin_prompt's own docstring for why this is collected as a real button
     # tap rather than parsed from a free-text reply.
     assert send_cta_mock.call_count == 2
-    assert send_cta_mock.call_args_list[0][0][3] == f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=9725500000"
-    assert send_cta_mock.call_args_list[1][0][3] == f"{whatsapp_webhook.WEBSITE_URL}/account?wid=9725500000"
+    # 2026-09-25 security fix: ?wid= now carries a signed, time-limited token, not the bare phone
+    # number (see todira_common.wid_token's own module docstring for the account-takeover this
+    # closes) — assert each URL decodes back to the right number instead of a literal match.
+    filter_wid_url = send_cta_mock.call_args_list[0][0][3]
+    account_wid_url = send_cta_mock.call_args_list[1][0][3]
+    assert filter_wid_url.startswith(f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=")
+    assert account_wid_url.startswith(f"{whatsapp_webhook.WEBSITE_URL}/account?wid=")
+    filter_token = filter_wid_url.rsplit("wid=", 1)[1]
+    account_token = account_wid_url.rsplit("wid=", 1)[1]
+    assert verify_wid_token(filter_token) == "9725500000"
+    assert verify_wid_token(account_token) == "9725500000"
 
 
 # --- Help/support requests (2026-09-07) — checked before both the existing-filter chat branch and

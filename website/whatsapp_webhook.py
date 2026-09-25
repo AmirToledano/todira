@@ -36,6 +36,7 @@ from todira_common.matching import safe_range_update
 from todira_common.models import ContactMessage, Filter, User
 from todira_common.support import looks_like_help_request
 from todira_common.users import get_or_create_whatsapp_user
+from todira_common.wid_token import generate_wid_token
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
@@ -75,7 +76,10 @@ def _send_filter_edit_prompt(wa_id: str) -> None:
     "you already have a filter" reply and the registration confirmation) end with the exact same
     prompt to go edit it."""
     whatsapp_client.send_cta_url_message(
-        wa_id, _FILTER_EDIT_INTRO_TEXT, _FILTER_EDIT_BUTTON_TEXT, f"{WEBSITE_URL}/filter?wid={wa_id}"
+        wa_id,
+        _FILTER_EDIT_INTRO_TEXT,
+        _FILTER_EDIT_BUTTON_TEXT,
+        f"{WEBSITE_URL}/filter?wid={generate_wid_token(wa_id)}",
     )
     whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_1)
     whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_2)
@@ -96,7 +100,10 @@ _NOTIFICATIONS_OPTIN_BUTTON_TEXT = "🔔 הפעלת התראות"
 
 def _send_notifications_optin_prompt(wa_id: str) -> None:
     whatsapp_client.send_cta_url_message(
-        wa_id, _NOTIFICATIONS_OPTIN_BODY, _NOTIFICATIONS_OPTIN_BUTTON_TEXT, f"{WEBSITE_URL}/account?wid={wa_id}"
+        wa_id,
+        _NOTIFICATIONS_OPTIN_BODY,
+        _NOTIFICATIONS_OPTIN_BUTTON_TEXT,
+        f"{WEBSITE_URL}/account?wid={generate_wid_token(wa_id)}",
     )
 
 

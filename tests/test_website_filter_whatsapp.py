@@ -112,19 +112,35 @@ def whatsapp_only_user():
 
 def test_get_filter_resolves_a_whatsapp_only_user_via_wid(whatsapp_only_user):
     session = _FakeSession(scalar_results=[whatsapp_only_user])
+    token = website_main.generate_wid_token("972501234567")
     for client in _client(session):
-        resp = client.get("/filter?wid=972501234567")
+        resp = client.get(f"/filter?wid={token}")
 
     assert resp.status_code == 200
     assert session.call_count == 1
 
 
-def test_get_filter_renders_wid_hidden_field_not_uid(whatsapp_only_user):
+def test_get_filter_with_a_bare_phone_number_no_longer_resolves(whatsapp_only_user):
+    """2026-09-25 security fix — ?wid= used to be the bare, unsigned phone number, which let
+    anyone who knew/guessed a user's WhatsApp number log in as them with zero verification. Only a
+    real generate_wid_token() output resolves now; the old bare-number shape is rejected outright
+    (verify_wid_token returns None), same as any other forged/garbage token."""
     session = _FakeSession(scalar_results=[whatsapp_only_user])
     for client in _client(session):
         resp = client.get("/filter?wid=972501234567")
 
-    assert 'name="wid" value="972501234567"' in resp.text
+    assert resp.status_code == 200  # shows need_uid.html, not the filter form
+    assert session.call_count == 0  # _get_user_by_wid was never even reached
+    assert 'name="wid"' not in resp.text
+
+
+def test_get_filter_renders_wid_hidden_field_not_uid(whatsapp_only_user):
+    session = _FakeSession(scalar_results=[whatsapp_only_user])
+    token = website_main.generate_wid_token("972501234567")
+    for client in _client(session):
+        resp = client.get(f"/filter?wid={token}")
+
+    assert f'name="wid" value="{token}"' in resp.text
     assert 'name="uid"' not in resp.text
 
 
@@ -135,8 +151,9 @@ def test_get_filter_shows_short_subtitle_for_a_whatsapp_only_user(whatsapp_only_
     own footer always links to the Telegram bot regardless of who's viewing — this checks the
     subtitle's own distinguishing phrase, not "בטלגרם" anywhere on the page.)"""
     session = _FakeSession(scalar_results=[whatsapp_only_user])
+    token = website_main.generate_wid_token("972501234567")
     for client in _client(session):
-        resp = client.get("/filter?wid=972501234567")
+        resp = client.get(f"/filter?wid={token}")
 
     assert "ב-/filter בטלגרם" not in resp.text
     assert "עריכה מלאה כאן." in resp.text
@@ -153,16 +170,17 @@ def test_get_filter_shows_full_subtitle_for_a_telegram_linked_user():
 
 def test_post_filter_update_resolves_via_wid_and_saves(whatsapp_only_user):
     session = _FakeSession(scalar_results=[whatsapp_only_user])
+    token = website_main.generate_wid_token("972501234567")
     for client in _client(session):
         resp = client.post(
             "/filter",
-            data={"wid": "972501234567", "cities": ["חיפה"], "price_max": "6000"},
+            data={"wid": token, "cities": ["חיפה"], "price_max": "6000"},
         )
 
     assert resp.status_code == 303
     # 2026-09-08: a successful save now lands on /apartments (see main.py's own comment) — shows
     # the results of what was just changed instead of leaving the visitor on the same form.
-    assert resp.headers["location"] == "/apartments?wid=972501234567"
+    assert resp.headers["location"] == f"/apartments?wid={token}"
     assert whatsapp_only_user.filter.cities == ["חיפה"]
     assert whatsapp_only_user.filter.price_max == 6000
     assert session.committed is True
@@ -172,11 +190,12 @@ def test_post_filter_update_redirect_carries_wid_even_on_no_filter_bailout():
     user_with_no_filter = _FakeUser(id=2, telegram_user_id=None, whatsapp_phone_number="972509999999")
     user_with_no_filter.filter = None
     session = _FakeSession(scalar_results=[user_with_no_filter])
+    token = website_main.generate_wid_token("972509999999")
     for client in _client(session):
-        resp = client.post("/filter", data={"wid": "972509999999"})
+        resp = client.post("/filter", data={"wid": token})
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/filter?wid=972509999999"
+    assert resp.headers["location"] == f"/filter?wid={token}"
 
 
 def test_uid_takes_priority_over_wid_when_a_linked_account_has_both():
@@ -184,8 +203,9 @@ def test_uid_takes_priority_over_wid_when_a_linked_account_has_both():
     # _resolve_user must resolve via uid first and never even attempt the wid lookup.
     linked_user = _FakeUser(id=3, telegram_user_id=555, whatsapp_phone_number="972501234567")
     session = _FakeSession(scalar_results=[linked_user])
+    token = website_main.generate_wid_token("972501234567")
     for client in _client(session):
-        resp = client.get("/filter?uid=555&wid=972501234567")
+        resp = client.get(f"/filter?uid=555&wid={token}")
 
     assert resp.status_code == 200
     assert session.call_count == 1  # only the uid lookup ran, wid was never reached
@@ -209,8 +229,9 @@ def test_a_wid_resolution_establishes_a_session_for_every_later_page(whatsapp_on
     session = _FakeSession(
         scalar_results=[whatsapp_only_user], users_by_pk={whatsapp_only_user.id: whatsapp_only_user}
     )
+    token = website_main.generate_wid_token("972501234567")
     for client in _client(session):
-        first = client.get("/filter?wid=972501234567")
+        first = client.get(f"/filter?wid={token}")
         assert first.status_code == 200
         assert "set-cookie" in first.headers
 

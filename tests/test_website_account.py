@@ -269,12 +269,13 @@ def test_account_notifications_toggle_falls_back_to_wid_when_no_uid(client):
             return None
 
     fake_session = _WidSession()
+    token = website_main.generate_wid_token("9725500000")
     with patch.object(website_main, "_get_user_by_wid", lambda session, wid: user):
         with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-            resp = client.post("/account/notifications", data={"wid": "9725500000"})
+            resp = client.post("/account/notifications", data={"wid": token})
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/account?wid=9725500000"
+    assert resp.headers["location"] == f"/account?wid={token}"
     assert user.notifications_enabled is True
 
 
@@ -389,12 +390,13 @@ def test_account_whatsapp_notifications_toggle_falls_back_to_wid_when_no_uid(cli
             return None
 
     fake_session = _WidSession()
+    token = website_main.generate_wid_token("9725500000")
     with patch.object(website_main, "_get_user_by_wid", lambda session, wid: user):
         with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-            resp = client.post("/account/whatsapp-notifications", data={"wid": "9725500000"})
+            resp = client.post("/account/whatsapp-notifications", data={"wid": token})
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/account?wid=9725500000"
+    assert resp.headers["location"] == f"/account?wid={token}"
     assert user.whatsapp_notifications_opted_in is False
 
 
