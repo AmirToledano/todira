@@ -17,8 +17,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from dedup import find_duplicate_listing
 from todira_common import bright_data_client
 from todira_common.db import get_session
-from todira_common.enums import DealType, Source
-from todira_common.models import Listing
+from todira_common.enums import DealType, NotificationReason, Source
+from todira_common.models import Listing, SentNotification
 import facebook_client
 from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
@@ -564,6 +564,14 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
 
 _DEFAULT_MIN_HOURS_BEFORE_DELIST = 3
 
+# How far back run_once() looks for active listings that never produced even one successful 'new'
+# notification, to retry them alongside this run's genuinely-new listings — see that call site's
+# own comment for the real, silent-permanent-notification-loss bug this closes. 7 days: generous
+# enough to catch a listing whose very first attempt failed during a real multi-hour outage
+# (WhatsApp API down, a stretch of NOTIFICATIONS_SUSPENDED, etc.), small enough that this query
+# stays cheap (bounded by how many listings are scraped in a week, not the whole table).
+_RETRY_UNNOTIFIED_HOURS = 24 * 7
+
 
 def _mark_delisted(
     session,
@@ -639,6 +647,48 @@ def _mark_delisted(
     )
     session.commit()
     return len(newly_delisted)
+
+
+def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Listing]:
+    """Active listings from the last `_RETRY_UNNOTIFIED_HOURS` that have NEVER produced even one
+    successful 'new' notification to anyone, excluding `exclude_ids` (this run's own genuinely-new
+    listings, already handled separately).
+
+    2026-09-25 real bug fix, found via a live code-review pass: a listing used to be handed to
+    run_notifications ONLY on the one run that inserted it (or its own price-change run). If every
+    send for it failed that run (WhatsApp API down, a candidate user's Telegram send hitting
+    RetryAfter twice, NOTIFICATIONS_SUSPENDED covering the whole run, etc.) — no SentNotification
+    row gets written on a failed send (see notifier.py's own sent_on_any_channel gate), so
+    _already_notified would correctly allow a retry — but the listing was never reconsidered on any
+    LATER run either, since it's no longer "new" and never has a price change. That failure was
+    silent and PERMANENT: a user genuinely never got notified about a listing that matched their
+    filter, with no way to recover short of a manual DB fix.
+
+    Cheap to find (a plain NOT EXISTS against sent_notifications, bounded to a recent window — not
+    a full-table scan) and self-limiting: the very first successful send removes a listing from
+    this set on the next run, same as it always would have. A listing nobody has ever matched
+    (normal — most listings match no one's filter) also has zero SentNotification rows and gets
+    re-evaluated here too; harmless, just a cheap no-op re-check, not a bug."""
+    retry_window_cutoff = func.now() - func.make_interval(0, 0, 0, 0, _RETRY_UNNOTIFIED_HOURS)
+    never_notified_exists = (
+        select(SentNotification.id)
+        .where(
+            SentNotification.listing_id == Listing.id,
+            SentNotification.reason == NotificationReason.NEW,
+        )
+        .exists()
+    )
+    return [
+        listing
+        for listing in session.scalars(
+            select(Listing).where(
+                Listing.is_delisted.is_(False),
+                Listing.scraped_at >= retry_window_cutoff,
+                ~never_notified_exists,
+            )
+        )
+        if listing.id not in exclude_ids
+    ]
 
 
 def _fetch_known_external_ids(source: str) -> set[str]:
@@ -1304,6 +1354,13 @@ def run_once() -> dict[str, int]:
             if new_ids
             else []
         )
+        # 2026-09-25 real bug fix — see _find_unnotified_recent_listings' own docstring for the
+        # silent-permanent-notification-loss bug this closes.
+        retry_listings = _find_unnotified_recent_listings(
+            session, exclude_ids={listing.id for listing in new_listings}
+        )
+        retried_unnotified_count = len(retry_listings)
+        new_listings = new_listings + retry_listings
         price_change_ids = [listing_id for listing_id, _old_price in price_change_pairs]
         listings_by_id = {
             listing.id: listing
@@ -1321,7 +1378,8 @@ def run_once() -> dict[str, int]:
 
         summary = {
             "fetched": fetched,
-            "new": len(new_listings),
+            "new": len(new_ids),
+            "retried_unnotified": retried_unnotified_count,
             "bright_data_enriched": enriched_count,
             "price_changes": len(price_change_events),
             "delisted": delisted_count,
