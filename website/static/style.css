@@ -938,6 +938,7 @@ summary:focus-visible {
   justify-content: center; align-items: center; gap: 8px;
 }
 .preview-banner a { color: #ffd97a; text-decoration: underline; text-underline-offset: 2px; }
+.cookie-notice[hidden] { display: none; }
 .cookie-notice {
   position: fixed; z-index: 900; left: 16px; right: 16px; bottom: 16px;
   max-width: 640px; margin: 0 auto;

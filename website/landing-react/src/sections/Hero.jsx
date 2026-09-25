@@ -179,7 +179,13 @@ export default function Hero() {
               height={1895}
               animate={{ y: [0, -14, 0] }}
               transition={{ duration: 6, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
-              style={{ width: "100%", borderRadius: 28, boxShadow: "0 30px 60px rgba(14,60,58,.22)" }}
+              /* height: "auto" is required here, not optional — with only width set, the browser
+                 uses the raw height="1895" HTML attribute as a literal pixel value instead of
+                 deriving it from the image's aspect-ratio, stretching a 340px-wide image to
+                 1895px tall (confirmed live: real bug, reproduced in complete isolation outside
+                 React/Framer Motion — a plain <img width height style="width:100%"> with no
+                 height in style hits the exact same browser behavior). */
+              style={{ width: "100%", height: "auto", borderRadius: 28, boxShadow: "0 30px 60px rgba(14,60,58,.22)" }}
             />
             {/* home.stat_uptime_* ("24/7" / "הבוט תמיד ער") here, not home.live_badge — that text
                 already appears once, in its original spot near the CTAs below, so reusing it here
