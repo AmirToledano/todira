@@ -1,0 +1,152 @@
+name: Diagnose — narrow single-city filter shows count but zero cards (real report)
+
+# New real owner report (after the OOM fix, pod confirmed stable for 3.5h+): filtering to ONLY
+# "אור יהודה" (unchecking every other city) shows "18 תוצאות" in the toolbar but the results area
+# is completely blank — reproduced twice, including in a fresh Incognito window with a real login
+# (not just ?uid=), ruling out cache/session staleness. Every earlier diagnostic tonight used the
+# owner's BROAD default filter (thousands of matches, 24 on page 1) — this is the first real test
+# of a NARROW filter producing a small, specific match set. website/main.py's apartments() route
+# uses page_items = matches[offset:offset+24] for BOTH total_count and the rendered listings, so a
+# mismatch between the two is not the mechanism — but a genuine per-listing rendering exception
+# (Jinja error on a specific listing/field only present in this narrow set) could still produce a
+# real bug. This submits the exact real filter change via a real WebKit browser and captures full
+# page content, console errors, and network response codes.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real DB check — how many active, non-duplicate listings actually match city=אור יהודה
+        run: |
+          kubectl delete pod diag-oy-filter -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-oy-filter
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-oy-filter
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- count of active, non-duplicate listings in city='אור יהודה' ---"
+                    psql "$CONN" -c "
+                      SELECT count(*), deal_type
+                      FROM listings
+                      WHERE is_delisted = false AND duplicate_of_id IS NULL AND city = 'אור יהודה'
+                      GROUP BY deal_type;
+                    "
+                    echo "--- sample of 5 rows, checking for NULL/odd fields templates might dereference ---"
+                    psql "$CONN" -c "
+                      SELECT id, source, deal_type, price, rooms, property_type, image_urls IS NULL AS img_null,
+                             array_length(image_urls, 1) AS img_count, latitude IS NULL AS lat_null,
+                             longitude IS NULL AS lng_null, posted_at IS NULL AS posted_null, description IS NULL AS desc_null
+                      FROM listings
+                      WHERE is_delisted = false AND duplicate_of_id IS NULL AND city = 'אור יהודה'
+                      ORDER BY scraped_at DESC LIMIT 10;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-oy-filter -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-oy-filter || true
+          kubectl delete pod diag-oy-filter -n todira --ignore-not-found
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright WebKit
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.47.0 >/dev/null 2>&1
+          npx playwright install --with-deps webkit >/dev/null 2>&1
+
+      - name: Real WebKit — set filter to ONLY אור יהודה via the real form, then inspect /apartments
+        run: |
+          cat <<'JS' > check.js
+          const { webkit, devices } = require('playwright');
+          (async () => {
+            const browser = await webkit.launch();
+            const context = await browser.newContext({ ...devices['iPhone 13'] });
+            const page = await context.newPage();
+
+            const consoleErrors = [];
+            const pageErrors = [];
+            const failedResponses = [];
+            page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+            page.on('pageerror', err => pageErrors.push(String(err)));
+            page.on('response', resp => { if (resp.status() >= 400) failedResponses.push(`${resp.status()} ${resp.url()}`); });
+
+            console.log('=== loading /filter ===');
+            await page.goto('https://todira.app/filter?uid=6984931854', { waitUntil: 'networkidle', timeout: 30000 });
+
+            // Uncheck every checked city, check ONLY אור יהודה
+            const checkboxes = page.locator('input[type=checkbox][name=cities]');
+            const count = await checkboxes.count();
+            console.log('total city checkboxes:', count);
+            for (let i = 0; i < count; i++) {
+              const cb = checkboxes.nth(i);
+              const value = await cb.getAttribute('value');
+              const isChecked = await cb.isChecked();
+              const shouldBeChecked = value === 'אור יהודה';
+              if (isChecked !== shouldBeChecked) {
+                await cb.click();
+              }
+            }
+
+            const resp = await Promise.all([
+              page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }),
+              page.click('button[type=submit]'),
+            ]).then(([r]) => r);
+            console.log('=== after submit, URL ===', page.url());
+            console.log('=== response status ===', resp ? resp.status() : '(no navigation response captured)');
+
+            await page.waitForTimeout(2000);
+
+            const toolbarCount = await page.locator('.apt-toolbar-count').first().innerText().catch(() => '(not found)');
+            console.log('toolbar count text:', toolbarCount);
+
+            const cardCount = await page.locator('.listing-card').count();
+            console.log('.listing-card count in DOM:', cardCount);
+
+            const emptyState = await page.locator('.empty-state').count();
+            console.log('.empty-state count in DOM:', emptyState);
+
+            const gridHtml = await page.locator('#listing-grid, main').first().innerHTML().catch(() => '(not found)');
+            console.log('grid/main innerHTML length:', gridHtml.length);
+            console.log('grid/main innerHTML (first 2000 chars):');
+            console.log(gridHtml.slice(0, 2000));
+
+            console.log('console errors:', JSON.stringify(consoleErrors));
+            console.log('page errors:', JSON.stringify(pageErrors));
+            console.log('failed responses (4xx/5xx):', JSON.stringify(failedResponses));
+
+            await browser.close();
+          })();
+          JS
+          node check.js
