@@ -3,11 +3,12 @@
 Renders a small, growing set of todira pages as isolated React+Framer
 Motion "islands" inside the existing server-rendered site: the home page
 (`/` — hero, momentum row, stats, feature cards, comparison table,
-how-it-works steps, FAQ, closing CTA banner) and the about page (`/about`).
-Everything else on the site (login, `/apartments`, payments, admin, the
-WhatsApp/Telegram webhooks, and the header/nav/footer that wrap every one
-of these pages) is still the original server-rendered Jinja2 + vanilla
-CSS/JS the rest of `website/` is built on.
+how-it-works steps, FAQ, closing CTA banner), the about page (`/about`),
+and the accessibility statement (`/accessibility`). Everything else on the
+site (login, `/apartments`, payments, admin, the WhatsApp/Telegram
+webhooks, and the header/nav/footer that wrap every one of these pages) is
+still the original server-rendered Jinja2 + vanilla CSS/JS the rest of
+`website/` is built on.
 
 ## Why this exists
 
@@ -22,7 +23,11 @@ each page gets converted into its own React entry here, one at a time,
 starting with the simplest/safest pages and verified end-to-end before
 moving to the next, with the rest of the (working, tested) product
 untouched at every step. Home was first; about was the second, proving the
-same shared build/serving infrastructure extends to more than one page.
+same shared build/serving infrastructure extends to more than one page;
+accessibility was the third — the simplest kind of page there is (headings,
+paragraphs, a list, zero interactivity), deliberately picked next to keep
+proving the pattern on low-risk content before tackling anything with
+forms or real app state.
 
 ## How it's wired into the site
 
@@ -59,14 +64,15 @@ same shared build/serving infrastructure extends to more than one page.
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
 `TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
-and `about.*` key, plus a handful of exact keys from elsewhere in the file
-that a React page reuses rather than re-authoring — e.g. `upgrade.
-value_anchor_title`/`_body`, reused on the home page's Compare section so
-the price reassurance shown there stays the same real copy as `/upgrade`
-itself, not a second, driftable copy of it. All 5 supported languages
-where they exist — `about.*` is deliberately he/en only, see below), not
-hand-written placeholder text. `src/i18n.js`'s `t(key)` reads from it
-using the language `window.__TODIRA_PAGE__.lang` carries.
+`about.*`, and `accessibility.*` key, plus a handful of exact keys from
+elsewhere in the file that a React page reuses rather than re-authoring —
+e.g. `upgrade.value_anchor_title`/`_body`, reused on the home page's
+Compare section so the price reassurance shown there stays the same real
+copy as `/upgrade` itself, not a second, driftable copy of it. All 5
+supported languages where they exist — `about.*`/`accessibility.*` are
+deliberately he/en only, see below), not hand-written placeholder text.
+`src/i18n.js`'s `t(key)` reads from it using the language
+`window.__TODIRA_PAGE__.lang` carries.
 
 **Regenerating it** (do this after editing any of those keys in
 `website/i18n.py`, or after adding a new React page that needs its own
@@ -79,10 +85,10 @@ import json
 ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
-prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.')
+prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.')
 exact = {
-    'meta.title_home', 'meta.description', 'meta.title_about', 'legal.non_native_notice',
-    'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
+    'meta.title_home', 'meta.description', 'meta.title_about', 'meta.title_accessibility',
+    'legal.non_native_notice', 'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
 }
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:

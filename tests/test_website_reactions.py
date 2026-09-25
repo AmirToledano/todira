@@ -293,7 +293,7 @@ def test_apartments_excludes_hidden_listings(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda f, l: type("M", (), {"matched": True})()),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: type("M", (), {"matched": True})()),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
