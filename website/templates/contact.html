@@ -19,24 +19,31 @@
   {% else %}
     {% if error %}
       <div class="notice">{{ t('contact.error_empty') }}</div>
+    {% elif consent_error %}
+      <div class="notice">{{ t('contact.error_consent') }}</div>
     {% endif %}
     <form method="post" action="/contact">
       {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
 
       <div class="field">
         <label for="c-name">{{ t('contact.name_label') }}</label>
-        <input id="c-name" type="text" name="name">
+        <input id="c-name" type="text" name="name" value="{{ name or '' }}">
       </div>
 
       <div class="field">
         <label for="c-email">{{ t('contact.email_label') }}</label>
-        <input id="c-email" type="email" name="email">
+        <input id="c-email" type="email" name="email" value="{{ email or '' }}">
       </div>
 
       <div class="field">
         <label for="c-message">{{ t('contact.message_label') }}</label>
-        <textarea id="c-message" name="message" rows="6" placeholder="{{ t('contact.message_placeholder') }}" required></textarea>
+        <textarea id="c-message" name="message" rows="6" placeholder="{{ t('contact.message_placeholder') }}" required>{{ message or '' }}</textarea>
       </div>
+
+      <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
+        <input type="checkbox" name="consent" required>
+        <span>{{ t('contact.consent_prefix') }} <a href="/privacy" target="_blank">{{ t('cookies.notice_link') }}</a></span>
+      </label>
 
       <button class="btn block" type="submit">{{ t('contact.submit_btn') }}</button>
     </form>
