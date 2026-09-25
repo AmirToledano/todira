@@ -24,6 +24,31 @@
   }
 }
 
+/* Dark/light theme toggle — a same-document view transition (distinct from the cross-page one
+   above), circle-revealing the new theme outward from the toggle button itself rather than the
+   plain cross-fade page navigation gets. Scoped to html.theme-transition-active so it never
+   leaks into the cross-page transition above, which has no click point to reveal from and would
+   otherwise get an unwanted circle-from-center wipe on every navigation. base.html's script sets
+   --theme-x/--theme-y to the button's own position right before calling startViewTransition(),
+   and adds/removes this class around that call. */
+html.theme-transition-active::view-transition-old(root) { animation: none; }
+html.theme-transition-active::view-transition-new(root) {
+  animation: theme-reveal .55s var(--ease-premium, ease);
+  clip-path: circle(0% at var(--theme-x, 50%) var(--theme-y, 50%));
+}
+@keyframes theme-reveal {
+  to { clip-path: circle(150% at var(--theme-x, 50%) var(--theme-y, 50%)); }
+}
+/* Reduced-motion note: base.html's script already skips startViewTransition entirely when
+   prefers-reduced-motion matches (checked in JS, not just CSS, so the pseudo-elements this rule
+   targets are never even created), but this stays as a second line of defense — the general
+   `animation: none !important` block above would otherwise freeze the incoming page frozen at
+   clip-path:circle(0%) (its OWN starting keyframe), i.e. fully invisible, rather than jumping to
+   the finished/fully-revealed state. */
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition-active::view-transition-new(root) { clip-path: none; }
+}
+
 :root {
   --teal: #0e8a82;
   --teal-dark: #173c40;

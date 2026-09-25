@@ -298,11 +298,31 @@
       }
       syncIcon();
 
-      btn.addEventListener('click', function () {
-        var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      function applyTheme(next) {
         root.setAttribute('data-theme', next);
         try { localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* still works this visit */ }
         syncIcon();
+      }
+
+      btn.addEventListener('click', function () {
+        var next = currentTheme() === 'dark' ? 'light' : 'dark';
+        // Circle-reveal the new theme outward from the button itself (see style.css's own
+        // .theme-transition-active rules) — skipped entirely under reduced motion, checked here
+        // in JS (not just left to the CSS override) so the transition pseudo-elements and their
+        // clip-path are never even created when they shouldn't animate.
+        var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!document.startViewTransition || reduceMotion) {
+          applyTheme(next);
+          return;
+        }
+        var rect = btn.getBoundingClientRect();
+        root.style.setProperty('--theme-x', (rect.left + rect.width / 2) + 'px');
+        root.style.setProperty('--theme-y', (rect.top + rect.height / 2) + 'px');
+        root.classList.add('theme-transition-active');
+        var transition = document.startViewTransition(function () { applyTheme(next); });
+        transition.finished.finally(function () {
+          root.classList.remove('theme-transition-active');
+        });
       });
     })();
     (function () {
