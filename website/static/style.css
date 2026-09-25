@@ -878,6 +878,29 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
 .listing-card:active { transform: translateY(-1px) scale(.99); }
 nav.site-nav a:active { transform: scale(.95); }
 
+/* Cursor-tracked spotlight glow — same technique as the home page React island's own
+   useSpotlight.js (base.html's script below writes --spot-x/--spot-y straight to the DOM via
+   one delegated document-level mousemove listener, no per-card listeners, no React-style
+   re-render), extended here to every card-like surface site-wide. The glow itself is a plain
+   ::before with z-index:-1 (not a child element), so it paints behind the card's own in-flow
+   content automatically without needing to touch any child's stacking — z-index:-1 combined with
+   isolation:isolate keeps it scoped to this card alone, it can't leak behind a sibling. Cost is
+   the same "nothing extra at rest" requirement .listing-card's own comment above already
+   established for /apartments's ~24-card grid: opacity is 0 until :hover, and the one delegated
+   listener only touches whichever single card the cursor is actually over. */
+.listing-card, .login-card, .settings-card {
+  position: relative; isolation: isolate;
+}
+.listing-card::before, .login-card::before, .settings-card::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  border-radius: inherit; opacity: 0; transition: opacity .3s ease;
+  background: radial-gradient(220px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(14, 138, 130, .16), transparent 70%);
+}
+.listing-card:hover::before, .login-card:hover::before, .settings-card:hover::before { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .listing-card::before, .login-card::before, .settings-card::before { transition: none; }
+}
+
 /* ---------- footer ---------- */
 .site-footer { border-top: 1px solid var(--border); margin-top: 40px; background: var(--card); }
 .footer-inner {

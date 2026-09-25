@@ -498,6 +498,21 @@
       }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
       els.forEach(function (el) { io.observe(el); });
     })();
+    (function () {
+      // Cursor-tracked spotlight glow for .listing-card/.login-card/.settings-card (see their
+      // shared ::before rule in style.css). One delegated listener on document, not one per
+      // card, so this costs nothing extra as /apartments's card grid grows. Skipped entirely on
+      // touch devices (no real cursor to track, and matchMedia('hover') is false there) so no
+      // listener is attached where it could never do anything.
+      if (!window.matchMedia('(hover: hover)').matches) { return; }
+      document.addEventListener('mousemove', function (e) {
+        var card = e.target.closest && e.target.closest('.listing-card, .login-card, .settings-card');
+        if (!card) { return; }
+        var rect = card.getBoundingClientRect();
+        card.style.setProperty('--spot-x', (e.clientX - rect.left) + 'px');
+        card.style.setProperty('--spot-y', (e.clientY - rect.top) + 'px');
+      }, { passive: true });
+    })();
   </script>
 </body>
 </html>
