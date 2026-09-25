@@ -237,7 +237,7 @@ def test_upgrade_page_shows_value_anchor_below_plan_cards():
         resp = c.get("/upgrade", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert "פחות מכוס קפה ביום" in resp.text
+    assert "בערך המחיר של קפה ומאפה" in resp.text
     assert "עמלת תיווך" in resp.text
 
 
@@ -261,8 +261,8 @@ def test_upgrade_page_renders_in_english_when_lang_param_is_set():
     assert "Choose Monthly subscription" in resp.text
     assert "שדרוג המנוי" not in resp.text
     # value-anchor callout (2026-09-10) must translate too, not just the plan card above it
-    assert "Less than a daily coffee" in resp.text
-    assert "פחות מכוס קפה" not in resp.text
+    assert "About the price of a coffee and a pastry" in resp.text
+    assert "בערך המחיר של קפה" not in resp.text
 
 
 def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instructions():

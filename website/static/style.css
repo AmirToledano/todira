@@ -157,7 +157,7 @@ body {
    ever intercept a click meant for the real page. */
 .site-ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 .site-ambient::before, .site-ambient::after {
-  content: ''; position: absolute; border-radius: 50%; filter: blur(70px); opacity: .38;
+  content: ''; position: absolute; border-radius: 50%; filter: blur(70px) saturate(1.5); opacity: .48;
 }
 .site-ambient::before {
   width: 420px; height: 420px; background: var(--gold-light);
@@ -173,28 +173,36 @@ body {
   .site-ambient::before, .site-ambient::after { animation: none; }
 }
 /* --scroll-hue (base.html's shared scroll listener, same one that drives .scroll-progress below)
-   drifts the whole glow's hue a small amount across a full page scroll — the "camera moving
-   through a colored scene" feel from the 3D/WebGL reference reels this was adapted from, kept
-   subtle enough (±20deg) that it never leaves the brand's own teal/gold family. Scroll-driven, not
-   a self-playing animation — same class of effect as .scroll-progress itself, which also isn't
-   gated under prefers-reduced-motion: it deterministically follows the visitor's own scroll input
-   rather than running on its own timeline. */
+   drifts the whole glow's hue across a full page scroll — the "camera moving through a colored
+   scene" feel from the 3D/WebGL reference reels this was adapted from. ±55deg (owner feedback:
+   the original ±20deg read as barely-there) plus the saturate(1.5) boost above on the orbs
+   themselves so the swing is actually visible — into warm amber/coral at one scroll extreme and
+   cool blue/violet at the other — while still resting on the brand's own teal/gold at the top of
+   the page. Scroll-driven, not a self-playing animation — same class of effect as .scroll-progress
+   itself, which also isn't gated under prefers-reduced-motion: it deterministically follows the
+   visitor's own scroll input rather than running on its own timeline. */
 .site-ambient { filter: hue-rotate(var(--scroll-hue, 0deg)); }
 /* High-contrast a11y mode exists specifically to strip out anything that could reduce legibility
    — a decorative glow has no place there, same reasoning as that mode's own pure-black override
    a few hundred lines below. */
 html.a11y-contrast .site-ambient { display: none; }
-/* Subtle film-grain texture over the whole page — a cheap SVG feTurbulence filter, not an image,
-   so it costs no network request and scales to any viewport. mix-blend-mode:overlay + very low
-   opacity means it never actually obscures anything; the goal is the "shot on film" texture the
-   reference reels' 3D product sites had, not a visible pattern.  z-index:960 sits just above
+/* Film-grain texture over the whole page — a cheap SVG feTurbulence filter, not an image, so it
+   costs no network request and scales to any viewport. Real bug found live (owner feedback that
+   the original .035 mix-blend-mode:overlay version "wasn't actually there"): verified via isolated
+   test pages that overlay blend mode is mathematically near-powerless against this site's pale,
+   near-white background — overlay's darkening headroom on a backdrop is proportional to
+   (1 - backdrop), which is tiny when the backdrop is already close to white, so no opacity value
+   made it genuinely visible. Switched to a feColorMatrix (luminance-weighted grayscale conversion
+   of the raw turbulence, so the noise itself isn't tinted) blended with plain opacity instead of a
+   blend mode — predictable regardless of the backdrop's own lightness, confirmed visibly grainy in
+   isolated tests on both this pale background and the dark-mode teal. z-index:960 sits just above
    .scroll-progress (950, see its own comment on why) so grain reads over the header/nav too, but
    stays below the listing-detail modal's z-index:2000 — a modal is its own overlay context, no
    need for texture bleeding into it. Fully inert: pointer-events:none, aria-hidden. */
 .film-grain {
   position: fixed; inset: 0; z-index: 960; pointer-events: none;
-  opacity: .035; mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: .18;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' type='matrix' values='0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 html.a11y-contrast .film-grain { display: none; }
 h1, h2, h3, .display {

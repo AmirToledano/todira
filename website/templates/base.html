@@ -555,11 +555,12 @@
         var max = doc.scrollHeight - doc.clientHeight;
         var progress = max > 0 ? Math.min(1, Math.max(0, doc.scrollTop / max)) : 0;
         if (bar) { bar.style.setProperty('--scroll-progress', progress); }
-        // -20deg..20deg across a full page scroll — a slow, subtle color drift (the "camera
-        // moving through a colored scene" feel from the reference reels this was based on), not a
-        // literal rainbow cycle; kept small enough that the ambient glow never leaves the brand's
-        // own teal/gold family at any scroll position.
-        if (ambient) { ambient.style.setProperty('--scroll-hue', (progress * 40 - 20) + 'deg'); }
+        // -55deg..55deg across a full page scroll — the "camera moving through a colored scene"
+        // feel from the reference reels this was based on, widened (owner feedback: the original
+        // ±20deg was too subtle to actually notice) so the swing visibly carries the glow beyond
+        // its resting teal/gold into warmer amber/coral and cooler blue/violet territory at the
+        // two scroll extremes, without ever cycling all the way through a literal rainbow.
+        if (ambient) { ambient.style.setProperty('--scroll-hue', (progress * 110 - 55) + 'deg'); }
         ticking = false;
       }
       update();

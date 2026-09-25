@@ -1911,12 +1911,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # todira_common/access.py's SUBSCRIPTION_PLAN), so the body copy below now DOES say "cancel
     # anytime" — cancel_anytime_hint above (right on the plan card itself) already sets that
     # expectation, this box just reinforces it next to the price comparison.
+    # 2026-09-25 fix (owner's own report): "less than a daily coffee" wasn't actually accurate —
+    # a single coffee in practice costs less than the MONTHLY price this is comparing it to, so
+    # the comparison read as backwards/misleading rather than reassuring. Reframed as roughly
+    # EQUAL to one coffee-and-pastry outing (owner's own suggested framing) — a comparison that's
+    # actually true at this price point, not just a nice-sounding line.
     "upgrade.value_anchor_title": {
-        "he": "49.90 ₪ לחודש? פחות מכוס קפה ביום.",
-        "en": "₪49.90 a month? Less than a daily coffee.",
-        "ru": "49.90 ₪ в месяц? Меньше чашки кофе в день.",
-        "fr": "49,90 ₪ par mois ? Moins qu'un café par jour.",
-        "ar": "49.90 ₪ شهريًا؟ أقل من فنجان قهوة يوميًا.",
+        "he": "49.90 ₪ לחודש? בערך המחיר של קפה ומאפה.",
+        "en": "₪49.90 a month? About the price of a coffee and a pastry.",
+        "ru": "49.90 ₪ в месяц? Примерно цена кофе с выпечкой.",
+        "fr": "49,90 ₪ par mois ? À peu près le prix d'un café et d'une pâtisserie.",
+        "ar": "49.90 ₪ شهريًا؟ تقريبًا سعر قهوة ومعجنات.",
     },
     "upgrade.value_anchor_body": {
         "he": "עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי בחודש, ואפשר לבטל בכל רגע.",
