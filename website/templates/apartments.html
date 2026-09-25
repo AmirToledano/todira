@@ -50,8 +50,23 @@
    The map only ever plots listings that carry a REAL latitude/longitude (see
    models.Listing's own comment on which sources currently populate that) — never a
    geocoded/approximated pin — so on a fresh deploy, before a scrape run has populated any
-   coordinates, the map legitimately starts empty rather than faking pins. #}
-<div class="apt-workspace reveal map-collapsed" id="apt-workspace">
+   coordinates, the map legitimately starts empty rather than faking pins.
+
+   2026-09-25: real owner report, confirmed live — a genuinely blank-looking results area that was
+   still fully clickable underneath (a matching listing opened when tapped through the invisible
+   spot), on a real device no remote check (curl, Chromium, real WebKit, DB, server logs, pod
+   health) could reproduce. Root cause: this element itself carried `.reveal` (opacity:0 until its
+   OWN IntersectionObserver entry resolves) as well as EVERY .listing-card inside it also carrying
+   its own `.reveal`. CSS opacity compounds down the tree — effective_opacity = own * ancestors' —
+   so a card that successfully got its own .is-visible (opacity:1) was still fully invisible
+   whenever THIS wrapper's own reveal hadn't resolved yet, while opacity (unlike
+   visibility/display) never blocks pointer events, matching the exact "invisible but clickable"
+   report. My own remote WebKit checks tonight only ever verified individual .listing-card.is-
+   visible state, never this wrapper's — so they kept reporting the page as healthy. Removing
+   .reveal from this wrapper (the toolbar above and each card inside still fade in on their own)
+   eliminates the compounding dependency entirely, regardless of whatever real-device-specific
+   timing made this wrapper's own reveal resolve late or not at all. #}
+<div class="apt-workspace map-collapsed" id="apt-workspace">
   <div class="apt-map-pane collapsed" id="apt-map-pane">
     <button type="button" class="apt-map-collapse-btn" id="apt-map-collapse-btn"
             aria-label="{{ t('apartments.map_collapse_label') }}">‹</button>
