@@ -99,6 +99,37 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Site-wide ambient background — two slow-drifting blurred orbs behind every page (not just
+   home), reusing the exact hero-orb-float keyframes the now-retired home.html .hero section used
+   (that markup no longer exists anywhere since the home page moved to its own React island in
+   landing-react/, which has its own separate .tl-blob version of the same idea — nothing here
+   duplicates that, this is for every OTHER page). Fixed + z-index:-1 on a direct <body> child
+   paints behind the page's own normal-flow content automatically (this is the well-established
+   "ambient background layer" pattern), so it never needs !important or to fight any page's own
+   stacking. Fully inert: pointer-events:none, aria-hidden, no interactive content, so it can't
+   ever intercept a click meant for the real page. */
+.site-ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.site-ambient::before, .site-ambient::after {
+  content: ''; position: absolute; border-radius: 50%; filter: blur(70px); opacity: .38;
+}
+.site-ambient::before {
+  width: 420px; height: 420px; background: var(--gold-light);
+  top: -130px; inset-inline-start: -8%;
+  animation: hero-orb-float 22s ease-in-out infinite;
+}
+.site-ambient::after {
+  width: 460px; height: 460px; background: var(--teal);
+  bottom: -150px; inset-inline-end: -8%;
+  animation: hero-orb-float 26s ease-in-out infinite reverse;
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-ambient::before, .site-ambient::after { animation: none; }
+}
+/* High-contrast a11y mode exists specifically to strip out anything that could reduce legibility
+   — a decorative glow has no place there, same reasoning as that mode's own pure-black override
+   a few hundred lines below. */
+html.a11y-contrast .site-ambient { display: none; }
 h1, h2, h3, .display {
   font-family: 'Rubik', Arial, sans-serif;
   font-weight: 700;
