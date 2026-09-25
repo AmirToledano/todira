@@ -1669,7 +1669,16 @@ async def webhooks_takbull_get(request: Request, secret: str):
         )
         return Response(status_code=200)
 
-    validated = takbull_client.validate_notification(uniq_id)
+    # 2026-09-25 real bug fix, found via a live code-review pass: validate_notification is a
+    # blocking sync call (plain httpx.post, 15s timeout) — calling it directly here would run it
+    # ON the single asyncio event loop this whole site uses (uvicorn with no --workers flag,
+    # replicas: 1 — see website/Dockerfile / charts/todira/templates/website-deployment.yaml),
+    # freezing every other concurrent request (page loads, every other webhook) for up to 15
+    # seconds whenever Takbull's own API is slow. Currently dormant — recurring_api_configured()
+    # is still False in production, so validate_notification returns None immediately without
+    # ever reaching the network call — but fixing it now, before TAKBULL_API_KEY/SECRET ever go
+    # live, avoids a real launch-week outage the first time this path actually fires for real.
+    validated = await asyncio.to_thread(takbull_client.validate_notification, uniq_id)
     if validated is None:
         logger.warning(
             "Takbull GET IPN for order_reference=%s had statusCode=0 but ValidateNotification "

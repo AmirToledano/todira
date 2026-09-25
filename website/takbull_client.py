@@ -30,8 +30,9 @@ Verified live 2026-09-06 against the owner's own real Takbull account (not guess
   as that one static "Hook Address" in Takbull's dashboard — see website/main.py's
   /webhooks/takbull/{secret} route.
 
-Scope: the hosted-page functions below (is_configured/build_checkout_url) are the original
-one-time-charge-per-purchase model (see grow_client.py's own comment) — not auto-renewing billing.
+Scope: this module originally also had a one-time-charge-per-purchase hosted-page flow
+(is_configured()/build_checkout_url(), see grow_client.py's own comment for the equivalent Grow
+concept) — removed 2026-09-25 as confirmed-dead code, see the removal note further down.
 
 2026-09-21 addition — real recurring subscription billing (₪49.90/month, see
 todira_common/access.py's SUBSCRIPTION_PLAN): Takbull's ₪0/month hosted-page trick above has no
@@ -73,7 +74,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-PAYMENT_PAGE_URL_ENV_VAR = "TAKBULL_PAYMENT_PAGE_URL"
 WEBHOOK_SECRET_ENV_VAR = "TAKBULL_WEBHOOK_SECRET"
 API_KEY_ENV_VAR = "TAKBULL_API_KEY"
 API_SECRET_ENV_VAR = "TAKBULL_API_SECRET"
@@ -86,27 +86,13 @@ _RECURRING_INTERVAL_EACH_MONTH = 5
 _DEAL_TYPE_RECURRING = 4
 
 
-def is_configured() -> bool:
-    """website/main.py's /upgrade checks this to decide the Takbull path vs. Grow vs. the informal
-    fallback. Both env vars are required together — a payment page URL with no way to verify the
-    webhook that confirms it would be worse than not offering this path at all."""
-    return bool(
-        os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
-        and os.environ.get(WEBHOOK_SECRET_ENV_VAR, "").strip()
-    )
-
-
-def build_checkout_url(*, payment_id: int) -> str | None:
-    """Returns the URL to redirect the customer's browser to — the owner's shared Takbull payment
-    page, with `order_reference` set to our own payments.id so /webhooks/takbull can (attempt to)
-    match the eventual webhook back to the right row. Unlike Grow's create_checkout_url, this never
-    calls out to Takbull at all (there's no API involved on this ₪0/month plan) — it's pure string
-    building, so the only failure mode is "not configured," never a network/API error."""
-    base_url = os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
-    if not base_url:
-        return None
-    separator = "&" if "?" in base_url else "?"
-    return f"{base_url}{separator}order_reference={payment_id}"
+# 2026-09-25 real cleanup, found while answering the owner's own direct question ("is the honor-
+# system 'I paid' button actually old leftover code?"): is_configured()/build_checkout_url() used
+# to gate a Takbull PAYMENT-PAGE-URL-based checkout flow, superseded by the real recurring-API
+# integration below (recurring_api_configured()/create_subscription_checkout_url) — confirmed live
+# that website/main.py's /upgrade route never calls either function anywhere, and a repo-wide grep
+# found no other caller either. Removed rather than left as dead code that could itself cause the
+# exact confusion this question came from.
 
 
 def recurring_api_configured() -> bool:
