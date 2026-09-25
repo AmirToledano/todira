@@ -273,11 +273,11 @@
     "ar": "شقة جديدة!"
   },
   "home.example_card_sub": {
-    "he": "תל אביב · 3 חדרים · 6,200 ₪",
-    "en": "Tel Aviv · 3 rooms · ₪6,200",
-    "ru": "Тель-Авив · 3 комнаты · 6,200 ₪",
-    "fr": "Tel-Aviv · 3 pièces · 6 200 ₪",
-    "ar": "تل أبيب · 3 غرف · 6,200 ₪"
+    "he": "רמת גן · 2 חדרים · 4,900 ₪",
+    "en": "Ramat Gan · 2 rooms · ₪4,900",
+    "ru": "Рамат-Ган · 2 комнаты · 4,900 ₪",
+    "fr": "Ramat Gan · 2 pièces · 4 900 ₪",
+    "ar": "رمات غان · غرفتان · 4,900 ₪"
   },
   "home.feature1_title": {
     "he": "מבין אותך בשפה חופשית",
@@ -287,11 +287,11 @@
     "ar": "يفهمك بلغة طبيعية"
   },
   "home.feature1_body": {
-    "he": "פשוט תכתוב מה אתה מחפש — \"2-3 חדרים בתל אביב עד 6000 שקל\" — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילך, בלי טפסים מסובכים.",
-    "en": "Just write what you're looking for in Hebrew — e.g. \"2-3 rooms in Tel Aviv, up to 6,000 ILS\" — and AI understands it and sets up the filter for you, no complicated forms.",
-    "ru": "Просто напишите на иврите, что вы ищете — например, «2-3 комнаты в Тель-Авиве до 6000 шекелей» — и ИИ поймёт вас и настроит фильтр без сложных форм.",
-    "fr": "Décrivez simplement ce que vous cherchez en hébreu — par ex. « 2-3 pièces à Tel-Aviv, jusqu'à 6 000 ILS » — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
-    "ar": "فقط اكتب ما تبحث عنه بالعبرية — مثلاً \"2-3 غرف في تل أبيب حتى 6000 شيكل\" — ويفهم الذكاء الاصطناعي طلبك ويضبط الفلتر نيابة عنك، بدون نماذج معقدة."
+    "he": "פשוט תכתבו לבוט מה אתם מחפשים, בדיוק כמו שהייתם מתארים לחבר — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילכם, בלי טפסים מסובכים.",
+    "en": "Just write what you're looking for in Hebrew, like you'd describe it to a friend — and AI understands it and sets up the filter for you, no complicated forms.",
+    "ru": "Просто напишите боту на иврите, что вы ищете, как будто рассказываете другу — и ИИ поймёт вас и настроит фильтр без сложных форм.",
+    "fr": "Décrivez simplement au bot ce que vous cherchez en hébreu, comme vous le feriez auprès d'un ami — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
+    "ar": "فقط اكتب للبوت ما تبحث عنه بالعبرية، تمامًا كما لو كنت تصفه لصديق — ويفهم الذكاء الاصطناعي طلبك ويضبط الفلتر نيابة عنك، بدون نماذج معقدة."
   },
   "home.feature1_example_city": {
     "he": "תל אביב",
@@ -619,5 +619,19 @@
   "about.link_contact_page": {
     "he": "עמוד יצירת הקשר",
     "en": "contact page"
+  },
+  "upgrade.value_anchor_title": {
+    "he": "49.90 ₪ לחודש? פחות מכוס קפה ביום.",
+    "en": "₪49.90 a month? Less than a daily coffee.",
+    "ru": "49.90 ₪ в месяц? Меньше чашки кофе в день.",
+    "fr": "49,90 ₪ par mois ? Moins qu'un café par jour.",
+    "ar": "49.90 ₪ شهريًا؟ أقل من فنجان قهوة يوميًا."
+  },
+  "upgrade.value_anchor_body": {
+    "he": "עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי בחודש, ואפשר לבטל בכל רגע.",
+    "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token monthly amount, and you can cancel anytime.",
+    "ru": "Комиссия риелтора обычно составляет тысячи шекелей, один раз. У нас это символическая сумма в месяц, и вы можете отменить подписку в любой момент.",
+    "fr": "Les frais d'agence coûtent généralement des milliers de shekels, une seule fois. Chez nous, c'est une somme mensuelle symbolique, et vous pouvez annuler à tout moment.",
+    "ar": "عمولة الوسيط عادة ما تكلف آلاف الشواقل، مرة واحدة. عندنا هو مبلغ شهري رمزي، ويمكن الإلغاء في أي وقت."
   }
 }

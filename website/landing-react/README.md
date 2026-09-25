@@ -59,10 +59,14 @@ same shared build/serving infrastructure extends to more than one page.
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
 `TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
-and `about.*` key, all 5 supported languages where they exist — `about.*`
-is deliberately he/en only, see below), not hand-written placeholder text.
-`src/i18n.js`'s `t(key)` reads from it using the language
-`window.__TODIRA_PAGE__.lang` carries.
+and `about.*` key, plus a handful of exact keys from elsewhere in the file
+that a React page reuses rather than re-authoring — e.g. `upgrade.
+value_anchor_title`/`_body`, reused on the home page's Compare section so
+the price reassurance shown there stays the same real copy as `/upgrade`
+itself, not a second, driftable copy of it. All 5 supported languages
+where they exist — `about.*` is deliberately he/en only, see below), not
+hand-written placeholder text. `src/i18n.js`'s `t(key)` reads from it
+using the language `window.__TODIRA_PAGE__.lang` carries.
 
 **Regenerating it** (do this after editing any of those keys in
 `website/i18n.py`, or after adding a new React page that needs its own
@@ -76,7 +80,10 @@ ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
 prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.')
-exact = {'meta.title_home', 'meta.description', 'meta.title_about', 'legal.non_native_notice'}
+exact = {
+    'meta.title_home', 'meta.description', 'meta.title_about', 'legal.non_native_notice',
+    'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
+}
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:
     json.dump(keys, f, ensure_ascii=False, indent=2)
