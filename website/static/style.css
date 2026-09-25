@@ -243,6 +243,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 
 /* ---------- buttons ---------- */
 .btn {
+  position: relative; overflow: hidden;
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--teal); color: #fff !important;
   padding: 13px 26px; border-radius: 999px; text-decoration: none;
@@ -252,6 +253,25 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 }
 .btn:hover { background: var(--teal-dark); transform: translateY(-2px) scale(1.02); box-shadow: var(--glow-teal); }
 .btn:active { transform: translateY(0) scale(.98); }
+/* Shine sweep on hover — a one-directional diagonal light streak, the "agency-level" polish
+   detail from the reference reels this whole motion pass is based on. pointer-events:none is not
+   optional here: without it this pseudo-element (inset:0, covering the whole button) would
+   intercept every click meant for the actual button underneath it. The sweep-back-in transition
+   lives ONLY on the :hover rule, not the base one, on purpose — CSS uses each state's OWN
+   transition value for the change INTO it, so hovering in animates smoothly (the :hover rule's
+   transition) while hovering out snaps back instantly (the base rule has none), ready to sweep
+   again on the next hover rather than reverse-animating back across the button. */
+.btn::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+}
+[dir="rtl"] .btn::before { transform: translateX(120%); }
+.btn:hover::before { transition: transform .6s var(--ease-premium); transform: translateX(120%); }
+[dir="rtl"] .btn:hover::before { transform: translateX(-120%); }
+@media (prefers-reduced-motion: reduce) {
+  .btn:hover::before { transition: none; }
+}
 .btn.gold { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark) !important; }
 .btn.gold:hover { filter: brightness(1.06); transform: translateY(-2px) scale(1.02); box-shadow: var(--glow-gold); }
 .btn.outline { background: transparent; color: var(--teal) !important; border: 1.5px solid var(--teal); box-shadow: none; }
