@@ -1531,6 +1531,46 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "about.link_terms": {"he": "תנאי השימוש", "en": "Terms of Use"},
     "about.link_privacy": {"he": "מדיניות הפרטיות", "en": "Privacy Policy"},
     "about.link_contact_page": {"he": "עמוד יצירת הקשר", "en": "contact page"},
+    # ---------- accessibility page (2026-09-25 React island) ----------
+    # he/en only, matching the page's own pre-existing (pre-React) behavior — same reasoning as
+    # about.* above (see that section's own comment).
+    "accessibility.h1": {"he": "הצהרת נגישות", "en": "Accessibility Statement"},
+    "accessibility.updated": {"he": "עודכן לאחרונה: ספטמבר 2026", "en": "Last updated: September 2026"},
+    "accessibility.s1_title": {"he": "1. המחויבות שלנו", "en": "1. Our commitment"},
+    "accessibility.s1_body": {
+        "he": 'טודירה פועל להנגיש את האתר לאנשים עם מוגבלות, ברוח תקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע"ג-2013, ובהתאם לתקן הישראלי (ת"י 5568) המבוסס על הנחיות WCAG 2.0 ברמה AA. זהו תהליך מתמשך — האתר עדיין לא עבר בדיקת התאמה מלאה על ידי גורם מוסמך חיצוני.',
+        "en": "Todira works to make this website accessible to people with disabilities, in the spirit of Israel's Equal Rights for Persons with Disabilities (Service Accessibility Adjustments) Regulations, 2013, and the Israeli standard (IS 5568) based on WCAG 2.0 Level AA guidelines. This is an ongoing effort — the site has not yet undergone a full conformance audit by an external accredited party.",
+    },
+    "accessibility.s2_title": {"he": "2. מה קיים באתר כיום", "en": "2. What's available today"},
+    "accessibility.s2_item1": {
+        "he": "כפתור נגישות צף (בפינת המסך) עם כלים להתאמה אישית: הגדלת/הקטנת טקסט, ניגודיות גבוהה, גווני אפור, הדגשת קישורים, הגדלת אזורי לחיצה, פס קריאה, עצירת אנימציות, והקראת תוכן העמוד בקול.",
+        "en": "A floating accessibility button (in the corner of the screen) with tools for: increasing/decreasing text size, high contrast, grayscale, link highlighting, larger click targets, a reading guide, stopping animations, and reading the page's content aloud.",
+    },
+    "accessibility.s2_item2": {
+        "he": 'ניווט מלא במקלדת, כולל קישור "דלג לתוכן" בתחילת כל עמוד.',
+        "en": 'Full keyboard navigation, including a "skip to content" link at the top of every page.',
+    },
+    "accessibility.s2_item3": {
+        "he": "תיאורי טקסט (aria-label) לרכיבי ניווט עיקריים, ומצב פוקוס גלוי לכל רכיב אינטראקטיבי.",
+        "en": "Text descriptions (aria-label) for key navigation elements, and a visible focus state on every interactive element.",
+    },
+    "accessibility.s2_item4": {
+        "he": 'תמיכה בהעדפת "הפחתת תנועה" של מערכת ההפעלה/הדפדפן.',
+        "en": 'Support for the operating system/browser\'s "reduce motion" preference.',
+    },
+    "accessibility.s3_title": {"he": "3. מגבלות ידועות", "en": "3. Known limitations"},
+    "accessibility.s3_body": {
+        "he": "תוכן המודעות עצמו (תמונות, טקסט תיאור) מגיע ממקורות חיצוניים (כגון יד2) שאינם בשליטת טודירה, וייתכן שאינו נגיש במלואו. אנו פועלים לשפר את הנגישות של שאר האתר באופן שוטף.",
+        "en": "Listing content itself (photos, description text) comes from external sources (such as Yad2) not controlled by Todira, and may not be fully accessible. We continue to work on improving the accessibility of the rest of the site.",
+    },
+    "accessibility.s4_title": {
+        "he": "4. רכז נגישות ופנייה בנושא נגישות",
+        "en": "4. Accessibility coordinator and reporting an issue",
+    },
+    "accessibility.s4_body": {
+        "he": "נתקלתם בבעיית נגישות באתר? נשמח שתדווחו לנו כדי שנוכל לטפל בכך. רכז הנגישות של טודירה הוא אמיר טולדנו — ניתן לפנות ישירות באימייל amir81358@gmail.com או דרך הבוט בטלגרם.",
+        "en": "Found an accessibility problem on the site? We'd appreciate a report so we can address it. Todira's accessibility coordinator is Amir Toledano — you can reach out directly by email at amir81358@gmail.com or via the Telegram bot.",
+    },
     # ---------- account page ----------
     # 2026-09-08 fix: this whole page was hardcoded Hebrew-only (unlike every other customer-
     # facing page), so a non-Hebrew visitor saw a fully-Hebrew /account regardless of their own

@@ -10,7 +10,6 @@ import os
 from unittest.mock import patch
 
 import httpx
-import pytest
 from todira_common import whatsapp_client
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")

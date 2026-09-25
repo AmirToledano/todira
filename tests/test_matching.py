@@ -360,8 +360,8 @@ def test_hard_filter_failure_short_circuits_mandatory_criteria_check():
 )
 def test_boolean_amenity_required_and_true_passes(filter_attr, listing_attr, label):
     f = make_filter(**{filter_attr: True})
-    l = make_listing(**{listing_attr: True})
-    result = evaluate(f, l)
+    listing = make_listing(**{listing_attr: True})
+    result = evaluate(f, listing)
     assert result.matched is True
 
 
@@ -378,8 +378,8 @@ def test_boolean_amenity_required_and_true_passes(filter_attr, listing_attr, lab
 )
 def test_boolean_amenity_required_and_false_fails(filter_attr, listing_attr, label):
     f = make_filter(**{filter_attr: True})
-    l = make_listing(**{listing_attr: False})
-    result = evaluate(f, l)
+    listing = make_listing(**{listing_attr: False})
+    result = evaluate(f, listing)
     assert result.matched is False
     assert label in result.failed_mandatory_criteria
 
@@ -403,8 +403,8 @@ def test_boolean_amenity_required_and_unknown_gets_benefit_of_the_doubt(
     # on a listing's own detail page), so these fields are None for every real listing - a filter
     # with any of these require_* toggles on used to fail every single listing, always.
     f = make_filter(**{filter_attr: True})
-    l = make_listing(**{listing_attr: None})
-    result = evaluate(f, l)
+    listing = make_listing(**{listing_attr: None})
+    result = evaluate(f, listing)
     assert result.matched is True
     assert label not in result.failed_mandatory_criteria
 

@@ -609,7 +609,17 @@ def privacy(request: Request):
 
 @app.get("/accessibility")
 def accessibility(request: Request):
-    return _render(request, "accessibility.html", {})
+    """2026-09-25: third page moved into a React island (website/landing-react/
+    accessibility.html), same pattern as about() above."""
+    a11y_assets = _landing_react_assets("accessibility.html")
+    return _render(
+        request,
+        "accessibility.html",
+        {
+            "landing_js_url": a11y_assets.get("js", ""),
+            "landing_css_urls": a11y_assets.get("css", []),
+        },
+    )
 
 
 def _safe_next(next: str) -> str:
