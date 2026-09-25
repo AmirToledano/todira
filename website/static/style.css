@@ -1025,6 +1025,21 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
   main { padding: 24px 14px 60px; }
   .amc-status { margin-inline-start: 0; }
 }
+/* 2026-09-25 real bug found live (Playwright, not guessed): on narrow phones (~320-390px —
+   iPhone SE/mini class) header.site's flex row (.brand + .header-actions, holding the hamburger,
+   theme toggle, and the "הרשמה / התחברות" auth button) didn't fit — flex items don't shrink below
+   their own content's natural width by default, and auth.login's own translations (fr:
+   "Inscription / Connexion", ru: "Регистрация / Вход") are as long or longer than the Hebrew.
+   Result: the header silently forced the ENTIRE PAGE to scroll horizontally, confirmed via
+   document.documentElement.scrollWidth on multiple untouched pages, not just the new React one.
+   flex-wrap here is the real fix — guarantees no page-level overflow in any language, ever, even
+   one longer than anything tested — the rest just keeps the common case (he/en) on one clean row
+   at these exact widths. */
+@media (max-width: 400px) {
+  .header-inner { flex-wrap: wrap; row-gap: 6px; }
+  .brand-home-hint { display: none; }
+  .auth-login-toolbar { padding: 7px 12px; font-size: .76rem; }
+}
 
 /* ================= Accessibility widget ================= */
 /* 2026-09-03 request (real legal concern under Israeli accessibility regulations, matching the
