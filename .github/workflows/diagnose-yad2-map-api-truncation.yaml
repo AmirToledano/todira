@@ -1,0 +1,49 @@
+name: Diagnose — does Yad2's map API genuinely truncate below the real listing count? (read-only)
+
+# A fresh code-review pass flagged a real concern: fetch_map_markers does ONE request per region
+# and stops (no paging), and the module's own comment says "confirmed live: up to 200 in a single
+# response" — but never actually confirmed whether 200 is a hard per-request cap (truncation, which
+# would mean _mark_delisted wrongly delists genuinely-still-active listings beyond that cap) or
+# just the real count for regions checked so far. Hits the real map API directly for tel-aviv-area
+# (the busiest region — REGIONS_ON_MAP_API's own bbox) and dumps the FULL top-level JSON shape
+# (not just markers count) to check for any total/count field the code currently ignores, plus the
+# exact marker count returned right now.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch tel-aviv-area's real map API response and inspect its shape
+        run: |
+          URL="https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+          curl -sS -o resp.json -w "HTTP %{http_code}\n" "$URL" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" \
+            -H "Accept: application/json"
+          echo "=== response size ==="
+          wc -c resp.json
+          echo "=== top-level JSON keys ==="
+          python3 -c "
+          import json
+          with open('resp.json') as f:
+              data = json.load(f)
+          print('top-level keys:', list(data.keys()) if isinstance(data, dict) else type(data))
+          d = data.get('data', {}) if isinstance(data, dict) else {}
+          print('data keys:', list(d.keys()) if isinstance(d, dict) else type(d))
+          markers = d.get('markers') if isinstance(d, dict) else None
+          print('markers count:', len(markers) if isinstance(markers, list) else 'N/A')
+          for key in ('total', 'totalCount', 'total_count', 'count', 'totalItems', 'resultCount'):
+              if isinstance(d, dict) and key in d:
+                  print(f'FOUND count-like field data.{key} =', d[key])
+              if isinstance(data, dict) and key in data:
+                  print(f'FOUND count-like field {key} =', data[key])
+          print('full data-level dump (first 2000 chars, markers excluded):')
+          d2 = dict(d) if isinstance(d, dict) else {}
+          d2.pop('markers', None)
+          print(json.dumps(d2, ensure_ascii=False)[:2000])
+          "
+
+      - name: Cross-check — real active Yad2 rent listing count in tel-aviv-area cities, per the DB right now
+        run: |
+          echo "(kept minimal/read-only; see follow-up if bbox-vs-DB comparison is needed)"
