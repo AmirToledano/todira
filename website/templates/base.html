@@ -96,6 +96,10 @@
 </head>
 <body>
   <a class="skip-link" href="#main-content">{{ t('a11y.skip_to_content') }}</a>
+  <div class="cookie-notice" id="cookie-notice" hidden>
+    <p>{{ t('cookies.notice_text') }} <a href="/privacy">{{ t('cookies.notice_link') }}</a></p>
+    <button type="button" id="cookie-notice-dismiss" class="btn outline">{{ t('cookies.notice_dismiss') }}</button>
+  </div>
   {% if preview_as_free %}
   <div class="preview-banner">
     מצב תצוגה מקדימה פעיל 🕵️ — אתה רואה את האתר בדיוק כמו משתמש רגיל בלי מנוי.
@@ -239,6 +243,23 @@
   </div>
 
   <script>
+    (function () {
+      // Cookie notice (2026-09-25): a plain informational banner, not a consent gate — both
+      // cookies this site sets (session login + language) are strictly functional/necessary, so
+      // there's nothing to opt in or out of. Shown once per browser (localStorage flag), same
+      // dismiss-and-remember pattern as the rest of this file's own toggles.
+      var STORAGE_KEY = 'todira-cookie-notice-dismissed';
+      var notice = document.getElementById('cookie-notice');
+      var dismissBtn = document.getElementById('cookie-notice-dismiss');
+      if (!notice || !dismissBtn) { return; }
+      try {
+        if (!localStorage.getItem(STORAGE_KEY)) { notice.hidden = false; }
+      } catch (e) { notice.hidden = false; }
+      dismissBtn.addEventListener('click', function () {
+        notice.hidden = true;
+        try { localStorage.setItem(STORAGE_KEY, '1'); } catch (e) { /* still dismissed this visit */ }
+      });
+    })();
     (function () {
       var toggle = document.getElementById('nav-toggle');
       var panel = document.getElementById('nav-panel');

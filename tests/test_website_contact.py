@@ -108,7 +108,10 @@ def test_contact_post_saves_message_and_redirects(client, fake_session):
     with patch.object(website_main, "_notify_owner_sync", return_value=True) as notify:
         resp = client.post(
             "/contact",
-            data={"name": "Amir", "email": "amir@example.com", "message": "יש לי שאלה", "uid": "123456"},
+            data={
+                "name": "Amir", "email": "amir@example.com", "message": "יש לי שאלה",
+                "uid": "123456", "consent": "on",
+            },
         )
 
     assert resp.status_code == 303
@@ -132,9 +135,19 @@ def test_contact_post_empty_message_is_rejected_without_saving(client, fake_sess
     assert not fake_session.committed
 
 
+def test_contact_post_without_consent_is_rejected_without_saving(client, fake_session):
+    """2026-09-25 compliance pass: an explicit 'I agree to the privacy policy' checkbox is now
+    required, matching the same pattern /upgrade's own terms_agreed checkbox already uses."""
+    resp = client.post("/contact", data={"name": "Amir", "message": "יש לי שאלה"})
+
+    assert resp.status_code == 200
+    assert not fake_session.added
+    assert not fake_session.committed
+
+
 def test_contact_post_without_uid_stores_no_telegram_user_id(client, fake_session):
     with patch.object(website_main, "_notify_owner_sync", return_value=False):
-        client.post("/contact", data={"message": "hello"})
+        client.post("/contact", data={"message": "hello", "consent": "on"})
 
     assert fake_session.added[0].telegram_user_id is None
     assert not fake_session.added[0].notified_owner

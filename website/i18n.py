@@ -274,6 +274,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "הצהרת נגישות", "en": "Accessibility", "ru": "Доступность",
         "fr": "Accessibilité", "ar": "إمكانية الوصول",
     },
+    # ---------- cookie notice banner (2026-09-25) ----------
+    "cookies.notice_text": {
+        "he": "האתר משתמש בשתי עוגיות פונקציונליות בלבד (התחברות ושפת תצוגה) — לא בעוגיות פרסום או מעקב.",
+        "en": "This site uses exactly two functional cookies (login and display language) — no advertising or tracking cookies.",
+        "ru": "Сайт использует только два функциональных файла cookie (вход и язык отображения) — без рекламных или отслеживающих файлов cookie.",
+        "fr": "Ce site utilise exactement deux cookies fonctionnels (connexion et langue d'affichage) — aucun cookie publicitaire ou de suivi.",
+        "ar": "يستخدم هذا الموقع ملفي تعريف ارتباط وظيفيين فقط (تسجيل الدخول ولغة العرض) — بدون ملفات تعريف ارتباط إعلانية أو تعقب.",
+    },
+    "cookies.notice_link": {
+        "he": "מדיניות פרטיות", "en": "Privacy policy", "ru": "Политика конфиденциальности",
+        "fr": "Politique de confidentialité", "ar": "سياسة الخصوصية",
+    },
+    "cookies.notice_dismiss": {
+        "he": "הבנתי", "en": "Got it", "ru": "Понятно", "fr": "Compris", "ar": "فهمت",
+    },
     # ---------- accessibility widget (site-wide floating button + panel) ----------
     "a11y.widget_toggle_label": {
         "he": "כלי נגישות", "en": "Accessibility tools", "ru": "Инструменты доступности",
@@ -1419,6 +1434,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Сообщение не может быть пустым. ⚠️",
         "fr": "Le message ne peut pas être vide. ⚠️",
         "ar": "لا يمكن أن تكون الرسالة فارغة. ⚠️",
+    },
+    "contact.error_consent": {
+        "he": "יש לאשר את מדיניות הפרטיות כדי לשלוח את הפנייה. ⚠️",
+        "en": "Please agree to the privacy policy to send your message. ⚠️",
+        "ru": "Чтобы отправить сообщение, необходимо согласиться с политикой конфиденциальности. ⚠️",
+        "fr": "Veuillez accepter la politique de confidentialité pour envoyer votre message. ⚠️",
+        "ar": "يرجى الموافقة على سياسة الخصوصية لإرسال رسالتك. ⚠️",
+    },
+    "contact.consent_prefix": {
+        "he": "קראתי ואני מסכים/ה ל", "en": "I have read and agree to the",
+        "ru": "Я прочитал(а) и согласен(на) с", "fr": "J'ai lu et j'accepte la",
+        "ar": "لقد قرأت وأوافق على",
     },
     "contact.success_title": {
         "he": "ההודעה נשלחה! ✅",

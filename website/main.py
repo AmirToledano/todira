@@ -784,12 +784,23 @@ async def contact_submit(
     email: str = Form(""),
     message: str = Form(""),
     uid: str = Form(""),
+    consent: str = Form(""),
 ):
     lang = get_lang(request)
     message = message.strip()
     if not message:
         return _render(
             request, "contact.html", {"uid": uid or None, "sent": False, "error": True}
+        )
+    # 2026-09-25: explicit consent checkbox (compliance pass) — a plain HTML checkbox only ever
+    # submits a value when checked (empty/absent otherwise), so a falsy `consent` here means the
+    # box was left unchecked. Distinct error message from the empty-message case above so someone
+    # who DID write a message but forgot the checkbox isn't told their message was empty.
+    if not consent:
+        return _render(
+            request,
+            "contact.html",
+            {"uid": uid or None, "sent": False, "consent_error": True, "name": name, "email": email, "message": message},
         )
 
     telegram_user_id = int(uid) if uid.strip().isdigit() else None
