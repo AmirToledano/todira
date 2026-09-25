@@ -207,17 +207,22 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
 
 async def _notify_new_matches(
     bot: Bot, session: Session, listing: Listing, *, only_telegram_user_id: str | None = None
-) -> tuple[int, int]:
+) -> tuple[int, int, set[int]]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
     that now match a filter they didn't before (e.g. a price drop brought them into budget).
-    Returns (matched_count, sent_count).
+    Returns (matched_count, sent_count, newly_notified_user_ids) — the third element lets a
+    price-change run tell run_notifications' own _notify_price_change call apart a user who's
+    brand new to this listing (just sent THIS notification, moments ago, in this exact call) from
+    one who was genuinely already told about it on an earlier run (see that function's own
+    docstring for the real double-card bug this fixes).
 
     `only_telegram_user_id`: see run_notifications' own docstring — when set, every OTHER user is
     silently skipped (never marked as notified, so they still get the real notification once this
     restriction is lifted on a later run)."""
     matched = 0
     sent = 0
+    newly_notified_user_ids: set[int] = set()
     to_notify: list[tuple[Filter, User]] = []
     for filter_row in _candidate_filters(session, listing):
         if not evaluate(filter_row, listing).matched:
@@ -276,7 +281,8 @@ async def _notify_new_matches(
             )
             session.commit()
             sent += 1
-    return matched, sent
+            newly_notified_user_ids.add(filter_row.user_id)
+    return matched, sent, newly_notified_user_ids
 
 
 async def _notify_price_change(
@@ -286,6 +292,7 @@ async def _notify_price_change(
     old_price: int,
     *,
     only_telegram_user_id: str | None = None,
+    exclude_user_ids: set[int] = frozenset(),
 ) -> int:
     """Re-notify users who already received a 'new' notification for this exact listing that its
     price just changed — 📉 drop or 📈 increase, whichever `old_price` vs. `listing.price` says
@@ -301,21 +308,34 @@ async def _notify_price_change(
     that the same template copy can't honestly cover both. Not built until there's a second
     approved template to point at; revisit then.
 
-    `only_telegram_user_id`: see run_notifications' own docstring."""
+    `only_telegram_user_id`: see run_notifications' own docstring.
+
+    `exclude_user_ids` (2026-09-25 real bug fix): run_notifications calls _notify_new_matches for
+    this SAME listing right before this function, in the very same price-change-event iteration —
+    a user whose filter didn't match the OLD price but does the NEW one gets a genuine 'new match'
+    notification there, and its own SentNotification(reason=NEW) row is committed immediately, in
+    that same call. The query below (SELECT user_id WHERE reason=NEW) would then find that
+    brand-new row an instant later and treat them as "previously notified," sending them a SECOND,
+    redundant 'price dropped!' card for a listing they were only just told about for the first
+    time — confirmed live via a real code-review pass, exactly matching the two-cards-in-one-run
+    report. Callers pass the newly_notified_user_ids that same _notify_new_matches call just
+    returned so this function can tell the two cases apart."""
     sent = 0
     reason = (
         NotificationReason.PRICE_DROP
         if old_price > listing.price
         else NotificationReason.PRICE_INCREASE
     )
-    previously_notified_user_ids = list(
-        session.scalars(
+    previously_notified_user_ids = [
+        user_id
+        for user_id in session.scalars(
             select(SentNotification.user_id).where(
                 SentNotification.listing_id == listing.id,
                 SentNotification.reason == NotificationReason.NEW,
             )
         )
-    )
+        if user_id not in exclude_user_ids
+    ]
     to_notify: list[User] = []
     for user_id in previously_notified_user_ids:
         if _already_notified(session, user_id, listing.id, reason):
@@ -386,20 +406,25 @@ async def run_notifications(
 
     async with Bot(token=token) as bot:
         for listing in new_listings:
-            m, s = await _notify_new_matches(
+            m, s, _newly_notified = await _notify_new_matches(
                 bot, session, listing, only_telegram_user_id=only_telegram_user_id
             )
             matched_count += m
             new_sent_count += s
         for listing, old_price in price_change_events:
             # a price change can also newly qualify filters that were previously priced out
-            m, s = await _notify_new_matches(
+            m, s, newly_notified = await _notify_new_matches(
                 bot, session, listing, only_telegram_user_id=only_telegram_user_id
             )
             matched_count += m
             new_sent_count += s
             price_change_sent_count += await _notify_price_change(
-                bot, session, listing, old_price, only_telegram_user_id=only_telegram_user_id
+                bot,
+                session,
+                listing,
+                old_price,
+                only_telegram_user_id=only_telegram_user_id,
+                exclude_user_ids=newly_notified,
             )
 
     return {

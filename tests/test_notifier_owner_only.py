@@ -49,7 +49,7 @@ def test_notify_new_matches_skips_a_non_owner_user_when_restricted():
         patch.object(notifier, "_already_notified", return_value=False),
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
-        matched, sent = asyncio.run(
+        matched, sent, _newly_notified = asyncio.run(
             notifier._notify_new_matches(bot, session, listing, only_telegram_user_id="999")
         )
 
@@ -72,7 +72,7 @@ def test_notify_new_matches_still_notifies_the_matching_owner_id():
         patch.object(notifier, "format_caption", return_value="caption"),
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
-        matched, sent = asyncio.run(
+        matched, sent, _newly_notified = asyncio.run(
             notifier._notify_new_matches(bot, session, listing, only_telegram_user_id="555")
         )
 
@@ -114,7 +114,7 @@ def test_run_notifications_threads_only_telegram_user_id_through(monkeypatch):
 
     async def _fake_notify_new_matches(bot, session, listing, *, only_telegram_user_id=None):
         calls.append(("new", only_telegram_user_id))
-        return 0, 0
+        return 0, 0, set()
 
     class _FakeBot:
         def __init__(self, token):
