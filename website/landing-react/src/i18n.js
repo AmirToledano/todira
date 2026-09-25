@@ -11,6 +11,10 @@ export const lang = injected.lang || "he";
 export const dir = injected.dir || "rtl";
 export const whatsappPublicNumber = injected.whatsappPublicNumber || "";
 export const telegramBotUrl = "https://t.me/AmirDirotBot";
+// The visitor's Telegram user id, when logged in via a `/contact?uid=...` nav link (base.html) —
+// only Contact.jsx reads this, to forward it in the POST /api/contact body for message
+// attribution, same as the old form-encoded route's hidden `uid` field used to.
+export const uid = injected.uid ?? null;
 
 export function t(key) {
   const entry = content[key];

@@ -82,6 +82,7 @@ import takbull_client
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -892,37 +893,55 @@ def auth_logout(request: Request):
 
 
 @app.get("/contact")
-def contact(request: Request, uid: int | None = None, sent: bool = False):
-    return _render(request, "contact.html", {"uid": uid, "sent": sent})
+def contact(request: Request, uid: int | None = None):
+    """2026-09-25: sixth page moved into a React island (website/landing-react/contact.html) —
+    same pattern as about()/accessibility()/privacy()/terms() above, but unlike those (read-only
+    legal/info content), this page has a real form that must reach the server. Unlike a native
+    <form method=post>, which only makes sense targeting a server-rendered page, the React form
+    below submits via fetch to POST /api/contact (JSON in/out — see that route's own docstring),
+    so there's no server-rendered error/success/sent state to carry here across a page reload
+    anymore, and the old form-encoded POST /contact endpoint was removed along with it. `uid` (the
+    visitor's Telegram user id, when logged in via Telegram Login — see base.html's nav links
+    building `/contact?uid=...`) is still accepted as a query param and forwarded into
+    window.__TODIRA_PAGE__ so the React form can still send it along on submit, correlating the
+    message with their account exactly as before."""
+    contact_assets = _landing_react_assets("contact.html")
+    return _render(
+        request,
+        "contact.html",
+        {
+            "landing_js_url": contact_assets.get("js", ""),
+            "landing_css_urls": contact_assets.get("css", []),
+            "uid": uid,
+            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
+        },
+    )
 
 
-@app.post("/contact")
-async def contact_submit(
-    request: Request,
-    name: str = Form(""),
-    email: str = Form(""),
-    message: str = Form(""),
-    uid: str = Form(""),
-    consent: str = Form(""),
-):
-    lang = get_lang(request)
+class ContactSubmission(BaseModel):
+    name: str = ""
+    email: str = ""
+    message: str = ""
+    uid: str = ""
+    consent: bool = False
+
+
+async def _process_contact_message(name: str, email: str, message: str, uid_raw: str, consent: bool) -> dict:
+    """Validates, saves to ContactMessage, and best-effort notifies the owner via Telegram — the
+    core of the old form-encoded POST /contact, now the body of POST /api/contact below (the only
+    caller once /contact became a React island). Returns {"ok": True} on success, or
+    {"ok": False, "error": "empty"|"consent"}. Message-emptiness is checked before consent —
+    matching the original form-encoded route's precedence, so someone who DID write a message but
+    forgot the checkbox is told about the checkbox, not that their message was empty."""
     message = message.strip()
     if not message:
-        return _render(
-            request, "contact.html", {"uid": uid or None, "sent": False, "error": True}
-        )
-    # 2026-09-25: explicit consent checkbox (compliance pass) — a plain HTML checkbox only ever
-    # submits a value when checked (empty/absent otherwise), so a falsy `consent` here means the
-    # box was left unchecked. Distinct error message from the empty-message case above so someone
-    # who DID write a message but forgot the checkbox isn't told their message was empty.
+        return {"ok": False, "error": "empty"}
+    # 2026-09-25: explicit consent checkbox (compliance pass) — see this function's own docstring
+    # for why this is checked after the empty-message case, not before.
     if not consent:
-        return _render(
-            request,
-            "contact.html",
-            {"uid": uid or None, "sent": False, "consent_error": True, "name": name, "email": email, "message": message},
-        )
+        return {"ok": False, "error": "consent"}
 
-    telegram_user_id = int(uid) if uid.strip().isdigit() else None
+    telegram_user_id = int(uid_raw) if uid_raw.strip().isdigit() else None
 
     def _save_sync() -> int:
         with get_session() as session:
@@ -947,17 +966,27 @@ async def contact_submit(
     contact_message_id = await asyncio.to_thread(_save_sync)
     # Best-effort push to the owner — fire-and-forget-ish, but awaited so a slow/failed Telegram
     # call can't leave the request hanging forever; the message is already safely in the DB above
-    # regardless of whether this succeeds. notified_owner previously existed on the model but was
-    # never actually set here — fixed 2026-09-01 alongside adding the bot's own contact fallback
-    # (bot/handlers/contact_fallback.py), which sets the same field for its own messages.
+    # regardless of whether this succeeds.
     notified = await asyncio.to_thread(
         _notify_owner_sync, name.strip(), email.strip(), message, telegram_user_id
     )
     if notified:
         await asyncio.to_thread(_mark_notified_sync, contact_message_id)
 
-    redirect_url = f"/contact?sent=1{f'&uid={uid}' if uid else ''}{f'&lang={lang}' if lang != DEFAULT_LANG else ''}"
-    return RedirectResponse(redirect_url, status_code=303)
+    return {"ok": True}
+
+
+@app.post("/api/contact")
+async def contact_submit(payload: ContactSubmission) -> dict:
+    """JSON API the /contact React island's form submits to via fetch, replacing the old
+    form-encoded POST /contact once that page became a React island (see contact() above). Always
+    200 — validation failures are reported via {"ok": false, "error": ...} in the body rather than
+    an HTTP error status, so the client only needs to branch on `ok`, not also juggle non-2xx
+    responses for expected, recoverable input errors (an actual 5xx still means something
+    unexpected broke)."""
+    return await _process_contact_message(
+        payload.name, payload.email, payload.message, payload.uid, payload.consent
+    )
 
 
 def _listing_action_ids(session, user_id: int, action: str) -> set[int]:
