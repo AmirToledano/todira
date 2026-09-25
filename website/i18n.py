@@ -259,6 +259,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "© 2026 Todira. Tous droits réservés.",
         "ar": "© 2026 توديرا. جميع الحقوق محفوظة.",
     },
+    "footer.business_info": {
+        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. ליצירת קשר: amir81358@gmail.com",
+        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. Contact: amir81358@gmail.com",
+        "ru": "Todira управляется Амиром Толедано, освобождённый предприниматель (עוסק פטור) № 211530563. Контакт: amir81358@gmail.com",
+        "fr": "Todira est exploité par Amir Toledano, entrepreneur exonéré (עוסק פטור) n° 211530563. Contact : amir81358@gmail.com",
+        "ar": "توديرا يُدار من قبل أمير توليدانو، تاجر معفى رقم 211530563. للتواصل: amir81358@gmail.com",
+    },
     "footer.about": {
         "he": "אודות", "en": "About", "ru": "О нас", "fr": "À propos", "ar": "من نحن",
     },
