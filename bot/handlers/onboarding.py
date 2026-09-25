@@ -83,6 +83,32 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return AWAIT_FREETEXT
 
 
+async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """2026-09-25 real bug fix: a user mid-onboarding (AWAIT_FREETEXT) who runs /filter instead of
+    finishing the free-text flow used to get silently stuck. /filter isn't in this
+    ConversationHandler's own states/fallbacks, so PTB correctly falls through and lets
+    filter_conversation.py's own handler start normally for THAT one command — but this
+    conversation's own per-user state (tracked independently by PTB, one dict per
+    ConversationHandler) was never cleared, since it never actually "handled" that update. Every
+    later plain-text message still matched AWAIT_FREETEXT's own catch-all MessageHandler (this
+    handler is checked FIRST — registered before filter_conversation in bot/main.py), so anything
+    the user then typed into /filter's own prompts (a city, a price, a date) got silently routed
+    into Gemini as onboarding free text instead, and a real Filter row already existed for most of
+    these users, so _save_filter_sync's insert kept hitting the unique constraint on
+    Filter.user_id and showing an error on every subsequent message — exactly the real report this
+    fixes.
+
+    A ConversationHandler can only let ONE handler (in one registration group) actually process a
+    given update, so this can't also transparently start /filter's own conversation in the SAME
+    update — instead it cleanly ends onboarding's own state and asks the user to resend the
+    command they meant, so IT correctly starts fresh, un-hijacked, from the very next message."""
+    context.user_data.pop("onboarding", None)
+    await update.message.reply_text(
+        "ביטלתי את תהליך ההרשמה החופשי — שלח/י שוב את הפקודה כדי להמשיך 👍"
+    )
+    return ConversationHandler.END
+
+
 def _save_filter_sync(tg_user, state: dict) -> int:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
@@ -227,7 +253,16 @@ def build_onboarding_handler() -> ConversationHandler:
         states={
             AWAIT_FREETEXT: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, _handle_freetext)],
         },
-        fallbacks=[CommandHandler("start", onboarding_entry)],
+        fallbacks=[
+            CommandHandler("start", onboarding_entry),
+            # 2026-09-25 real bug fix — see _cancel_for_other_command's own docstring: any other
+            # real bot command must cleanly end this conversation's own dangling state, not leave
+            # it silently hijacking every later plain-text message meant for a different flow.
+            CommandHandler(
+                ["filter", "setfilter", "apartments", "liked", "hidden", "profile"],
+                _cancel_for_other_command,
+            ),
+        ],
         name="onboarding_conversation",
         persistent=True,
         # /start is already both an entry point and a fallback here, so it was never actually
