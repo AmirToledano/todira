@@ -46,8 +46,27 @@ jobs:
 
             const html = await page.locator('#apt-listing-modal-body').innerHTML().catch(() => '(not found)');
             console.log('=== modal body innerHTML length ===', html.length);
-            console.log('=== modal body innerHTML (first 3000 chars) ===');
-            console.log(html.slice(0, 3000));
+
+            const headingEl = page.locator('#apt-listing-modal-body .apt-modal-section-heading');
+            const headingCount = await headingEl.count();
+            console.log('=== .apt-modal-section-heading count ===', headingCount);
+            if (headingCount > 0) {
+              console.log('=== .apt-modal-section-heading text ===', await headingEl.first().textContent());
+            }
+
+            const postedEl = page.locator('#apt-listing-modal-body .apt-modal-posted-on');
+            const postedCount = await postedEl.count();
+            console.log('=== .apt-modal-posted-on count ===', postedCount);
+            if (postedCount > 0) {
+              console.log('=== .apt-modal-posted-on text ===', await postedEl.first().textContent());
+            }
+
+            const descEl = page.locator('#apt-listing-modal-body .listing-desc');
+            const descCount = await descEl.count();
+            console.log('=== .listing-desc count ===', descCount);
+            if (descCount > 0) {
+              console.log('=== .listing-desc text (first 300 chars) ===', (await descEl.first().textContent()).slice(0, 300));
+            }
 
             await browser.close();
           })();
