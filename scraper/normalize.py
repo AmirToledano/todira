@@ -46,6 +46,18 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
+def _to_price(value: Any) -> int | None:
+    """Like _to_int, but a real 0 is treated the same as missing — unlike floor (0 = a genuine,
+    meaningful ground floor) or size_sqm, a price of exactly ₪0 is never a real asking price; it's
+    how a source represents "price on request"/not listed. Found live via a code-review pass:
+    Yad2's own map API sends a bare `price: 0` for exactly this case, and _to_int's normal
+    "0 is a real value" contract let it flow straight through as though ₪0 were a real price —
+    showing as "₪0" on a card, bypassing any filter's own price_min, and capable of firing a real
+    "price dropped to ₪0!" notification the moment a listing's real price briefly went missing."""
+    n = _to_int(value)
+    return None if n == 0 else n
+
+
 def _to_bool(value: Any) -> bool | None:
     if value is None:
         return None
@@ -182,7 +194,7 @@ def normalize(
             external_id=str(external_id),
             url=url,
             deal_type=deal_type,
-            price=_to_int(_get(raw_item, "price")),
+            price=_to_price(_get(raw_item, "price")),
             rooms=_to_float(_get(raw_item, "rooms", "roomsCount")),
             floor=_to_int(_get(raw_item, "floor")),
             floor_total=_to_int(_get(raw_item, "floorTotal", "buildingFloors")),

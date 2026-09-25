@@ -23,6 +23,26 @@ def test_minimal_item_with_only_id_still_normalizes():
     assert result.url == "https://www.yad2.co.il/item/123"
 
 
+# --- price=0 real bug fix (2026-09-25) — Yad2's own map API sends a bare price:0 for a
+# "price on request"/not-yet-listed listing; that must never become a real ₪0 asking price, unlike
+# floor:0 (a genuine, meaningful ground floor) which correctly stays 0, not None. ---
+
+
+def test_a_zero_price_is_treated_as_missing_not_a_real_price():
+    result = normalize({"id": "1", "price": 0})
+    assert result.price is None
+
+
+def test_a_real_price_still_comes_through_unchanged():
+    result = normalize({"id": "1", "price": 5000})
+    assert result.price == 5000
+
+
+def test_ground_floor_zero_is_still_a_real_value_not_missing():
+    result = normalize({"id": "1", "floor": 0})
+    assert result.floor == 0
+
+
 # --- source parameter (2026-09-13 — generalized for komo_client.py/homeless_client.py, which
 # produce raw dicts in the same flat shape yad2_client._parse_cards already does) ---
 
