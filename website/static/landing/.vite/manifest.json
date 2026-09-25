@@ -1,70 +1,79 @@
 {
-  "_Blob-UmZEUfZA.js": {
-    "file": "assets/Blob-UmZEUfZA.js",
+  "_Blob-DrlLDkDF.js": {
+    "file": "assets/Blob-DrlLDkDF.js",
     "name": "Blob",
     "imports": [
-      "_i18n-BK1gxI0v.js"
-    ]
-  },
-  "_i18n-BK1gxI0v.js": {
-    "file": "assets/i18n-BK1gxI0v.js",
-    "name": "i18n",
-    "css": [
-      "assets/i18n-DW_nQQpF.css"
+      "_i18n-JwNAv3no.js"
     ]
   },
   "_i18n-DW_nQQpF.css": {
     "file": "assets/i18n-DW_nQQpF.css",
     "src": "_i18n-DW_nQQpF.css"
   },
+  "_i18n-JwNAv3no.js": {
+    "file": "assets/i18n-JwNAv3no.js",
+    "name": "i18n",
+    "css": [
+      "assets/i18n-DW_nQQpF.css"
+    ]
+  },
   "about.html": {
-    "file": "assets/about-CYPtZIFd.js",
+    "file": "assets/about-ABKRe40S.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_i18n-BK1gxI0v.js",
-      "_Blob-UmZEUfZA.js"
+      "_i18n-JwNAv3no.js",
+      "_Blob-DrlLDkDF.js"
     ]
   },
   "accessibility.html": {
-    "file": "assets/accessibility-D_an4Peb.js",
+    "file": "assets/accessibility-C35Xyvga.js",
     "name": "accessibility",
     "src": "accessibility.html",
     "isEntry": true,
     "imports": [
-      "_i18n-BK1gxI0v.js"
+      "_i18n-JwNAv3no.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-DDreDjsr.js",
+    "file": "assets/index-DV7PAb6K.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_i18n-BK1gxI0v.js",
-      "_Blob-UmZEUfZA.js"
+      "_i18n-JwNAv3no.js",
+      "_Blob-DrlLDkDF.js"
     ],
     "dynamicImports": [
       "src/sections/ScanCore.jsx"
     ]
   },
   "privacy.html": {
-    "file": "assets/privacy-TN-4ZH00.js",
+    "file": "assets/privacy-DEV6PeRO.js",
     "name": "privacy",
     "src": "privacy.html",
     "isEntry": true,
     "imports": [
-      "_i18n-BK1gxI0v.js"
+      "_i18n-JwNAv3no.js"
     ]
   },
   "src/sections/ScanCore.jsx": {
-    "file": "assets/ScanCore-yel7GHI8.js",
+    "file": "assets/ScanCore-DXZ2gr3m.js",
     "name": "ScanCore",
     "src": "src/sections/ScanCore.jsx",
     "isDynamicEntry": true,
     "imports": [
-      "_i18n-BK1gxI0v.js"
+      "_i18n-JwNAv3no.js"
+    ]
+  },
+  "terms.html": {
+    "file": "assets/terms-uu-uAHjK.js",
+    "name": "terms",
+    "src": "terms.html",
+    "isEntry": true,
+    "imports": [
+      "_i18n-JwNAv3no.js"
     ]
   }
 }

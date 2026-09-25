@@ -599,7 +599,17 @@ def about(request: Request):
 
 @app.get("/terms")
 def terms(request: Request):
-    return _render(request, "terms.html", {})
+    """2026-09-25: fifth page moved into a React island (website/landing-react/terms.html),
+    same pattern as about()/accessibility()/privacy() above."""
+    terms_assets = _landing_react_assets("terms.html")
+    return _render(
+        request,
+        "terms.html",
+        {
+            "landing_js_url": terms_assets.get("js", ""),
+            "landing_css_urls": terms_assets.get("css", []),
+        },
+    )
 
 
 @app.get("/privacy")

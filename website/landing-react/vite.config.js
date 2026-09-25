@@ -26,6 +26,7 @@ export default defineConfig({
         about: new URL('about.html', import.meta.url).pathname,
         accessibility: new URL('accessibility.html', import.meta.url).pathname,
         privacy: new URL('privacy.html', import.meta.url).pathname,
+        terms: new URL('terms.html', import.meta.url).pathname,
       },
     },
   },
