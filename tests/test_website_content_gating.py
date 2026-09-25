@@ -224,7 +224,9 @@ def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(cl
     # single show/hide control now lives in the always-visible toolbar, and the map starts collapsed).
     assert 'id="apt-map-collapse-btn"' in resp.text
     assert 'id="apt-toolbar-map-toggle"' in resp.text
-    assert 'class="apt-workspace reveal map-collapsed"' in resp.text
+    # 2026-09-25: no longer carries .reveal — see apartments.html's own comment for the real
+    # CSS-opacity-compounding bug this fixed (a fully-clickable but visually invisible results area).
+    assert 'class="apt-workspace map-collapsed"' in resp.text
     assert 'class="apt-map-pane collapsed"' in resp.text
     # Map-settings age filter popover
     assert 'id="apt-map-settings"' in resp.text
