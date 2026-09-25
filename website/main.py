@@ -151,7 +151,14 @@ _landing_assets_cache: dict[str, str] | None = None
 def _landing_react_assets() -> dict[str, str]:
     """Returns {"js": "/static/landing/...", "css": "/static/landing/..." or ""} for the built
     landing-react bundle, or {} if it hasn't been built (e.g. a fresh checkout before `npm run
-    build` — home() falls back to rendering nothing in that slot rather than a broken tag)."""
+    build` — home() falls back to rendering nothing in that slot rather than a broken tag).
+
+    Only a SUCCESSFUL read is cached — real bug found in review: caching {} on failure too meant
+    starting uvicorn before running `npm run build` (exactly the scenario this function's own
+    fallback anticipates) permanently wedged every request into the "not built yet" fallback, even
+    after the build finished, until the process was restarted. A missing/broken manifest is cheap
+    to keep retrying (this route isn't hot), so only the success path is worth avoiding a repeat
+    disk read for."""
     global _landing_assets_cache
     if _landing_assets_cache is not None:
         return _landing_assets_cache
@@ -163,10 +170,10 @@ def _landing_react_assets() -> dict[str, str]:
             "js": f"/static/landing/{entry['file']}",
             "css": f"/static/landing/{css_files[0]}" if css_files else "",
         }
+        return _landing_assets_cache
     except (OSError, KeyError, json.JSONDecodeError):
         logger.warning("landing-react manifest not found/unreadable at %s — home page will render without it", _LANDING_MANIFEST_PATH)
-        _landing_assets_cache = {}
-    return _landing_assets_cache
+        return {}
 
 # 2026-09-24 real production bug, confirmed live via a real headless-browser diagnostic against
 # todira.app itself (not guessed): StaticFiles guesses each served file's Content-Type from

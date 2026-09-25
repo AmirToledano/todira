@@ -86,6 +86,40 @@ export default function Hero() {
             )}
             <a className="tl-btn outline" href="#how">{t("home.cta_how")}</a>
           </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.55, ease: easePremium }}
+            className="tl-hero-proof"
+            style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 26 }}
+          >
+            <span className="tl-eyebrow" style={{ background: "var(--card)" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--teal)", display: "inline-block" }} />
+              {t("home.live_badge")}
+            </span>
+            <div
+              style={{
+                background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14,
+                padding: "8px 14px", boxShadow: "0 4px 14px rgba(14,60,58,.08)", textAlign: "start",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    background: "var(--teal-tint)", color: "var(--heading)", fontSize: ".68rem", fontWeight: 700,
+                    padding: "2px 9px", borderRadius: 999,
+                  }}
+                >
+                  {t("home.example_badge_label")}
+                </span>
+                <span style={{ fontFamily: "Rubik, sans-serif", fontWeight: 700, fontSize: ".9rem" }}>
+                  {t("home.example_card_title")}
+                </span>
+              </div>
+              <span style={{ fontSize: ".8rem", color: "var(--text-muted)" }}>{t("home.example_card_sub")}</span>
+            </div>
+          </motion.div>
         </div>
 
         <motion.div
@@ -104,6 +138,9 @@ export default function Hero() {
             transition={{ duration: 6, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
             style={{ width: "100%", borderRadius: 28, boxShadow: "0 30px 60px rgba(14,60,58,.22)" }}
           />
+          {/* home.stat_uptime_* ("24/7" / "הבוט תמיד ער") here, not home.live_badge — that text
+              already appears once, in its original spot near the CTAs below, so reusing it here
+              too would just repeat the same sentence on screen twice for no reason. */}
           <motion.div
             initial={{ opacity: 0, scale: 0.8, x: -20 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
@@ -112,11 +149,13 @@ export default function Hero() {
               position: "absolute", bottom: -18, insetInlineStart: -18,
               background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16,
               padding: "10px 16px", boxShadow: "0 12px 28px rgba(14,60,58,.16)",
-              display: "flex", alignItems: "center", gap: 8, fontSize: ".82rem", fontWeight: 700,
+              display: "flex", alignItems: "center", gap: 8,
             }}
           >
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--teal)", display: "inline-block" }} />
-            {t("home.live_badge")}
+            <span style={{ fontFamily: "Rubik, sans-serif", fontWeight: 800, fontSize: "1.05rem", color: "var(--teal)" }}>
+              {t("home.stat_uptime_value")}
+            </span>
+            <span style={{ fontSize: ".72rem", color: "var(--text-muted)" }}>{t("home.stat_uptime_label")}</span>
           </motion.div>
         </motion.div>
       </div>
