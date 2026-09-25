@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import math
 
 import keyboards as kb
 from config import WEBSITE_URL
@@ -239,22 +240,42 @@ def _toggle_city(draft: dict, idx: int) -> None:
         draft["cities"].append(city)
 
 
+# 2026-09-25 real bug fix, found via a live code-review pass: price_min/price_max/floor_min/
+# floor_max/min_area_sqm are all plain Postgres Integer columns (4-byte, roughly ±2.1 billion) —
+# int(raw) alone gladly parses a much bigger number (Python ints are unbounded), which then failed
+# at the DB layer as an unhandled numeric-overflow error the moment the filter was actually saved,
+# not at input time where the user could see a normal "not a valid number" reply instead.
+_POSTGRES_INTEGER_MAX = 2_147_483_647
+
+
 def _parse_optional_int(raw: str) -> tuple[bool, int | None]:
     if raw in ("-", ""):
         return True, None
     try:
-        return True, int(raw)
+        value = int(raw)
     except ValueError:
         return False, None
+    if not (-_POSTGRES_INTEGER_MAX - 1 <= value <= _POSTGRES_INTEGER_MAX):
+        return False, None
+    return True, value
 
 
 def _parse_optional_float(raw: str) -> tuple[bool, float | None]:
     if raw in ("-", ""):
         return True, None
     try:
-        return True, float(raw)
+        value = float(raw)
     except ValueError:
         return False, None
+    # rooms_min/rooms_max are NUMERIC(3,1) columns — at most 3 total digits, 1 after the decimal
+    # point (max magnitude 99.9); a bigger value failed the same way as the int case above. Also
+    # rejects NaN/±Infinity: float() parses both without raising (unlike int()), but a NaN rooms
+    # value would silently fail every comparison in matching.py's own room-range check (IEEE 754:
+    # any comparison against NaN is always False) — the filter would look saved and normal, yet
+    # silently match nothing, ever, with no visible error anywhere.
+    if not math.isfinite(value) or not (-99.9 <= value <= 99.9):
+        return False, None
+    return True, value
 
 
 def _parse_optional_date(raw: str) -> tuple[bool, dt.date | None]:
