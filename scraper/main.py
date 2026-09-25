@@ -414,6 +414,19 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
 
         existing_id, old_price = existing
         update_values = item.model_dump()
+        # 2026-09-25 real bug found via a fresh code-review pass: `NormalizedListing` (item's own
+        # schema) has no `scraped_at` field, and the column has no `onupdate` — so this UPDATE never
+        # touched it, leaving `scraped_at` frozen at the listing's original INSERT time forever. That
+        # silently defeated _mark_delisted's own min_hours_before_delist grace period (see its
+        # docstring's "2026-09-25" entry): the WHERE clause `scraped_at < now() - min_hours_before_delist`
+        # was comparing against "time of first-ever discovery", not "time last confirmed still active",
+        # so any listing older than the grace window since its original insert — i.e. essentially every
+        # listing that isn't brand new — qualified for delisting on the very first run that happened to
+        # miss it, reproducing the exact mass-delisting bug the grace period was built to prevent.
+        # Explicit assignment here (not `onupdate=func.now()` on the column) so only a genuine
+        # confirmed-still-there re-scrape advances it — an unrelated UPDATE elsewhere (e.g. a user
+        # like/hide reaction, or _mark_delisted's own delist pass) must never bump it.
+        update_values["scraped_at"] = func.now()
         # 2026-09-25 real bug found live (owner asked why Yad2/Homeless listings kept losing their
         # description after having one): `description` is NEVER present on a plain search-card
         # scrape — it only ever gets filled in by a separate, one-time enrichment fetch (Bright
