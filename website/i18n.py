@@ -1458,6 +1458,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Veuillez accepter la politique de confidentialité pour envoyer votre message. ⚠️",
         "ar": "يرجى الموافقة على سياسة الخصوصية لإرسال رسالتك. ⚠️",
     },
+    # 2026-09-25: added when /contact became a React island submitting via fetch (POST
+    # /api/contact) instead of a native form POST — a network failure or unexpected server error
+    # is now a real, distinct client-side state the old full-page-reload form never had to render
+    # its own message for (the browser's own error page handled it before).
+    "contact.error_generic": {
+        "he": "משהו השתבש. נסו שוב בעוד רגע. ⚠️",
+        "en": "Something went wrong. Please try again in a moment. ⚠️",
+        "ru": "Что-то пошло не так. Попробуйте ещё раз через минуту. ⚠️",
+        "fr": "Une erreur s'est produite. Veuillez réessayer dans un instant. ⚠️",
+        "ar": "حدث خطأ ما. يرجى المحاولة مرة أخرى بعد قليل. ⚠️",
+    },
     "contact.consent_prefix": {
         "he": "קראתי ואני מסכים/ה ל", "en": "I have read and agree to the",
         "ru": "Я прочитал(а) и согласен(на) с", "fr": "J'ai lu et j'accepte la",

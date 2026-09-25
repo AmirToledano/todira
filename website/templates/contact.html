@@ -1,60 +1,28 @@
 {% extends "base.html" %}
 {% set active_page = "contact" %}
 {% block title %}{{ t('meta.title_contact') }}{% endblock %}
+{% block extra_head %}
+{% for css_url in landing_css_urls %}<link rel="stylesheet" href="{{ css_url }}">{% endfor %}
+{% endblock %}
 {% block content %}
-<div class="page-banner reveal">
-  <div class="pb-text">
-    <h1>{{ t('contact.title') }}</h1>
-    <p>{{ t('contact.subtitle') }}</p>
-  </div>
-</div>
-
-<div class="settings-card reveal">
-  {% if sent %}
-    <div class="empty-state">
-      <div class="glyph" aria-hidden="true">📬</div>
-      <p><strong>{{ t('contact.success_title') }}</strong></p>
-      <p class="hint">{{ t('contact.success_body') }}</p>
-    </div>
-  {% else %}
-    {% if error %}
-      <div class="notice">{{ t('contact.error_empty') }}</div>
-    {% elif consent_error %}
-      <div class="notice">{{ t('contact.error_consent') }}</div>
-    {% endif %}
-    <form method="post" action="/contact">
-      {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-
-      <div class="field">
-        <label for="c-name">{{ t('contact.name_label') }}</label>
-        <input id="c-name" type="text" name="name" value="{{ name or '' }}">
-      </div>
-
-      <div class="field">
-        <label for="c-email">{{ t('contact.email_label') }}</label>
-        <input id="c-email" type="email" name="email" value="{{ email or '' }}">
-      </div>
-
-      <div class="field">
-        <label for="c-message">{{ t('contact.message_label') }}</label>
-        <textarea id="c-message" name="message" rows="6" placeholder="{{ t('contact.message_placeholder') }}" required>{{ message or '' }}</textarea>
-      </div>
-
-      <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
-        <input type="checkbox" name="consent" required>
-        <span>{{ t('contact.consent_prefix') }} <a href="/privacy" target="_blank">{{ t('cookies.notice_link') }}</a></span>
-      </label>
-
-      <button class="btn block" type="submit">{{ t('contact.submit_btn') }}</button>
-    </form>
-  {% endif %}
-</div>
-
-<div class="contact-other reveal">
-  <h2 class="section-title">{{ t('contact.other_ways_title') }}</h2>
-  <a class="btn outline" href="https://t.me/AmirDirotBot" target="_blank">{{ t('contact.telegram_way') }} 💬</a>
-  {% if whatsapp_public_number %}
-  <a class="btn outline" href="https://wa.me/{{ whatsapp_public_number }}?text={{ t('whatsapp.greeting') | urlencode }}" target="_blank">{{ t('contact.whatsapp_way') }} 💬</a>
-  {% endif %}
-</div>
+{# 2026-09-25: sixth page moved into a React island, same pattern as terms.html — see that
+   template's own comment and main.py's contact()/_landing_react_assets(). Unlike the read-only
+   legal pages, this one has a real form: the React form submits via fetch to POST /api/contact
+   (JSON) rather than a native <form> POST, so uid/whatsappPublicNumber are carried in
+   window.__TODIRA_PAGE__ alongside lang/dir for the React form to read and forward on submit. The
+   header/nav/footer (base.html) stay exactly as they were; only this content block became React. #}
+<div id="root"></div>
+<script>
+  window.__TODIRA_PAGE__ = {
+    lang: "{{ lang }}",
+    dir: "{{ dir }}",
+    uid: {{ uid if uid else 'null' }},
+    whatsappPublicNumber: "{{ whatsapp_public_number }}"
+  };
+</script>
+{% if landing_js_url %}
+<script type="module" src="{{ landing_js_url }}"></script>
+{% else %}
+<p style="text-align:center;padding:60px 20px;color:var(--text-muted)">landing-react bundle not built yet — run `npm run build` in website/landing-react/.</p>
+{% endif %}
 {% endblock %}

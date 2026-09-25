@@ -1,79 +1,88 @@
 {
-  "_Blob-DrlLDkDF.js": {
-    "file": "assets/Blob-DrlLDkDF.js",
+  "_Blob-BCwI1BP6.js": {
+    "file": "assets/Blob-BCwI1BP6.js",
     "name": "Blob",
     "imports": [
-      "_i18n-JwNAv3no.js"
+      "_i18n-Du5uf0tF.js"
     ]
   },
   "_i18n-DW_nQQpF.css": {
     "file": "assets/i18n-DW_nQQpF.css",
     "src": "_i18n-DW_nQQpF.css"
   },
-  "_i18n-JwNAv3no.js": {
-    "file": "assets/i18n-JwNAv3no.js",
+  "_i18n-Du5uf0tF.js": {
+    "file": "assets/i18n-Du5uf0tF.js",
     "name": "i18n",
     "css": [
       "assets/i18n-DW_nQQpF.css"
     ]
   },
   "about.html": {
-    "file": "assets/about-ABKRe40S.js",
+    "file": "assets/about-DY9ZczxG.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_i18n-JwNAv3no.js",
-      "_Blob-DrlLDkDF.js"
+      "_i18n-Du5uf0tF.js",
+      "_Blob-BCwI1BP6.js"
     ]
   },
   "accessibility.html": {
-    "file": "assets/accessibility-C35Xyvga.js",
+    "file": "assets/accessibility-Px-lCl0d.js",
     "name": "accessibility",
     "src": "accessibility.html",
     "isEntry": true,
     "imports": [
-      "_i18n-JwNAv3no.js"
+      "_i18n-Du5uf0tF.js"
+    ]
+  },
+  "contact.html": {
+    "file": "assets/contact-BaS55FEK.js",
+    "name": "contact",
+    "src": "contact.html",
+    "isEntry": true,
+    "imports": [
+      "_i18n-Du5uf0tF.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-DV7PAb6K.js",
+    "file": "assets/index-Blpuxn32.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_i18n-JwNAv3no.js",
-      "_Blob-DrlLDkDF.js"
+      "_i18n-Du5uf0tF.js",
+      "_Blob-BCwI1BP6.js"
     ],
     "dynamicImports": [
       "src/sections/ScanCore.jsx"
     ]
   },
   "privacy.html": {
-    "file": "assets/privacy-DEV6PeRO.js",
+    "file": "assets/privacy-D2eaSJh6.js",
     "name": "privacy",
     "src": "privacy.html",
     "isEntry": true,
     "imports": [
-      "_i18n-JwNAv3no.js"
+      "_i18n-Du5uf0tF.js"
     ]
   },
   "src/sections/ScanCore.jsx": {
-    "file": "assets/ScanCore-DXZ2gr3m.js",
+    "file": "assets/ScanCore-BE97CUqk.js",
     "name": "ScanCore",
     "src": "src/sections/ScanCore.jsx",
     "isDynamicEntry": true,
     "imports": [
-      "_i18n-JwNAv3no.js"
+      "_i18n-Du5uf0tF.js"
     ]
   },
   "terms.html": {
-    "file": "assets/terms-uu-uAHjK.js",
+    "file": "assets/terms-L_xM2veN.js",
     "name": "terms",
     "src": "terms.html",
     "isEntry": true,
     "imports": [
-      "_i18n-JwNAv3no.js"
+      "_i18n-Du5uf0tF.js"
     ]
   }
 }

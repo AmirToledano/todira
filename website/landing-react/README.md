@@ -5,7 +5,8 @@ Motion "islands" inside the existing server-rendered site: the home page
 (`/` — hero, momentum row, stats, feature cards, comparison table,
 how-it-works steps, FAQ, closing CTA banner), the about page (`/about`),
 the accessibility statement (`/accessibility`), the privacy policy
-(`/privacy`), and the terms of use (`/terms`). Everything else on the
+(`/privacy`), the terms of use (`/terms`), and the contact page
+(`/contact`). Everything else on the
 site (login, `/apartments`, payments, admin, the WhatsApp/Telegram
 webhooks, and the header/nav/footer that wrap every one of these pages) is
 still the original server-rendered Jinja2 + vanilla CSS/JS the rest of
@@ -38,12 +39,49 @@ terms was the fifth, 12 sections, almost entirely plain title+body pairs
 section 5 already established) — data-driven with a small `.map()` over
 its section numbers (see `Terms.jsx`) rather than 11 near-identical JSX
 blocks, the same reasoning `Accessibility.jsx`'s own `SECTIONS` map used.
+Contact was the sixth and the first real departure from "read-only content
+page": it has an actual form that must reach the server (name/email/message,
+a required privacy-policy consent checkbox, a Telegram push to the owner on
+success). A native `<form method=post>` only makes sense targeting a
+server-rendered page, and this one no longer is one — so `Contact.jsx`
+submits via `fetch` to a new JSON API, `POST /api/contact`, which replaced
+the old form-encoded `POST /contact` entirely (see `main.py`'s
+`_process_contact_message`/`contact_submit`). Success/error/submitting are
+real React state now, not a full-page reload — see "The contact form" below.
+
+## The contact form (`/contact`)
+
+Unlike every other page here, `/contact` needs a real server round-trip
+that can fail in ways worth telling the visitor about, so it's the one page
+with actual client-side form state (`Contact.jsx`'s `status`/`errorKind`)
+rather than being pure presentation:
+
+- **Submits via `fetch`, not a native form POST.** `POST /api/contact`
+  takes JSON (`{name, email, message, uid, consent}`) and always answers
+  200 with `{ok: true}` or `{ok: false, error: "empty"|"consent"|"generic"}`
+  — validation failures are ordinary, expected outcomes of user input, not
+  HTTP errors, so the client only ever has to branch on `ok`. An actual
+  non-2xx response (network failure, unexpected 5xx) is treated the same
+  as `error: "generic"`. `contact.error_generic` (i18n.py) is a new
+  translation key added for this — the old form-encoded route never needed
+  one, since a network failure just showed the browser's own error page.
+- **`uid` still flows through.** When a visitor reaches `/contact?uid=...`
+  (a logged-in Telegram user, via `base.html`'s own nav links), `main.py`'s
+  `contact()` route injects it into `window.__TODIRA_PAGE__` same as
+  `lang`/`dir`/`whatsappPublicNumber`; `i18n.js` exports it, and
+  `Contact.jsx` forwards it in the fetch body — same message-attribution
+  behavior the old hidden form field used to provide.
+- **Fully translated, not he/en-only.** `contact.*` (unlike the legal
+  pages' `about.*`/`accessibility.*`/`privacy.*`/`terms.*`) already had
+  real copy in all 5 languages before this conversion, so `Contact.jsx`
+  uses the plain `t()` helper throughout, not the he/en-only `tEn()`
+  pattern those pages use.
 
 ## How it's wired into the site
 
 - `vite.config.js`'s `build.rollupOptions.input` lists one entry per React
   page (`index` → `index.html` → home, `about` → `about.html` → about, and
-  so on for `accessibility`/`privacy`/`terms`). Adding another
+  so on for `accessibility`/`privacy`/`terms`/`contact`). Adding another
   page-as-React-island means adding one more entry here,
   not spinning up a whole separate Vite project — shared `node_modules`,
   shared `content.json`/`i18n.js`/component library (e.g. `Blob.jsx`), and
@@ -75,13 +113,14 @@ blocks, the same reasoning `Accessibility.jsx`'s own `SECTIONS` map used.
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
 `TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
-`about.*`, `accessibility.*`, `privacy.*`, and `terms.*` key, plus a handful
-of exact keys from elsewhere in the file that a React page reuses rather
-than re-authoring — e.g. `upgrade.value_anchor_title`/`_body`, reused on the
-home page's Compare section so the price reassurance shown there stays the
-same real copy as `/upgrade` itself, not a second, driftable copy of it.
-All 5 supported languages where they exist — `about.*`/`accessibility.*`/
-`privacy.*`/`terms.*` are deliberately he/en only, see below), not
+`about.*`, `accessibility.*`, `privacy.*`, `terms.*`, and `contact.*` key,
+plus a handful of exact keys from elsewhere in the file that a React page
+reuses rather than re-authoring — e.g. `upgrade.value_anchor_title`/`_body`,
+reused on the home page's Compare section so the price reassurance shown
+there stays the same real copy as `/upgrade` itself, not a second,
+driftable copy of it. All 5 supported languages where they exist —
+`about.*`/`accessibility.*`/`privacy.*`/`terms.*` are deliberately he/en
+only, see below; `contact.*` is fully translated like `home.*`), not
 hand-written placeholder text. `src/i18n.js`'s `t(key)` reads from it using
 the language `window.__TODIRA_PAGE__.lang` carries.
 
@@ -105,11 +144,11 @@ import json
 ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
-prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.', 'terms.')
+prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.')
 exact = {
     'meta.title_home', 'meta.description', 'meta.title_about', 'meta.title_accessibility',
-    'meta.title_privacy', 'meta.title_terms', 'legal.non_native_notice', 'upgrade.value_anchor_title',
-    'upgrade.value_anchor_body',
+    'meta.title_privacy', 'meta.title_terms', 'meta.title_contact', 'legal.non_native_notice',
+    'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
 }
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:
