@@ -109,6 +109,33 @@ def test_existing_listing_is_updated_not_inserted():
     assert price_changes == []
 
 
+def test_existing_listing_update_refreshes_scraped_at():
+    """2026-09-25 real bug fix — `NormalizedListing` (item.model_dump()) has no `scraped_at`
+    field, and the column has no `onupdate`, so this UPDATE used to leave `scraped_at` frozen at
+    the listing's original INSERT time forever. That silently defeated _mark_delisted's own
+    min_hours_before_delist grace period (see its own docstring and test_scraper_delisting.py):
+    the grace-period WHERE clause compares `scraped_at` against "now minus the grace window",
+    which only means "hours since last confirmed active" if a genuine re-scrape actually advances
+    it. Without this, any listing older than the grace window since its ORIGINAL insert — i.e.
+    essentially every listing that isn't brand new — qualified for delisting on the very first run
+    that happened to miss it, reproducing the exact mass-delisting bug the grace period exists to
+    prevent. `func.now()` compiles to a literal SQL expression, not a bound param — same reasoning
+    as this file's own price_changed_at check above."""
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=5000)
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, same price
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
+
+    _upsert_listings(session, [existing_item])
+
+    update_stmt = session.executed_stmts[-1]
+    compiled = str(update_stmt.compile()).replace(" ", "")
+    assert "scraped_at=now()" in compiled
+
+
 def test_price_drop_on_existing_listing_is_reported():
     existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)
     session = _QueueSession(
