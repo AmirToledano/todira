@@ -604,7 +604,17 @@ def terms(request: Request):
 
 @app.get("/privacy")
 def privacy(request: Request):
-    return _render(request, "privacy.html", {})
+    """2026-09-25: fourth page moved into a React island (website/landing-react/privacy.html),
+    same pattern as about()/accessibility() above."""
+    privacy_assets = _landing_react_assets("privacy.html")
+    return _render(
+        request,
+        "privacy.html",
+        {
+            "landing_js_url": privacy_assets.get("js", ""),
+            "landing_css_urls": privacy_assets.get("css", []),
+        },
+    )
 
 
 @app.get("/accessibility")

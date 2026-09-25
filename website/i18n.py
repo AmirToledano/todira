@@ -1571,6 +1571,133 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "נתקלתם בבעיית נגישות באתר? נשמח שתדווחו לנו כדי שנוכל לטפל בכך. רכז הנגישות של טודירה הוא אמיר טולדנו — ניתן לפנות ישירות באימייל amir81358@gmail.com או דרך הבוט בטלגרם.",
         "en": "Found an accessibility problem on the site? We'd appreciate a report so we can address it. Todira's accessibility coordinator is Amir Toledano — you can reach out directly by email at amir81358@gmail.com or via the Telegram bot.",
     },
+    # ---------- privacy page (2026-09-25 React island) ----------
+    # he/en only, matching the page's own pre-existing (pre-React) behavior — same reasoning as
+    # about.*/accessibility.* above. Text that was inline-marked-up (<strong>, <a>) in the original
+    # template is split into separate keys around the markup (pre/strong/post, or label/body) —
+    # matching this file's own no-`| safe`-anywhere convention (see upgrade.terms_agree_prefix's
+    # own comment) — so the React component supplies the actual <strong>/<a> element, not a raw
+    # HTML string. Items with no inline markup stay as one key, same as accessibility.* above.
+    "privacy.h1": {"he": "מדיניות פרטיות", "en": "Privacy Policy"},
+    "privacy.updated": {"he": "עודכן לאחרונה: ספטמבר 2026", "en": "Last updated: September 2026"},
+    "privacy.s1_title": {"he": "1. אילו נתונים נאספים", "en": "1. What data is collected"},
+    "privacy.s1_item1": {
+        "he": "מזהה המשתמש בטלגרם (Telegram user ID) ושם המשתמש כפי שמופיע בטלגרם, אם נרשמת דרך הבוט.",
+        "en": "Your Telegram user ID and the username shown by Telegram, if you registered via the bot.",
+    },
+    "privacy.s1_item2": {
+        "he": "מספר הטלפון שלך בוואטסאפ ותוכן ההודעות שהוחלפו עם הבוט, אם נרשמת/השתמשת בשירות דרך וואטסאפ.",
+        "en": "Your WhatsApp phone number and the content of messages exchanged with the bot, if you registered/used the service via WhatsApp.",
+    },
+    "privacy.s1_item3": {
+        "he": "כתובת האימייל ושם התצוגה שלך מחשבון Google, אם התחברת עם Google.",
+        "en": "Your email address and display name from your Google account, if you signed in with Google.",
+    },
+    "privacy.s1_item4": {
+        "he": "הסינון שהגדרת — עיר, טווח מחיר, מספר חדרים, סוג נכס ושאר העדפות חיפוש.",
+        "en": "The filter you set up — city, price range, number of rooms, property type, and other search preferences.",
+    },
+    "privacy.s1_item5": {
+        "he": "הודעות טקסט חופשי ששלחת לבוט (לצורך בניית פרופיל חיפוש בעזרת בינה מלאכותית).",
+        "en": "Free-text messages you send the bot (used to build a search profile via AI).",
+    },
+    "privacy.s1_item6": {
+        "he": 'דירות שסימנת כ"אהבתי"/"הסתרתי", וסטטיסטיקת התראות שנשלחו אליך.',
+        "en": 'Apartments you marked "liked"/"hidden," and statistics on alerts sent to you.',
+    },
+    "privacy.s1_item7_pre": {
+        "he": "פרטי מנוי ותשלום: תוכנית שנרכשה, סכום, מועד תשלום, סטטוס העסקה, ומזהה עסקה אצל ספק הסליקה. ",
+        "en": "Subscription and payment details: plan purchased, amount, payment date, transaction status, and a transaction ID from our payment processor. ",
+    },
+    "privacy.s1_item7_strong": {
+        "he": "אנו לא רואים ולא שומרים את פרטי כרטיס האשראי שלך",
+        "en": "We never see or store your credit card details",
+    },
+    "privacy.s1_item7_post": {
+        "he": " — התשלום עצמו מתבצע ישירות מול ספק סליקה חיצוני (ר' סעיף 3).",
+        "en": " — payment itself is made directly with an external payment processor (see section 3).",
+    },
+    "privacy.s1_item8": {
+        "he": "אם פנית אלינו דרך טופס יצירת הקשר באתר — שם, אימייל ותוכן הפנייה שהזנת.",
+        "en": "If you contacted us via the site's contact form — the name, email, and message content you entered.",
+    },
+    "privacy.s2_title": {"he": "2. איך המידע משמש", "en": "2. How the data is used"},
+    "privacy.s2_body": {
+        "he": "המידע משמש אך ורק להפעלת השירות עצמו: התאמת דירות לסינון שלך, שליחת התראות, עיבוד תשלומים עבור מנוי, ושמירת ההעדפות שלך בין ביקורים. המידע אינו נמכר ואינו מועבר לצדדים שלישיים לצורכי שיווק.",
+        "en": "Data is used solely to operate the service itself: matching apartments to your filter, sending alerts, processing subscription payments, and remembering your preferences between visits. Data is not sold and is not shared with third parties for marketing purposes.",
+    },
+    "privacy.s3_title": {"he": "3. ספקים חיצוניים", "en": "3. Third-party providers"},
+    "privacy.s3_intro": {
+        "he": "לצורך הפעלת השירות נעשה שימוש בספקים חיצוניים הבאים, שכל אחד מהם מעבד את הנתונים הרלוונטיים לפעולתו בלבד, בכפוף למדיניות הפרטיות שלו:",
+        "en": "Running the service relies on the following external providers, each processing only the data relevant to its own function, subject to its own privacy policy:",
+    },
+    "privacy.s3_item1_label": {"he": "Telegram", "en": "Telegram"},
+    "privacy.s3_item1_body": {
+        "he": " — שליחת וקבלת הודעות הבוט.",
+        "en": " — sending/receiving bot messages.",
+    },
+    "privacy.s3_item2_label": {
+        "he": "WhatsApp Cloud API (מבית Meta)",
+        "en": "WhatsApp Cloud API (by Meta)",
+    },
+    "privacy.s3_item2_body": {
+        "he": " — שליחת וקבלת הודעות דרך וואטסאפ.",
+        "en": " — sending/receiving WhatsApp messages.",
+    },
+    "privacy.s3_item3_label": {"he": "Google", "en": "Google"},
+    "privacy.s3_item3_body": {
+        "he": " — התחברות עם חשבון Google (Sign in with Google), ו-Gemini API לפענוח הודעות טקסט חופשי.",
+        "en": " — Sign in with Google, and the Gemini API for parsing free-text messages.",
+    },
+    "privacy.s3_item4_label": {"he": "Takbull / Grow", "en": "Takbull / Grow"},
+    "privacy.s3_item4_body": {
+        "he": " — עיבוד תשלומים עבור מנוי בתשלום. פרטי האשראי עצמם מוזנים ישירות בדף הסליקה המאובטח של הספק ולעולם אינם עוברים דרך שרתי טודירה.",
+        "en": " — payment processing for paid subscriptions. Your card details are entered directly on the processor's own secure checkout page and never pass through Todira's servers.",
+    },
+    "privacy.s3_item5_label": {"he": "ZenRows ו-Bright Data", "en": "ZenRows and Bright Data"},
+    "privacy.s3_item5_body": {
+        "he": " — תשתית טכנית לאיסוף מודעות דירות ממקורות חיצוניים ברשת (אינם מקבלים מידע אישי עליך).",
+        "en": " — technical infrastructure for collecting listings from external sources on the web (they do not receive any personal data about you).",
+    },
+    "privacy.s4_title": {"he": "4. עוגיות (Cookies)", "en": "4. Cookies"},
+    "privacy.s4_body": {
+        "he": "האתר משתמש בשתי עוגיות פונקציונליות בלבד: עוגיית התחברות (session) הנחוצה כדי לזהות אותך כמחובר בין דפים, ועוגיית שמירת שפת התצוגה שבחרת. שתיהן טכניות בלבד — לא עוגיות פרסום, מעקב אחר גלישה או פרסונליזציה שיווקית.",
+        "en": "The website uses exactly two functional cookies: a login (session) cookie needed to recognize you as signed in across pages, and a cookie remembering your chosen display language. Both are strictly technical — not advertising, browsing-tracking, or marketing-personalization cookies.",
+    },
+    "privacy.s5_title": {"he": "5. שמירת מידע ומחיקתו", "en": "5. Data retention and deletion"},
+    "privacy.s5_pre": {
+        "he": "ניתן לבקש בכל עת מחיקה מלאה של המידע השמור עליך על ידי פנייה דרך הבוט בטלגרם או דרך ",
+        "en": "You can request full deletion of your stored data at any time by contacting us through the Telegram bot or the ",
+    },
+    "privacy.s5_post": {
+        "he": ". שים לב: רשומות תשלום עשויות להישמר לתקופה נוספת בהתאם לדרישות חשבונאיות/מיסוי כדין, גם לאחר בקשת מחיקה.",
+        "en": ". Note: payment records may be retained for an additional period as required by applicable accounting/tax law, even after a deletion request.",
+    },
+    "privacy.s6_title": {"he": "6. זכויותיך", "en": "6. Your rights"},
+    "privacy.s6_body": {
+        "he": 'בהתאם לחוק הגנת הפרטיות, התשמ"א-1981, זכותך לעיין במידע שנאסף עליך ולבקש את תיקונו או מחיקתו.',
+        "en": "Under Israel's Protection of Privacy Law, 5741-1981, you have the right to review the data collected about you and to request its correction or deletion.",
+    },
+    "privacy.s7_title": {"he": "7. אבטחת מידע", "en": "7. Data security"},
+    "privacy.s7_body": {
+        "he": "אנו נוקטים אמצעים סבירים להגנה על המידע, אך אין באפשרותנו להבטיח הגנה מוחלטת מפני כל גישה בלתי מורשית.",
+        "en": "We take reasonable measures to protect your data, but cannot guarantee absolute protection against any unauthorized access.",
+    },
+    "privacy.s8_title": {"he": "8. קטינים", "en": "8. Minors"},
+    "privacy.s8_body": {
+        "he": "השירות אינו מיועד לשימוש על ידי קטינים ללא הסכמת הורה או אפוטרופוס.",
+        "en": "The service is not intended for use by minors without the consent of a parent or guardian.",
+    },
+    "privacy.s9_title": {"he": "9. שינויים במדיניות", "en": "9. Changes to this policy"},
+    "privacy.s9_body": {
+        "he": "מדיניות זו עשויה להתעדכן מעת לעת. המשך השימוש בשירות לאחר עדכון מהווה הסכמה למדיניות המעודכנת.",
+        "en": "This policy may be updated from time to time. Continued use of the service after an update constitutes acceptance of the updated policy.",
+    },
+    "privacy.s10_title": {"he": "10. יצירת קשר", "en": "10. Contact"},
+    "privacy.s10_body": {
+        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע — ניתן לפנות באימייל amir81358@gmail.com או דרך הבוט בטלגרם.",
+        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. For questions about privacy, or to request data deletion, please email amir81358@gmail.com or reach out via the Telegram bot.",
+    },
     # ---------- account page ----------
     # 2026-09-08 fix: this whole page was hardcoded Hebrew-only (unlike every other customer-
     # facing page), so a non-Hebrew visitor saw a fully-Hebrew /account regardless of their own
