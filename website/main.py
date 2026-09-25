@@ -63,6 +63,17 @@ from todira_common.enums import Source
 from todira_common.google_link import generate_google_link_token
 from todira_common.matching import evaluate
 from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
+# 2026-09-25 real security bug found via a live code-review pass: ?wid= used to carry the bare
+# WhatsApp phone number, and _resolve_user's wid branch established a FULL logged-in session for
+# ANYONE who presented it — no verification at all. A phone number isn't a secret (contacts,
+# SIM-swap, straightforward E.164-format guessing all know/find it), so this was a real,
+# zero-effort account-takeover: visiting /account?wid=<any real user's number> logged the visitor
+# in as that user outright, no OAuth, no password, nothing. Every ?wid= link this project ever
+# generates (whatsapp_webhook.py's filter-edit/notifications-optin CTAs, generate_wid_token) now
+# carries a signed, time-limited token instead of the raw number. Lives in todira_common.wid_token,
+# not here, so whatsapp_webhook.py can generate one too without a circular import (this module does
+# `from whatsapp_webhook import router` below).
+from todira_common.wid_token import generate_wid_token, verify_wid_token as _verify_wid_token  # noqa: F401 (generate_wid_token re-exported for tests, see test_website_filter_whatsapp.py)
 from fastapi import FastAPI, Form, Request
 
 import grow_client
@@ -356,7 +367,10 @@ def _resolve_user(request: Request, session, uid: int | None, wid: str | None = 
                 request.session["user_id"] = user.id
         return user
     if wid:
-        user = _get_user_by_wid(session, wid)
+        phone_number = _verify_wid_token(wid)
+        if phone_number is None:
+            return None
+        user = _get_user_by_wid(session, phone_number)
         if user is not None:
             request.session["user_id"] = user.id
         return user
@@ -629,11 +643,18 @@ def auth_google_callback(
         if user is None and link_uid is not None:
             # First time this Google account signs in while viewing a page via the visitor's own
             # ?uid= deep link — link it to that SAME existing Telegram/WhatsApp-created account so
-            # every later "Sign in with Google" resolves straight back to it.
-            user = _get_user_by_uid(session, link_uid)
-            if user is not None:
-                user.google_sub = google_sub
+            # every later "Sign in with Google" resolves straight back to it. Same
+            # already-linked-to-someone-else guard as the session_user_id branch right below:
+            # without it, anyone who knows/guesses a victim's uid could open this route, sign in
+            # with their OWN Google account, and silently overwrite the victim's existing
+            # google_sub — locking the victim out of their own Google login and letting the
+            # attacker's Google account resolve straight to the victim's user row on every future
+            # sign-in (real account takeover, found via a live code-review pass).
+            candidate = _get_user_by_uid(session, link_uid)
+            if candidate is not None and candidate.google_sub is None:
+                candidate.google_sub = google_sub
                 session.commit()
+                user = candidate
                 matched_via = "link_uid"
         if user is None and session_user_id is not None:
             # 2026-09-05 fix: the visitor may already be in an authenticated session (e.g. they
@@ -1848,7 +1869,10 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
         if not has_telegram or not has_whatsapp:
             code = generate_link_code(session, user)
         redirect_uid = user.telegram_user_id
-        redirect_wid = user.whatsapp_phone_number if redirect_uid is None else None
+        # 2026-09-25 security fix: reuse the SAME already-verified token this request came in on —
+        # see filter_view's own identical fix/comment for why re-deriving from
+        # user.whatsapp_phone_number would put the bare phone number back in the rendered page.
+        redirect_wid = wid if redirect_uid is None else None
 
         access = _effective_access(request, user)
         notifications_enabled = user.notifications_enabled
@@ -2007,7 +2031,12 @@ def filter_view(
                 "f": filter_row,
                 "welcome": welcome,
                 "uid": user.telegram_user_id,
-                "wid": user.whatsapp_phone_number if user.telegram_user_id is None else None,
+                # 2026-09-25 security fix: reuse the SAME already-verified token this request came
+                # in on — never re-derive from user.whatsapp_phone_number, which would put the bare
+                # phone number back in the rendered page (defeating generate_wid_token entirely,
+                # since the next form POST would carry it right back to _resolve_user, which now
+                # rejects anything that isn't a real signed token).
+                "wid": wid if user.telegram_user_id is None else None,
                 "user": user,
                 # sorted for display only — CITIES itself stays in its original order since other
                 # code (matching, the bot's own city picker) reads it as-is.
