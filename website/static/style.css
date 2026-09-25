@@ -340,8 +340,25 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 @media (prefers-reduced-motion: reduce) {
   .btn:hover::before { transition: none; }
 }
-.btn.gold { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark) !important; }
-.btn.gold:hover { filter: brightness(1.06); transform: translateY(-2px) scale(1.02); box-shadow: var(--glow-gold); }
+.btn.gold {
+  background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark) !important;
+  /* Magnetic pull (base.html's script) — the cursor drags the button slightly toward itself
+     while nearby, reset to 0px the moment it isn't. Declared here (not only on :hover) so it
+     already applies before the native :hover state activates — JS triggers the pull within a
+     radius a little larger than the button itself, so the drag visibly starts an instant before
+     the cursor actually reaches it. Composed into the SAME transform as :hover's own lift/scale
+     below (one property can only hold one value; the two effects have to share one declaration,
+     not stack from separate rules) so both apply together instead of :hover's overwriting this. */
+  transform: translate(var(--magnet-x, 0px), var(--magnet-y, 0px));
+}
+.btn.gold:hover {
+  filter: brightness(1.06);
+  transform: translate(var(--magnet-x, 0px), var(--magnet-y, 0px)) translateY(-2px) scale(1.02);
+  box-shadow: var(--glow-gold);
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.gold { transition: none; }
+}
 .btn.outline { background: transparent; color: var(--teal) !important; border: 1.5px solid var(--teal); box-shadow: none; }
 .btn.outline:hover { background: var(--teal-tint); box-shadow: var(--glow-teal); }
 .btn.block { width: 100%; justify-content: center; }
