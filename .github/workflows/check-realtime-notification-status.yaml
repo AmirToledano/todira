@@ -1,0 +1,81 @@
+name: Check — is the Telegram real-time notification pipeline actually live? (read-only)
+
+# Owner asked from their phone why there's no real-time Telegram notification for new listings.
+# scraper/notifier.py's run_notifications already implements exactly this (Telegram push per new
+# match + price-change re-notify), wired hourly via scraper-cronjob.yaml, gated by
+# NOTIFICATIONS_SUSPENDED (default false per values.yaml). Before answering, confirm live: (1) the
+# deployed CronJob's real schedule + NOTIFICATIONS_SUSPENDED value (not just what's in git), and
+# (2) that a real recent scraper run actually sent notifications (matched/notifications_sent > 0
+# in its own summary log line), not just that the code path exists. Read-only, mirrors
+# check-scraper-job-status.yaml's own kubectl auth pattern.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Deployed CronJob schedule + NOTIFICATIONS_SUSPENDED env (main + Facebook)
+        run: |
+          echo "=== Main scraper CronJob ==="
+          kubectl get cronjob -n todira -l app=todira-scraper -o wide || true
+          echo "--- NOTIFICATIONS_SUSPENDED env on main scraper ---"
+          kubectl get cronjob -n todira -l app=todira-scraper -o json \
+            | jq -r '.items[].spec.jobTemplate.spec.template.spec.containers[].env[]? | select(.name=="NOTIFICATIONS_SUSPENDED")' || true
+          echo
+          echo "=== Facebook scraper CronJob ==="
+          kubectl get cronjob -n todira -l app=todira-facebook-scraper -o wide || true
+          echo "--- NOTIFICATIONS_SUSPENDED env on Facebook scraper ---"
+          kubectl get cronjob -n todira -l app=todira-facebook-scraper -o json \
+            | jq -r '.items[].spec.jobTemplate.spec.template.spec.containers[].env[]? | select(.name=="NOTIFICATIONS_SUSPENDED")' || true
+
+      - name: Most recent scraper run's own notification summary line
+        run: |
+          for LABEL in app=todira-scraper app=todira-facebook-scraper; do
+            echo "=== $LABEL ==="
+            POD=$(kubectl get pods -n todira -l "$LABEL" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+            if [ -z "$POD" ]; then
+              echo "No pod found yet."
+              continue
+            fi
+            echo "--- $POD: run summary / notification lines ---"
+            kubectl logs -n todira "$POD" --tail=500 2>/dev/null | grep -iE "matched|notification|summary" || echo "(no matching log lines — full tail below)"
+            echo "--- $POD: last 30 lines regardless ---"
+            kubectl logs -n todira "$POD" --tail=30 || true
+            echo
+          done
+
+      - name: Most recent SentNotification rows (real Telegram sends actually recorded)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No website pod found for a DB check."
+            exit 0
+          fi
+          kubectl exec -n todira "$POD" -- python3 -c "
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ['DATABASE_URL'])
+          with engine.connect() as conn:
+              rows = conn.execute(text('''
+                  SELECT reason, sent_at
+                  FROM sent_notifications
+                  ORDER BY sent_at DESC
+                  LIMIT 10
+              ''')).fetchall()
+              print('=== Most recent 10 SentNotification rows ===')
+              for r in rows:
+                  print(r)
+              total = conn.execute(text('SELECT count(*) FROM sent_notifications')).scalar()
+              last_hour = conn.execute(text(\"SELECT count(*) FROM sent_notifications WHERE sent_at > now() - interval '24 hours'\")).scalar()
+              print('total ever:', total, '| last 24h:', last_hour)
+          " || true
