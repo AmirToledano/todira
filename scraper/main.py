@@ -414,6 +414,20 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
 
         existing_id, old_price = existing
         update_values = item.model_dump()
+        # 2026-09-25 real bug found live (owner asked why Yad2/Homeless listings kept losing their
+        # description after having one): `description` is NEVER present on a plain search-card
+        # scrape — it only ever gets filled in by a separate, one-time enrichment fetch (Bright
+        # Data for Yad2, fetch_listing_description for Homeless/Komo), which runs once for a
+        # genuinely NEW listing only (see this function's own docstring, _maybe_fetch_description,
+        # _scrape_homeless's own comment). Every later run's `item.description` is therefore always
+        # None for an already-known listing, and this blind `item.model_dump()` UPDATE was wiping
+        # the real description straight back to NULL on the very next scrape after it was fetched —
+        # so a listing only ever showed a description for the one run right after it was enriched,
+        # explaining the "some Yad2 listings have one, most don't" report exactly. Never let an
+        # UPDATE erase an existing non-null description with a null one; other fields aren't
+        # touched here since (unlike description) they're normally re-supplied by every scrape.
+        if item.description is None:
+            update_values.pop("description", None)
         if item.price is not None and old_price is not None and item.price != old_price:
             price_change_events.append((existing_id, old_price))
             # 2026-09-24: persist the change itself (previous_price/price_changed_at), not just

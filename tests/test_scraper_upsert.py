@@ -177,6 +177,45 @@ def test_update_with_no_price_change_leaves_previous_price_untouched():
     assert "price_changed_at" not in str(compiled)
 
 
+def test_update_never_erases_an_existing_description_with_a_missing_one():
+    """2026-09-25 real bug fix — a plain search-card scrape never carries a description at all
+    (it's only ever filled in once by a separate detail-page enrichment fetch), so every later
+    UPDATE's own item.description was always None for an already-known listing, wiping any
+    previously-fetched real description straight back to NULL. `description` must simply be
+    absent from the UPDATE's own values whenever the fresh item doesn't have one — never explicitly
+    set back to None — so the existing DB row's real description survives untouched."""
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=5000)
+    assert existing_item.description is None  # confirms the fixture matches the real bug's shape
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, same price
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
+
+    _upsert_listings(session, [existing_item])
+
+    update_stmt = session.executed_stmts[-1]
+    assert "description" not in update_stmt.compile().params
+
+
+def test_update_still_overwrites_description_when_the_fresh_item_actually_has_one():
+    existing_item = _make_item(
+        "existing-1", "https://example.com/existing-1", price=5000, description="דירה משופצת"
+    )
+    session = _QueueSession(
+        [
+            _CannedResult((42, 5000)),  # SELECT -> existing row, same price
+            _CannedResult(None),  # UPDATE result (never read)
+        ]
+    )
+
+    _upsert_listings(session, [existing_item])
+
+    update_stmt = session.executed_stmts[-1]
+    assert update_stmt.compile().params.get("description") == "דירה משופצת"
+
+
 def test_mixed_new_and_existing_items_in_one_call():
     new_item = _make_item("new-1", "https://example.com/new-1")
     existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)
