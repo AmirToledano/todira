@@ -35,7 +35,18 @@ function Core() {
     return () => window.removeEventListener("pointermove", onMove);
   }, []);
 
-  useFrame((state, delta) => {
+  useFrame((state, rawDelta) => {
+    // Owner-reported real bug: a brief stutter/jump right after switching back to the tab.
+    // Root cause — delta is the real wall-clock gap since the last frame, and a backgrounded
+    // browser tab throttles or fully pauses requestAnimationFrame, so the first frame after
+    // switching back can report a delta of a second or more. Every rotation below scales
+    // directly off delta, so that one frame would jump the geometry far ahead in a single step —
+    // clamped here to a ~20fps-worth ceiling regardless of how long the tab was actually hidden,
+    // so a resumed tab always continues at the scene's normal pace, never a visible catch-up
+    // snap. (The Canvas below also stops ticking entirely while document.hidden, which avoids
+    // wasted rendering — but doesn't by itself prevent a large delta ON the resuming frame, which
+    // is what this clamp actually fixes.)
+    const delta = Math.min(rawDelta, 0.05);
     if (inner.current) {
       inner.current.rotation.y += delta * 0.18;
       inner.current.rotation.x += delta * 0.06;
@@ -99,11 +110,29 @@ function supportsScene() {
 export default function ScanCore() {
   const [enabled] = useState(supportsScene);
   const camera = useMemo(() => ({ position: [0, 0, 6], fov: 45 }), []);
+  // Stops the render loop entirely while the tab is backgrounded (rather than letting the
+  // browser throttle it on its own) — no point re-rendering a scene nobody can see, and this
+  // means there's no queued/skipped work to catch up on once the tab is visible again either.
+  const [frameloop, setFrameloop] = useState("always");
+
+  useEffect(() => {
+    function onVisibility() {
+      setFrameloop(document.hidden ? "never" : "always");
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   if (!enabled) return null;
 
   return (
-    <Canvas dpr={[1, 1.75]} camera={camera} gl={{ antialias: true, alpha: false }} style={{ position: "absolute", inset: 0 }}>
+    <Canvas
+      frameloop={frameloop}
+      dpr={[1, 1.75]}
+      camera={camera}
+      gl={{ antialias: true, alpha: false }}
+      style={{ position: "absolute", inset: 0 }}
+    >
       <color attach="background" args={["#0b1a19"]} />
       <fog attach="fog" args={["#0b1a19", 6, 11]} />
       <ambientLight intensity={0.35} />
