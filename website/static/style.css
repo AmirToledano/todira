@@ -186,6 +186,28 @@ h1, h2, h3, .display {
 a { color: inherit; }
 img { max-width: 100%; display: block; }
 
+/* Scroll progress bar — a thin fixed strip at the very top of the viewport whose width tracks how
+   far down the page the visitor has scrolled (base.html's script drives --scroll-progress via one
+   rAF-throttled scroll listener; see there for why rAF and not a plain unthrottled handler).
+   z-index:950 is deliberately below the listing-detail modal's own z-index:2000 (see .apt-listing-
+   modal below) and the a11y widget panels (199-401) — while a modal covers the page, this
+   represents body scroll, which the modal itself blocks (see .apt-modal-open), so it's correct for
+   the bar to sit visually behind it rather than floating on top of an unrelated full-screen
+   overlay. Above header.site's own z-index:40 so it reads as the outermost strip, not tucked under
+   the frosted header. */
+.scroll-progress {
+  position: fixed; top: 0; inset-inline-start: 0; z-index: 950;
+  height: 3px; width: 100%;
+  transform: scaleX(var(--scroll-progress, 0)); transform-origin: left;
+  transition: transform .1s linear;
+  background: linear-gradient(90deg, var(--teal), var(--gold));
+  pointer-events: none;
+}
+[dir="rtl"] .scroll-progress { transform-origin: right; }
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress { transition: none; }
+}
+
 /* ---------- header ---------- */
 header.site {
   position: sticky; top: 0; z-index: 40;
