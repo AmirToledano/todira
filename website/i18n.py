@@ -1698,6 +1698,71 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע — ניתן לפנות באימייל amir81358@gmail.com או דרך הבוט בטלגרם.",
         "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. For questions about privacy, or to request data deletion, please email amir81358@gmail.com or reach out via the Telegram bot.",
     },
+    # ---------- terms page (2026-09-25, fifth page moved into a React island — he/en only, same
+    # reasoning as about.*/accessibility.*/privacy.* above) ----------
+    "terms.h1": {"he": "תנאי שימוש", "en": "Terms of Use"},
+    "terms.updated": {"he": "עודכן לאחרונה: ספטמבר 2026", "en": "Last updated: September 2026"},
+    "terms.s1_title": {"he": "1. מה זה טודירה", "en": "1. What Todira is"},
+    "terms.s1_body": {
+        "he": "טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (כגון יד2), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך במנוי בתשלום, כמפורט בעמוד השדרוג באתר.",
+        "en": "Todira is a personal service (a Telegram bot and companion website) that automatically scans apartment listings from external sources on the web (such as Yad2) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a paid subscription, as detailed on the site's upgrade page.",
+    },
+    "terms.s2_title": {"he": "2. אין אחריות על תוכן המודעות", "en": "2. No warranty on listing content"},
+    "terms.s2_body": {
+        "he": "כל המודעות המוצגות בטודירה נאספות ממקורות חיצוניים שאינם בשליטת טודירה. טודירה אינו מפרסם, יוצר, מאמת או ערב לדיוק, לעדכניות או לזמינות של אף מודעה — מחיר, תמונות, זמינות, תיאור הנכס וכל פרט אחר עשויים להיות שגויים, מיושנים או שהנכס כבר הושכר/נמכר. יש לבדוק כל מודעה מול המקור המקורי ומול המפרסם לפני כל החלטה.",
+        "en": "Every listing shown in Todira is collected from external sources not controlled by Todira. Todira does not publish, create, verify, or guarantee the accuracy, timeliness, or availability of any listing — price, photos, availability, description, and any other detail may be incorrect, outdated, or the property may already be rented or sold. Always verify a listing against its original source and the advertiser before making any decision.",
+    },
+    "terms.s3_title": {"he": "3. טודירה אינו צד לעסקה", "en": "3. Todira is not a party to any transaction"},
+    "terms.s3_body": {
+        "he": "טודירה אינו מתווך, משכיר, בעל נכס או צד לכל עסקת שכירות/מכירה. כל תקשורת, משא ומתן והתקשרות מול מפרסם, בעל נכס או מתווך נעשית באחריותו הבלעדית של המשתמש, וטודירה אינו אחראי לתוצאותיה.",
+        "en": "Todira is not a broker, landlord, property owner, or a party to any rental or sale transaction. All communication, negotiation, and dealings with an advertiser, property owner, or broker are the user's sole responsibility, and Todira bears no responsibility for their outcome.",
+    },
+    "terms.s4_title": {"he": "4. שימוש בבינה מלאכותית", "en": "4. Use of AI"},
+    "terms.s4_body": {
+        "he": "השירות משתמש במודל שפה (Gemini מבית Google) כדי לפרש הודעות טקסט חופשי ולבנות מהן פרופיל חיפוש. הפירוש עלול לפעמים להיות שגוי — ניתן תמיד לתקן את הסינון ידנית דרך הבוט (/filter) או דרך האתר.",
+        "en": "The service uses a language model (Google's Gemini) to parse free-text messages and build a search profile from them. That interpretation can occasionally be wrong — you can always correct your filter manually via the bot (/filter) or the website.",
+    },
+    "terms.s5_title": {"he": "5. הגבלת אחריות", "en": "5. Limitation of liability"},
+    "terms.s5_body": {
+        "he": 'השירות ניתן "כמות שהוא" (AS IS), ללא כל התחייבות לזמינות רציפה, נכונות המידע או התאמה למטרה מסוימת. ככל שמותר על פי דין, טודירה ומפעיליו לא יישאו באחריות לכל נזק — ישיר או עקיף — שייגרם משימוש בשירות, מהסתמכות על מידע בו, מתקלה טכנית או מהפסקת השירות.',
+        "en": 'The service is provided "AS IS," with no commitment to continuous availability, accuracy of information, or fitness for a particular purpose. To the extent permitted by law, Todira and its operator shall not be liable for any damage — direct or indirect — arising from use of the service, reliance on information in it, technical failure, or discontinuation of the service.',
+    },
+    "terms.s6_title": {"he": "6. שינויים בשירות", "en": "6. Changes to the service"},
+    "terms.s6_body": {
+        "he": "טודירה רשאי לשנות, להשעות או להפסיק את השירות (כולו או חלקו), בכל עת וללא הודעה מוקדמת.",
+        "en": "Todira may change, suspend, or discontinue the service (in whole or in part) at any time, without prior notice.",
+    },
+    "terms.s7_title": {"he": "7. קניין רוחני", "en": "7. Intellectual property"},
+    "terms.s7_body": {
+        "he": "עיצוב האתר, המיתוג והקוד של טודירה הם קניינו של מפעיל השירות. תוכן המודעות עצמו שייך למקורות המקוריים שממנו נאסף.",
+        "en": "The website's design, branding, and code belong to the service's operator. Listing content itself belongs to the original sources it was collected from.",
+    },
+    "terms.s8_title": {"he": "8. דין וסמכות שיפוט", "en": "8. Governing law and jurisdiction"},
+    "terms.s8_body": {
+        "he": "תנאים אלה כפופים לדיני מדינת ישראל, וכל מחלוקת תידון בבתי המשפט המוסמכים בישראל בלבד.",
+        "en": "These terms are governed by the laws of the State of Israel, and any dispute shall be resolved exclusively in the competent courts of Israel.",
+    },
+    "terms.s9_title": {"he": "9. אספקת השירות", "en": "9. Service delivery"},
+    "terms.s9_body": {
+        "he": "השירות ניתן במלואו באופן דיגיטלי, ואינו כרוך במשלוח פיזי של מוצר כלשהו. עם אישור תשלום עבור מנוי בתשלום, הגישה למנוי מופעלת באופן אוטומטי ומיידי (בדרך כלל תוך דקות ספורות ממועד אישור העסקה), ישירות דרך הבוט בטלגרם ו/או האתר, ללא צורך בפעולה נוספת מצד המשתמש.",
+        "en": "The service is provided entirely digitally and does not involve physical shipping of any product. Upon confirmation of payment for a paid subscription, access is activated automatically and immediately (typically within a few minutes of transaction confirmation), directly through the Telegram bot and/or the website, with no further action required from the user.",
+    },
+    "terms.s10_title": {"he": "10. ביטול עסקה והחזרים", "en": "10. Cancellation and refunds"},
+    "terms.s10_body": {
+        "he": 'מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום, ולא במוצר פיזי הניתן להחזרה. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר\' סעיף 1), המאפשרת לבחון את השירות מראש. עם השלמת התשלום ותחילת אספקת השירות בפועל, ובכפוף לאישור המשתמש בעת התשלום, המשתמש מוותר על זכות הביטול הרגילה הקבועה בחוק הגנת הצרכן, התשמ"א-1981, ביחס לשירותים דיגיטליים שאספקתם הושלמה בהסכמתו המפורשת. חרף האמור, ניתן לפנות אלינו בכל עת (דרך עמוד יצירת הקשר או הבוט בטלגרם) בבקשה לביטול או להחזר, ואנו נבחן כל פנייה לגופה בתום לב — לרבות במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום. החזר כספי, אם יאושר, יבוצע לאותו אמצעי תשלום ששימש לתשלום המקורי, בתוך זמן סביר.',
+        "en": "This is a digital service delivered immediately and automatically upon payment confirmation, not a physical product that can be returned. Every user gets a free 3-day trial before any payment (see section 1), allowing the service to be evaluated in advance. Upon completing payment and the actual start of service delivery, and subject to the user's confirmation at the time of payment, the user waives the standard cancellation right under Israel's Consumer Protection Law, 5741-1981, with respect to digital services whose delivery has been completed with the user's explicit consent. Notwithstanding the above, you may contact us at any time (via the contact page or the Telegram bot) to request a cancellation or refund, and we will review each request in good faith — including in the case of a material technical fault that prevented use of the service, a duplicate charge, or a payment error. A refund, if approved, will be issued to the same payment method used for the original payment, within a reasonable time.",
+    },
+    "terms.s11_title": {"he": "11. פרטי מפעיל השירות", "en": "11. Service operator details"},
+    "terms.s11_body": {
+        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563.",
+        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563.",
+    },
+    "terms.s12_title": {"he": "12. יצירת קשר", "en": "12. Contact"},
+    "terms.s12_pre": {
+        "he": "לשאלות בנוגע לתנאים אלה — ניתן לפנות באימייל amir81358@gmail.com, דרך הבוט בטלגרם, או דרך ",
+        "en": "For questions about these terms, please reach out via email at amir81358@gmail.com, the Telegram bot, or the ",
+    },
+    "terms.s12_post": {"he": ".", "en": "."},
     # ---------- account page ----------
     # 2026-09-08 fix: this whole page was hardcoded Hebrew-only (unlike every other customer-
     # facing page), so a non-Hebrew visitor saw a fully-Hebrew /account regardless of their own

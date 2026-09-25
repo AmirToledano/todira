@@ -37,14 +37,14 @@ def test_no_hebrew_characters_leak_into_arabic_translations():
     assert not offenders, f"Hebrew characters found inside Arabic translation values: {offenders}"
 
 
-# 2026-09-25: the about.*/accessibility.*/privacy.* keys are deliberately he/en only — see
-# i18n.py's own "about page"/"accessibility page"/"privacy page" section comments. That content
-# was never translated into ru/fr/ar even before it moved into TRANSLATIONS (the pre-React
-# templates hardcoded raw he/en text directly, outside the TRANSLATIONS/i18n system entirely), so
-# this isn't a forgotten translation, it's the same real-content-only scope those pages already
-# documented. Scoped to these prefixes (not a blanket exemption) so a future unrelated key
-# missing a language still fails this test.
-_PARTIAL_COVERAGE_PREFIXES = ("about.", "accessibility.", "privacy.")
+# 2026-09-25: the about.*/accessibility.*/privacy.*/terms.* keys are deliberately he/en only —
+# see i18n.py's own "about page"/"accessibility page"/"privacy page"/"terms page" section
+# comments. That content was never translated into ru/fr/ar even before it moved into
+# TRANSLATIONS (the pre-React templates hardcoded raw he/en text directly, outside the
+# TRANSLATIONS/i18n system entirely), so this isn't a forgotten translation, it's the same
+# real-content-only scope those pages already documented. Scoped to these prefixes (not a
+# blanket exemption) so a future unrelated key missing a language still fails this test.
+_PARTIAL_COVERAGE_PREFIXES = ("about.", "accessibility.", "privacy.", "terms.")
 
 
 def test_every_translation_key_covers_all_supported_languages():
