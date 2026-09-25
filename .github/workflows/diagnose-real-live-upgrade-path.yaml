@@ -1,0 +1,63 @@
+name: Diagnose — which /upgrade payment path is ACTUALLY live right now (read-only)
+
+# Owner asked directly: is the "I paid" honor-system button real/current, or old leftover code,
+# given a real person should have to actually pay for full access? upgrade_submit's own real
+# fallback order (website/main.py) is: (1) takbull_client.recurring_api_configured() — needs
+# TAKBULL_API_KEY+SECRET, confirmed empty by an earlier diagnostic tonight — (2)
+# grow_client.is_configured() — needs GROW_PAGE_CODE+GROW_USER_ID+GROW_API_KEY, never checked live
+# yet — (3) the informal click-trust "I paid" flow. Also: takbull_client.py still has an OLDER,
+# separate is_configured()/build_checkout_url() pair (TAKBULL_PAYMENT_PAGE_URL-based, confirmed set
+# on the live pod by an earlier diagnostic) that a static code search shows main.py never actually
+# calls — this checks live whether that's really true (dead code) or missed by the search.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check GitHub Actions repo secrets for GROW_* (what ci-cd.yaml would deploy with)
+        env:
+          GH_PAGE_CODE: ${{ secrets.GROW_PAGE_CODE }}
+          GH_USER_ID: ${{ secrets.GROW_USER_ID }}
+          GH_API_KEY: ${{ secrets.GROW_API_KEY }}
+        run: |
+          echo "GROW_PAGE_CODE: $([ -n "$GH_PAGE_CODE" ] && echo "set, length=${#GH_PAGE_CODE}" || echo "NOT SET")"
+          echo "GROW_USER_ID: $([ -n "$GH_USER_ID" ] && echo "set, length=${#GH_USER_ID}" || echo "NOT SET")"
+          echo "GROW_API_KEY: $([ -n "$GH_API_KEY" ] && echo "set, length=${#GH_API_KEY}" || echo "NOT SET")"
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Check the LIVE k8s secret + live pod env for every gateway's own config (names/lengths only, never values)
+        run: |
+          echo "=== Live todira-bot-secret in the todira namespace ==="
+          for KEY in grow-page-code grow-user-id grow-api-key takbull-payment-page-url takbull-webhook-secret takbull-api-key takbull-api-secret; do
+            LEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath="{.data.$KEY}" 2>/dev/null | base64 -d | wc -c)
+            echo "$KEY: length=$LEN bytes (0 = not set)"
+          done
+          echo
+          echo "=== Live website pod env (names only, never values) ==="
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -z "$POD" ]; then
+            echo "Could not find a running todira-website pod."
+            exit 0
+          fi
+          echo "Pod: $POD"
+          kubectl exec -n todira "$POD" -- env 2>/dev/null | grep -o '^\(GROW\|TAKBULL\)_[A-Z_]*' | sort -u
+
+      - name: Confirm from the checked-out source — does main.py ever call takbull_client's OLDER is_configured()/build_checkout_url()?
+        run: |
+          echo "=== Every gateway-selection call main.py's real /upgrade route (upgrade_submit) makes ==="
+          grep -n "recurring_api_configured\|grow_client\.is_configured\|takbull_client\.is_configured\|takbull_client\.build_checkout_url\|create_subscription_checkout_url\|grow_client\.create_checkout_url" website/main.py
+          echo
+          echo "=== Every real CALLER of takbull_client.is_configured / build_checkout_url anywhere in the repo ==="
+          grep -rn "takbull_client\.is_configured\|takbull_client\.build_checkout_url" --include="*.py" . || echo "(no callers found anywhere — confirms these two functions are dead code, never invoked)"
