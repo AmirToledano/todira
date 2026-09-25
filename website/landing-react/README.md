@@ -4,7 +4,8 @@ Renders a small, growing set of todira pages as isolated React+Framer
 Motion "islands" inside the existing server-rendered site: the home page
 (`/` — hero, momentum row, stats, feature cards, comparison table,
 how-it-works steps, FAQ, closing CTA banner), the about page (`/about`),
-and the accessibility statement (`/accessibility`). Everything else on the
+the accessibility statement (`/accessibility`), and the privacy policy
+(`/privacy`). Everything else on the
 site (login, `/apartments`, payments, admin, the WhatsApp/Telegram
 webhooks, and the header/nav/footer that wrap every one of these pages) is
 still the original server-rendered Jinja2 + vanilla CSS/JS the rest of
@@ -27,13 +28,18 @@ same shared build/serving infrastructure extends to more than one page;
 accessibility was the third — the simplest kind of page there is (headings,
 paragraphs, a list, zero interactivity), deliberately picked next to keep
 proving the pattern on low-risk content before tackling anything with
-forms or real app state.
+forms or real app state; privacy was the fourth, structurally the same
+shape as accessibility (headings/paragraphs/lists) but longer (10 sections)
+and with a couple of spots needing real inline markup (`<strong>`, an
+`<a href="/contact">` link) inside otherwise-plain translation strings —
+see "Content" below for how those are handled without ever using `| safe`.
 
 ## How it's wired into the site
 
 - `vite.config.js`'s `build.rollupOptions.input` lists one entry per React
-  page (`index` → `index.html` → home, `about` → `about.html` → about).
-  Adding another page-as-React-island means adding one more entry here,
+  page (`index` → `index.html` → home, `about` → `about.html` → about, and
+  so on for `accessibility`/`privacy`). Adding another page-as-React-island
+  means adding one more entry here,
   not spinning up a whole separate Vite project — shared `node_modules`,
   shared `content.json`/`i18n.js`/component library (e.g. `Blob.jsx`), and
   Vite automatically code-splits shared dependencies (React, Framer Motion,
@@ -64,15 +70,24 @@ forms or real app state.
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
 `TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
-`about.*`, and `accessibility.*` key, plus a handful of exact keys from
-elsewhere in the file that a React page reuses rather than re-authoring —
-e.g. `upgrade.value_anchor_title`/`_body`, reused on the home page's
-Compare section so the price reassurance shown there stays the same real
-copy as `/upgrade` itself, not a second, driftable copy of it. All 5
-supported languages where they exist — `about.*`/`accessibility.*` are
-deliberately he/en only, see below), not hand-written placeholder text.
-`src/i18n.js`'s `t(key)` reads from it using the language
-`window.__TODIRA_PAGE__.lang` carries.
+`about.*`, `accessibility.*`, and `privacy.*` key, plus a handful of exact
+keys from elsewhere in the file that a React page reuses rather than
+re-authoring — e.g. `upgrade.value_anchor_title`/`_body`, reused on the
+home page's Compare section so the price reassurance shown there stays the
+same real copy as `/upgrade` itself, not a second, driftable copy of it.
+All 5 supported languages where they exist — `about.*`/`accessibility.*`/
+`privacy.*` are deliberately he/en only, see below), not hand-written
+placeholder text. `src/i18n.js`'s `t(key)` reads from it using the
+language `window.__TODIRA_PAGE__.lang` carries.
+
+A translation string never contains raw HTML (no `| safe` anywhere in this
+codebase). Where a sentence needs inline markup — `privacy.s1_item7_pre`/
+`_strong`/`_post` for a bolded phrase mid-sentence, `privacy.s5_pre`/`_post`
+wrapping a real `<a href="/contact">` link, `privacy.s3_item{1-5}_label`/
+`_body` for a bolded provider name followed by its description — the key is
+split into separate pieces and the React component (`Privacy.jsx`) composes
+the actual `<strong>`/`<a>` JSX elements around them, rather than ever
+injecting a string as HTML.
 
 **Regenerating it** (do this after editing any of those keys in
 `website/i18n.py`, or after adding a new React page that needs its own
@@ -85,10 +100,11 @@ import json
 ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
-prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.')
+prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.')
 exact = {
     'meta.title_home', 'meta.description', 'meta.title_about', 'meta.title_accessibility',
-    'legal.non_native_notice', 'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
+    'meta.title_privacy', 'legal.non_native_notice', 'upgrade.value_anchor_title',
+    'upgrade.value_anchor_body',
 }
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:
