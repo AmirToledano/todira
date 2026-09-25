@@ -208,7 +208,7 @@ def test_notify_new_matches_skips_a_user_with_no_telegram_id():
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
         mock_format.return_value = "caption"
-        matched, sent = asyncio.run(notifier._notify_new_matches(bot, session, listing))
+        matched, sent, _newly_notified = asyncio.run(notifier._notify_new_matches(bot, session, listing))
 
     mock_send.assert_not_awaited()
     mock_format.assert_not_called()
@@ -267,6 +267,47 @@ def test_notify_price_change_also_passes_has_access():
     kwargs = mock_format.call_args.kwargs
     assert kwargs["has_access"] is False
     assert kwargs["price_change_from"] == 5000
+
+
+def test_notify_price_change_excludes_a_user_just_notified_as_new_matches_in_this_same_run():
+    """2026-09-25 real bug fix: run_notifications calls _notify_new_matches for this same listing
+    right before _notify_price_change, in the same price-change-event iteration. A user whose
+    filter didn't match the OLD price but does the NEW one gets a genuine 'new match' notification
+    there, with its own SentNotification(reason=NEW) row committed immediately — the query
+    _notify_price_change runs (SELECT user_id WHERE reason=NEW) would then find that brand-new row
+    an instant later and wrongly treat them as "previously notified," sending a SECOND, redundant
+    'price dropped!' card for a listing they were only just told about. exclude_user_ids (populated
+    from that same _notify_new_matches call's own return value) must keep this from happening."""
+    listing = SimpleNamespace(id=10, price=4000, description=None)
+    filter_row = SimpleNamespace(user_id=1)
+    user = _user()
+    session = SimpleNamespace(
+        # Both user_id 1 (the just-notified-as-new user) and user_id 2 (a genuinely
+        # previously-notified user) come back from the reason=NEW query.
+        scalars=lambda stmt: [1, 2],
+        get=lambda model, pk: user,
+        scalar=lambda stmt: filter_row,
+        add=lambda obj: None,
+        commit=lambda: None,
+    )
+    bot = SimpleNamespace()
+
+    with (
+        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
+        patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "format_caption", return_value="caption"),
+        patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
+    ):
+        sent = asyncio.run(
+            notifier._notify_price_change(
+                bot, session, listing, old_price=5000, exclude_user_ids={1}
+            )
+        )
+
+    # Only user_id 2 (genuinely previously notified) gets the price-change card — user_id 1
+    # (just sent a 'new match' card moments ago in this same run) is correctly skipped.
+    mock_send.assert_called_once()
+    assert sent == 1
 
 
 # --- Proactive WhatsApp Message Template push (2026-09-08) ---
@@ -358,7 +399,7 @@ def test_notify_new_matches_sends_via_whatsapp_for_whatsapp_only_opted_in_user()
         patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_wa_send,
         patch.object(notifier, "WHATSAPP_SEND_DELAY_SECONDS", 0),
     ):
-        matched, sent = asyncio.run(notifier._notify_new_matches(bot, session, listing))
+        matched, sent, _newly_notified = asyncio.run(notifier._notify_new_matches(bot, session, listing))
 
     mock_telegram_send.assert_not_awaited()
     mock_wa_send.assert_called_once()
@@ -387,7 +428,7 @@ def test_notify_new_matches_sends_via_both_channels_when_linked_to_both():
         patch.object(notifier, "SEND_DELAY_SECONDS", 0),
         patch.object(notifier, "WHATSAPP_SEND_DELAY_SECONDS", 0),
     ):
-        matched, sent = asyncio.run(notifier._notify_new_matches(bot, session, listing))
+        matched, sent, _newly_notified = asyncio.run(notifier._notify_new_matches(bot, session, listing))
 
     mock_telegram_send.assert_awaited_once()
     mock_wa_send.assert_called_once()
@@ -412,7 +453,7 @@ def test_notify_new_matches_still_skips_whatsapp_only_user_when_not_opted_in():
         patch.object(notifier, "_already_notified", return_value=False),
         patch.object(notifier.whatsapp_client, "send_template_message") as mock_wa_send,
     ):
-        matched, sent = asyncio.run(notifier._notify_new_matches(bot, session, listing))
+        matched, sent, _newly_notified = asyncio.run(notifier._notify_new_matches(bot, session, listing))
 
     mock_wa_send.assert_not_called()
     assert matched == 1
