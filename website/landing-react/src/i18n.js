@@ -5,7 +5,7 @@ import content from "./content.json";
 // so this reads that same resolved value from a small inline script the server writes into the
 // page, rather than re-deriving it client-side and risking it disagreeing with the
 // already-server-rendered header/nav around this React island.
-const injected = typeof window !== "undefined" ? window.__TODIRA_HOME__ || {} : {};
+const injected = typeof window !== "undefined" ? window.__TODIRA_PAGE__ || {} : {};
 
 export const lang = injected.lang || "he";
 export const dir = injected.dir || "rtl";

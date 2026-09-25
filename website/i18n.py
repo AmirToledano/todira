@@ -1497,6 +1497,31 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Ce document n'est pour l'instant disponible qu'en hébreu et en anglais. La version anglaise est affichée ci-dessous.",
         "ar": "هذا المستند متاح حاليًا بالعبرية والإنجليزية فقط. تُعرض أدناه النسخة الإنجليزية.",
     },
+    # ---------- about page (2026-09-25 React island) ----------
+    # he/en only, matching the page's own pre-existing (pre-React) behavior — the plain Jinja2
+    # template this content moved out of never had ru/fr/ar translations either, showing English +
+    # legal.non_native_notice above for those readers instead. The React component keeps that same
+    # real-content-only behavior rather than fabricating three new translations here.
+    "about.h1": {"he": "אודות טודירה", "en": "About Todira"},
+    "about.body_intro": {
+        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (כגון יד2), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
+        "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (such as Yad2), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published.",
+    },
+    "about.body_disclaimer": {
+        "he": "השירות אינו משרד תיווך, אינו בעל נכסים ואינו צד לעסקאות שכירות — הוא כלי טכנולוגי שמטרתו לחסוך למחפשי דירה את הצורך לרענן שוב ושוב אתרי מודעות בעצמם.",
+        "en": "The service is not a real-estate brokerage, does not own any properties, and is not a party to any rental transaction — it is a technology tool built to save apartment seekers the need to repeatedly refresh listing sites themselves.",
+    },
+    "about.links_p1": {"he": "לפרטים נוספים ניתן לעיין ב", "en": "For more details, see the "},
+    "about.links_p2": {"he": " וב", "en": " and the "},
+    "about.links_p3": {"he": ", או לפנות אלינו דרך ", "en": ", or reach out via the "},
+    "about.links_p4": {"he": ".", "en": "."},
+    # Deliberately separate from footer.terms/footer.privacy: those carry different Hebrew
+    # wording (no definite article) and real ru/fr/ar translations, neither of which matches
+    # this page's own original text — its non-Hebrew branch always showed literal English here,
+    # never localized to ru/fr/ar.
+    "about.link_terms": {"he": "תנאי השימוש", "en": "Terms of Use"},
+    "about.link_privacy": {"he": "מדיניות הפרטיות", "en": "Privacy Policy"},
+    "about.link_contact_page": {"he": "עמוד יצירת הקשר", "en": "contact page"},
     # ---------- account page ----------
     # 2026-09-08 fix: this whole page was hardcoded Hebrew-only (unlike every other customer-
     # facing page), so a non-Hebrew visitor saw a fully-Hebrew /account regardless of their own

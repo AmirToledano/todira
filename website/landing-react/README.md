@@ -1,58 +1,72 @@
 # landing-react
 
-Renders **only** todira's home page (`/`) marketing content — the hero,
-momentum row, stats, feature cards, comparison table, how-it-works steps,
-FAQ, and closing CTA banner. Everything else on the site (login,
-`/apartments`, payments, admin, the WhatsApp/Telegram webhooks, the
-header/nav/footer that wrap this page) is still the original server-rendered
-Jinja2 + vanilla CSS/JS the rest of `website/` is built on — this is
-deliberately a small, isolated React+Framer Motion island, not a full-site
-rewrite.
+Renders a small, growing set of todira pages as isolated React+Framer
+Motion "islands" inside the existing server-rendered site: the home page
+(`/` — hero, momentum row, stats, feature cards, comparison table,
+how-it-works steps, FAQ, closing CTA banner) and the about page (`/about`).
+Everything else on the site (login, `/apartments`, payments, admin, the
+WhatsApp/Telegram webhooks, and the header/nav/footer that wrap every one
+of these pages) is still the original server-rendered Jinja2 + vanilla
+CSS/JS the rest of `website/` is built on.
 
 ## Why this exists
 
-The owner asked for a genuinely "agency-level" animated feel for the home
-page — the same React + Framer Motion + 21st.dev/UI-UX-Pro-Max combo used by
-several real Instagram/TikTok "I built a $10k website from my terminal"
-reference reels (reviewed frame-by-frame before this was built, not
-guessed at). A full-site React migration was considered and rejected for
-launch week specifically: rewriting all ~26 templates, splitting the
-FastAPI backend into a pure API, and re-testing everything days before
-going live was judged too large and too risky. This is the scoped
-middle ground — real React, real Framer Motion, but contained to the one
-page where a strong first impression matters most, with the rest of the
-(working, tested) product completely untouched.
+The owner asked for a genuinely "agency-level" animated feel — the same
+React + Framer Motion + 21st.dev/UI-UX-Pro-Max combo used by several real
+Instagram/TikTok "I built a $10k website from my terminal" reference reels
+(reviewed frame-by-frame before this was built, not guessed at) — but a
+full-site rewrite in one shot (all ~26 templates, splitting the FastAPI
+backend into a pure API, re-testing everything at once) was judged too
+large and risky to do in a single change. The plan instead is incremental:
+each page gets converted into its own React entry here, one at a time,
+starting with the simplest/safest pages and verified end-to-end before
+moving to the next, with the rest of the (working, tested) product
+untouched at every step. Home was first; about was the second, proving the
+same shared build/serving infrastructure extends to more than one page.
 
 ## How it's wired into the site
 
+- `vite.config.js`'s `build.rollupOptions.input` lists one entry per React
+  page (`index` → `index.html` → home, `about` → `about.html` → about).
+  Adding another page-as-React-island means adding one more entry here,
+  not spinning up a whole separate Vite project — shared `node_modules`,
+  shared `content.json`/`i18n.js`/component library (e.g. `Blob.jsx`), and
+  Vite automatically code-splits shared dependencies (React, Framer Motion,
+  shared components) into common chunks across entries.
 - `npm run build` outputs to `../static/landing/` (see `vite.config.js`'s
   `base`/`outDir`) — already served by FastAPI's existing
   `app.mount("/static", ...)` in `main.py`, no extra server config needed.
-- `npm run build` also emits `.vite/manifest.json` there, mapping the
-  `index.html` entry to its current hashed `.js`/`.css` filenames (they
-  change on every build). `website/main.py`'s `_landing_react_assets()`
-  reads that manifest and injects the right `<script>`/`<link>` tags into
-  `templates/home.html` — nobody needs to hand-edit a filename after a
-  rebuild.
-- `templates/home.html`'s content block is just `<div id="root">` plus a
-  `window.__TODIRA_HOME__ = {...}` config script (language/direction —
-  the exact values `_render()` already resolved for that request, so they
-  can never disagree with the server-rendered header around this island —
-  and the configured WhatsApp number) and the built `<script type="module">`
-  tag. `src/main.jsx` mounts `<App />` into that `#root`.
+- `npm run build` also emits `.vite/manifest.json` there, mapping each
+  entry to its current hashed `.js`/`.css` filenames (they change on every
+  build). `website/main.py`'s `_landing_react_assets(entry_name)` reads
+  that manifest per entry and injects the right `<script>`/`<link>` tags
+  into the matching template (`templates/home.html`, `templates/about.html`)
+  — nobody needs to hand-edit a filename after a rebuild. It recursively
+  walks each entry's `imports` chain to collect CSS, because Vite attributes
+  CSS reachable only through a shared chunk (e.g. `Blob.jsx`, imported by
+  both pages) to that chunk's own manifest entry, not to each page directly.
+- Each React page's template content block is just `<div id="root">` plus a
+  `window.__TODIRA_PAGE__ = {...}` config script (language/direction — the
+  exact values `_render()` already resolved for that request, so they can
+  never disagree with the server-rendered header around the island — plus
+  whatever else that specific page needs, e.g. home's WhatsApp number) and
+  the built `<script type="module">` tag. Each page has its own
+  `src/<page>-main.jsx` that mounts its root component into that `#root`.
 - schema.org JSON-LD SEO markup stays server-rendered in `home.html`'s
   `extra_head` block, untouched — crawlers see it without executing JS.
 
 ## Content — real copy only, not invented
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
-`TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, and
-`whatsapp.*` key, all 5 supported languages: he/en/ru/fr/ar), not
-hand-written placeholder text. `src/i18n.js`'s `t(key)` reads from it using
-the language `window.__TODIRA_HOME__.lang` carries.
+`TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
+and `about.*` key, all 5 supported languages where they exist — `about.*`
+is deliberately he/en only, see below), not hand-written placeholder text.
+`src/i18n.js`'s `t(key)` reads from it using the language
+`window.__TODIRA_PAGE__.lang` carries.
 
 **Regenerating it** (do this after editing any of those keys in
-`website/i18n.py`):
+`website/i18n.py`, or after adding a new React page that needs its own
+content prefix):
 
 ```bash
 cd website
@@ -61,8 +75,8 @@ import json
 ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
-prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.')
-exact = {'meta.title_home', 'meta.description'}
+prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.')
+exact = {'meta.title_home', 'meta.description', 'meta.title_about', 'legal.non_native_notice'}
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:
     json.dump(keys, f, ensure_ascii=False, indent=2)

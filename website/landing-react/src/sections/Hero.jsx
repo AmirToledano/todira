@@ -1,19 +1,9 @@
 import { useRef } from "react";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { t, whatsappPublicNumber, telegramBotUrl } from "../i18n";
+import Blob from "../Blob.jsx";
 
 const easePremium = [0.16, 1, 0.3, 1];
-
-function Blob({ style, animate, duration }) {
-  return (
-    <motion.div
-      className="tl-blob"
-      style={style}
-      animate={animate}
-      transition={{ duration, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
-    />
-  );
-}
 
 /* Cursor-tracked 3D tilt on the hero image — the "flying" feel from the reference reels this
    redesign was based on. Raw pointer offset feeds a spring (not the raw value directly) so the

@@ -13,6 +13,13 @@
     "fr": "Un bot de recherche d'appartements personnel qui scanne le marché en continu et vous alerte dès qu'une annonce correspond exactement à vos critères.",
     "ar": "بوت بحث شقق شخصي يفحص السوق باستمرار وينبهك فور ظهور إعلان يطابق بالضبط الفلتر الخاص بك."
   },
+  "meta.title_about": {
+    "he": "אודות — טודירה",
+    "en": "About — Todira",
+    "ru": "О нас — Todira",
+    "fr": "À propos — Todira",
+    "ar": "من نحن — توديرا"
+  },
   "whatsapp.greeting": {
     "he": "היי! אני רוצה להתחיל לחפש דירה 🏠",
     "en": "Hi! I'd like to start looking for an apartment 🏠",
@@ -565,5 +572,52 @@
     "ru": "Продолжить в WhatsApp →",
     "fr": "Continuer sur WhatsApp →",
     "ar": "تابع عبر واتساب ←"
+  },
+  "legal.non_native_notice": {
+    "he": "",
+    "en": "",
+    "ru": "Этот документ пока доступен только на иврите и английском. Ниже показана английская версия.",
+    "fr": "Ce document n'est pour l'instant disponible qu'en hébreu et en anglais. La version anglaise est affichée ci-dessous.",
+    "ar": "هذا المستند متاح حاليًا بالعبرية والإنجليزية فقط. تُعرض أدناه النسخة الإنجليزية."
+  },
+  "about.h1": {
+    "he": "אודות טודירה",
+    "en": "About Todira"
+  },
+  "about.body_intro": {
+    "he": "טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) בתחום הנדל\"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (כגון יד2), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).",
+    "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (such as Yad2), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published."
+  },
+  "about.body_disclaimer": {
+    "he": "השירות אינו משרד תיווך, אינו בעל נכסים ואינו צד לעסקאות שכירות — הוא כלי טכנולוגי שמטרתו לחסוך למחפשי דירה את הצורך לרענן שוב ושוב אתרי מודעות בעצמם.",
+    "en": "The service is not a real-estate brokerage, does not own any properties, and is not a party to any rental transaction — it is a technology tool built to save apartment seekers the need to repeatedly refresh listing sites themselves."
+  },
+  "about.links_p1": {
+    "he": "לפרטים נוספים ניתן לעיין ב",
+    "en": "For more details, see the "
+  },
+  "about.links_p2": {
+    "he": " וב",
+    "en": " and the "
+  },
+  "about.links_p3": {
+    "he": ", או לפנות אלינו דרך ",
+    "en": ", or reach out via the "
+  },
+  "about.links_p4": {
+    "he": ".",
+    "en": "."
+  },
+  "about.link_terms": {
+    "he": "תנאי השימוש",
+    "en": "Terms of Use"
+  },
+  "about.link_privacy": {
+    "he": "מדיניות הפרטיות",
+    "en": "Privacy Policy"
+  },
+  "about.link_contact_page": {
+    "he": "עמוד יצירת הקשר",
+    "en": "contact page"
   }
 }
