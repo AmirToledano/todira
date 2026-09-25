@@ -1,0 +1,74 @@
+name: Check — mascot fallback image coverage for listings with no photos (read-only)
+
+# Owner asked for a "Todi at a computer with someone" placeholder image on every listing that has
+# no real photos, across every source (Yad2, all Facebook, Komo, Homeless). Found that
+# website/templates/_listing_card.html already renders exactly this (/static/dachshunds/
+# todi_detective.jpg) whenever l.image_urls is empty, source-agnostically — and the detail modal
+# inherits it too since it clones the card's own cover element. This confirms it's actually live
+# and correct right now: counts listings with no image_urls per source, and curls a real page for
+# one from each source to confirm the mascot image actually renders.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real DB check — how many active listings per source have no real photos
+        run: |
+          kubectl delete pod diag-no-img -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-no-img
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-no-img
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- active listings per source: with vs without real photos ---"
+                    psql "$CONN" -c "
+                      SELECT source,
+                             count(*) FILTER (WHERE image_urls IS NULL OR array_length(image_urls, 1) IS NULL) AS no_photos,
+                             count(*) FILTER (WHERE image_urls IS NOT NULL AND array_length(image_urls, 1) > 0) AS has_photos
+                      FROM listings
+                      WHERE is_delisted = false AND duplicate_of_id IS NULL
+                      GROUP BY source ORDER BY source;
+                    "
+                    echo "--- one real id per source with no photos, for a live page check ---"
+                    psql "$CONN" -c "
+                      SELECT DISTINCT ON (source) id, source, city
+                      FROM listings
+                      WHERE is_delisted = false AND duplicate_of_id IS NULL
+                        AND (image_urls IS NULL OR array_length(image_urls, 1) IS NULL)
+                      ORDER BY source, scraped_at DESC;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-no-img -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-no-img || true
+          kubectl delete pod diag-no-img -n todira --ignore-not-found

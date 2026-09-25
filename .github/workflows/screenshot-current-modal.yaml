@@ -1,0 +1,60 @@
+name: Screenshot — current listing-detail modal, for direct comparison against dorin.app
+
+# Owner is unhappy that clicking a listing card just looks like what you already saw before
+# clicking, and wants it to match dorin.app's own bottom-sheet detail view. Takes a real
+# screenshot of our current modal (mobile viewport, real listing, real uid) as an artifact so it
+# can be compared directly against the owner's own dorin.app screenshots.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright WebKit
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.47.0 >/dev/null 2>&1
+          npx playwright install --with-deps webkit >/dev/null 2>&1
+
+      - name: Open a real listing's modal and screenshot it
+        run: |
+          cat <<'JS' > check.js
+          const { webkit, devices } = require('playwright');
+          (async () => {
+            const browser = await webkit.launch();
+            const context = await browser.newContext({ ...devices['iPhone 13'] });
+            const page = await context.newPage();
+            await page.goto('https://todira.app/apartments?uid=6984931854', { waitUntil: 'networkidle', timeout: 30000 });
+            await page.waitForTimeout(1500);
+
+            const card = page.locator('.listing-card').first();
+            await card.scrollIntoViewIfNeeded();
+            await card.click();
+            await page.waitForTimeout(1000);
+
+            await page.screenshot({ path: 'modal-top.png' });
+
+            const body = page.locator('#apt-listing-modal-body');
+            await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+            await page.waitForTimeout(500);
+            await page.screenshot({ path: 'modal-bottom.png' });
+
+            const html = await page.locator('#apt-listing-modal-body').innerHTML().catch(() => '(not found)');
+            console.log('=== modal body innerHTML length ===', html.length);
+            console.log('=== modal body innerHTML (first 3000 chars) ===');
+            console.log(html.slice(0, 3000));
+
+            await browser.close();
+          })();
+          JS
+          node check.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modal-screenshots
+          path: modal-*.png
