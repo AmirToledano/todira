@@ -90,3 +90,21 @@ def test_mark_delisted_scopes_updates_to_the_given_source_only():
     for stmt in session.executed:
         params = stmt.compile().params
         assert params["source_1"] == Source.KOMO
+
+
+def test_mark_delisted_only_delists_after_the_min_staleness_window():
+    """2026-09-25 real bug fix — Yad2's own map API caps at ~200 markers per request (confirmed
+    live: 8,552 delisted vs. 1,860 active Yad2 rent rows in production, an implausible 82% delist
+    rate), so a genuinely-active listing merely outside one run's capped sample looked identical to
+    a truly-removed one. The delist UPDATE (only — the un-delist pass has no such guard, since
+    reappearing is always good news, no grace period needed there) must only affect rows whose
+    scraped_at is already older than the staleness window — never a row just refreshed this exact
+    run, which would defeat the whole point of the grace period."""
+    session = _RecordingSession()
+    _mark_delisted(session, Source.YAD2, {"ext-1"}, {"תל אביב יפו"}, min_hours_before_delist=5)
+
+    delist_stmt, undelist_stmt = session.executed
+    delist_sql = str(delist_stmt.compile())
+    undelist_sql = str(undelist_stmt.compile())
+    assert "scraped_at" in delist_sql and "make_interval" in delist_sql
+    assert "scraped_at" not in undelist_sql

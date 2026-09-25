@@ -562,8 +562,15 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     return enriched_count
 
 
+_DEFAULT_MIN_HOURS_BEFORE_DELIST = 3
+
+
 def _mark_delisted(
-    session, source: str, seen_external_ids: set[str], scraped_city_names: set[str]
+    session,
+    source: str,
+    seen_external_ids: set[str],
+    scraped_city_names: set[str],
+    min_hours_before_delist: int = _DEFAULT_MIN_HOURS_BEFORE_DELIST,
 ) -> int:
     """Mark previously-active listings FROM `source` that weren't seen in this (complete) run as
     delisted, and un-delist any that reappeared. Scoped to `scraped_city_names` — the canonical
@@ -587,7 +594,26 @@ def _mark_delisted(
     query showing literally every non-delisted listing in the whole table belonged to the one city
     just scraped. Still only called when every region/city ATTEMPTED this run for `source`
     succeeded (see run_once) — a partial fetch failure within that observed set must never be
-    mistaken for "everything in these cities disappeared"."""
+    mistaken for "everything in these cities disappeared".
+
+    2026-09-25 real bug found via a live code-review pass, confirmed live in production data
+    (diagnose-yad2-delisting-flap.yaml): Yad2's own map API (fetch_map_markers) does ONE request
+    per region and returns at most ~200 markers — a real per-request cap, not a paged/complete
+    result set (the module's own comment already flagged this as a known, unconfirmed risk). A
+    busy city easily has more than 200 genuinely-active listings, so any run's response is only a
+    SAMPLE of what's really out there — a real active listing simply outside this run's sample
+    looks identical, from this function's own point of view, to one that's genuinely gone. Live
+    production data confirmed the real damage: 8,552 delisted vs. only 1,860 active Yad2 rent rows
+    (an 82% delist rate implausible as genuine turnover), with essentially zero fresh delisting
+    activity in the last 24h — a settled-over-delisted backlog, not ongoing correct churn.
+
+    Fix: a listing is only actually marked delisted once it's been missing for
+    `min_hours_before_delist` (default 3 — roughly 3 hourly scrape runs), not on the very first run
+    that happens not to include it. A genuinely-removed listing still gets caught within a few
+    hours; one merely outside a single capped response gets several more chances to reappear in a
+    later run's sample before ever being wrongly hidden from users. Cheap insurance for every
+    source, not just Yad2 — Komo/Homeless share the same call, and there's no real downside to a
+    few extra hours of grace before delisting anywhere."""
     table = Listing.__table__
     newly_delisted = session.execute(
         table.update()
@@ -596,6 +622,7 @@ def _mark_delisted(
             table.c.is_delisted.is_(False),
             table.c.city.in_(scraped_city_names),
             table.c.external_id.notin_(seen_external_ids),
+            table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, 0, min_hours_before_delist),
         )
         .values(is_delisted=True, delisted_at=func.now())
         .returning(table.c.id)
