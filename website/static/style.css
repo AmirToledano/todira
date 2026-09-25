@@ -29,6 +29,17 @@
   --shadow-sm: 0 1px 3px rgba(14, 60, 58, .08);
   --shadow-md: 0 8px 24px rgba(14, 60, 58, .10);
   --shadow-lg: 0 16px 40px rgba(14, 60, 58, .16);
+  /* 2026-09-25 visual-polish layer (enhancement pass over the existing design system, not a
+     rebrand): a shared premium easing curve + colored "glow" shadows for hover states, and
+     dedicated (theme-adapting) header gradient stops with alpha so header.site can go frosted-
+     glass via backdrop-filter — plain hex tokens have no alpha, so backdrop-filter alone would be
+     invisible against a fully opaque background. Same "only redefine what should flip" pattern as
+     every other dark-mode token below. */
+  --ease-premium: cubic-bezier(.16, 1, .3, 1);
+  --glow-teal: 0 10px 30px rgba(14, 138, 130, .35);
+  --glow-gold: 0 10px 26px rgba(217, 164, 65, .40);
+  --header-glass-1: rgba(14, 138, 130, .92);
+  --header-glass-2: rgba(23, 60, 64, .92);
 }
 
 /* ---------- dark mode (2026-09-05) ----------
@@ -53,6 +64,10 @@
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, .35);
     --shadow-md: 0 8px 24px rgba(0, 0, 0, .40);
     --shadow-lg: 0 16px 40px rgba(0, 0, 0, .55);
+    --glow-teal: 0 10px 30px rgba(43, 188, 174, .40);
+    --glow-gold: 0 10px 26px rgba(217, 164, 65, .32);
+    --header-glass-1: rgba(43, 188, 174, .85);
+    --header-glass-2: rgba(23, 60, 64, .92);
   }
 }
 :root[data-theme="dark"] {
@@ -68,6 +83,10 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .35);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, .40);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, .55);
+  --glow-teal: 0 10px 30px rgba(43, 188, 174, .40);
+  --glow-gold: 0 10px 26px rgba(217, 164, 65, .32);
+  --header-glass-1: rgba(43, 188, 174, .85);
+  --header-glass-2: rgba(23, 60, 64, .92);
 }
 
 * { box-sizing: border-box; }
@@ -93,7 +112,13 @@ img { max-width: 100%; display: block; }
 /* ---------- header ---------- */
 header.site {
   position: sticky; top: 0; z-index: 40;
-  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+  background: linear-gradient(135deg, var(--header-glass-1) 0%, var(--header-glass-2) 100%);
+  /* Frosted-glass floating nav (2026-09-25 polish pass) — the gradient stops above carry alpha
+     specifically so this blur has something translucent to work through; a fully opaque
+     background would make backdrop-filter invisible. -webkit- prefix for Safari; browsers with
+     neither simply keep the solid 92%-opacity gradient, which still reads fine on its own. */
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
   color: #fff;
   box-shadow: 0 2px 12px rgba(0,0,0,.15);
 }
@@ -192,13 +217,14 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   padding: 13px 26px; border-radius: 999px; text-decoration: none;
   font-weight: 600; font-size: .98rem; border: none; cursor: pointer;
   box-shadow: var(--shadow-sm);
-  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+  transition: transform .3s var(--ease-premium), box-shadow .3s var(--ease-premium), background .3s var(--ease-premium), filter .3s var(--ease-premium);
 }
-.btn:hover { background: var(--teal-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn:hover { background: var(--teal-dark); transform: translateY(-2px) scale(1.02); box-shadow: var(--glow-teal); }
+.btn:active { transform: translateY(0) scale(.98); }
 .btn.gold { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark) !important; }
-.btn.gold:hover { filter: brightness(1.06); }
+.btn.gold:hover { filter: brightness(1.06); transform: translateY(-2px) scale(1.02); box-shadow: var(--glow-gold); }
 .btn.outline { background: transparent; color: var(--teal) !important; border: 1.5px solid var(--teal); box-shadow: none; }
-.btn.outline:hover { background: var(--teal-tint); }
+.btn.outline:hover { background: var(--teal-tint); box-shadow: var(--glow-teal); }
 .btn.block { width: 100%; justify-content: center; }
 /* Real brand colors — /login's "continue with X" buttons (2026-09-05), matching the reference
    product's own login screen: Telegram blue, WhatsApp green, both distinct from the site's own
@@ -227,10 +253,57 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   position: relative; overflow: hidden;
   background: radial-gradient(circle at 15% 20%, rgba(217,164,65,.14), transparent 45%),
               radial-gradient(circle at 85% 0%, rgba(14,138,130,.10), transparent 40%);
+  background-size: 160% 160%;
   border-radius: var(--radius-lg);
   padding: 48px 28px 36px; text-align: center; margin-bottom: 0;
+  /* 2026-09-25 polish pass: slow aurora drift on the existing radial gradients, plus two blurred
+     floating "orbs" behind the content (::before/::after below) for depth. This is one hero
+     section on one page — nothing like the per-card backdrop-filter cost .photo-count-badge's own
+     comment warns against (that's ~200 repeated elements; this is one). */
+  animation: hero-aurora 18s ease-in-out infinite;
 }
-.hero h1 { font-size: clamp(2rem, 6vw, 3.2rem); margin-bottom: .3em; }
+@keyframes hero-aurora {
+  0%, 100% { background-position: 0% 0%, 100% 0%; }
+  50% { background-position: 20% 30%, 75% 45%; }
+}
+.hero::before, .hero::after {
+  content: ''; position: absolute; z-index: 0; border-radius: 50%; pointer-events: none;
+  filter: blur(60px); opacity: .55;
+}
+.hero::before {
+  width: 260px; height: 260px; background: var(--gold-light);
+  top: -70px; inset-inline-start: -60px;
+  animation: hero-orb-float 13s ease-in-out infinite;
+}
+.hero::after {
+  width: 300px; height: 300px; background: var(--teal);
+  bottom: -100px; inset-inline-end: -70px;
+  animation: hero-orb-float 16s ease-in-out infinite reverse;
+}
+@keyframes hero-orb-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(18px, -14px) scale(1.08); }
+}
+/* Real content sits above the orbs — every direct child gets its own stacking context. */
+.hero > * { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .hero, .hero::before, .hero::after { animation: none; }
+}
+.hero h1 {
+  font-size: clamp(2rem, 6vw, 3.2rem); margin-bottom: .3em;
+  /* Slow shimmering gradient text — teal/gold brand colors only, not a new palette. Falls back
+     cleanly: browsers without background-clip:text just paint --heading as a solid color instead
+     of transparent (see the @supports rule right below), never invisible text. */
+  background: linear-gradient(90deg, var(--heading) 0%, var(--teal) 35%, var(--gold) 65%, var(--heading) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text;
+  animation: hero-shine 8s linear infinite;
+}
+@supports (-webkit-background-clip: text) or (background-clip: text) {
+  .hero h1 { color: transparent; -webkit-text-fill-color: transparent; }
+}
+@keyframes hero-shine { to { background-position: -200% center; } }
+@media (prefers-reduced-motion: reduce) { .hero h1 { animation: none; } }
 .hero .lead { font-size: 1.1rem; color: var(--text-muted); max-width: 540px; margin: 0 auto 26px; }
 .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .hero .eyebrow {
@@ -321,7 +394,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   border: 1px solid var(--border);
   padding: 14px 18px; display: flex; align-items: center; gap: 10px;
   flex: 1 1 140px; min-width: 140px;
+  transition: transform .3s var(--ease-premium), box-shadow .3s var(--ease-premium);
 }
+.float-stat:hover { transform: translateY(-3px); box-shadow: var(--shadow-md), var(--glow-gold); }
 .float-stat .fs-icon { font-size: 1.3rem; display: inline-flex; }
 /* --heading, not --teal-dark — --teal-dark is frozen dark across both themes (see its own :root
    comment) while .float-stat's own background is --card, which goes dark in dark mode — a fixed
@@ -361,7 +436,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .feature-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 26px 22px; box-shadow: var(--shadow-sm);
+  transition: transform .35s var(--ease-premium), box-shadow .35s var(--ease-premium), border-color .35s var(--ease-premium);
 }
+.feature-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg), var(--glow-teal); border-color: var(--teal); }
 .feature-card .icon {
   width: 46px; height: 46px; border-radius: 12px;
   background: var(--teal-tint); display: flex; align-items: center; justify-content: center;
@@ -480,10 +557,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .listing-card {
   background: var(--card); border-radius: var(--radius-md); overflow: hidden;
   box-shadow: var(--shadow-sm); border: 1px solid var(--border);
-  transition: transform .18s ease, box-shadow .18s ease;
+  transition: transform .3s var(--ease-premium), box-shadow .3s var(--ease-premium);
   display: flex; flex-direction: column;
 }
-.listing-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+/* Colored ring instead of a blurred glow here — up to ~24 of these render per /apartments page,
+   and a plain box-shadow (unlike backdrop-filter) costs nothing extra per card at rest, only on
+   the one actually hovered. */
+.listing-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg), 0 0 0 1px rgba(14,138,130,.18); }
 
 .listing-cover-wrap { position: relative; }
 .listing-cover {
