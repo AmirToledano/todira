@@ -625,6 +625,84 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert verify_wid_token(account_token) == "9725500000"
 
 
+class _FakeRaceSession:
+    """Simulates the DB's own unique-constraint violation on Filter.user_id — a genuine race
+    between two concurrent onboarding-completing deliveries for the same new user (see this
+    module's own test below for the real report). Only the FIRST commit() call raises, matching a
+    real DB: the recovery lookup after rollback succeeds."""
+
+    def __init__(self, recovered_filter):
+        self._recovered_filter = recovered_filter
+        self.added: list = []
+        self.rolled_back = False
+        self.commit_calls = 0
+
+    def scalar(self, stmt):
+        # Before the race is triggered (the handler's own "does this user already have a filter"
+        # check at the very top, deciding onboarding vs. chat mode): None, so onboarding proceeds.
+        # After the failed commit (this function's own recovery lookup): the row the OTHER
+        # concurrent request just committed.
+        return self._recovered_filter if self.commit_calls > 0 else None
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    def commit(self):
+        self.commit_calls += 1
+        if self.commit_calls == 1:
+            from sqlalchemy.exc import IntegrityError
+
+            raise IntegrityError("insert", {}, Exception("unique violation"))
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_complete_state_recovers_from_a_genuine_concurrent_filter_insert_race():
+    """2026-09-25 real bug fix: this webhook is stateless between requests, and Meta can and does
+    deliver two rapid messages from the same new user as separate webhook POSTs, each its own
+    BackgroundTask. If both independently reach onboarding-completion at nearly the same moment,
+    both try to INSERT a Filter for the same user_id (unique) — the loser used to have this whole
+    per-message try/except (_process_payload_sync) swallow the IntegrityError silently, so that
+    user got no reply at all for that message."""
+    session = _FakeRaceSession(recovered_filter=SimpleNamespace(id=1, user_id=1))
+    user = _fake_user(pending_state={"deal_type": "rent", "cities": [], "rooms_min": None,
+                                      "rooms_max": None, "price_min": None, "price_max": None,
+                                      "keywords": []})
+    complete_result = {
+        "deal_type": "rent",
+        "cities": ["תל אביב יפו"],
+        "rooms_min": 2,
+        "rooms_max": None,
+        "price_min": None,
+        "price_max": 7000,
+        "keywords": [],
+        "missing_required": [],
+        "response_message": "מעולה, קיבלתי הכל!",
+    }
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: user),
+        patch.object(
+            whatsapp_webhook.gemini_client, "parse_onboarding_message", return_value=complete_result
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message"),
+    ):
+        # Must not raise — the whole point of the fix.
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "תל אביב, עד 7000, 2 חדרים")
+
+    assert session.rolled_back is True
+    assert session.commit_calls == 1  # the one failed attempt — no retry-commit needed, the
+    # OTHER concurrent request's own commit already saved the Filter row
+
+
 # --- Help/support requests (2026-09-07) — checked before both the existing-filter chat branch and
 # onboarding parsing, mirroring bot/handlers/contact_fallback.py's own precedence on Telegram, so
 # "תמיכה" et al. never gets reinterpreted as apartment criteria or routed through the free-chat
