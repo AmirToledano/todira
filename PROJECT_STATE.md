@@ -7427,3 +7427,36 @@ since it's optional enrichment and untested, not urgent (see section 7, item 5 a
 and Homeless sale scraping is newly wired (was never built before). The one real decision left for
 the owner: accepting Homeless's real per-run cost going from 1 to 5 ZenRows credits (via merging
 this work to main) — the only alternative is leaving Homeless permanently broken.
+
+### 9. 2026-09-25 — Answered owner's direct question: is the "I paid" honor-system button real or old dead code?
+
+Owner asked directly, correctly worried about launch readiness: given a real person should have to
+actually pay for full access, is the informal Bit/PayBox "I paid" click-trust button on `/upgrade`
+actually old leftover code, or the real current path? Verified live (read-only diagnostic workflow,
+`diagnose-real-live-upgrade-path.yaml`), not guessed:
+- Grow is completely unconfigured in production (`grow-page-code`/`grow-user-id`/`grow-api-key` all
+  0 bytes in the live k8s secret).
+- Takbull's real recurring API is also unconfigured (`takbull-api-key`/`takbull-api-secret` both 0
+  bytes; only `takbull-webhook-secret` is set).
+- `upgrade_submit`'s real fallback order is `recurring_api_configured()` → `grow_client.is_configured()`
+  → the informal click-trust flow — confirmed both gates are False right now, so **the informal "I
+  paid" button IS the current, real, live payment path** — a real person does NOT currently have to
+  actually pay to get full access.
+
+Separately, confirmed the *older* Takbull hosted-page checkout (`is_configured()`/
+`build_checkout_url()`, `TAKBULL_PAYMENT_PAGE_URL`-based, from section on 2026-09-06 above) was
+genuinely dead — a repo-wide grep found zero callers anywhere, and its own required k8s secret
+value (the payment-page URL) had, in practice, never been what `/upgrade` actually used. Removed
+both functions and the `TAKBULL_PAYMENT_PAGE_URL` env var/Helm value that fed them, so this can't
+cause the same confusion again. Also fixed a real dormant bug found while re-reading this code:
+`webhooks_takbull_get` (an `async def` route on this site's single-worker/single-replica server)
+called the blocking `takbull_client.validate_notification` directly on the event loop — wrapped in
+`asyncio.to_thread` so a slow Takbull API call can't freeze every other concurrent request once the
+recurring API is actually configured. 1026 tests pass full suite; ruff clean. Merged to main
+(PR #438).
+
+**Still open, owner's decision, not a code bug**: to make payment actually required, the owner needs
+either real Takbull recurring-API credentials (`TAKBULL_API_KEY`/`TAKBULL_API_SECRET` — see the
+2026-09-21 section above for how the app already wires these once obtained) or real Grow credentials
+(`GROW_PAGE_CODE`/`GROW_USER_ID`/`GROW_API_KEY`). Until one of those is configured, `/upgrade` will
+keep using the informal click-trust flow by design (documented fallback, not a bug).
