@@ -40,6 +40,7 @@ from todira_common.wid_token import generate_wid_token
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +387,21 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             )
         )
         user.pending_onboarding_state = None
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # 2026-09-25 real bug fix, found via a live code-review pass: Filter.user_id is
+            # unique, and this webhook is stateless between requests — two genuinely concurrent
+            # deliveries for the same new user's onboarding-completing messages (Meta can and does
+            # deliver two rapid messages as separate webhook POSTs, each its own BackgroundTask)
+            # could both reach this exact point before either commits. The losing request used to
+            # have this whole per-message try/except (see _process_payload_sync) swallow the
+            # IntegrityError silently — the user got no reply at all for that message, looking
+            # like their onboarding just hung. Same "the other request already finished the job,
+            # just confirm it" resolution as get_or_create_user/get_or_create_whatsapp_user.
+            session.rollback()
+            if session.scalar(select(Filter).where(Filter.user_id == user.id)) is None:
+                raise
 
         whatsapp_client.send_text_message(
             wa_id, "מעולה, נרשמת! אני כבר עוקב אחרי דירות חדשות שמתאימות לך 🏠"
