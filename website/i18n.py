@@ -900,6 +900,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Информация о квартире", "fr": "Détails de l'appartement",
         "ar": "تفاصيل الشقة",
     },
+    # 2026-09-25: real owner request, comparing directly against dorin.app's own bottom-sheet
+    # detail view — the modal's description used to be a plain paragraph with no heading at all,
+    # and the only date shown was the card's own relative "posted X ago" tucked in the footer next
+    # to the CTA button. dorin shows a real "תיאור הנכס" section heading and an exact posted date
+    # as its own line near the bottom — both added to apartments.html's own openListingDetail()
+    # using data already on the card (data-posted-at), no new backend data needed.
+    "apartments.detail_description_heading": {
+        "he": "תיאור הנכס", "en": "Property description",
+        "ru": "Описание объекта", "fr": "Description du bien",
+        "ar": "وصف العقار",
+    },
+    "apartments.detail_posted_on": {
+        "he": "פורסם ב-{date}", "en": "Posted on {date}",
+        "ru": "Опубликовано {date}", "fr": "Publié le {date}",
+        "ar": "نُشر في {date}",
+    },
     # Map settings popover — filters which PINS show by listing age, without touching the listing
     # list itself (real owner request, lower detail/priority than the rest of this batch, referencing
     # a dorin.app screenshot of an equivalent control).
