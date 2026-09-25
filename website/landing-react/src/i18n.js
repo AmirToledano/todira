@@ -11,13 +11,21 @@ export const lang = injected.lang || "he";
 export const dir = injected.dir || "rtl";
 export const whatsappPublicNumber = injected.whatsappPublicNumber || "";
 export const telegramBotUrl = "https://t.me/AmirDirotBot";
-// The visitor's Telegram user id, when logged in via a `/contact?uid=...` nav link (base.html) —
-// only Contact.jsx reads this, to forward it in the POST /api/contact body for message
-// attribution, same as the old form-encoded route's hidden `uid` field used to.
+// The visitor's Telegram user id, when present in the page's own URL (e.g. `/contact?uid=...` or
+// `/login?uid=...`, both via base.html's nav / a bot deep link) — Contact.jsx forwards it in the
+// POST /api/contact body for message attribution, Login.jsx forwards it into the Google OAuth
+// start link, same as each page's old server-rendered hidden field/href used to.
 export const uid = injected.uid ?? null;
+// Already sanitized server-side by main.py's _safe_next() before injection — see login() — so
+// this is safe to use directly in a client-built href without re-validating it here.
+export const next = injected.next ?? null;
 
-export function t(key) {
+// vars supports the same named-placeholder interpolation as i18n.py's own t(key, **kwargs) (e.g.
+// login.hint's "{telegram_cta}") — .format()-style, not HTML, so no injection risk either way.
+export function t(key, vars) {
   const entry = content[key];
   if (!entry) return key;
-  return entry[lang] || entry.he || key;
+  const text = entry[lang] || entry.he || key;
+  if (!vars) return text;
+  return text.replace(/\{(\w+)\}/g, (match, name) => (name in vars ? vars[name] : match));
 }

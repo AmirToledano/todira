@@ -575,10 +575,22 @@ def login(request: Request, next: str = "/apartments", uid: int | None = None):
     it belongs to. See google_pending.html for the recovery path in that case."""
     if request.session.get("user_id") is not None:
         return RedirectResponse(_safe_next(next), status_code=303)
+    # 2026-09-25: seventh page moved into a React island (website/landing-react/login.html), same
+    # pattern as about()/accessibility()/privacy()/terms()/contact() above. `next` is still
+    # resolved through _safe_next() here, server-side, before being injected into
+    # window.__TODIRA_PAGE__ — Login.jsx builds the Google OAuth start link straight from that
+    # already-sanitized value, never re-deriving or re-validating it client-side.
+    login_assets = _landing_react_assets("login.html")
     return _render(
         request,
         "login.html",
-        {"next": _safe_next(next), "uid": uid, "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER},
+        {
+            "landing_js_url": login_assets.get("js", ""),
+            "landing_css_urls": login_assets.get("css", []),
+            "next": _safe_next(next),
+            "uid": uid,
+            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
+        },
     )
 
 

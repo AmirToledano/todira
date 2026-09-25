@@ -48,6 +48,13 @@
     "fr": "Nous contacter — Todira",
     "ar": "تواصل معنا — توديرا"
   },
+  "meta.title_login": {
+    "he": "התחברות — טודירה",
+    "en": "Login — Todira",
+    "ru": "Вход — Todira",
+    "fr": "Connexion — Todira",
+    "ar": "تسجيل الدخول — توديرا"
+  },
   "whatsapp.greeting": {
     "he": "היי! אני רוצה להתחיל לחפש דירה 🏠",
     "en": "Hi! I'd like to start looking for an apartment 🏠",
@@ -1087,6 +1094,48 @@
   "terms.s12_post": {
     "he": ".",
     "en": "."
+  },
+  "login.h1": {
+    "he": "התחברות לטודירה",
+    "en": "Log in to Todira",
+    "ru": "Войти в Todira",
+    "fr": "Connexion à Todira",
+    "ar": "تسجيل الدخول إلى توديرا"
+  },
+  "login.subtitle": {
+    "he": "בחר/י איך להתחבר — כל האפשרויות מובילות לאותו חשבון.",
+    "en": "Choose how to log in — every option leads to the same account.",
+    "ru": "Выберите способ входа — все варианты ведут к одному и тому же аккаунту.",
+    "fr": "Choisissez comment vous connecter — toutes les options mènent au même compte.",
+    "ar": "اختر طريقة تسجيل الدخول — كل الخيارات تؤدي إلى نفس الحساب."
+  },
+  "login.google_cta": {
+    "he": "התחברות מהירה עם Google",
+    "en": "Quick login with Google",
+    "ru": "Быстрый вход через Google",
+    "fr": "Connexion rapide avec Google",
+    "ar": "تسجيل دخول سريع عبر Google"
+  },
+  "login.divider": {
+    "he": "או המשך ישירות דרך האפליקציה",
+    "en": "Or continue directly through the app",
+    "ru": "Или продолжите прямо через приложение",
+    "fr": "Ou continuez directement via l'application",
+    "ar": "أو تابع مباشرة عبر التطبيق"
+  },
+  "login.telegram_cta": {
+    "he": "המשך בטלגרם",
+    "en": "Continue on Telegram",
+    "ru": "Продолжить в Telegram",
+    "fr": "Continuer sur Telegram",
+    "ar": "تابع عبر تيليجرام"
+  },
+  "login.hint": {
+    "he": "כבר רשום/ה דרך טלגרם או ווטסאפ, אבל עדיין לא קישרת Google? לחיצה על \"{telegram_cta}\" למעלה תפתח את הבוט — שם תמצא/י קישור לחשבון שלך (🔗) שמחזיר אותך לכאן, לאותו דפדפן, מזוהה. משם, החיבור עם Google יעבוד ישר על החשבון הקיים שלך.",
+    "en": "Already registered via Telegram or WhatsApp, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot — you'll find your account link there (🔗) that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
+    "ru": "Уже зарегистрированы через Telegram или WhatsApp, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота — там вы найдёте ссылку на свой аккаунт (🔗), которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
+    "fr": "Déjà inscrit via Telegram ou WhatsApp, mais pas encore lié à Google ? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot — vous y trouverez le lien de votre compte (🔗) qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
+    "ar": "مسجّل بالفعل عبر تيليجرام أو واتساب، لكن لم تربط Google بعد؟ الضغط على \"{telegram_cta}\" أعلاه يفتح البوت — ستجد هناك رابط حسابك (🔗) الذي يعيدك إلى هنا، في نفس المتصفح، معروفًا. من هناك، سيعمل الربط مع Google مباشرة على حسابك الحالي."
   },
   "upgrade.value_anchor_title": {
     "he": "49.90 ₪ לחודש? בערך המחיר של קפה ומאפה.",
