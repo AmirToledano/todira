@@ -559,6 +559,38 @@
       }, { passive: true });
       window.addEventListener('resize', update, { passive: true });
     })();
+    (function () {
+      // Magnetic pull for the primary gold CTA buttons (see .btn.gold's own comment in
+      // style.css for how this composes with its existing hover lift). Skipped entirely on touch
+      // devices and under reduced motion — checked here in JS so the listener is never even
+      // attached where it could never do anything or shouldn't animate, not just left to a CSS
+      // override. .btn.gold buttons are few per page (the flagship CTAs, not a per-card class
+      // like .listing-card), so checking distance against every one of them on each mousemove —
+      // rather than the single delegated listener the spotlight glow uses — is negligible.
+      var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!window.matchMedia('(hover: hover)').matches || reduceMotion) { return; }
+      var magnets = document.querySelectorAll('.btn.gold');
+      if (!magnets.length) { return; }
+      var RADIUS_PAD = 30; // px beyond the button's own edge where the pull starts
+      var STRENGTH = 0.3;  // fraction of the cursor offset the button actually moves
+      document.addEventListener('mousemove', function (e) {
+        magnets.forEach(function (btn) {
+          var rect = btn.getBoundingClientRect();
+          var cx = rect.left + rect.width / 2;
+          var cy = rect.top + rect.height / 2;
+          var dx = e.clientX - cx;
+          var dy = e.clientY - cy;
+          var reach = Math.max(rect.width, rect.height) / 2 + RADIUS_PAD;
+          if (Math.sqrt(dx * dx + dy * dy) < reach) {
+            btn.style.setProperty('--magnet-x', (dx * STRENGTH) + 'px');
+            btn.style.setProperty('--magnet-y', (dy * STRENGTH) + 'px');
+          } else {
+            btn.style.setProperty('--magnet-x', '0px');
+            btn.style.setProperty('--magnet-y', '0px');
+          }
+        });
+      }, { passive: true });
+    })();
   </script>
 </body>
 </html>
