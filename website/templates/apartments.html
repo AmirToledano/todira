@@ -156,7 +156,14 @@
       <span class="apt-listing-modal-close" aria-hidden="true">✕</span>
       <span class="apt-listing-modal-title" id="apt-listing-modal-title">{{ t('apartments.detail_view_title') }}</span>
     </button>
-    <div class="apt-listing-modal-body" id="apt-listing-modal-body"></div>
+    {# 2026-09-25: real owner request, comparing directly against dorin.app's own bottom-sheet —
+       the description had no section heading and the only date shown was the card's own relative
+       "posted X ago" tucked in the footer. These two translated strings feed openListingDetail()'s
+       own DOM-building below (same data-attribute-to-JS pattern as the map toggle's own labels
+       above), since the modal body is built dynamically and has no server-rendered listing yet. #}
+    <div class="apt-listing-modal-body" id="apt-listing-modal-body"
+         data-description-heading="{{ t('apartments.detail_description_heading') }}"
+         data-posted-on-template="{{ t('apartments.detail_posted_on', date='__DATE__') }}"></div>
   </div>
 </div>
 
@@ -369,8 +376,19 @@
       clone.removeAttribute('style');
       // The grid card truncates the description to 140 chars (see _listing_card.html) — the
       // modal has room to show it in full, using the untruncated text stashed on the card.
+      // 2026-09-25 real owner request (comparing directly against dorin.app's own bottom-sheet,
+      // which shows a real "תיאור הנכס" section heading, not just a bare paragraph): insert one
+      // before the description, using the translated string stashed on modalBody (see this
+      // template's own comment on that data attribute) — nothing here fabricates data, only adds
+      // a heading in front of the exact same real description text as before.
       var desc = clone.querySelector('.listing-desc');
-      if (desc && card.dataset.descriptionFull) { desc.textContent = card.dataset.descriptionFull; }
+      if (desc && card.dataset.descriptionFull) {
+        desc.textContent = card.dataset.descriptionFull;
+        var descHeading = document.createElement('h3');
+        descHeading.className = 'apt-modal-section-heading';
+        descHeading.textContent = modalBody.dataset.descriptionHeading || '';
+        desc.before(descHeading);
+      }
       var oldCover = clone.querySelector('.listing-cover');
       if (oldCover && card.dataset.imageUrls) {
         try {
@@ -380,6 +398,24 @@
             oldCover.replaceWith(buildGallery(urls, firstSlide ? firstSlide.alt : ''));
           }
         } catch (e) { /* malformed/missing data — leave the cloned carousel as a fallback */ }
+      }
+      // 2026-09-25 real owner request: dorin.app's own panel shows the listing's EXACT posting
+      // date as its own line near the bottom ("פורסם ב: 24.9.2026"), not just the card's relative
+      // "posted X ago" text buried in the footer next to the CTA button — both now show, the
+      // relative one in its original spot, this one as a clearly separate line beneath the CTA.
+      var footer = clone.querySelector('.listing-footer');
+      if (footer && card.dataset.postedAt) {
+        var posted = new Date(card.dataset.postedAt);
+        if (!isNaN(posted.getTime())) {
+          var dd = String(posted.getDate()).padStart(2, '0');
+          var mm = String(posted.getMonth() + 1).padStart(2, '0');
+          var formattedDate = dd + '.' + mm + '.' + posted.getFullYear();
+          var postedLine = document.createElement('div');
+          postedLine.className = 'apt-modal-posted-on';
+          var template = modalBody.dataset.postedOnTemplate || '__DATE__';
+          postedLine.textContent = template.replace('__DATE__', formattedDate);
+          footer.after(postedLine);
+        }
       }
       modalBody.innerHTML = '';
       modalBody.appendChild(clone);

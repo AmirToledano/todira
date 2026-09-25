@@ -1329,8 +1329,11 @@ body.apt-modal-open { overflow: hidden; }
 }
 #apt-listing-modal-body .listing-card:hover { transform: none; box-shadow: var(--shadow-sm); }
 #apt-listing-modal-body .listing-desc {
-  display: block; -webkit-line-clamp: unset; overflow: visible;
+  display: block; -webkit-line-clamp: unset; overflow: visible; line-height: 1.55;
 }
+/* A bit more breathing room than the compact grid card uses — real owner request comparing
+   against dorin.app's own panel, which reads as distinct sections rather than one dense block. */
+#apt-listing-modal-body .listing-body { gap: 14px; padding: 18px 20px 20px; }
 /* Real photo gallery for the detail modal (2026-09-24, real owner request comparing against
    dorin.app's own listing panel — the modal used to just clone the card's own small swipe
    carousel, reading as "a bigger card", not a genuinely detailed view). Built by apartments.html's
@@ -1358,6 +1361,17 @@ body.apt-modal-open { overflow: hidden; }
    this modal fakes). Sized as a proper primary call-to-action here, matching how prominent dorin's
    own contact block is in its equivalent panel, rather than the small inline footer link the card
    itself uses. */
+/* 2026-09-25 real owner request, comparing directly against dorin.app's own bottom-sheet: a real
+   section heading above the description (previously a bare paragraph) and the listing's exact
+   posting date as its own line under the CTA button (previously only the card's relative "posted
+   X ago" text, buried in the footer) — see apartments.html's own openListingDetail() comment for
+   how these get built; both use real data already on the card, nothing fabricated. */
+#apt-listing-modal-body .apt-modal-section-heading {
+  font-size: .95rem; font-weight: 700; color: var(--text); margin: 4px 0 2px;
+}
+#apt-listing-modal-body .apt-modal-posted-on {
+  font-size: .78rem; color: var(--text-muted); text-align: center; margin-top: 2px;
+}
 #apt-listing-modal-body .listing-footer { margin-top: 4px; }
 #apt-listing-modal-body .view-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;

@@ -246,6 +246,12 @@ def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(cl
     assert "data-image-urls=" in resp.text
     assert "https://img.example/1.jpg" in resp.text
     assert "https://img.example/2.jpg" in resp.text
+    # 2026-09-25: real owner request, comparing directly against dorin.app's own bottom-sheet —
+    # the modal body carries the translated section-heading/posted-date strings its own JS reads
+    # to build a real "תיאור הנכס" heading and an exact posted-date line (see apartments.html's
+    # own openListingDetail() comment).
+    assert 'data-description-heading="תיאור הנכס"' in resp.text
+    assert 'data-posted-on-template="פורסם ב-__DATE__"' in resp.text
 
 
 def test_apartments_listing_card_omits_posted_at_and_description_full_when_absent(client):
