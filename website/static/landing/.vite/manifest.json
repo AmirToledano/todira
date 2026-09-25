@@ -1,6 +1,6 @@
 {
-  "_Blob-DNqk8ADx.js": {
-    "file": "assets/Blob-DNqk8ADx.js",
+  "_Blob-DKs6JcH0.js": {
+    "file": "assets/Blob-DKs6JcH0.js",
     "name": "Blob",
     "css": [
       "assets/Blob-DW_nQQpF.css"
@@ -11,21 +11,33 @@
     "src": "_Blob-DW_nQQpF.css"
   },
   "about.html": {
-    "file": "assets/about-Dv4wG9uh.js",
+    "file": "assets/about-D5X65mk0.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_Blob-DNqk8ADx.js"
+      "_Blob-DKs6JcH0.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-CwT9t91B.js",
+    "file": "assets/index-BzwcPt3s.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_Blob-DNqk8ADx.js"
+      "_Blob-DKs6JcH0.js"
+    ],
+    "dynamicImports": [
+      "src/sections/ScanCore.jsx"
+    ]
+  },
+  "src/sections/ScanCore.jsx": {
+    "file": "assets/ScanCore-CravwlNt.js",
+    "name": "ScanCore",
+    "src": "src/sections/ScanCore.jsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_Blob-DKs6JcH0.js"
     ]
   }
 }

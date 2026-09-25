@@ -1,7 +1,14 @@
-import { useRef } from "react";
+import { useRef, lazy, Suspense } from "react";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { t, whatsappPublicNumber, telegramBotUrl } from "../i18n";
 import Blob from "../Blob.jsx";
+
+// Three.js + @react-three/fiber + drei add ~250kB gzipped on their own — lazy-loaded into its own
+// chunk so the hero's actual content (headline, CTAs) isn't gated behind downloading and parsing
+// that before it can render. Suspense's fallback is ScanCore's own dark panel background (plain
+// CSS, in ScanCore.jsx's sibling wrapper below), so there's no layout shift or blank gap while the
+// 3D chunk loads — it just looks like the panel "powers up" a moment later.
+const ScanCore = lazy(() => import("./ScanCore.jsx"));
 
 const easePremium = [0.16, 1, 0.3, 1];
 
@@ -37,7 +44,7 @@ function TiltImage({ children }) {
       ref={ref}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      style={{ perspective: 800 }}
+      style={{ perspective: 800, position: "relative", zIndex: 1 }}
     >
       <motion.div style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}>
         {children}
@@ -161,6 +168,11 @@ export default function Hero() {
           className="tl-hero-image"
           style={{ position: "relative", maxWidth: 340, margin: "0 auto" }}
         >
+          <div className="tl-scancore-shell" aria-hidden="true">
+            <Suspense fallback={null}>
+              <ScanCore />
+            </Suspense>
+          </div>
           <TiltImage>
             <motion.img
               src="/static/todira-brand.webp?v=4"
@@ -229,6 +241,23 @@ export default function Hero() {
         .tl-hero-h1 { animation: tl-shine 9s linear infinite; }
         @media (prefers-reduced-motion: reduce) {
           .tl-hero-h1 { animation: none; }
+        }
+        /* The 3D scene's dark panel frame — defined here (always in the initial bundle), not in
+           the lazy-loaded ScanCore.jsx, so the panel + its background show up immediately, with
+           zero layout shift, before that chunk has even started downloading. See ScanCore.jsx's
+           own comment and Hero.jsx's import comment for the rest of the reasoning. */
+        .tl-scancore-shell {
+          position: absolute;
+          top: -64px; bottom: -64px; left: -46px; right: -46px;
+          z-index: 0;
+          border-radius: 32px;
+          overflow: hidden;
+          box-shadow: 0 30px 70px rgba(14, 60, 58, .3);
+          border: 1px solid rgba(217, 164, 65, .28);
+          background: radial-gradient(circle at 50% 42%, #123b38, #0b1a19 72%);
+        }
+        @media (max-width: 520px) {
+          .tl-scancore-shell { top: -36px; bottom: -36px; left: -22px; right: -22px; }
         }
       `}</style>
     </section>

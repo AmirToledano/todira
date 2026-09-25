@@ -101,6 +101,39 @@ key — matches the original page's own reasoning (a real visitor always
 writes to the bot in Hebrew, regardless of the page's display language),
 so it isn't in `content.json` and doesn't need regenerating.
 
+## The hero's 3D scene (ScanCore)
+
+`src/sections/ScanCore.jsx` renders a real Three.js scene (via
+`@react-three/fiber` + `@react-three/drei`) behind the hero image — a
+rotating wireframe "core" ringed by two tilted orbits and a drifting field
+of glowing points, in the brand's own teal/gold. Owner sent real reference
+footage of current Awwwards-style Three.js product-showcase sites and
+asked for that tier of visual spectacle specifically, not just
+CSS/Framer Motion polish; there's no literal product to render in 3D here,
+so this represents what the product actually *does* (continuous scanning)
+rather than forcing an unrelated 3D object in.
+
+A few things that only matter because this is WebGL, not CSS:
+
+- **Lazy-loaded.** Three.js + fiber + drei add ~250kB gzipped on their own
+  — `Hero.jsx` imports `ScanCore` via `React.lazy()`, so that weight is a
+  separate chunk (`ScanCore-*.js`) that loads *after* the hero's actual
+  content (headline, CTAs), not blocking it. The dark panel frame itself
+  (`.tl-scancore-shell`) lives in `Hero.jsx`, not in `ScanCore.jsx` — so the
+  panel's own background renders immediately, with zero layout shift,
+  before the lazy chunk has even started downloading; the 3D scene just
+  fills that already-visible panel a moment later.
+- **Graceful when it can't run.** `prefers-reduced-motion: reduce` and a
+  runtime WebGL-support check both skip mounting the `<Canvas>` entirely
+  (computed once via a `useState` lazy initializer, not an effect — see
+  `supportsScene()`) — the shell's own static gradient panel is a
+  complete, intentional-looking fallback on its own, not a broken/blank
+  state.
+- **Bounded, not free-roaming.** The scene reacts to the pointer with a
+  small spring-damped offset (same restraint as `Hero.jsx`'s own
+  `TiltImage`), never a draggable orbit-controls camera — it should read
+  as *alive*, not as a 3D toy visitors can spin.
+
 ## Local development
 
 ```bash
