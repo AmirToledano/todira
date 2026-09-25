@@ -507,12 +507,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "דירה חדשה!", "en": "New listing!", "ru": "Новое объявление!",
         "fr": "Nouvelle annonce !", "ar": "شقة جديدة!",
     },
+    # 2026-09-25: deliberately a DIFFERENT city/price/room-count than feature1's own demo example
+    # (Tel Aviv, 2-3 rooms, ~6,000 ₪) below — this proof card and that demo used to show near-
+    # identical numbers, reading as the same example copy-pasted three times on one page. Owner
+    # feedback, live screenshot review.
     "home.example_card_sub": {
-        "he": "תל אביב · 3 חדרים · 6,200 ₪",
-        "en": "Tel Aviv · 3 rooms · ₪6,200",
-        "ru": "Тель-Авив · 3 комнаты · 6,200 ₪",
-        "fr": "Tel-Aviv · 3 pièces · 6 200 ₪",
-        "ar": "تل أبيب · 3 غرف · 6,200 ₪",
+        "he": "רמת גן · 2 חדרים · 4,900 ₪",
+        "en": "Ramat Gan · 2 rooms · ₪4,900",
+        "ru": "Рамат-Ган · 2 комнаты · 4,900 ₪",
+        "fr": "Ramat Gan · 2 pièces · 4 900 ₪",
+        "ar": "رمات غان · غرفتان · 4,900 ₪",
     },
     "home.feature1_title": {
         "he": "מבין אותך בשפה חופשית",
@@ -521,18 +525,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Vous comprend en langage naturel",
         "ar": "يفهمك بلغة طبيعية",
     },
+    # 2026-09-25: no longer quotes the literal example ("2-3 rooms in Tel Aviv, up to 6,000 ILS")
+    # inline — the demo box right below (feature1_example_city/rooms/price + the fixed query text
+    # in Features.jsx) already shows that exact example concretely, so repeating it in prose too
+    # just duplicated the same numbers twice back-to-back. The "in Hebrew" clarification stays —
+    # that's a real functional instruction for non-Hebrew readers, not part of the redundant quote.
     "home.feature1_body": {
-        "he": "פשוט תכתוב מה אתה מחפש — \"2-3 חדרים בתל אביב עד 6000 שקל\" — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילך, בלי טפסים מסובכים.",
-        "en": "Just write what you're looking for in Hebrew — e.g. \"2-3 rooms in Tel Aviv, up to 6,000 ILS\" — and AI understands it and sets up the filter for you, no complicated forms.",
-        "ru": "Просто напишите на иврите, что вы ищете — например, «2-3 комнаты в Тель-Авиве до 6000 шекелей» — и ИИ поймёт вас и настроит фильтр без сложных форм.",
-        "fr": "Décrivez simplement ce que vous cherchez en hébreu — par ex. « 2-3 pièces à Tel-Aviv, jusqu'à 6 000 ILS » — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
-        "ar": "فقط اكتب ما تبحث عنه بالعبرية — مثلاً \"2-3 غرف في تل أبيب حتى 6000 شيكل\" — ويفهم الذكاء الاصطناعي طلبك ويضبط الفلتر نيابة عنك، بدون نماذج معقدة.",
+        "he": "פשוט תכתבו לבוט מה אתם מחפשים, בדיוק כמו שהייתם מתארים לחבר — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילכם, בלי טפסים מסובכים.",
+        "en": "Just write what you're looking for in Hebrew, like you'd describe it to a friend — and AI understands it and sets up the filter for you, no complicated forms.",
+        "ru": "Просто напишите боту на иврите, что вы ищете, как будто рассказываете другу — и ИИ поймёт вас и настроит фильтр без сложных форм.",
+        "fr": "Décrivez simplement au bot ce que vous cherchez en hébreu, comme vous le feriez auprès d'un ami — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
+        "ar": "فقط اكتب للبوت ما تبحث عنه بالعبرية، تمامًا كما لو كنت تصفه لصديق — ويفهم الذكاء الاصطناعي طلبك ويضبط الفلتر نيابة عنك، بدون نماذج معقدة.",
     },
-    # 2026-09-10 addition: a concrete before/after visual under feature1 — the same example
-    # already quoted in feature1_body's own text, shown as an actual mini-demo (typed query ->
-    # parsed chips) instead of only described in a sentence. Only the parsed-chip labels below are
-    # real translation keys — the query text itself is a fixed Hebrew example (a real visitor
-    # writes to the bot in Hebrew regardless of the UI language they're browsing in, matching
+    # 2026-09-10 addition: a concrete before/after visual under feature1, shown as an actual
+    # mini-demo (typed query -> parsed chips) instead of only described in a sentence. Only the
+    # parsed-chip labels below are real translation keys — the query text itself is a fixed Hebrew
+    # example (a real visitor writes to the bot in Hebrew regardless of the UI language they're
+    # browsing in, matching
     # feature1_body's own "in Hebrew" framing above), hardcoded directly in home.html rather than
     # given its own key here: an identical-Hebrew-in-every-language entry would trip
     # test_no_hebrew_characters_leak_into_arabic_translations, a guard that exists specifically to

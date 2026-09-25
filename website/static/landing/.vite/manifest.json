@@ -1,6 +1,6 @@
 {
-  "_Blob-Cccq4gKe.js": {
-    "file": "assets/Blob-Cccq4gKe.js",
+  "_Blob-BgyyR0-9.js": {
+    "file": "assets/Blob-BgyyR0-9.js",
     "name": "Blob",
     "css": [
       "assets/Blob-DW_nQQpF.css"
@@ -11,21 +11,21 @@
     "src": "_Blob-DW_nQQpF.css"
   },
   "about.html": {
-    "file": "assets/about-BFey1pCt.js",
+    "file": "assets/about-DZR6xyyr.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_Blob-Cccq4gKe.js"
+      "_Blob-BgyyR0-9.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-CN9rTATh.js",
+    "file": "assets/index-B9QlTuTH.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_Blob-Cccq4gKe.js"
+      "_Blob-BgyyR0-9.js"
     ]
   }
 }

@@ -73,6 +73,30 @@ export default function Compare() {
         </motion.div>
       </div>
 
+      {/* Reuses the real value-anchor copy already published on /upgrade (upgrade.value_anchor_*)
+          rather than inventing new pricing copy here — same honest ₪49.90/month-vs-coffee framing
+          the product already uses where someone's actually deciding whether to pay, now given a
+          preview here too so cost isn't a surprise later. Owner feedback, live screenshot review:
+          this replaces what used to be a second near-duplicate "example listing" showing almost
+          the same Tel Aviv rent numbers as feature1's own demo above. */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.6 }}
+        transition={{ duration: 0.6, delay: 0.2, ease: easePremium }}
+        style={{
+          maxWidth: 620, margin: "36px auto 0", textAlign: "center",
+          background: "var(--teal-tint)", borderRadius: 18, padding: "22px 26px",
+        }}
+      >
+        <p style={{ margin: 0, fontWeight: 700, color: "var(--heading)" }}>
+          {t("upgrade.value_anchor_title")}
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: ".92rem", color: "var(--text-muted)" }}>
+          {t("upgrade.value_anchor_body")}
+        </p>
+      </motion.div>
+
       <style>{`
         .tl-compare-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
         @media (min-width: 620px) {
