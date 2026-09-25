@@ -5,12 +5,12 @@ Motion "islands" inside the existing server-rendered site: the home page
 (`/` — hero, momentum row, stats, feature cards, comparison table,
 how-it-works steps, FAQ, closing CTA banner), the about page (`/about`),
 the accessibility statement (`/accessibility`), the privacy policy
-(`/privacy`), the terms of use (`/terms`), and the contact page
-(`/contact`). Everything else on the
-site (login, `/apartments`, payments, admin, the WhatsApp/Telegram
-webhooks, and the header/nav/footer that wrap every one of these pages) is
-still the original server-rendered Jinja2 + vanilla CSS/JS the rest of
-`website/` is built on.
+(`/privacy`), the terms of use (`/terms`), the contact page
+(`/contact`), and the login screen (`/login`). Everything else on the
+site (`/apartments`, payments, admin, the WhatsApp/Telegram webhooks, and
+the header/nav/footer that wrap every one of these pages) is still the
+original server-rendered Jinja2 + vanilla CSS/JS the rest of `website/`
+is built on.
 
 ## Why this exists
 
@@ -77,11 +77,29 @@ rather than being pure presentation:
   uses the plain `t()` helper throughout, not the he/en-only `tEn()`
   pattern those pages use.
 
+Login was the seventh (and last one planned so far) — mostly static
+content like the legal pages (a headline, three "continue with" links, an
+optional hint), but with one thing worth its own note: **`next`
+(the post-login redirect target) is the first value injected into
+`window.__TODIRA_PAGE__`, across any converted page, that's genuinely
+attacker-influenceable text.** Every other injected value so far is either
+a fixed-whitelist string (`lang`/`dir`), an int (`uid`), or a trusted env
+var (`whatsappPublicNumber`) — `next` is a visitor's own query parameter,
+and `main.py`'s `_safe_next()` only requires it start with a single `/`;
+it doesn't restrict the character set otherwise. `login.html` injects it
+with Jinja's `{{ next | tojson }}` rather than a hand-written
+`"{{ next }}"` — `tojson` does real JSON/JS-string escaping (including
+`<`/`>`, so a crafted `next` can't break out via a literal quote or a
+`</script>` sequence), which plain HTML autoescaping doesn't guarantee for
+script-block context. `i18n.js` exports it as `next`, already-sanitized,
+safe to use directly when `Login.jsx` builds the Google OAuth start link —
+see `tests/test_website_login_page.py`'s own regression test for this.
+
 ## How it's wired into the site
 
 - `vite.config.js`'s `build.rollupOptions.input` lists one entry per React
   page (`index` → `index.html` → home, `about` → `about.html` → about, and
-  so on for `accessibility`/`privacy`/`terms`/`contact`). Adding another
+  so on for `accessibility`/`privacy`/`terms`/`contact`/`login`). Adding another
   page-as-React-island means adding one more entry here,
   not spinning up a whole separate Vite project — shared `node_modules`,
   shared `content.json`/`i18n.js`/component library (e.g. `Blob.jsx`), and
@@ -113,16 +131,19 @@ rather than being pure presentation:
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
 `TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
-`about.*`, `accessibility.*`, `privacy.*`, `terms.*`, and `contact.*` key,
-plus a handful of exact keys from elsewhere in the file that a React page
-reuses rather than re-authoring — e.g. `upgrade.value_anchor_title`/`_body`,
-reused on the home page's Compare section so the price reassurance shown
-there stays the same real copy as `/upgrade` itself, not a second,
-driftable copy of it. All 5 supported languages where they exist —
-`about.*`/`accessibility.*`/`privacy.*`/`terms.*` are deliberately he/en
-only, see below; `contact.*` is fully translated like `home.*`), not
-hand-written placeholder text. `src/i18n.js`'s `t(key)` reads from it using
-the language `window.__TODIRA_PAGE__.lang` carries.
+`about.*`, `accessibility.*`, `privacy.*`, `terms.*`, `contact.*`, and
+`login.*` key, plus a handful of exact keys from elsewhere in the file that
+a React page reuses rather than re-authoring — e.g.
+`upgrade.value_anchor_title`/`_body`, reused on the home page's Compare
+section so the price reassurance shown there stays the same real copy as
+`/upgrade` itself, not a second, driftable copy of it. All 5 supported
+languages where they exist — `about.*`/`accessibility.*`/`privacy.*`/
+`terms.*` are deliberately he/en only, see below; `contact.*`/`login.*` are
+fully translated like `home.*`), not hand-written placeholder text.
+`src/i18n.js`'s `t(key, vars?)` reads from it using the language
+`window.__TODIRA_PAGE__.lang` carries — the optional second argument does
+`.format()`-style `{name}` placeholder substitution, matching `i18n.py`'s
+own `t(key, **kwargs)` (used by `login.hint`'s `{telegram_cta}`).
 
 A translation string never contains raw HTML (no `| safe` anywhere in this
 codebase). Where a sentence needs inline markup — `privacy.s1_item7_pre`/
@@ -144,11 +165,11 @@ import json
 ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
-prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.')
+prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.', 'login.')
 exact = {
     'meta.title_home', 'meta.description', 'meta.title_about', 'meta.title_accessibility',
-    'meta.title_privacy', 'meta.title_terms', 'meta.title_contact', 'legal.non_native_notice',
-    'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
+    'meta.title_privacy', 'meta.title_terms', 'meta.title_contact', 'meta.title_login',
+    'legal.non_native_notice', 'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
 }
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:

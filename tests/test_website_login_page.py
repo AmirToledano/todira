@@ -2,6 +2,13 @@
 Telegram/WhatsApp shown as three separate, equally prominent options, replacing the header's own
 small Google-only button as the primary way an anonymous visitor identifies themselves.
 
+2026-09-25: /login became the site's seventh React island (website/landing-react/login.html) —
+same pattern as about/accessibility/privacy/terms/contact. GET tests now check what the server
+actually still controls (config injection into window.__TODIRA_PAGE__, the correct bundle
+reference) rather than server-rendered `<a href>` markup, which is a frontend concern verified
+separately (Playwright, during development) — same reasoning as the other converted pages' own
+test files.
+
 Same importlib-loading approach as the other website test files (see test_website_paid_access.py's
 own comment).
 """
@@ -33,25 +40,21 @@ def client():
     return TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
 
 
-def test_login_page_shows_all_three_options_when_whatsapp_configured(client):
+def test_login_page_renders_react_island(client):
+    resp = client.get("/login")
+
+    assert resp.status_code == 200
+    assert 'id="root"' in resp.text
+    assert "/static/landing/assets/" in resp.text
+    assert "/static/landing/assets/login-" in resp.text  # its OWN entry, not another page's
+
+
+def test_login_page_injects_whatsapp_number_when_configured(client):
     with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", "972500000000"):
         resp = client.get("/login")
 
     assert resp.status_code == 200
-    assert "/auth/google/start" in resp.text
-    assert "https://t.me/AmirDirotBot" in resp.text
-    assert "wa.me/972500000000" in resp.text
-
-
-def test_login_page_hides_whatsapp_option_when_not_configured(client):
-    with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", ""):
-        resp = client.get("/login")
-
-    assert resp.status_code == 200
-    assert "wa.me" not in resp.text
-    # the other two options are unaffected
-    assert "/auth/google/start" in resp.text
-    assert "https://t.me/AmirDirotBot" in resp.text
+    assert 'whatsappPublicNumber: "972500000000"' in resp.text
 
 
 def test_login_page_redirects_already_logged_in_visitor():
@@ -68,40 +71,41 @@ def test_login_page_next_param_is_sanitized_by_safe_next(client):
     resp = client.get("/login", params={"next": "https://evil.example/phish"})
     assert resp.status_code == 200
     # _safe_next falls back to /apartments for any non-relative target
-    assert 'href="/auth/google/start?next=/apartments"' in resp.text
+    assert "next: \"/apartments\"" in resp.text
 
 
-def test_login_page_forwards_uid_into_the_google_button(client):
-    """2026-09-05 fix: found live — a visitor who arrives at /login WITH a uid in flight (e.g. a
-    bot deep link that routes through here instead of straight to /account) used to silently lose
-    it, so their Google sign-in fell back to the contextless "unknown account" path instead of
-    performing a real link on the first try, exactly like /account's own button already does.
-    Also guards against the double-escape bug found live in account.html's identical pattern:
-    hand-writing '&amp;uid=' inside a Jinja expression gets escaped AGAIN by autoescaping into
-    '&amp;amp;uid=', which a browser decodes into a query string whose param is literally named
-    'amp;uid', not 'uid' — silently dropping it server-side on every single click."""
+def test_login_page_injects_uid_for_the_react_form(client):
     resp = client.get("/login", params={"uid": 123456})
     assert resp.status_code == 200
-    assert 'href="/auth/google/start?next=/apartments&amp;uid=123456"' in resp.text
-    assert "&amp;amp;" not in resp.text
+    assert "uid: 123456" in resp.text
 
 
-def test_login_page_google_button_has_no_uid_param_when_none_given(client):
+def test_login_page_injects_null_uid_when_none_given(client):
     resp = client.get("/login")
     assert resp.status_code == 200
-    assert 'href="/auth/google/start?next=/apartments"' in resp.text
-    assert "uid=" not in resp.text
+    assert "uid: null" in resp.text
+
+
+def test_login_page_next_is_json_encoded_not_a_raw_hand_written_string(client):
+    """2026-09-25: `next` is the first value injected into window.__TODIRA_PAGE__ across any
+    converted page that's genuinely attacker-influenceable text, not a fixed-whitelist string
+    (lang/dir), an int (uid), or a trusted env var (whatsappPublicNumber) — _safe_next() only
+    requires it start with a single "/", it doesn't restrict the character set otherwise. A
+    hand-written `next: "{{ next }}"` would rely on Jinja's HTML-entity autoescaping alone, which
+    is NOT JS-string-safe in general; `| tojson` (see login.html's own comment) is what actually
+    makes this safe — proper JSON/JS-string escaping, including `<`/`>` so a `next` value can never
+    break out of the inline <script> block via a literal quote or a `</script>` sequence."""
+    resp = client.get("/login", params={"next": '/foo"};alert(1);//'})
+    assert resp.status_code == 200
+    assert 'next: "/foo\\"};alert(1);//"' in resp.text
+    assert "};alert(1);//\";" not in resp.text  # would indicate a real string-literal breakout
 
 
 def test_login_page_renders_in_english_when_lang_param_is_set(client):
     """2026-09-08 fix: this whole page was hardcoded Hebrew-only, unlike every other
     customer-facing page — confirms the fix actually renders translated content."""
-    with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", "972500000000"):
-        resp = client.get("/login", params={"lang": "en"})
+    resp = client.get("/login", params={"lang": "en"})
 
     assert resp.status_code == 200
-    assert "Log in to Todira" in resp.text
-    assert "Quick login with Google" in resp.text
-    assert "Continue on Telegram" in resp.text
-    assert "Continue on WhatsApp" in resp.text
-    assert "התחברות לטודירה" not in resp.text
+    assert 'lang: "en"' in resp.text
+    assert 'dir: "ltr"' in resp.text
