@@ -29,7 +29,7 @@
   ]
 }
 </script>
-{% if landing_css_url %}<link rel="stylesheet" href="{{ landing_css_url }}">{% endif %}
+{% for css_url in landing_css_urls %}<link rel="stylesheet" href="{{ css_url }}">{% endfor %}
 {% endblock %}
 {% block content %}
 {# 2026-09-25: the marketing content below (hero/features/FAQ/etc — everything that used to be
@@ -42,15 +42,18 @@
 
    The header/nav/hamburger/lang-switcher/auth-box above this block and the footer below it
    (base.html) are completely unchanged — only what used to be inside THIS content block became
-   React. window.__TODIRA_HOME__ carries the few values the React app needs that only the server
+   React. window.__TODIRA_PAGE__ carries the few values the React app needs that only the server
    already knows (the viewer's resolved language/direction — same resolution _render() already
    did for this exact request, so the two can never disagree — and the configured WhatsApp
    number); lang/dir are drawn from fixed server-side whitelists (SUPPORTED_LANGS / "rtl"|"ltr"
    in i18n.py) and whatsapp_public_number is an operator-set env var, not visitor input, so this
-   is the same trust level already used for it elsewhere on this page (the wa.me link below). #}
+   is the same trust level already used for it elsewhere on this page (the wa.me link below).
+   2026-09-25: renamed from window.__TODIRA_HOME__ to this page-agnostic name when a second React
+   island (about.html) was added — every React page injects the same shape here rather than each
+   page needing its own differently-named global. #}
 <div id="root"></div>
 <script>
-  window.__TODIRA_HOME__ = {
+  window.__TODIRA_PAGE__ = {
     lang: "{{ lang }}",
     dir: "{{ dir }}",
     whatsappPublicNumber: "{{ whatsapp_public_number }}"

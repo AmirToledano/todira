@@ -145,34 +145,63 @@ GIT_SHA = os.environ.get("GIT_SHA", "dev")
 # hashed names (they change on every rebuild) — read once and cached here so home() never needs a
 # disk read per request, and so nobody has to hand-edit a hashed filename after a future rebuild.
 _LANDING_MANIFEST_PATH = BASE_DIR / "static" / "landing" / ".vite" / "manifest.json"
-_landing_assets_cache: dict[str, str] | None = None
+_landing_assets_cache: dict[str, dict[str, str]] | None = None
 
 
-def _landing_react_assets() -> dict[str, str]:
-    """Returns {"js": "/static/landing/...", "css": "/static/landing/..." or ""} for the built
-    landing-react bundle, or {} if it hasn't been built (e.g. a fresh checkout before `npm run
-    build` — home() falls back to rendering nothing in that slot rather than a broken tag).
+def _landing_react_assets(entry_name: str = "index.html") -> dict[str, object]:
+    """Returns {"js": "/static/landing/...", "css": ["/static/landing/...", ...]} for the built
+    landing-react bundle's given entry (Vite's manifest.json key, e.g. "index.html" for home,
+    "about.html" for About — see landing-react/vite.config.js's multi-page rollupOptions.input),
+    or {} if it hasn't been built (e.g. a fresh checkout before `npm run build` — callers fall
+    back to rendering nothing in that slot rather than a broken tag).
 
-    Only a SUCCESSFUL read is cached — real bug found in review: caching {} on failure too meant
-    starting uvicorn before running `npm run build` (exactly the scenario this function's own
-    fallback anticipates) permanently wedged every request into the "not built yet" fallback, even
-    after the build finished, until the process was restarted. A missing/broken manifest is cheap
-    to keep retrying (this route isn't hot), so only the success path is worth avoiding a repeat
-    disk read for."""
+    `css` is a LIST, not a single URL — real bug found live once a second entry existed: Vite's
+    manifest only lists an entry's own DIRECTLY-imported CSS on the entry itself; CSS that reaches
+    an entry via a shared chunk (Blob.jsx, imported by both index.html and about.html once About
+    was added) is listed on that CHUNK's own manifest entry instead, not the entry's — confirmed by
+    reading the real manifest.json after a real build, not assumed from Vite's docs. Walking each
+    entry's own "imports" (recursively, in case a future shared chunk itself imports another) and
+    collecting their css is what a real multi-entry Vite app actually requires.
+
+    Cached per entry_name — real bug found in review, back when this only ever served one entry:
+    caching {} on failure too meant starting uvicorn before running `npm run build` (exactly the
+    scenario this function's own fallback anticipates) permanently wedged every request into the
+    "not built yet" fallback, even after the build finished, until the process was restarted. A
+    missing/broken manifest is cheap to keep retrying (these routes aren't hot), so only the
+    success path is worth avoiding a repeat disk read for."""
     global _landing_assets_cache
-    if _landing_assets_cache is not None:
-        return _landing_assets_cache
+    if _landing_assets_cache is None:
+        _landing_assets_cache = {}
+    if entry_name in _landing_assets_cache:
+        return _landing_assets_cache[entry_name]
     try:
         manifest = json.loads(_LANDING_MANIFEST_PATH.read_text(encoding="utf-8"))
-        entry = manifest["index.html"]
-        css_files = entry.get("css") or []
-        _landing_assets_cache = {
+        entry = manifest[entry_name]
+        css_files = list(entry.get("css") or [])
+        seen_chunks: set[str] = set()
+
+        def _collect_chunk_css(chunk_key: str) -> None:
+            if chunk_key in seen_chunks:
+                return
+            seen_chunks.add(chunk_key)
+            chunk = manifest.get(chunk_key)
+            if not chunk:
+                return
+            css_files.extend(chunk.get("css") or [])
+            for imported_key in chunk.get("imports") or []:
+                _collect_chunk_css(imported_key)
+
+        for imported_key in entry.get("imports") or []:
+            _collect_chunk_css(imported_key)
+
+        assets = {
             "js": f"/static/landing/{entry['file']}",
-            "css": f"/static/landing/{css_files[0]}" if css_files else "",
+            "css": [f"/static/landing/{f}" for f in dict.fromkeys(css_files)],
         }
-        return _landing_assets_cache
+        _landing_assets_cache[entry_name] = assets
+        return assets
     except (OSError, KeyError, json.JSONDecodeError):
-        logger.warning("landing-react manifest not found/unreadable at %s — home page will render without it", _LANDING_MANIFEST_PATH)
+        logger.warning("landing-react manifest not found/unreadable for %r at %s", entry_name, _LANDING_MANIFEST_PATH)
         return {}
 
 # 2026-09-24 real production bug, confirmed live via a real headless-browser diagnostic against
@@ -472,7 +501,7 @@ def home(request: Request):
         {
             "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
             "landing_js_url": landing_assets.get("js", ""),
-            "landing_css_url": landing_assets.get("css", ""),
+            "landing_css_urls": landing_assets.get("css", []),
         },
     )
 
@@ -554,7 +583,18 @@ def login(request: Request, next: str = "/apartments", uid: int | None = None):
 
 @app.get("/about")
 def about(request: Request):
-    return _render(request, "about.html", {})
+    """2026-09-25: second page moved into a React island (website/landing-react/about.html),
+    same pattern as home() above — see landing-react/vite.config.js's own comment on the
+    multi-page build this and home() now share."""
+    about_assets = _landing_react_assets("about.html")
+    return _render(
+        request,
+        "about.html",
+        {
+            "landing_js_url": about_assets.get("js", ""),
+            "landing_css_urls": about_assets.get("css", []),
+        },
+    )
 
 
 @app.get("/terms")

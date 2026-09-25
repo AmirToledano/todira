@@ -42,7 +42,7 @@ def test_home_shows_whatsapp_cta_when_configured(client):
     server-rendered HTML into the React island (website/landing-react/) — see main.py's
     _landing_react_assets()/home() and templates/home.html's own comment on the swap. This test
     now checks what the server actually still controls: the config the React app reads
-    (window.__TODIRA_HOME__.whatsappPublicNumber) is the right value, and the React bundle itself
+    (window.__TODIRA_PAGE__.whatsappPublicNumber) is the right value, and the React bundle itself
     is referenced. Whether the React app then renders the right wa.me link from that config is a
     frontend concern, verified separately (manual/Playwright checks during development, not this
     Python suite — this repo's test suite has no browser-rendering dependency anywhere else

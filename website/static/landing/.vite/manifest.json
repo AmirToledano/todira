@@ -1,11 +1,31 @@
 {
+  "_Blob-Cccq4gKe.js": {
+    "file": "assets/Blob-Cccq4gKe.js",
+    "name": "Blob",
+    "css": [
+      "assets/Blob-DW_nQQpF.css"
+    ]
+  },
+  "_Blob-DW_nQQpF.css": {
+    "file": "assets/Blob-DW_nQQpF.css",
+    "src": "_Blob-DW_nQQpF.css"
+  },
+  "about.html": {
+    "file": "assets/about-BFey1pCt.js",
+    "name": "about",
+    "src": "about.html",
+    "isEntry": true,
+    "imports": [
+      "_Blob-Cccq4gKe.js"
+    ]
+  },
   "index.html": {
-    "file": "assets/index-CBlZ-N-B.js",
+    "file": "assets/index-CN9rTATh.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
-    "css": [
-      "assets/index-DW_nQQpF.css"
+    "imports": [
+      "_Blob-Cccq4gKe.js"
     ]
   }
 }
