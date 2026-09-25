@@ -3,6 +3,27 @@
    Rubik for display headings/price/buttons (rounded, friendly, full Hebrew support), Heebo for
    body/UI text. Replaces the earlier wine + Frank Ruhl Libre look. */
 
+/* Cross-document View Transitions (2026-09-25, owner request: "flow between pages") — this is a
+   classic server-rendered multi-page site, not a SPA, so every link click has always been a hard
+   navigation with zero visual continuity between pages. This single at-rule turns EVERY same-
+   origin navigation (any <a href> click, anywhere on the site) into a soft cross-fade instead,
+   entirely natively: no JavaScript, no router, no per-page wiring, nothing to break. Unsupported
+   browsers (this progressively enhances; there is nothing to feature-detect or polyfill) just
+   keep their normal instant navigation exactly as before — this can never make navigation worse,
+   only better where it's understood. Verified live on Chromium 141 (well past the version that
+   shipped cross-document support): a real link-click navigation's own pagereveal event confirms
+   event.viewTransition is non-null, not just assumed from the spec. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: .38s;
+  animation-timing-function: var(--ease-premium, ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 :root {
   --teal: #0e8a82;
   --teal-dark: #173c40;
