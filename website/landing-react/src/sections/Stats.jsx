@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { t } from "../i18n";
+import { useSpotlight } from "../useSpotlight";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
@@ -19,6 +20,33 @@ const item = {
   show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: easePremium } },
 };
 
+function StatCard({ valueKey, labelKey }) {
+  const spotlight = useSpotlight();
+  return (
+    <motion.div
+      ref={spotlight.ref}
+      onMouseMove={spotlight.onMouseMove}
+      className={spotlight.className}
+      variants={item}
+      whileHover={{ y: -6, boxShadow: "0 16px 40px rgba(14,138,130,.22)" }}
+      style={{
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: 18,
+        padding: "22px 18px",
+        textAlign: "center",
+        boxShadow: "0 4px 16px rgba(14,60,58,.06)",
+      }}
+    >
+      <span className="tl-spotlight-glow" aria-hidden="true" />
+      <div style={{ fontFamily: "Rubik, sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "var(--teal)" }}>
+        {t(valueKey)}
+      </div>
+      <div style={{ fontSize: ".82rem", color: "var(--text-muted)", marginTop: 4 }}>{t(labelKey)}</div>
+    </motion.div>
+  );
+}
+
 export default function Stats() {
   return (
     <section style={{ paddingTop: 0, paddingBottom: "clamp(40px, 6vw, 80px)" }}>
@@ -36,24 +64,7 @@ export default function Stats() {
         }}
       >
         {STATS.map(([valueKey, labelKey]) => (
-          <motion.div
-            key={valueKey}
-            variants={item}
-            whileHover={{ y: -6, boxShadow: "0 16px 40px rgba(14,138,130,.22)" }}
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              borderRadius: 18,
-              padding: "22px 18px",
-              textAlign: "center",
-              boxShadow: "0 4px 16px rgba(14,60,58,.06)",
-            }}
-          >
-            <div style={{ fontFamily: "Rubik, sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "var(--teal)" }}>
-              {t(valueKey)}
-            </div>
-            <div style={{ fontSize: ".82rem", color: "var(--text-muted)", marginTop: 4 }}>{t(labelKey)}</div>
-          </motion.div>
+          <StatCard key={valueKey} valueKey={valueKey} labelKey={labelKey} />
         ))}
       </motion.div>
     </section>
