@@ -6,7 +6,9 @@
    kind of thing "טודירה" IS (a named product/organization, not just a page title), so a search
    result for the brand name had no structured basis for a rich result (logo, sitelinks
    search box, knowledge-panel-style info). Organization + WebSite on the home page only —
-   schema.org's own guidance is to place site-identity markup once, not per-page. #}
+   schema.org's own guidance is to place site-identity markup once, not per-page.
+   Unaffected by the React swap below — this block still renders server-side either way, so
+   crawlers see it immediately without needing to execute any JS. #}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -27,177 +29,39 @@
   ]
 }
 </script>
+{% if landing_css_url %}<link rel="stylesheet" href="{{ landing_css_url }}">{% endif %}
 {% endblock %}
 {% block content %}
+{# 2026-09-25: the marketing content below (hero/features/FAQ/etc — everything that used to be
+   plain server-rendered HTML here) is now a small isolated React+Framer Motion build
+   (website/landing-react/), deliberately scoped to ONLY this page — every other route
+   (/apartments, /login, /account, /upgrade, webhooks, admin) is untouched, still the original
+   Jinja2/vanilla CSS+JS this whole site is built on. See website/landing-react/README (or the
+   owner conversation this came from) for why: real "$10k agency" visual polish without the risk
+   of rewriting the entire product days before launch.
 
-<!-- 2026-09-09 (owner's own report): on a wide desktop viewport this used to be one narrow
-     centered column (hero text, then the full-bleed image, stacked) with huge empty margins on
-     both sides — read as a phone-app screen floating in the middle of the browser, not a real
-     website. .hero-split puts the hero text and the brand image side by side at >=900px (see
-     the matching @media block below); below that width it's a plain block wrapper and the two
-     children stack exactly as before — mobile layout is untouched by this. -->
-<div class="hero-split">
-<section class="hero reveal">
-  <span class="eyebrow">{{ t('home.eyebrow') }}</span>
-  <h1>{{ t('home.h1') }}</h1>
-  <p class="lead">{{ t('home.lead') }}</p>
-  <div class="cta-row">
-    <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--teal-dark)" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-      {{ t('home.cta_open_bot') }}
-    </a>
-    {% if whatsapp_public_number %}
-    <a class="btn whatsapp" href="https://wa.me/{{ whatsapp_public_number }}?text={{ t('whatsapp.greeting') | urlencode }}" target="_blank">
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-      {{ t('home.cta_open_whatsapp') }}
-    </a>
-    {% endif %}
-    <a class="btn outline" href="#how">{{ t('home.cta_how') }}</a>
-  </div>
-  <div class="fresh-row reveal">
-    <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>{{ t('home.live_badge') }}</span>
-    <span class="ai-pill">{{ t('home.stat_ai_label') }} ✨</span>
-    <div class="example-card">
-      {# 2026-09-08 fix (owner's own report): "לדוגמה" now sits to the right of the title itself
-         instead of the left — badge first in source order, since this is an RTL page and the
-         first flex child lands on the right (main-start follows the page's own writing direction). #}
-      <div class="ec-top"><span class="ec-badge">{{ t('home.example_badge_label') }}</span><span class="ec-title">{{ t('home.example_card_title') }}</span></div>
-      <span class="ec-sub">{{ t('home.example_card_sub') }}</span>
-    </div>
-  </div>
-</section>
-
-<div class="hero-image-full reveal">
-  <img class="brand-blend" src="/static/todira-brand.webp?v=4" alt="{{ t('home.hero_img_alt') }}" width="1184" height="1895" fetchpriority="high">
-</div>
-</div>
-
-<div class="hero-float-stats momentum-row reveal">
-  <div class="float-stat"><div><b>{{ t('home.momentum_1_value') }}</b><span class="label-sm">{{ t('home.momentum_1_label') }}</span></div></div>
-  <div class="float-stat"><div><b>{{ t('home.momentum_2_value') }}</b><span class="label-sm">{{ t('home.momentum_2_label') }}</span></div></div>
-  <div class="float-stat"><div><b>{{ t('home.momentum_3_value') }}</b><span class="label-sm">{{ t('home.momentum_3_label') }}</span></div></div>
-</div>
-
-<div class="hero-float-stats reveal">
-  <div class="float-stat"><span class="fs-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg></span><div><b>{{ t('home.stat_scan_freq_value') }}</b><span class="label-sm">{{ t('home.stat_scan_freq_label') }}</span></div></div>
-  <div class="float-stat"><span class="fs-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg></span><div><b>{{ t('home.stat_ai_value') }}</b><span class="label-sm">{{ t('home.stat_ai_label') }}</span></div></div>
-  <div class="float-stat"><span class="fs-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></span><div><b>{{ t('home.stat_uptime_value') }}</b><span class="label-sm">{{ t('home.stat_uptime_label') }}</span></div></div>
-  <div class="float-stat"><span class="fs-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H4.5a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 9.75V7.5m0 0H6.375a1.125 1.125 0 010-2.25H12m0 2.25h5.625a1.125 1.125 0 000-2.25H12" /></svg></span><div><b>{{ t('home.stat_free_value') }}</b><span class="label-sm">{{ t('home.stat_free_label') }}</span></div></div>
-</div>
-
-<section class="feature-grid">
-  <div class="feature-card reveal" style="transition-delay:0ms">
-    <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" /></svg></div>
-    <h3>{{ t('home.feature1_title') }}</h3>
-    <p>{{ t('home.feature1_body') }}</p>
-    {# 2026-09-10 addition: a concrete before/after visual instead of only describing this in the
-       sentence above — static (no JS, no animation) so it's safe regardless of motion prefs and
-       needs no visual QA beyond reading the CSS. #}
-    <div class="ai-demo" aria-hidden="true">
-      {# Fixed Hebrew example, not a translation key — see i18n.py's own comment on this
-         section for why (a real visitor always writes to the bot in Hebrew). #}
-      <div class="ai-demo-query">"2-3 חדרים בתל אביב עד 6000 שקל"</div>
-      <div class="ai-demo-arrow">↓</div>
-      <div class="ai-demo-chips">
-        <span class="ai-demo-chip">🏙️ {{ t('home.feature1_example_city') }}</span>
-        <span class="ai-demo-chip">🛏️ {{ t('home.feature1_example_rooms') }}</span>
-        <span class="ai-demo-chip">💰 {{ t('home.feature1_example_price') }}</span>
-      </div>
-    </div>
-  </div>
-  <div class="feature-card reveal" style="transition-delay:90ms">
-    <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg></div>
-    <h3>{{ t('home.feature2_title') }}</h3>
-    <p>{{ t('home.feature2_body') }}</p>
-  </div>
-  <div class="feature-card reveal" style="transition-delay:180ms">
-    <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg></div>
-    <h3>{{ t('home.feature3_title') }}</h3>
-    <p>{{ t('home.feature3_body') }}</p>
-  </div>
-</section>
-
-<section class="compare reveal">
-  <h2 class="section-title">{{ t('home.compare_title') }}</h2>
-  <p class="section-sub">{{ t('home.compare_sub') }}</p>
-  <div class="compare-grid">
-    <div class="compare-col without">
-      <h3>{{ t('home.compare_without_title') }}</h3>
-      <ul>
-        <li>{{ t('home.compare_without_1') }}</li>
-        <li>{{ t('home.compare_without_2') }}</li>
-        <li>{{ t('home.compare_without_3') }}</li>
-        <li>{{ t('home.compare_without_4') }}</li>
-      </ul>
-    </div>
-    <div class="compare-col with">
-      <h3>{{ t('home.compare_with_title') }}</h3>
-      <ul>
-        <li>{{ t('home.compare_with_1') }}</li>
-        <li>{{ t('home.compare_with_2') }}</li>
-        <li>{{ t('home.compare_with_3') }}</li>
-        <li>{{ t('home.compare_with_4') }}</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<section id="how">
-  <h2 class="section-title reveal">{{ t('home.how_title') }}</h2>
-  <p class="section-sub reveal">{{ t('home.how_sub') }}</p>
-  <div class="steps">
-    <div class="step reveal">
-      <h3>{{ t('home.step1_title') }}</h3>
-      <p>{{ t('home.step1_body') }}</p>
-    </div>
-    <div class="step reveal" style="transition-delay:90ms">
-      <h3>{{ t('home.step2_title') }}</h3>
-      <p>{{ t('home.step2_body') }}</p>
-    </div>
-    <div class="step reveal" style="transition-delay:180ms">
-      <h3>{{ t('home.step3_title') }}</h3>
-      <p>{{ t('home.step3_body') }}</p>
-    </div>
-  </div>
-</section>
-
-<section class="faq reveal">
-  <h2 class="section-title">{{ t('home.faq_title') }}</h2>
-  <div class="faq-list">
-    <details class="faq-item">
-      <summary>{{ t('home.faq1_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
-      <p>{{ t('home.faq1_a') }}</p>
-    </details>
-    <details class="faq-item">
-      <summary>{{ t('home.faq2_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
-      <p>{{ t('home.faq2_a') }}</p>
-    </details>
-    <details class="faq-item">
-      <summary>{{ t('home.faq3_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
-      <p>{{ t('home.faq3_a') }}</p>
-    </details>
-    <details class="faq-item">
-      <summary>{{ t('home.faq4_q') }} <span class="chevron" aria-hidden="true">⌄</span></summary>
-      <p>{{ t('home.faq4_a') }}</p>
-    </details>
-  </div>
-</section>
-
-<section class="footer-cta reveal">
-  <h2>{{ t('home.footer_cta_title') }}</h2>
-  <p>{{ t('home.footer_cta_body') }}</p>
-  <div class="cta-row">
-    <a class="btn gold" href="https://t.me/AmirDirotBot" target="_blank">
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--teal-dark)" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-      {{ t('home.footer_cta_btn') }}
-    </a>
-    {% if whatsapp_public_number %}
-    <a class="btn whatsapp" href="https://wa.me/{{ whatsapp_public_number }}?text={{ t('whatsapp.greeting') | urlencode }}" target="_blank">
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-      {{ t('home.footer_cta_whatsapp_btn') }}
-    </a>
-    {% endif %}
-  </div>
-</section>
-
+   The header/nav/hamburger/lang-switcher/auth-box above this block and the footer below it
+   (base.html) are completely unchanged — only what used to be inside THIS content block became
+   React. window.__TODIRA_HOME__ carries the few values the React app needs that only the server
+   already knows (the viewer's resolved language/direction — same resolution _render() already
+   did for this exact request, so the two can never disagree — and the configured WhatsApp
+   number); lang/dir are drawn from fixed server-side whitelists (SUPPORTED_LANGS / "rtl"|"ltr"
+   in i18n.py) and whatsapp_public_number is an operator-set env var, not visitor input, so this
+   is the same trust level already used for it elsewhere on this page (the wa.me link below). #}
+<div id="root"></div>
+<script>
+  window.__TODIRA_HOME__ = {
+    lang: "{{ lang }}",
+    dir: "{{ dir }}",
+    whatsappPublicNumber: "{{ whatsapp_public_number }}"
+  };
+</script>
+{% if landing_js_url %}
+<script type="module" src="{{ landing_js_url }}"></script>
+{% else %}
+{# Fresh checkout before `npm run build` has run in website/landing-react/ — fails visibly
+   instead of silently rendering a blank page, so this is never mistaken for the page just
+   loading slowly. cd website/landing-react && npm install && npm run build. #}
+<p style="text-align:center;padding:60px 20px;color:var(--text-muted)">landing-react bundle not built yet — run `npm run build` in website/landing-react/.</p>
+{% endif %}
 {% endblock %}

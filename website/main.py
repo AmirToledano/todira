@@ -38,6 +38,7 @@ import datetime as dt
 import hashlib
 import hmac
 import html
+import json
 import logging
 import mimetypes
 import os
@@ -134,6 +135,38 @@ SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "dev-only-insecure-ses
 # to fetch the new file instead of serving a stale cached one after a deploy. "dev" outside a real
 # deploy (local run, tests) is harmless — it's just a stable cache key, not a real version.
 GIT_SHA = os.environ.get("GIT_SHA", "dev")
+
+# 2026-09-25: the home page's marketing content (hero/features/FAQ/etc, NOT any other route —
+# login, /apartments, payments, admin, webhooks are all untouched, still plain Jinja2/vanilla
+# CSS+JS) is now a small isolated React+Framer Motion build (website/landing-react/), chosen
+# deliberately as a scoped, low-risk way to try the framework rather than a full-site rewrite —
+# see the owner conversation this came from. `npm run build` there emits hashed asset filenames
+# into static/landing/ plus a Vite-generated manifest.json mapping the source entry to those
+# hashed names (they change on every rebuild) — read once and cached here so home() never needs a
+# disk read per request, and so nobody has to hand-edit a hashed filename after a future rebuild.
+_LANDING_MANIFEST_PATH = BASE_DIR / "static" / "landing" / ".vite" / "manifest.json"
+_landing_assets_cache: dict[str, str] | None = None
+
+
+def _landing_react_assets() -> dict[str, str]:
+    """Returns {"js": "/static/landing/...", "css": "/static/landing/..." or ""} for the built
+    landing-react bundle, or {} if it hasn't been built (e.g. a fresh checkout before `npm run
+    build` — home() falls back to rendering nothing in that slot rather than a broken tag)."""
+    global _landing_assets_cache
+    if _landing_assets_cache is not None:
+        return _landing_assets_cache
+    try:
+        manifest = json.loads(_LANDING_MANIFEST_PATH.read_text(encoding="utf-8"))
+        entry = manifest["index.html"]
+        css_files = entry.get("css") or []
+        _landing_assets_cache = {
+            "js": f"/static/landing/{entry['file']}",
+            "css": f"/static/landing/{css_files[0]}" if css_files else "",
+        }
+    except (OSError, KeyError, json.JSONDecodeError):
+        logger.warning("landing-react manifest not found/unreadable at %s — home page will render without it", _LANDING_MANIFEST_PATH)
+        _landing_assets_cache = {}
+    return _landing_assets_cache
 
 # 2026-09-24 real production bug, confirmed live via a real headless-browser diagnostic against
 # todira.app itself (not guessed): StaticFiles guesses each served file's Content-Type from
@@ -425,7 +458,16 @@ def home(request: Request):
     direct website browsing since this page was first written, and a Telegram-only funnel no
     longer reflects the real entry points, found live by the owner comparing the page to the
     current product."""
-    return _render(request, "home.html", {"whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER})
+    landing_assets = _landing_react_assets()
+    return _render(
+        request,
+        "home.html",
+        {
+            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
+            "landing_js_url": landing_assets.get("js", ""),
+            "landing_css_url": landing_assets.get("css", ""),
+        },
+    )
 
 
 @app.get("/robots.txt")
