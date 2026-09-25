@@ -1,0 +1,102 @@
+/* Same brand tokens as website/static/style.css (teal + gold), not a new palette — this section
+   is meant to feel like a bolder evolution of the existing identity, not a different product.
+   Fonts (Rubik/Heebo/Noto Sans Arabic) are already loaded globally by base.html's <head>, shared
+   with the rest of the site, so nothing is re-loaded here. */
+:root {
+  --teal: #0e8a82;
+  --teal-dark: #173c40;
+  --teal-tint: #eaf5f3;
+  --gold: #d9a441;
+  --gold-light: #ecc978;
+  --bg: #fbf7ef;
+  --card: #ffffff;
+  --heading: var(--teal-dark);
+  --text: #1e2a29;
+  --text-muted: #66787c;
+  --border: #e6e1d4;
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --teal: #2bbcae;
+    --teal-tint: #123330;
+    --bg: #0f1715;
+    --card: #182422;
+    --heading: #d9f2ee;
+    --text: #eef3f1;
+    --text-muted: #9db2ad;
+    --border: #2b3937;
+  }
+}
+:root[data-theme="dark"] {
+  --teal: #2bbcae;
+  --teal-tint: #123330;
+  --bg: #0f1715;
+  --card: #182422;
+  --heading: #d9f2ee;
+  --text: #eef3f1;
+  --text-muted: #9db2ad;
+  --border: #2b3937;
+}
+
+#todira-landing-root {
+  font-family: "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--text);
+  overflow-x: hidden;
+}
+#todira-landing-root * { box-sizing: border-box; }
+#todira-landing-root h1,
+#todira-landing-root h2,
+#todira-landing-root h3 {
+  font-family: "Rubik", Arial, sans-serif;
+  font-weight: 800;
+  color: var(--heading);
+  line-height: 1.05;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+#todira-landing-root a { color: inherit; }
+#todira-landing-root img { max-width: 100%; display: block; }
+#todira-landing-root section {
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(64px, 10vw, 140px) 24px;
+}
+
+.tl-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+  padding: 8px 18px; font-size: 0.85rem; font-weight: 700; color: var(--teal);
+  box-shadow: 0 1px 3px rgba(14, 60, 58, 0.08);
+}
+
+.tl-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 16px 32px; border-radius: 999px; text-decoration: none;
+  font-weight: 700; font-size: 1.02rem; border: none; cursor: pointer;
+  transition: transform 0.35s var(--ease-premium), box-shadow 0.35s var(--ease-premium), filter 0.2s ease;
+}
+.tl-btn.gold {
+  background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  color: var(--teal-dark);
+  box-shadow: 0 12px 32px rgba(217, 164, 65, 0.35);
+}
+.tl-btn.gold:hover { transform: translateY(-3px) scale(1.03); filter: brightness(1.05); }
+.tl-btn.outline {
+  background: transparent; color: var(--teal); border: 1.5px solid var(--teal);
+}
+.tl-btn.outline:hover { background: var(--teal-tint); transform: translateY(-3px); }
+.tl-btn.whatsapp {
+  background: linear-gradient(135deg, #25d366, #128c7e); color: #fff;
+  box-shadow: 0 12px 32px rgba(37, 211, 102, 0.3);
+}
+.tl-btn.whatsapp:hover { transform: translateY(-3px) scale(1.03); filter: brightness(1.05); }
+
+.tl-blob {
+  position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #todira-landing-root * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
