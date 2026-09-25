@@ -1,0 +1,17 @@
+name: Verify — #apt-workspace no longer carries .reveal in production (read-only)
+
+# Confirms the deployed HTML actually reflects the CSS-opacity-compounding fix (PR #416): the
+# apt-workspace wrapper's class attribute should now read "apt-workspace map-collapsed" with no
+# "reveal" in it.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Real curl check of the live class attribute
+        run: |
+          curl -s "https://todira.app/apartments?uid=6984931854" -o /tmp/page.html
+          echo "--- apt-workspace class attribute in production right now ---"
+          grep -o 'class="apt-workspace[^"]*"' /tmp/page.html || echo "(not found)"
