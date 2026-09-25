@@ -1,4 +1,5 @@
-import { motion } from "framer-motion";
+import { useRef } from "react";
+import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { t, whatsappPublicNumber, telegramBotUrl } from "../i18n";
 
 const easePremium = [0.16, 1, 0.3, 1];
@@ -11,6 +12,47 @@ function Blob({ style, animate, duration }) {
       animate={animate}
       transition={{ duration, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
     />
+  );
+}
+
+/* Cursor-tracked 3D tilt on the hero image — the "flying" feel from the reference reels this
+   redesign was based on. Raw pointer offset feeds a spring (not the raw value directly) so the
+   tilt settles with a soft, physical motion instead of snapping to the cursor every pixel; resets
+   to flat on mouse-leave rather than staying tilted wherever the cursor last was. Framer Motion
+   composes rotateX/rotateY (this) with the separate `rotate` (2D, entrance-only) and `y` (the
+   floating bob) used on the child <motion.img> automatically — different transform components, no
+   conflict between the one-time entrance animation and this continuous cursor-driven one. */
+function TiltImage({ children }) {
+  const ref = useRef(null);
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const springX = useSpring(mouseX, { stiffness: 150, damping: 20 });
+  const springY = useSpring(mouseY, { stiffness: 150, damping: 20 });
+  const rotateX = useTransform(springY, [-0.5, 0.5], ["10deg", "-10deg"]);
+  const rotateY = useTransform(springX, [-0.5, 0.5], ["-10deg", "10deg"]);
+
+  function handleMouseMove(e) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const rect = ref.current.getBoundingClientRect();
+    mouseX.set((e.clientX - rect.left) / rect.width - 0.5);
+    mouseY.set((e.clientY - rect.top) / rect.height - 0.5);
+  }
+  function handleMouseLeave() {
+    mouseX.set(0);
+    mouseY.set(0);
+  }
+
+  return (
+    <div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ perspective: 800 }}
+    >
+      <motion.div style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}>
+        {children}
+      </motion.div>
+    </div>
   );
 }
 
@@ -48,7 +90,7 @@ export default function Hero() {
               margin: "22px 0 0", fontSize: "clamp(2.4rem, 7vw, 4.6rem)", maxWidth: 620,
               background: "linear-gradient(90deg, var(--heading) 0%, var(--teal) 40%, var(--gold) 70%, var(--heading) 100%)",
               backgroundSize: "200% auto", WebkitBackgroundClip: "text", backgroundClip: "text",
-              color: "transparent", animation: "tl-shine 9s linear infinite",
+              color: "transparent",
             }}
           >
             {t("home.h1")}
@@ -129,34 +171,36 @@ export default function Hero() {
           className="tl-hero-image"
           style={{ position: "relative", maxWidth: 340, margin: "0 auto" }}
         >
-          <motion.img
-            src="/static/todira-brand.webp?v=4"
-            alt={t("home.hero_img_alt")}
-            width={1184}
-            height={1895}
-            animate={{ y: [0, -14, 0] }}
-            transition={{ duration: 6, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
-            style={{ width: "100%", borderRadius: 28, boxShadow: "0 30px 60px rgba(14,60,58,.22)" }}
-          />
-          {/* home.stat_uptime_* ("24/7" / "הבוט תמיד ער") here, not home.live_badge — that text
-              already appears once, in its original spot near the CTAs below, so reusing it here
-              too would just repeat the same sentence on screen twice for no reason. */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, x: -20 }}
-            animate={{ opacity: 1, scale: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 1.1, ease: easePremium }}
-            style={{
-              position: "absolute", bottom: -18, insetInlineStart: -18,
-              background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16,
-              padding: "10px 16px", boxShadow: "0 12px 28px rgba(14,60,58,.16)",
-              display: "flex", alignItems: "center", gap: 8,
-            }}
-          >
-            <span style={{ fontFamily: "Rubik, sans-serif", fontWeight: 800, fontSize: "1.05rem", color: "var(--teal)" }}>
-              {t("home.stat_uptime_value")}
-            </span>
-            <span style={{ fontSize: ".72rem", color: "var(--text-muted)" }}>{t("home.stat_uptime_label")}</span>
-          </motion.div>
+          <TiltImage>
+            <motion.img
+              src="/static/todira-brand.webp?v=4"
+              alt={t("home.hero_img_alt")}
+              width={1184}
+              height={1895}
+              animate={{ y: [0, -14, 0] }}
+              transition={{ duration: 6, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
+              style={{ width: "100%", borderRadius: 28, boxShadow: "0 30px 60px rgba(14,60,58,.22)" }}
+            />
+            {/* home.stat_uptime_* ("24/7" / "הבוט תמיד ער") here, not home.live_badge — that text
+                already appears once, in its original spot near the CTAs below, so reusing it here
+                too would just repeat the same sentence on screen twice for no reason. */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, x: -20 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 1.1, ease: easePremium }}
+              style={{
+                position: "absolute", bottom: -18, insetInlineStart: -18,
+                background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16,
+                padding: "10px 16px", boxShadow: "0 12px 28px rgba(14,60,58,.16)",
+                display: "flex", alignItems: "center", gap: 8,
+              }}
+            >
+              <span style={{ fontFamily: "Rubik, sans-serif", fontWeight: 800, fontSize: "1.05rem", color: "var(--teal)" }}>
+                {t("home.stat_uptime_value")}
+              </span>
+              <span style={{ fontSize: ".72rem", color: "var(--text-muted)" }}>{t("home.stat_uptime_label")}</span>
+            </motion.div>
+          </TiltImage>
         </motion.div>
       </div>
 
@@ -180,6 +224,15 @@ export default function Hero() {
           .tl-hero-grid { grid-template-columns: 1.1fr 0.9fr; text-align: start; }
           .tl-hero-h1, .tl-hero-lead { margin-left: 0; margin-right: 0; }
           .tl-hero-ctas { justify-content: flex-start; }
+        }
+        /* animation lives here (className), not in the style= prop above — same "inline style
+           always wins over a stylesheet rule, media queries included" lesson already found twice
+           tonight (the grid columns above, and Compare.jsx's own grid) — a THIRD instance found
+           live while checking prefers-reduced-motion: the reduced-motion override below could
+           never have taken effect against an inline animation value no matter what it said. */
+        .tl-hero-h1 { animation: tl-shine 9s linear infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .tl-hero-h1 { animation: none; }
         }
       `}</style>
     </section>

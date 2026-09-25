@@ -64,6 +64,20 @@
   padding: clamp(64px, 10vw, 140px) 24px;
 }
 
+/* Shared by every card using useSpotlight() (Features, Stats, Momentum) — see that hook's own
+   comment for why position is written via CSS vars on a ref instead of React state. */
+.tl-spotlight-card { position: relative; overflow: hidden; isolation: isolate; }
+.tl-spotlight-glow {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0; transition: opacity 0.3s ease;
+  background: radial-gradient(220px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(14, 138, 130, 0.16), transparent 70%);
+}
+.tl-spotlight-card:hover .tl-spotlight-glow { opacity: 1; }
+.tl-spotlight-card > *:not(.tl-spotlight-glow) { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .tl-spotlight-glow { transition: none; }
+}
+
 .tl-eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;

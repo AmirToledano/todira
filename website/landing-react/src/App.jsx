@@ -1,6 +1,7 @@
 import Hero from "./sections/Hero";
 import Momentum from "./sections/Momentum";
 import Stats from "./sections/Stats";
+import CityMarquee from "./sections/CityMarquee";
 import Features from "./sections/Features";
 import Compare from "./sections/Compare";
 import HowItWorks from "./sections/HowItWorks";
@@ -13,6 +14,7 @@ export default function App() {
       <Hero />
       <Momentum />
       <Stats />
+      <CityMarquee />
       <Features />
       <Compare />
       <HowItWorks />
