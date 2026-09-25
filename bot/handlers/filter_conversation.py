@@ -33,6 +33,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from telegram import ForceReply, Update
 from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -157,7 +158,18 @@ def _category_view(draft: dict, category: str):
 
 async def _show_category(query, draft: dict, category: str) -> int:
     title, markup = _category_view(draft, category)
-    await query.edit_message_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
+    try:
+        await query.edit_message_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except BadRequest as exc:
+        # 2026-09-25 real bug fix: a completely harmless double-tap (tapping "נקה" on an already-
+        # empty keywords/dates list, or double-tapping any category-open button before the first
+        # tap's own re-render lands) re-renders byte-for-byte identical title/markup — Telegram's
+        # own API rejects that specific edit with "Bad Request: message is not modified", which
+        # bubbled up uncaught to bot/main.py's catch-all _error_handler, showing the user a scary
+        # "😅 קרתה תקלה טכנית" for a no-op that isn't an error at all. Any OTHER BadRequest (a real
+        # one) still propagates normally — this only swallows the exact "nothing to change" case.
+        if "message is not modified" not in str(exc).lower():
+            raise
     return MENU
 
 
@@ -406,9 +418,14 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             _toggle_city(draft, int(parts[3]))
             return await _show_category(query, draft, "locpick")
         if sub == "rmc":
-            idx = int(parts[3])
-            if 0 <= idx < len(draft["cities"]):
-                draft["cities"].pop(idx)
+            # 2026-09-25 real bug fix: see keyboards.location_keyboard's own comment on the
+            # rmc button — this now removes by the city's own name (idempotent against a
+            # double-tap/stale-render sending the same value twice), not a list index that goes
+            # stale the instant one city is removed and silently deletes the WRONG city on a
+            # second tap.
+            city_name = parts[3]
+            if city_name in draft["cities"]:
+                draft["cities"].remove(city_name)
         if sub == "clearall":
             # See keyboards.location_keyboard's own 2026-09-15 comment — restores the TRUE "no
             # city restriction" state (matches every city/town, not just the 42 curated ones).

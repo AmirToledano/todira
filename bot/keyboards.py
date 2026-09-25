@@ -193,8 +193,15 @@ def location_keyboard(draft: dict) -> InlineKeyboardMarkup:
         rows.append(
             [InlineKeyboardButton("🌍 נקה הכל — כל הערים, בלי הגבלה", callback_data="f:loc:clearall")]
         )
-    for idx, city in enumerate(draft["cities"]):
-        rows.append([InlineKeyboardButton(f"🗑️ {city}", callback_data=f"f:loc:rmc:{idx}")])
+    for city in draft["cities"]:
+        # 2026-09-25 real bug fix: this used to encode the city's LIST INDEX, which goes stale the
+        # instant one is removed — a real double-tap (or any tap racing a slow re-render) on the
+        # same rendered button sent the SAME stale index twice, so the second tap silently removed
+        # whatever city had shifted into that position instead of doing nothing. Encoding the
+        # city's own name instead makes removal idempotent/robust to exactly that, and every real
+        # Israeli city/town name is far short of callback_data's 64-byte limit (the bundled list's
+        # own longest, "מודיעין מכבים רעות", is 34 bytes; this prefix adds 10).
+        rows.append([InlineKeyboardButton(f"🗑️ {city}", callback_data=f"f:loc:rmc:{city}")])
     rows.append([BACK_BUTTON])
     return InlineKeyboardMarkup(rows)
 
