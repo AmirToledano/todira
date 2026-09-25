@@ -172,3 +172,61 @@ def test_loc_category_title_has_no_unconstrained_note_when_cities_selected():
     draft["cities"] = ["חיפה"]
     title, _ = filter_conversation._category_view(draft, "loc")
     assert "כל הערים" not in title
+
+
+# --- rmc (remove-selected-city) real bug fix, 2026-09-25 — this used to encode the city's LIST
+# INDEX, which goes stale the instant one city is removed (the list shifts). A real double-tap (or
+# any tap racing a slow re-render) on the same rendered button sent the SAME stale index twice,
+# silently removing whatever city had shifted into that position on the second tap — the wrong
+# city. Now encodes the city's own name and removes by value, which is naturally idempotent. ---
+
+
+def test_location_keyboard_rmc_callback_data_carries_the_city_name_not_an_index():
+    draft = _default_draft()
+    draft["cities"] = ["חיפה", "רמת גן"]
+    markup = kb.location_keyboard(draft)
+    buttons = [b for row in markup.inline_keyboard for b in row]
+    haifa_button = next(b for b in buttons if "חיפה" in b.text)
+    assert haifa_button.callback_data == "f:loc:rmc:חיפה"
+
+
+def test_menu_callback_rmc_removes_the_named_city():
+    draft = _default_draft()
+    draft["cities"] = ["חיפה", "רמת גן"]
+    query = SimpleNamespace(
+        data="f:loc:rmc:חיפה", answer=AsyncMock(), edit_message_text=AsyncMock()
+    )
+    update = SimpleNamespace(callback_query=query)
+    context = _make_context(None, draft=draft)
+
+    result = asyncio.run(filter_conversation.menu_callback(update, context))
+
+    assert result == MENU
+    assert context.user_data["draft"]["cities"] == ["רמת גן"]
+
+
+def test_menu_callback_rmc_double_tap_never_removes_the_wrong_city():
+    """The exact real bug this fixes: with the old index-based scheme, removing "חיפה" (index 0)
+    shifted "רמת גן" into index 0 — a second, stale tap of the SAME rendered button (still index 0)
+    then wrongly removed "רמת גן" too. Removing by name twice is a safe no-op the second time."""
+    draft = _default_draft()
+    draft["cities"] = ["חיפה", "רמת גן"]
+    context = _make_context(None, draft=draft)
+
+    first_tap = SimpleNamespace(
+        data="f:loc:rmc:חיפה", answer=AsyncMock(), edit_message_text=AsyncMock()
+    )
+    asyncio.run(
+        filter_conversation.menu_callback(SimpleNamespace(callback_query=first_tap), context)
+    )
+    assert context.user_data["draft"]["cities"] == ["רמת גן"]
+
+    # A second, stale delivery of the exact same tap (data="...rmc:חיפה" again) — must be a no-op,
+    # never removing "רמת גן".
+    second_tap = SimpleNamespace(
+        data="f:loc:rmc:חיפה", answer=AsyncMock(), edit_message_text=AsyncMock()
+    )
+    asyncio.run(
+        filter_conversation.menu_callback(SimpleNamespace(callback_query=second_tap), context)
+    )
+    assert context.user_data["draft"]["cities"] == ["רמת גן"]
