@@ -15,34 +15,50 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch tel-aviv-area's real map API response and inspect its shape
+      - name: Fetch tel-aviv-area's real map API response FROM INSIDE THE CLUSTER and inspect its shape
         run: |
-          URL="https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
-          curl -sS -o resp.json -w "HTTP %{http_code}\n" "$URL" \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" \
-            -H "Accept: application/json"
-          echo "=== response size ==="
-          wc -c resp.json
-          echo "=== top-level JSON keys ==="
-          python3 -c "
-          import json
-          with open('resp.json') as f:
-              data = json.load(f)
-          print('top-level keys:', list(data.keys()) if isinstance(data, dict) else type(data))
-          d = data.get('data', {}) if isinstance(data, dict) else {}
-          print('data keys:', list(d.keys()) if isinstance(d, dict) else type(d))
-          markers = d.get('markers') if isinstance(d, dict) else None
-          print('markers count:', len(markers) if isinstance(markers, list) else 'N/A')
-          for key in ('total', 'totalCount', 'total_count', 'count', 'totalItems', 'resultCount'):
-              if isinstance(d, dict) and key in d:
-                  print(f'FOUND count-like field data.{key} =', d[key])
-              if isinstance(data, dict) and key in data:
-                  print(f'FOUND count-like field {key} =', data[key])
-          print('full data-level dump (first 2000 chars, markers excluded):')
-          d2 = dict(d) if isinstance(d, dict) else {}
-          d2.pop('markers', None)
-          print(json.dumps(d2, ensure_ascii=False)[:2000])
-          "
+          # 2026-09-25: a plain GitHub Actions runner IP gets a 302 Radware/Reblaze challenge
+          # (confirmed live, matches this exact historical pattern already documented in
+          # yad2_client.py's own module docstring). Route the request through a pod running on the
+          # SAME production node the real scraper CronJob uses, whose egress IP is the one
+          # confirmed NOT blocked, instead of trying from the runner directly.
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+          curl -sSL -o kubectl https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
+          chmod +x kubectl
+
+          ./kubectl delete pod diag-yad2-map-shape -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | ./kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-yad2-map-shape
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag
+                image: curlimages/curl:8.10.1
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    URL="https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+                    curl -sS -o /tmp/resp.json -w "HTTP %{http_code}\n" "$URL" \
+                      -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" \
+                      -H "Accept: application/json"
+                    echo "=== response size ==="
+                    wc -c /tmp/resp.json
+                    echo "=== raw response (first 2500 chars) ==="
+                    head -c 2500 /tmp/resp.json
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(./kubectl get pod diag-yad2-map-shape -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod output ---"
+          ./kubectl logs -n todira diag-yad2-map-shape || true
+          ./kubectl delete pod diag-yad2-map-shape -n todira --ignore-not-found
 
       - name: Cross-check — real active Yad2 rent listing count in tel-aviv-area cities, per the DB right now
         run: |
