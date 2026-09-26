@@ -10,16 +10,20 @@ Two functions, same underlying trigger/poll mechanics (`_trigger_and_fetch_first
 want everything `normalize.enrich_from_detail` can use (property type, amenities, floor_total,
 move-in date, broker status), not just the description text — see that function's own docstring.
 
-`fetch_listing_description`'s two call sites, same "never speculative" principle, different
-trigger: scraper/notifier.py calls it only for a listing that just matched at least one PAYING
-user's filter at discovery time (see that module's own comment) — the exact sequencing Amir asked
-for (match first, THEN decide whether to spend a fetch on it). website/main.py's /apartments and
-/liked calls it lazily, in the background, for any already-matched listing a paying viewer is
-about to see whose description is still missing. Either way the result caches on
-Listing.description forever, so the real cost is bounded by distinct listings ever actually seen
-by a paying user, never the full scrape volume and never repeated per viewer.
-(`fetch_listing_detail_via_bright_data` isn't wired into either call site yet — see its own
-docstring and PROJECT_STATE.md for the different, discovery-time trigger it's meant for instead.)
+⚠️ 2026-09-26: `fetch_listing_description` itself is now DEAD CODE — confirmed a permanent dead
+end on this account's trial tier (see its own docstring's 2026-09-14 entry). Its two real callers
+(scraper/notifier.py's `_maybe_fetch_description`, matching a listing that just matched at least
+one PAYING user's filter at discovery time; website/main.py's `_ensure_description_sync`, lazily
+backfilling for a paying viewer about to see an already-matched listing whose description is still
+missing) both now call `fetch_yad2_description_via_web_unlocker` instead (see that function's own
+docstring) — the real, working replacement scraper/main.py's own scrape-time enrichment already
+uses. `fetch_listing_description` is kept in place, unused, as a documented historical dead end
+(matching `fetch_listing_detail_via_bright_data`'s own convention below) rather than deleted.
+Either way the result caches on Listing.description forever, so the real cost is bounded by
+distinct listings ever actually seen by a paying user, never the full scrape volume and never
+repeated per viewer.
+(`fetch_listing_detail_via_bright_data` isn't wired into either call site — see its own docstring
+and PROJECT_STATE.md for the different, discovery-time trigger it was meant for instead.)
 
 ⚠️ CORRECTED 2026-09-12, now REAL not guessed. An earlier version of this file (same date) guessed
 at the "Web Scraper API" (`datasets/v3/...`) based on Bright Data's public GitHub reference —
@@ -142,8 +146,10 @@ next real run will go through this check.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import time
 
 import httpx
@@ -459,6 +465,63 @@ def fetch_via_web_unlocker(url: str, *, zone: str | None = None) -> str | None:
         return None
 
     return response.text
+
+
+# 2026-09-26: REAL bug found from a live owner screenshot — a Yad2 listing with a genuine
+# description on its own page reached Telegram with none. Root cause: fetch_listing_description
+# above (the DCA collector) is a confirmed permanent dead end on this account's trial tier (see its
+# own docstring's 2026-09-14 entry and scraper/yad2_client.py's module docstring for the full
+# 2026-09-17 replacement story) — scraper/main.py's own enrichment already moved to
+# yad2_client.fetch_listing_detail_via_web_unlocker, but notifier.py's _maybe_fetch_description and
+# website/main.py's _ensure_description_sync (this module's OTHER two callers, meant as this
+# feature's safety net for whatever the one scrape-time attempt missed) were never updated and kept
+# calling the dead collector — so a listing whose single scrape-time fetch failed (no retry, an
+# ordinary transient failure under 5-way concurrency) simply never got a second real chance, exactly
+# matching the reported "some listings get a description, some don't" symptom.
+#
+# yad2_client.fetch_listing_detail_via_web_unlocker itself can't be imported here — it lives in
+# scraper/, which isn't copied into the website's own Docker image (see this module's own top
+# docstring on why cross-service code lives in todira_common instead). This function is therefore a
+# minimal, self-contained duplicate of yad2_client._parse_next_data_ad_record's own __NEXT_DATA__
+# extraction (just the description field, not the full record) — small enough that duplicating it
+# here is cheaper and lower-risk than restructuring which service owns yad2_client.py.
+_YAD2_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
+
+
+def fetch_yad2_description_via_web_unlocker(url: str) -> str | None:
+    """The REAL, working replacement for fetch_listing_description above — same blocking/
+    synchronous contract (run via asyncio.to_thread on an event loop) and same "never raises, None
+    on any failure" guarantee. Routes through fetch_via_web_unlocker (this module's own function,
+    already proven live for exactly this use — see scraper/yad2_client.py's
+    fetch_listing_detail_via_web_unlocker, which reuses the identical Web Unlocker + __NEXT_DATA__
+    approach for the scrape-time enrichment path)."""
+    html = fetch_via_web_unlocker(url)
+    if html is None:
+        return None
+
+    match = _YAD2_NEXT_DATA_RE.search(html)
+    if match is None:
+        logger.warning("No __NEXT_DATA__ found on Yad2 listing detail page: %s", url)
+        return None
+
+    try:
+        next_data = json.loads(match.group(1))
+        queries = next_data["props"]["pageProps"]["dehydratedState"]["queries"]
+        for query in queries:
+            data = query.get("state", {}).get("data")
+            if not isinstance(data, dict) or "token" not in data:
+                continue
+            meta = data.get("metaData")
+            meta = meta if isinstance(meta, dict) else {}
+            # searchText fallback matches scraper/normalize.py's _compute_detail_updates — a real,
+            # different free-text field on the same payload, confirmed live (see PROJECT_STATE.md).
+            description = meta.get("description") or data.get("searchText")
+            return description.strip() if isinstance(description, str) and description.strip() else None
+        logger.warning("__NEXT_DATA__ had no ad-data query on Yad2 listing detail page: %s", url)
+        return None
+    except (KeyError, TypeError, IndexError, json.JSONDecodeError):
+        logger.exception("Failed to parse __NEXT_DATA__ on Yad2 listing detail page: %s", url)
+        return None
 
 
 def fetch_via_isp_proxy(url: str) -> str | None:

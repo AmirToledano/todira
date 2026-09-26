@@ -657,6 +657,98 @@ def test_web_unlocker_network_failure_returns_none_not_raise(monkeypatch):
     assert result is None
 
 
+# --- fetch_yad2_description_via_web_unlocker (2026-09-26) — the REAL, working replacement for
+# fetch_listing_description above (confirmed a permanent dead end on this account's trial tier —
+# see that function's own docstring). Same __NEXT_DATA__ shape as
+# scraper/yad2_client.py's own fetch_listing_detail_via_web_unlocker/_parse_next_data_ad_record
+# (this function is a self-contained duplicate of that parsing, since yad2_client.py lives in a
+# different Docker image than website/main.py — see this function's own docstring).
+
+_YAD2_DESCRIPTION_NEXT_DATA_HTML = """<html><body><script id="__NEXT_DATA__" type="application/json">{
+"props": {"pageProps": {"dehydratedState": {"queries": [{"state": {"data": {
+  "token": "i8mec1k9",
+  "searchText": "פנטהאוז 4 חדרים ברחוב הנביאים",
+  "metaData": {
+    "description": "פנטהאוז ייחודי להשכרה בניות נווה המוזיאון 160 מ\\"ר"
+  }
+}}}]}}}}
+</script></body></html>"""
+
+
+def test_fetch_yad2_description_returns_none_when_web_unlocker_fetch_fails(monkeypatch):
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: None)
+    assert bright_data_client.fetch_yad2_description_via_web_unlocker(
+        "https://www.yad2.co.il/item/i8mec1k9"
+    ) is None
+
+
+def test_fetch_yad2_description_parses_the_real_confirmed_shape(monkeypatch):
+    monkeypatch.setattr(
+        bright_data_client, "fetch_via_web_unlocker", lambda url: _YAD2_DESCRIPTION_NEXT_DATA_HTML
+    )
+    description = bright_data_client.fetch_yad2_description_via_web_unlocker(
+        "https://www.yad2.co.il/item/i8mec1k9"
+    )
+    assert description == 'פנטהאוז ייחודי להשכרה בניות נווה המוזיאון 160 מ"ר'
+
+
+def test_fetch_yad2_description_falls_back_to_search_text_when_metadata_description_missing(monkeypatch):
+    html = """<html><body><script id="__NEXT_DATA__" type="application/json">{
+"props": {"pageProps": {"dehydratedState": {"queries": [{"state": {"data": {
+  "token": "i8mec1k9",
+  "searchText": "פנטהאוז 4 חדרים ברחוב הנביאים",
+  "metaData": {}
+}}}]}}}}
+</script></body></html>"""
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: html)
+    description = bright_data_client.fetch_yad2_description_via_web_unlocker(
+        "https://www.yad2.co.il/item/i8mec1k9"
+    )
+    assert description == "פנטהאוז 4 חדרים ברחוב הנביאים"
+
+
+def test_fetch_yad2_description_missing_next_data_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        bright_data_client, "fetch_via_web_unlocker",
+        lambda url: "<html><body>no next data here</body></html>",
+    )
+    assert bright_data_client.fetch_yad2_description_via_web_unlocker(
+        "https://www.yad2.co.il/item/abc123"
+    ) is None
+
+
+def test_fetch_yad2_description_malformed_json_returns_none_not_raise(monkeypatch):
+    bad_html = '<html><body><script id="__NEXT_DATA__" type="application/json">{not valid json</script></body></html>'
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: bad_html)
+    assert bright_data_client.fetch_yad2_description_via_web_unlocker(
+        "https://www.yad2.co.il/item/abc123"
+    ) is None
+
+
+def test_fetch_yad2_description_no_query_carries_a_token_returns_none(monkeypatch):
+    html = (
+        '<html><body><script id="__NEXT_DATA__" type="application/json">'
+        '{"props": {"pageProps": {"dehydratedState": {"queries": [{"state": {"data": {"no_token_here": true}}}]}}}}'
+        "</script></body></html>"
+    )
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: html)
+    assert bright_data_client.fetch_yad2_description_via_web_unlocker(
+        "https://www.yad2.co.il/item/abc123"
+    ) is None
+
+
+def test_fetch_yad2_description_blank_description_returns_none(monkeypatch):
+    html = """<html><body><script id="__NEXT_DATA__" type="application/json">{
+"props": {"pageProps": {"dehydratedState": {"queries": [{"state": {"data": {
+  "token": "i8mec1k9", "metaData": {"description": "   "}
+}}}]}}}}
+</script></body></html>"""
+    monkeypatch.setattr(bright_data_client, "fetch_via_web_unlocker", lambda url: html)
+    assert bright_data_client.fetch_yad2_description_via_web_unlocker(
+        "https://www.yad2.co.il/item/abc123"
+    ) is None
+
+
 # --- fetch_via_isp_proxy (2026-09-13) — a plain authenticated HTTP proxy (Bright Data ISP
 # proxies), the working alternative found the same day Web Unlocker hit a real KYC wall. Confirmed
 # live against a real Yad2 endpoint — see this function's own module docstring.

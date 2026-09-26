@@ -101,7 +101,7 @@ def test_maybe_fetch_description_skips_when_not_configured():
     session = SimpleNamespace(commit=lambda: None)
     with (
         patch.object(notifier.bright_data_client, "is_configured", lambda: False),
-        patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+        patch.object(notifier.bright_data_client, "fetch_yad2_description_via_web_unlocker") as mock_fetch,
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]))
     mock_fetch.assert_not_called()
@@ -112,7 +112,7 @@ def test_maybe_fetch_description_skips_when_already_cached():
     session = SimpleNamespace(commit=lambda: None)
     with (
         patch.object(notifier.bright_data_client, "is_configured", lambda: True),
-        patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+        patch.object(notifier.bright_data_client, "fetch_yad2_description_via_web_unlocker") as mock_fetch,
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]))
     mock_fetch.assert_not_called()
@@ -124,7 +124,7 @@ def test_maybe_fetch_description_skips_when_no_recipient_is_paying():
     free_users = [_user(), _user(id=2, telegram_user_id=556)]  # both expired trial, no payment
     with (
         patch.object(notifier.bright_data_client, "is_configured", lambda: True),
-        patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+        patch.object(notifier.bright_data_client, "fetch_yad2_description_via_web_unlocker") as mock_fetch,
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, free_users))
     mock_fetch.assert_not_called()
@@ -139,7 +139,7 @@ def test_maybe_fetch_description_fetches_and_caches_when_a_recipient_is_paying()
     with (
         patch.object(notifier.bright_data_client, "is_configured", lambda: True),
         patch.object(
-            notifier.bright_data_client, "fetch_listing_description", lambda url: "תיאור אמיתי"
+            notifier.bright_data_client, "fetch_yad2_description_via_web_unlocker", lambda url: "תיאור אמיתי"
         ),
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
@@ -156,7 +156,7 @@ def test_maybe_fetch_description_does_not_cache_on_fetch_failure():
 
     with (
         patch.object(notifier.bright_data_client, "is_configured", lambda: True),
-        patch.object(notifier.bright_data_client, "fetch_listing_description", lambda url: None),
+        patch.object(notifier.bright_data_client, "fetch_yad2_description_via_web_unlocker", lambda url: None),
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
 
@@ -175,7 +175,7 @@ def test_maybe_fetch_description_skips_for_non_yad2_source(monkeypatch):
         session = SimpleNamespace(commit=lambda: None)
         with (
             patch.object(notifier.bright_data_client, "is_configured", lambda: True),
-            patch.object(notifier.bright_data_client, "fetch_listing_description") as mock_fetch,
+            patch.object(notifier.bright_data_client, "fetch_yad2_description_via_web_unlocker") as mock_fetch,
         ):
             asyncio.run(
                 notifier._maybe_fetch_description(

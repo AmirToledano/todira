@@ -130,7 +130,7 @@ def test_ensure_description_sync_fetches_and_caches():
     session = _FakeGetSession([_FakeListing(id=5, description=None, url="https://yad2.co.il/item/5")])
     with (
         patch.object(
-            website_main.bright_data_client, "fetch_listing_description", return_value="תיאור אמיתי"
+            website_main.bright_data_client, "fetch_yad2_description_via_web_unlocker", return_value="תיאור אמיתי"
         ),
         patch.object(website_main, "get_session", session),
     ):
@@ -149,7 +149,7 @@ def test_ensure_description_sync_never_overwrites_a_description_already_filled_i
     )
     with (
         patch.object(
-            website_main.bright_data_client, "fetch_listing_description", return_value="תיאור אחר"
+            website_main.bright_data_client, "fetch_yad2_description_via_web_unlocker", return_value="תיאור אחר"
         ),
         patch.object(website_main, "get_session", session),
     ):
@@ -162,7 +162,7 @@ def test_ensure_description_sync_never_overwrites_a_description_already_filled_i
 def test_ensure_description_sync_does_nothing_on_a_failed_fetch():
     session = _FakeGetSession([_FakeListing(id=5, description=None, url="https://yad2.co.il/item/5")])
     with (
-        patch.object(website_main.bright_data_client, "fetch_listing_description", return_value=None),
+        patch.object(website_main.bright_data_client, "fetch_yad2_description_via_web_unlocker", return_value=None),
         patch.object(website_main, "get_session", session),
     ):
         website_main._ensure_description_sync(5, "https://yad2.co.il/item/5")

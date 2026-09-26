@@ -192,14 +192,26 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
     isn't called from the same place. Komo/Homeless get their own real descriptions from their own
     scrapers now (see komo_client.py's _DESCRIPTION_RE and homeless_client.py's
     fetch_listing_description) — this function was never their path to begin with, so narrowing it
-    to Yad2 loses nothing for them."""
+    to Yad2 loses nothing for them.
+
+    2026-09-26: switched from bright_data_client.fetch_listing_description (the DCA collector,
+    confirmed a permanent dead end on this account's trial tier — see that function's own
+    docstring) to bright_data_client.fetch_yad2_description_via_web_unlocker, the real working
+    replacement — this call site was one of two (the other being website/main.py's
+    _ensure_description_sync) that got missed when scraper/main.py's own enrichment path was
+    migrated 2026-09-17, leaving this "second chance" safety net permanently broken and silently
+    no-op'ing on every listing whose one scrape-time enrichment attempt failed. Found from a real
+    owner screenshot of a listing with a genuine description on its own Yad2 page reaching
+    Telegram with none."""
     if listing.description or not bright_data_client.is_configured():
         return
     if listing.source != Source.YAD2:
         return
     if not any(_has_access_for(user) for user in recipients):
         return
-    description = await asyncio.to_thread(bright_data_client.fetch_listing_description, listing.url)
+    description = await asyncio.to_thread(
+        bright_data_client.fetch_yad2_description_via_web_unlocker, listing.url
+    )
     if description:
         listing.description = description
         session.commit()
