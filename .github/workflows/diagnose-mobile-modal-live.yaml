@@ -1,0 +1,91 @@
+name: Diagnose — does the mobile floating listing-detail modal actually open on production?
+
+# Real owner report (2026-09-26): on mobile, tapping a listing card doesn't show the floating
+# detail modal we built/merged earlier — only a plain "view listing directly" link/text shows.
+# This directly contradicts this project's own history (the modal was built and merged), so this
+# checks the REAL live production page with a real mobile browser engine before concluding
+# anything, per "never guess, verify live". Also captures whether a real listing shows a
+# description on the same page load, to cross-check the separately-reported "no descriptions"
+# claim against the live site rather than only the DB.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright (webkit + chromium)
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.47.0 >/dev/null 2>&1
+          npx playwright install --with-deps webkit chromium >/dev/null 2>&1
+
+      - name: Load /apartments on real mobile engines and inspect the modal + description
+        run: |
+          cat <<'JS' > check.js
+          const { webkit, chromium, devices } = require('playwright');
+          async function run(engineName, engine, device) {
+            console.log(`\n===== ${engineName} / ${device} =====`);
+            const browser = await engine.launch();
+            const context = await browser.newContext({ ...devices[device] });
+            const page = await context.newPage();
+            const consoleErrors = [];
+            const pageErrors = [];
+            page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+            page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+            await page.goto('https://todira.app/apartments?uid=6984931854', { waitUntil: 'networkidle', timeout: 30000 });
+            await page.waitForTimeout(1500);
+
+            const cardCount = await page.locator('.listing-card').count();
+            console.log('listing-card count:', cardCount);
+
+            await page.screenshot({ path: `${engineName}-${device.replace(/\s+/g, '_')}-before.png` });
+
+            const card = page.locator('.listing-card').first();
+            await card.scrollIntoViewIfNeeded();
+            await card.click();
+            await page.waitForTimeout(1200);
+
+            await page.screenshot({ path: `${engineName}-${device.replace(/\s+/g, '_')}-after.png` });
+
+            const modal = page.locator('#apt-listing-modal');
+            const modalExists = (await modal.count()) > 0;
+            const modalHidden = modalExists ? await modal.getAttribute('hidden') : 'N/A (no element)';
+            console.log('#apt-listing-modal exists:', modalExists, '| hidden attr:', modalHidden);
+
+            const modalBody = page.locator('#apt-listing-modal-body');
+            const modalBodyHTML = modalExists ? await modalBody.innerHTML().catch(() => '(error reading)') : '(no modal)';
+            console.log('#apt-listing-modal-body innerHTML length:', modalBodyHTML.length);
+
+            const descEl = modalBody.locator('.listing-desc');
+            const descCount = modalExists ? await descEl.count() : 0;
+            console.log('.listing-desc count inside modal:', descCount);
+            if (descCount > 0) {
+              console.log('.listing-desc text:', (await descEl.first().textContent()).slice(0, 200));
+            }
+
+            const viewBtn = page.locator('.view-btn, .locked');
+            const viewBtnCount = await viewBtn.count();
+            console.log('.view-btn/.locked count on page:', viewBtnCount);
+
+            console.log('console errors:', JSON.stringify(consoleErrors));
+            console.log('page errors:', JSON.stringify(pageErrors));
+
+            await browser.close();
+          }
+          (async () => {
+            await run('webkit', webkit, 'iPhone 13');
+            await run('chromium', chromium, 'Pixel 7');
+          })();
+          JS
+          node check.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-modal-screenshots
+          path: "*.png"
