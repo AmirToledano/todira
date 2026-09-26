@@ -44,7 +44,7 @@ jobs:
                 args:
                   - |
                     CONN="postgresql://${DATABASE_URL#*://}"
-                    echo "--- description coverage among the 100 most-recently-scraped active listings, per source ---"
+                    echo "--- description coverage among the 500 most-recently-scraped active listings, per source ---"
                     psql "$CONN" -c "
                       SELECT source,
                              count(*) AS total,
@@ -57,6 +57,17 @@ jobs:
                         ORDER BY scraped_at DESC
                         LIMIT 500
                       ) sub
+                      GROUP BY source
+                      ORDER BY source;
+                    "
+                    echo "--- 2026-09-26: same coverage but across the FULL active-listing table per source, no recent-500 window — the recent-500 number above can look fine while a source's real backlog (older active listings that never got backfilled) is still mostly missing ---"
+                    psql "$CONN" -c "
+                      SELECT source,
+                             count(*) AS total,
+                             count(description) AS with_description,
+                             round(100.0 * count(description) / count(*), 1) AS pct_with_description
+                      FROM listings
+                      WHERE is_delisted = false
                       GROUP BY source
                       ORDER BY source;
                     "
