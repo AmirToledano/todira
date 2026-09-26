@@ -9,25 +9,33 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
+from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
+from todira_common.language import DEFAULT_LANG
 from todira_common.models import Filter, SentNotification, User
 
 
-def _profile_text(user: User, filter_row: Filter | None, notifications_sent: int) -> str:
+def _profile_text(user: User, filter_row: Filter | None, notifications_sent: int, lang: str) -> str:
+    status = bot_text("profile.status_active" if user.is_active else "profile.status_paused", lang)
+    notif_status = bot_text(
+        "profile.notifications_on" if user.notifications_enabled else "profile.notifications_off", lang
+    )
     lines = [
-        "👤 <b>הפרופיל שלך</b>",
-        f"סטטוס חיפוש: {'🟢 פעיל' if user.is_active else '⏸️ מושהה'}",
-        f"התראות: {'🔔 מופעלות' if user.notifications_enabled else '🔕 כבויות'}",
-        f'סה"כ התראות שנשלחו: {notifications_sent}',
+        bot_text("profile.header", lang),
+        bot_text("profile.status_line", lang, status=status),
+        bot_text("profile.notifications_line", lang, status=notif_status),
+        bot_text("profile.total_sent_line", lang, count=notifications_sent),
     ]
     if filter_row is None:
-        lines.append("\nעדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.")
+        lines.append(bot_text("profile.no_filter_line", lang))
     return "\n".join(lines)
 
 
-def _keyboard(user: User) -> InlineKeyboardMarkup:
-    active_label = "⏸️ השהה חיפוש" if user.is_active else "▶️ המשך חיפוש"
-    notif_label = "🔕 כבה התראות" if user.notifications_enabled else "🔔 הפעל התראות"
+def _keyboard(user: User, lang: str) -> InlineKeyboardMarkup:
+    active_label = bot_text("profile.btn_pause" if user.is_active else "profile.btn_resume", lang)
+    notif_label = bot_text(
+        "profile.btn_notif_off" if user.notifications_enabled else "profile.btn_notif_on", lang
+    )
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton(active_label, callback_data="profile:toggle_active")],
@@ -41,6 +49,7 @@ def _load_profile_sync(tg_user):
         user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
         if user is None:
             return None
+        lang = user.language or DEFAULT_LANG
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
         notifications_sent = (
             session.scalar(
@@ -50,7 +59,7 @@ def _load_profile_sync(tg_user):
             )
             or 0
         )
-        return _profile_text(user, filter_row, notifications_sent), _keyboard(user)
+        return _profile_text(user, filter_row, notifications_sent, lang), _keyboard(user, lang)
 
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -59,7 +68,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # just this one, since PTB processes updates one at a time by default.
     result = await asyncio.to_thread(_load_profile_sync, update.effective_user)
     if result is None:
-        await update.message.reply_text("שלח/י /start כדי להתחיל.")
+        await update.message.reply_text(bot_text("profile.not_registered", DEFAULT_LANG))
         return
     text, markup = result
     await update.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
@@ -76,6 +85,7 @@ def _toggle_profile_sync(tg_user, query_data: str):
             user.notifications_enabled = not user.notifications_enabled
         session.commit()
 
+        lang = user.language or DEFAULT_LANG
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
         notifications_sent = (
             session.scalar(
@@ -85,7 +95,7 @@ def _toggle_profile_sync(tg_user, query_data: str):
             )
             or 0
         )
-        return _profile_text(user, filter_row, notifications_sent), _keyboard(user)
+        return _profile_text(user, filter_row, notifications_sent, lang), _keyboard(user, lang)
 
 
 async def profile_toggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

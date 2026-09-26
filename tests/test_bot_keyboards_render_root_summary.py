@@ -19,7 +19,7 @@ def test_render_root_summary_escapes_html_special_chars_in_keywords():
     draft = _default_draft()
     draft["keywords"] = ["AC & heating", "<3 חדרים"]
 
-    text = kb.render_root_summary(draft)
+    text = kb.render_root_summary(draft, "he")
 
     assert "AC &amp; heating" in text
     assert "&lt;3 חדרים" in text
@@ -32,6 +32,6 @@ def test_render_root_summary_shows_dash_for_no_keywords():
     draft = _default_draft()
     draft["keywords"] = []
 
-    text = kb.render_root_summary(draft)
+    text = kb.render_root_summary(draft, "he")
 
     assert "🔍 מילות מפתח: —" in text

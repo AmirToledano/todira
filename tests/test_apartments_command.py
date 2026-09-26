@@ -34,7 +34,7 @@ def _make_context():
 def test_no_filter_tells_user_to_set_one_up():
     update = _make_update()
     context = _make_context()
-    with patch.object(apartments_module, "_count_matches_sync", return_value=None):
+    with patch.object(apartments_module, "_count_matches_sync", return_value=(None, "he")):
         asyncio.run(apartments_module.apartments(update, context))
     update.message.reply_text.assert_awaited_once()
     assert "/filter" in update.message.reply_text.await_args.args[0]
@@ -43,7 +43,7 @@ def test_no_filter_tells_user_to_set_one_up():
 def test_no_matches_tells_user_none_found_currently_and_still_links_the_website():
     update = _make_update()
     context = _make_context()
-    with patch.object(apartments_module, "_count_matches_sync", return_value=0):
+    with patch.object(apartments_module, "_count_matches_sync", return_value=(0, "he")):
         asyncio.run(apartments_module.apartments(update, context))
     update.message.reply_text.assert_awaited_once()
     text = update.message.reply_text.await_args.args[0]
@@ -56,7 +56,7 @@ def test_matches_sends_true_total_count_and_website_link_not_cards():
     # arbitrary capped subset, and must never call send_listing_card at all anymore.
     update = _make_update()
     context = _make_context()
-    with patch.object(apartments_module, "_count_matches_sync", return_value=3794):
+    with patch.object(apartments_module, "_count_matches_sync", return_value=(3794, "he")):
         asyncio.run(apartments_module.apartments(update, context))
     update.message.reply_text.assert_awaited_once()
     text = update.message.reply_text.await_args.args[0]
@@ -78,11 +78,11 @@ def test_count_matches_sync_returns_none_when_no_filter_saved(monkeypatch):
     monkeypatch.setattr(apartments_module, "get_session", _FakeSession)
     tg_user = SimpleNamespace(id=555)
 
-    assert apartments_module._count_matches_sync(tg_user) is None
+    assert apartments_module._count_matches_sync(tg_user) == (None, "he")
 
 
 def test_count_matches_sync_returns_true_uncapped_total(monkeypatch):
-    fake_user = SimpleNamespace(id=1)
+    fake_user = SimpleNamespace(id=1, language="he")
     fake_filter = SimpleNamespace(id=1)
 
     class _FakeSession:
@@ -105,4 +105,4 @@ def test_count_matches_sync_returns_true_uncapped_total(monkeypatch):
     )
     tg_user = SimpleNamespace(id=555)
 
-    assert apartments_module._count_matches_sync(tg_user) == 3794
+    assert apartments_module._count_matches_sync(tg_user) == (3794, "he")

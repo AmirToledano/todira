@@ -24,7 +24,9 @@ import math
 import keyboards as kb
 from config import WEBSITE_URL
 from todira_common import cities
+from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
+from todira_common.language import DEFAULT_LANG
 from todira_common.models import Filter
 from todira_common.schemas import FilterData
 from todira_common.users import get_or_create_user
@@ -70,27 +72,43 @@ FIELD_TO_CATEGORY = {
 # see _prompt_for_text's own docstring for why. Centralized here (was previously just an inline
 # string literal at each menu_callback call site) so both menu_callback and the numeric picker's
 # "✏️ ערך אחר..." fallback share the exact same wording per field.
-_TEXT_PROMPTS = {
-    "city": "הקלד/י שם עיר לחיפוש:",
-    "price_min": "הקלד/י מחיר מינימלי (או '-' לביטול הגבלה):",
-    "price_max": "הקלד/י מחיר מקסימלי (או '-' לביטול הגבלה):",
-    "rooms_min": "הקלד/י מספר חדרים מינימלי (למשל 2.5), או '-' לביטול:",
-    "rooms_max": "הקלד/י מספר חדרים מקסימלי, או '-' לביטול:",
-    "floor_min": "הקלד/י קומה מינימלית, או '-' לביטול:",
-    "floor_max": "הקלד/י קומה מקסימלית, או '-' לביטול:",
-    "min_area_sqm": 'הקלד/י שטח מינימלי במ"ר, או \'-\' לביטול:',
-    "keywords": "הקלד/י מילות מפתח מופרדות בפסיקים:",
-    "move_in_earliest": "הקלד/י תאריך מוקדם ביותר (YYYY-MM-DD), או '-' לביטול:",
-    "move_in_latest": "הקלד/י תאריך מאוחר ביותר (YYYY-MM-DD), או '-' לביטול:",
+#
+# 2026-09-26: values are now bot_strings keys, not literal text — see _text_prompt below, which
+# resolves the actual per-language string via bot_text(). Keeps this dict's own field->prompt
+# mapping (the thing every call site actually needs) separate from the translations themselves.
+_TEXT_PROMPT_KEYS = {
+    "city": "filter.prompt_city",
+    "price_min": "filter.prompt_price_min",
+    "price_max": "filter.prompt_price_max",
+    "rooms_min": "filter.prompt_rooms_min",
+    "rooms_max": "filter.prompt_rooms_max",
+    "floor_min": "filter.prompt_floor_min",
+    "floor_max": "filter.prompt_floor_max",
+    "min_area_sqm": "filter.prompt_min_area_sqm",
+    "keywords": "filter.prompt_keywords",
+    "move_in_earliest": "filter.prompt_move_in_earliest",
+    "move_in_latest": "filter.prompt_move_in_latest",
 }
 
-_NUMERIC_PICKER_LABELS = {
-    "price_min": "מחיר מינימלי",
-    "price_max": "מחיר מקסימלי",
-    "rooms_min": "חדרים מינימלי",
-    "rooms_max": "חדרים מקסימלי",
-    "floor_min": "קומה מינימלית",
-    "floor_max": "קומה מקסימלית",
+
+def _text_prompt(field: str, lang: str) -> str:
+    return bot_text(_TEXT_PROMPT_KEYS[field], lang)
+
+
+def _lang(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """This conversation's user_data already stashes per-session state (draft/awaiting) rather
+    than threading it through every function signature — lang follows the same pattern, set once
+    in filter_start (from the DB) and read everywhere else via this helper, instead of adding a
+    lang parameter to every one of this module's many handler functions."""
+    return context.user_data.get("lang", DEFAULT_LANG)
+
+_NUMERIC_PICKER_LABEL_KEYS = {
+    "price_min": "filter.numeric_picker_price_min",
+    "price_max": "filter.numeric_picker_price_max",
+    "rooms_min": "filter.numeric_picker_rooms_min",
+    "rooms_max": "filter.numeric_picker_rooms_max",
+    "floor_min": "filter.numeric_picker_floor_min",
+    "floor_max": "filter.numeric_picker_floor_max",
 }
 
 
@@ -104,61 +122,58 @@ def _draft_from_filter(filter_row: Filter | None) -> dict:
     return {field: getattr(filter_row, field) for field in FILTER_FIELDS}
 
 
-def _category_view(draft: dict, category: str):
+def _category_view(draft: dict, category: str, lang: str):
     """Pure function: (title, keyboard) for a given category — reused by both the
     CallbackQueryHandler (edits the existing message) and the text-input handler (sends a new
     message, since the original inline-keyboard message was already replaced by a text prompt)."""
+    titles = kb.category_titles(lang)
     if category == "dt":
-        return kb.CATEGORY_TITLES["dt"], kb.single_select_keyboard(
-            kb.DEAL_TYPE_LABELS, draft["deal_type"], "dt"
+        return titles["dt"], kb.single_select_keyboard(
+            kb.deal_type_labels(lang), draft["deal_type"], "dt", lang
         )
     if category == "pt":
-        return kb.CATEGORY_TITLES["pt"], kb.multi_select_keyboard(
-            kb.PROPERTY_TYPE_LABELS, draft["property_types"], "pt"
+        return titles["pt"], kb.multi_select_keyboard(
+            kb.property_type_labels(lang), draft["property_types"], "pt", lang
         )
     if category == "loc":
-        # 2026-09-15: made explicit right here, not just in the root summary's own "or 'הכל'"
+        # 2026-09-15: made explicit right here, not just in the root summary's own "or 'all'"
         # fallback — see keyboards.location_keyboard's own comment for the real report this is
         # part of. A user staring at an empty list otherwise has no way to tell "no cities chosen
         # yet" apart from "deliberately unconstrained," which is exactly the ambiguity that led to
         # manually selecting all 42 bundled cities instead (a strictly narrower, worse state).
-        note = (
-            "\n\n🌍 <i>כרגע: כל הערים (בלי הגבלה) — כולל ערים שלא ברשימה הקבועה.</i>"
-            if not draft["cities"]
-            else ""
-        )
-        return kb.CATEGORY_TITLES["loc"] + note, kb.location_keyboard(draft)
+        note = bot_text("filter.all_cities_note", lang) if not draft["cities"] else ""
+        return titles["loc"] + note, kb.location_keyboard(draft, lang)
     if category == "locpick":
-        return kb.CATEGORY_TITLES["locpick"], kb.city_picker_keyboard(draft)
+        return titles["locpick"], kb.city_picker_keyboard(draft, lang)
     if category == "price":
-        return kb.CATEGORY_TITLES["price"], kb.price_keyboard(draft)
+        return titles["price"], kb.price_keyboard(draft, lang)
     if category == "rooms":
-        return kb.CATEGORY_TITLES["rooms"], kb.rooms_keyboard(draft)
+        return titles["rooms"], kb.rooms_keyboard(draft, lang)
     if category == "floor":
-        return kb.CATEGORY_TITLES["floor"], kb.floor_keyboard(draft)
+        return titles["floor"], kb.floor_keyboard(draft, lang)
     if category == "req":
-        return kb.CATEGORY_TITLES["req"], kb.requirements_keyboard(draft)
+        return titles["req"], kb.requirements_keyboard(draft, lang)
     if category == "safe":
-        return kb.CATEGORY_TITLES["safe"], kb.single_select_keyboard(
-            kb.SAFE_ROOM_LABELS, draft["safe_room_pref"], "safe"
+        return titles["safe"], kb.single_select_keyboard(
+            kb.safe_room_labels(lang), draft["safe_room_pref"], "safe", lang
         )
     if category == "furn":
-        return kb.CATEGORY_TITLES["furn"], kb.single_select_keyboard(
-            kb.FURNITURE_LABELS, draft["furniture_pref"], "furn"
+        return titles["furn"], kb.single_select_keyboard(
+            kb.furniture_labels(lang), draft["furniture_pref"], "furn", lang
         )
     if category == "area":
-        return kb.CATEGORY_TITLES["area"], kb.area_keyboard(draft)
+        return titles["area"], kb.area_keyboard(draft, lang)
     if category == "kw":
-        return kb.CATEGORY_TITLES["kw"], kb.keywords_keyboard(draft)
+        return titles["kw"], kb.keywords_keyboard(draft, lang)
     if category == "move":
-        return kb.CATEGORY_TITLES["move"], kb.move_in_keyboard(draft)
+        return titles["move"], kb.move_in_keyboard(draft, lang)
     if category == "adv":
-        return kb.CATEGORY_TITLES["adv"], kb.advanced_keyboard(draft)
-    return kb.render_root_summary(draft), kb.root_keyboard()
+        return titles["adv"], kb.advanced_keyboard(draft, lang)
+    return kb.render_root_summary(draft, lang), kb.root_keyboard(lang)
 
 
-async def _show_category(query, draft: dict, category: str) -> int:
-    title, markup = _category_view(draft, category)
+async def _show_category(query, draft: dict, category: str, lang: str) -> int:
+    title, markup = _category_view(draft, category, lang)
     try:
         await query.edit_message_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
     except BadRequest as exc:
@@ -174,8 +189,8 @@ async def _show_category(query, draft: dict, category: str) -> int:
     return MENU
 
 
-async def _send_category(message, draft: dict, category: str) -> None:
-    title, markup = _category_view(draft, category)
+async def _send_category(message, draft: dict, category: str, lang: str) -> None:
+    title, markup = _category_view(draft, category, lang)
     await message.reply_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
@@ -201,9 +216,11 @@ async def _prompt_for_text(query, context, *, awaiting: str, prompt: str) -> int
     return AWAIT_TEXT
 
 
-async def _show_numeric_picker(query, draft: dict, field: str) -> int:
-    title = f"{kb.CATEGORY_TITLES[FIELD_TO_CATEGORY[field]]} — {_NUMERIC_PICKER_LABELS[field]}"
-    markup = kb.numeric_preset_keyboard(field, draft[field], FIELD_TO_CATEGORY[field])
+async def _show_numeric_picker(query, draft: dict, field: str, lang: str) -> int:
+    category_title = kb.category_titles(lang)[FIELD_TO_CATEGORY[field]]
+    field_label = bot_text(_NUMERIC_PICKER_LABEL_KEYS[field], lang)
+    title = f"{category_title} — {field_label}"
+    markup = kb.numeric_preset_keyboard(field, draft[field], FIELD_TO_CATEGORY[field], lang)
     await query.edit_message_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
     return MENU
 
@@ -287,11 +304,11 @@ def _parse_optional_date(raw: str) -> tuple[bool, dt.date | None]:
         return False, None
 
 
-def _load_draft_from_db_sync(tg_user) -> dict:
+def _load_draft_and_lang_from_db_sync(tg_user) -> tuple[dict, str]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
         existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
-        return _draft_from_filter(existing)
+        return _draft_from_filter(existing), (user.language or DEFAULT_LANG)
 
 
 async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -300,35 +317,46 @@ async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     # menu still open and is now sending /filter again, whether because they forgot to scroll
     # back to the old message or because allow_reentry is what got them unstuck) rather than
     # reloading from the DB and silently discarding whatever they hadn't saved yet. Only load
-    # fresh from the DB when there's truly no draft in progress (first /filter ever, or after
-    # Save/Cancel/allow_reentry's own reset already cleared it).
+    # fresh from the DB (draft AND lang together) when there's truly no draft in progress (first
+    # /filter ever, or after Save/Cancel/allow_reentry's own reset already cleared it) — a resumed
+    # draft already has "lang" stashed in user_data from the /filter call that started it, so no
+    # DB round-trip is needed just to keep editing.
     draft = context.user_data.get("draft")
     if draft is None:
         # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
         # call directly on the event loop would freeze every other user's bot interaction too,
         # not just this one, since PTB processes updates one at a time by default.
-        draft = await asyncio.to_thread(_load_draft_from_db_sync, update.effective_user)
+        draft, lang = await asyncio.to_thread(
+            _load_draft_and_lang_from_db_sync, update.effective_user
+        )
         context.user_data["draft"] = draft
+        context.user_data["lang"] = lang
+    lang = _lang(context)
     context.user_data.pop("awaiting", None)
     await update.message.reply_text(
-        kb.render_root_summary(draft), reply_markup=kb.root_keyboard(), parse_mode=ParseMode.HTML
+        kb.render_root_summary(draft, lang),
+        reply_markup=kb.root_keyboard(lang),
+        parse_mode=ParseMode.HTML,
     )
     return MENU
 
 
-FRIENDLY_VALIDATION_MESSAGES = {
-    "price_max": "💰 מחיר מקסימלי חייב להיות גדול או שווה למחיר מינימלי.",
-    "rooms_max": "🛏️ מספר חדרים מקסימלי חייב להיות גדול או שווה למינימלי.",
-    "floor_max": "🏢 קומה מקסימלית חייבת להיות גדולה או שווה למינימלית.",
-    "move_in_latest": "📅 תאריך הכניסה המאוחר ביותר חייב להיות אחרי המוקדם ביותר.",
+FRIENDLY_VALIDATION_KEYS = {
+    "price_max": "filter.validation_price_max",
+    "rooms_max": "filter.validation_rooms_max",
+    "floor_max": "filter.validation_floor_max",
+    "move_in_latest": "filter.validation_move_in_latest",
 }
 
 
-def _describe_validation_error(exc: ValidationError) -> str:
+def _describe_validation_error(exc: ValidationError, lang: str) -> str:
     messages = []
     for error in exc.errors():
         field = error["loc"][0] if error["loc"] else None
-        messages.append(FRIENDLY_VALIDATION_MESSAGES.get(field, f"שדה לא תקין: {field}"))
+        key = FRIENDLY_VALIDATION_KEYS.get(field)
+        messages.append(
+            bot_text(key, lang) if key else bot_text("filter.validation_generic_field", lang, field=field)
+        )
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
@@ -364,6 +392,7 @@ def _save_and_match_sync(tg_user, values: dict) -> int:
 
 async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dict) -> int:
     query = update.callback_query
+    lang = _lang(context)
     try:
         validated = FilterData(**draft)
     except ValidationError as exc:
@@ -371,9 +400,16 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
         # not lose everything and start /filter over from scratch. (menu_callback already
         # called query.answer() once for this callback — Telegram only allows one answer per
         # callback query, so the warning goes in the edited message, not a second answer() call.)
-        warning = _describe_validation_error(exc)
-        text = f"⚠️ <b>לפני השמירה, תקן/י:</b>\n{warning}\n\n" + kb.render_root_summary(draft)
-        await query.edit_message_text(text, reply_markup=kb.root_keyboard(), parse_mode=ParseMode.HTML)
+        warning = _describe_validation_error(exc, lang)
+        text = bot_text(
+            "filter.fix_before_save",
+            lang,
+            warning=warning,
+            summary=kb.render_root_summary(draft, lang),
+        )
+        await query.edit_message_text(
+            text, reply_markup=kb.root_keyboard(lang), parse_mode=ParseMode.HTML
+        )
         return MENU
 
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
@@ -385,7 +421,7 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
 
     context.user_data.pop("draft", None)
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
-    await query.edit_message_text("✅ הסינון נשמר! תתחיל/י לקבל התראות על דירות מתאימות.")
+    await query.edit_message_text(bot_text("filter.saved_confirmation", lang))
     # 2026-09-15: used to send every NEW-to-this-user current match as its own Telegram card right
     # here — a real owner complaint the same day: a broad filter matching dozens/hundreds of
     # already-existing listings flooded the chat with cards immediately on save, AND (since the
@@ -398,10 +434,12 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # still reaches this same website view next time the user opens it (no separate bookkeeping
     # needed there, /apartments always queries live DB state).
     if total:
-        await query.message.reply_text(f"👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}")
+        await query.message.reply_text(
+            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)
+        )
     else:
         await query.message.reply_text(
-            f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"
+            bot_text("onboarding.no_matches_yet", lang, apartments_url=apartments_url)
         )
     return ConversationHandler.END
 
@@ -410,34 +448,37 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     query = update.callback_query
     await query.answer()
     draft = context.user_data.setdefault("draft", _default_draft())
+    lang = _lang(context)
     parts = query.data.split(":")
     action = parts[1]
 
     if action == "root":
-        return await _show_category(query, draft, "root")
+        return await _show_category(query, draft, "root", lang)
     if action == "save":
         return await _handle_save(update, context, draft)
     if action == "cancel":
         context.user_data.pop("draft", None)
-        await query.edit_message_text("הסינון בוטל, לא נשמרו שינויים.")
+        await query.edit_message_text(bot_text("filter.cancelled", lang))
         return ConversationHandler.END
     if action == "cat":
-        return await _show_category(query, draft, parts[2])
+        return await _show_category(query, draft, parts[2], lang)
     if action == "set":
         _apply_single_select(draft, parts[2], parts[3])
-        return await _show_category(query, draft, "root")
+        return await _show_category(query, draft, "root", lang)
     if action == "tog":
         _apply_toggle(draft, parts[2], parts[3])
-        return await _show_category(query, draft, parts[2])
+        return await _show_category(query, draft, parts[2], lang)
     if action == "loc":
         sub = parts[2]
         if sub == "addcity":
-            return await _prompt_for_text(query, context, awaiting="city", prompt=_TEXT_PROMPTS["city"])
+            return await _prompt_for_text(
+                query, context, awaiting="city", prompt=_text_prompt("city", lang)
+            )
         if sub == "full":
-            return await _show_category(query, draft, "locpick")
+            return await _show_category(query, draft, "locpick", lang)
         if sub == "togc":
             _toggle_city(draft, int(parts[3]))
-            return await _show_category(query, draft, "locpick")
+            return await _show_category(query, draft, "locpick", lang)
         if sub == "rmc":
             # 2026-09-25 real bug fix: see keyboards.location_keyboard's own comment on the
             # rmc button — this now removes by the city's own name (idempotent against a
@@ -451,74 +492,76 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             # See keyboards.location_keyboard's own 2026-09-15 comment — restores the TRUE "no
             # city restriction" state (matches every city/town, not just the 42 curated ones).
             draft["cities"] = []
-        return await _show_category(query, draft, "loc")
+        return await _show_category(query, draft, "loc", lang)
     if action == "price":
         sub = parts[2]
         if sub == "min":
-            return await _show_numeric_picker(query, draft, "price_min")
+            return await _show_numeric_picker(query, draft, "price_min", lang)
         if sub == "max":
-            return await _show_numeric_picker(query, draft, "price_max")
+            return await _show_numeric_picker(query, draft, "price_max", lang)
         if sub == "reqtoggle":
             draft["require_price"] = not draft["require_price"]
-        return await _show_category(query, draft, "price")
+        return await _show_category(query, draft, "price", lang)
     if action == "rooms":
         sub = parts[2]
         if sub == "min":
-            return await _show_numeric_picker(query, draft, "rooms_min")
+            return await _show_numeric_picker(query, draft, "rooms_min", lang)
         if sub == "max":
-            return await _show_numeric_picker(query, draft, "rooms_max")
-        return await _show_category(query, draft, "rooms")
+            return await _show_numeric_picker(query, draft, "rooms_max", lang)
+        return await _show_category(query, draft, "rooms", lang)
     if action == "floor":
         sub = parts[2]
         if sub == "min":
-            return await _show_numeric_picker(query, draft, "floor_min")
+            return await _show_numeric_picker(query, draft, "floor_min", lang)
         if sub == "max":
-            return await _show_numeric_picker(query, draft, "floor_max")
+            return await _show_numeric_picker(query, draft, "floor_max", lang)
         if sub == "ground":
             draft["ground_floor_only"] = not draft["ground_floor_only"]
-        return await _show_category(query, draft, "floor")
+        return await _show_category(query, draft, "floor", lang)
     if action == "pick":
         # Quick-pick preset tap / custom-value fallback / clear, from a numeric_preset_keyboard
         # screen (see kb.numeric_preset_keyboard and _show_numeric_picker above).
         field, sub = parts[2], parts[3]
         if sub == "custom":
             return await _prompt_for_text(
-                query, context, awaiting=field, prompt=_TEXT_PROMPTS[field]
+                query, context, awaiting=field, prompt=_text_prompt(field, lang)
             )
         if sub == "clear":
             draft[field] = None
         else:
             draft[field] = kb.NUMERIC_PRESETS[field][int(sub)]
-        return await _show_category(query, draft, FIELD_TO_CATEGORY[field])
+        return await _show_category(query, draft, FIELD_TO_CATEGORY[field], lang)
     if action == "area":
         if parts[2] == "set":
             return await _prompt_for_text(
-                query, context, awaiting="min_area_sqm", prompt=_TEXT_PROMPTS["min_area_sqm"]
+                query, context, awaiting="min_area_sqm", prompt=_text_prompt("min_area_sqm", lang)
             )
-        return await _show_category(query, draft, "area")
+        return await _show_category(query, draft, "area", lang)
     if action == "kw":
         sub = parts[2]
         if sub == "set":
             return await _prompt_for_text(
-                query, context, awaiting="keywords", prompt=_TEXT_PROMPTS["keywords"]
+                query, context, awaiting="keywords", prompt=_text_prompt("keywords", lang)
             )
         if sub == "clear":
             draft["keywords"] = []
-        return await _show_category(query, draft, "kw")
+        return await _show_category(query, draft, "kw", lang)
     if action == "move":
         sub = parts[2]
         if sub == "earliest":
             return await _prompt_for_text(
-                query, context, awaiting="move_in_earliest", prompt=_TEXT_PROMPTS["move_in_earliest"]
+                query, context, awaiting="move_in_earliest",
+                prompt=_text_prompt("move_in_earliest", lang),
             )
         if sub == "latest":
             return await _prompt_for_text(
-                query, context, awaiting="move_in_latest", prompt=_TEXT_PROMPTS["move_in_latest"]
+                query, context, awaiting="move_in_latest",
+                prompt=_text_prompt("move_in_latest", lang),
             )
         if sub == "clear":
             draft["move_in_earliest"] = None
             draft["move_in_latest"] = None
-        return await _show_category(query, draft, "move")
+        return await _show_category(query, draft, "move", lang)
 
     logger.warning("Unhandled filter callback: %s", query.data)
     return MENU
@@ -530,6 +573,7 @@ async def _reply_parse_failure_or_escalate(
     raw: str,
     awaiting: str,
     retry_message: str,
+    lang: str,
     escalate_on_sentence: bool = True,
 ) -> int:
     """Shared tail for every field that failed to parse `raw` as the value it asked for. There's
@@ -549,8 +593,7 @@ async def _reply_parse_failure_or_escalate(
     if escalate_on_sentence and looks_like_a_sentence(raw):
         await escalate_to_owner(update, context, raw)
         await update.message.reply_text(
-            "🙋 זה לא נראה כמו הערך שביקשתי, אז ליתר ביטחון העברתי את מה שכתבת לצוות — "
-            "אם זו הייתה שאלה, תקבל/י מענה בהקדם.\n\n" + retry_message,
+            bot_text("filter.not_a_valid_value_escalated", lang, retry_message=retry_message),
             reply_markup=retry_markup,
         )
     else:
@@ -566,25 +609,24 @@ async def menu_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     found live auditing this file 2026-09-07. A genuine support request typed at this point still
     escalates exactly like it does everywhere else in this conversation; anything else gets a
     friendly nudge back to the buttons rather than dead silence."""
+    lang = _lang(context)
     raw = (update.message.text or "").strip()
     if looks_like_help_request(raw):
         await escalate_to_owner(update, context, raw)
-        await update.message.reply_text(
-            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n"
-            "כדי להמשיך לערוך את הסינון, יש להשתמש בכפתורים שלמעלה 👆"
-        )
+        await update.message.reply_text(bot_text("filter.menu_help_escalated", lang))
     else:
-        await update.message.reply_text("יש להשתמש בכפתורים שלמעלה כדי לערוך את הסינון 👆")
+        await update.message.reply_text(bot_text("filter.use_buttons_hint", lang))
     return MENU
 
 
 async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = _lang(context)
     draft = context.user_data.setdefault("draft", _default_draft())
     awaiting = context.user_data.pop("awaiting", None)
     raw = (update.message.text or "").strip()
 
     if awaiting is None:
-        await update.message.reply_text("שלח/י /filter כדי להתחיל לערוך את הסינון.")
+        await update.message.reply_text(bot_text("filter.not_awaiting_anything", lang))
         return ConversationHandler.END
 
     # A user who asks for a human/support instead of answering the specific value the menu just
@@ -595,9 +637,9 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if looks_like_help_request(raw):
         await escalate_to_owner(update, context, raw)
         context.user_data["awaiting"] = awaiting
-        continue_msg = "אפשר להמשיך מאיפה שהפסקנו — שלח/י את הערך שהתבקשת להקליד."
+        continue_msg = bot_text("filter.help_request_continue", lang)
         await update.message.reply_text(
-            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n" + continue_msg,
+            bot_text("filter.help_request_continue_escalated", lang, continue_msg=continue_msg),
             reply_markup=ForceReply(selective=True, input_field_placeholder=continue_msg[:64]),
         )
         return AWAIT_TEXT
@@ -610,7 +652,8 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 context,
                 raw,
                 "city",
-                "לא נמצאה עיר תואמת, נסה/י שוב:",
+                bot_text("filter.city_not_found", lang),
+                lang,
                 escalate_on_sentence=False,
             )
         # Show every candidate as a tappable button instead of silently adding matches[0] — a
@@ -618,43 +661,44 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         # as tapping a box in kb.city_picker_keyboard (2026-09-02: this used to auto-add the
         # first match, which is exactly the "ניחוש אוטומטי" a real user asked to remove).
         await update.message.reply_text(
-            "בחר/י את העיר המבוקשת:", reply_markup=kb.city_search_results_keyboard(matches)
+            bot_text("filter.pick_city", lang),
+            reply_markup=kb.city_search_results_keyboard(matches, lang),
         )
         return MENU
 
     if awaiting == "keywords":
         draft["keywords"] = [w.strip() for w in raw.split(",") if w.strip()]
-        await _send_category(update.message, draft, "kw")
+        await _send_category(update.message, draft, "kw", lang)
         return MENU
 
     if awaiting in NUMERIC_INT_FIELDS:
         ok, value = _parse_optional_int(raw)
         if not ok:
             return await _reply_parse_failure_or_escalate(
-                update, context, raw, awaiting, "לא הצלחתי לפרש מספר, נסה/י שוב (או '-'):"
+                update, context, raw, awaiting, bot_text("filter.number_parse_failed", lang), lang
             )
         draft[awaiting] = value
-        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting])
+        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting], lang)
         return MENU
 
     if awaiting in NUMERIC_FLOAT_FIELDS:
         ok, value = _parse_optional_float(raw)
         if not ok:
             return await _reply_parse_failure_or_escalate(
-                update, context, raw, awaiting, "לא הצלחתי לפרש מספר, נסה/י שוב (או '-'):"
+                update, context, raw, awaiting, bot_text("filter.number_parse_failed", lang), lang
             )
         draft[awaiting] = value
-        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting])
+        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting], lang)
         return MENU
 
     if awaiting in DATE_FIELDS:
         ok, value = _parse_optional_date(raw)
         if not ok:
             return await _reply_parse_failure_or_escalate(
-                update, context, raw, awaiting, "פורמט תאריך לא תקין, נסה/י YYYY-MM-DD (או '-'):"
+                update, context, raw, awaiting, bot_text("filter.date_parse_failed", lang), lang
             )
         draft[awaiting] = value
-        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting])
+        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting], lang)
         return MENU
 
     logger.warning("Unhandled 'awaiting' key: %s", awaiting)
@@ -662,8 +706,9 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def _cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = _lang(context)
     context.user_data.pop("draft", None)
-    await update.message.reply_text("הסינון בוטל.")
+    await update.message.reply_text(bot_text("filter.cancelled_command", lang))
     return ConversationHandler.END
 
 

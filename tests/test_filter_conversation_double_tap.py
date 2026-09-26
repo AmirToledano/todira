@@ -26,7 +26,7 @@ def test_show_category_swallows_message_not_modified():
     )
     draft = _default_draft()
 
-    result = asyncio.run(_show_category(query, draft, "root"))
+    result = asyncio.run(_show_category(query, draft, "root", "he"))
 
     assert result == MENU  # returns normally, no exception propagated
 
@@ -38,7 +38,7 @@ def test_show_category_still_raises_a_real_badrequest():
     draft = _default_draft()
 
     with pytest.raises(BadRequest):
-        asyncio.run(_show_category(query, draft, "root"))
+        asyncio.run(_show_category(query, draft, "root", "he"))
 
 
 def test_menu_callback_clear_keywords_twice_never_raises():

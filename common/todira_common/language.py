@@ -14,6 +14,13 @@ from __future__ import annotations
 SUPPORTED_LANGS = ["he", "en", "ru", "fr", "ar"]
 DEFAULT_LANG = "he"
 
+# Mirrors website/i18n.py's own RTL_LANGS (same reasoning: Hebrew and Arabic are RTL, the other
+# three are LTR) — kept in sync by hand for the same reason SUPPORTED_LANGS/DEFAULT_LANG are: not
+# imported across the website/bot process boundary. Used by todira_common/cards.py to decide
+# whether a listing-card line needs its own RTL bidi embedding at all (see cards._force_rtl) —
+# forcing RTL on an English/Russian/French line would misalign text that's already correctly LTR.
+RTL_LANGS = {"he", "ar"}
+
 # Each language's own name, in itself — used for the WhatsApp language-picker rows and for the
 # Gemini prompt instruction (so the model sees "Russian", not just the ambiguous two-letter code).
 LANGUAGE_NAMES = {

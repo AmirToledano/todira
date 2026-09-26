@@ -442,6 +442,87 @@ def test_whatsapp_caption_does_not_html_escape_plain_text():
     assert "C <D>" in caption
 
 
+# --- lang (2026-09-26 "full compatibility" follow-up) — every field label/feature/footer now
+# goes through bot_strings.bot_text(key, lang) instead of a fixed Hebrew string. `lang` defaults
+# to DEFAULT_LANG ("he") so every existing call site above (and every real caller that predates
+# this) keeps behaving exactly as before without passing it.
+
+
+def test_format_caption_defaults_to_hebrew_when_lang_omitted():
+    caption = format_caption(make_listing(), has_access=True)
+    assert "מחיר:" in caption
+    assert "חדרים:" in caption
+
+
+def test_format_caption_renders_english_labels():
+    caption = format_caption(make_listing(), has_access=True, lang="en")
+    assert "Price:" in caption
+    assert "Rooms:" in caption
+    assert "Full listing details" in caption
+    assert "מחיר" not in caption
+
+
+def test_format_caption_english_has_no_rtl_embedding():
+    # Hebrew/Arabic need the RTL bidi override (cards._force_rtl) since nearly every line starts
+    # with a direction-neutral emoji — English/Russian/French are already correctly LTR-aligned
+    # on their own, and forcing an RTL embedding there would misalign them instead.
+    caption = format_caption(make_listing(), has_access=True, lang="en")
+    assert "‫" not in caption  # RLE
+    assert "‬" not in caption  # PDF
+
+
+def test_format_caption_hebrew_keeps_rtl_embedding():
+    caption = format_caption(make_listing(), has_access=True, lang="he")
+    assert "‫" in caption  # RLE
+    assert "‬" in caption  # PDF
+
+
+def test_format_caption_renders_arabic_labels_with_rtl_embedding():
+    caption = format_caption(make_listing(), has_access=True, lang="ar")
+    assert "السعر:" in caption
+    assert "‫" in caption
+
+
+def test_format_caption_renders_russian_and_french_labels():
+    ru_caption = format_caption(make_listing(), has_access=True, lang="ru")
+    assert "Цена:" in ru_caption
+    fr_caption = format_caption(make_listing(), has_access=True, lang="fr")
+    assert "Prix" in fr_caption
+
+
+def test_format_caption_upgrade_lock_line_is_translated():
+    caption = format_caption(make_listing(), has_access=False, lang="en")
+    assert "Upgrade your subscription" in caption
+    caption_with_url = format_caption(
+        make_listing(), has_access=False, upgrade_url="https://x/upgrade", lang="en"
+    )
+    assert "upgrade your subscription" in caption_with_url
+
+
+def test_format_caption_price_change_header_is_translated():
+    caption = format_caption(
+        make_listing(price=16000), has_access=True, price_change_from=18000, lang="en"
+    )
+    assert "Price drop!" in caption
+    assert "was 18,000" in caption
+
+
+def test_format_caption_whatsapp_renders_english_labels():
+    caption = format_caption_whatsapp(make_listing(), has_access=True, lang="en")
+    assert "Price:" in caption
+    assert "Full listing details" in caption
+
+
+def test_listing_keyboard_buttons_are_translated():
+    from todira_common.cards import listing_keyboard
+
+    markup = listing_keyboard(1, "en")
+    buttons = [b for row in markup.inline_keyboard for b in row]
+    assert any("Save" in b.text for b in buttons)
+    assert any("Hide" in b.text for b in buttons)
+    assert any("Found an apartment" in b.text for b in buttons)
+
+
 # --- send_listing_card (2026-09-02) — real Yad2 photos, added once the scraper started actually
 # capturing them (see scraper/normalize.py's enrich_from_detail). Telegram's sendMediaGroup can't
 # carry an inline keyboard, so 2+ photos need a follow-up message for the ❤️/🙈/🎉 buttons - the

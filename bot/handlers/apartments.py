@@ -12,8 +12,10 @@ from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
 from config import WEBSITE_URL
+from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.enums import NotificationReason
+from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
 from todira_common.models import Filter, Listing, SentNotification, User, UserListingAction
 
@@ -107,11 +109,12 @@ def find_new_matches_to_show(
     return len(matches), new_to_show
 
 
-def _count_matches_sync(tg_user) -> int | None:
-    """Returns None to signal "no saved filter yet" (vs. 0 = a real filter with no current
-    matches) — the caller needs to tell the two apart to show a different message. Otherwise the
-    TRUE total number of current matches, no cap (see find_matching_listings' own 2026-09-15
-    comment).
+def _count_matches_sync(tg_user) -> tuple[int | None, str]:
+    """Returns (count, lang) — count is None to signal "no saved filter yet" (vs. 0 = a real
+    filter with no current matches), the caller needs to tell the two apart to show a different
+    message. Otherwise the TRUE total number of current matches, no cap (see
+    find_matching_listings' own 2026-09-15 comment). lang is DEFAULT_LANG when there's no user row
+    yet to read a language preference off of.
 
     2026-09-15: this used to load up to RESULT_LIMIT=10 Listing rows and send each as its own
     Telegram card directly in the chat. Real owner complaint the same day: for a broad filter
@@ -123,32 +126,32 @@ def _count_matches_sync(tg_user) -> int | None:
     doesn't need to know or care about access level at all anymore."""
     with get_session() as session:
         user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
-        filter_row = (
-            session.scalar(select(Filter).where(Filter.user_id == user.id)) if user else None
-        )
-        if user is None or filter_row is None:
-            return None
-        return len(find_matching_listings(session, user.id, filter_row))
+        if user is None:
+            return None, DEFAULT_LANG
+        lang = user.language or DEFAULT_LANG
+        filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        if filter_row is None:
+            return None, lang
+        return len(find_matching_listings(session, user.id, filter_row)), lang
 
 
 async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: PTB processes
     # updates one at a time by default, so a blocking DB call on the event loop freezes every
     # other user's interaction with the bot too, not just this one.
-    total = await asyncio.to_thread(_count_matches_sync, update.effective_user)
+    total, lang = await asyncio.to_thread(_count_matches_sync, update.effective_user)
     if total is None:
-        await update.message.reply_text("עדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.")
+        await update.message.reply_text(bot_text("apartments.no_filter_yet", lang))
         return
 
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
     if total:
         await update.message.reply_text(
-            f"👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}"
+            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)
         )
     else:
         await update.message.reply_text(
-            "לא נמצאו כרגע דירות תואמות. אני אמשיך לחפש ואודיע לך כשתתפרסם דירה מתאימה. "
-            f"אפשר גם לעקוב באתר: {apartments_url}"
+            bot_text("apartments.no_matches", lang, apartments_url=apartments_url)
         )
 
 

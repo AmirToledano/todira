@@ -18,6 +18,8 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TelegramError
 
+from todira_common.bot_strings import bot_text
+from todira_common.language import DEFAULT_LANG, RTL_LANGS
 from todira_common.models import Listing
 
 logger = logging.getLogger(__name__)
@@ -139,7 +141,8 @@ _MASCOT_PATH = _DACHSHUND_DIR / "todi_detective.jpg"
 # captions can't do background colors or font-size, so the closest equivalent is BOLD (not italic
 # — italic reads as an aside, easy to skim past) and placed FIRST, before the listing's own details,
 # instead of tacked on at the very end where a real user reported missing it entirely (2026-09-03).
-_NO_PHOTOS_PREFIX_HE = "‏🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>\n\n"
+# See bot_strings.py's "card.no_photos_banner" — sent through _force_rtl in send_listing_card
+# itself (a no-op for English/Russian/French, same as every other line in this file).
 
 
 def _dachshund_photo_path() -> Path:
@@ -158,28 +161,30 @@ def _dachshund_photo_path() -> Path:
 # footer line is also gone — a real request that Telegram/WhatsApp readers don't need to know which
 # source site a listing came from (the website's own card still shows a source badge — see
 # website/templates/_listing_card.html).
-_FEATURE_EMOJI_LABELS = (
-    ("has_parking", "🚗", "חניה"),
-    ("has_elevator", "🛗", "מעלית"),
-    ("has_balcony", "🌿", "מרפסת"),
-    ("pets_allowed", "🐾", "חיות מחמד"),
-    ("is_renovated", "✨", "משופצת"),
-    ("is_roommate_friendly", "🤝", "מתאימה לשותפים"),
+_FEATURE_EMOJI_LABEL_KEYS = (
+    ("has_parking", "🚗", "card.feature_parking"),
+    ("has_elevator", "🛗", "card.feature_elevator"),
+    ("has_balcony", "🌿", "card.feature_balcony"),
+    ("pets_allowed", "🐾", "card.feature_pets_allowed"),
+    ("is_renovated", "✨", "card.feature_renovated"),
+    ("is_roommate_friendly", "🤝", "card.feature_roommate_friendly"),
 )
 
 
-def _feature_list(listing: Listing) -> list[str]:
+def _feature_list(listing: Listing, lang: str) -> list[str]:
     """Each feature prefixed with its own emoji — the SAME ones the website's own amenity row
     uses (website/static/style.css's .amenity-row / _listing_card.html) for has_parking through
     furniture, so the two surfaces read consistently. is_roommate_friendly has no website
     equivalent to match (not shown there today) — 🤝 chosen fresh."""
     items = [
-        f"{emoji}{label}" for attr, emoji, label in _FEATURE_EMOJI_LABELS if getattr(listing, attr) is True
+        f"{emoji}{bot_text(key, lang)}"
+        for attr, emoji, key in _FEATURE_EMOJI_LABEL_KEYS
+        if getattr(listing, attr) is True
     ]
     if listing.safe_room_type in ("safe_room", "building_shelter"):
-        items.append('🛡️ממ"ד')
+        items.append(f"🛡️{bot_text('card.feature_safe_room', lang)}")
     if listing.furniture == "furnished":
-        items.append("🛋️מרוהטת")
+        items.append(f"🛋️{bot_text('card.feature_furnished', lang)}")
     return items
 
 
@@ -193,13 +198,13 @@ def _google_maps_url(listing: Listing) -> str | None:
     return f"https://www.google.com/maps/search/?api=1&query={quote(', '.join(parts))}"
 
 
-def _deal_type_prefix_word(listing: Listing) -> str | None:
-    """"תיווך" (broker) takes priority over "סאבלט" (sublet) when both would somehow apply — a
+def _deal_type_prefix_word(listing: Listing, lang: str) -> str | None:
+    """"card.broker" takes priority over "card.sublet" when both would somehow apply — a
     plain rent or sale listing gets None (no prefix line at all)."""
     if listing.is_broker_listing:
-        return "תיווך"
+        return bot_text("card.broker", lang)
     if listing.deal_type == "sublet":
-        return "סאבלט"
+        return bot_text("card.sublet", lang)
     return None
 
 
@@ -209,6 +214,7 @@ def _build_body_lines(
     bold: Callable[[str], str],
     street_link: Callable[[str, str], str],
     escape: Callable[[str], str],
+    lang: str,
 ) -> list[str]:
     """`bold` wraps label text in each platform's own emphasis syntax (<b> on Telegram, *asterisks*
     on WhatsApp). `street_link(text, url)` wraps the street name as a tappable link where the
@@ -223,7 +229,7 @@ def _build_body_lines(
     identity function since its captions are plain text, not HTML."""
     lines = []
 
-    prefix_word = _deal_type_prefix_word(listing)
+    prefix_word = _deal_type_prefix_word(listing, lang)
     if prefix_word is not None:
         lines.append(f"🏢 {bold(prefix_word)}")
 
@@ -242,36 +248,46 @@ def _build_body_lines(
         lines.append(f"📍{location}")
 
     if listing.price is not None:
-        lines.append(f"💰 {bold('מחיר:')} {listing.price:,}₪")
+        lines.append(f"💰 {bold(bot_text('card.price_label', lang))} {listing.price:,}₪")
 
-    lines.append(f"🛏️ {bold('חדרים:')} {listing.rooms or '?'}")
+    lines.append(f"🛏️ {bold(bot_text('card.rooms_label', lang))} {listing.rooms or '?'}")
 
     if listing.size_sqm:
-        lines.append(f'📐 {bold("שטח:")} {listing.size_sqm} מ"ר')
+        area_value = bot_text("kb.sqm_value", lang, value=listing.size_sqm)
+        lines.append(f"📐 {bold(bot_text('card.area_label', lang))} {area_value}")
 
     if listing.floor is not None:
-        floor_line = f"🏢 {bold('קומה:')} {listing.floor}"
+        floor_line = f"🏢 {bold(bot_text('card.floor_label', lang))} {listing.floor}"
         if listing.floor_total is not None:
-            floor_line += f" מתוך {listing.floor_total}"
+            floor_line += f" {bot_text('card.floor_of', lang)} {listing.floor_total}"
         lines.append(floor_line)
 
     if listing.move_in_date is not None:
-        lines.append(f"📅 {bold('כניסה:')} {listing.move_in_date.strftime('%d.%m.%Y')}")
+        move_in_label = bold(bot_text("card.move_in_label", lang))
+        lines.append(f"📅 {move_in_label} {listing.move_in_date.strftime('%d.%m.%Y')}")
 
-    features = _feature_list(listing)
+    features = _feature_list(listing, lang)
     if features:
-        features_label = bold("פיצ'רים:")
+        features_label = bold(bot_text("card.features_label", lang))
         lines.append("")  # a visual gap before the features line — a real request, 2026-09-03
         lines.append(f"🔑 {features_label} {' | '.join(features)}")
 
     # Every line gets its OWN RTL embedding, not just the caption as a whole — see _force_rtl's own
     # docstring for why (2026-09-14: escalated from a bare RLM mark to a real RLE/PDF embedding).
+    # Only Hebrew/Arabic need this at all (language.RTL_LANGS) — _force_rtl is itself a no-op for
+    # English/Russian/French, where every line is already correctly LTR-aligned on its own.
     # Skip it on the blank spacer line: an embedding around nothing still isn't actually
     # invisible-and-blank in every client.
-    return [(_force_rtl(line) if line else line) for line in lines]
+    return [(_force_rtl(line, lang) if line else line) for line in lines]
 
 
-def _price_change_header(price_change_from: int | None, current_price: int | None, *, bold: Callable[[str], str]) -> str:
+def _price_change_header(
+    price_change_from: int | None,
+    current_price: int | None,
+    *,
+    bold: Callable[[str], str],
+    lang: str,
+) -> str:
     """`price_change_from`: the previous price, when this card is a re-notification because the
     price changed (either direction — a drop gets 📉, an increase gets 📈; see
     scraper/notifier.py). None (the normal case) means no header at all, matching a real request
@@ -279,10 +295,12 @@ def _price_change_header(price_change_from: int | None, current_price: int | Non
     if price_change_from is None or current_price is None or price_change_from == current_price:
         return ""
     if price_change_from > current_price:
-        emoji, label = "📉", "ירידת מחיר!"
+        emoji, label_key = "📉", "card.price_dropped"
     else:
-        emoji, label = "📈", "עליית מחיר!"
-    return f"{_force_rtl(f'{emoji} {bold(label)} (היה {price_change_from:,}₪)')}\n\n"
+        emoji, label_key = "📈", "card.price_increased"
+    label = bold(bot_text(label_key, lang))
+    was_price = bot_text("card.was_price", lang, price=f"{price_change_from:,}")
+    return f"{_force_rtl(f'{emoji} {label} {was_price}', lang)}\n\n"
 
 
 # 2026-09-14: escalated from a bare RLM mark (U+200F) to a real bidi EMBEDDING (RLE U+202B ...
@@ -306,11 +324,16 @@ _RLE = "‫"  # RIGHT-TO-LEFT EMBEDDING
 _PDF = "‬"  # POP DIRECTIONAL FORMATTING — closes the most recent LRE/RLE/LRO/RLO
 
 
-def _force_rtl(text: str) -> str:
+def _force_rtl(text: str, lang: str) -> str:
+    # 2026-09-26: only Hebrew/Arabic (language.RTL_LANGS) need the override at all — every line in
+    # an English/Russian/French caption is already correctly LTR-aligned on its own, and forcing an
+    # RTL embedding on it would misalign it instead of fixing anything.
+    if lang not in RTL_LANGS:
+        return text
     return f"{_RLE}{text}{_PDF}"
 
 
-def _force_rtl_block(text: str) -> str:
+def _force_rtl_block(text: str, lang: str) -> str:
     """Same per-line embedding as _build_body_lines' own comment explains, applied to a block of
     text that can itself contain line breaks — a scraped description, which real listings (see the
     2026-09-18 screenshots) often submit as several physical lines. A single _force_rtl call around
@@ -328,7 +351,7 @@ def _force_rtl_block(text: str) -> str:
     reproducing the exact original bug for every line after the first. splitlines() handles \\r,
     \\r\\n, \\n and the other line-boundary characters Python recognizes, and normalizing to "\\n"
     on rejoin is itself a improvement (Telegram/WhatsApp only render "\\n" as a line break)."""
-    return "\n".join(_force_rtl(line) if line else line for line in text.splitlines())
+    return "\n".join(_force_rtl(line, lang) if line else line for line in text.splitlines())
 
 
 def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:
@@ -364,6 +387,7 @@ def format_caption(
     has_access: bool,
     price_change_from: int | None = None,
     upgrade_url: str | None = None,
+    lang: str = DEFAULT_LANG,
 ) -> str:
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
 
@@ -386,26 +410,29 @@ def format_caption(
         bold=bold,
         street_link=lambda text, url: f'<a href="{url}">{text}</a>',
         escape=html.escape,
+        lang=lang,
     )
 
     body = "\n".join(lines)
-    header = _price_change_header(price_change_from, listing.price, bold=bold)
+    header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:
         # listing.url is scraped from Yad2, not written by this project — escaped defensively so
         # a stray `"` in it could never break out of the href attribute.
         safe_url = html.escape(listing.url)
-        footer_text = f'🔗 <a href="{safe_url}">לפרטי הדירה המלאים &gt;&gt;</a>'
+        link_text = bot_text("card.full_details_link_html", lang)
+        footer_text = f'🔗 <a href="{safe_url}">{link_text}</a>'
     elif upgrade_url:
-        footer_text = f'🔒 <a href="{upgrade_url}">לקישור למודעה המקורית — שדרג/י את המנוי</a>'
+        link_text = bot_text("card.upgrade_to_see_link", lang)
+        footer_text = f'🔒 <a href="{upgrade_url}">{link_text}</a>'
     else:
-        footer_text = "🔒 לקישור למודעה המקורית יש לשדרג את המנוי"
-    footer = f"\n\n{_force_rtl(footer_text)}"
+        footer_text = f"🔒 {bot_text('card.upgrade_required_plain', lang)}"
+    footer = f"\n\n{_force_rtl(footer_text, lang)}"
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     description = html.escape((listing.description or "").strip())
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_force_rtl_block(f'📝 {description}')}"
+        body += f"\n\n{_force_rtl_block(f'📝 {description}', lang)}"
 
     return _fit_to_limit(header, body, footer, CAPTION_LIMIT)
 
@@ -419,6 +446,7 @@ def format_caption_whatsapp(
     has_access: bool,
     price_change_from: int | None = None,
     upgrade_url: str | None = None,
+    lang: str = DEFAULT_LANG,
 ) -> str:
     """Same content/order as format_caption, WhatsApp's own markdown (*bold*, no HTML tags — the
     Cloud API's text messages don't render HTML) and no inline keyboard equivalent; the listing
@@ -433,7 +461,7 @@ def format_caption_whatsapp(
     argument."""
     bold = lambda s: f"*{s}*"  # noqa: E731
     lines = _build_body_lines(
-        listing, bold=bold, street_link=lambda text, url: text, escape=lambda s: s
+        listing, bold=bold, street_link=lambda text, url: text, escape=lambda s: s, lang=lang
     )
     maps_url = _google_maps_url(listing)
     if maps_url:
@@ -449,27 +477,32 @@ def format_caption_whatsapp(
         location_index = next(
             (i for i, line in enumerate(lines) if "📍" in line), len(lines) - 1
         )
-        lines.insert(location_index + 1, _force_rtl(f"🗺️ {maps_url}"))
+        lines.insert(location_index + 1, _force_rtl(f"🗺️ {maps_url}", lang))
 
     body = "\n".join(lines)
-    header = _price_change_header(price_change_from, listing.price, bold=bold)
+    header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:
-        footer = f"\n\n{_force_rtl('🔗 לפרטי הדירה המלאים >>')}\n{listing.url}"
+        link_text = bot_text("card.full_details_link_plain", lang)
+        footer = f"\n\n{_force_rtl(f'🔗 {link_text}', lang)}\n{listing.url}"
     elif upgrade_url:
-        footer = f"\n\n{_force_rtl('🔒 לקישור למודעה המקורית — שדרג/י את המנוי:')}\n{upgrade_url}"
+        upgrade_text = f"{bot_text('card.upgrade_to_see_link', lang)}:"
+        footer = f"\n\n{_force_rtl(f'🔒 {upgrade_text}', lang)}\n{upgrade_url}"
     else:
-        footer = f"\n\n{_force_rtl('🔒 לקישור למודעה המקורית יש לשדרג את המנוי')}"
+        upgrade_text = bot_text("card.upgrade_required_plain", lang)
+        footer = f"\n\n{_force_rtl(f'🔒 {upgrade_text}', lang)}"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_force_rtl_block(f'📝 {description}')}"
+        body += f"\n\n{_force_rtl_block(f'📝 {description}', lang)}"
 
     return _fit_to_limit(header, body, footer, WHATSAPP_MESSAGE_LIMIT)
 
 
-async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: str) -> bool:
+async def send_listing_card(
+    bot: Bot, chat_id: int, listing: Listing, caption: str, lang: str = DEFAULT_LANG
+) -> bool:
     """Sends one listing to one Telegram chat — the ONE place this project actually puts a
     listing on screen, used by the scraper's notifier and every bot handler that shows a listing,
     so real photos (added 2026-09-02 — see scraper/normalize.py's enrich_from_detail) render
@@ -496,7 +529,7 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     all. A single wait-and-retry (honoring Telegram's own `retry_after` seconds) is enough for a
     burst that size; still gives up and returns False if the second attempt also fails, exactly
     like any other permanent failure (blocked bot, dead chat, bad photo URL)."""
-    keyboard = listing_keyboard(listing.id)
+    keyboard = listing_keyboard(listing.id, lang)
     image_url = listing.image_urls[0] if listing.image_urls else None
 
     async def _do_send() -> None:
@@ -516,7 +549,8 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
                     _first_downloadable_photo_jpeg_bytes, listing.image_urls
                 )
         if photo is None:
-            no_photo_caption = (_NO_PHOTOS_PREFIX_HE + caption)[:CAPTION_LIMIT]
+            banner = _force_rtl(bot_text("card.no_photos_banner", lang), lang)
+            no_photo_caption = (banner + caption)[:CAPTION_LIMIT]
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=_dachshund_photo_path(),
@@ -561,13 +595,19 @@ async def send_listing_card(bot: Bot, chat_id: int, listing: Listing, caption: s
     return False
 
 
-def listing_keyboard(listing_id: int) -> InlineKeyboardMarkup:
+def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("❤️ שמור", callback_data=f"like:{listing_id}"),
-                InlineKeyboardButton("🙈 הסתר", callback_data=f"hide:{listing_id}"),
-                InlineKeyboardButton("🎉 מצאתי דירה!", callback_data=f"found:{listing_id}"),
+                InlineKeyboardButton(
+                    bot_text("card.like_button", lang), callback_data=f"like:{listing_id}"
+                ),
+                InlineKeyboardButton(
+                    bot_text("card.hide_button", lang), callback_data=f"hide:{listing_id}"
+                ),
+                InlineKeyboardButton(
+                    bot_text("card.found_button", lang), callback_data=f"found:{listing_id}"
+                ),
             ]
         ]
     )

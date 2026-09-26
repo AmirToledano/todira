@@ -24,6 +24,7 @@ class _FakeUser:
     telegram_username = "amir"
     first_name = "Amir"
     is_active = True
+    language = "he"
 
 
 class _FakeSession:

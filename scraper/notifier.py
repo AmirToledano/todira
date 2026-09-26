@@ -31,6 +31,7 @@ from todira_common import bright_data_client, whatsapp_client
 from todira_common.access import has_full_access
 from todira_common.cards import format_caption, send_listing_card
 from todira_common.enums import NotificationReason, Source
+from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
 from todira_common.models import Filter, Listing, SentNotification, User
 
@@ -266,12 +267,14 @@ async def _notify_new_matches(
     for filter_row, user in to_notify:
         sent_on_any_channel = False
         if user.telegram_user_id is not None:
+            user_lang = user.language or DEFAULT_LANG
             caption = format_caption(
                 listing,
                 has_access=_has_access_for(user),
                 upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
+                lang=user_lang,
             )
-            if await send_listing_card(bot, user.telegram_user_id, listing, caption):
+            if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
                 sent_on_any_channel = True
             await asyncio.sleep(SEND_DELAY_SECONDS)
         if _whatsapp_eligible(user):
@@ -371,13 +374,15 @@ async def _notify_price_change(
     await _maybe_fetch_description(session, listing, to_notify)
 
     for user in to_notify:
+        user_lang = user.language or DEFAULT_LANG
         caption = format_caption(
             listing,
             has_access=_has_access_for(user),
             price_change_from=old_price,
             upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
+            lang=user_lang,
         )
-        if await send_listing_card(bot, user.telegram_user_id, listing, caption):
+        if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
             session.add(
                 SentNotification(user_id=user.id, listing_id=listing.id, reason=reason)
             )
