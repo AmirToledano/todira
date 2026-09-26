@@ -98,9 +98,14 @@ export default function Compare() {
       </motion.div>
 
       <style>{`
-        .tl-compare-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+        .tl-compare-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
         @media (min-width: 620px) {
-          .tl-compare-grid { grid-template-columns: 1fr 1fr; }
+          /* minmax(0, ...) here too — no image in this grid's own content today, so this specific
+             track never actually hits the min-content-overflow bug Hero.jsx's own comment above
+             describes, but this keeps both hero/compare grids on the same safe pattern rather than
+             leaving this one only accidentally correct because of what it happens to contain
+             right now. */
+          .tl-compare-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
         }
       `}</style>
     </section>
