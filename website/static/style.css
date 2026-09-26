@@ -1640,10 +1640,47 @@ html[data-theme="dark"] .leaflet-control-attribution a { color: var(--text) !imp
 .apt-listings-pane .listing-grid { margin: 0; }
 .apt-listings-pane .empty-state { margin: 40px auto; }
 
-.apt-filter-pane { direction: ltr; flex: 0 0 320px; min-width: 0; overflow-y: auto; padding: 18px; background: var(--surface-tint); }
+.apt-filter-pane { direction: ltr; flex: 0 0 320px; min-width: 0; overflow-y: auto; padding: 18px; background: var(--surface-tint); position: relative; }
 .apt-filter-pane-inner { direction: rtl; }
 .apt-filter-pane .apt-filter-title { margin: 0 0 14px; font-size: 1.05rem; }
 .apt-filter-pane form .btn.block { margin-top: 8px; }
+/* 2026-09-26 real owner report, comparing directly against dorin.app: the desktop listing-detail
+   swap panel (gallery + badges + description + contact buttons, all real content — see
+   apartments.html's buildDetailContent()) is genuinely taller than the pane's own visible height,
+   so the description/contact section always sat below the fold with no visual cue that anything
+   was there — read as "looks plain, missing info" even though scrolling down reveals it's all
+   present. .apt-filter-pane-scroll-fade is a real element (not a pseudo-element), absolutely
+   positioned against .apt-filter-pane's own positioned box so it stays pinned to the pane's
+   visible bottom edge regardless of scroll offset — apartments.html's own script toggles
+   .has-more-below based on real scroll position (scrollHeight vs scrollTop+clientHeight). */
+.apt-filter-pane-scroll-fade {
+  /* sticky, not absolute — this element is INSIDE the scrolling container (.apt-filter-pane) as
+     its last real flow child, deliberately: an absolutely positioned child of a scrolling
+     "overflow:auto" box anchors `bottom:0` against the full SCROLLABLE CONTENT extent (a real,
+     documented CSS quirk — confirmed live: it rendered ~600px below the actual visible viewport),
+     not the visible scrollport edge. Sticky positioning is the correct tool for "glued to the
+     scrollport's own bottom edge, regardless of how tall the content is" — it settles back into
+     normal flow (and disappears) only once actually scrolled to the true end, which is exactly
+     the "no more below" state this needs. */
+  position: sticky; left: 0; right: 0; bottom: 0; height: 48px; margin-top: -48px; pointer-events: none;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px;
+  background: linear-gradient(to bottom, transparent, var(--surface-tint) 70%);
+  opacity: 0; transition: opacity .15s ease;
+}
+.apt-filter-pane.has-more-below .apt-filter-pane-scroll-fade { opacity: 1; }
+/* A bare gradient alone read as too subtle to notice at a glance (real owner report) — an
+   explicit bouncing chevron makes "there's more, scroll" unambiguous. */
+.apt-filter-pane-scroll-fade::after {
+  content: '⌄'; font-size: 1.3rem; line-height: 1; color: var(--teal);
+  animation: apt-scroll-hint-bounce 1.6s ease-in-out infinite;
+}
+@keyframes apt-scroll-hint-bounce {
+  0%, 100% { transform: translateY(0); opacity: .6; }
+  50% { transform: translateY(4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .apt-filter-pane-scroll-fade::after { animation: none; }
+}
 
 /* Desktop listing-detail panel swap (2026-09-26, real owner request comparing against dorin.app's
    own pattern) — replaces .apt-filter-pane-inner's content in place, direction:rtl to match it
