@@ -194,7 +194,12 @@ export default function Account() {
             {hasTelegram ? (
               <>
                 <p className="channel-status connected">{t("account.channel_connected")}</p>
-                {telegramUsername && <p className="field-hint">@{telegramUsername}</p>}
+                {/* dir="ltr" — real owner report: without it, the page's RTL context bidi-reorders
+                    "@username" so the "@" visually lands AFTER the username instead of before it,
+                    the same mixed-punctuation reordering bug already fixed for the price-change
+                    badge in _listing_card.html. .channel-tile's own text-align:center (a physical
+                    value, unaffected by dir) keeps this centered either way. */}
+                {telegramUsername && <p className="field-hint" dir="ltr">@{telegramUsername}</p>}
               </>
             ) : telegramLink ? (
               <>
