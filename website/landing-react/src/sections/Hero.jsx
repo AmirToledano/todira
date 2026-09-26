@@ -175,7 +175,7 @@ export default function Hero() {
           </div>
           <TiltImage>
             <motion.img
-              src="/static/todira-brand.webp?v=4"
+              src="/static/todira-brand.webp?v=5"
               alt={t("home.hero_img_alt")}
               width={1184}
               height={1895}

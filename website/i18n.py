@@ -252,19 +252,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Le texte de ce site est rédigé au masculin par souci de simplicité et s'adresse à toutes les personnes, quel que soit leur genre.",
         "ar": "نص هذا الموقع مكتوب بصيغة عامة لتسهيل القراءة، وهو موجّه للجميع بغض النظر عن الجنس.",
     },
+    # {year} substituted by t()'s own .format(**kwargs) support (base.html passes
+    # current_year, resolved fresh per request in main.py's _render) — was a hardcoded "© 2026"
+    # that would've silently gone stale every January 1st.
     "footer.copyright": {
-        "he": "© 2026 טודירה. כל הזכויות שמורות.",
-        "en": "© 2026 Todira. All rights reserved.",
-        "ru": "© 2026 Todira. Все права защищены.",
-        "fr": "© 2026 Todira. Tous droits réservés.",
-        "ar": "© 2026 توديرا. جميع الحقوق محفوظة.",
+        "he": "© {year} טודירה. כל הזכויות שמורות.",
+        "en": "© {year} Todira. All rights reserved.",
+        "ru": "© {year} Todira. Все права защищены.",
+        "fr": "© {year} Todira. Tous droits réservés.",
+        "ar": "© {year} توديرا. جميع الحقوق محفوظة.",
     },
-    "footer.business_info": {
-        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. ליצירת קשר: amir81358@gmail.com",
-        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. Contact: amir81358@gmail.com",
-        "ru": "Todira управляется Амиром Толедано, освобождённый предприниматель (עוסק פטור) № 211530563. Контакт: amir81358@gmail.com",
-        "fr": "Todira est exploité par Amir Toledano, entrepreneur exonéré (עוסק פטור) n° 211530563. Contact : amir81358@gmail.com",
-        "ar": "توديرا يُدار من قبل أمير توليدانو، تاجر معفى رقم 211530563. للتواصل: amir81358@gmail.com",
+    # 2026-09-26: split into pre + a real mailto: link (see base.html) so the email address is
+    # actually clickable — it used to sit as plain, unlinked text at the end of this sentence on
+    # every page's footer (base.html renders this sitewide). Same no-`| safe`-anywhere,
+    # split-around-the-markup convention this file already uses for privacy.s5_pre/_post etc.
+    "footer.business_info_pre": {
+        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. ליצירת קשר: ",
+        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. Contact: ",
+        "ru": "Todira управляется Амиром Толедано, освобождённый предприниматель (עוסק פטור) № 211530563. Контакт: ",
+        "fr": "Todira est exploité par Amir Toledano, entrepreneur exonéré (עוסק פטור) n° 211530563. Contact : ",
+        "ar": "توديرا يُدار من قبل أمير توليدانو، تاجر معفى رقم 211530563. للتواصل: ",
     },
     "footer.about": {
         "he": "אודות", "en": "About", "ru": "О нас", "fr": "À propos", "ar": "من نحن",
@@ -1588,9 +1595,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "4. רכז נגישות ופנייה בנושא נגישות",
         "en": "4. Accessibility coordinator and reporting an issue",
     },
-    "accessibility.s4_body": {
-        "he": "נתקלתם בבעיית נגישות באתר? נשמח שתדווחו לנו כדי שנוכל לטפל בכך. רכז הנגישות של טודירה הוא אמיר טולדנו — ניתן לפנות ישירות באימייל amir81358@gmail.com או דרך הבוט בטלגרם.",
-        "en": "Found an accessibility problem on the site? We'd appreciate a report so we can address it. Todira's accessibility coordinator is Amir Toledano — you can reach out directly by email at amir81358@gmail.com or via the Telegram bot.",
+    # split into pre/post around a real mailto: link (Accessibility.jsx) — same clickable-email
+    # fix as footer.business_info_pre above.
+    "accessibility.s4_body_pre": {
+        "he": "נתקלתם בבעיית נגישות באתר? נשמח שתדווחו לנו כדי שנוכל לטפל בכך. רכז הנגישות של טודירה הוא אמיר טולדנו — ניתן לפנות ישירות באימייל ",
+        "en": "Found an accessibility problem on the site? We'd appreciate a report so we can address it. Todira's accessibility coordinator is Amir Toledano — you can reach out directly by email at ",
+    },
+    "accessibility.s4_body_post": {
+        "he": " או דרך הבוט בטלגרם.",
+        "en": " or via the Telegram bot.",
     },
     # ---------- privacy page (2026-09-25 React island) ----------
     # he/en only, matching the page's own pre-existing (pre-React) behavior — same reasoning as
@@ -1715,9 +1728,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "This policy may be updated from time to time. Continued use of the service after an update constitutes acceptance of the updated policy.",
     },
     "privacy.s10_title": {"he": "10. יצירת קשר", "en": "10. Contact"},
-    "privacy.s10_body": {
-        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע — ניתן לפנות באימייל amir81358@gmail.com או דרך הבוט בטלגרם.",
-        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. For questions about privacy, or to request data deletion, please email amir81358@gmail.com or reach out via the Telegram bot.",
+    # split into pre/post around a real mailto: link (Privacy.jsx) — same clickable-email fix as
+    # footer.business_info_pre above.
+    "privacy.s10_body_pre": {
+        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע — ניתן לפנות באימייל ",
+        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. For questions about privacy, or to request data deletion, please email ",
+    },
+    "privacy.s10_body_post": {
+        "he": " או דרך הבוט בטלגרם.",
+        "en": " or reach out via the Telegram bot.",
     },
     # ---------- terms page (2026-09-25, fifth page moved into a React island — he/en only, same
     # reasoning as about.*/accessibility.*/privacy.* above) ----------
@@ -1779,9 +1798,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563.",
     },
     "terms.s12_title": {"he": "12. יצירת קשר", "en": "12. Contact"},
+    # split further around a real mailto: link (Terms.jsx) — same clickable-email fix as
+    # footer.business_info_pre above; terms.s12_mid is the text between the email and the
+    # existing /contact page link, terms.s12_post stays the trailing "." after that link.
     "terms.s12_pre": {
-        "he": "לשאלות בנוגע לתנאים אלה — ניתן לפנות באימייל amir81358@gmail.com, דרך הבוט בטלגרם, או דרך ",
-        "en": "For questions about these terms, please reach out via email at amir81358@gmail.com, the Telegram bot, or the ",
+        "he": "לשאלות בנוגע לתנאים אלה — ניתן לפנות באימייל ",
+        "en": "For questions about these terms, please reach out via email at ",
+    },
+    "terms.s12_mid": {
+        "he": ", דרך הבוט בטלגרם, או דרך ",
+        "en": ", the Telegram bot, or the ",
     },
     "terms.s12_post": {"he": ".", "en": "."},
     # ---------- account page ----------

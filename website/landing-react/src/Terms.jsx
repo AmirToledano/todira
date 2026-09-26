@@ -59,6 +59,8 @@ export default function Terms() {
         <h2>{tr("terms.s12_title")}</h2>
         <p>
           {tr("terms.s12_pre")}
+          <a href="mailto:amir81358@gmail.com">amir81358@gmail.com</a>
+          {tr("terms.s12_mid")}
           <a href="/contact">{showHebrew ? t("about.link_contact_page") : tEn("about.link_contact_page")}</a>
           {tr("terms.s12_post")}
         </p>

@@ -370,6 +370,10 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             # footer, which had a Telegram link but no WhatsApp one despite the product having a
             # WhatsApp bot since 2026-09-06 (same gap home.html's own CTA was fixed for already).
             "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
+            # footer.copyright's own {year} placeholder (base.html) — was a hardcoded "© 2026"
+            # that would've silently gone stale every January 1st; now resolved fresh on every
+            # request instead of needing a manual edit once a year.
+            "current_year": dt.datetime.now(dt.timezone.utc).year,
         },
         status_code=status_code,
     )

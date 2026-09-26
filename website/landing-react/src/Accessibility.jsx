@@ -12,7 +12,7 @@ function tEn(key) {
   return content[key]?.en;
 }
 
-const SECTIONS = ["s1", "s2", "s3", "s4"];
+const SECTIONS = ["s1", "s2", "s3"];
 
 export default function Accessibility() {
   const showHebrew = lang === "he";
@@ -67,6 +67,19 @@ export default function Accessibility() {
           )}
         </motion.div>
       ))}
+
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 + SECTIONS.length * 0.08, ease: easePremium }}
+      >
+        <h2>{tr("accessibility.s4_title")}</h2>
+        <p>
+          {tr("accessibility.s4_body_pre")}
+          <a href="mailto:amir81358@gmail.com">amir81358@gmail.com</a>
+          {tr("accessibility.s4_body_post")}
+        </p>
+      </motion.div>
     </div>
   );
 }
