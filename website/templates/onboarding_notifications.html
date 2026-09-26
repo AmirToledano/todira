@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ t('meta.title_generic') }}{% endblock %}
+{% block content %}
+{% from "_onboarding_steps.html" import onboarding_steps with context %}
+{% set trial_url = "/onboarding/trial?uid=" ~ uid if uid else ("/onboarding/trial?wid=" ~ wid if wid else "/onboarding/trial") %}
+{{ onboarding_steps(2) }}
+<div class="onboarding-card reveal">
+  <div class="glyph" aria-hidden="true">🔔</div>
+  <h1>{{ t('onboarding.notifications_title') }}</h1>
+  <p>{{ t('onboarding.notifications_body') }}</p>
+  {% if already_connected %}
+  {# A telegram_user_id visitor already reached this page THROUGH the bot itself, so there's
+     nothing left to connect — skip straight to step 3 rather than showing a connect CTA for a
+     channel that's already linked. #}
+  <a class="btn gold" href="{{ trial_url }}">{{ t('onboarding.notifications_skip') }}</a>
+  {% else %}
+  <a class="btn gold" href="{{ telegram_link }}" target="_blank">{{ t('onboarding.notifications_cta') }}</a>
+  <br>
+  <a class="onboarding-skip" href="{{ trial_url }}">{{ t('onboarding.notifications_skip') }}</a>
+  {% endif %}
+</div>
+{% endblock %}
