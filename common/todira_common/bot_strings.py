@@ -1,13 +1,12 @@
-"""Translated strings for the bots' core conversational flows (Telegram: bot/handlers/start.py,
-onboarding.py, contact_fallback.py; WhatsApp: website/whatsapp_webhook.py) — 2026-09-26 real owner
-request, see todira_common/language.py's own docstring for the full reasoning.
+"""Translated strings for the bots' conversational flows (Telegram: bot/handlers/*.py; WhatsApp:
+website/whatsapp_webhook.py) — 2026-09-26 real owner request, see todira_common/language.py's own
+docstring for the full reasoning.
 
-Scope, deliberately bounded: this covers first contact (/start's welcome, reactivation, renewal
-nudge), free-text onboarding, and the "already onboarded, chatting" fallback on both channels —
-the exact flows Gemini's own generated replies (todira_common/gemini_client.py) now also speak in
-the visitor's language. It does NOT cover bot/handlers/filter_conversation.py's much larger
-menu-driven /filter conversation, apartments.py, liked.py, profile.py, or support.py — those stay
-Hebrew-only for now, a separate, larger follow-up.
+2026-09-26 follow-up: the owner explicitly asked for FULL coverage, not the originally-bounded
+scope — extended to bot/handlers/profile.py, apartments.py, liked.py, and
+filter_conversation.py's own menu-driven /filter conversation too (support.py needs no entries:
+escalate_to_owner only ever messages OWNER_TELEGRAM_USER_ID, a fixed Hebrew-speaking recipient,
+never the requesting user, so there's nothing user-facing in that module to translate).
 
 Translations were produced by this assistant, not reviewed by a native speaker of each language —
 same caveat website/i18n.py's own header already states for the website's copy; good enough for
@@ -401,6 +400,129 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Super ! Je vais te parler en français à partir de maintenant. Dis-moi ce que tu "
         "cherches 🏠",
         "ar": "رائع! سأتحدث معك بالعربية من الآن. أخبرني ماذا تبحث عنه 🏠",
+    },
+    "profile.header": {
+        "he": "👤 <b>הפרופיל שלך</b>", "en": "👤 <b>Your profile</b>",
+        "ru": "👤 <b>Ваш профиль</b>", "fr": "👤 <b>Ton profil</b>", "ar": "👤 <b>ملفك الشخصي</b>",
+    },
+    "profile.status_line": {
+        "he": "סטטוס חיפוש: {status}", "en": "Search status: {status}",
+        "ru": "Статус поиска: {status}", "fr": "Statut de recherche : {status}",
+        "ar": "حالة البحث: {status}",
+    },
+    "profile.status_active": {
+        "he": "🟢 פעיל", "en": "🟢 Active", "ru": "🟢 Активен", "fr": "🟢 Actif", "ar": "🟢 نشط",
+    },
+    "profile.status_paused": {
+        "he": "⏸️ מושהה", "en": "⏸️ Paused", "ru": "⏸️ Приостановлен", "fr": "⏸️ En pause",
+        "ar": "⏸️ متوقف مؤقتاً",
+    },
+    "profile.notifications_line": {
+        "he": "התראות: {status}", "en": "Notifications: {status}",
+        "ru": "Уведомления: {status}", "fr": "Notifications : {status}", "ar": "الإشعارات: {status}",
+    },
+    "profile.notifications_on": {
+        "he": "🔔 מופעלות", "en": "🔔 On", "ru": "🔔 Включены", "fr": "🔔 Activées", "ar": "🔔 مفعّلة",
+    },
+    "profile.notifications_off": {
+        "he": "🔕 כבויות", "en": "🔕 Off", "ru": "🔕 Выключены", "fr": "🔕 Désactivées",
+        "ar": "🔕 معطّلة",
+    },
+    "profile.total_sent_line": {
+        "he": 'סה"כ התראות שנשלחו: {count}', "en": "Total notifications sent: {count}",
+        "ru": "Всего отправлено уведомлений: {count}", "fr": "Total des notifications envoyées : {count}",
+        "ar": "إجمالي الإشعارات المرسلة: {count}",
+    },
+    "profile.no_filter_line": {
+        "he": "\nעדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.",
+        "en": "\nYou haven't set a filter yet. Send /filter to get started.",
+        "ru": "\nВы ещё не настроили фильтр. Отправьте /filter, чтобы начать.",
+        "fr": "\nTu n'as pas encore configuré de filtre. Envoie /filter pour commencer.",
+        "ar": "\nلم تقم بضبط تفضيلاتك بعد. أرسل /filter للبدء.",
+    },
+    "profile.btn_pause": {
+        "he": "⏸️ השהה חיפוש", "en": "⏸️ Pause search", "ru": "⏸️ Приостановить поиск",
+        "fr": "⏸️ Mettre en pause", "ar": "⏸️ إيقاف البحث مؤقتاً",
+    },
+    "profile.btn_resume": {
+        "he": "▶️ המשך חיפוש", "en": "▶️ Resume search", "ru": "▶️ Продолжить поиск",
+        "fr": "▶️ Reprendre la recherche", "ar": "▶️ متابعة البحث",
+    },
+    "profile.btn_notif_off": {
+        "he": "🔕 כבה התראות", "en": "🔕 Turn off notifications", "ru": "🔕 Выключить уведомления",
+        "fr": "🔕 Désactiver les notifications", "ar": "🔕 إيقاف الإشعارات",
+    },
+    "profile.btn_notif_on": {
+        "he": "🔔 הפעל התראות", "en": "🔔 Turn on notifications", "ru": "🔔 Включить уведомления",
+        "fr": "🔔 Activer les notifications", "ar": "🔔 تفعيل الإشعارات",
+    },
+    "apartments.no_filter_yet": {
+        "he": "עדיין לא הגדרת סינון. שלח/י /filter כדי להתחיל.",
+        "en": "You haven't set a filter yet. Send /filter to get started.",
+        "ru": "Вы ещё не настроили фильтр. Отправьте /filter, чтобы начать.",
+        "fr": "Tu n'as pas encore configuré de filtre. Envoie /filter pour commencer.",
+        "ar": "لم تقم بضبط تفضيلاتك بعد. أرسل /filter للبدء.",
+    },
+    "apartments.no_matches": {
+        "he": "לא נמצאו כרגע דירות תואמות. אני אמשיך לחפש ואודיע לך כשתתפרסם דירה מתאימה. אפשר גם "
+        "לעקוב באתר: {apartments_url}",
+        "en": "No matching apartments found right now. I'll keep searching and let you know when a "
+        "matching one is published. You can also follow along on the website: {apartments_url}",
+        "ru": "Сейчас подходящих квартир не найдено. Я продолжу искать и сообщу, когда появится "
+        "подходящая. Также можно следить на сайте: {apartments_url}",
+        "fr": "Aucun appartement correspondant trouvé pour l'instant. Je continue de chercher et te "
+        "préviens dès qu'un appartement correspondant est publié. Tu peux aussi suivre ça sur le "
+        "site : {apartments_url}",
+        "ar": "لم يتم العثور على شقق مطابقة حالياً. سأستمر بالبحث وأخبرك عند نشر شقة مطابقة. يمكنك "
+        "أيضاً المتابعة عبر الموقع: {apartments_url}",
+    },
+    "liked.no_liked_yet": {
+        "he": "עדיין לא שמרת אף דירה. אפשר ללחוץ ❤️ שמור על כרטיס דירה כדי לשמור אותה כאן.",
+        "en": "You haven't saved any apartment yet. Tap ❤️ Save on a listing card to save it here.",
+        "ru": "Вы ещё не сохранили ни одной квартиры. Нажмите ❤️ Сохранить на карточке объявления, "
+        "чтобы сохранить её здесь.",
+        "fr": "Tu n'as encore enregistré aucun appartement. Appuie sur ❤️ Enregistrer sur une "
+        "annonce pour l'enregistrer ici.",
+        "ar": "لم تحفظ أي شقة بعد. اضغط ❤️ حفظ على بطاقة الإعلان لحفظها هنا.",
+    },
+    "liked.no_hidden": {
+        "he": "אין לך כרגע דירות מוסתרות.",
+        "en": "You don't have any hidden apartments right now.",
+        "ru": "У вас сейчас нет скрытых квартир.",
+        "fr": "Tu n'as aucun appartement masqué pour le moment.",
+        "ar": "ليس لديك حالياً أي شقق مخفية.",
+    },
+    "liked.found_paused": {
+        "he": "מזל טוב! השהיתי את החיפוש עבורך. שלח/י /start כדי לחזור.",
+        "en": "Congrats! I've paused your search. Send /start to come back.",
+        "ru": "Поздравляем! Я приостановил ваш поиск. Отправьте /start, чтобы вернуться.",
+        "fr": "Félicitations ! J'ai mis ta recherche en pause. Envoie /start pour revenir.",
+        "ar": "مبروك! أوقفت بحثك مؤقتاً. أرسل /start للعودة.",
+    },
+    "liked.removed_from_liked": {
+        "he": "הוסר מהשמורים 💔", "en": "Removed from saved 💔", "ru": "Удалено из сохранённых 💔",
+        "fr": "Retiré des enregistrés 💔", "ar": "تمت الإزالة من المحفوظات 💔",
+    },
+    "liked.restored_to_list": {
+        "he": "הוחזר לרשימה 👀", "en": "Restored to the list 👀", "ru": "Возвращено в список 👀",
+        "fr": "Restauré dans la liste 👀", "ar": "تمت الإعادة إلى القائمة 👀",
+    },
+    "liked.saved": {
+        "he": "נשמר ❤️", "en": "Saved ❤️", "ru": "Сохранено ❤️", "fr": "Enregistré ❤️",
+        "ar": "تم الحفظ ❤️",
+    },
+    "liked.hidden": {
+        "he": "הוסתר 🙈", "en": "Hidden 🙈", "ru": "Скрыто 🙈", "fr": "Masqué 🙈", "ar": "تم الإخفاء 🙈",
+    },
+    "liked.reaction_error": {
+        "he": "משהו השתבש, נסה/י שוב 🙏", "en": "Something went wrong, please try again 🙏",
+        "ru": "Что-то пошло не так, попробуйте ещё раз 🙏",
+        "fr": "Une erreur s'est produite, réessaie 🙏", "ar": "حدث خطأ ما، حاول مرة أخرى 🙏",
+    },
+    "profile.not_registered": {
+        "he": "שלח/י /start כדי להתחיל.", "en": "Send /start to get started.",
+        "ru": "Отправьте /start, чтобы начать.", "fr": "Envoie /start pour commencer.",
+        "ar": "أرسل /start للبدء.",
     },
 }
 

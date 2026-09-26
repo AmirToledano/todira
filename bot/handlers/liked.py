@@ -15,8 +15,10 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
 from config import WEBSITE_URL
 from todira_common.access import has_full_access
+from todira_common.bot_strings import bot_text
 from todira_common.cards import format_caption, send_listing_card
 from todira_common.db import get_session
+from todira_common.language import DEFAULT_LANG, normalize_language_code
 from todira_common.models import Listing, UserListingAction
 from todira_common.users import get_or_create_user
 
@@ -30,12 +32,13 @@ HIDDEN_LIMIT = 10
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
 
-def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[bool, list[Listing]]:
-    """(has_access, listings) — has_access (todira_common.access.has_full_access) decides whether
-    format_caption below shows the full card or the locked/teaser one, see that module's
+def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[bool, list[Listing], str]:
+    """(has_access, listings, lang) — has_access (todira_common.access.has_full_access) decides
+    whether format_caption below shows the full card or the locked/teaser one, see that module's
     2026-09-05 comment."""
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
+        lang = user.language or DEFAULT_LANG
         is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
         access = has_full_access(user, is_owner=is_owner)
         stmt = (
@@ -52,21 +55,19 @@ def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[bool, lis
             .order_by(UserListingAction.created_at.desc())
             .limit(limit)
         )
-        return access, list(session.scalars(stmt))
+        return access, list(session.scalars(stmt)), lang
 
 
 async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    has_access, results = await asyncio.to_thread(
+    has_access, results, lang = await asyncio.to_thread(
         _load_by_action_sync, update.effective_user, "liked", LIKED_LIMIT
     )
 
     if not results:
-        await update.message.reply_text(
-            "עדיין לא שמרת אף דירה. אפשר ללחוץ ❤️ שמור על כרטיס דירה כדי לשמור אותה כאן."
-        )
+        await update.message.reply_text(bot_text("liked.no_liked_yet", lang))
         return
 
     upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
@@ -85,12 +86,12 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # was no way to ever see a hidden listing again to change your mind. Mirrors /liked exactly,
     # just for action="hidden" — same toggle-capable ❤️/🙈 buttons on each card (see
     # _apply_reaction_sync below), so pressing 🙈 here un-hides it.
-    has_access, results = await asyncio.to_thread(
+    has_access, results, lang = await asyncio.to_thread(
         _load_by_action_sync, update.effective_user, "hidden", HIDDEN_LIMIT
     )
 
     if not results:
-        await update.message.reply_text("אין לך כרגע דירות מוסתרות.")
+        await update.message.reply_text(bot_text("liked.no_hidden", lang))
         return
 
     upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
@@ -112,11 +113,12 @@ def _apply_reaction_sync(tg_user, action: str, listing_id: int) -> str:
     there, mirroring the exact opposite of what /liked and /hidden are for."""
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
+        lang = user.language or DEFAULT_LANG
 
         if action == "found":
             user.is_active = False
             session.commit()
-            return "מזל טוב! השהיתי את החיפוש עבורך. שלח/י /start כדי לחזור."
+            return bot_text("liked.found_paused", lang)
 
         db_action = "liked" if action == "like" else "hidden"
         existing_id = session.scalar(
@@ -129,12 +131,14 @@ def _apply_reaction_sync(tg_user, action: str, listing_id: int) -> str:
         if existing_id is not None:
             session.execute(delete(UserListingAction).where(UserListingAction.id == existing_id))
             session.commit()
-            return "הוסר מהשמורים 💔" if action == "like" else "הוחזר לרשימה 👀"
+            return bot_text(
+                "liked.removed_from_liked" if action == "like" else "liked.restored_to_list", lang
+            )
 
         session.add(UserListingAction(user_id=user.id, listing_id=listing_id, action=db_action))
         session.commit()
 
-    return "נשמר ❤️" if action == "like" else "הוסתר 🙈"
+    return bot_text("liked.saved" if action == "like" else "liked.hidden", lang)
 
 
 async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -160,7 +164,13 @@ async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             listing_id,
             update.effective_user.id,
         )
-        await query.answer("משהו השתבש, נסה/י שוב 🙏")
+        # No DB round-trip on this rare-failure path — Telegram's own language_code (already
+        # what we'd have stored as user.language at account-creation time in the common case) is
+        # good enough for one error toast.
+        error_lang = normalize_language_code(
+            getattr(update.effective_user, "language_code", None)
+        ) or DEFAULT_LANG
+        await query.answer(bot_text("liked.reaction_error", error_lang))
         return
 
     await query.answer(toast)
