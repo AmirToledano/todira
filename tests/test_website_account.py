@@ -25,6 +25,7 @@ import os
 import re
 import sys
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -322,22 +323,31 @@ def test_account_notifications_toggle_falls_back_to_wid_when_no_uid(client):
 
 
 def test_account_config_carries_payment_history_when_payments_exist(client):
+    """2026-09-26 real crash found live: Payment.amount_ils is a real Decimal (Numeric(10,2)
+    column, see common/todira_common/models.py) — this test used to pass a plain int here, which
+    never exercises `{{ account_config | tojson }}`'s real failure mode (json.dumps has no default
+    encoding for Decimal, so ANY user with real payment history got a 500 — Safari then offered
+    FastAPI's default plain-text error body as a download instead of rendering it, the same
+    "apartments.txt" symptom as the earlier incident, reported live by the owner testing their own
+    real account). Decimal("49.90") here is deliberately the exact value production uses
+    (PLAN_PRICES_ILS[SUBSCRIPTION_PLAN] in access.py) — this test would have caught the crash."""
     user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
     payments = [
         _FakePayment(
-            "monthly", 40, "paid", dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
+            "monthly_subscription", Decimal("49.90"), "paid", dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
             paid_at=dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
         ),
-        _FakePayment("weekly", 15, "pending", dt.datetime(2026, 8, 15, tzinfo=dt.timezone.utc)),
+        _FakePayment("weekly", Decimal("15.00"), "pending", dt.datetime(2026, 8, 15, tzinfo=dt.timezone.utc)),
     ]
     fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=payments)
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
 
+    assert resp.status_code == 200
     config = _account_config(resp.text)
     assert config["payments"] == [
-        {"plan": "monthly", "amountIls": 40, "date": "01/08/2026", "status": "paid"},
-        {"plan": "weekly", "amountIls": 15, "date": "15/08/2026", "status": "pending"},
+        {"plan": "monthly_subscription", "amountIls": "49.90", "date": "01/08/2026", "status": "paid"},
+        {"plan": "weekly", "amountIls": "15.00", "date": "15/08/2026", "status": "pending"},
     ]
 
 
