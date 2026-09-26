@@ -179,6 +179,22 @@ _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN = 50
 _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR = "BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN"
 _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 15
 
+# 2026-09-26: real gap found live (diagnose-description-coverage-per-source.yaml) — only 6.2%
+# description coverage among the 470 most-recent active Yad2 listings, despite Bright Data being
+# configured and not suspended. Root cause: _enrich_new_listings_via_bright_data only ever gets ONE
+# shot at a listing (the run it's first discovered), capped at _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_
+# RUN above — anything past that cap, or whose one attempt failed, was meant to get a second chance
+# via notifier.py's _maybe_fetch_description (only fires if the listing matches a PAYING/trial user
+# at notification time) or website/main.py's _fill_missing_descriptions_in_background (only fires
+# if a has_access viewer happens to open that exact listing on /apartments or /liked) — both narrow
+# enough in practice that most Yad2 listings never hit either trigger and just sit with no
+# description forever. This is the real, unconditional catch-up: every run, backfill a bounded
+# number of still-missing EXISTING Yad2 listings (any age), same safety-cap reasoning as the
+# new-listing cap above (a real per-request Web Unlocker cost/timeout, not "assume the backlog is
+# small").
+_BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR = "BRIGHT_DATA_BACKFILL_MAX_PER_RUN"
+_DEFAULT_BRIGHT_DATA_BACKFILL_MAX_PER_RUN = 30
+
 # 2026-09-15: Facebook's own per-run cap is NOT a credit-cost safety net like Komo/Homeless's own
 # caps above (Facebook charges nothing per request) — it's an ACCOUNT-SAFETY net. Every request
 # here runs through the dedicated scraping account's own real, authenticated session from a
@@ -296,6 +312,21 @@ def _bright_data_enrich_max_per_run() -> int:
             _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN,
         )
         return _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
+
+
+def _bright_data_backfill_max_per_run() -> int:
+    raw = os.environ.get(_BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR, "").strip()
+    if not raw:
+        return _DEFAULT_BRIGHT_DATA_BACKFILL_MAX_PER_RUN
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r (not an int) — using default %d",
+            _BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR, raw,
+            _DEFAULT_BRIGHT_DATA_BACKFILL_MAX_PER_RUN,
+        )
+        return _DEFAULT_BRIGHT_DATA_BACKFILL_MAX_PER_RUN
 
 
 def _facebook_max_new_detail_fetches_per_run() -> int:
@@ -551,6 +582,18 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
         )
         id_url_pairs = id_url_pairs[:max_per_run]
 
+    return await _fetch_and_apply_yad2_detail_updates(session, id_url_pairs, log_context="enrichment")
+
+
+async def _fetch_and_apply_yad2_detail_updates(
+    session, id_url_pairs: list[tuple[int, str]], *, log_context: str
+) -> int:
+    """Shared fetch-and-apply tail for both _enrich_new_listings_via_bright_data (above) and
+    _backfill_missing_yad2_descriptions (below) — same bounded-concurrency Web Unlocker fetch,
+    same best-effort "one bad fetch never blocks the rest" handling, same Core-level table.update
+    (see _enrich_new_listings_via_bright_data's own comment on why Core, not the ORM). `log_context`
+    only distinguishes the two callers in a failure's log line ("enrichment" vs "backfill")."""
+    table = Listing.__table__
     semaphore = asyncio.Semaphore(_BRIGHT_DATA_ENRICH_CONCURRENCY)
 
     async def _fetch_one(listing_id: int, url: str) -> tuple[int, dict] | None:
@@ -565,22 +608,69 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
         *(_fetch_one(listing_id, url) for listing_id, url in id_url_pairs), return_exceptions=True
     )
 
-    enriched_count = 0
+    applied_count = 0
     for (listing_id, url), result in zip(id_url_pairs, results):
         if isinstance(result, BaseException):
             logger.exception(
-                "Bright Data enrichment failed for listing id=%s url=%s", listing_id, url,
+                "Bright Data %s failed for listing id=%s url=%s", log_context, listing_id, url,
                 exc_info=result,
             )
             continue
         if result is None:
             continue
-        _enriched_id, updates = result
+        _listing_id, updates = result
         session.execute(table.update().where(table.c.id == listing_id).values(**updates))
-        enriched_count += 1
+        applied_count += 1
 
     session.commit()
-    return enriched_count
+    return applied_count
+
+
+async def _backfill_missing_yad2_descriptions(session) -> int:
+    """Real gap found live 2026-09-26 (diagnose-description-coverage-per-source.yaml): only 6.2%
+    description coverage among the 470 most-recent active Yad2 listings, despite Bright Data being
+    configured and not suspended. _enrich_new_listings_via_bright_data above only ever gets ONE shot
+    at a listing — the run it's first discovered, capped at _bright_data_enrich_max_per_run() new
+    listings per run — and a listing skipped by that cap, or whose one attempt failed, only gets a
+    real second chance via notifier.py's _maybe_fetch_description (fires only if the listing matches
+    a PAYING/trial user at notification time) or website/main.py's
+    _fill_missing_descriptions_in_background (fires only if a has_access viewer happens to open that
+    exact listing on /apartments or /liked) — both narrow enough in practice that most Yad2 listings
+    never hit either trigger and sit with no description indefinitely.
+
+    This is the real, unconditional catch-up: every run, independent of what was scraped this run,
+    backfill a bounded number (_bright_data_backfill_max_per_run(), same safety-cap reasoning as the
+    new-listing cap above — a real per-request Web Unlocker cost/timeout, not "assume the backlog is
+    small") of still-missing EXISTING active Yad2 listings, oldest-scraped-first isn't used
+    deliberately (a very old listing is more likely to have gone stale/removed already — see
+    is_delisted below — so newest-first spends the budget where it's most likely to still matter to
+    an actual viewer).
+
+    Same no-op guards as the new-listing enrichment (API key unset, BRIGHT_DATA_ENRICHMENT_SUSPENDED)
+    — always safe to call every run regardless of whether Bright Data is configured yet.
+
+    Returns how many listings were actually backfilled."""
+    if not os.environ.get(bright_data_client.API_KEY_ENV_VAR, "").strip():
+        return 0
+    if os.environ.get(_BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR, "").strip().lower() == "true":
+        return 0
+
+    table = Listing.__table__
+    max_per_run = _bright_data_backfill_max_per_run()
+    id_url_pairs = session.execute(
+        select(table.c.id, table.c.url)
+        .where(
+            table.c.source == Source.YAD2,
+            table.c.is_delisted.is_(False),
+            table.c.description.is_(None),
+        )
+        .order_by(table.c.scraped_at.desc())
+        .limit(max_per_run)
+    ).all()
+    if not id_url_pairs:
+        return 0
+
+    return await _fetch_and_apply_yad2_detail_updates(session, id_url_pairs, log_context="backfill")
 
 
 _DEFAULT_MIN_HOURS_BEFORE_DELIST = 3
@@ -1355,6 +1445,12 @@ def run_once() -> dict[str, int]:
         # fast, if Bright Data isn't configured yet, or for any Komo/Homeless-sourced new_ids (see
         # that function's own docstring — it filters to source == Source.YAD2 internally).
         enriched_count = asyncio.run(_enrich_new_listings_via_bright_data(session, new_ids))
+        # Independent of this run's own new_ids — catches up on the accumulated backlog of older
+        # Yad2 listings that never got a description at all (see this function's own docstring for
+        # the real, live-confirmed 6.2%-coverage gap this closes). Not on the notification-critical
+        # path (these listings were already notified, if at all, long before this run), so it runs
+        # after enrichment rather than before.
+        backfilled_count = asyncio.run(_backfill_missing_yad2_descriptions(session))
 
         delisted_count = 0
         for source, (seen_external_ids, scraped_city_names, all_succeeded) in (
@@ -1402,6 +1498,7 @@ def run_once() -> dict[str, int]:
             "new": len(new_ids),
             "retried_unnotified": retried_unnotified_count,
             "bright_data_enriched": enriched_count,
+            "bright_data_backfilled": backfilled_count,
             "price_changes": len(price_change_events),
             "delisted": delisted_count,
             "errors": errors,

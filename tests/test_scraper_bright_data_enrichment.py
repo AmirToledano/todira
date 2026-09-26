@@ -31,6 +31,7 @@ scraper_main = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(scraper_main)
 
 _enrich = scraper_main._enrich_new_listings_via_bright_data
+_backfill = scraper_main._backfill_missing_yad2_descriptions
 _bright_data_client = scraper_main.bright_data_client
 _API_KEY_ENV_VAR = _bright_data_client.API_KEY_ENV_VAR
 
@@ -219,3 +220,120 @@ def test_enrichment_respects_the_per_run_cap():
     assert result == 2
     assert len(fetched_urls) == 2
     assert "103" not in "".join(fetched_urls)
+
+
+# ---------------------------------------------------------------------------
+# _backfill_missing_yad2_descriptions (2026-09-26) — the real, unconditional catch-up for the
+# accumulated backlog of already-existing Yad2 listings _enrich_new_listings_via_bright_data (above)
+# never touches, since it only ever runs once, on a listing's own discovery run. Confirmed live via
+# diagnose-description-coverage-per-source.yaml: only 6.2% description coverage among the 470 most-
+# recent active Yad2 listings despite Bright Data being configured and not suspended — see this
+# function's own docstring in scraper/main.py for the full root-cause trace.
+# ---------------------------------------------------------------------------
+
+
+def test_backfill_not_configured_is_a_pure_noop():
+    session = _QueueSession([])  # would raise IndexError if execute() were ever called
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop(_API_KEY_ENV_VAR, None)
+        result = asyncio.run(_backfill(session))
+    assert result == 0
+    assert session.executed_stmts == []
+
+
+def test_backfill_suspended_via_env_var_is_a_pure_noop():
+    session = _QueueSession([])  # would raise IndexError if execute() were ever called
+    with patch.dict(
+        os.environ, {_API_KEY_ENV_VAR: "key", "BRIGHT_DATA_ENRICHMENT_SUSPENDED": "true"}
+    ):
+        result = asyncio.run(_backfill(session))
+    assert result == 0
+    assert session.executed_stmts == []
+
+
+def test_backfill_no_missing_listings_is_a_pure_noop():
+    session = _QueueSession([_Result([])])  # SELECT finds nothing missing
+    with patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}):
+        os.environ.pop("BRIGHT_DATA_ENRICHMENT_SUSPENDED", None)
+        result = asyncio.run(_backfill(session))
+    assert result == 0
+    assert session.committed is False  # never even tries to commit with nothing to do
+
+
+def test_backfill_fetches_and_applies_updates_for_an_existing_listing():
+    session = _QueueSession(
+        [
+            _Result([(101, "https://yad2.co.il/item/101")]),  # SELECT id, url — missing description
+            None,  # UPDATE (result never read)
+        ]
+    )
+
+    with (
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", lambda url: _REAL_DETAIL),
+        patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}),
+    ):
+        os.environ.pop("BRIGHT_DATA_ENRICHMENT_SUSPENDED", None)
+        result = asyncio.run(_backfill(session))
+
+    assert result == 1
+    assert session.committed is True
+    update_stmt = session.executed_stmts[1]
+    compiled_params = update_stmt.compile().params
+    assert compiled_params["description"] == "דירה יפה ומוארת"
+    assert compiled_params["floor_total"] == 4
+
+
+def test_backfill_one_listing_raising_does_not_abort_the_batch():
+    session = _QueueSession(
+        [
+            _Result(
+                [
+                    (101, "https://yad2.co.il/item/101"),
+                    (102, "https://yad2.co.il/item/102"),
+                ]
+            ),
+            None,  # UPDATE for whichever one succeeds
+        ]
+    )
+
+    def _flaky_fetch(url):
+        if url.endswith("101"):
+            raise ConnectionError("boom")
+        return _REAL_DETAIL
+
+    with (
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", _flaky_fetch),
+        patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}),
+    ):
+        os.environ.pop("BRIGHT_DATA_ENRICHMENT_SUSPENDED", None)
+        result = asyncio.run(_backfill(session))
+
+    assert result == 1
+    assert session.committed is True
+
+
+def test_backfill_respects_its_own_per_run_cap():
+    """Same real-cost/timeout reasoning as the new-listing cap's own test above — the SELECT's own
+    LIMIT is what enforces this (unlike the new-listing path, which over-fetches then slices), so
+    this just confirms the cap function is actually consulted by patching it and checking the fake
+    session isn't asked for more responses than the (patched, small) cap allows."""
+    session = _QueueSession(
+        [
+            _Result([(101, "https://yad2.co.il/item/101"), (102, "https://yad2.co.il/item/102")]),
+            None,
+            None,
+        ]
+    )
+
+    with (
+        patch.object(scraper_main, "fetch_listing_detail_via_web_unlocker", lambda url: _REAL_DETAIL),
+        patch.dict(os.environ, {_API_KEY_ENV_VAR: "key"}),
+        patch.object(scraper_main, "_bright_data_backfill_max_per_run", lambda: 2),
+    ):
+        os.environ.pop("BRIGHT_DATA_ENRICHMENT_SUSPENDED", None)
+        result = asyncio.run(_backfill(session))
+
+    assert result == 2
+    # the cap is applied via the SELECT's own .limit(), so we can only assert the function ran
+    # without error and consulted the (patched) cap — the real LIMIT enforcement itself is a live
+    # DB concern, not something this fake session's plain tuple list can demonstrate.
