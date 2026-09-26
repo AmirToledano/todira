@@ -1137,6 +1137,40 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "card.broker_badge": {
         "he": "תיווך", "en": "Broker", "ru": "Посредник", "fr": "Agence", "ar": "وسيط",
     },
+    # 2026-09-26: dorin.app-style contact-action buttons on the listing detail view (real owner
+    # request, comparing directly against dorin.app's own "פרטי איש קשר" section). Same has_access
+    # gate as card.view_btn/card.locked_btn above — this project never stores the poster's own
+    # phone/WhatsApp (see _listing_card.html's own comment on that), so a has_access viewer's click
+    # here goes to the listing's own original source page (same target as "view listing"), not a
+    # fabricated in-app reveal; a non-access viewer's click opens the contact-paywall modal instead
+    # (card.contact_modal_*) rather than navigating at all.
+    "card.whatsapp_btn": {
+        "he": "שלח הודעת WhatsApp", "en": "Send WhatsApp message", "ru": "Написать в WhatsApp",
+        "fr": "Envoyer un message WhatsApp", "ar": "إرسال رسالة WhatsApp",
+    },
+    "card.phone_btn": {
+        "he": "הצג מספר טלפון", "en": "Show phone number", "ru": "Показать номер телефона",
+        "fr": "Afficher le numéro de téléphone", "ar": "إظهار رقم الهاتف",
+    },
+    "card.contact_modal_title": {
+        "he": "רוצים את פרטי הקשר?", "en": "Want the contact details?",
+        "ru": "Хотите получить контактные данные?", "fr": "Vous voulez les coordonnées ?",
+        "ar": "هل تريد بيانات التواصل؟",
+    },
+    "card.contact_modal_body": {
+        "he": "פרטי הקשר עם המפרסם/ת פתוחים למנויי פרימיום. שדרג/י את המנוי כדי לגשת אליהם.",
+        "en": "Contact details for the poster are open to Premium subscribers. Upgrade your "
+        "subscription to access them.",
+        "ru": "Контактные данные автора объявления доступны подписчикам Premium. Обновите "
+        "подписку, чтобы получить к ним доступ.",
+        "fr": "Les coordonnées de l'annonceur sont réservées aux abonnés Premium. Passe à "
+        "l'abonnement premium pour y accéder.",
+        "ar": "بيانات التواصل مع المعلن متاحة لمشتركي Premium. قم بترقية اشتراكك للوصول إليها.",
+    },
+    "card.contact_modal_upgrade_btn": {
+        "he": "עברו למנוי פרימיום 👑", "en": "Go Premium 👑", "ru": "Перейти на Premium 👑",
+        "fr": "Passer à Premium 👑", "ar": "الترقية إلى Premium 👑",
+    },
     # alt text for a listing's own real photos (2026-09-07 audit: every cover photo had alt="",
     # the same treatment as a genuinely decorative image — a screen-reader user got zero
     # information about what a card's actual photos showed). {city}/{rooms} are filled in from the

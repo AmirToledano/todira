@@ -161,6 +161,22 @@
        normalize.py's enrich_from_detail; only a derived is_broker_listing boolean is kept), so
        there's nothing to accidentally leak by widening this gate. #}
     {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
+    {# 2026-09-26 real owner request, matching dorin.app's own "פרטי איש קשר" section: only shown
+       in the detail view (.detail-only, see style.css — hidden on the small grid card, shown once
+       cloned into .apt-detail-body), never on the grid card itself. Same has_access gate as the
+       footer's own view-btn/locked link just below — this project never stores the poster's real
+       phone/WhatsApp (see this file's own comment further up), so a has_access viewer's tap here
+       goes to the listing's own original source page, same target as "view listing"; a non-access
+       viewer's tap opens the contact-paywall modal (apartments.html) instead of navigating. #}
+    <div class="contact-actions detail-only">
+      {% if has_access %}
+      <a class="contact-btn contact-btn-whatsapp" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.whatsapp_btn') }}</a>
+      <a class="contact-btn contact-btn-phone" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.phone_btn') }}</a>
+      {% else %}
+      <button type="button" class="contact-btn contact-btn-whatsapp contact-locked-btn">{{ t('card.whatsapp_btn') }}</button>
+      <button type="button" class="contact-btn contact-btn-phone contact-locked-btn">{{ t('card.phone_btn') }}</button>
+      {% endif %}
+    </div>
     <div class="listing-footer">
       {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}
       {% if has_access %}

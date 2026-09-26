@@ -182,6 +182,27 @@
   </div>
 </div>
 
+{# 2026-09-26: contact-paywall interstitial, real owner request matching dorin.app's own "רוצים את
+   פרטי הקשר?" popup — a single shared instance for the whole page (not one per card), opened by
+   the script below when a non-access viewer taps a card's WhatsApp/phone contact-action button
+   (see _listing_card.html's own .contact-locked-btn). The upgrade link's uid/wid query params
+   match card.locked_btn's own href in _listing_card.html exactly, same reasoning. #}
+<div class="apt-contact-modal" id="apt-contact-modal" hidden>
+  <div class="apt-contact-modal-backdrop" id="apt-contact-modal-backdrop"></div>
+  <div class="apt-contact-modal-panel" role="dialog" aria-modal="true" aria-labelledby="apt-contact-modal-title">
+    <button type="button" class="apt-contact-modal-close" id="apt-contact-modal-close"
+            aria-label="{{ t('apartments.detail_close_label') }}">✕</button>
+    <div class="apt-contact-modal-body">
+      <div class="apt-contact-modal-icon" aria-hidden="true">👑</div>
+      <h2 class="apt-contact-modal-title" id="apt-contact-modal-title">{{ t('card.contact_modal_title') }}</h2>
+      <p class="apt-contact-modal-text">{{ t('card.contact_modal_body') }}</p>
+      <a class="apt-contact-modal-upgrade-btn" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">
+        {{ t('card.contact_modal_upgrade_btn') }}
+      </a>
+    </div>
+  </div>
+</div>
+
 <script>
   (function () {
     // Infinite scroll for /apartments — rendering all (up to 200) matches in one page was heavy
@@ -349,6 +370,9 @@
     var filterPaneDetail = document.getElementById('apt-filter-pane-detail');
     var filterPaneDetailBack = document.getElementById('apt-filter-pane-detail-back');
     var filterPaneDetailBody = document.getElementById('apt-filter-pane-detail-body');
+    var contactModal = document.getElementById('apt-contact-modal');
+    var contactModalBackdrop = document.getElementById('apt-contact-modal-backdrop');
+    var contactModalClose = document.getElementById('apt-contact-modal-close');
     if (!grid || !modal || !modalBackdrop || !modalHeader || !modalBody) { return; }
     var hasDesktopSwap = !!(filterPaneInner && filterPaneDetail && filterPaneDetailBack && filterPaneDetailBody);
     function isDesktopViewport() {
@@ -487,6 +511,30 @@
       if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') { lastFocusedEl.focus(); }
     }
 
+    // 2026-09-26: contact-paywall interstitial (real owner request, matching dorin.app's own
+    // "רוצים את פרטי הקשר?" popup) — opened when a non-access viewer taps one of the detail view's
+    // own WhatsApp/phone contact-action buttons (_listing_card.html's .contact-locked-btn, only
+    // ever rendered — and only ever visible, see style.css's .contact-actions rules — for a
+    // viewer who does NOT have has_access, so no extra check is needed here beyond "this exact
+    // button was clicked"). A has_access viewer's equivalent buttons are real <a> links straight to
+    // the listing's own source instead (same _listing_card.html block), so they never reach this
+    // handler at all.
+    function openContactModal() {
+      if (!contactModal) { return; }
+      contactModal.hidden = false;
+    }
+    function closeContactModal() {
+      if (!contactModal) { return; }
+      contactModal.hidden = true;
+    }
+    if (contactModal && contactModalBackdrop && contactModalClose) {
+      contactModalBackdrop.addEventListener('click', closeContactModal);
+      contactModalClose.addEventListener('click', closeContactModal);
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !contactModal.hidden) { closeContactModal(); }
+      });
+    }
+
     grid.addEventListener('click', function (e) {
       // Never hijack the card's own interactive elements — like/hide reaction buttons (<button>
       // inside a <form>) and the outbound "לצפייה במודעה"/"שדרג" link (<a>) must keep working
@@ -495,6 +543,13 @@
       var card = e.target.closest('.listing-card');
       if (!card) { return; }
       openListingDetail(card);
+    });
+
+    // Delegated on document, not on modalBody/filterPaneDetailBody individually — the detail
+    // content lives in whichever one of those is currently open (see openListingDetail above), and
+    // this one handler covers both without needing to know which.
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('.contact-locked-btn')) { openContactModal(); }
     });
 
     // Close via the top header bar (tap/click anywhere on it, including its own ✕), the backdrop,

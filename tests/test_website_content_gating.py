@@ -382,6 +382,54 @@ def test_liked_shows_description_but_hides_url_for_an_expired_user(client):
 
 
 # ---------------------------------------------------------------------------
+# dorin.app-style contact-action buttons (2026-09-26 real owner request) — WhatsApp/phone buttons
+# on the listing detail view. A has_access viewer gets real links straight to the listing's own
+# source (same target as the "view listing" button — this project never stores the poster's real
+# contact info, see _listing_card.html's own comment); a non-access viewer gets locked buttons
+# that open a JS paywall modal instead of navigating anywhere (apartments.html's own script).
+# ---------------------------------------------------------------------------
+
+
+def test_apartments_contact_buttons_are_real_links_to_source_for_a_trial_user(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'class="contact-btn contact-btn-whatsapp" href="https://yad2.co.il/item/secret999"' in resp.text
+    assert 'class="contact-btn contact-btn-phone" href="https://yad2.co.il/item/secret999"' in resp.text
+    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' not in resp.text
+    assert 'class="contact-btn contact-btn-phone contact-locked-btn"' not in resp.text
+
+
+def test_apartments_contact_buttons_are_locked_for_an_expired_user(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "secret999" not in resp.text  # no real link leaked anywhere, including these buttons
+    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' in resp.text
+    assert 'class="contact-btn contact-btn-phone contact-locked-btn"' in resp.text
+    # the shared paywall modal + its /upgrade CTA are always rendered once per page
+    assert 'id="apt-contact-modal"' in resp.text
+    assert 'href="/upgrade?uid=222"' in resp.text
+
+
+# ---------------------------------------------------------------------------
 # /apartments pagination — 2026-09-06: rendering all (up to 200) matches in one page crashed real
 # visitors' browsers, so the route now paginates (APARTMENTS_PAGE_SIZE at a time) with a
 # JS-driven "load more" fragment endpoint. See main.py's apartments() route and apartments.html's

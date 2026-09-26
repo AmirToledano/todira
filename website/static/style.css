@@ -900,6 +900,29 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
 .listing-footer a.view-btn:hover { text-decoration: underline; }
 .listing-footer a.view-btn.locked { color: var(--gold); }
 
+/* 2026-09-26: dorin.app-style "שלח הודעת WhatsApp" / "הצג מספר טלפון" contact-action buttons —
+   real owner request, comparing directly against dorin.app's own "פרטי איש קשר" section. Rendered
+   into every card's DOM (_listing_card.html) but only ever visible once cloned into the detail
+   view (.apt-detail-body — see apartments.html's buildDetailContent()), never on the small grid
+   card itself, matching where dorin.app shows the equivalent section too. */
+.listing-card .contact-actions { display: none; }
+.apt-detail-body .contact-actions { display: flex; flex-direction: column; gap: 8px; margin: 2px 0; }
+.contact-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+  padding: 12px 16px; border-radius: var(--radius-md); font-size: .95rem; font-weight: 700;
+  text-decoration: none; cursor: pointer; border: none; font-family: inherit;
+  transition: filter .12s ease, transform .12s ease;
+}
+.contact-btn:hover { transform: translateY(-1px); text-decoration: none; }
+/* Same WhatsApp brand gradient already used for .btn.whatsapp elsewhere on the site (login, hero
+   CTA) — kept consistent rather than inventing a second green here. */
+.contact-btn-whatsapp { background: linear-gradient(135deg, #25d366, #128C7E); color: #fff !important; }
+.contact-btn-whatsapp:hover { filter: brightness(1.06); }
+.contact-btn-phone {
+  background: transparent; color: var(--text) !important; border: 1px solid var(--border);
+}
+.contact-btn-phone:hover { background: var(--teal-tint); }
+
 /* ---------- empty states ---------- */
 .empty-state {
   text-align: center; padding: 70px 24px; background: var(--card);
@@ -1764,6 +1787,49 @@ body.apt-modal-open { overflow: hidden; }
      separate mobile-only code path — this is the SAME modal, just sized to fill the viewport. */
   .apt-listing-modal { padding: 0; }
   .apt-listing-modal-panel { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}
+
+/* 2026-09-26: contact-paywall interstitial (real owner request, matching dorin.app's own "רוצים
+   את פרטי הקשר?" popup) — opened by apartments.html's script when a non-access viewer taps the
+   WhatsApp/phone contact-action buttons (see .contact-locked-btn above) instead of letting them
+   navigate anywhere. A single shared instance for the whole page (not per-card), same layering
+   convention as .apt-listing-modal but its own z-index/classes since the two can never be open at
+   the same time (this one is only ever triggered FROM inside an already-open detail view). */
+.apt-contact-modal {
+  position: fixed; inset: 0; z-index: 2100; direction: rtl;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.apt-contact-modal[hidden] { display: none; }
+.apt-contact-modal-backdrop { position: absolute; inset: 0; background: rgba(20, 30, 28, .6); }
+.apt-contact-modal-panel {
+  position: relative; z-index: 1; background: var(--card); color: var(--text);
+  width: min(420px, 100%); border-radius: var(--radius-lg); overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.apt-contact-modal-close {
+  position: absolute; top: 12px; left: 12px; width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+  cursor: pointer; z-index: 2; font-family: inherit;
+}
+.apt-contact-modal-close:hover { background: var(--teal-tint); }
+.apt-contact-modal-body { padding: 40px 28px 28px; text-align: center; }
+.apt-contact-modal-icon {
+  width: 64px; height: 64px; border-radius: 50%; background: var(--teal);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; margin: 0 auto 18px;
+}
+.apt-contact-modal-title { font-size: 1.25rem; font-weight: 800; margin: 0 0 10px; color: var(--heading); }
+.apt-contact-modal-text { color: var(--text-muted); font-size: .92rem; margin: 0 0 22px; line-height: 1.5; }
+.apt-contact-modal-upgrade-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+  padding: 13px 16px; border-radius: var(--radius-md); font-size: 1rem; font-weight: 700;
+  text-decoration: none; background: var(--teal); color: #fff !important;
+  box-shadow: var(--shadow-sm); transition: background .12s ease;
+}
+.apt-contact-modal-upgrade-btn:hover { background: var(--teal-dark); text-decoration: none; }
+@media (max-width: 640px) {
+  .apt-contact-modal { padding: 16px; }
 }
 
 .apt-card-highlight { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--radius-md); }
