@@ -173,7 +173,12 @@ export default function Account() {
           {t("account.channels_title")}
         </div>
         <div className="field-row">
-          <div className="field channel-tile">
+          <motion.div
+            className="field channel-tile"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.24, ease: easePremium }}
+          >
             <span className="channel-icon" aria-hidden="true">
               <svg width="30" height="30" viewBox="0 0 24 24">
                 <path
@@ -195,9 +200,14 @@ export default function Account() {
             ) : (
               <p className="field-hint">{t("account.no_active_code")}</p>
             )}
-          </div>
+          </motion.div>
 
-          <div className="field channel-tile">
+          <motion.div
+            className="field channel-tile"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.3, ease: easePremium }}
+          >
             <span className="channel-icon" aria-hidden="true">
               <svg width="30" height="30" viewBox="0 0 24 24">
                 <path
@@ -221,9 +231,14 @@ export default function Account() {
             ) : (
               <p className="field-hint">{t("account.no_active_code")}</p>
             )}
-          </div>
+          </motion.div>
 
-          <div className="field channel-tile">
+          <motion.div
+            className="field channel-tile"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.36, ease: easePremium }}
+          >
             <span className="channel-icon channel-icon-plain" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 18 18">
                 <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.9c1.7-1.57 2.7-3.87 2.7-6.6z" />
@@ -243,7 +258,7 @@ export default function Account() {
                 {t("account.google_connect_cta")}
               </a>
             )}
-          </div>
+          </motion.div>
         </div>
         {code && (
           <p className="field-hint" style={{ textAlign: "center", marginTop: 20 }}>
@@ -265,7 +280,13 @@ export default function Account() {
           </div>
           <div className="payment-history">
             {payments.map((payment, i) => (
-              <div className="payment-row" key={i}>
+              <motion.div
+                className="payment-row"
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.05 * i, ease: easePremium }}
+              >
                 <span className="payment-plan">
                   {PLAN_LABEL_KEYS[payment.plan] ? t(PLAN_LABEL_KEYS[payment.plan]) : payment.plan}
                 </span>
@@ -274,7 +295,7 @@ export default function Account() {
                 <span className={`amc-status ${PAYMENT_STATUS_CLASS[payment.status] || "amc-status-bad"}`}>
                   {PAYMENT_STATUS_LABEL_KEYS[payment.status] ? t(PAYMENT_STATUS_LABEL_KEYS[payment.status]) : payment.status}
                 </span>
-              </div>
+              </motion.div>
             ))}
           </div>
         </motion.div>
