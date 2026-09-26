@@ -167,6 +167,17 @@ _NOTIFICATIONS_SUSPENDED_ENV_VAR = "NOTIFICATIONS_SUSPENDED"
 _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR = "HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN"
 _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN = 50
 
+# 2026-09-26: same real gap as Yad2's own (see _BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR's comment
+# below) — confirmed live, Homeless sat at only 28.6% description coverage despite this project's
+# own comment above claiming a capped-out listing "is picked up in a later run": it isn't — a
+# listing already in the DB is never "new" again, so _scrape_homeless's own new-listing fetch never
+# gets a second shot at it, and unlike Yad2, Homeless has NO safety-net fallback at all (scraper/
+# notifier.py's _maybe_fetch_description and website/main.py's lazy backfill are both scoped to
+# Source.YAD2 only — homeless_client.fetch_listing_description was assumed reliable enough on its
+# own not to need one, which the real numbers disprove). Same backfill pattern as Yad2's own.
+_HOMELESS_BACKFILL_MAX_PER_RUN_ENV_VAR = "HOMELESS_BACKFILL_MAX_PER_RUN"
+_DEFAULT_HOMELESS_BACKFILL_MAX_PER_RUN = 30
+
 # 2026-09-18: real incident, not a hypothetical — the very first real production run after
 # switching Yad2 enrichment to Web Unlocker (see fetch_listing_detail_via_web_unlocker's own
 # docstring) ran for 20+ minutes and never reached the notification-sending step at all, live-
@@ -297,6 +308,20 @@ def _homeless_max_new_description_fetches_per_run() -> int:
             _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN,
         )
         return _DEFAULT_HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
+
+
+def _homeless_backfill_max_per_run() -> int:
+    raw = os.environ.get(_HOMELESS_BACKFILL_MAX_PER_RUN_ENV_VAR, "").strip()
+    if not raw:
+        return _DEFAULT_HOMELESS_BACKFILL_MAX_PER_RUN
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r (not an int) — using default %d",
+            _HOMELESS_BACKFILL_MAX_PER_RUN_ENV_VAR, raw, _DEFAULT_HOMELESS_BACKFILL_MAX_PER_RUN,
+        )
+        return _DEFAULT_HOMELESS_BACKFILL_MAX_PER_RUN
 
 
 def _bright_data_enrich_max_per_run() -> int:
@@ -671,6 +696,57 @@ async def _backfill_missing_yad2_descriptions(session) -> int:
         return 0
 
     return await _fetch_and_apply_yad2_detail_updates(session, id_url_pairs, log_context="backfill")
+
+
+async def _backfill_missing_homeless_descriptions(session) -> int:
+    """Same real gap as Yad2's own backfill above, confirmed live: only 28.6% description coverage
+    among recent active Homeless listings. _scrape_homeless's own new-listing description fetch
+    only ever gets one shot at a listing (capped at _homeless_max_new_description_fetches_per_run()
+    new listings per run), and — unlike Yad2 — Homeless has NO safety-net fallback at all: scraper/
+    notifier.py's _maybe_fetch_description and website/main.py's own lazy backfill are both scoped
+    to Source.YAD2 only, on the (empirically wrong) assumption that Homeless's own one-shot fetch is
+    reliable enough not to need a second chance.
+
+    This is the same unconditional catch-up pattern: every run, independent of what was scraped
+    this run, backfill a bounded number (_homeless_backfill_max_per_run()) of still-missing EXISTING
+    active Homeless listings, newest-scraped-first (same "spend the budget where it's most likely to
+    still matter to an actual viewer" reasoning as Yad2's own).
+
+    No separate ZENROWS_API_KEY guard here — homeless_client.fetch_listing_description already
+    fails soft (returns None on a missing key, same as every other failure mode), matching how
+    _scrape_homeless's own new-listing fetch already calls it with no key check of its own.
+
+    Returns how many listings were actually backfilled."""
+    table = Listing.__table__
+    max_per_run = _homeless_backfill_max_per_run()
+    id_url_pairs = session.execute(
+        select(table.c.id, table.c.url)
+        .where(
+            table.c.source == Source.HOMELESS,
+            table.c.is_delisted.is_(False),
+            table.c.description.is_(None),
+        )
+        .order_by(table.c.scraped_at.desc())
+        .limit(max_per_run)
+    ).all()
+    if not id_url_pairs:
+        return 0
+
+    descriptions = await _fetch_concurrently(
+        [url for _listing_id, url in id_url_pairs],
+        fetch_homeless_description,
+        _HOMELESS_DESCRIPTION_FETCH_CONCURRENCY,
+    )
+
+    backfilled_count = 0
+    for (listing_id, _url), description in zip(id_url_pairs, descriptions):
+        if not description:
+            continue
+        session.execute(table.update().where(table.c.id == listing_id).values(description=description))
+        backfilled_count += 1
+
+    session.commit()
+    return backfilled_count
 
 
 _DEFAULT_MIN_HOURS_BEFORE_DELIST = 3
@@ -1088,9 +1164,17 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     own docstring) — same "enrich once, cache forever" policy as Komo's mandatory price fetch and
     Yad2's Bright Data enrichment. Enforces
     _homeless_max_new_description_fetches_per_run() the same way Komo's own per-run cap works: a
-    capped-out listing simply keeps no description this run and is picked up on a later one (it's
-    still fully upserted otherwise — this only skips the EXTRA description fetch, never the
-    listing itself).
+    capped-out listing still gets fully upserted (this only skips the EXTRA description fetch,
+    never the listing itself), just with no description this run.
+
+    2026-09-26: corrected — a listing skipped here does NOT get "picked up on a later run" by
+    this function itself (a listing already in the DB is never "new" again, so this fetch never
+    gets a second shot at it — confirmed live, this exact gap sat Homeless at only 28.6%
+    description coverage). It DOES still get a real second chance, just via a different path:
+    _backfill_missing_homeless_descriptions (below), which every run queries for ANY active
+    Homeless listing with description IS NULL — regardless of when it was first scraped — and
+    fetches it via this same fetch_homeless_description, capped by its own
+    _homeless_backfill_max_per_run().
 
     NOT yet confirmed (see homeless_client.py's own module docstring): whether homeless.co.il/rent/
     paginates beyond what one fetch returns. If it does, this function currently only sees
@@ -1148,9 +1232,9 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     if len(new_items) > max_new_description_fetches:
         logger.warning(
             "Homeless hit its per-run new-description-fetch safety cap (%s=%d) — "
-            "remaining new listings this run (across rent and sale) are skipped and will be "
-            "picked up in a later run instead of spending unbounded ZenRows credits in one "
-            "shot.",
+            "remaining new listings this run (across rent and sale) keep no description here "
+            "instead of spending unbounded ZenRows credits in one shot; "
+            "_backfill_missing_homeless_descriptions still covers them on a later run.",
             _HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_ENV_VAR,
             max_new_description_fetches,
         )
@@ -1451,6 +1535,9 @@ def run_once() -> dict[str, int]:
         # path (these listings were already notified, if at all, long before this run), so it runs
         # after enrichment rather than before.
         backfilled_count = asyncio.run(_backfill_missing_yad2_descriptions(session))
+        # Same real gap, same catch-up pattern, Homeless's own source — see this function's own
+        # docstring for the live-confirmed 28.6%-coverage number this closes.
+        homeless_backfilled_count = asyncio.run(_backfill_missing_homeless_descriptions(session))
 
         delisted_count = 0
         for source, (seen_external_ids, scraped_city_names, all_succeeded) in (
@@ -1499,6 +1586,7 @@ def run_once() -> dict[str, int]:
             "retried_unnotified": retried_unnotified_count,
             "bright_data_enriched": enriched_count,
             "bright_data_backfilled": backfilled_count,
+            "homeless_backfilled": homeless_backfilled_count,
             "price_changes": len(price_change_events),
             "delisted": delisted_count,
             "errors": errors,
