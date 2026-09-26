@@ -70,23 +70,30 @@ jobs:
           BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
         run: |
           python3 - << 'PYEOF'
-          import json, re, httpx
+          import json, os, re, urllib.request
 
           with open('/tmp/urls.txt') as f:
               urls = [u.strip() for u in f if u.strip()]
 
           print(f"Sampling {len(urls)} listings...\n")
 
+          token = os.environ['BRIGHT_DATA_API_KEY']
+
           for url in urls:
               print(f"=== {url} ===")
               try:
-                  resp = httpx.post(
+                  body = json.dumps({"zone": "web_unlocker1", "url": url, "format": "raw"}).encode()
+                  req = urllib.request.Request(
                       "https://api.brightdata.com/request",
-                      headers={"Authorization": f"Bearer {__import__('os').environ['BRIGHT_DATA_API_KEY']}"},
-                      json={"zone": "web_unlocker1", "url": url, "format": "raw"},
-                      timeout=90,
+                      data=body,
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json",
+                      },
+                      method="POST",
                   )
-                  html = resp.text
+                  with urllib.request.urlopen(req, timeout=90) as resp:
+                      html = resp.read().decode("utf-8", errors="replace")
               except Exception as exc:
                   print(f"  fetch failed: {exc}")
                   continue
