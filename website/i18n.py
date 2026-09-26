@@ -943,6 +943,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Закрыть", "fr": "Fermer",
         "ar": "إغلاق",
     },
+    # 2026-09-26: real owner request — on desktop specifically, opening a listing now swaps the
+    # filter sidebar's own content for the listing's details in place (dorin.app's own pattern,
+    # confirmed against a live reference), rather than the floating modal mobile keeps using. This
+    # is that swap's own "go back" control label — separate from detail_close_label above (the
+    # modal's close button, unchanged, still used on mobile) since the two are different controls
+    # now, not the same one reused across breakpoints like the pre-modal version of this feature.
+    "apartments.detail_back_to_filter_label": {
+        "he": "חזרה לסינון", "en": "Back to filters",
+        "ru": "Назад к фильтрам", "fr": "Retour aux filtres",
+        "ar": "العودة إلى الفلتر",
+    },
     "apartments.detail_view_title": {
         "he": "פרטי הדירה", "en": "Apartment details",
         "ru": "Информация о квартире", "fr": "Détails de l'appartement",

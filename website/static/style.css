@@ -1645,6 +1645,21 @@ html[data-theme="dark"] .leaflet-control-attribution a { color: var(--text) !imp
 .apt-filter-pane .apt-filter-title { margin: 0 0 14px; font-size: 1.05rem; }
 .apt-filter-pane form .btn.block { margin-top: 8px; }
 
+/* Desktop listing-detail panel swap (2026-09-26, real owner request comparing against dorin.app's
+   own pattern) — replaces .apt-filter-pane-inner's content in place, direction:rtl to match it
+   (see that rule's own comment on why .apt-filter-pane itself stays ltr). Mobile never shows this
+   (apartments.html's own script only ever populates/opens it above the 900px breakpoint; the
+   max-width media query below is defense in depth, not the only guard). */
+.apt-filter-pane-detail { direction: rtl; }
+.apt-filter-pane-detail[hidden] { display: none; }
+.apt-filter-pane-detail-back {
+  display: flex; align-items: center; justify-content: center; width: 100%;
+  padding: 10px 14px; margin-bottom: 14px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+  font: inherit; font-weight: 700; font-size: .9rem; cursor: pointer;
+}
+.apt-filter-pane-detail-back:hover { background: var(--teal-tint); }
+
 /* Listing-detail MODAL (2026-09-24, real owner request explicitly correcting an earlier version
    that swapped the filter sidebar's own content in place — see apartments.html's own template
    comment on the modal markup for the full context) — a real floating window on top of the whole
@@ -1684,23 +1699,23 @@ body.apt-modal-open { overflow: hidden; }
 /* The modal's content is a live clone of the clicked .listing-card (see the script) — reset the
    grid-item styling that only makes sense inside .listing-grid (hover lift, fixed transition
    delay) so it reads as a single detail panel, not a stray grid card floating in a dialog. */
-#apt-listing-modal-body .listing-card {
+.apt-detail-body .listing-card {
   width: 100%; margin: 0; transition: none; transition-delay: 0s !important;
 }
-#apt-listing-modal-body .listing-card:hover { transform: none; box-shadow: var(--shadow-sm); }
-#apt-listing-modal-body .listing-desc {
+.apt-detail-body .listing-card:hover { transform: none; box-shadow: var(--shadow-sm); }
+.apt-detail-body .listing-desc {
   display: block; -webkit-line-clamp: unset; overflow: visible; line-height: 1.55;
 }
 /* A bit more breathing room than the compact grid card uses — real owner request comparing
    against dorin.app's own panel, which reads as distinct sections rather than one dense block. */
-#apt-listing-modal-body .listing-body { gap: 14px; padding: 18px 20px 20px; }
+.apt-detail-body .listing-body { gap: 14px; padding: 18px 20px 20px; }
 /* Real photo gallery for the detail modal (2026-09-24, real owner request comparing against
    dorin.app's own listing panel — the modal used to just clone the card's own small swipe
    carousel, reading as "a bigger card", not a genuinely detailed view). Built by apartments.html's
    own script from the card's full data-image-urls list, replacing the cloned .listing-cover
    entirely — a big main photo with a clickable thumbnail strip underneath, the actual photo count
    already obvious from the thumbnails so the card's own small "N 📷" badge is redundant here. */
-#apt-listing-modal-body .photo-count-badge { display: none; }
+.apt-detail-body .photo-count-badge { display: none; }
 .apt-modal-gallery { display: flex; flex-direction: column; gap: 8px; background: var(--surface-tint); }
 .apt-modal-gallery-main {
   width: 100%; aspect-ratio: 4 / 3; object-fit: cover; object-position: center; display: block;
@@ -1726,21 +1741,21 @@ body.apt-modal-open { overflow: hidden; }
    posting date as its own line under the CTA button (previously only the card's relative "posted
    X ago" text, buried in the footer) — see apartments.html's own openListingDetail() comment for
    how these get built; both use real data already on the card, nothing fabricated. */
-#apt-listing-modal-body .apt-modal-section-heading {
+.apt-detail-body .apt-modal-section-heading {
   font-size: .95rem; font-weight: 700; color: var(--text); margin: 4px 0 2px;
 }
-#apt-listing-modal-body .apt-modal-posted-on {
+.apt-detail-body .apt-modal-posted-on {
   font-size: .78rem; color: var(--text-muted); text-align: center; margin-top: 2px;
 }
-#apt-listing-modal-body .listing-footer { margin-top: 4px; }
-#apt-listing-modal-body .view-btn {
+.apt-detail-body .listing-footer { margin-top: 4px; }
+.apt-detail-body .view-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
   padding: 13px 16px; border-radius: var(--radius-md); font-size: 1rem; font-weight: 700;
   text-decoration: none; background: var(--teal); color: #fff !important;
   box-shadow: var(--shadow-sm); transition: background .12s ease, transform .12s ease;
 }
-#apt-listing-modal-body .view-btn:hover { background: var(--teal-dark); text-decoration: none; }
-#apt-listing-modal-body .view-btn.locked {
+.apt-detail-body .view-btn:hover { background: var(--teal-dark); text-decoration: none; }
+.apt-detail-body .view-btn.locked {
   background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--teal-dark) !important;
 }
 @media (max-width: 640px) {
@@ -1783,10 +1798,11 @@ body.apt-modal-open { overflow: hidden; }
   .apt-map-pane.collapsed { height: 0 !important; min-height: 0; border: 0; }
   .apt-map-settings-panel { min-width: 170px; }
 
-  /* Listing-detail drawer on mobile (2026-09-24) — the filter pane is a fixed height:320px box
-     above for compact stacking, which is far too short for a full listing (photos, meta,
-     description) once the drawer opens; grow it while the detail view is the visible child.
-     :has() is well-supported in every current mobile browser (Safari 15.4+/Chrome 105+) and keeps
-     this scoped to exactly the drawer-open state, without a JS height toggle to keep in sync. */
-  .apt-filter-pane:has(#apt-listing-detail-view:not([hidden])) { height: auto; max-height: 80vh; }
+  /* 2026-09-26: the desktop-only filter-pane detail swap (.apt-filter-pane-detail, see style.css's
+     own rule above and apartments.html's own script) is never opened below this breakpoint — the
+     script's own isDesktopViewport() check already guards that — but force-hidden here too as
+     defense in depth, so mobile can never end up showing it (e.g. a listing opened at desktop
+     width, then the viewport resized down without a page reload). Mobile keeps the floating
+     .apt-listing-modal exclusively, unchanged since 2026-09-24. */
+  .apt-filter-pane-detail { display: none !important; }
 }
