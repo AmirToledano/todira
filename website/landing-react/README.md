@@ -162,7 +162,9 @@ in the file that a React page reuses rather than re-authoring — e.g.
 section so the price reassurance shown there stays the same real copy as
 `/upgrade` itself; `upgrade.plan_weekly`/`_biweekly`/`_monthly`/
 `_subscription`, reused by `Account.jsx`'s own payment-history plan
-labels, same reasoning — not a second, driftable copy of it. All 5
+labels, same reasoning — not a second, driftable copy of it; `auth.logout`,
+reused by `Account.jsx`'s own logout button (2026-09-26) — `base.html`'s
+own hamburger-menu logout link already uses this exact key. All 5
 supported languages where they exist — `about.*`/`accessibility.*`/
 `privacy.*`/`terms.*` are deliberately he/en only, see below;
 `contact.*`/`login.*`/`account.*` are fully translated like `home.*`), not
@@ -198,7 +200,7 @@ exact = {
     'meta.title_privacy', 'meta.title_terms', 'meta.title_contact', 'meta.title_login',
     'meta.title_account', 'legal.non_native_notice', 'upgrade.value_anchor_title',
     'upgrade.value_anchor_body', 'upgrade.plan_weekly', 'upgrade.plan_biweekly',
-    'upgrade.plan_monthly', 'upgrade.plan_subscription',
+    'upgrade.plan_monthly', 'upgrade.plan_subscription', 'auth.logout',
 }
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:

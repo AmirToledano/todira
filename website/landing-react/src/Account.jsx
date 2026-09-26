@@ -48,6 +48,7 @@ export default function Account() {
     payments,
     hasActiveSubscription,
     cancelAtPeriodEnd,
+    isLoggedInViaSession,
   } = pageConfig;
 
   const identityFields = (
@@ -315,6 +316,23 @@ export default function Account() {
               </motion.div>
             ))}
           </div>
+        </motion.div>
+      )}
+
+      {/* 2026-09-26 real owner report: logged in with Google, then had no way to log out short of
+          an incognito window — /auth/logout already existed (base.html's own hamburger-menu link
+          uses it) but was never surfaced on /account itself. Gated on a real signed session, not
+          just a ?uid=/?wid= deep link (which has no session to end) — see main.py's own comment on
+          isLoggedInViaSession. A plain link, not a form — GET /auth/logout only clears the session
+          cookie, no state-changing POST needed. */}
+      {isLoggedInViaSession && (
+        <motion.div
+          style={{ textAlign: "center", marginTop: 20 }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3, ease: easePremium }}
+        >
+          <a className="btn outline" href="/auth/logout">{t("auth.logout")}</a>
         </motion.div>
       )}
     </>

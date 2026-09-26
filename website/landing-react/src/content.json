@@ -69,6 +69,13 @@
     "fr": "Salut ! Je voudrais commencer à chercher un appartement 🏠",
     "ar": "مرحبًا! أريد أن أبدأ البحث عن شقة 🏠"
   },
+  "auth.logout": {
+    "he": "התנתקות",
+    "en": "Log out",
+    "ru": "Выйти",
+    "fr": "Se déconnecter",
+    "ar": "تسجيل الخروج"
+  },
   "footer.built_by": {
     "he": "נבנה באהבה על ידי אמיר טולדנו",
     "en": "Built with love by Amir Toledano",
