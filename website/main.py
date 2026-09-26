@@ -2112,7 +2112,16 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
                 "payments": [
                     {
                         "plan": payment.plan,
-                        "amountIls": payment.amount_ils,
+                        # 2026-09-26 real crash found live: Payment.amount_ils is a real Decimal
+                        # (Numeric(10,2) column) — Python's json.dumps (which `| tojson` uses
+                        # internally) has no default encoding for Decimal and raises
+                        # `TypeError: Object of type Decimal is not JSON serializable`, a genuine
+                        # 500 for any user with real payment history (the account_config | tojson
+                        # dict is built once, so one bad field crashes the whole page — Safari
+                        # then offers FastAPI's default plain-text 500 body as a download instead
+                        # of rendering it, same "apartments.txt" symptom as the earlier incident).
+                        # str(), not float() — 49.90 must stay "49.90", not become 49.9.
+                        "amountIls": str(payment.amount_ils),
                         "date": (payment.paid_at or payment.created_at).strftime("%d/%m/%Y"),
                         "status": payment.status,
                     }
