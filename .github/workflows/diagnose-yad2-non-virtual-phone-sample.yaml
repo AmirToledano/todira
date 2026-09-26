@@ -1,0 +1,125 @@
+name: Diagnose — sample several live Yad2 listings for isVirtualPhoneNumber:false (read-only)
+
+# 2026-09-26 follow-up to diagnose-yad2-broker-phone-field.yaml: that check picked ONE live
+# broker listing and found isVirtualPhoneNumber: true (Yad2's own proxy-number system) — same
+# result as the earlier, non-broker check. But the owner's own screenshot showed a real listing
+# with a plainly visible phone number, so isVirtualPhoneNumber must be FALSE on at least some real
+# listings (it's a per-ad flag, not fixed by category). Samples several recent, currently-active
+# Yad2 listings straight from production (mixed, not filtered to brokers only) and reports each
+# one's isVirtualPhoneNumber value — the moment one comes back false, dumps its full customer
+# object to see what field actually holds the real phone number there.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Pick 10 real, currently-active Yad2 listing URLs straight from production
+        id: pick
+        run: |
+          kubectl delete pod diag-pick-listings -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-pick-listings
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-pick-listings
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -t -A -c "
+                      SELECT url FROM listings
+                      WHERE source = 'yad2' AND is_delisted = false
+                      ORDER BY random()
+                      LIMIT 10;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-pick-listings -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-pick-listings > /tmp/urls.txt
+          cat /tmp/urls.txt
+          kubectl delete pod diag-pick-listings -n todira --ignore-not-found
+
+      - name: For each URL, fetch via Web Unlocker and report isVirtualPhoneNumber (stop early on first false)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import json, re, httpx
+
+          with open('/tmp/urls.txt') as f:
+              urls = [u.strip() for u in f if u.strip()]
+
+          print(f"Sampling {len(urls)} listings...\n")
+
+          for url in urls:
+              print(f"=== {url} ===")
+              try:
+                  resp = httpx.post(
+                      "https://api.brightdata.com/request",
+                      headers={"Authorization": f"Bearer {__import__('os').environ['BRIGHT_DATA_API_KEY']}"},
+                      json={"zone": "web_unlocker1", "url": url, "format": "raw"},
+                      timeout=90,
+                  )
+                  html = resp.text
+              except Exception as exc:
+                  print(f"  fetch failed: {exc}")
+                  continue
+
+              match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+              if match is None:
+                  print("  NO __NEXT_DATA__ found")
+                  continue
+              try:
+                  next_data = json.loads(match.group(1))
+                  queries = next_data["props"]["pageProps"]["dehydratedState"]["queries"]
+                  row = None
+                  for q in queries:
+                      data = q.get("state", {}).get("data")
+                      if isinstance(data, dict) and "token" in data:
+                          row = data
+                          break
+              except Exception as exc:
+                  print(f"  parse failed: {exc}")
+                  continue
+              if row is None:
+                  print("  no ad-data query found")
+                  continue
+
+              customer = row.get("customer") or {}
+              is_virtual = customer.get("isVirtualPhoneNumber")
+              print(f"  customer.name={customer.get('name')!r} isVirtualPhoneNumber={is_virtual}")
+
+              if is_virtual is False:
+                  print("\n  *** FOUND A NON-VIRTUAL LISTING — full customer object: ***")
+                  print("  " + json.dumps(customer, ensure_ascii=False, indent=2).replace("\n", "\n  "))
+                  print("\n  Stopping here — this is the shape we needed.")
+                  break
+          else:
+              print("\nNo isVirtualPhoneNumber:false listing found in this sample.")
+          PYEOF
