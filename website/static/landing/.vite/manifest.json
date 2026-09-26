@@ -1,13 +1,13 @@
 {
-  "_Blob-BTDnLUC1.js": {
-    "file": "assets/Blob-BTDnLUC1.js",
+  "_Blob-DdBRSjWb.js": {
+    "file": "assets/Blob-DdBRSjWb.js",
     "name": "Blob",
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   },
-  "_i18n-CezZdh_C.js": {
-    "file": "assets/i18n-CezZdh_C.js",
+  "_i18n-CpRc-Y_J.js": {
+    "file": "assets/i18n-CpRc-Y_J.js",
     "name": "i18n",
     "css": [
       "assets/i18n-DW_nQQpF.css"
@@ -18,89 +18,89 @@
     "src": "_i18n-DW_nQQpF.css"
   },
   "about.html": {
-    "file": "assets/about-iu5S7sCT.js",
+    "file": "assets/about-YZ3U5iFg.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js",
-      "_Blob-BTDnLUC1.js"
+      "_i18n-CpRc-Y_J.js",
+      "_Blob-DdBRSjWb.js"
     ]
   },
   "accessibility.html": {
-    "file": "assets/accessibility-C7ckodef.js",
+    "file": "assets/accessibility-oggEhAxU.js",
     "name": "accessibility",
     "src": "accessibility.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   },
   "account.html": {
-    "file": "assets/account-DY9_yZ5O.js",
+    "file": "assets/account-mLSbkXv3.js",
     "name": "account",
     "src": "account.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   },
   "contact.html": {
-    "file": "assets/contact-9n831Mlq.js",
+    "file": "assets/contact-DKufToHJ.js",
     "name": "contact",
     "src": "contact.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-DD6MjQsl.js",
+    "file": "assets/index-ZOc54fgm.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js",
-      "_Blob-BTDnLUC1.js"
+      "_i18n-CpRc-Y_J.js",
+      "_Blob-DdBRSjWb.js"
     ],
     "dynamicImports": [
       "src/sections/ScanCore.jsx"
     ]
   },
   "login.html": {
-    "file": "assets/login-DVIMyXNi.js",
+    "file": "assets/login-FETYt2Wm.js",
     "name": "login",
     "src": "login.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   },
   "privacy.html": {
-    "file": "assets/privacy-BV7rOymB.js",
+    "file": "assets/privacy-ZH6ajHWl.js",
     "name": "privacy",
     "src": "privacy.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   },
   "src/sections/ScanCore.jsx": {
-    "file": "assets/ScanCore-B6ehpNbz.js",
+    "file": "assets/ScanCore-D2oNz5-_.js",
     "name": "ScanCore",
     "src": "src/sections/ScanCore.jsx",
     "isDynamicEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   },
   "terms.html": {
-    "file": "assets/terms-CwDNu1Vs.js",
+    "file": "assets/terms-CnQla3N-.js",
     "name": "terms",
     "src": "terms.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CezZdh_C.js"
+      "_i18n-CpRc-Y_J.js"
     ]
   }
 }

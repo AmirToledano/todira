@@ -363,6 +363,13 @@
     "fr": "Jusqu'à 6 000 ₪",
     "ar": "حتى 6,000 ₪"
   },
+  "home.feature1_understood_label": {
+    "he": "הבינה המלאכותית זיהתה:",
+    "en": "AI identified:",
+    "ru": "ИИ определил:",
+    "fr": "L'IA a identifié :",
+    "ar": "الذكاء الاصطناعي حدد:"
+  },
   "home.feature2_title": {
     "he": "התראות בזמן אמת",
     "en": "Real-time alerts",
