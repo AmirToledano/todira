@@ -55,3 +55,56 @@ def test_every_translation_key_covers_all_supported_languages():
         if any(lang not in entry for lang in i18n.SUPPORTED_LANGS)
     }
     assert not missing, f"Translation keys missing one or more supported languages: {missing}"
+
+
+# 2026-09-26 real owner request: a first-time visitor's phone/browser already tells us its
+# language on every request via Accept-Language — get_lang() used to ignore it entirely and
+# always default to Hebrew. These test the new fallback tier (?lang= > cookie > Accept-Language >
+# Hebrew) via real Starlette Request objects, not just the header-parsing helper in isolation, so
+# a regression in how get_lang wires the header in would actually fail a test.
+from starlette.requests import Request as _StarletteRequest  # noqa: E402
+
+
+def _request(*, query_string=b"", cookies=None, accept_language=None):
+    headers = []
+    if accept_language is not None:
+        headers.append((b"accept-language", accept_language.encode()))
+    if cookies:
+        cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        headers.append((b"cookie", cookie_header.encode()))
+    scope = {
+        "type": "http", "method": "GET", "path": "/", "query_string": query_string,
+        "headers": headers,
+    }
+    return _StarletteRequest(scope)
+
+
+def test_get_lang_picks_the_best_matching_language_from_accept_language_header():
+    request = _request(accept_language="fr-FR,fr;q=0.9,en;q=0.5")
+    assert i18n.get_lang(request) == "fr"
+
+
+def test_get_lang_ignores_accept_language_entries_not_in_supported_langs():
+    # de/es aren't supported — only "he" in this header is, even though it's listed last/lowest.
+    request = _request(accept_language="de-DE,es;q=0.9,he;q=0.3")
+    assert i18n.get_lang(request) == "he"
+
+
+def test_get_lang_falls_back_to_hebrew_when_accept_language_matches_nothing_supported():
+    request = _request(accept_language="de-DE,es-ES;q=0.9")
+    assert i18n.get_lang(request) == "he"
+
+
+def test_get_lang_prefers_explicit_lang_param_over_accept_language():
+    request = _request(query_string=b"lang=ru", accept_language="fr-FR,fr;q=0.9")
+    assert i18n.get_lang(request) == "ru"
+
+
+def test_get_lang_prefers_existing_cookie_over_accept_language():
+    request = _request(cookies={"lang": "ar"}, accept_language="fr-FR,fr;q=0.9")
+    assert i18n.get_lang(request) == "ar"
+
+
+def test_get_lang_with_no_accept_language_header_at_all_defaults_to_hebrew():
+    request = _request()
+    assert i18n.get_lang(request) == "he"
