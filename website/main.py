@@ -764,6 +764,7 @@ def auth_google_callback(
         userinfo = userinfo_resp.json()
         google_sub = userinfo["sub"]
         google_first_name = userinfo.get("given_name") or userinfo.get("name") or ""
+        google_email = userinfo.get("email") or None
     except (httpx.HTTPError, KeyError):
         logger.exception("Failed to complete the Google OAuth token/userinfo exchange")
         return _render(request, "auth_error.html", {}, status_code=400)
@@ -772,6 +773,11 @@ def auth_google_callback(
     with get_session() as session:
         user = session.scalar(select(User).where(User.google_sub == google_sub))
         matched_via = "google_sub" if user is not None else None
+        if user is not None and user.google_email != google_email:
+            # Refreshed on every login, not just at link/creation time, so /account's own display
+            # of "which Google account is this" stays correct if the person's email ever changes.
+            user.google_email = google_email
+            session.commit()
         if user is None and link_uid is not None:
             # First time this Google account signs in while viewing a page via the visitor's own
             # ?uid= deep link — link it to that SAME existing Telegram/WhatsApp-created account so
@@ -785,6 +791,7 @@ def auth_google_callback(
             candidate = _get_user_by_uid(session, link_uid)
             if candidate is not None and candidate.google_sub is None:
                 candidate.google_sub = google_sub
+                candidate.google_email = google_email
                 session.commit()
                 user = candidate
                 matched_via = "link_uid"
@@ -801,6 +808,7 @@ def auth_google_callback(
             if user is not None:
                 if user.google_sub is None:
                     user.google_sub = google_sub
+                    user.google_email = google_email
                     session.commit()
                     matched_via = "session_user_id"
                 else:
@@ -832,11 +840,13 @@ def auth_google_callback(
         #      Telegram detour just to browse. /auth/google/create-account below creates a real
         #      standalone account (google_sub only, blank filter — matches everything until they
         #      narrow it on /filter) and logs them in on the SAME page load, same browser tab.
-        # pending_google_sub/first_name are also stashed in the session for the lucky same-browser
-        # case (_resolve_user above completes a pending link instantly if a real uid shows up
-        # here later) and are what /auth/google/create-account reads to build the new account.
+        # pending_google_sub/first_name/email are also stashed in the session for the lucky
+        # same-browser case (_resolve_user above completes a pending link instantly if a real uid
+        # shows up here later) and are what /auth/google/create-account reads to build the new
+        # account.
         request.session["pending_google_sub"] = google_sub
         request.session["pending_google_first_name"] = google_first_name
+        request.session["pending_google_email"] = google_email
         return _render(request, "google_pending.html", {"google_link_token": google_link_token})
 
     request.session["user_id"] = user_pk
@@ -861,6 +871,7 @@ def auth_google_create_account(request: Request, next: str = "/apartments"):
     signing back in below still honors `next` as before; this only changes the true first-run."""
     pending_google_sub = request.session.pop("pending_google_sub", None)
     first_name = request.session.pop("pending_google_first_name", "")
+    pending_google_email = request.session.pop("pending_google_email", None)
     if not pending_google_sub:
         return _render(request, "auth_error.html", {}, status_code=400)
 
@@ -879,7 +890,10 @@ def auth_google_create_account(request: Request, next: str = "/apartments"):
         # used to bubble up as an unhandled 500 instead of the graceful "log them into the account
         # the other request just created" this whole function is otherwise built for. Catching it
         # here closes that actual race window, not just the comment above claiming to.
-        user = User(google_sub=pending_google_sub, first_name=first_name or None)
+        user = User(
+            google_sub=pending_google_sub, first_name=first_name or None,
+            google_email=pending_google_email,
+        )
         session.add(user)
         try:
             session.flush()
@@ -2093,6 +2107,16 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
                 "hasTelegram": has_telegram,
                 "hasWhatsapp": has_whatsapp,
                 "hasGoogle": has_google,
+                # 2026-09-26 real owner request: show WHICH identity each connected channel is,
+                # not just a bare "connected" checkmark — a user with several channels linked
+                # couldn't tell them apart otherwise. Purely informational display text on the
+                # user's OWN account page (they already know their own phone number/username/
+                # email) — a completely different thing from `redirect_wid` above, which is a
+                # signed, re-usable credential and must never be reconstructed from the raw
+                # phone number (see that field's own comment); this is just read-only text.
+                "telegramUsername": user.telegram_username,
+                "whatsappPhoneNumber": user.whatsapp_phone_number,
+                "googleEmail": user.google_email,
                 "code": code,
                 "telegramLink": f"https://t.me/AmirDirotBot?start={code}" if code else None,
                 "whatsappLink": (

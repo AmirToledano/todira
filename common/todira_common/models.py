@@ -50,6 +50,13 @@ class User(Base):
     # (website/main.py) when a user first signs in with Google while viewing a page via their own
     # ?uid= deep link; every later "Sign in with Google" then resolves straight to this same row.
     google_sub: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
+    # 2026-09-26: real owner request — /account shows which channels are linked, but not WHICH
+    # Google/WhatsApp/Telegram identity, so a user with several channels linked couldn't tell them
+    # apart. whatsapp_phone_number/telegram_username above already carry their own identifiers;
+    # google_sub is an opaque OIDC subject id, not human-readable, so this is a separate column
+    # (not reusing google_sub), refreshed on every successful Google callback (not just at
+    # link/creation time) so it stays correct if the person's Google email ever changes.
+    google_email: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
