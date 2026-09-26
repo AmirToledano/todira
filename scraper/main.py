@@ -534,11 +534,19 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
 
     max_per_run = _bright_data_enrich_max_per_run()
     if len(id_url_pairs) > max_per_run:
+        # 2026-09-26: corrected — a listing skipped here is NOT "picked up in a later run" (a
+        # listing already in the DB is never "new" again, so this function never gets a second
+        # shot at it; see scraper/notifier.py's own docstring on this). It DOES still get a real
+        # second chance, just via a different path: notifier.py's _maybe_fetch_description (at
+        # notification time, if it matches a paying user) or website/main.py's
+        # _fill_missing_descriptions_in_background (lazily, when a paying user views /apartments)
+        # — both of which now call the same working bright_data_client.
+        # fetch_yad2_description_via_web_unlocker this function itself uses.
         logger.warning(
             "Yad2 Bright Data enrichment hit its per-run safety cap (%s=%d) — remaining "
-            "%d new listings this run keep only their search-card fields (no description) "
-            "and will be picked up in a later run, instead of risking one run stalling for "
-            "a long time on Web Unlocker's own per-request timeout.",
+            "%d new listings this run keep only their search-card fields (no description) here; "
+            "notifier.py's/website's own fallback fetches still cover them, instead of risking "
+            "one run stalling for a long time on Web Unlocker's own per-request timeout.",
             _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, max_per_run, len(id_url_pairs) - max_per_run,
         )
         id_url_pairs = id_url_pairs[:max_per_run]

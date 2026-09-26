@@ -1037,14 +1037,22 @@ APARTMENTS_PAGE_SIZE = 24
 
 
 def _ensure_description_sync(listing_id: int, url: str) -> None:
-    description = bright_data_client.fetch_listing_description(url)
+    # 2026-09-26: switched from bright_data_client.fetch_listing_description (the DCA collector,
+    # confirmed a permanent dead end on this account's trial tier — see that function's own
+    # docstring) to fetch_yad2_description_via_web_unlocker, the real working replacement — this
+    # was one of two call sites (the other being scraper/notifier.py's _maybe_fetch_description)
+    # that got missed when scraper/main.py's own enrichment path was migrated 2026-09-17, leaving
+    # this lazy-fill safety net permanently broken and silently no-op'ing on every listing whose
+    # one scrape-time enrichment attempt failed. Found from a real owner screenshot of a listing
+    # with a genuine description on its own Yad2 page reaching Telegram with none.
+    description = bright_data_client.fetch_yad2_description_via_web_unlocker(url)
     if not description:
         return
     with get_session() as session:
         listing = session.get(Listing, listing_id)
         # Re-check under a fresh session: another request for the same listing may have already
-        # filled this in while this fetch (up to ~45s, bright_data_client.py's own poll timeout)
-        # was in flight — never overwrite a description that showed up in the meantime.
+        # filled this in while this fetch (up to ~90s, bright_data_client.py's own Web Unlocker
+        # request timeout) was in flight — never overwrite a description that showed up meanwhile.
         if listing is not None and not listing.description:
             listing.description = description
             session.commit()
@@ -1059,8 +1067,9 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
     is first found.
 
     Fire-and-forget on its own thread per listing (mirrors whatsapp_webhook.py's own
-    _fire_typing_indicator pattern) — a real fetch can take up to ~45s, so this must never block the
-    page response. The page renders now with whatever descriptions already exist; a still-missing
+    _fire_typing_indicator pattern) — a real fetch can take up to ~90s (bright_data_client.py's own
+    Web Unlocker request timeout), so this must never block the page response. The page renders now
+    with whatever descriptions already exist; a still-missing
     one fills in for the NEXT view of that same listing, by any viewer, once the background fetch
     finishes and caches it on Listing.description forever. Callers must only pass this the listings
     actually being shown on THIS page (already capped — APARTMENTS_PAGE_SIZE for /apartments, the
