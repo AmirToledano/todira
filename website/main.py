@@ -2104,6 +2104,12 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
             "account_config": {
                 "uid": redirect_uid,
                 "wid": redirect_wid,
+                # 2026-09-26 real owner report: logged in with Google, then had no way to log out
+                # short of an incognito window — /auth/logout already existed (used by base.html's
+                # own hamburger-menu link) but was never surfaced anywhere on /account itself.
+                # Gated on a REAL signed session (not just a ?uid=/?wid= deep link, which has no
+                # session to end) — same check apartments()'s own via_session already uses.
+                "isLoggedInViaSession": request.session.get("user_id") == user.id,
                 "hasTelegram": has_telegram,
                 "hasWhatsapp": has_whatsapp,
                 "hasGoogle": has_google,

@@ -82,6 +82,7 @@ class _FakeUser:
         cancel_at_period_end=False,
         telegram_username=None,
         google_email=None,
+        first_name=None,
     ):
         self.id = id
         self.telegram_user_id = telegram_user_id
@@ -96,12 +97,22 @@ class _FakeUser:
         self.cancel_at_period_end = cancel_at_period_end
         self.telegram_username = telegram_username
         self.google_email = google_email
+        # Only read by _current_user_summary (base.html's header, called on every _render()) when
+        # the visitor has a REAL signed session — see test_account_config_shows_logout_button_*
+        # below, the first test in this file to actually exercise that path.
+        self.first_name = first_name
 
 
 class _FakeSession:
-    def __init__(self, users_by_telegram_id=None, payments=None):
+    def __init__(self, users_by_telegram_id=None, payments=None, users_by_pk=None):
         self._by_telegram_id = users_by_telegram_id or {}
         self._payments = payments or []
+        # 2026-09-26: backs the session_user_id branch of _resolve_user (session.get(User, pk)) —
+        # used to test isLoggedInViaSession, when the visitor has a REAL signed session rather than
+        # just a ?uid= deep link. Also backs _current_user_summary's own session.execute(...).first()
+        # lookup (called on every _render(), including /account's own) — same pattern
+        # test_website_auth_google.py's _FakeSession already uses for the identical lookup.
+        self._users_by_pk = users_by_pk or {}
         self.committed = False
 
     def scalar(self, stmt):
@@ -114,6 +125,20 @@ class _FakeSession:
 
     def commit(self):
         self.committed = True
+
+    def get(self, model, pk):
+        return self._users_by_pk.get(pk)
+
+    def execute(self, stmt):
+        class _Result:
+            def __init__(self, row):
+                self._row = row
+
+            def first(self):
+                return self._row
+
+        user = next(iter(self._users_by_pk.values()), None)
+        return _Result(user)
 
 
 @pytest.fixture
@@ -479,3 +504,44 @@ def test_account_config_matches_requested_language(client):
     config = _account_config(resp.text)
     assert config["lang"] == "en"
     assert config["dir"] == "ltr"
+
+
+def test_account_config_shows_logged_in_via_session_for_a_real_signed_session(client):
+    """2026-09-26 real owner report: logged in with Google, then had no way to log out short of an
+    incognito window — /account now surfaces a logout button, but only when the visitor has a REAL
+    signed session (request.session["user_id"]), not just a ?uid=/?wid= deep link, which has no
+    session to end. Uses a raw Request (like test_website_auth_google.py's own session-branch
+    tests) since the TestClient's session cookie can't be set without a real login round-trip."""
+    from starlette.requests import Request as StarletteRequest
+
+    user = _FakeUser(id=2, telegram_user_id=222, first_name="Amir")
+    fake_session = _FakeSession(users_by_pk={2: user})
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/account",
+        "session": {"user_id": 2},
+        "query_string": b"",
+        "headers": [],
+        "app": website_main.app,
+    }
+    request = StarletteRequest(scope)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)), patch.object(
+        website_main, "generate_link_code", lambda session, user: _FIXED_CODE
+    ):
+        resp = website_main.account(request)
+
+    config = _account_config(resp.body.decode())
+    assert config["isLoggedInViaSession"] is True
+
+
+def test_account_config_hides_logged_in_via_session_when_accessed_only_via_uid(client):
+    """The mirror case: a visitor who only ever passed ?uid= (e.g. opened via a Telegram deep
+    link) has no browser session to log out of — real invariant, not just "off by default"."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["isLoggedInViaSession"] is False
