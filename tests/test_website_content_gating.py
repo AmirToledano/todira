@@ -95,6 +95,12 @@ class _FakeSession:
         return self._user
 
     def get(self, model, pk):
+        # 2026-09-26: /go/{id} (main.py) looks up a Listing by pk directly, unlike every other
+        # route this fake session backs (all User lookups by uid/session) — real model-based
+        # dispatch here instead of always returning self._user, or that route's own tests below
+        # would get a _FakeUser back and blow up on listing.url.
+        if model is website_main.Listing:
+            return next((listing for listing in self._listings if listing.id == pk), None)
         return self._user
 
     def execute(self, stmt):
@@ -379,6 +385,81 @@ def test_liked_shows_description_but_hides_url_for_an_expired_user(client):
     assert resp.status_code == 200
     assert "תיאור סודי" in resp.text
     assert "secret999" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# dorin.app-style contact-action buttons (2026-09-26 real owner request) — WhatsApp/phone buttons
+# on the listing detail view. A has_access viewer gets real links straight to the listing's own
+# source (same target as the "view listing" button — this project never stores the poster's real
+# contact info, see _listing_card.html's own comment); a non-access viewer gets locked buttons
+# that open a JS paywall modal instead of navigating anywhere (apartments.html's own script).
+# ---------------------------------------------------------------------------
+
+
+def test_apartments_contact_buttons_are_real_links_to_source_for_a_trial_user(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'class="contact-btn contact-btn-whatsapp" href="https://yad2.co.il/item/secret999"' in resp.text
+    assert 'class="contact-btn contact-btn-phone" href="https://yad2.co.il/item/secret999"' in resp.text
+    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' not in resp.text
+    assert 'class="contact-btn contact-btn-phone contact-locked-btn"' not in resp.text
+
+
+def test_apartments_contact_buttons_are_locked_for_an_expired_user(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "secret999" not in resp.text  # no real link leaked anywhere, including these buttons
+    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' in resp.text
+    assert 'class="contact-btn contact-btn-phone contact-locked-btn"' in resp.text
+    # 2026-09-26 follow-up: real owner decision to add a working "view original listing" escape
+    # hatch to the paywall modal even for this exact expired-user case — it has to point at the
+    # safe /go/{id} redirect (main.py), never the raw l.url, or this test's own "secret999 not in
+    # resp.text" assertion above would be lying about what actually leaked.
+    assert 'data-listing-go-url="/go/1"' in resp.text
+
+
+def test_go_to_listing_source_redirects_with_no_access_check(client):
+    """2026-09-26: the paywall modal's "view original listing" escape hatch (see the two tests
+    above) resolves through this route with zero access gating — same real owner decision, matching
+    dorin.app's own popup, that a non-access viewer can still reach a listing's actual source on
+    their own explicit click. No get_session/user patching here at all: this route doesn't look at
+    the request's identity, only the path's listing_id."""
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(_FakeUser(id=2, telegram_user_id=222), listings=[listing])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/go/1", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://yad2.co.il/item/secret999"
+
+
+def test_go_to_listing_source_404s_for_a_missing_listing(client):
+    fake_session = _FakeSession(_FakeUser(id=2, telegram_user_id=222), listings=[])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/go/999", follow_redirects=False)
+
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

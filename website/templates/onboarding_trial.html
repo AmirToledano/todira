@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ t('meta.title_generic') }}{% endblock %}
+{% block content %}
+{% from "_onboarding_steps.html" import onboarding_steps with context %}
+{{ onboarding_steps(3) }}
+<div class="onboarding-card reveal">
+  <div class="glyph" aria-hidden="true">👑</div>
+  <h1>{{ t('onboarding.trial_title') }}</h1>
+  <p>{{ t('onboarding.trial_body', date=trial_ends_at.strftime('%d.%m.%Y')) }}</p>
+  <a class="btn gold" href="{{ '/apartments?uid=' ~ uid if uid else ('/apartments?wid=' ~ wid if wid else '/apartments') }}">{{ t('onboarding.trial_cta') }}</a>
+</div>
+{% endblock %}

@@ -1093,6 +1093,29 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
         ).start()
 
 
+@app.get("/go/{listing_id}")
+def go_to_listing_source(listing_id: int):
+    """2026-09-26: real owner request, matching dorin.app's own contact-paywall popup exactly — its
+    "view original listing" escape hatch works even for a viewer with no access at all, unlike
+    every other real link to a listing's own source (the footer's view-btn/locked pair, the
+    contact-actions buttons), which stay has_access-gated. Deliberately NO access check here: this
+    route's entire purpose is to be the one place a non-access viewer can still reach a listing's
+    real source, on their own explicit click.
+
+    Exists so _listing_card.html never has to embed the real l.url in a locked card's markup itself
+    (which would leak every shown listing's source into the page's raw HTML for ANY viewer, access
+    or not, defeating the whole point of gating it — see this project's own existing invariant,
+    tested in test_website_content_gating.py, that a non-access viewer's /apartments response never
+    contains a listing's real URL). Instead the card renders /go/{id} (this route) as the target,
+    and the real URL is only ever resolved server-side, one listing at a time, at the moment of that
+    click."""
+    with get_session() as session:
+        listing = session.get(Listing, listing_id)
+        if listing is None:
+            raise StarletteHTTPException(status_code=404)
+        return RedirectResponse(listing.url, status_code=302)
+
+
 @app.get("/apartments")
 def apartments(request: Request, uid: int | None = None, offset: int = 0, fragment: bool = False):
     lang = get_lang(request)
@@ -2274,7 +2297,8 @@ def _filter_redirect_url(uid: int | None, wid: str | None) -> str:
 
 @app.get("/filter")
 def filter_view(
-    request: Request, uid: int | None = None, wid: str | None = None, welcome: bool = False
+    request: Request, uid: int | None = None, wid: str | None = None, welcome: bool = False,
+    error: str | None = None,
 ):
     lang = get_lang(request)
     with get_session() as session:
@@ -2290,6 +2314,10 @@ def filter_view(
             {
                 "f": filter_row,
                 "welcome": welcome,
+                # 2026-09-26 dorin.app-style onboarding: set only by filter_update's own redirect,
+                # after a welcome-flow save was rejected for having zero cities selected — see
+                # filter.html's own cities-error-banner block and filter_update's docstring.
+                "cities_error": error == "cities",
                 "uid": user.telegram_user_id,
                 # 2026-09-25 security fix: reuse the SAME already-verified token this request came
                 # in on — never re-derive from user.whatsapp_phone_number, which would put the bare
@@ -2363,7 +2391,17 @@ def filter_update(
     min_area_sqm: str = Form(""),
     keywords: str = Form(""),
     flexible_match: str | None = Form(None),
+    welcome: str | None = Form(None),
 ):
+    """2026-09-26 dorin.app-style onboarding addition (real owner request, 33-page PDF walkthrough)
+    — `welcome` is only ever present on a submit from the first-time welcome flow (filter.html's
+    own hidden field, only rendered when `welcome` is true there). It does two things a normal
+    filter save never does: (1) blocks the save entirely — nothing written, not even the other
+    fields — when zero cities are selected, matching dorin's own "חובה לבחור עיר אחת" hard block;
+    outside onboarding, zero cities still means "all cities" exactly as filter.cities_hint says,
+    completely unaffected by this. (2) chains into step 2 (/onboarding/notifications) instead of
+    /apartments on a successful save, continuing the flow rather than dropping the new user straight
+    into the results."""
     with get_session() as session:
         # session-first (like every other page), uid/wid as the low-trust fallback for a
         # bot-deep-link visitor with no real login yet — 2026-09-05 fix: this used to require uid
@@ -2373,6 +2411,11 @@ def filter_update(
         user = _resolve_user(request, session, uid, wid)
         if user is None or user.filter is None:
             return RedirectResponse(_filter_redirect_url(uid, wid), status_code=303)
+
+        if welcome is not None and not any(c in CITIES for c in cities):
+            error_url = _identity_redirect_url("/filter", uid, wid)
+            error_url += ("&" if "?" in error_url else "?") + "welcome=1&error=cities"
+            return RedirectResponse(error_url, status_code=303)
 
         f: Filter = user.filter
         f.cities = [c for c in cities if c in CITIES]
@@ -2404,4 +2447,56 @@ def filter_update(
     # happened. Sending them to /apartments instead shows the results of what they just changed —
     # exactly the payoff of editing a filter. The error-recovery branch above (no resolvable user/
     # filter) still goes back to /filter, since there's nothing on /apartments to show them either.
-    return RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)
+    # 2026-09-26: a welcome-flow save continues the onboarding flow (step 2) instead — see this
+    # function's own docstring.
+    next_path = "/onboarding/notifications" if welcome is not None else "/apartments"
+    return RedirectResponse(_identity_redirect_url(next_path, uid, wid), status_code=303)
+
+
+@app.get("/onboarding/notifications")
+def onboarding_notifications(request: Request, uid: int | None = None, wid: str | None = None):
+    """Step 2 of 3 in the dorin.app-style first-time onboarding flow (real owner request, 33-page
+    PDF walkthrough) — reached only via filter_update's own welcome-flow redirect, right after a
+    new user saves their first filter. Optional, matching dorin exactly: a real CTA to connect the
+    Telegram bot for instant notifications, and an equally real skip link that continues straight to
+    step 3 without connecting anything. Reuses /account's own generate_link_code mechanism (same
+    15-minute code, same deep link shape) rather than inventing a second connect flow."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "filter"})
+        code = None if user.telegram_user_id is not None else generate_link_code(session, user)
+        session.commit()
+        return _render(
+            request,
+            "onboarding_notifications.html",
+            {
+                "uid": user.telegram_user_id,
+                "wid": wid if user.telegram_user_id is None else None,
+                "already_connected": user.telegram_user_id is not None,
+                "telegram_link": f"https://t.me/AmirDirotBot?start={code}" if code else None,
+            },
+        )
+
+
+@app.get("/onboarding/trial")
+def onboarding_trial(request: Request, uid: int | None = None, wid: str | None = None):
+    """Step 3 of 3 — the free-trial-activated confirmation screen. No action needed from the user
+    and nothing to activate here: every account already gets trial_ends_at = now() + 3 days
+    automatically at creation (models.py's own server_default), matching dorin's own "שבוע פרימיום
+    במתנה" auto-activation (dorin: 7 days; this project: 3, same mechanism, already live well
+    before this onboarding flow existed) — this screen is purely the celebratory confirmation dorin
+    itself shows right after its own step 2, using the account's real trial_ends_at date."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "filter"})
+        return _render(
+            request,
+            "onboarding_trial.html",
+            {
+                "uid": user.telegram_user_id,
+                "wid": wid if user.telegram_user_id is None else None,
+                "trial_ends_at": user.trial_ends_at,
+            },
+        )

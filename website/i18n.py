@@ -1137,6 +1137,48 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "card.broker_badge": {
         "he": "תיווך", "en": "Broker", "ru": "Посредник", "fr": "Agence", "ar": "وسيط",
     },
+    # 2026-09-26: dorin.app-style contact-action buttons on the listing detail view (real owner
+    # request, comparing directly against dorin.app's own "פרטי איש קשר" section). Same has_access
+    # gate as card.view_btn/card.locked_btn above — this project never stores the poster's own
+    # phone/WhatsApp (see _listing_card.html's own comment on that), so a has_access viewer's click
+    # here goes to the listing's own original source page (same target as "view listing"), not a
+    # fabricated in-app reveal; a non-access viewer's click opens the contact-paywall modal instead
+    # (card.contact_modal_*) rather than navigating at all.
+    "card.whatsapp_btn": {
+        "he": "שלח הודעת WhatsApp", "en": "Send WhatsApp message", "ru": "Написать в WhatsApp",
+        "fr": "Envoyer un message WhatsApp", "ar": "إرسال رسالة WhatsApp",
+    },
+    "card.phone_btn": {
+        "he": "הצג מספר טלפון", "en": "Show phone number", "ru": "Показать номер телефона",
+        "fr": "Afficher le numéro de téléphone", "ar": "إظهار رقم الهاتف",
+    },
+    "card.contact_modal_title": {
+        "he": "רוצים את פרטי הקשר?", "en": "Want the contact details?",
+        "ru": "Хотите получить контактные данные?", "fr": "Vous voulez les coordonnées ?",
+        "ar": "هل تريد بيانات التواصل؟",
+    },
+    "card.contact_modal_body": {
+        "he": "פרטי הקשר עם המפרסם/ת פתוחים למנויי פרימיום. שדרג/י את המנוי כדי לגשת אליהם.",
+        "en": "Contact details for the poster are open to Premium subscribers. Upgrade your "
+        "subscription to access them.",
+        "ru": "Контактные данные автора объявления доступны подписчикам Premium. Обновите "
+        "подписку, чтобы получить к ним доступ.",
+        "fr": "Les coordonnées de l'annonceur sont réservées aux abonnés Premium. Passe à "
+        "l'abonnement premium pour y accéder.",
+        "ar": "بيانات التواصل مع المعلن متاحة لمشتركي Premium. قم بترقية اشتراكك للوصول إليها.",
+    },
+    "card.contact_modal_upgrade_btn": {
+        "he": "עברו למנוי פרימיום 👑", "en": "Go Premium 👑", "ru": "Перейти на Premium 👑",
+        "fr": "Passer à Premium 👑", "ar": "الترقية إلى Premium 👑",
+    },
+    # 2026-09-26 follow-up: explicit owner decision, matching dorin.app's own popup exactly — a
+    # secondary escape hatch that works even for a non-access viewer (unlike the footer's own
+    # locked link), straight to the listing's real original source.
+    "card.contact_modal_view_original_btn": {
+        "he": "צפייה במודעה המקורית ↗", "en": "View the original listing ↗",
+        "ru": "Смотреть оригинальное объявление ↗", "fr": "Voir l'annonce originale ↗",
+        "ar": "عرض الإعلان الأصلي ↗",
+    },
     # alt text for a listing's own real photos (2026-09-07 audit: every cover photo had alt="",
     # the same treatment as a genuinely decorative image — a screen-reader user got zero
     # information about what a card's actual photos showed). {city}/{rooms} are filled in from the
@@ -1379,6 +1421,76 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "filter.save_btn": {
         "he": "שמור שינויים 💾", "en": "Save changes 💾", "ru": "Сохранить изменения 💾",
         "fr": "Enregistrer les modifications 💾", "ar": "حفظ التغييرات 💾",
+    },
+    # 2026-09-26: dorin.app-style onboarding, real owner request from the 33-page PDF — during the
+    # first-time welcome flow ONLY (filter.html's own `welcome` context, see main.py's filter_update),
+    # saving with zero cities selected is blocked with this error instead of advancing to step 2.
+    # This does NOT change the general /filter or apartments-sidebar behavior at all — outside
+    # onboarding, an empty cities list still means "all cities" exactly as filter.cities_hint above
+    # already says; a returning user can still clear it back to that any time.
+    "filter.save_btn_continue": {
+        "he": "שמור והמשך ←", "en": "Save and continue ←", "ru": "Сохранить и продолжить ←",
+        "fr": "Enregistrer et continuer ←", "ar": "احفظ وتابع ←",
+    },
+    "filter.cities_required_error": {
+        "he": "חובה לבחור עיר אחת. בחר לפחות עיר אחת כדי להתחיל לקבל הצעות",
+        "en": "You must choose at least one city. Pick at least one to start getting matches",
+        "ru": "Нужно выбрать хотя бы один город. Выберите хотя бы один, чтобы начать получать варианты",
+        "fr": "Vous devez choisir au moins une ville. Choisissez-en au moins une pour commencer à recevoir des offres",
+        "ar": "يجب اختيار مدينة واحدة على الأقل. اختر مدينة واحدة على الأقل للبدء بتلقي العروض",
+    },
+    "onboarding.step_label": {
+        "he": "שלב {n} מתוך 3", "en": "Step {n} of 3", "ru": "Шаг {n} из 3",
+        "fr": "Étape {n} sur 3", "ar": "الخطوة {n} من 3",
+    },
+    "onboarding.step1_title": {
+        "he": "הגדרת סינון", "en": "Filter setup", "ru": "Настройка фильтра",
+        "fr": "Configuration du filtre", "ar": "إعداد الفلتر",
+    },
+    "onboarding.step2_title": {
+        "he": "חיבור להתראות", "en": "Connect notifications", "ru": "Подключение уведомлений",
+        "fr": "Connexion aux notifications", "ar": "ربط الإشعارات",
+    },
+    "onboarding.step3_title": {
+        "he": "הפעלת פרימיום", "en": "Activating Premium", "ru": "Активация Premium",
+        "fr": "Activation Premium", "ar": "تفعيل بريميوم",
+    },
+    "onboarding.notifications_title": {
+        "he": "מומלץ לחבר את הבוט 🔔", "en": "We recommend connecting the bot 🔔",
+        "ru": "Рекомендуем подключить бота 🔔", "fr": "Nous recommandons de connecter le bot 🔔",
+        "ar": "ننصح بربط البوت 🔔",
+    },
+    "onboarding.notifications_body": {
+        "he": "מומלץ לחבר את הבוט בטלגרם כדי לקבל דירות חדשות בשנייה שהן עולות — לפני כולם.",
+        "en": "We recommend connecting the Telegram bot so you get new apartments the second they go up — before everyone else.",
+        "ru": "Рекомендуем подключить бота в Telegram, чтобы получать новые квартиры в ту же секунду, как они появляются — раньше всех.",
+        "fr": "Nous recommandons de connecter le bot Telegram pour recevoir les nouveaux appartements dès leur publication — avant tout le monde.",
+        "ar": "ننصح بربط بوت تيليجرام لتصلك الشقق الجديدة في نفس ثانية نشرها — قبل الجميع.",
+    },
+    "onboarding.notifications_cta": {
+        "he": "התראות ב-Telegram", "en": "Telegram notifications", "ru": "Уведомления в Telegram",
+        "fr": "Notifications Telegram", "ar": "إشعارات تيليجرام",
+    },
+    "onboarding.notifications_skip": {
+        "he": "המשך ללא התראות לנייד ←", "en": "Continue without mobile notifications ←",
+        "ru": "Продолжить без уведомлений на телефон ←", "fr": "Continuer sans notifications mobiles ←",
+        "ar": "المتابعة بدون إشعارات على الجوال ←",
+    },
+    "onboarding.trial_title": {
+        "he": "🎉 קיבלת 3 ימי פרימיום במתנה!", "en": "🎉 You got 3 days of Premium as a gift!",
+        "ru": "🎉 Вы получили 3 дня Premium в подарок!", "fr": "🎉 Vous avez reçu 3 jours de Premium en cadeau !",
+        "ar": "🎉 حصلت على 3 أيام بريميوم كهدية!",
+    },
+    "onboarding.trial_body": {
+        "he": "גישה מלאה לכל התכונות, כולל יצירת קשר ישיר עם המפרסמים, בתוקף עד {date}. בלי כרטיס אשראי, בלי חיוב אוטומטי.",
+        "en": "Full access to every feature, including direct contact with posters, valid until {date}. No credit card, no auto-billing.",
+        "ru": "Полный доступ ко всем функциям, включая прямую связь с авторами объявлений, действует до {date}. Без карты, без автосписания.",
+        "fr": "Accès complet à toutes les fonctionnalités, y compris le contact direct avec les annonceurs, valable jusqu'au {date}. Sans carte bancaire, sans prélèvement automatique.",
+        "ar": "وصول كامل لجميع الميزات، بما في ذلك التواصل المباشر مع المعلنين، صالح حتى {date}. بدون بطاقة ائتمان، بدون خصم تلقائي.",
+    },
+    "onboarding.trial_cta": {
+        "he": "המשך לאתר ←", "en": "Continue to the site ←", "ru": "Перейти на сайт ←",
+        "fr": "Continuer vers le site ←", "ar": "المتابعة إلى الموقع ←",
     },
     # ---------- empty states / small pages ----------
     "no_filter.body": {

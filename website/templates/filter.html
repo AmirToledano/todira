@@ -3,8 +3,13 @@
 {% block title %}{{ t('meta.title_filter') }}{% endblock %}
 {% block content %}
 {% from "_filter_form_fields.html" import filter_form_fields with context %}
+{% from "_onboarding_steps.html" import onboarding_steps with context %}
 {% if welcome %}
+{{ onboarding_steps(1) }}
 <div class="welcome-banner reveal">{{ t('filter.welcome_banner') }} 🎉</div>
+{% endif %}
+{% if cities_error %}
+<div class="field-error-banner reveal" id="cities-error-banner">{{ t('filter.cities_required_error') }} ⚠️</div>
 {% endif %}
 <div class="page-banner reveal">
   <div class="pb-text">
@@ -21,8 +26,13 @@
   <form method="post" action="/filter">
     {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
     {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
+    {# 2026-09-26 dorin.app-style onboarding (real owner request): only present during the
+       first-time welcome flow — filter_update (main.py) reads this to know whether to enforce
+       the required-city block and chain into step 2 (/onboarding/notifications) instead of the
+       normal save-and-go-to-/apartments behavior every other filter save keeps. #}
+    {% if welcome %}<input type="hidden" name="welcome" value="1">{% endif %}
     {{ filter_form_fields(f, cities_list, property_type_labels, safe_room_labels, furniture_labels) }}
-    <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
+    <button class="btn block" type="submit">{{ t('filter.save_btn_continue') if welcome else t('filter.save_btn') }}</button>
   </form>
 </div>
 {% endblock %}
