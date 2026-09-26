@@ -757,17 +757,25 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
   background: linear-gradient(135deg, #f1e2c8, #e7c9a8);
   scrollbar-width: none; /* Firefox */
   /* 2026-09-15 real owner report (iPhone/Safari): swiping through a listing's photos felt
-     stuttery, not smooth — not a one-off screenshot artifact, reproducible. Three concrete,
-     well-known gaps in the original rule, not a guess:
+     stuttery, not smooth — not a one-off screenshot artifact, reproducible.
      -webkit-overflow-scrolling: touch — pre-momentum-by-default iOS Safari treated a NESTED
        overflow-x container (this, inside the page's own vertical scroll) as a plain non-momentum
        scroller without this; still the standard fix for jank in exactly this nested-scroll shape
-       on WebKit. touch-action: pan-x — without it, the browser has to disambiguate this
-       container's horizontal drag from the page's own vertical scroll on every touch, a real
-       source of input lag on a page with many of these side by side (up to 24 per /apartments
-       page). Neither has any effect on desktop/mouse use. */
+       on WebKit. Has no effect on desktop/mouse use.
+
+     2026-09-26 real owner report, reproduced exactly: `touch-action: pan-x` (this rule used to
+     read pan-x only, to skip the browser's per-touch gesture disambiguation for a snappier swipe)
+     turned out to have a much worse cost than the lag it fixed — touch-action is committed for
+     the WHOLE gesture from whichever element the touch STARTED on, so a touch that starts on a
+     photo, pauses, then tries to continue scrolling the page vertically is simply not allowed to —
+     the page reads as fully stuck until the finger lifts and touches down somewhere else (matches
+     the owner's own repro exactly: "works again once your finger is between two listings' photos,
+     not on one"). pan-x pan-y restores normal two-axis gesture disambiguation (the browser reads
+     the drag's actual direction, same as most horizontally-scrollable carousels on the web) — the
+     photo swipe itself is unaffected; only a touch that starts on a photo and then moves mostly
+     vertically now correctly scrolls the page instead of doing nothing. */
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
 }
 .listing-cover::-webkit-scrollbar { display: none; }
 .cover-slide {
