@@ -1,0 +1,129 @@
+name: Diagnose — does a real BROKER Yad2 listing's __NEXT_DATA__ carry a real phone number? (read-only)
+
+# 2026-09-26 real owner screenshot: a genuine live Yad2 listing (agent "Warren Zauer") showed a
+# plain, visible phone number ("053-4912063") directly on the page — contradicting
+# diagnose-contact-info-availability.yaml's own earlier finding (2026-09-13/09-26) that Yad2's
+# __NEXT_DATA__ "customer" object has NO phone field, only isVirtualPhoneNumber: true. That earlier
+# check ran against ONE hardcoded listing URL — quite possibly a PRIVATE-SELLER listing, where
+# Yad2's own anti-spam "virtual number" call-forwarding system hides the real number by design.
+# A real-estate BROKER listing them self a business phone number publicly for lead generation, so
+# the same "customer" object may carry a real, non-virtual phone field there instead. This picks a
+# genuinely live, currently-active BROKER Yad2 listing straight from production (not a hardcoded
+# URL, which could easily be stale/delisted by now) and dumps its full raw customer/contact fields
+# to settle this with real evidence before any contact-info scraping work gets built on a guess.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Pick a real, currently-active BROKER Yad2 listing URL straight from production
+        id: pick
+        run: |
+          kubectl delete pod diag-pick-broker-listing -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-pick-broker-listing
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-pick-broker-listing
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -t -A -c "
+                      SELECT url FROM listings
+                      WHERE source = 'yad2' AND is_delisted = false AND is_broker_listing = true
+                      ORDER BY scraped_at DESC
+                      LIMIT 1;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-pick-broker-listing -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          URL=$(kubectl logs -n todira diag-pick-broker-listing | tail -1)
+          kubectl delete pod diag-pick-broker-listing -n todira --ignore-not-found
+          echo "picked url: $URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch that listing via Bright Data Web Unlocker, dump the full raw customer/contact fields
+        if: steps.pick.outputs.url != ''
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+          LISTING_URL: ${{ steps.pick.outputs.url }}
+        run: |
+          echo "Fetching: $LISTING_URL"
+          curl -sS -X POST "https://api.brightdata.com/request" \
+            -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$(python3 -c 'import json,os,sys; print(json.dumps({"zone":"web_unlocker1","url":os.environ["LISTING_URL"],"format":"raw"}))')" \
+            -o /tmp/yad2_broker.html -w "fetch http_status=%{http_code} size=%{size_download}\n" --max-time 90
+          python3 - << 'PYEOF'
+          import json, re
+          with open('/tmp/yad2_broker.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+          if match is None:
+              print("NO __NEXT_DATA__ FOUND — first 2000 chars of response:")
+              print(html[:2000])
+              raise SystemExit(0)
+          next_data = json.loads(match.group(1))
+          queries = next_data["props"]["pageProps"]["dehydratedState"]["queries"]
+          row = None
+          for q in queries:
+              data = q.get("state", {}).get("data")
+              if isinstance(data, dict) and "token" in data:
+                  row = data
+                  break
+          if row is None:
+              print("NO ad-data query found among", len(queries), "queries")
+              raise SystemExit(0)
+          print("Top-level keys:", list(row.keys()))
+
+          def hunt(obj, path=""):
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      lk = k.lower()
+                      if any(h in lk for h in ("phone", "contact", "customer", "agent", "name", "mobile", "tel")):
+                          print(f"  MATCH {path}.{k} = {v!r}"[:300])
+                      hunt(v, f"{path}.{k}")
+              elif isinstance(obj, list):
+                  for i, v in enumerate(obj[:3]):
+                      hunt(v, f"{path}[{i}]")
+          hunt(row)
+          print("\n--- full 'customer' object ---")
+          print(json.dumps(row.get("customer"), ensure_ascii=False, indent=2))
+          print("\n--- also search the RAW HTML (outside __NEXT_DATA__) for phone-shaped strings, in case it's rendered separately ---")
+          flat = re.sub(r'>\s+<', '><', html)
+          phones = re.findall(r'0[\d\-\s]{8,12}\d', flat)
+          print(f"phone-shaped strings found in raw HTML: {len(set(phones))}")
+          for p in list(set(phones))[:10]:
+              print("  ", p)
+          PYEOF
+
+      - name: No active broker listing found
+        if: steps.pick.outputs.url == ''
+        run: echo "No active is_broker_listing=true Yad2 listing found in the DB right now — cannot test."
