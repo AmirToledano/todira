@@ -29,6 +29,7 @@ export default defineConfig({
         terms: new URL('terms.html', import.meta.url).pathname,
         contact: new URL('contact.html', import.meta.url).pathname,
         login: new URL('login.html', import.meta.url).pathname,
+        account: new URL('account.html', import.meta.url).pathname,
       },
     },
   },

@@ -19,6 +19,11 @@ export const uid = injected.uid ?? null;
 // Already sanitized server-side by main.py's _safe_next() before injection — see login() — so
 // this is safe to use directly in a client-built href without re-validating it here.
 export const next = injected.next ?? null;
+// Raw escape hatch for a page whose own config is too shaped/heavy to deserve individual named
+// exports here (e.g. Account.jsx's subscription/notification/channel state + payment history,
+// injected as one object via account()'s own `| tojson` — see account.html's own comment). Pages
+// with a couple of simple values keep using the named exports above instead.
+export const pageConfig = injected;
 
 // vars supports the same named-placeholder interpolation as i18n.py's own t(key, **kwargs) (e.g.
 // login.hint's "{telegram_cta}") — .format()-style, not HTML, so no injection risk either way.
