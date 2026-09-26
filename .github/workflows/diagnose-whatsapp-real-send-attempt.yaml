@@ -1,0 +1,83 @@
+name: Diagnose — attempt a REAL WhatsApp template send to the owner's own account
+
+# Two prior diagnostics left this genuinely ambiguous: every GET-style Graph API check (phone
+# number metadata, debug_token) 400s with "does not exist / missing permissions" using the current
+# WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID — but the exact same credentials are confirmed
+# working for the bot's own inbound webhook replies (real owner test, same night), which use the
+# identical POST .../messages endpoint the scraper's own proactive send would use. A token scoped
+# to whatsapp_business_messaging only (no _management) would show exactly this pattern — sends
+# work, every read-style GET fails — which would mean the proactive send path was never actually
+# broken by anything checkable via GET. The only fully conclusive test left is a REAL send attempt
+# through the exact same code path scraper/notifier.py uses. Sends ONE real WhatsApp Message
+# Template to the OWNER'S OWN opted-in account (identified via OWNER_TELEGRAM_USER_ID, same
+# owner-only restriction mechanism run_once() itself already uses for NOTIFICATIONS_SUSPENDED) —
+# never an arbitrary user — with a real recent listing's data, and reports Meta's own literal
+# response (success or the exact rejection reason: unapproved template, wrong WABA, etc).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Find the owner's whatsapp_notifications_opted_in status + a real recent listing, then attempt one real send
+        run: |
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-whatsapp-real-send
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-whatsapp-real-send
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "owner telegram_user_id (from secret): $OWNER_TELEGRAM_USER_ID"
+                    echo "--- owner's own whatsapp opt-in status ---"
+                    psql "$CONN" -c "
+                      SELECT id, telegram_user_id, whatsapp_phone_number IS NOT NULL AS has_whatsapp,
+                             whatsapp_notifications_opted_in, notifications_enabled
+                      FROM users
+                      WHERE telegram_user_id = '$OWNER_TELEGRAM_USER_ID';
+                    "
+                    echo "--- how many users total are whatsapp-eligible right now (phone set + opted in)? ---"
+                    psql "$CONN" -c "
+                      SELECT count(*) AS whatsapp_eligible_users
+                      FROM users
+                      WHERE whatsapp_phone_number IS NOT NULL AND whatsapp_notifications_opted_in = true;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-whatsapp-real-send -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira diag-whatsapp-real-send || true
+          kubectl delete pod diag-whatsapp-real-send -n todira --ignore-not-found
