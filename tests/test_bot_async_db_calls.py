@@ -62,9 +62,9 @@ async def _race_against(coro) -> list[str]:
 def test_filter_start_db_load_does_not_block_the_event_loop(monkeypatch):
     def _slow_load(_tg_user):
         time.sleep(SLOW_CALL_SECONDS)  # a real blocking call, like a slow DB round-trip
-        return filter_conversation._default_draft()
+        return filter_conversation._default_draft(), "he"
 
-    monkeypatch.setattr(filter_conversation, "_load_draft_from_db_sync", _slow_load)
+    monkeypatch.setattr(filter_conversation, "_load_draft_and_lang_from_db_sync", _slow_load)
 
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=USER_ID),

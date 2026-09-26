@@ -166,7 +166,9 @@ def test_filter_start_loads_from_db_when_no_draft_in_progress(monkeypatch):
 
     monkeypatch.setattr(filter_conversation, "get_session", _FakeSession)
     monkeypatch.setattr(
-        filter_conversation, "get_or_create_user", lambda session, tg_user: SimpleNamespace(id=1)
+        filter_conversation,
+        "get_or_create_user",
+        lambda session, tg_user: SimpleNamespace(id=1, language="he"),
     )
 
     update = SimpleNamespace(

@@ -76,7 +76,8 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             context.bot,
             update.effective_chat.id,
             listing,
-            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
+            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url, lang=lang),
+            lang,
         )
 
 
@@ -100,7 +101,8 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             context.bot,
             update.effective_chat.id,
             listing,
-            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url),
+            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url, lang=lang),
+            lang,
         )
 
 

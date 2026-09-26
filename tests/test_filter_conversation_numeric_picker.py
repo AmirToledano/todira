@@ -37,26 +37,26 @@ def _make_query(data: str):
 
 
 def test_numeric_preset_keyboard_marks_current_value():
-    markup = kb.numeric_preset_keyboard("price_min", 2000, "price")
+    markup = kb.numeric_preset_keyboard("price_min", 2000, "price", "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     picked = next(b for b in buttons if b.callback_data == "f:pick:price_min:2")
     assert picked.text.startswith("✅")
 
 
 def test_numeric_preset_keyboard_omits_clear_button_when_unset():
-    markup = kb.numeric_preset_keyboard("price_min", None, "price")
+    markup = kb.numeric_preset_keyboard("price_min", None, "price", "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     assert not any(b.callback_data == "f:pick:price_min:clear" for b in buttons)
 
 
 def test_numeric_preset_keyboard_shows_clear_button_when_set():
-    markup = kb.numeric_preset_keyboard("price_min", 2000, "price")
+    markup = kb.numeric_preset_keyboard("price_min", 2000, "price", "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     assert any(b.callback_data == "f:pick:price_min:clear" for b in buttons)
 
 
 def test_numeric_preset_keyboard_has_custom_and_back_buttons():
-    markup = kb.numeric_preset_keyboard("rooms_max", None, "rooms")
+    markup = kb.numeric_preset_keyboard("rooms_max", None, "rooms", "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     assert any(b.callback_data == "f:pick:rooms_max:custom" for b in buttons)
     assert any(b.callback_data == "f:cat:rooms" for b in buttons)

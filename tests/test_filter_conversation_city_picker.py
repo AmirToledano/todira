@@ -45,7 +45,7 @@ def test_toggle_city_removes_when_present():
 def test_city_picker_keyboard_marks_selected_cities():
     draft = _default_draft()
     draft["cities"] = ["חיפה"]
-    markup = kb.city_picker_keyboard(draft)
+    markup = kb.city_picker_keyboard(draft, "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     haifa_button = next(b for b in buttons if "חיפה" in b.text)
     assert haifa_button.text.startswith("☑️")
@@ -55,7 +55,7 @@ def test_city_picker_keyboard_marks_selected_cities():
 
 def test_city_picker_keyboard_callback_data_indexes_into_cities():
     draft = _default_draft()
-    markup = kb.city_picker_keyboard(draft)
+    markup = kb.city_picker_keyboard(draft, "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     tel_aviv_idx = CITIES.index("תל אביב יפו")
     tel_aviv_button = next(b for b in buttons if "תל אביב יפו" in b.text)
@@ -64,7 +64,7 @@ def test_city_picker_keyboard_callback_data_indexes_into_cities():
 
 def test_city_search_results_keyboard_has_one_button_per_match_plus_back():
     matches = ["רמת גן", "רמת השרון"]
-    markup = kb.city_search_results_keyboard(matches)
+    markup = kb.city_search_results_keyboard(matches, "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     assert len(buttons) == 3  # 2 matches + back
     ramat_gan_idx = CITIES.index("רמת גן")
@@ -131,7 +131,7 @@ def test_menu_callback_togc_toggles_and_stays_on_locpick():
 
 def test_location_keyboard_omits_clear_all_button_when_no_cities_selected():
     draft = _default_draft()
-    markup = kb.location_keyboard(draft)
+    markup = kb.location_keyboard(draft, "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     assert not any(b.callback_data == "f:loc:clearall" for b in buttons)
 
@@ -139,7 +139,7 @@ def test_location_keyboard_omits_clear_all_button_when_no_cities_selected():
 def test_location_keyboard_shows_clear_all_button_when_cities_selected():
     draft = _default_draft()
     draft["cities"] = ["חיפה", "רמת גן"]
-    markup = kb.location_keyboard(draft)
+    markup = kb.location_keyboard(draft, "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     clear_all = next(b for b in buttons if b.callback_data == "f:loc:clearall")
     assert "כל הערים" in clear_all.text
@@ -163,14 +163,14 @@ def test_menu_callback_clearall_empties_cities_and_returns_to_loc():
 
 
 def test_loc_category_title_notes_unconstrained_state_when_empty():
-    title, _ = filter_conversation._category_view(_default_draft(), "loc")
+    title, _ = filter_conversation._category_view(_default_draft(), "loc", "he")
     assert "כל הערים" in title
 
 
 def test_loc_category_title_has_no_unconstrained_note_when_cities_selected():
     draft = _default_draft()
     draft["cities"] = ["חיפה"]
-    title, _ = filter_conversation._category_view(draft, "loc")
+    title, _ = filter_conversation._category_view(draft, "loc", "he")
     assert "כל הערים" not in title
 
 
@@ -184,7 +184,7 @@ def test_loc_category_title_has_no_unconstrained_note_when_cities_selected():
 def test_location_keyboard_rmc_callback_data_carries_the_city_name_not_an_index():
     draft = _default_draft()
     draft["cities"] = ["חיפה", "רמת גן"]
-    markup = kb.location_keyboard(draft)
+    markup = kb.location_keyboard(draft, "he")
     buttons = [b for row in markup.inline_keyboard for b in row]
     haifa_button = next(b for b in buttons if "חיפה" in b.text)
     assert haifa_button.callback_data == "f:loc:rmc:חיפה"

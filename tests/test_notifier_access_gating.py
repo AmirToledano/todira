@@ -30,6 +30,7 @@ def _user(**overrides):
         notifications_enabled=True,
         whatsapp_phone_number=None,
         whatsapp_notifications_opted_in=False,
+        language="he",
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
