@@ -80,6 +80,8 @@ class _FakeUser:
         whatsapp_notifications_opted_in=False,
         takbull_subscription_uniqid=None,
         cancel_at_period_end=False,
+        telegram_username=None,
+        google_email=None,
     ):
         self.id = id
         self.telegram_user_id = telegram_user_id
@@ -92,6 +94,8 @@ class _FakeUser:
         self.whatsapp_notifications_opted_in = whatsapp_notifications_opted_in
         self.takbull_subscription_uniqid = takbull_subscription_uniqid
         self.cancel_at_period_end = cancel_at_period_end
+        self.telegram_username = telegram_username
+        self.google_email = google_email
 
 
 class _FakeSession:
@@ -185,6 +189,36 @@ def test_account_config_hides_telegram_connect_button_precedence_matches_origina
     config = _account_config(resp.text)
     assert config["hasTelegram"] is True
     assert config["telegramLink"] == f"https://t.me/AmirDirotBot?start={_FIXED_CODE}"
+
+
+def test_account_config_carries_the_connected_identity_for_each_linked_channel(client):
+    """2026-09-26 real owner request: a user with several channels linked couldn't tell them
+    apart from a bare "connected" checkmark — /account now also surfaces WHICH Telegram username,
+    WhatsApp number, and Google email each connected channel actually is."""
+    user = _FakeUser(
+        id=2, telegram_user_id=222, whatsapp_phone_number="972501234567",
+        google_sub="g-sub-123", telegram_username="amir_toledano",
+        google_email="amir81358@gmail.com",
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["telegramUsername"] == "amir_toledano"
+    assert config["whatsappPhoneNumber"] == "972501234567"
+    assert config["googleEmail"] == "amir81358@gmail.com"
+
+
+def test_account_config_identity_fields_are_null_when_not_set(client):
+    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["telegramUsername"] is None
+    assert config["googleEmail"] is None
 
 
 def test_account_shows_whatsapp_link_when_public_number_configured(client):

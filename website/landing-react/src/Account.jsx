@@ -33,6 +33,9 @@ export default function Account() {
     hasTelegram,
     hasWhatsapp,
     hasGoogle,
+    telegramUsername,
+    whatsappPhoneNumber,
+    googleEmail,
     code,
     telegramLink,
     whatsappLink,
@@ -189,7 +192,10 @@ export default function Account() {
             </span>
             <div className="field-section-title" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>Telegram</div>
             {hasTelegram ? (
-              <p className="channel-status connected">{t("account.channel_connected")}</p>
+              <>
+                <p className="channel-status connected">{t("account.channel_connected")}</p>
+                {telegramUsername && <p className="field-hint">@{telegramUsername}</p>}
+              </>
             ) : telegramLink ? (
               <>
                 <a className="btn telegram block" href={telegramLink} target="_blank" rel="noreferrer">
@@ -218,7 +224,10 @@ export default function Account() {
             </span>
             <div className="field-section-title" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>WhatsApp</div>
             {hasWhatsapp ? (
-              <p className="channel-status connected">{t("account.channel_connected")}</p>
+              <>
+                <p className="channel-status connected">{t("account.channel_connected")}</p>
+                {whatsappPhoneNumber && <p className="field-hint">{whatsappPhoneNumber}</p>}
+              </>
             ) : whatsappLink ? (
               <>
                 <a className="btn whatsapp block" href={whatsappLink} target="_blank" rel="noreferrer">
@@ -249,7 +258,10 @@ export default function Account() {
             </span>
             <div className="field-section-title" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>Google</div>
             {hasGoogle ? (
-              <p className="channel-status connected">{t("account.channel_connected")}</p>
+              <>
+                <p className="channel-status connected">{t("account.channel_connected")}</p>
+                {googleEmail && <p className="field-hint">{googleEmail}</p>}
+              </>
             ) : (
               <a
                 className="btn google block"

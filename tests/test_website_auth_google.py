@@ -37,10 +37,14 @@ _CLIENT_SECRET = "test-client-secret"
 
 
 class _FakeUser:
-    def __init__(self, id: int, telegram_user_id: int | None = None, google_sub: str | None = None):
+    def __init__(
+        self, id: int, telegram_user_id: int | None = None, google_sub: str | None = None,
+        google_email: str | None = None,
+    ):
         self.id = id
         self.telegram_user_id = telegram_user_id
         self.google_sub = google_sub
+        self.google_email = google_email
         self.first_name = "Amir"
         self.telegram_username = "amirtest"
 
@@ -156,12 +160,15 @@ def _do_start(client, **start_params):
     return state
 
 
-def _mock_google_exchange(google_sub: str):
+def _mock_google_exchange(google_sub: str, email: str | None = None):
     def _fake_request(request: httpx.Request) -> httpx.Response:
         if request.url.host == "oauth2.googleapis.com":
             return httpx.Response(200, json={"access_token": "fake-access-token"})
         if request.url.host == "openidconnect.googleapis.com":
-            return httpx.Response(200, json={"sub": google_sub})
+            userinfo = {"sub": google_sub}
+            if email is not None:
+                userinfo["email"] = email
+            return httpx.Response(200, json=userinfo)
         raise AssertionError(f"unexpected request to {request.url}")
 
     return httpx.MockTransport(_fake_request)
@@ -189,6 +196,31 @@ def test_callback_known_google_sub_signs_in_directly(client):
     assert client.cookies.get("session") is not None
 
 
+def test_callback_refreshes_google_email_on_every_login(client):
+    """2026-09-26 real owner request: /account shows which Google account is linked by email —
+    refreshed on every login (not just at link/creation time) so it stays correct if the person's
+    Google email ever changes, not frozen at whatever it was the first time they signed in."""
+    state = _do_start(client)
+    user = _FakeUser(id=7, google_sub="google-sub-123", google_email="old@gmail.com")
+    fake_session = _FakeSession(scalar_results=[user])
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    transport = _mock_google_exchange("google-sub-123", email="new@gmail.com")
+    with patch.object(website_main, "get_session", _fake_get_session), patch.object(
+        httpx, "post", lambda url, **kw: httpx.Client(transport=transport).post(url, **kw)
+    ), patch.object(
+        httpx, "get", lambda url, **kw: httpx.Client(transport=transport).get(url, **kw)
+    ):
+        resp = client.get("/auth/google/callback", params={"code": "abc", "state": state})
+
+    assert resp.status_code == 303
+    assert user.google_email == "new@gmail.com"
+    assert fake_session.committed is True
+
+
 def test_callback_links_google_to_the_uid_being_viewed(client):
     """The valuable case: a visitor viewing a page via their own ?uid= deep link signs in with
     Google for the first time — their Google account gets LINKED to that same existing user, not
@@ -203,7 +235,7 @@ def test_callback_links_google_to_the_uid_being_viewed(client):
     def _fake_get_session():
         yield fake_session
 
-    transport = _mock_google_exchange("google-sub-new")
+    transport = _mock_google_exchange("google-sub-new", email="amir81358@gmail.com")
     with patch.object(website_main, "get_session", _fake_get_session), patch.object(
         httpx, "post", lambda url, **kw: httpx.Client(transport=transport).post(url, **kw)
     ), patch.object(
@@ -214,6 +246,7 @@ def test_callback_links_google_to_the_uid_being_viewed(client):
     assert resp.status_code == 303
     assert resp.headers["location"] == "/apartments"
     assert existing_user.google_sub == "google-sub-new"
+    assert existing_user.google_email == "amir81358@gmail.com"
     assert fake_session.committed is True
 
 
@@ -310,7 +343,7 @@ def test_callback_links_google_to_already_authenticated_session():
     def _fake_get_session():
         yield fake_session
 
-    transport = _mock_google_exchange("google-sub-new-2")
+    transport = _mock_google_exchange("google-sub-new-2", email="amir81358@gmail.com")
     scope = {"type": "http", "session": {"oauth_state": "abc", "user_id": 42}}
     request = StarletteRequest(scope)
 
@@ -326,6 +359,7 @@ def test_callback_links_google_to_already_authenticated_session():
     assert resp.status_code == 303
     assert resp.headers["location"] == "/apartments"
     assert existing_user.google_sub == "google-sub-new-2"
+    assert existing_user.google_email == "amir81358@gmail.com"
     assert fake_session.committed is True
     assert request.session.get("user_id") == 42
 
@@ -365,6 +399,7 @@ def test_callback_does_not_overwrite_an_already_linked_session_users_google_acco
 
     assert resp.status_code == 200
     assert existing_user.google_sub == "other-google-sub"  # never overwritten — the real invariant
+    assert existing_user.google_email is None  # never touched either — the guard trips first
     # A PendingGoogleLink row IS still generated for this new google_sub (harmless: consuming its
     # token later just hits the same "don't overwrite" guard again bot-side), so committed is True.
     assert fake_session.committed is True
@@ -402,7 +437,11 @@ def test_create_account_makes_a_standalone_user_with_a_blank_filter_and_logs_in(
         "type": "http",
         "method": "POST",
         "path": "/auth/google/create-account",
-        "session": {"pending_google_sub": "google-sub-new", "pending_google_first_name": "Amir"},
+        "session": {
+            "pending_google_sub": "google-sub-new",
+            "pending_google_first_name": "Amir",
+            "pending_google_email": "amir81358@gmail.com",
+        },
         "query_string": b"",
         "headers": [],
         "app": website_main.app,
@@ -421,12 +460,14 @@ def test_create_account_makes_a_standalone_user_with_a_blank_filter_and_logs_in(
     new_user, new_filter = fake_session.added
     assert new_user.google_sub == "google-sub-new"
     assert new_user.first_name == "Amir"
+    assert new_user.google_email == "amir81358@gmail.com"
     assert new_user.telegram_user_id is None
     assert new_user.whatsapp_phone_number is None
     assert new_filter.user_id == new_user.id  # both None under the fake session — real FK wiring
     assert request.session.get("user_id") == new_user.id
     assert "pending_google_sub" not in request.session
     assert "pending_google_first_name" not in request.session
+    assert "pending_google_email" not in request.session
 
 
 def test_create_account_rejects_a_request_with_no_pending_google_sub():
