@@ -2309,11 +2309,48 @@ FURNITURE_LABELS: dict[str, dict[str, str]] = {
 }
 
 
+def _best_lang_from_accept_language(header_value: str) -> str | None:
+    """2026-09-26 real owner request: a first-time visitor's phone/browser already tells us its
+    language on every single request, via the standard Accept-Language header (e.g.
+    "en-US,en;q=0.9,he;q=0.8") — we just never looked at it, always defaulting to Hebrew instead.
+    Parses the RFC 2616 "type;q=value" weighted-list format, picks the highest-weighted tag that
+    matches one of SUPPORTED_LANGS (comparing only the primary subtag — "en-US" matches "en"), and
+    returns None if nothing in the header matches any supported language (caller falls back to
+    DEFAULT_LANG exactly as before). Deliberately NOT used once a visitor has an explicit ?lang= or
+    a cookie — this only fills in a better default for the very first, unconfigured visit."""
+    best_lang, best_q = None, -1.0
+    for part in header_value.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if ";" in part:
+            tag, _, q_part = part.partition(";")
+            try:
+                q = float(q_part.strip().removeprefix("q="))
+            except ValueError:
+                q = 1.0
+        else:
+            tag, q = part, 1.0
+        primary = tag.strip().split("-")[0].lower()
+        if primary in SUPPORTED_LANGS and q > best_q:
+            best_lang, best_q = primary, q
+    return best_lang
+
+
 def get_lang(request: Request) -> str:
     """?lang= wins for this request (and main.py persists it to a cookie on the response);
-    otherwise fall back to a previously-set cookie; otherwise Hebrew."""
+    otherwise fall back to a previously-set cookie; otherwise the browser's own Accept-Language
+    header (its FIRST visit's best guess, not persisted here — a cookie is only ever set from an
+    explicit ?lang=, see main.py's _render); otherwise Hebrew."""
     candidate = request.query_params.get("lang") or request.cookies.get("lang")
-    return candidate if candidate in SUPPORTED_LANGS else DEFAULT_LANG
+    if candidate in SUPPORTED_LANGS:
+        return candidate
+    accept_language = request.headers.get("accept-language")
+    if accept_language:
+        detected = _best_lang_from_accept_language(accept_language)
+        if detected is not None:
+            return detected
+    return DEFAULT_LANG
 
 
 def make_translator(lang: str):
