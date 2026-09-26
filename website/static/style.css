@@ -1070,6 +1070,19 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
   transition: opacity .65s cubic-bezier(.2,.7,.3,1), transform .65s cubic-bezier(.2,.7,.3,1), filter .65s cubic-bezier(.2,.7,.3,1);
 }
 .reveal.is-visible { opacity: 1; transform: none; filter: blur(0); }
+/* 2026-09-26: real owner report — this blur() transition (unlike opacity/transform, a paint-heavy,
+   compositor-unfriendly operation on most mobile GPUs) was the actual cause of a visible ~1s haze
+   at the top of every page on mobile right after navigating, and of real scroll stutter when the
+   visitor scrolled before it settled. On /apartments specifically, up to APARTMENTS_PAGE_SIZE (24)
+   cards all carry .reveal on first load (see apartments.html) — scrolling through that initial
+   batch could fire many of these blur transitions at once, compounding into the reported full
+   freeze. Touch devices keep the slide+fade (cheap, GPU-composited, no repaint) but drop only the
+   blur; desktop (real cursor, generally more GPU headroom, and the only place this was verified
+   fine) keeps the full effect unchanged. */
+@media (hover: none), (pointer: coarse) {
+  .reveal { filter: none; transition: opacity .5s cubic-bezier(.2,.7,.3,1), transform .5s cubic-bezier(.2,.7,.3,1); }
+  .reveal.is-visible { filter: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1; transform: none; filter: none; transition: none; }
   .brand .crown, .hero .crown-badge, .empty-state .glyph { animation: none; }
