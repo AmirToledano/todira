@@ -57,6 +57,15 @@ class User(Base):
     # (not reusing google_sub), refreshed on every successful Google callback (not just at
     # link/creation time) so it stays correct if the person's Google email ever changes.
     google_email: Mapped[str | None] = mapped_column(Text)
+    # 2026-09-26 real owner request: both bots (Telegram + WhatsApp) were Hebrew-only, including
+    # Gemini's own generated replies, not just canned strings — see todira_common/language.py's own
+    # docstring for the full reasoning. NULL means "not yet known" (an existing user from before
+    # this column existed, or a brand-new WhatsApp user who hasn't answered the language-picker
+    # yet) — every read site treats NULL as todira_common.language.DEFAULT_LANG ("he"), matching
+    # the bots' actual behavior before this column existed at all. Deliberately a plain code
+    # ("he"/"en"/...), not a locale — the bots have exactly 5 supported languages, the same list
+    # website/i18n.py's SUPPORTED_LANGS already uses.
+    language: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

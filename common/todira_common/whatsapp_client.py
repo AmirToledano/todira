@@ -110,6 +110,32 @@ def send_cta_url_message(to: str, body: str, button_text: str, url: str) -> bool
     return _post_message(payload, to=to, action_desc="send WhatsApp CTA button message")
 
 
+def send_language_picker_message(
+    to: str, body: str, button_text: str, language_rows: list[tuple[str, str]]
+) -> bool:
+    """WhatsApp Cloud API's "interactive list" message type — up to 10 tappable rows in one
+    message (a "reply buttons" message caps out at 3, not enough for our 5 supported languages).
+    `language_rows` is [(row_id, title), ...] in display order; the reply comes back on a later
+    webhook delivery as message.type == "interactive", message.interactive.list_reply.id — handled
+    in website/whatsapp_webhook.py's own language-selection flow."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": body},
+            "action": {
+                "button": button_text,
+                "sections": [
+                    {"rows": [{"id": row_id, "title": title} for row_id, title in language_rows]}
+                ],
+            },
+        },
+    }
+    return _post_message(payload, to=to, action_desc="send WhatsApp language picker")
+
+
 def send_template_message(
     to: str, *, template_name: str, language_code: str, body_params: list[str]
 ) -> bool:

@@ -30,8 +30,10 @@ from collections import OrderedDict
 
 import httpx
 from todira_common import cities, gemini_client, whatsapp_client
+from todira_common.bot_strings import bot_text
 from todira_common.channel_link import resolve_link_code
 from todira_common.db import get_session
+from todira_common.language import DEFAULT_LANG, SUPPORTED_LANGS
 from todira_common.matching import safe_range_update
 from todira_common.models import ContactMessage, Filter, User
 from todira_common.support import looks_like_help_request
@@ -54,36 +56,20 @@ APP_SECRET_ENV_VAR = "WHATSAPP_APP_SECRET"
 # instead of just saying editing isn't available (2026-09-06 fix, see that reply's own comment).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
 
-# Same emoji base.html's own nav bar uses for the filter page (⚙️ {{ t('nav.filter') }}) —
-# 2026-09-06: a real tappable button (whatsapp_client.send_cta_url_message), not a bare link in the
-# message text, matching how the reference competitor bot renders its own "עדכון סינון ⚙️" prompt.
-_FILTER_EDIT_BUTTON_TEXT = "⚙️ עריכת הסינון"
-
-# 2026-09-06 follow-up: the owner sent a screenshot of the reference competitor bot's own 3-message
-# sequence for this exact moment (a CTA button, then two short explanatory follow-ups) and asked
-# for the same flow, one to one — these two follow-up lines are copied verbatim from that
-# screenshot; the fields they name (price, cities, parking/elevator/safe room) are a real match for
-# Todira's own filter fields, not just borrowed wording that happens not to fit.
-_FILTER_EDIT_INTRO_TEXT = "כדי לערוך את הסינון, הכי פשוט להיכנס ישירות לדף הסינון שלנו:"
-_FILTER_EDIT_FOLLOWUP_1 = (
-    "שם תוכל לשנות בקלות את המחיר, להוסיף או להסיר ערים ושכונות, ולבחור העדפות כמו חניה, "
-    "מעלית, או ממ\"ד. ברגע שתשמור שם את השינויים, אני אעדכן את ההתראות שלך בהתאם! ✨🏠"
-)
-_FILTER_EDIT_FOLLOWUP_2 = "צריך עזרה עם משהו ספציפי בסינון? 😊"
-
-
-def _send_filter_edit_prompt(wa_id: str) -> None:
+def _send_filter_edit_prompt(wa_id: str, lang: str) -> None:
     """The CTA button + its two follow-up messages, in one place since both call sites below (the
     "you already have a filter" reply and the registration confirmation) end with the exact same
-    prompt to go edit it."""
+    prompt to go edit it. Copy originally matched a reference competitor bot's own 3-message
+    sequence one to one (2026-09-06); the fields it names (price, cities, parking/elevator/safe
+    room) are a real match for Todira's own filter fields, not just borrowed wording."""
     whatsapp_client.send_cta_url_message(
         wa_id,
-        _FILTER_EDIT_INTRO_TEXT,
-        _FILTER_EDIT_BUTTON_TEXT,
+        bot_text("whatsapp.filter_edit_intro", lang),
+        bot_text("whatsapp.filter_edit_button", lang),
         f"{WEBSITE_URL}/filter?wid={generate_wid_token(wa_id)}",
     )
-    whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_1)
-    whatsapp_client.send_text_message(wa_id, _FILTER_EDIT_FOLLOWUP_2)
+    whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.filter_edit_followup1", lang))
+    whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.filter_edit_followup2", lang))
 
 
 # 2026-09-08: proactive WhatsApp Message Template pushes (a new listing matches your filter,
@@ -92,18 +78,11 @@ def _send_filter_edit_prompt(wa_id: str) -> None:
 # This is where that opt-in is actually collected: a real button tap on a website toggle, right
 # after registration — not a free-text "כן"/"yes" reply this webhook would have to interpret,
 # which is a worse consent record and an easy source of a wrong read on a one-word reply.
-_NOTIFICATIONS_OPTIN_BODY = (
-    "רוצה שאני אשלח לך הודעה כאן בווטסאפ (בנוסף לאתר) ברגע שעולה דירה חדשה שמתאימה לך? "
-    "אפשר להפעיל את זה בעמוד החשבון שלך:"
-)
-_NOTIFICATIONS_OPTIN_BUTTON_TEXT = "🔔 הפעלת התראות"
-
-
-def _send_notifications_optin_prompt(wa_id: str) -> None:
+def _send_notifications_optin_prompt(wa_id: str, lang: str) -> None:
     whatsapp_client.send_cta_url_message(
         wa_id,
-        _NOTIFICATIONS_OPTIN_BODY,
-        _NOTIFICATIONS_OPTIN_BUTTON_TEXT,
+        bot_text("whatsapp.notifications_optin_body", lang),
+        bot_text("whatsapp.notifications_optin_button", lang),
         f"{WEBSITE_URL}/account?wid={generate_wid_token(wa_id)}",
     )
 
@@ -120,9 +99,6 @@ def _send_notifications_optin_prompt(wa_id: str) -> None:
 # private function directly — whatsapp_webhook.py and main.py are separate routers.
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
-
-_HELP_REQUEST_BODY = "תודה שכתבת! ההודעה שלך התקבלה ואנחנו נחזור אליך בהקדם 🙏\nאפשר גם לפנות ישירות דרך עמוד יצירת הקשר שלנו:"
-_HELP_REQUEST_BUTTON_TEXT = "✉️ יצירת קשר"
 
 
 def _save_help_request_sync(name: str | None, wa_id: str, message: str) -> int:
@@ -170,12 +146,15 @@ def _notify_owner_of_help_request(name: str | None, wa_id: str, text: str) -> bo
         return False
 
 
-def _handle_help_request(wa_id: str, profile_name: str | None, text: str) -> None:
+def _handle_help_request(wa_id: str, profile_name: str | None, text: str, lang: str) -> None:
     contact_message_id = _save_help_request_sync(profile_name, wa_id, text)
     if _notify_owner_of_help_request(profile_name, wa_id, text):
         _mark_help_request_notified_sync(contact_message_id)
     whatsapp_client.send_cta_url_message(
-        wa_id, _HELP_REQUEST_BODY, _HELP_REQUEST_BUTTON_TEXT, f"{WEBSITE_URL}/contact"
+        wa_id,
+        bot_text("whatsapp.help_request_body", lang),
+        bot_text("whatsapp.help_request_button", lang),
+        f"{WEBSITE_URL}/contact",
     )
 
 
@@ -261,6 +240,79 @@ def _fire_typing_indicator(message_id: str) -> None:
     ).start()
 
 
+# 2026-09-26 real owner request: WhatsApp gives us no signal at all about the user's language
+# (unlike Telegram's own language_code — see todira_common/language.py's own docstring for why
+# that channel auto-detects silently instead). Every message from a WhatsApp number whose User row
+# doesn't have a language set yet (a brand-new sender, or an existing user from before this column
+# existed) gets this picker instead of proceeding into onboarding/chat; their FIRST reply after
+# picking one continues normally. A structured WhatsApp Cloud API "list" message (up to 10 rows —
+# a "reply buttons" message caps out at 3, not enough for our 5 languages) is the primary path; a
+# plain-text reply matching a row's own title or its language code (in case someone types instead
+# of tapping) is accepted too.
+_LANGUAGE_ROW_TITLES = {
+    "he": "עברית", "en": "English", "ru": "Русский", "fr": "Français", "ar": "العربية",
+}
+_LANGUAGE_ROW_ID_PREFIX = "lang_"
+# Deliberately not per-language-keyed — we don't know the visitor's language yet, so this shows
+# all 5 supported languages' own names for "which language" at once, not just Hebrew.
+_LANGUAGE_PICKER_BODY = (
+    "באיזו שפה תרצה שאדבר איתך? 🌍\n"
+    "Which language would you like me to use?\n"
+    "На каком языке вам удобнее?\n"
+    "Quelle langue préférez-vous ?\n"
+    "ما هي اللغة التي تفضلها؟"
+)
+_LANGUAGE_PICKER_BUTTON = "בחר שפה 🌍"
+
+
+def _send_language_picker(wa_id: str) -> None:
+    rows = [(f"{_LANGUAGE_ROW_ID_PREFIX}{code}", title) for code, title in _LANGUAGE_ROW_TITLES.items()]
+    whatsapp_client.send_language_picker_message(
+        wa_id, _LANGUAGE_PICKER_BODY, _LANGUAGE_PICKER_BUTTON, rows
+    )
+
+
+def _match_language_from_text(text: str) -> str | None:
+    normalized = text.strip().lower()
+    for code, title in _LANGUAGE_ROW_TITLES.items():
+        if normalized == code or normalized == title.lower():
+            return code
+    return None
+
+
+def _resolve_language_choice(list_reply_id: str | None, text: str | None) -> str | None:
+    if list_reply_id and list_reply_id.startswith(_LANGUAGE_ROW_ID_PREFIX):
+        code = list_reply_id[len(_LANGUAGE_ROW_ID_PREFIX) :]
+        return code if code in SUPPORTED_LANGS else None
+    if text:
+        return _match_language_from_text(text)
+    return None
+
+
+def _ensure_language_selected_sync(
+    wa_id: str, profile_name: str | None, list_reply_id: str | None, text: str | None
+) -> str | None:
+    """Returns the resolved language the moment user.language is already known, so the caller
+    proceeds with the normal onboarding/chat flow untouched. Returns None if this message was
+    instead consumed by the language-selection flow itself — either because it WAS the user's
+    language pick (confirmed, saved) or because we just (re)sent the picker and are still waiting
+    for one; the caller should do nothing else with the message this turn either way."""
+    with get_session() as session:
+        user = get_or_create_whatsapp_user(session, wa_id, profile_name)
+        if user.language is not None:
+            return user.language
+
+        chosen = _resolve_language_choice(list_reply_id, text)
+        if chosen is not None:
+            user.language = chosen
+            session.commit()
+            whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.language_confirmed", chosen))
+            return None
+
+    _send_language_picker(wa_id)
+    return None
+
+
 def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) -> None:
     with get_session() as session:
         # Channel linking (see todira_common/channel_link.py): a `ref_xxxxxx` code generated on
@@ -278,9 +330,7 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
                 # second one would mean merging two rows' filters/history, which we don't do
                 # automatically. Leave both accounts exactly as they were.
                 whatsapp_client.send_text_message(
-                    wa_id,
-                    "למספר הווטסאפ הזה כבר יש חשבון נפרד אצלי, אז אי אפשר לחבר אותו לחשבון אחר. "
-                    "אם זו טעות, אפשר לפנות אלינו דרך האתר.",
+                    wa_id, bot_text("whatsapp.link_conflict", existing.language)
                 )
                 return
             code_user.whatsapp_phone_number = wa_id
@@ -288,14 +338,15 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
                 code_user.first_name = code_user.first_name or profile_name
             session.commit()
             whatsapp_client.send_text_message(
-                wa_id, "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת — מעכשיו תקבל עדכונים גם כאן."
+                wa_id, bot_text("whatsapp.link_success", code_user.language)
             )
             return
 
         user = get_or_create_whatsapp_user(session, wa_id, profile_name)
+        lang = user.language or DEFAULT_LANG
 
         if looks_like_help_request(text):
-            _handle_help_request(wa_id, profile_name, text)
+            _handle_help_request(wa_id, profile_name, text, lang)
             return
 
         existing_filter = session.scalar(select(Filter).where(Filter.user_id == user.id))
@@ -318,12 +369,10 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
                 "keywords": existing_filter.keywords,
             }
             result = gemini_client.chat_with_existing_user(
-                text, current_filter, cities.CITIES, profile_name
+                text, current_filter, cities.CITIES, profile_name, lang
             )
             if result is None:
-                whatsapp_client.send_text_message(
-                    wa_id, "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע."
-                )
+                whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.error", lang))
                 return
 
             if result.get("filter_changed"):
@@ -351,23 +400,25 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
                     )
                 session.commit()
 
-            whatsapp_client.send_text_message(wa_id, result.get("response_message") or "בסדר! 🙂")
+            whatsapp_client.send_text_message(
+                wa_id, result.get("response_message") or bot_text("whatsapp.chat_default_ack", lang)
+            )
             return
 
         state = user.pending_onboarding_state or dict(_EMPTY_ONBOARDING_STATE)
-        result = gemini_client.parse_onboarding_message(text, state, cities.CITIES)
+        result = gemini_client.parse_onboarding_message(text, state, cities.CITIES, lang)
 
         if result is None:
-            whatsapp_client.send_text_message(
-                wa_id, "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע."
-            )
+            whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.error", lang))
             return
 
         for key in _EMPTY_ONBOARDING_STATE:
             if key in result:
                 state[key] = result[key]
 
-        whatsapp_client.send_text_message(wa_id, result.get("response_message") or "רשמתי, תודה!")
+        whatsapp_client.send_text_message(
+            wa_id, result.get("response_message") or bot_text("whatsapp.onboarding_default_ack", lang)
+        )
 
         if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
             user.pending_onboarding_state = state
@@ -403,11 +454,9 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             if session.scalar(select(Filter).where(Filter.user_id == user.id)) is None:
                 raise
 
-        whatsapp_client.send_text_message(
-            wa_id, "מעולה, נרשמת! אני כבר עוקב אחרי דירות חדשות שמתאימות לך 🏠"
-        )
-        _send_filter_edit_prompt(wa_id)
-        _send_notifications_optin_prompt(wa_id)
+        whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.onboarding_complete", lang))
+        _send_filter_edit_prompt(wa_id, lang)
+        _send_notifications_optin_prompt(wa_id, lang)
 
 
 def _process_payload_sync(payload: dict) -> None:
@@ -444,15 +493,30 @@ def _process_payload_sync(payload: dict) -> None:
                         continue
                     if _already_processed(message.get("id")):
                         continue
-                    if message.get("type") != "text":
+
+                    msg_type = message.get("type")
+                    list_reply_id = None
+                    text = None
+                    if msg_type == "interactive":
+                        list_reply_id = (message.get("interactive") or {}).get("list_reply", {}).get("id")
+                    elif msg_type == "text":
+                        text = (message.get("text") or {}).get("body", "")
+
+                    # Every message goes through this FIRST, regardless of type — a brand-new
+                    # WhatsApp sender (or an existing one from before this column existed) gets the
+                    # language picker instead of anything else, even a non-text message. See its
+                    # own docstring for the exact contract.
+                    lang = _ensure_language_selected_sync(wa_id, contacts.get(wa_id), list_reply_id, text)
+                    if lang is None:
+                        continue
+
+                    if msg_type != "text":
                         whatsapp_client.send_text_message(
-                            wa_id,
-                            "כרגע אני יודע לקרוא רק הודעות טקסט 🙂 אפשר לתאר במילים מה את/ה מחפש/ת?",
+                            wa_id, bot_text("whatsapp.unsupported_message_type", lang)
                         )
                         continue
                     if message.get("id"):
                         _fire_typing_indicator(message["id"])
-                    text = (message.get("text") or {}).get("body", "")
                     _handle_incoming_text_sync(wa_id, contacts.get(wa_id), text)
                 except Exception:
                     logger.exception(

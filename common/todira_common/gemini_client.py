@@ -25,6 +25,8 @@ import requests
 from google import genai
 from google.genai import errors, types
 
+from todira_common.language import DEFAULT_LANG, LANGUAGE_NAMES
+
 logger = logging.getLogger(__name__)
 
 _MODEL = "gemini-3.6-flash"
@@ -96,11 +98,20 @@ def _get_client() -> genai.Client | None:
     return _client
 
 
-def parse_onboarding_message(text: str, known_state: dict, known_cities: list[str]) -> dict | None:
+def parse_onboarding_message(
+    text: str, known_state: dict, known_cities: list[str], lang: str = DEFAULT_LANG
+) -> dict | None:
     client = _get_client()
     if client is None:
         return None
 
+    # 2026-09-26: response_message used to be pinned to Hebrew unconditionally — real owner
+    # request, both bots now pass the user's own language (auto-detected on Telegram, asked
+    # explicitly on WhatsApp — see todira_common/language.py). The rest of this prompt (the
+    # instructions themselves) stays in Hebrew regardless of `lang` — Gemini reads instructions
+    # fine in whichever language they're written in; only the actual USER-FACING response_message
+    # needs to come out in the visitor's own language.
+    language_name = LANGUAGE_NAMES.get(lang, LANGUAGE_NAMES[DEFAULT_LANG])
     prompt = (
         "אתה עוזר בצ'אט ישראלי שמוצא דירות למגורים. המשתמש מתאר בשפה חופשית מה הוא מחפש "
         "(יכול לכלול שגיאות כתיב, קיצורים כמו 'ראשל\"צ'/'ב\"ש', וניסוח לא מסודר) — תפקידך לחלץ "
@@ -115,9 +126,9 @@ def parse_onboarding_message(text: str, known_state: dict, known_cities: list[st
         "אם המשתמש נתן טווח מחירים (למשל 'בין 3200 ל-8700' או '3200-8700') — price_min הוא הערך "
         "הנמוך ו-price_max הוא הגבוה. אם ניתן רק מספר אחד/תקרה (למשל 'עד 6000') — רק price_max. "
         "ב-missing_required פרט אילו מבין deal_type/cities עדיין לא ידועים.\n"
-        "ב-response_message כתוב תגובה טבעית וידידותית בעברית: אם עדיין חסר מידע חובה, שאל שאלה "
-        "ממוקדת רק על מה שחסר (אל תשאל שוב על מה שכבר ידוע); אם כל החובה ידוע, כתוב אישור קצר וחם "
-        "שמסכם את מה שהבנת.\n\n"
+        f"ב-response_message כתוב תגובה טבעית וידידותית, ב{language_name} (בשפה הזו בלבד, לא "
+        "בעברית אלא אם זו השפה המבוקשת): אם עדיין חסר מידע חובה, שאל שאלה ממוקדת רק על מה שחסר "
+        "(אל תשאל שוב על מה שכבר ידוע); אם כל החובה ידוע, כתוב אישור קצר וחם שמסכם את מה שהבנת.\n\n"
         "needs_human_help: החזר true אם ההודעה החדשה עצמה לא מתארת קריטריון חיפוש דירה כלשהו — "
         "למשל שאלה כללית שלא קשורה לחיפוש, תלונה, בקשה לדבר עם בן אדם/נציג/תמיכה, בלבול, או כל "
         "דבר אחר שלא נועד לענות על מה שביקשת. אם ההודעה כן מכילה מידע רלוונטי (גם אם חלקי, וגם אם "
@@ -196,7 +207,11 @@ _CHAT_SCHEMA = {
 
 
 def chat_with_existing_user(
-    text: str, current_filter: dict, known_cities: list[str], first_name: str | None
+    text: str,
+    current_filter: dict,
+    known_cities: list[str],
+    first_name: str | None,
+    lang: str = DEFAULT_LANG,
 ) -> dict | None:
     """2026-09-06: replaces sending the same canned "here's how to edit your filter" block on
     EVERY free-text message from an already-onboarded user, regardless of what they actually
@@ -218,9 +233,11 @@ def chat_with_existing_user(
     if client is None:
         return None
 
+    language_name = LANGUAGE_NAMES.get(lang, LANGUAGE_NAMES[DEFAULT_LANG])
     name_part = f"שם המשתמש: {first_name}. " if first_name else ""
     prompt = (
-        "אתה עוזר צ'אט חם וטבעי בעברית עבור טודירה, בוט לחיפוש דירות. המשתמש שכותב לך כבר רשום "
+        f"אתה עוזר צ'אט חם וטבעי עבור טודירה, בוט לחיפוש דירות. כתוב את כל תגובותיך ב{language_name} "
+        "(בשפה הזו בלבד, לא בעברית אלא אם זו השפה המבוקשת). המשתמש שכותב לך כבר רשום "
         "ויש לו סינון חיפוש פעיל — זו לא הרשמה ראשונית, זו שיחת המשך רגילה.\n\n"
         f"{name_part}"
         f"הסינון הנוכחי שלו (JSON): {json.dumps(current_filter, ensure_ascii=False)}\n"

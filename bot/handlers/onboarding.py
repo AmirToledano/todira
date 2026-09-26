@@ -28,7 +28,9 @@ import asyncio
 
 from config import WEBSITE_URL
 from todira_common import cities, gemini_client
+from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
+from todira_common.language import DEFAULT_LANG
 from todira_common.matching import safe_range_update
 from todira_common.models import Filter
 from todira_common.users import get_or_create_user
@@ -58,10 +60,11 @@ _EMPTY_STATE = {
 }
 
 
-def _has_filter_sync(tg_user) -> bool:
+def _has_filter_sync(tg_user) -> tuple[bool, str]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
-        return session.scalar(select(Filter.id).where(Filter.user_id == user.id)) is not None
+        has_filter = session.scalar(select(Filter.id).where(Filter.user_id == user.id)) is not None
+        return has_filter, user.language or DEFAULT_LANG
 
 
 async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -69,17 +72,17 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     # asyncio.to_thread — see start.py's _upsert_user_sync comment for why: a synchronous DB call
     # made directly on the event loop blocks every other user's interaction with the bot too.
-    has_filter = await asyncio.to_thread(_has_filter_sync, update.effective_user)
+    has_filter, lang = await asyncio.to_thread(_has_filter_sync, update.effective_user)
 
     if has_filter:
         return ConversationHandler.END
 
+    # Stashed once here (not re-read from the DB on every _handle_freetext turn) — same value for
+    # the whole conversation, and Telegram's own language_code (what this was detected from) is
+    # already in-memory on every update anyway.
+    context.user_data["onboarding_lang"] = lang
     context.user_data["onboarding"] = dict(_EMPTY_STATE)
-    await update.message.reply_text(
-        "ספר/י לי בכמה מילים מה את/ה מחפש/ת — למשל עיר, שכירות/מכירה/סבלט, תקציב, כמה חדרים, "
-        "וכל דבר נוסף שחשוב לך. אפשר לכתוב חופשי, אני אבין 🙂\n"
-        "(או שאפשר לדלג ולהגדיר הכל ידנית עם /filter בכל שלב)"
-    )
+    await update.message.reply_text(bot_text("onboarding.intro_prompt", lang))
     return AWAIT_FREETEXT
 
 
@@ -102,10 +105,9 @@ async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAUL
     given update, so this can't also transparently start /filter's own conversation in the SAME
     update — instead it cleanly ends onboarding's own state and asks the user to resend the
     command they meant, so IT correctly starts fresh, un-hijacked, from the very next message."""
+    lang = context.user_data.get("onboarding_lang", DEFAULT_LANG)
     context.user_data.pop("onboarding", None)
-    await update.message.reply_text(
-        "ביטלתי את תהליך ההרשמה החופשי — שלח/י שוב את הפקודה כדי להמשיך 👍"
-    )
+    await update.message.reply_text(bot_text("onboarding.cancelled_for_other_command", lang))
     return ConversationHandler.END
 
 
@@ -148,18 +150,16 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # here normally goes straight to Gemini as apartment-search criteria — see handlers/support.py's
     # docstring for the real report this fixes (2026-09-01). Doesn't end the conversation: she can
     # still keep describing what she's looking for right after this.
+    lang = context.user_data.get("onboarding_lang", DEFAULT_LANG)
     if looks_like_help_request(text):
         await escalate_to_owner(update, context, text)
-        await update.message.reply_text(
-            "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n"
-            "בינתיים, אם תרצה/י להמשיך לחפש דירה — ספר/י לי מה מחפשים (עיר, שכירות/מכירה/סבלט וכו')."
-        )
+        await update.message.reply_text(bot_text("onboarding.help_request_precheck", lang))
         return AWAIT_FREETEXT
 
     # Gemini can take a few seconds (or, on a slow node, much longer) — an impatient real user
     # would otherwise stare at silence and assume the bot is broken/ignoring them.
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    await update.message.reply_text("🔍 רגע, טודירה בודק את מה שכתבת...")
+    await update.message.reply_text(bot_text("onboarding.checking", lang))
 
     state = context.user_data.setdefault("onboarding", dict(_EMPTY_STATE))
     # asyncio.to_thread — parse_onboarding_message is a synchronous, blocking Gemini API call
@@ -170,14 +170,11 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # one call — found live 2026-09-07 auditing every gemini_client call site; contact_fallback.py's
     # equivalent call already did this correctly.
     result = await asyncio.to_thread(
-        gemini_client.parse_onboarding_message, text, state, cities.CITIES
+        gemini_client.parse_onboarding_message, text, state, cities.CITIES, lang
     )
 
     if result is None:
-        await update.message.reply_text(
-            "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע, או תמיד אפשר להגדיר ידנית "
-            "עם /filter."
-        )
+        await update.message.reply_text(bot_text("onboarding.error", lang))
         return AWAIT_FREETEXT
 
     # rooms_min/rooms_max and price_min/price_max go through safe_range_update, not the plain
@@ -212,14 +209,12 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # wrong reply to someone who wasn't answering that question).
     if result.get("needs_human_help"):
         await escalate_to_owner(update, context, text)
-        await update.message.reply_text(
-            "🙋 קיבלתי, זה נשמע כמו משהו שכדאי שבן אדם אמיתי יענה עליו — העברתי את ההודעה שלך "
-            "לצוות ותקבל/י מענה בהקדם.\n\n"
-            "אם תרצה/י להמשיך לחפש דירה בינתיים, אפשר לכתוב לי עוד פרטים 🙂"
-        )
+        await update.message.reply_text(bot_text("onboarding.needs_human_help", lang))
         return AWAIT_FREETEXT
 
-    await update.message.reply_text(result.get("response_message") or "רשמתי, תודה!")
+    await update.message.reply_text(
+        result.get("response_message") or bot_text("onboarding.default_ack", lang)
+    )
 
     if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
         return AWAIT_FREETEXT
@@ -227,9 +222,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     total = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
 
     context.user_data.pop("onboarding", None)
-    await update.message.reply_text(
-        "אפשר תמיד להרחיב את הסינון (מחיר, קומה, דרישות ועוד) עם /filter ⚙️"
-    )
+    await update.message.reply_text(bot_text("onboarding.filter_hint", lang))
 
     # 2026-09-15: used to send every current match as its own Telegram card right here — see
     # filter_conversation.py's _handle_save, which had the exact same pattern and the exact same
@@ -238,10 +231,12 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Now always just points at the website's own /apartments?uid=... view instead, same as there.
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
     if total:
-        await update.message.reply_text(f"👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}")
+        await update.message.reply_text(
+            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)
+        )
     else:
         await update.message.reply_text(
-            f"עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: {apartments_url}"
+            bot_text("onboarding.no_matches_yet", lang, apartments_url=apartments_url)
         )
 
     return ConversationHandler.END

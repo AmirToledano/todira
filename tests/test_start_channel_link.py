@@ -60,6 +60,7 @@ def _existing_user(**overrides):
         free_access_granted=False,
         trial_ends_at=_NOW + dt.timedelta(days=1),
         paid_until=None,
+        language="he",
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -70,7 +71,7 @@ def _existing_user(**overrides):
 
 def test_valid_link_code_attaches_telegram_id_to_the_code_owner():
     code_user = SimpleNamespace(id=9, telegram_user_id=None, telegram_username=None,
-                                 first_name=None, is_active=False)
+                                 first_name=None, is_active=False, language="he")
     # resolve_link_code succeeds; then the "does this telegram id already have its own account"
     # lookup finds nobody.
     session = _QueuedScalarSession(results=[None])
@@ -90,7 +91,7 @@ def test_valid_link_code_attaches_telegram_id_to_the_code_owner():
 
 def test_link_code_keeps_existing_first_name_if_code_owner_already_has_one():
     code_user = SimpleNamespace(id=9, telegram_user_id=None, telegram_username=None,
-                                 first_name="שם קיים", is_active=False)
+                                 first_name="שם קיים", is_active=False, language="he")
     session = _QueuedScalarSession(results=[None])
     with (
         patch.object(start_module, "get_session", lambda: session),
@@ -102,8 +103,8 @@ def test_link_code_keeps_existing_first_name_if_code_owner_already_has_one():
 
 
 def test_link_code_conflict_when_telegram_id_already_has_its_own_account():
-    code_user = SimpleNamespace(id=9, telegram_user_id=None)
-    other_existing_user = SimpleNamespace(id=42)  # a DIFFERENT row, already tied to this tg id
+    code_user = SimpleNamespace(id=9, telegram_user_id=None, language="he")
+    other_existing_user = SimpleNamespace(id=42, language="he")  # a DIFFERENT row, already tied to this tg id
     session = _QueuedScalarSession(results=[other_existing_user])
     with (
         patch.object(start_module, "get_session", lambda: session),

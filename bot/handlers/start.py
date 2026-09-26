@@ -24,6 +24,8 @@ from todira_common.channel_link import resolve_link_code
 from todira_common.db import get_session
 from todira_common.google_link import TOKEN_PREFIX as GOOGLE_LINK_TOKEN_PREFIX
 from todira_common.google_link import resolve_google_link_token
+from todira_common.bot_strings import BOT_STRINGS, bot_text
+from todira_common.language import DEFAULT_LANG, normalize_language_code
 from todira_common.models import User
 from sqlalchemy import select
 from telegram import Update
@@ -36,45 +38,32 @@ logger = logging.getLogger(__name__)
 # handlers/support.py's own copy) only this one handler needs it.
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
-WELCOME = (
-    "✨ 🏠 היי {name}! אני בוט חיפוש דירות אישי — סורק את שוק הדירות ומודיע לך כשמופיעה דירה "
-    "שמתאימה לסינון שלך.\n\n"
-    "פקודות:\n"
-    "/filter — הגדרת/עדכון הסינון שלך\n"
-    "/apartments — הדירות התואמות האחרונות\n"
-    "/liked — הדירות ששמרת\n"
-    "/profile — הפרופיל וההגדרות שלך\n\n"
-    "רוצה גם להתחבר באתר (Google/ווטסאפ)? {account_url} 🔗"
-)
-
-LINKED = "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת — מעכשיו תקבל עדכונים גם כאן בטלגרם."
-
-LINK_CONFLICT = (
-    "לחשבון הטלגרם הזה כבר יש חשבון נפרד אצלי, אז אי אפשר לחבר אותו לחשבון אחר. "
-    "אם זו טעות, כתוב/י לנו דרך /contact."
-)
-
+# 2026-09-26: these four now just alias todira_common/bot_strings.py's own Hebrew entries — the
+# single source of truth moved there so /start's reply can go out in the visitor's own language
+# (real owner request; see bot_strings.py's own docstring), but these names stay importable exactly
+# as before (tests reference start_module.WELCOME/LINKED/LINK_CONFLICT directly) and stay
+# byte-identical to what a Hebrew-speaking visitor already saw.
+WELCOME = BOT_STRINGS["start.welcome"]["he"]
+LINKED = BOT_STRINGS["start.linked"]["he"]
+LINK_CONFLICT = BOT_STRINGS["start.link_conflict"]["he"]
 # Prepended to the normal reply when a pending Google sign-in (gl_ deep-link token) got attached
 # to this user right here, right now — see google_link.py's module docstring for why this whole
 # mechanism exists.
-GOOGLE_LINKED_NOTE = (
-    "🔗 חשבון ה-Google שלך קושר בהצלחה לחשבון הזה — מעכשיו אפשר להתחבר איתו באתר, מכל דפדפן.\n\n"
-)
-
+GOOGLE_LINKED_NOTE = BOT_STRINGS["start.google_linked_note"]["he"]
 # 2026-09-04 — matches the reference product's own confirmed /start behavior for a returning user
 # whose trial/paid access has expired (screenshotted live): a personalized nudge naming their own
 # search cities, instead of the plain welcome, pointing straight at /upgrade.
-RENEWAL_NEEDED = (
-    "היי {name}! 👋 שוב אנחנו?\n\n"
-    "שמתי לב שתקופת הגישה שלך הסתיימה, אז ההתראות מושהות כרגע. "
-    "{cities_line}רוצה שנחדש את המנוי ונחזור לחפש לך דירה? אפשר ישר כאן: {upgrade_url} 🔥🏠"
-)
+RENEWAL_NEEDED = BOT_STRINGS["start.renewal_needed"]["he"]
 
 
-def _format_cities_he(cities: list[str]) -> str:
-    """"ירושלים, הר גילה ומבשרת ציון" — a natural-Hebrew join, not just a comma list."""
+def _format_cities(cities: list[str], lang: str) -> str:
+    """"ירושלים, הר גילה ומבשרת ציון" — a natural join, not just a comma list, for Hebrew (the
+    only language this grammar rule was ever written for); every other language gets a plain
+    comma-separated join, which reads naturally enough in each of them."""
     if not cities:
         return ""
+    if lang != "he":
+        return ", ".join(cities)
     if len(cities) == 1:
         return cities[0]
     return ", ".join(cities[:-1]) + " ו" + cities[-1]
@@ -110,13 +99,13 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                     # This Telegram account already has its OWN separate account — linking it to
                     # a second one would mean merging two rows' filters/history, which we don't
                     # do automatically. Leave both accounts exactly as they were.
-                    return "conflict", LINK_CONFLICT
+                    return "conflict", bot_text("start.link_conflict", existing.language)
                 code_user.telegram_user_id = tg_user.id
                 code_user.telegram_username = tg_user.username
                 code_user.first_name = code_user.first_name or tg_user.first_name
                 code_user.is_active = True
                 session.commit()
-                return "linked", LINKED
+                return "linked", bot_text("start.linked", code_user.language)
             # Unknown/expired code — fall through to the normal /start handling below rather
             # than erroring, since a plain "/start" with no payload hits this same path with
             # link_code=None every time.
@@ -134,6 +123,10 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                 telegram_user_id=tg_user.id,
                 telegram_username=tg_user.username,
                 first_name=tg_user.first_name,
+                # 2026-09-26: Telegram gives us the user's own device language for free — see
+                # todira_common/language.py's own docstring for why this channel auto-detects
+                # silently instead of asking (unlike WhatsApp).
+                language=normalize_language_code(getattr(tg_user, "language_code", None)),
             )
             session.add(user)
         else:
@@ -142,6 +135,7 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
             user.telegram_username = tg_user.username
             user.first_name = tg_user.first_name
         session.commit()
+        lang = user.language or DEFAULT_LANG
 
         # Don't silently overwrite an existing DIFFERENT Google link — same guard website/main.py's
         # auth_google_callback already applies for its own session_user_id fallback.
@@ -150,10 +144,12 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
             user.google_sub = pending_google_sub
             session.commit()
             google_linked_now = True
-        note = GOOGLE_LINKED_NOTE if google_linked_now else ""
+        note = bot_text("start.google_linked_note", lang) if google_linked_now else ""
 
         if is_new:
-            return "normal", note + WELCOME.format(
+            return "normal", note + bot_text(
+                "start.welcome",
+                lang,
                 name=tg_user.first_name or "",
                 account_url=f"{WEBSITE_URL}/account?uid={tg_user.id}",
             )
@@ -162,15 +158,19 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
         # any meaningful sense — a brand-new row never reaches here (handled above), and someone
         # mid-onboarding with no filter yet is always still within their fresh trial window.
         if user.filter is not None and not has_full_access(user, is_owner=is_owner):
-            cities = _format_cities_he(user.filter.cities)
-            reply = RENEWAL_NEEDED.format(
+            cities = _format_cities(user.filter.cities, lang)
+            reply = bot_text(
+                "start.renewal_needed",
+                lang,
                 name=tg_user.first_name or "",
-                cities_line=f"מתגעגע/ת לעדכונים על {cities}? " if cities else "",
+                cities_line=bot_text("start.renewal_cities_line", lang, cities=cities) if cities else "",
                 upgrade_url=f"{WEBSITE_URL}/upgrade?uid={tg_user.id}",
             )
             return "expired", note + reply
 
-        return "normal", note + WELCOME.format(
+        return "normal", note + bot_text(
+            "start.welcome",
+            lang,
             name=tg_user.first_name or "",
             account_url=f"{WEBSITE_URL}/account?uid={tg_user.id}",
         )
