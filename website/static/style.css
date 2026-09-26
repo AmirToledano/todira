@@ -1828,6 +1828,17 @@ body.apt-modal-open { overflow: hidden; }
   box-shadow: var(--shadow-sm); transition: background .12s ease;
 }
 .apt-contact-modal-upgrade-btn:hover { background: var(--teal-dark); text-decoration: none; }
+/* 2026-09-26 follow-up, explicit owner decision matching dorin.app's own popup exactly: a
+   secondary "view original listing" escape hatch that works even for a non-access viewer (unlike
+   the footer's own locked link) — apartments.html's script sets its href per-listing on open. */
+.apt-contact-modal-view-original-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+  margin-top: 10px; padding: 12px 16px; border-radius: var(--radius-md); font-size: .92rem;
+  font-weight: 700; text-decoration: none; background: transparent; color: var(--text) !important;
+  border: 1px solid var(--border); transition: background .12s ease;
+}
+.apt-contact-modal-view-original-btn[hidden] { display: none; }
+.apt-contact-modal-view-original-btn:hover { background: var(--teal-tint); text-decoration: none; }
 @media (max-width: 640px) {
   .apt-contact-modal { padding: 16px; }
 }

@@ -95,6 +95,12 @@ class _FakeSession:
         return self._user
 
     def get(self, model, pk):
+        # 2026-09-26: /go/{id} (main.py) looks up a Listing by pk directly, unlike every other
+        # route this fake session backs (all User lookups by uid/session) — real model-based
+        # dispatch here instead of always returning self._user, or that route's own tests below
+        # would get a _FakeUser back and blow up on listing.url.
+        if model is website_main.Listing:
+            return next((listing for listing in self._listings if listing.id == pk), None)
         return self._user
 
     def execute(self, stmt):
@@ -424,9 +430,36 @@ def test_apartments_contact_buttons_are_locked_for_an_expired_user(client):
     assert "secret999" not in resp.text  # no real link leaked anywhere, including these buttons
     assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' in resp.text
     assert 'class="contact-btn contact-btn-phone contact-locked-btn"' in resp.text
-    # the shared paywall modal + its /upgrade CTA are always rendered once per page
-    assert 'id="apt-contact-modal"' in resp.text
-    assert 'href="/upgrade?uid=222"' in resp.text
+    # 2026-09-26 follow-up: real owner decision to add a working "view original listing" escape
+    # hatch to the paywall modal even for this exact expired-user case — it has to point at the
+    # safe /go/{id} redirect (main.py), never the raw l.url, or this test's own "secret999 not in
+    # resp.text" assertion above would be lying about what actually leaked.
+    assert 'data-listing-go-url="/go/1"' in resp.text
+
+
+def test_go_to_listing_source_redirects_with_no_access_check(client):
+    """2026-09-26: the paywall modal's "view original listing" escape hatch (see the two tests
+    above) resolves through this route with zero access gating — same real owner decision, matching
+    dorin.app's own popup, that a non-access viewer can still reach a listing's actual source on
+    their own explicit click. No get_session/user patching here at all: this route doesn't look at
+    the request's identity, only the path's listing_id."""
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(_FakeUser(id=2, telegram_user_id=222), listings=[listing])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/go/1", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://yad2.co.il/item/secret999"
+
+
+def test_go_to_listing_source_404s_for_a_missing_listing(client):
+    fake_session = _FakeSession(_FakeUser(id=2, telegram_user_id=222), listings=[])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/go/999", follow_redirects=False)
+
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

@@ -167,8 +167,17 @@
        footer's own view-btn/locked link just below — this project never stores the poster's real
        phone/WhatsApp (see this file's own comment further up), so a has_access viewer's tap here
        goes to the listing's own original source page, same target as "view listing"; a non-access
-       viewer's tap opens the contact-paywall modal (apartments.html) instead of navigating. #}
-    <div class="contact-actions detail-only">
+       viewer's tap opens the contact-paywall modal (apartments.html) instead of navigating.
+       data-listing-go-url (2026-09-26 follow-up, explicit owner call after reviewing dorin.app's
+       own popup): unlike the footer's own locked link, dorin's paywall popup keeps a real, working
+       "view original listing" escape hatch even for a non-access viewer — the owner's own explicit
+       decision is to match that here too. Points at the /go/{id} redirect (main.py) rather than
+       l.url directly, so the real source URL still never sits in the page's own HTML for a
+       non-access viewer (keeps this project's existing never-leak-the-real-URL invariant intact —
+       see the two tests in test_website_content_gating.py asserting the real URL never appears in
+       an expired user's /apartments response); /go/{id} itself is deliberately open to everyone,
+       same as this escape hatch is meant to be. #}
+    <div class="contact-actions detail-only" data-listing-go-url="/go/{{ l.id }}">
       {% if has_access %}
       <a class="contact-btn contact-btn-whatsapp" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.whatsapp_btn') }}</a>
       <a class="contact-btn contact-btn-phone" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.phone_btn') }}</a>

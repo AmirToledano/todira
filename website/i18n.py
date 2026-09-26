@@ -1171,6 +1171,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "עברו למנוי פרימיום 👑", "en": "Go Premium 👑", "ru": "Перейти на Premium 👑",
         "fr": "Passer à Premium 👑", "ar": "الترقية إلى Premium 👑",
     },
+    # 2026-09-26 follow-up: explicit owner decision, matching dorin.app's own popup exactly — a
+    # secondary escape hatch that works even for a non-access viewer (unlike the footer's own
+    # locked link), straight to the listing's real original source.
+    "card.contact_modal_view_original_btn": {
+        "he": "צפייה במודעה המקורית ↗", "en": "View the original listing ↗",
+        "ru": "Смотреть оригинальное объявление ↗", "fr": "Voir l'annonce originale ↗",
+        "ar": "عرض الإعلان الأصلي ↗",
+    },
     # alt text for a listing's own real photos (2026-09-07 audit: every cover photo had alt="",
     # the same treatment as a genuinely decorative image — a screen-reader user got zero
     # information about what a card's actual photos showed). {city}/{rooms} are filled in from the

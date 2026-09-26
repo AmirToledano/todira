@@ -1093,6 +1093,29 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
         ).start()
 
 
+@app.get("/go/{listing_id}")
+def go_to_listing_source(listing_id: int):
+    """2026-09-26: real owner request, matching dorin.app's own contact-paywall popup exactly — its
+    "view original listing" escape hatch works even for a viewer with no access at all, unlike
+    every other real link to a listing's own source (the footer's view-btn/locked pair, the
+    contact-actions buttons), which stay has_access-gated. Deliberately NO access check here: this
+    route's entire purpose is to be the one place a non-access viewer can still reach a listing's
+    real source, on their own explicit click.
+
+    Exists so _listing_card.html never has to embed the real l.url in a locked card's markup itself
+    (which would leak every shown listing's source into the page's raw HTML for ANY viewer, access
+    or not, defeating the whole point of gating it — see this project's own existing invariant,
+    tested in test_website_content_gating.py, that a non-access viewer's /apartments response never
+    contains a listing's real URL). Instead the card renders /go/{id} (this route) as the target,
+    and the real URL is only ever resolved server-side, one listing at a time, at the moment of that
+    click."""
+    with get_session() as session:
+        listing = session.get(Listing, listing_id)
+        if listing is None:
+            raise StarletteHTTPException(status_code=404)
+        return RedirectResponse(listing.url, status_code=302)
+
+
 @app.get("/apartments")
 def apartments(request: Request, uid: int | None = None, offset: int = 0, fragment: bool = False):
     lang = get_lang(request)
