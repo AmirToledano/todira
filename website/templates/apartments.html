@@ -152,6 +152,12 @@
     </button>
     <div class="apt-filter-pane-detail-body apt-detail-body" id="apt-filter-pane-detail-body"></div>
    </div>
+   {# 2026-09-26 real owner report: the detail view above is genuinely taller than this pane, so
+      the description/contact section always sat below the fold with no visual cue anything was
+      there. Real element (not a pseudo-element) so it can be absolutely positioned against
+      .apt-filter-pane's own box regardless of scroll offset — apartments.html's own script toggles
+      the parent's .has-more-below class from real scroll position. #}
+   <div class="apt-filter-pane-scroll-fade" id="apt-filter-pane-scroll-fade" aria-hidden="true"></div>
   </aside>
 </div>
 
@@ -372,6 +378,7 @@
     var modalBackdrop = document.getElementById('apt-listing-modal-backdrop');
     var modalHeader = document.getElementById('apt-listing-modal-header');
     var modalBody = document.getElementById('apt-listing-modal-body');
+    var filterPaneEl = document.getElementById('apt-filter-pane');
     var filterPaneInner = document.getElementById('apt-filter-pane-inner');
     var filterPaneDetail = document.getElementById('apt-filter-pane-detail');
     var filterPaneDetailBack = document.getElementById('apt-filter-pane-detail-back');
@@ -403,6 +410,11 @@
       main.decoding = 'async';
       main.alt = altText || '';
       main.src = imageUrls[0];
+      // The main photo loading in (async, after openListingDetail's own scroll-fade check already
+      // ran) can grow the pane's real scrollHeight enough to newly overflow — re-check once it's
+      // actually in the layout. updateFilterPaneScrollFade is a hoisted function declaration
+      // defined later in this same script, safe to reference here.
+      main.addEventListener('load', updateFilterPaneScrollFade);
       wrap.appendChild(main);
       if (imageUrls.length > 1) {
         var thumbs = document.createElement('div');
@@ -483,6 +495,22 @@
       return clone;
     }
 
+    // 2026-09-26 real owner report: signals there's more to see below the fold in .apt-filter-pane
+    // (whichever content it's currently showing, the filter form or a listing's detail view)
+    // without needing a visible scrollbar — see this element's own template comment and
+    // style.css's .apt-filter-pane-scroll-fade rule. The 2px slack absorbs sub-pixel rounding so
+    // the fade doesn't linger forever right at a true bottom scroll position.
+    function updateFilterPaneScrollFade() {
+      if (!filterPaneEl) { return; }
+      var hasMore = filterPaneEl.scrollHeight - filterPaneEl.scrollTop - filterPaneEl.clientHeight > 2;
+      filterPaneEl.classList.toggle('has-more-below', hasMore);
+    }
+    if (filterPaneEl) {
+      filterPaneEl.addEventListener('scroll', updateFilterPaneScrollFade);
+      window.addEventListener('resize', updateFilterPaneScrollFade);
+      updateFilterPaneScrollFade();
+    }
+
     function openListingDetail(card) {
       var clone = buildDetailContent(card);
       lastFocusedEl = document.activeElement;
@@ -494,6 +522,8 @@
         filterPaneInner.hidden = true;
         filterPaneDetail.hidden = false;
         filterPaneDetailBack.focus();
+        if (filterPaneEl) { filterPaneEl.scrollTop = 0; }
+        updateFilterPaneScrollFade();
       } else {
         openMode = 'modal';
         modalBody.innerHTML = '';
@@ -510,6 +540,8 @@
       if (openMode === 'panel') {
         filterPaneDetail.hidden = true;
         filterPaneInner.hidden = false;
+        if (filterPaneEl) { filterPaneEl.scrollTop = 0; }
+        updateFilterPaneScrollFade();
       } else if (openMode === 'modal') {
         modal.hidden = true;
         document.body.classList.remove('apt-modal-open');

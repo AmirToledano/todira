@@ -1,0 +1,24 @@
+{% macro onboarding_steps(step) %}
+{# Shared 3-step progress indicator for the dorin.app-style first-time onboarding flow (2026-09-26,
+   real owner request from the 33-page PDF walkthrough): filter setup -> notifications connect ->
+   trial activation. `step` is the CURRENTLY ACTIVE step (1, 2, or 3) — a step before it is "done"
+   (teal, filled), the active one is teal too (matching dorin's own look, where the current step
+   isn't visually distinct from a completed one — only the connecting line ahead of it is still
+   grey), anything after stays the plain grey/outline default. #}
+<div class="onboarding-steps">
+  <div class="onboarding-step {{ 'done' if step > 1 else 'active' if step == 1 else '' }}">
+    <div class="onboarding-step-circle">1</div>
+    <div class="onboarding-step-label">{{ t('onboarding.step1_title') }}</div>
+  </div>
+  <div class="onboarding-step-line {{ 'done' if step > 1 else '' }}"></div>
+  <div class="onboarding-step {{ 'done' if step > 2 else 'active' if step == 2 else '' }}">
+    <div class="onboarding-step-circle">2</div>
+    <div class="onboarding-step-label">{{ t('onboarding.step2_title') }}</div>
+  </div>
+  <div class="onboarding-step-line {{ 'done' if step > 2 else '' }}"></div>
+  <div class="onboarding-step {{ 'active' if step == 3 else '' }}">
+    <div class="onboarding-step-circle">3</div>
+    <div class="onboarding-step-label">{{ t('onboarding.step3_title') }}</div>
+  </div>
+</div>
+{% endmacro %}
