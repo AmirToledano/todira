@@ -235,7 +235,18 @@ export default function Hero() {
            item (text) on the right and the second (image) on the left at desktop width, same as
            the original .hero-split layout it replaces. */
         @media (min-width: 860px) {
-          .tl-hero-grid { grid-template-columns: 1.1fr 0.9fr; text-align: start; }
+          /* minmax(0, ...) on BOTH tracks, not bare 1.1fr/0.9fr — a real bug found live at
+             intermediate desktop widths (e.g. a browser window at roughly half a 1920px screen,
+             ~960px): without an explicit 0 minimum, a grid track's default minimum is its content's
+             min-content size, and for a replaced element like the hero <img> below that's its
+             INTRINSIC size (1184px, this image's real width attribute) — far wider than the ~370px
+             this track actually has available at that width, even though the image itself is
+             capped to max-width:340px. The browser then had to satisfy that oversized minimum,
+             squeezing the text column down and visually overlapping the image over the CTA
+             buttons/proof card below it. The mobile rule just above already gets this right
+             (minmax(0, 1fr)); this override was replacing it with plain fr values instead of
+             layering minmax(0, ...) onto the new ones. */
+          .tl-hero-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); text-align: start; }
           .tl-hero-h1, .tl-hero-lead { margin-left: 0; margin-right: 0; }
           .tl-hero-ctas { justify-content: flex-start; }
           .tl-hero-proof { justify-content: flex-start; }
