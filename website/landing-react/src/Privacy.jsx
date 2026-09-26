@@ -111,7 +111,11 @@ export default function Privacy() {
 
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.64, ease: easePremium }}>
         <h2>{tr("privacy.s10_title")}</h2>
-        <p>{tr("privacy.s10_body")}</p>
+        <p>
+          {tr("privacy.s10_body_pre")}
+          <a href="mailto:amir81358@gmail.com">amir81358@gmail.com</a>
+          {tr("privacy.s10_body_post")}
+        </p>
       </motion.div>
     </div>
   );
