@@ -556,6 +556,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "עד 6,000 ₪", "en": "Up to ₪6,000", "ru": "До 6 000 ₪", "fr": "Jusqu'à 6 000 ₪",
         "ar": "حتى 6,000 ₪",
     },
+    # 2026-09-26: the query→chips demo used to just show the same 3 facts twice back-to-back with a
+    # bare "↓" between them — a real visitor screenshot flagged this as reading like an accidental
+    # duplication, not a parsing demo. This label (shown between the highlighted query and the
+    # chips, see Features.jsx) plus highlighting the matching phrases directly inside the query
+    # bubble now makes the "AI extracted these 3 things from your sentence" point explicit instead
+    # of implied by a lone arrow.
+    "home.feature1_understood_label": {
+        "he": "הבינה המלאכותית זיהתה:", "en": "AI identified:", "ru": "ИИ определил:",
+        "fr": "L'IA a identifié :", "ar": "الذكاء الاصطناعي حدد:",
+    },
     "home.feature2_title": {
         "he": "התראות בזמן אמת", "en": "Real-time alerts", "ru": "Уведомления в реальном времени",
         "fr": "Alertes en temps réel", "ar": "تنبيهات فورية",

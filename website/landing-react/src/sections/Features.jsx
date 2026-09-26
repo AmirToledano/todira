@@ -4,6 +4,13 @@ import { useSpotlight } from "../useSpotlight";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
+// Matches the chip pill styling below (var(--card) background, teal text/border) so a highlighted
+// phrase inside the query bubble visually reads as "this becomes that chip," not as a coincidence.
+const highlightStyle = {
+  background: "var(--card)", color: "var(--teal)", fontWeight: 700,
+  borderRadius: 6, padding: "0 5px", whiteSpace: "nowrap",
+};
+
 const FEATURES = [
   { titleKey: "home.feature1_title", bodyKey: "home.feature1_body" },
   { titleKey: "home.feature2_title", bodyKey: "home.feature2_body" },
@@ -57,18 +64,28 @@ function FeatureCard({ f, index }) {
           {/* Fixed Hebrew example, not a translation key — matches feature1_body's own
               "you write to the bot in Hebrew" framing (see i18n.py's own comment on the
               original home.html version of this), stays Hebrew regardless of page language;
-              only the parsed chip labels below translate. */}
+              only the parsed chip labels below translate. The three phrases below are
+              highlighted (highlightStyle, matching the chip pills' own colors) precisely because
+              they're the SAME words as the chips beneath them — a real visitor screenshot flagged
+              the un-highlighted version as reading like an accidental duplication rather than a
+              parsing demo; highlighting + the home.feature1_understood_label caption below make
+              the "AI extracted these 3 things from your sentence" point explicit instead of
+              relying on a lone "↓" to imply it. */}
           <motion.div
             variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}
             style={{
               background: "var(--surface-tint, var(--teal-tint))", borderRadius: 12, padding: "10px 14px",
-              fontSize: ".88rem", color: "var(--text)", textAlign: "start", direction: "rtl",
+              fontSize: ".88rem", color: "var(--text)", textAlign: "start", direction: "rtl", lineHeight: 1.8,
             }}
           >
-            "2-3 חדרים בתל אביב עד 6000 שקל"
+            "<span style={highlightStyle}>2-3 חדרים</span> ב<span style={highlightStyle}>תל אביב</span> עד{" "}
+            <span style={highlightStyle}>6000 שקל</span>"
           </motion.div>
-          <motion.div variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }} style={{ textAlign: "center", color: "var(--text-muted)", margin: "8px 0" }}>
-            ↓
+          <motion.div
+            variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }}
+            style={{ textAlign: "center", color: "var(--teal)", fontSize: ".78rem", fontWeight: 700, margin: "10px 0" }}
+          >
+            {t("home.feature1_understood_label")}
           </motion.div>
           <motion.div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
             {[t("home.feature1_example_city"), t("home.feature1_example_rooms"), t("home.feature1_example_price")].map((chip) => (

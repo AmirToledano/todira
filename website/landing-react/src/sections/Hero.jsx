@@ -223,6 +223,12 @@ export default function Hero() {
         }
         .tl-hero-h1, .tl-hero-lead { margin-left: auto; margin-right: auto; }
         .tl-hero-ctas { justify-content: center; }
+        /* tl-hero-proof (live badge + example card) is a flex row with no justify-content of its
+           own — without this it defaults to flex-start, which in this RTL page pins both items to
+           the right and leaves a large, pointless blank gap to their left below 860px (same single-
+           column, centered layout every other hero element above it already gets). Found live,
+           owner screenshot: the example card "floating alone on the right." */
+        .tl-hero-proof { justify-content: center; }
         /* No "order" overrides needed: DOM order is already text-then-image (matches the
            original site's mobile stacking), and CSS grid follows the container's own text
            direction for column placement — in this RTL page that already puts the first grid
@@ -232,6 +238,7 @@ export default function Hero() {
           .tl-hero-grid { grid-template-columns: 1.1fr 0.9fr; text-align: start; }
           .tl-hero-h1, .tl-hero-lead { margin-left: 0; margin-right: 0; }
           .tl-hero-ctas { justify-content: flex-start; }
+          .tl-hero-proof { justify-content: flex-start; }
         }
         /* animation lives here (className), not in the style= prop above — same "inline style
            always wins over a stylesheet rule, media queries included" lesson already found twice
