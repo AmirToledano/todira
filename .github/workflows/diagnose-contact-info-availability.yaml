@@ -15,35 +15,47 @@ jobs:
   yad2-bright-data:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger + poll the SAME Bright Data DCA collector already used for descriptions, dump the FULL raw record
+      # 2026-09-26: rewritten to route through Bright Data Web Unlocker instead of the DCA
+      # collector this job originally used — that collector is a confirmed permanent dead end on
+      # this account's trial tier (see common/todira_common/bright_data_client.py's own
+      # fetch_listing_description docstring and scraper/yad2_client.py's module docstring for the
+      # full story). Same __NEXT_DATA__ page this project's own real, working
+      # fetch_listing_detail_via_web_unlocker/fetch_yad2_description_via_web_unlocker already
+      # parse — this just dumps the FULL raw record (not just the fields those functions already
+      # extract) so every nested object (customer, etc) can be hunted for a real phone/contact
+      # field before any new scraping work gets built around an assumption.
+      - name: Fetch a real Yad2 listing detail page via Web Unlocker, dump the FULL raw __NEXT_DATA__ record
         env:
           BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
-          BRIGHT_DATA_COLLECTOR_ID: ${{ secrets.BRIGHT_DATA_COLLECTOR_ID }}
         run: |
-          curl -sS -X POST "https://api.brightdata.com/dca/trigger?collector=${BRIGHT_DATA_COLLECTOR_ID}" \
+          curl -sS -X POST "https://api.brightdata.com/request" \
             -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d '[{"url": "https://www.yad2.co.il/realestate/item/center-and-sharon/etfkmgb5"}]' \
-            -o /tmp/trigger.json -w "trigger http_status=%{http_code}\n" --max-time 30
-          cat /tmp/trigger.json
-          JOB_ID=$(python3 -c "import json; print(json.load(open('/tmp/trigger.json'))['collection_id'])")
-          echo "job_id=$JOB_ID"
-          for i in $(seq 1 20); do
-            curl -sS "https://api.brightdata.com/dca/dataset?id=${JOB_ID}" \
-              -H "Authorization: Bearer ${BRIGHT_DATA_API_KEY}" \
-              -o /tmp/result.json -w "poll $i http_status=%{http_code}\n" --max-time 30
-            SIZE=$(wc -c < /tmp/result.json)
-            echo "  result size: $SIZE bytes"
-            if [ "$SIZE" -gt 5 ]; then break; fi
-            sleep 3
-          done
-          echo "--- full raw record (searching for contact-ish fields) ---"
+            -d '{"zone": "web_unlocker1", "url": "https://www.yad2.co.il/realestate/item/center-and-sharon/etfkmgb5", "format": "raw"}' \
+            -o /tmp/yad2.html -w "fetch http_status=%{http_code} size=%{size_download}\n" --max-time 90
+          echo "--- full raw __NEXT_DATA__ ad record (searching for contact-ish fields) ---"
           python3 - << 'PYEOF'
-          import json
-          with open('/tmp/result.json') as f:
-              data = json.load(f)
-          row = data[0] if isinstance(data, list) and data else data
-          print("Top-level keys:", list(row.keys()) if isinstance(row, dict) else type(row))
+          import json, re
+          with open('/tmp/yad2.html', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+          match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+          if match is None:
+              print("NO __NEXT_DATA__ FOUND — first 2000 chars of response:")
+              print(html[:2000])
+              raise SystemExit(0)
+          next_data = json.loads(match.group(1))
+          queries = next_data["props"]["pageProps"]["dehydratedState"]["queries"]
+          row = None
+          for q in queries:
+              data = q.get("state", {}).get("data")
+              if isinstance(data, dict) and "token" in data:
+                  row = data
+                  break
+          if row is None:
+              print("NO ad-data query found among", len(queries), "queries")
+              raise SystemExit(0)
+          print("Top-level keys:", list(row.keys()))
+
           def hunt(obj, path=""):
               if isinstance(obj, dict):
                   for k, v in obj.items():
@@ -55,6 +67,8 @@ jobs:
                   for i, v in enumerate(obj[:3]):
                       hunt(v, f"{path}[{i}]")
           hunt(row)
+          print("\n--- full 'customer' object (the field most likely to carry contact info) ---")
+          print(json.dumps(row.get("customer"), ensure_ascii=False, indent=2))
           PYEOF
 
   komo-and-homeless:
