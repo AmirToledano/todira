@@ -1,0 +1,136 @@
+name: Diagnose — WhatsApp proactive "new listing" sends not going out at all
+
+# Real owner report (2026-09-26): WhatsApp isn't sending any listing notifications at all. This is
+# the PROACTIVE Message Template send (scraper/notifier.py's _send_whatsapp_match_template), a
+# completely different code path from the bot's own inbound webhook replies (already fixed earlier
+# tonight — a System User scoped to the wrong WABA). That earlier fix changed WHICH WhatsApp
+# Business Account the access token authenticates against; if the approved Message Template
+# (WHATSAPP_MATCH_TEMPLATE_NAME) was submitted/approved under the OLD (test) WABA, or the deployed
+# WHATSAPP_PHONE_NUMBER_ID still points at that old WABA's phone number, sends now silently fail
+# (scraper/notifier.py's _whatsapp_eligible is an all-or-nothing gate; whatsapp_client.py's own
+# _post_message fails soft — logged, no crash, no owner-visible error). Read-only: checks the
+# deployed config, the live phone number's real WABA ownership, and whether the configured template
+# actually exists/is approved there, via the live scraper cronjob's own pod/secret.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Deployed WHATSAPP_MATCH_TEMPLATE_NAME / LANGUAGE on the scraper cronjob (not secret)
+        run: |
+          kubectl get cronjob todira-scraper -n todira -o json | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          envs = d['spec']['jobTemplate']['spec']['template']['spec']['containers'][0].get('env', [])
+          for e in envs:
+              if e.get('name', '').startswith('WHATSAPP_'):
+                  print(e['name'], '=', e.get('value', '(from secret — checked separately below)'))
+          " | tee template_env.txt
+
+      - name: Real WhatsApp phone number + WABA ownership, and template approval status (via Meta Graph API)
+        run: |
+          TEMPLATE_NAME=$(grep WHATSAPP_MATCH_TEMPLATE_NAME template_env.txt | sed 's/.*= *//')
+          echo "configured template name: $TEMPLATE_NAME"
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-whatsapp-sends
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-whatsapp-sends
+                image: python:3.11-slim
+                env:
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                  - name: WHATSAPP_PHONE_NUMBER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-phone-number-id
+                        optional: true
+                  - name: TEMPLATE_NAME
+                    value: "$TEMPLATE_NAME"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet httpx
+                    python3 -c "
+                    import os
+                    import httpx
+
+                    token = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+                    phone_id = os.environ.get('WHATSAPP_PHONE_NUMBER_ID')
+                    template_name = os.environ.get('TEMPLATE_NAME', '').strip()
+                    print('token set:', bool(token), '| phone_id set:', bool(phone_id), '| phone_id:', phone_id)
+                    print('configured template_name:', repr(template_name))
+
+                    if not token or not phone_id:
+                        print('Cannot check further — token or phone_number_id missing.')
+                    else:
+                        print()
+                        print('--- phone number details (which WABA it belongs to, verified_name, quality) ---')
+                        r = httpx.get(
+                            f'https://graph.facebook.com/v21.0/{phone_id}',
+                            params={'fields': 'verified_name,display_phone_number,quality_rating,platform_type,whatsapp_business_account'},
+                            headers={'Authorization': f'Bearer {token}'},
+                            timeout=15,
+                        )
+                        print(r.status_code, r.text)
+                        waba_id = None
+                        try:
+                            waba = r.json().get('whatsapp_business_account')
+                            waba_id = waba.get('id') if isinstance(waba, dict) else waba
+                        except Exception as e:
+                            print('could not parse waba id:', e)
+
+                        if waba_id and template_name:
+                            print()
+                            print(f'--- does {template_name!r} exist / what is its status on WABA {waba_id}? ---')
+                            r2 = httpx.get(
+                                f'https://graph.facebook.com/v21.0/{waba_id}/message_templates',
+                                params={'name': template_name},
+                                headers={'Authorization': f'Bearer {token}'},
+                                timeout=15,
+                            )
+                            print(r2.status_code, r2.text)
+                        elif not waba_id:
+                            print('Could not determine the WABA id from the phone number response above — see its raw JSON.')
+                        elif not template_name:
+                            print('No template name configured at all (WHATSAPP_MATCH_TEMPLATE_NAME is empty) — this alone fully explains zero sends: _whatsapp_eligible() in scraper/notifier.py requires it to be truthy for ANY WhatsApp send to even be attempted.')
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-whatsapp-sends -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira diag-whatsapp-sends || true
+          kubectl delete pod diag-whatsapp-sends -n todira --ignore-not-found
+
+      - name: Recent scraper job logs, filtered for whatsapp/error (last run, tail 500)
+        if: always()
+        run: |
+          JOB=$(kubectl get jobs -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null || echo "")
+          echo "most recent scraper job: $JOB"
+          if [ -n "$JOB" ]; then
+            kubectl logs -n todira "job/$JOB" --tail=2000 2>/dev/null | grep -i -E "whatsapp|_whatsapp_eligible|send_template" || echo "(no whatsapp-related lines in the last 2000)"
+          fi
