@@ -127,7 +127,7 @@
   <div class="apt-resize-handle" data-target="filter" role="separator" aria-orientation="vertical"
        aria-label="{{ t('apartments.resize_filter_label') }}" tabindex="0"></div>
   <aside class="apt-filter-pane" id="apt-filter-pane">
-   <div class="apt-filter-pane-inner">
+   <div class="apt-filter-pane-inner" id="apt-filter-pane-inner">
     <h2 class="apt-filter-title">{{ t('apartments.filter_panel_title') }}</h2>
     {% if user and user.filter %}
     <form method="post" action="/filter">
@@ -136,6 +136,21 @@
       <button class="btn block" type="submit">{{ t('filter.save_btn') }}</button>
     </form>
     {% endif %}
+   </div>
+   {# 2026-09-26: real owner request — on desktop (>=900px, matching this workspace's own
+      mobile/desktop breakpoint below), opening a listing swaps THIS sidebar's own content for the
+      listing's details in place, dorin.app's own pattern — not the floating modal further below,
+      which mobile keeps using unchanged. Lives as a sibling of .apt-filter-pane-inner (not
+      replacing it) so the filter form's own state (any unsaved edits) is preserved underneath
+      while the detail view is showing, exactly restored on "back". apartments.html's own script
+      builds the SAME detail content (gallery/description/posted-date) this feeds from as the
+      modal does — see buildDetailContent() — just displayed in a different place depending on
+      viewport width at the moment the listing was opened. #}
+   <div class="apt-filter-pane-detail" id="apt-filter-pane-detail" hidden>
+    <button type="button" class="apt-filter-pane-detail-back" id="apt-filter-pane-detail-back">
+      {{ t('apartments.detail_back_to_filter_label') }}
+    </button>
+    <div class="apt-filter-pane-detail-body apt-detail-body" id="apt-filter-pane-detail-body"></div>
    </div>
   </aside>
 </div>
@@ -161,7 +176,7 @@
        "posted X ago" tucked in the footer. These two translated strings feed openListingDetail()'s
        own DOM-building below (same data-attribute-to-JS pattern as the map toggle's own labels
        above), since the modal body is built dynamically and has no server-rendered listing yet. #}
-    <div class="apt-listing-modal-body" id="apt-listing-modal-body"
+    <div class="apt-listing-modal-body apt-detail-body" id="apt-listing-modal-body"
          data-description-heading="{{ t('apartments.detail_description_heading') }}"
          data-posted-on-template="{{ t('apartments.detail_posted_on', date='__DATE__') }}"></div>
   </div>
@@ -314,21 +329,34 @@
 
 <script>
   (function () {
-    // Listing-detail modal (2026-09-24, real owner request — explicitly correcting an earlier
-    // version of this feature that swapped the filter sidebar's own content in place instead of
-    // opening a real overlay; see apartments.html's own template comment on the modal markup for
-    // the full context). Clicking a listing card opens a floating window on TOP of the whole page,
-    // on both desktop and mobile, closed by tapping the bar/✕ fixed at its own top — the card's
-    // existing interactive elements (like/hide reaction buttons, the outbound link) are explicitly
-    // excluded so they keep working exactly as before, never hijacked into opening the modal.
+    // Listing-detail view: a floating modal on mobile, a filter-sidebar swap on desktop (2026-09-26
+    // real owner request — desktop should match dorin.app's own pattern of replacing the filter
+    // panel in place, with a "back to filters" control, while mobile keeps the floating-overlay
+    // behavior from 2026-09-24 unchanged; see apartments.html's own template comments on both
+    // markup blocks for the fuller history). Both surfaces render the exact same built content
+    // (buildDetailContent below) — only WHERE it's displayed differs, decided once per open() call
+    // by the viewport width at that moment (>=900px matches this workspace's own existing
+    // mobile/desktop breakpoint, style.css's `@media (max-width: 900px)`). Clicking a listing
+    // card's own inert surface opens it; the card's existing interactive elements (like/hide
+    // reaction buttons, the outbound link) are explicitly excluded so they keep working exactly as
+    // before, never hijacked into opening the detail view.
     var grid = document.getElementById('listing-grid');
     var modal = document.getElementById('apt-listing-modal');
     var modalBackdrop = document.getElementById('apt-listing-modal-backdrop');
     var modalHeader = document.getElementById('apt-listing-modal-header');
     var modalBody = document.getElementById('apt-listing-modal-body');
+    var filterPaneInner = document.getElementById('apt-filter-pane-inner');
+    var filterPaneDetail = document.getElementById('apt-filter-pane-detail');
+    var filterPaneDetailBack = document.getElementById('apt-filter-pane-detail-back');
+    var filterPaneDetailBody = document.getElementById('apt-filter-pane-detail-body');
     if (!grid || !modal || !modalBackdrop || !modalHeader || !modalBody) { return; }
+    var hasDesktopSwap = !!(filterPaneInner && filterPaneDetail && filterPaneDetailBack && filterPaneDetailBody);
+    function isDesktopViewport() {
+      return hasDesktopSwap && window.matchMedia('(min-width: 900px)').matches;
+    }
 
     var lastFocusedEl = null;
+    var openMode = null; // 'modal' | 'panel' | null — which surface is currently showing a listing
 
     // Real photo gallery (2026-09-24, real owner request — the modal used to just clone the
     // card's own small swipe carousel, which read as "a bigger card" rather than a genuinely
@@ -370,17 +398,21 @@
       return wrap;
     }
 
-    function openListingDetail(card) {
+    // Builds the actual detail content (gallery/description/posted-date) from a clicked card —
+    // shared by both the mobile modal and the desktop filter-pane swap, so the two surfaces never
+    // drift apart. Reads its translated strings off modalBody's own data attributes regardless of
+    // which container ends up displaying the result — those strings are identical either way, so
+    // there's no need to duplicate them onto the filter-pane markup too.
+    function buildDetailContent(card) {
       var clone = card.cloneNode(true);
       clone.classList.remove('reveal');
       clone.removeAttribute('style');
       // The grid card truncates the description to 140 chars (see _listing_card.html) — the
-      // modal has room to show it in full, using the untruncated text stashed on the card.
+      // detail view has room to show it in full, using the untruncated text stashed on the card.
       // 2026-09-25 real owner request (comparing directly against dorin.app's own bottom-sheet,
       // which shows a real "תיאור הנכס" section heading, not just a bare paragraph): insert one
-      // before the description, using the translated string stashed on modalBody (see this
-      // template's own comment on that data attribute) — nothing here fabricates data, only adds
-      // a heading in front of the exact same real description text as before.
+      // before the description — nothing here fabricates data, only adds a heading in front of
+      // the exact same real description text as before.
       var desc = clone.querySelector('.listing-desc');
       if (desc && card.dataset.descriptionFull) {
         desc.textContent = card.dataset.descriptionFull;
@@ -417,26 +449,48 @@
           footer.after(postedLine);
         }
       }
-      modalBody.innerHTML = '';
-      modalBody.appendChild(clone);
-      modalBody.scrollTop = 0;
+      return clone;
+    }
+
+    function openListingDetail(card) {
+      var clone = buildDetailContent(card);
       lastFocusedEl = document.activeElement;
-      modal.hidden = false;
-      document.body.classList.add('apt-modal-open'); // blocks background scroll while open
-      modalHeader.focus();
+      if (isDesktopViewport()) {
+        openMode = 'panel';
+        filterPaneDetailBody.innerHTML = '';
+        filterPaneDetailBody.appendChild(clone);
+        filterPaneDetailBody.scrollTop = 0;
+        filterPaneInner.hidden = true;
+        filterPaneDetail.hidden = false;
+        filterPaneDetailBack.focus();
+      } else {
+        openMode = 'modal';
+        modalBody.innerHTML = '';
+        modalBody.appendChild(clone);
+        modalBody.scrollTop = 0;
+        modal.hidden = false;
+        document.body.classList.add('apt-modal-open'); // blocks background scroll while open
+        modalHeader.focus();
+      }
     }
     window.__aptOpenListingDetail = openListingDetail; // read by the Leaflet script below, on pin click
 
     function closeListingDetail() {
-      modal.hidden = true;
-      document.body.classList.remove('apt-modal-open');
+      if (openMode === 'panel') {
+        filterPaneDetail.hidden = true;
+        filterPaneInner.hidden = false;
+      } else if (openMode === 'modal') {
+        modal.hidden = true;
+        document.body.classList.remove('apt-modal-open');
+      }
+      openMode = null;
       if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') { lastFocusedEl.focus(); }
     }
 
     grid.addEventListener('click', function (e) {
       // Never hijack the card's own interactive elements — like/hide reaction buttons (<button>
       // inside a <form>) and the outbound "לצפייה במודעה"/"שדרג" link (<a>) must keep working
-      // exactly as before; only a click on the card's own inert surface opens the modal.
+      // exactly as before; only a click on the card's own inert surface opens the detail view.
       if (e.target.closest('a, button, input, label')) { return; }
       var card = e.target.closest('.listing-card');
       if (!card) { return; }
@@ -444,12 +498,17 @@
     });
 
     // Close via the top header bar (tap/click anywhere on it, including its own ✕), the backdrop,
-    // or Escape — several equally-obvious ways out, matching how a real floating window behaves.
+    // or Escape — several equally-obvious ways out, matching how a real floating window behaves
+    // (mobile). The desktop panel swap has its own single, always-visible "back to filters" button
+    // instead — no backdrop/Escape there, since it isn't an overlay sitting on top of anything.
     modalHeader.addEventListener('click', closeListingDetail);
     modalBackdrop.addEventListener('click', closeListingDetail);
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !modal.hidden) { closeListingDetail(); }
+      if (e.key === 'Escape' && openMode === 'modal') { closeListingDetail(); }
     });
+    if (hasDesktopSwap) {
+      filterPaneDetailBack.addEventListener('click', closeListingDetail);
+    }
   })();
 </script>
 
