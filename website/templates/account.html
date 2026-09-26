@@ -1,150 +1,29 @@
 {% extends "base.html" %}
 {% set active_page = "account" %}
 {% block title %}{{ t('meta.title_account') }}{% endblock %}
+{% block extra_head %}
+{% for css_url in landing_css_urls %}<link rel="stylesheet" href="{{ css_url }}">{% endfor %}
+{% endblock %}
 {% block content %}
-
-<div class="page-banner reveal">
-  <div class="pb-text">
-    <h1>{{ t('account.h1') }}</h1>
-    <p>{{ t('account.subtitle') }}</p>
-  </div>
-</div>
-
-<div class="settings-card reveal" style="margin-bottom:20px">
-  <div class="field-row">
-    {% if not display_is_owner %}
-    <div class="field" style="text-align:center">
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('account.subscription_title') }}</div>
-      {% if has_access %}
-        <p class="channel-status connected">
-          {% if paid_until %}{{ t('account.subscription_active', date=paid_until.strftime('%d/%m/%Y')) }}
-          {% elif trial_ends_at %}{{ t('account.subscription_trial', date=trial_ends_at.strftime('%d/%m/%Y')) }}
-          {% endif %}
-        </p>
-      {% else %}
-        <p class="amc-status amc-status-warn" style="font-size:.95rem;font-weight:600">{{ t('account.subscription_expired') }}</p>
-      {% endif %}
-      {% if has_active_subscription %}
-        {% if cancel_at_period_end %}
-          <p class="field-hint" style="margin-top:6px">{{ t('account.subscription_will_not_renew') }}</p>
-          <form method="post" action="/account/resume-subscription" style="margin-top:10px">
-            {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-            {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
-            <button type="submit" class="btn gold block">{{ t('account.resume_subscription_cta') }}</button>
-          </form>
-        {% else %}
-          <p class="field-hint" style="margin-top:6px">{{ t('account.subscription_auto_renews') }}</p>
-          <form method="post" action="/account/cancel-subscription" style="margin-top:10px">
-            {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-            {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
-            <button type="submit" class="btn outline block">{{ t('account.cancel_subscription_cta') }}</button>
-          </form>
-        {% endif %}
-      {% else %}
-      <a class="btn gold block" style="margin-top:10px" href="/upgrade{{ '?uid=' ~ uid if uid else ('?wid=' ~ wid if wid else '') }}">
-        {{ t('account.upgrade_cta_renew') if has_access else t('account.upgrade_cta_start') }}
-      </a>
-      {% endif %}
-    </div>
-    {% endif %}
-    <div class="field" style="text-align:center">
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('account.notifications_title') }}</div>
-      <p class="channel-status {{ 'connected' if notifications_enabled else '' }}">
-        {{ t('account.status_on') if notifications_enabled else t('account.status_off') }}
-      </p>
-      <form method="post" action="/account/notifications" style="margin-top:10px">
-        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
-        <button type="submit" class="btn outline block">{{ t('account.notifications_toggle_off') if notifications_enabled else t('account.notifications_toggle_on') }}</button>
-      </form>
-    </div>
-    {% if has_whatsapp %}
-    <div class="field" style="text-align:center">
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('account.whatsapp_notifications_title') }}</div>
-      <p class="channel-status {{ 'connected' if whatsapp_notifications_opted_in else '' }}">
-        {{ t('account.status_on') if whatsapp_notifications_opted_in else t('account.status_off') }}
-      </p>
-      <form method="post" action="/account/whatsapp-notifications" style="margin-top:10px">
-        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
-        <button type="submit" class="btn outline block">{{ t('account.whatsapp_notifications_toggle_off') if whatsapp_notifications_opted_in else t('account.whatsapp_notifications_toggle_on') }}</button>
-      </form>
-      <p class="field-hint" style="margin-top:10px">{{ t('account.whatsapp_notifications_hint') }}</p>
-    </div>
-    {% endif %}
-  </div>
-</div>
-
-<div class="settings-card reveal">
-  <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('account.channels_title') }}</div>
-  <div class="field-row">
-    <div class="field channel-tile">
-      <span class="channel-icon" aria-hidden="true">
-        <svg width="30" height="30" viewBox="0 0 24 24"><path fill="#229ED9" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-      </span>
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">Telegram</div>
-      {% if has_telegram %}
-        <p class="channel-status connected">{{ t('account.channel_connected') }}</p>
-      {% elif telegram_link %}
-        <a class="btn telegram block" href="{{ telegram_link }}" target="_blank">{{ t('account.telegram_connect_cta') }}</a>
-        <p class="field-hint" style="margin-top:10px">{{ t('account.telegram_connect_hint') }}</p>
-      {% else %}
-        <p class="field-hint">{{ t('account.no_active_code') }}</p>
-      {% endif %}
-    </div>
-    <div class="field channel-tile">
-      <span class="channel-icon" aria-hidden="true">
-        <svg width="30" height="30" viewBox="0 0 24 24"><path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-      </span>
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">WhatsApp</div>
-      {% if has_whatsapp %}
-        <p class="channel-status connected">{{ t('account.channel_connected') }}</p>
-      {% elif whatsapp_link %}
-        <a class="btn whatsapp block" href="{{ whatsapp_link }}" target="_blank">{{ t('account.whatsapp_connect_cta') }}</a>
-        <p class="field-hint" style="margin-top:10px">{{ t('account.whatsapp_connect_hint') }}</p>
-      {% elif code %}
-        <p class="field-hint">{{ t('account.whatsapp_connect_unavailable') }}</p>
-      {% else %}
-        <p class="field-hint">{{ t('account.no_active_code') }}</p>
-      {% endif %}
-    </div>
-    <div class="field channel-tile">
-      <span class="channel-icon channel-icon-plain" aria-hidden="true">
-        <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.9c1.7-1.57 2.7-3.87 2.7-6.6z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.66 9c0-.59.1-1.17.29-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
-      </span>
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">Google</div>
-      {% if has_google %}
-        <p class="channel-status connected">{{ t('account.channel_connected') }}</p>
-      {% else %}
-        <a class="btn google block" href="/auth/google/start?next=/account{{ '&uid=' ~ uid if uid else '' }}">{{ t('account.google_connect_cta') }}</a>
-      {% endif %}
-    </div>
-  </div>
-  {% if code %}
-  <p class="field-hint" style="text-align:center;margin-top:20px">
-    {{ t('account.code_hint_prefix') }} <b>{{ code }}</b> {{ t('account.code_hint_suffix') }}
-  </p>
-  {% endif %}
-</div>
-
-{% if payments %}
-<div class="settings-card reveal" style="margin-top:20px">
-  <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('account.payment_history_title') }}</div>
-  <div class="payment-history">
-    {% for payment in payments %}
-    <div class="payment-row">
-      {# 2026-09-10 fix: was plan_labels.get(...), a Hebrew-only backend dict — same pattern as
-         the payment-status dict on the next line, but built from the real i18n keys so this
-         renders in the visitor's own language. #}
-      <span class="payment-plan">{{ {'weekly': t('upgrade.plan_weekly'), 'biweekly': t('upgrade.plan_biweekly'), 'monthly': t('upgrade.plan_monthly'), 'monthly_subscription': t('upgrade.plan_subscription')}.get(payment.plan, payment.plan) }}</span>
-      <span class="payment-amount">₪{{ payment.amount_ils }}</span>
-      <span class="payment-date">{{ (payment.paid_at or payment.created_at).strftime('%d/%m/%Y') }}</span>
-      <span class="amc-status {{ 'amc-status-ok' if payment.status == 'paid' else ('amc-status-warn' if payment.status == 'pending' else 'amc-status-bad') }}">
-        {{ {'paid': t('account.payment_status_paid'), 'pending': t('account.payment_status_pending'), 'failed': t('account.payment_status_failed'), 'cancelled': t('account.payment_status_cancelled')}.get(payment.status, payment.status) }}
-      </span>
-    </div>
-    {% endfor %}
-  </div>
-</div>
+{# 2026-09-25: eighth page moved into a React island, same pattern as login.html — see that
+   template's own comment and main.py's account()/_landing_react_assets(). The 4 POST actions
+   (cancel/resume-subscription, notifications, whatsapp-notifications) are UNCHANGED — still plain
+   form-encoded POSTs, not fetch — see account()'s own comment on why. account_config carries
+   everything the React page needs (subscription/notification/channel state, payment history) as
+   ONE object via `| tojson`, not field-by-field like the simpler pages — real DB-derived data
+   (dates, payment amounts, a wid token that's user-supplied on the wid-only login path) has no
+   business being hand-interpolated into a <script> block one value at a time; `tojson` is what
+   actually makes this safe (real JSON/JS-string escaping, including `<`/`>` so nothing in here —
+   even a field this route's own author didn't think to double-check — can break out of the
+   script tag), the same lesson login.html's own `next | tojson` was added for. The header/nav/
+   footer (base.html) stay exactly as they were; only this content block became React. #}
+<div id="root"></div>
+<script>
+  window.__TODIRA_PAGE__ = Object.assign({ lang: "{{ lang }}", dir: "{{ dir }}" }, {{ account_config | tojson }});
+</script>
+{% if landing_js_url %}
+<script type="module" src="{{ landing_js_url }}"></script>
+{% else %}
+<p style="text-align:center;padding:60px 20px;color:var(--text-muted)">landing-react bundle not built yet — run `npm run build` in website/landing-react/.</p>
 {% endif %}
 {% endblock %}

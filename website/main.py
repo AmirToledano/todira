@@ -2066,33 +2066,61 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
             )
         )
 
+    # 2026-09-25: eighth page moved into a React island (website/landing-react/account.html) —
+    # same pattern as about()/accessibility()/.../login() above, but unlike those, the 4 POST
+    # actions below (cancel/resume-subscription, notifications, whatsapp-notifications) are
+    # deliberately UNCHANGED — still plain form-encoded POSTs redirecting back to /account, not
+    # fetch. A full page reload after a subscription/notification change is completely fine UX
+    # (that's exactly what already happens), so there's no reason to widen this into the
+    # fetch-based rewrite /contact needed for its own real-time-feeling submit; Account.jsx's own
+    # <form>s just reskin the presentation around the exact same native POSTs, with the same
+    # hidden uid/wid fields. Dates are pre-formatted server-side (dd/mm/yyyy, matching the
+    # template's own strftime calls exactly) rather than passed as raw datetimes for React to
+    # reformat — one less thing that could drift from the original rendering. payment.plan/.status
+    # are passed as their raw slugs (not translated here) — Account.jsx does the same
+    # slug->translated-label lookup the original template's own inline dict did, via its own t(),
+    # matching how every other converted page translates client-side rather than server-side.
+    account_assets = _landing_react_assets("account.html")
     return _render(
         request,
         "account.html",
         {
-            "uid": redirect_uid,
-            "wid": redirect_wid,
-            "has_telegram": has_telegram,
-            "has_whatsapp": has_whatsapp,
-            "has_google": has_google,
-            "code": code,
-            "telegram_link": f"https://t.me/AmirDirotBot?start={code}" if code else None,
-            "whatsapp_link": (
-                f"https://wa.me/{WHATSAPP_PUBLIC_NUMBER}?text={code}"
-                if code and WHATSAPP_PUBLIC_NUMBER
-                else None
-            ),
-            # named display_is_owner, not is_owner: _render() always overwrites an "is_owner" key
-            # with the real session-based nav-admin-link check, so a route-supplied one is silently dropped.
-            "display_is_owner": _display_is_owner(request, user.telegram_user_id),
-            "has_access": access,
-            "trial_ends_at": user.trial_ends_at,
-            "paid_until": user.paid_until,
-            "notifications_enabled": notifications_enabled,
-            "whatsapp_notifications_opted_in": whatsapp_notifications_opted_in,
-            "payments": payments,
-            "has_active_subscription": user.takbull_subscription_uniqid is not None,
-            "cancel_at_period_end": user.cancel_at_period_end,
+            "landing_js_url": account_assets.get("js", ""),
+            "landing_css_urls": account_assets.get("css", []),
+            "account_config": {
+                "uid": redirect_uid,
+                "wid": redirect_wid,
+                "hasTelegram": has_telegram,
+                "hasWhatsapp": has_whatsapp,
+                "hasGoogle": has_google,
+                "code": code,
+                "telegramLink": f"https://t.me/AmirDirotBot?start={code}" if code else None,
+                "whatsappLink": (
+                    f"https://wa.me/{WHATSAPP_PUBLIC_NUMBER}?text={code}"
+                    if code and WHATSAPP_PUBLIC_NUMBER
+                    else None
+                ),
+                # named displayIsOwner, not isOwner: _render() always overwrites an "is_owner" key
+                # with the real session-based nav-admin-link check, so a route-supplied one would
+                # be silently dropped if it kept that name.
+                "displayIsOwner": _display_is_owner(request, user.telegram_user_id),
+                "hasAccess": access,
+                "trialEndsAt": user.trial_ends_at.strftime("%d/%m/%Y") if user.trial_ends_at else None,
+                "paidUntil": user.paid_until.strftime("%d/%m/%Y") if user.paid_until else None,
+                "notificationsEnabled": notifications_enabled,
+                "whatsappNotificationsOptedIn": whatsapp_notifications_opted_in,
+                "payments": [
+                    {
+                        "plan": payment.plan,
+                        "amountIls": payment.amount_ils,
+                        "date": (payment.paid_at or payment.created_at).strftime("%d/%m/%Y"),
+                        "status": payment.status,
+                    }
+                    for payment in payments
+                ],
+                "hasActiveSubscription": user.takbull_subscription_uniqid is not None,
+                "cancelAtPeriodEnd": user.cancel_at_period_end,
+            },
         },
     )
 

@@ -6,11 +6,11 @@ Motion "islands" inside the existing server-rendered site: the home page
 how-it-works steps, FAQ, closing CTA banner), the about page (`/about`),
 the accessibility statement (`/accessibility`), the privacy policy
 (`/privacy`), the terms of use (`/terms`), the contact page
-(`/contact`), and the login screen (`/login`). Everything else on the
-site (`/apartments`, payments, admin, the WhatsApp/Telegram webhooks, and
-the header/nav/footer that wrap every one of these pages) is still the
-original server-rendered Jinja2 + vanilla CSS/JS the rest of `website/`
-is built on.
+(`/contact`), the login screen (`/login`), and the account page
+(`/account`). Everything else on the site (`/apartments`, payments, admin,
+the WhatsApp/Telegram webhooks, and the header/nav/footer that wrap every
+one of these pages) is still the original server-rendered Jinja2 + vanilla
+CSS/JS the rest of `website/` is built on.
 
 ## Why this exists
 
@@ -77,29 +77,53 @@ rather than being pure presentation:
   uses the plain `t()` helper throughout, not the he/en-only `tEn()`
   pattern those pages use.
 
-Login was the seventh (and last one planned so far) — mostly static
-content like the legal pages (a headline, three "continue with" links, an
-optional hint), but with one thing worth its own note: **`next`
-(the post-login redirect target) is the first value injected into
-`window.__TODIRA_PAGE__`, across any converted page, that's genuinely
-attacker-influenceable text.** Every other injected value so far is either
-a fixed-whitelist string (`lang`/`dir`), an int (`uid`), or a trusted env
-var (`whatsappPublicNumber`) — `next` is a visitor's own query parameter,
-and `main.py`'s `_safe_next()` only requires it start with a single `/`;
-it doesn't restrict the character set otherwise. `login.html` injects it
-with Jinja's `{{ next | tojson }}` rather than a hand-written
-`"{{ next }}"` — `tojson` does real JSON/JS-string escaping (including
-`<`/`>`, so a crafted `next` can't break out via a literal quote or a
-`</script>` sequence), which plain HTML autoescaping doesn't guarantee for
-script-block context. `i18n.js` exports it as `next`, already-sanitized,
-safe to use directly when `Login.jsx` builds the Google OAuth start link —
-see `tests/test_website_login_page.py`'s own regression test for this.
+Login was the seventh — mostly static content like the legal pages (a
+headline, three "continue with" links, an optional hint), but with one
+thing worth its own note: **`next` (the post-login redirect target) is the
+first value injected into `window.__TODIRA_PAGE__`, across any converted
+page, that's genuinely attacker-influenceable text.** Every other injected
+value so far is either a fixed-whitelist string (`lang`/`dir`), an int
+(`uid`), or a trusted env var (`whatsappPublicNumber`) — `next` is a
+visitor's own query parameter, and `main.py`'s `_safe_next()` only requires
+it start with a single `/`; it doesn't restrict the character set
+otherwise. `login.html` injects it with Jinja's `{{ next | tojson }}`
+rather than a hand-written `"{{ next }}"` — `tojson` does real JSON/
+JS-string escaping (including `<`/`>`, so a crafted `next` can't break out
+via a literal quote or a `</script>` sequence), which plain HTML
+autoescaping doesn't guarantee for script-block context. `i18n.js` exports
+it as `next`, already-sanitized, safe to use directly when `Login.jsx`
+builds the Google OAuth start link — see `tests/test_website_login_page.py`'s
+own regression test for this.
+
+Account was the eighth (and last one planned so far) — real subscription/
+notification/channel state and a payment-history table, the heaviest data
+shape of any converted page. Two things worth their own note:
+
+- **Its 4 POST actions (cancel/resume-subscription, notifications,
+  whatsapp-notifications) are deliberately UNCHANGED** — still plain
+  `<form method="post">` submits redirecting back to `/account`, not
+  `fetch`. A full page reload after a subscription/notification change is
+  exactly what already happens and is completely fine UX for it, so unlike
+  `/contact`'s real reason to go fetch-based (a form the visitor expects to
+  feel instant, with inline success/error state), there's no reason to
+  widen `/account`'s blast radius by touching its action routes at all —
+  `Account.jsx` only reskins presentation around those same native forms
+  and hidden `uid`/`wid` fields. See `main.py`'s `account()` route comment.
+- **The whole `account_config` object goes through `{{ ... | tojson }}`
+  as one value**, not field-by-field the way `lang`/`dir`/`uid` etc. are
+  on the simpler pages — real DB-derived data (dates, payment amounts, a
+  `wid` token that's user-supplied on the wid-only login path) has no
+  business being hand-interpolated into a `<script>` block one value at a
+  time the way `login.html`'s own `next | tojson` finding already showed
+  matters. `i18n.js`'s `pageConfig` export is the generic escape hatch for
+  this — a page whose config is too shaped/heavy to deserve individual
+  named exports there.
 
 ## How it's wired into the site
 
 - `vite.config.js`'s `build.rollupOptions.input` lists one entry per React
   page (`index` → `index.html` → home, `about` → `about.html` → about, and
-  so on for `accessibility`/`privacy`/`terms`/`contact`/`login`). Adding another
+  so on for `accessibility`/`privacy`/`terms`/`contact`/`login`/`account`). Adding another
   page-as-React-island means adding one more entry here,
   not spinning up a whole separate Vite project — shared `node_modules`,
   shared `content.json`/`i18n.js`/component library (e.g. `Blob.jsx`), and
@@ -131,19 +155,22 @@ see `tests/test_website_login_page.py`'s own regression test for this.
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
 `TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
-`about.*`, `accessibility.*`, `privacy.*`, `terms.*`, `contact.*`, and
-`login.*` key, plus a handful of exact keys from elsewhere in the file that
-a React page reuses rather than re-authoring — e.g.
+`about.*`, `accessibility.*`, `privacy.*`, `terms.*`, `contact.*`,
+`login.*`, and `account.*` key, plus a handful of exact keys from elsewhere
+in the file that a React page reuses rather than re-authoring — e.g.
 `upgrade.value_anchor_title`/`_body`, reused on the home page's Compare
 section so the price reassurance shown there stays the same real copy as
-`/upgrade` itself, not a second, driftable copy of it. All 5 supported
-languages where they exist — `about.*`/`accessibility.*`/`privacy.*`/
-`terms.*` are deliberately he/en only, see below; `contact.*`/`login.*` are
-fully translated like `home.*`), not hand-written placeholder text.
-`src/i18n.js`'s `t(key, vars?)` reads from it using the language
-`window.__TODIRA_PAGE__.lang` carries — the optional second argument does
-`.format()`-style `{name}` placeholder substitution, matching `i18n.py`'s
-own `t(key, **kwargs)` (used by `login.hint`'s `{telegram_cta}`).
+`/upgrade` itself; `upgrade.plan_weekly`/`_biweekly`/`_monthly`/
+`_subscription`, reused by `Account.jsx`'s own payment-history plan
+labels, same reasoning — not a second, driftable copy of it. All 5
+supported languages where they exist — `about.*`/`accessibility.*`/
+`privacy.*`/`terms.*` are deliberately he/en only, see below;
+`contact.*`/`login.*`/`account.*` are fully translated like `home.*`), not
+hand-written placeholder text. `src/i18n.js`'s `t(key, vars?)` reads from
+it using the language `window.__TODIRA_PAGE__.lang` carries — the optional
+second argument does `.format()`-style `{name}` placeholder substitution,
+matching `i18n.py`'s own `t(key, **kwargs)` (used by `login.hint`'s
+`{telegram_cta}`).
 
 A translation string never contains raw HTML (no `| safe` anywhere in this
 codebase). Where a sentence needs inline markup — `privacy.s1_item7_pre`/
@@ -165,11 +192,13 @@ import json
 ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
-prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.', 'login.')
+prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.', 'login.', 'account.')
 exact = {
     'meta.title_home', 'meta.description', 'meta.title_about', 'meta.title_accessibility',
     'meta.title_privacy', 'meta.title_terms', 'meta.title_contact', 'meta.title_login',
-    'legal.non_native_notice', 'upgrade.value_anchor_title', 'upgrade.value_anchor_body',
+    'meta.title_account', 'legal.non_native_notice', 'upgrade.value_anchor_title',
+    'upgrade.value_anchor_body', 'upgrade.plan_weekly', 'upgrade.plan_biweekly',
+    'upgrade.plan_monthly', 'upgrade.plan_subscription',
 }
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:
