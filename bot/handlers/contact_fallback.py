@@ -26,7 +26,9 @@ from __future__ import annotations
 import asyncio
 
 from todira_common import cities, gemini_client
+from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
+from todira_common.language import DEFAULT_LANG
 from todira_common.matching import safe_range_update
 from todira_common.models import Filter
 from todira_common.users import get_or_create_user
@@ -37,12 +39,13 @@ from telegram.ext import ContextTypes, MessageHandler
 from telegram.ext import filters as tg_filters
 
 
-def _load_filter_sync(tg_user) -> tuple[int, dict | None]:
+def _load_filter_sync(tg_user) -> tuple[int, dict | None, str]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
+        lang = user.language or DEFAULT_LANG
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
         if filter_row is None:
-            return user.id, None
+            return user.id, None, lang
         current_filter = {
             "deal_type": filter_row.deal_type,
             "cities": filter_row.cities,
@@ -52,7 +55,7 @@ def _load_filter_sync(tg_user) -> tuple[int, dict | None]:
             "price_max": filter_row.price_max,
             "keywords": filter_row.keywords,
         }
-        return user.id, current_filter
+        return user.id, current_filter, lang
 
 
 def _apply_filter_change_sync(user_id: int, result: dict) -> None:
@@ -86,15 +89,18 @@ def _apply_filter_change_sync(user_id: int, result: dict) -> None:
 async def handle_stray_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text or ""
 
+    # looks_like_help_request stays checked FIRST, before touching this module's own get_session
+    # at all — same precedence bot/handlers/support.py's own docstring already establishes,
+    # deliberately kept independent of the filter-loading session below (so a broken DB session
+    # here can never take the escalation path down with it). This one reply stays Hebrew-only for
+    # now — getting its own language would mean a DB read this path is specifically meant to avoid.
     if looks_like_help_request(text):
         await escalate_to_owner(update, context, text)
-        await update.message.reply_text(
-            "תודה שכתבת! ההודעה שלך התקבלה ואנחנו נחזור אליך בהקדם 🙏\n\n"
-            "לחיפוש דירות: /start"
-        )
+        await update.message.reply_text(bot_text("contact_fallback.help_escalated", DEFAULT_LANG))
         return
 
-    user_id, current_filter = await asyncio.to_thread(_load_filter_sync, update.effective_user)
+    user_id, current_filter, lang = await asyncio.to_thread(_load_filter_sync, update.effective_user)
+
     if current_filter is not None:
         result = await asyncio.to_thread(
             gemini_client.chat_with_existing_user,
@@ -102,20 +108,19 @@ async def handle_stray_message(update: Update, context: ContextTypes.DEFAULT_TYP
             current_filter,
             cities.CITIES,
             update.effective_user.first_name,
+            lang,
         )
         if result is None:
-            await update.message.reply_text(
-                "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע."
-            )
+            await update.message.reply_text(bot_text("contact_fallback.error", lang))
             return
         if result.get("filter_changed"):
             await asyncio.to_thread(_apply_filter_change_sync, user_id, result)
-        await update.message.reply_text(result.get("response_message") or "בסדר! 🙂")
+        await update.message.reply_text(
+            result.get("response_message") or bot_text("contact_fallback.default_ack", lang)
+        )
         return
 
-    await update.message.reply_text(
-        "היי! 🐶 אני טודירה, בוט חיפוש הדירות. כדי להתחיל לחפש דירה, שלח/י /start."
-    )
+    await update.message.reply_text(bot_text("contact_fallback.new_user_prompt", lang))
 
 
 def build_contact_fallback_handler() -> MessageHandler:

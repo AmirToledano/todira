@@ -179,7 +179,7 @@ def test_casual_message_does_not_escalate_just_redirects_to_start(monkeypatch):
         with (
             patch.object(support, "get_session") as get_session_mock,
             patch.object(contact_fallback, "get_session", lambda: no_filter_session),
-            patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+            patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
         ):
             _run(contact_fallback.handle_stray_message(update, context))
         get_session_mock.assert_not_called()
@@ -194,7 +194,7 @@ def test_casual_message_reply_mentions_start_not_support():
 
     with (
         patch.object(contact_fallback, "get_session", lambda: no_filter_session),
-        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
     ):
         _run(contact_fallback.handle_stray_message(update, context))
 
@@ -248,7 +248,7 @@ def test_onboarded_user_casual_message_gets_gemini_chat_reply_not_start_redirect
 
     with (
         patch.object(contact_fallback, "get_session", lambda: session),
-        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
         patch.object(
             contact_fallback.gemini_client,
             "chat_with_existing_user",
@@ -307,7 +307,7 @@ def test_onboarded_user_filter_change_message_updates_filter_directly():
 
     with (
         patch.object(contact_fallback, "get_session", lambda: session),
-        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
         patch.object(
             contact_fallback.gemini_client,
             "chat_with_existing_user",
@@ -332,7 +332,7 @@ def test_onboarded_user_gemini_failure_sends_hiccup_message():
 
     with (
         patch.object(contact_fallback, "get_session", lambda: session),
-        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1)),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
         patch.object(contact_fallback.gemini_client, "chat_with_existing_user", return_value=None),
     ):
         _run(contact_fallback.handle_stray_message(update, context))

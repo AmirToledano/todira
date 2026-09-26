@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from todira_common.language import normalize_language_code
 from todira_common.models import User
 
 
@@ -14,10 +15,17 @@ def get_or_create_user(session: Session, tg_user) -> User:
     user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
     if user is not None:
         return user
+    # 2026-09-26: Telegram gives us the user's own device language for free on every update
+    # (telegram.User.language_code) — auto-detect silently at creation time rather than asking,
+    # unlike WhatsApp (get_or_create_whatsapp_user below), which has no such signal at all. Only
+    # normalized to one of our 5 supported languages; an unrecognized/regional code (or none at
+    # all) leaves this None, same as it already was before this column existed — every read site
+    # treats None as todira_common.language.DEFAULT_LANG.
     user = User(
         telegram_user_id=tg_user.id,
         telegram_username=tg_user.username,
         first_name=tg_user.first_name,
+        language=normalize_language_code(getattr(tg_user, "language_code", None)),
     )
     session.add(user)
     try:

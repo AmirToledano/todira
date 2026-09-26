@@ -26,6 +26,7 @@ if str(_WEBSITE_DIR) not in sys.path:
 import whatsapp_webhook  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from todira_common.bot_strings import bot_text  # noqa: E402
 from todira_common.wid_token import verify_wid_token  # noqa: E402
 
 
@@ -322,8 +323,8 @@ class _FakeSession:
         return False
 
 
-def _fake_user(pending_state=None):
-    return SimpleNamespace(id=1, pending_onboarding_state=pending_state)
+def _fake_user(pending_state=None, language="he"):
+    return SimpleNamespace(id=1, pending_onboarding_state=pending_state, language=language)
 
 
 class _QueuedScalarSession:
@@ -352,7 +353,7 @@ class _QueuedScalarSession:
 
 
 def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
-    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name=None)
+    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name=None, language="he")
     session = _QueuedScalarSession(results=[None])  # conflict check: nobody else has this number
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
@@ -371,7 +372,7 @@ def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
 
 
 def test_link_code_does_not_overwrite_an_existing_first_name():
-    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name="שם קיים")
+    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name="שם קיים", language="he")
     session = _QueuedScalarSession(results=[None])
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
@@ -385,8 +386,8 @@ def test_link_code_does_not_overwrite_an_existing_first_name():
 
 
 def test_link_code_conflict_when_whatsapp_number_already_has_a_different_account():
-    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name=None)
-    other_existing_user = SimpleNamespace(id=42)  # a DIFFERENT row already using this wa_id
+    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name=None, language="he")
+    other_existing_user = SimpleNamespace(id=42, language="he")  # a DIFFERENT row already using this wa_id
     session = _QueuedScalarSession(results=[other_existing_user])
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
@@ -605,8 +606,8 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert send_text_mock.call_args_list[0][0] == ("9725500000", "מעולה, קיבלתי הכל!")
     assert send_text_mock.call_args_list[1][0][0] == "9725500000"
     assert "נרשמת" in send_text_mock.call_args_list[1][0][1]
-    assert send_text_mock.call_args_list[2][0][1] == whatsapp_webhook._FILTER_EDIT_FOLLOWUP_1
-    assert send_text_mock.call_args_list[3][0][1] == whatsapp_webhook._FILTER_EDIT_FOLLOWUP_2
+    assert send_text_mock.call_args_list[2][0][1] == bot_text("whatsapp.filter_edit_followup1", "he")
+    assert send_text_mock.call_args_list[3][0][1] == bot_text("whatsapp.filter_edit_followup2", "he")
     # 2026-09-08: a second CTA button now follows the filter-edit prompt, asking the user to opt
     # in to proactive WhatsApp Message Template notifications on /account — see
     # _send_notifications_optin_prompt's own docstring for why this is collected as a real button
@@ -781,8 +782,8 @@ def test_help_request_saves_message_notifies_owner_and_sends_contact_button(monk
 
     send_cta_mock.assert_called_once_with(
         "9725500000",
-        whatsapp_webhook._HELP_REQUEST_BODY,
-        whatsapp_webhook._HELP_REQUEST_BUTTON_TEXT,
+        bot_text("whatsapp.help_request_body", "he"),
+        bot_text("whatsapp.help_request_button", "he"),
         f"{whatsapp_webhook.WEBSITE_URL}/contact",
     )
     send_text_mock.assert_not_called()
@@ -881,6 +882,7 @@ def test_process_payload_sync_one_bad_message_does_not_abort_the_rest_of_the_bat
 
     with (
         patch.object(whatsapp_webhook, "_already_processed", return_value=False),
+        patch.object(whatsapp_webhook, "_ensure_language_selected_sync", return_value="he"),
         patch.object(whatsapp_webhook, "_fire_typing_indicator"),
         patch.object(whatsapp_webhook, "_handle_incoming_text_sync", side_effect=_fake_handle),
     ):

@@ -60,7 +60,7 @@ def test_valid_token_links_google_sub_to_a_brand_new_user():
 def test_valid_token_links_google_sub_to_an_existing_unlinked_user():
     user = SimpleNamespace(
         id=2, telegram_user_id=555, telegram_username="amirt", first_name="Amir",
-        is_active=False, filter=None, google_sub=None,
+        is_active=False, filter=None, google_sub=None, language="he",
     )
     session = _QueuedScalarSession(results=[user])
     with (
@@ -77,7 +77,7 @@ def test_valid_token_links_google_sub_to_an_existing_unlinked_user():
 def test_valid_token_does_not_overwrite_an_existing_different_google_link():
     user = SimpleNamespace(
         id=2, telegram_user_id=555, telegram_username="amirt", first_name="Amir",
-        is_active=False, filter=None, google_sub="already-linked-sub",
+        is_active=False, filter=None, google_sub="already-linked-sub", language="he",
     )
     session = _QueuedScalarSession(results=[user])
     with (
@@ -122,6 +122,7 @@ def test_plain_start_never_calls_resolve_google_link_token():
 def test_channel_link_code_payload_never_calls_resolve_google_link_token():
     code_user = SimpleNamespace(
         id=9, telegram_user_id=None, telegram_username=None, first_name=None, is_active=False,
+        language="he",
     )
     session = _QueuedScalarSession(results=[None])
     with (
@@ -143,6 +144,7 @@ def test_google_linked_note_is_prepended_before_the_renewal_nudge_too():
         id=2, telegram_user_id=555, telegram_username="amirt", first_name="Amir",
         is_active=False, filter=SimpleNamespace(cities=["חיפה"]), google_sub=None,
         trial_ends_at=now - dt.timedelta(days=1), paid_until=None, free_access_granted=False,
+        language="he",
     )
     session = _QueuedScalarSession(results=[user])
     with (
