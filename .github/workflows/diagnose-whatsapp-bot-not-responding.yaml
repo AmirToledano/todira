@@ -1,0 +1,78 @@
+name: Diagnose WhatsApp bot not responding
+
+# 2026-09-26 real owner report: sent a real WhatsApp message to the bot's number and got no reply
+# at all (screenshot: message sent, no response, not even the old auto-reply that used to fire).
+# Read-only, from inside the live website pod (website/whatsapp_webhook.py handles this) so the
+# actual WHATSAPP_ACCESS_TOKEN/WHATSAPP_APP_SECRET never leave the pod or get printed anywhere —
+# this execs into the running container and uses the SAME httpx client the app itself already
+# depends on to ask Meta's own Graph API whether the access token and phone number are actually
+# healthy, which is the single most common way a previously-working WhatsApp Cloud API integration
+# goes silent (a short-lived token expiring, or the phone number's own messaging status changing)
+# with zero application-level error to see in a log, since _verify_signature/whatsapp_client just
+# see an HTTP failure, not "why."
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Website pod status
+        run: kubectl get pods -n todira -l app=todira-website -o wide
+
+      - name: Which WHATSAPP_* env vars are actually set on the live pod (names/lengths only, never values)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}')
+          echo "pod: $POD"
+          kubectl exec -n todira "$POD" -- python3 -c "
+          import os
+          for name in ('WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'WHATSAPP_APP_SECRET'):
+              v = os.environ.get(name)
+              print(f'{name}: set={bool(v)} length={len(v) if v else 0}')
+          "
+
+      - name: Ask Meta's Graph API whether the access token + phone number are actually healthy
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$POD" -- python3 -c "
+          import os
+          import httpx
+
+          token = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+          phone_id = os.environ.get('WHATSAPP_PHONE_NUMBER_ID')
+
+          if not token or not phone_id:
+              print('Cannot check Graph API — token or phone_number_id is missing on this pod.')
+          else:
+              print('--- phone number status (verified_name, quality_rating, messaging status) ---')
+              r = httpx.get(
+                  f'https://graph.facebook.com/v21.0/{phone_id}',
+                  params={'fields': 'verified_name,code_verification_status,quality_rating,platform_type,throughput'},
+                  headers={'Authorization': f'Bearer {token}'},
+                  timeout=15,
+              )
+              print(r.status_code, r.text)
+
+              print()
+              print('--- token debug (is_valid, expires_at, scopes) — reveals an expired/revoked token ---')
+              r2 = httpx.get(
+                  'https://graph.facebook.com/debug_token',
+                  params={'input_token': token, 'access_token': token},
+                  timeout=15,
+              )
+              print(r2.status_code, r2.text)
+          "
+
+      - name: Recent website pod logs, filtered for whatsapp/error/exception (last 800 lines)
+        if: always()
+        run: |
+          kubectl logs -n todira -l app=todira-website --tail=800 | grep -i -E "whatsapp|error|exception|webhook" || echo "(no matching lines in the last 800)"
