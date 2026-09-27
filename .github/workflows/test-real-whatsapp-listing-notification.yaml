@@ -1,0 +1,136 @@
+name: Test — send ONE real WhatsApp listing-match template to the owner's own account
+
+# Real owner question (2026-09-27, right after linking WhatsApp + opting in): will proactive
+# "new listing matches your filter" pushes actually reach him, or only in theory? Waiting for a
+# genuinely new matching listing to appear organically could take hours — not answerable before the
+# owner's own usage budget for tonight runs out. This sends ONE real WhatsApp Message Template send
+# to the OWNER'S OWN opted-in number (via OWNER_TELEGRAM_USER_ID, never an arbitrary user), using a
+# REAL recent listing's data, through the exact same payload shape scraper/notifier.py's
+# _send_whatsapp_match_template + todira_common/whatsapp_client.py's send_template_message build —
+# then prints Meta's own literal response (not just True/False), since whatsapp_client.py's own
+# fail-soft logging never includes response.text (see diagnose-whatsapp-send-failure-detail.yaml's
+# own docstring for the same gap found earlier tonight).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch owner + a real recent listing, build the exact production payload, send for real
+        run: |
+          kubectl delete pod test-wa-real-notif -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test-wa-real-notif
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: test-wa-real-notif
+                image: python:3.11-slim
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                  - name: WHATSAPP_PHONE_NUMBER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-phone-number-id
+                        optional: true
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet httpx psycopg2-binary
+                    python3 -c "
+                    import os, httpx, psycopg2, psycopg2.extras
+
+                    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+                    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+                    owner_tg_id = os.environ.get('OWNER_TELEGRAM_USER_ID')
+                    cur.execute(
+                        'SELECT id, whatsapp_phone_number, whatsapp_notifications_opted_in FROM users WHERE telegram_user_id = %s',
+                        (owner_tg_id,),
+                    )
+                    user = cur.fetchone()
+                    print('owner row:', {k: v for k, v in user.items()} if user else None)
+                    if not user or not user['whatsapp_phone_number'] or not user['whatsapp_notifications_opted_in']:
+                        print('RESULT: owner is not whatsapp-eligible right now (see _whatsapp_eligible) — not sending.')
+                        raise SystemExit(0)
+
+                    cur.execute('SELECT id, street, neighborhood, city, rooms, price FROM listings ORDER BY id DESC LIMIT 1')
+                    listing = cur.fetchone()
+                    print('using real listing:', dict(listing) if listing else None)
+                    if not listing:
+                        print('RESULT: no listing rows exist at all — cannot build a realistic test payload.')
+                        raise SystemExit(0)
+
+                    # Exact same field mapping as scraper/notifier.py's _send_whatsapp_match_template.
+                    location = listing['street'] or listing['neighborhood'] or listing['city'] or 'דירה'
+                    rooms = f\"{float(listing['rooms']):g}\" if listing['rooms'] is not None else '-'
+                    price = f\"{listing['price']:,}\" if listing['price'] is not None else '-'
+
+                    token = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+                    phone_id = os.environ.get('WHATSAPP_PHONE_NUMBER_ID')
+                    payload = {
+                        'messaging_product': 'whatsapp',
+                        'to': user['whatsapp_phone_number'],
+                        'type': 'template',
+                        'template': {
+                            'name': 'new_listing_match',
+                            'language': {'code': 'he'},
+                            'components': [
+                                {'type': 'body', 'parameters': [
+                                    {'type': 'text', 'text': location},
+                                    {'type': 'text', 'text': rooms},
+                                    {'type': 'text', 'text': price},
+                                ]}
+                            ],
+                        },
+                    }
+                    print('payload:', payload)
+                    r = httpx.post(
+                        f'https://graph.facebook.com/v21.0/{phone_id}/messages',
+                        json=payload,
+                        headers={'Authorization': f'Bearer {token}'},
+                        timeout=15,
+                    )
+                    print('status:', r.status_code)
+                    print(r.text)
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod test-wa-real-notif -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira test-wa-real-notif || true
+          kubectl delete pod test-wa-real-notif -n todira --ignore-not-found
