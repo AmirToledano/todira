@@ -1,0 +1,97 @@
+name: Diagnose — the exact Meta error body behind the WhatsApp send 400 (read-only against our own API, real send attempt)
+
+# test-whatsapp-webhook-with-signed-payload.yaml (run 2026-09-27 09:07 UTC) proved the INBOUND
+# webhook pipeline is fully correct end-to-end: HTTP 200 from /webhook/whatsapp, a real `users` row
+# created for the owner's own number. But the website pod's own logs from that exact moment showed
+# our reply attempt (the language-picker interactive list message) failing:
+#   httpx.HTTPStatusError: Client error '400 Bad Request' for url
+#   'https://graph.facebook.com/v21.0/1215110221694935/messages'
+# common/todira_common/whatsapp_client.py's _post_message only logs via logger.exception, which
+# never includes response.text — so the real reason Meta gave (its own JSON error object, e.g. a
+# specific error code/message) was never captured anywhere. This replicates the exact same
+# interactive-list send call directly (same access token + phone number id, real Graph API call)
+# and prints the FULL response body, to see Meta's real stated reason instead of guessing.
+on:
+  workflow_dispatch:
+    inputs:
+      whatsapp_e164:
+        description: "Recipient WhatsApp number, digits only, no + (e.g. 972524983967)"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Replicate the exact failing send call and print Meta's full response body
+        env:
+          TO_NUMBER: ${{ inputs.whatsapp_e164 }}
+        run: |
+          kubectl delete pod diag-wa-send-detail -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-wa-send-detail
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-wa-send-detail
+                image: postgres:16-alpine
+                env:
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                  - name: WHATSAPP_PHONE_NUMBER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-phone-number-id
+                        optional: true
+                  - name: TO_NUMBER
+                    value: "${TO_NUMBER}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    set -e
+                    apk add --no-cache curl >/dev/null
+
+                    if [ -z "\$WHATSAPP_ACCESS_TOKEN" ] || [ -z "\$WHATSAPP_PHONE_NUMBER_ID" ]; then
+                      echo "RESULT: WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not set — cannot replicate."
+                      exit 0
+                    fi
+
+                    cat > /tmp/payload.json <<JSON
+                    {"messaging_product":"whatsapp","to":"\$TO_NUMBER","type":"interactive","interactive":{"type":"list","body":{"text":"test"},"action":{"button":"Pick","sections":[{"rows":[{"id":"lang_he","title":"עברית"}]}]}}}
+                    JSON
+
+                    echo "--- POSTing the exact same interactive-list send call Meta rejected ---"
+                    curl -sS -D /tmp/headers.txt -o /tmp/body.txt -w "\nhttp_status=%{http_code}\n" \
+                      -X POST "https://graph.facebook.com/v21.0/\${WHATSAPP_PHONE_NUMBER_ID}/messages" \
+                      -H "Authorization: Bearer \$WHATSAPP_ACCESS_TOKEN" \
+                      -H "Content-Type: application/json" \
+                      --data-binary @/tmp/payload.json
+                    echo "--- FULL response body from Meta (the real reason) ---"
+                    cat /tmp/body.txt
+                    echo
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-wa-send-detail -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod output ---"
+          kubectl logs -n todira diag-wa-send-detail || true
+          kubectl delete pod diag-wa-send-detail -n todira --ignore-not-found
