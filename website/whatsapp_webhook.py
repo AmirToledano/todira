@@ -14,9 +14,11 @@ Proactive "a new listing matches your filter" pushes (2026-09-08): WhatsApp only
 replies within 24 hours of the user's last message (the "customer service window") — fine for
 this webhook's own replies (always responding to something just received), but a proactive push
 outside that window needs a pre-approved Message Template, which is what
-todira_common.whatsapp_client.send_template_message + scraper/notifier.py use, gated on the user's
-own explicit User.whatsapp_notifications_opted_in — collected right here, at the end of
-onboarding (_send_notifications_optin_prompt below), not assumed.
+todira_common.whatsapp_client.send_template_message + scraper/notifier.py use, gated on
+User.whatsapp_notifications_opted_in. 2026-09-27: auto-enabled the moment WhatsApp connects (both
+onboarding-complete below and _try_link_code_sync) rather than collected as a separate explicit
+step — a real owner decision, see that field's own docstring for the compliance tradeoff this
+knowingly takes.
 """
 from __future__ import annotations
 
@@ -70,21 +72,6 @@ def _send_filter_edit_prompt(wa_id: str, lang: str) -> None:
     )
     whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.filter_edit_followup1", lang))
     whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.filter_edit_followup2", lang))
-
-
-# 2026-09-08: proactive WhatsApp Message Template pushes (a new listing matches your filter,
-# outside the 24h customer-service window) need the user's own explicit opt-in — see
-# User.whatsapp_notifications_opted_in's own docstring for why this can't just default to on.
-# This is where that opt-in is actually collected: a real button tap on a website toggle, right
-# after registration — not a free-text "כן"/"yes" reply this webhook would have to interpret,
-# which is a worse consent record and an easy source of a wrong read on a one-word reply.
-def _send_notifications_optin_prompt(wa_id: str, lang: str) -> None:
-    whatsapp_client.send_cta_url_message(
-        wa_id,
-        bot_text("whatsapp.notifications_optin_body", lang),
-        bot_text("whatsapp.notifications_optin_button", lang),
-        f"{WEBSITE_URL}/account?wid={generate_wid_token(wa_id)}",
-    )
 
 
 # 2026-09-07: a real "תמיכה" message used to fall straight into gemini_client.chat_with_existing_user
@@ -343,19 +330,19 @@ def _try_link_code_sync(wa_id: str, profile_name: str | None, text: str) -> bool
         code_user.whatsapp_phone_number = wa_id
         if profile_name:
             code_user.first_name = code_user.first_name or profile_name
-        already_opted_in = code_user.whatsapp_notifications_opted_in
+        # 2026-09-27 real owner decision, reversing the same-day opt-in-prompt fix above this
+        # comment: linking WhatsApp now auto-enables whatsapp_notifications_opted_in immediately
+        # (no separate /account click), on the owner's own explicit instruction after being told
+        # this is exactly the "unconsented enrollment" pattern Meta's Utility/Marketing template
+        # review looks for (see User.whatsapp_notifications_opted_in's own docstring) — a real
+        # product/compliance tradeoff he's making knowingly, not something discovered/assumed here.
+        # Safe to combine with auto-enable now that scraper/notifier.py caps WhatsApp to one send
+        # per user per run (see run_notifications' own docstring) — the flood this would otherwise
+        # cause is what the owner actually reported and asked to fix, same night.
+        code_user.whatsapp_notifications_opted_in = True
         lang = code_user.language
         session.commit()
         whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.link_success", lang))
-        if not already_opted_in:
-            # Found live 2026-09-27: an EXISTING account (Telegram/Google) linking WhatsApp via a
-            # code skips onboarding entirely (it already has a filter), so it never went through
-            # _handle_incoming_text_sync's onboarding_complete branch below — the only other place
-            # that sends this prompt. Without this, the opt-in toggle on /account (still required —
-            # see User.whatsapp_notifications_opted_in's own docstring for why this can't just
-            # default to on) was undiscoverable unless the person went digging for it themselves;
-            # the owner's own account hit exactly this after linking.
-            _send_notifications_optin_prompt(wa_id, lang)
         return True
 
 
@@ -457,6 +444,10 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             )
         )
         user.pending_onboarding_state = None
+        # 2026-09-27: auto-enabled here too, same owner decision/tradeoff as _try_link_code_sync's
+        # own comment on this — the brand-new-signup path and the existing-account-link path now
+        # behave identically (WhatsApp connected implies opted in, immediately, no separate step).
+        user.whatsapp_notifications_opted_in = True
         try:
             session.commit()
         except IntegrityError:
@@ -475,7 +466,6 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
 
         whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.onboarding_complete", lang))
         _send_filter_edit_prompt(wa_id, lang)
-        _send_notifications_optin_prompt(wa_id, lang)
 
 
 def _process_payload_sync(payload: dict) -> None:

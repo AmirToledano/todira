@@ -415,9 +415,55 @@ def test_liked_shows_description_but_hides_url_for_an_expired_user(client):
 # ---------------------------------------------------------------------------
 
 
-def test_apartments_contact_buttons_are_real_links_to_source_for_a_trial_user(client):
+def test_apartments_contact_buttons_are_locked_for_a_trial_user(client):
+    """2026-09-27 real owner decision: reaching the poster (WhatsApp message / show phone number)
+    now needs a REAL paid subscription — the 3-day trial no longer counts for these two buttons
+    specifically (todira_common/access.py's has_paid_access, vs. has_access/has_full_access used
+    everywhere else). A trial user now sees the same locked/paywall-popup buttons an expired user
+    always saw. "View original listing" is a SEPARATE test below — that one is deliberately
+    unaffected, still gated on has_access (trial-inclusive) as before."""
     user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
                       trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' in resp.text
+    assert 'class="contact-btn contact-btn-phone contact-locked-btn"' in resp.text
+    assert 'class="contact-btn contact-btn-whatsapp" href="https://yad2.co.il/item/secret999"' not in resp.text
+    assert 'class="contact-btn contact-btn-phone" href="https://yad2.co.il/item/secret999"' not in resp.text
+
+
+def test_apartments_view_listing_link_still_works_for_a_trial_user(client):
+    """Companion to the test above — the owner's explicit second half of the same request: "view
+    original listing" keeps working through the trial (has_access, unchanged), only the contact
+    buttons tightened to has_paid_access."""
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'class="view-btn" href="https://yad2.co.il/item/secret999"' in resp.text
+    assert 'class="view-btn locked"' not in resp.text
+
+
+def test_apartments_contact_buttons_are_real_links_for_a_genuinely_paid_user(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW - dt.timedelta(days=10),
+                      paid_until=_NOW + dt.timedelta(days=20))
     listing = _FakeListing(id=1)
     fake_session = _FakeSession(user, listings=[listing])
 

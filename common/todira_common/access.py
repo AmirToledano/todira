@@ -47,6 +47,23 @@ def has_full_access(user: User, *, is_owner: bool = False) -> bool:
     return False
 
 
+def has_paid_access(user: User, *, is_owner: bool = False) -> bool:
+    """2026-09-27 real owner decision: same as has_full_access, EXCEPT the 3-day trial no longer
+    counts. Reaching a listing's actual poster (WhatsApp message / phone number button) now needs
+    a genuine paid subscription (or the owner/free-access-grant equivalents, which still count —
+    those represent real access already granted, not a time-limited trial) — a trial user sees the
+    upgrade-subscription popup on those two buttons specifically, same as a fully expired user.
+    Everything else this project gates on access (the listing description, "view original
+    listing") is UNCHANGED and still uses has_full_access above — only these two contact buttons
+    tightened. See website/main.py's own _effective_paid_access for where this is actually used."""
+    if is_owner or user.free_access_granted:
+        return True
+    now = dt.datetime.now(dt.timezone.utc)
+    if user.paid_until is not None and now < user.paid_until:
+        return True
+    return False
+
+
 def extend_paid_until(user: User, plan: str) -> None:
     """Extends from the LATER of "now" or the user's current paid_until — paying again before the
     previous period expires stacks the new period on top instead of wasting the remaining time,
