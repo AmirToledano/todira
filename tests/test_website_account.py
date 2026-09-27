@@ -83,6 +83,8 @@ class _FakeUser:
         telegram_username=None,
         google_email=None,
         first_name=None,
+        channel_link_code=None,
+        channel_link_code_expires_at=None,
     ):
         self.id = id
         self.telegram_user_id = telegram_user_id
@@ -97,6 +99,8 @@ class _FakeUser:
         self.cancel_at_period_end = cancel_at_period_end
         self.telegram_username = telegram_username
         self.google_email = google_email
+        self.channel_link_code = channel_link_code
+        self.channel_link_code_expires_at = channel_link_code_expires_at
         # Only read by _current_user_summary (base.html's header, called on every _render()) when
         # the visitor has a REAL signed session — see test_account_config_shows_logout_button_*
         # below, the first test in this file to actually exercise that path.
@@ -199,6 +203,53 @@ def test_account_generates_a_code_when_a_channel_is_missing(client):
     # takes precedence in its own if/elif, same as the original template's {% if has_telegram %}
     # ... {% elif telegram_link %} ... branching.
     assert config["hasTelegram"] is True
+
+
+def test_account_reuses_an_existing_still_valid_code_instead_of_regenerating():
+    """2026-09-27: real bug, live-confirmed — this route used to call generate_link_code()
+    unconditionally on every single page load. generate_link_code REPLACES whatever code was
+    already stored, so simply reloading /account after already sending a code (a completely
+    natural thing to do while checking whether the link worked) silently orphaned the code
+    already sent — resolve_link_code just treats the now-unmatched code as "not a link code" and
+    falls through, with no error surfaced anywhere. A live diagnostic against the owner's own
+    account confirmed exactly this: the code he'd already sent via WhatsApp no longer matched
+    what /account had moved on to showing. Doesn't use the `client` fixture, which blanket-patches
+    generate_link_code for every other test in this file — this test needs to assert it is NOT
+    called at all."""
+    user = _FakeUser(
+        id=2, telegram_user_id=222, whatsapp_phone_number=None,
+        channel_link_code="ref_existing",
+        channel_link_code_expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10),
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "generate_link_code") as mock_generate,
+    ):
+        client_no_patch = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client_no_patch.get("/account", params={"uid": 222})
+
+    mock_generate.assert_not_called()
+    config = _account_config(resp.text)
+    assert config["code"] == "ref_existing"
+
+
+def test_account_regenerates_an_expired_code():
+    user = _FakeUser(
+        id=2, telegram_user_id=222, whatsapp_phone_number=None,
+        channel_link_code="ref_old",
+        channel_link_code_expires_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=1),
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "generate_link_code", lambda session, user: _FIXED_CODE),
+    ):
+        client_no_patch = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client_no_patch.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["code"] == _FIXED_CODE
 
 
 def test_account_config_hides_telegram_connect_button_precedence_matches_original_template(client):
