@@ -1,4 +1,5 @@
-"""Tests for find_new_matches_to_show (bot/handlers/apartments.py) - the dedup added 2026-09-02
+"""Tests for find_new_matches_to_show (todira_common/listing_matches.py, moved 2026-09-27 from
+bot/handlers/apartments.py - see that module's own top comment) - the dedup added 2026-09-02
 after a real report: saving/re-saving a filter used to resend every single current match in full,
 every time, so a user tweaking their filter a few times in a row got the same cards over and
 over, flooding their chat.
@@ -15,9 +16,10 @@ from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
-import handlers.apartments as apartments_module
+import todira_common.listing_matches as listing_matches_module
+from todira_common.enums import NotificationReason
 
-find_new_matches_to_show = apartments_module.find_new_matches_to_show
+find_new_matches_to_show = listing_matches_module.find_new_matches_to_show
 
 
 class _FakeSession:
@@ -42,7 +44,7 @@ def _listing(listing_id):
 def test_all_matches_new_when_none_previously_shown():
     session = _FakeSession(already_shown_ids=set())
     matches = [_listing(1), _listing(2), _listing(3)]
-    with patch.object(apartments_module, "find_matching_listings", return_value=matches):
+    with patch.object(listing_matches_module, "find_matching_listings", return_value=matches):
         total, new_to_show = find_new_matches_to_show(session, 42, object(), 10)
     assert total == 3
     assert [listing.id for listing in new_to_show] == [1, 2, 3]
@@ -52,7 +54,7 @@ def test_all_matches_new_when_none_previously_shown():
 def test_already_shown_matches_are_excluded():
     session = _FakeSession(already_shown_ids={1, 2})
     matches = [_listing(1), _listing(2), _listing(3)]
-    with patch.object(apartments_module, "find_matching_listings", return_value=matches):
+    with patch.object(listing_matches_module, "find_matching_listings", return_value=matches):
         total, new_to_show = find_new_matches_to_show(session, 42, object(), 10)
     assert total == 3
     assert [listing.id for listing in new_to_show] == [3]
@@ -64,7 +66,7 @@ def test_all_matches_already_shown_returns_empty_new_list_but_correct_total():
     # new appeared since last time must not resend anything, while still reporting the real count.
     session = _FakeSession(already_shown_ids={1, 2, 3})
     matches = [_listing(1), _listing(2), _listing(3)]
-    with patch.object(apartments_module, "find_matching_listings", return_value=matches):
+    with patch.object(listing_matches_module, "find_matching_listings", return_value=matches):
         total, new_to_show = find_new_matches_to_show(session, 42, object(), 10)
     assert total == 3
     assert new_to_show == []
@@ -73,7 +75,7 @@ def test_all_matches_already_shown_returns_empty_new_list_but_correct_total():
 
 def test_no_current_matches_at_all():
     session = _FakeSession(already_shown_ids=set())
-    with patch.object(apartments_module, "find_matching_listings", return_value=[]):
+    with patch.object(listing_matches_module, "find_matching_listings", return_value=[]):
         total, new_to_show = find_new_matches_to_show(session, 42, object(), 10)
     assert total == 0
     assert new_to_show == []
@@ -83,10 +85,10 @@ def test_no_current_matches_at_all():
 def test_records_a_sent_notification_for_each_newly_shown_listing():
     session = _FakeSession(already_shown_ids=set())
     matches = [_listing(5)]
-    with patch.object(apartments_module, "find_matching_listings", return_value=matches):
+    with patch.object(listing_matches_module, "find_matching_listings", return_value=matches):
         find_new_matches_to_show(session, 99, object(), 10)
     assert len(session.added) == 1
     recorded = session.added[0]
     assert recorded.user_id == 99
     assert recorded.listing_id == 5
-    assert recorded.reason == apartments_module.NotificationReason.NEW
+    assert recorded.reason == NotificationReason.NEW
