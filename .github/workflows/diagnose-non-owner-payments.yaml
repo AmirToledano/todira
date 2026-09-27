@@ -1,0 +1,74 @@
+name: Diagnose — does any non-owner user have a real Payment row (read-only)
+
+# Before any mass user cleanup: diagnose-all-users-overview.yaml found a real `payments` table
+# exists. This checks whether any of the non-owner accounts actually has a payment recorded --
+# a hard signal of a real paying customer, not a test/experimental account -- before anyone
+# decides whether a mass delete is actually safe.
+on:
+  workflow_dispatch:
+    inputs:
+      exclude_telegram_user_id:
+        description: "The owner's own telegram_user_id, excluded from this check"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Check for any non-owner Payment rows
+        env:
+          TG_ID: ${{ inputs.exclude_telegram_user_id }}
+        run: |
+          kubectl delete pod diag-non-owner-payments -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-non-owner-payments
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-non-owner-payments
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: TG_ID
+                    value: "${TG_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+                    echo "--- payments table columns ---"
+                    psql "\$CONN" -c "\d payments" 2>&1 || true
+                    echo "--- any payment row belonging to a non-owner user? ---"
+                    psql "\$CONN" -c "
+                      SELECT count(*) AS non_owner_payment_count
+                      FROM payments p
+                      JOIN users u ON u.id = p.user_id
+                      WHERE u.telegram_user_id IS NULL OR u.telegram_user_id != \$TG_ID;
+                    " 2>&1 || echo "(query failed — column name may differ, see table structure above)"
+                    echo "--- total payment rows in the whole table ---"
+                    psql "\$CONN" -c "SELECT count(*) AS total_payments FROM payments;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-non-owner-payments -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-non-owner-payments || true
+          kubectl delete pod diag-non-owner-payments -n todira --ignore-not-found
