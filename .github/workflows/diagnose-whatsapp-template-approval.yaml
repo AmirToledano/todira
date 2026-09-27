@@ -1,0 +1,80 @@
+name: Diagnose — is the new_listing_match WhatsApp Message Template actually approved (read-only)
+
+# scraper/notifier.py's proactive "new listing matches your filter" push uses
+# todira_common.whatsapp_client.send_template_message, which requires a Meta-approved WhatsApp
+# Message Template (WHATSAPP_MATCH_TEMPLATE_NAME=new_listing_match, confirmed live from the
+# scraper CronJob's own env). diagnose-whatsapp-template-status.yaml's token debug_token call
+# returned no target_ids in granular_scopes, so it couldn't auto-discover the WABA id. This checks
+# directly against the known WABA id (from the owner's own Business Settings screenshot earlier
+# this session) whether that template exists and what its real approval status is.
+on:
+  workflow_dispatch:
+    inputs:
+      waba_id:
+        description: "The WhatsApp Business Account ID to check"
+        required: true
+        default: "1814744176326509"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Check the template's real approval status against the known WABA id
+        env:
+          WABA_ID: ${{ inputs.waba_id }}
+        run: |
+          kubectl delete pod diag-template-approval -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-template-approval
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-template-approval
+                image: python:3.11-slim
+                env:
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                  - name: WABA_ID
+                    value: "${WABA_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet httpx
+                    python3 -c "
+                    import os, httpx
+                    token = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+                    waba_id = os.environ.get('WABA_ID')
+                    r = httpx.get(
+                        f'https://graph.facebook.com/v21.0/{waba_id}/message_templates',
+                        headers={'Authorization': f'Bearer {token}'},
+                        timeout=15,
+                    )
+                    print('status:', r.status_code)
+                    print(r.text)
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-template-approval -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira diag-template-approval || true
+          kubectl delete pod diag-template-approval -n todira --ignore-not-found
