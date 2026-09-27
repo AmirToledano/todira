@@ -1,0 +1,65 @@
+name: Diagnose — which language WhatsApp's link-preview crawler actually gets (read-only)
+
+# Real owner question: the WhatsApp link preview for https://todira.app shows English title/
+# description. website/i18n.py's get_lang() resolves language per-request from ?lang= / a cookie /
+# the REQUEST's OWN Accept-Language header (website/templates/base.html's og:title/og:description
+# use t('meta.title_home')/t('meta.description'), so this IS language-aware, not hardcoded
+# English) — but a link preview is generated ONCE by WhatsApp's own crawler bot fetching the page
+# server-side, using THAT BOT's Accept-Language, then cached and shown identically to every
+# recipient regardless of their own phone's language. This checks, from outside this repo's own
+# network restrictions, what the live site actually returns under a few different Accept-Language
+# headers, to confirm whether it's genuinely dynamic (and just happens to resolve to English for
+# WhatsApp's crawler) or accidentally hardcoded.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch og:title/og:description under several Accept-Language headers + no header at all
+        run: |
+          kubectl delete pod diag-og-lang -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-og-lang
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-og-lang
+                image: curlimages/curl:8.10.1
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    for LABEL_H in "no-header:" "en-US:en-US,en;q=0.9" "he-IL:he-IL,he;q=0.9" "whatsapp-crawler-typical:en-US,en;q=0.9"; do
+                      LABEL="${LABEL_H%%:*}"
+                      HDR="${LABEL_H#*:}"
+                      echo "=== $LABEL (Accept-Language: '$HDR') ==="
+                      if [ -z "$HDR" ]; then
+                        curl -s -A "WhatsApp/2.24.1 A" https://todira.app/ | grep -oE '<meta property="og:title"[^>]*>|<meta property="og:description"[^>]*>'
+                      else
+                        curl -s -H "Accept-Language: $HDR" -A "WhatsApp/2.24.1 A" https://todira.app/ | grep -oE '<meta property="og:title"[^>]*>|<meta property="og:description"[^>]*>'
+                      fi
+                      echo
+                    done
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-og-lang -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira diag-og-lang || true
+          kubectl delete pod diag-og-lang -n todira --ignore-not-found
