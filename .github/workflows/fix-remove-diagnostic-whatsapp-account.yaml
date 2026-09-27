@@ -1,0 +1,101 @@
+name: Fix — remove the spurious WhatsApp account my own diagnostic test created
+
+# test-whatsapp-webhook-with-signed-payload.yaml (run 2026-09-27 09:07 UTC) created a real `users`
+# row (id=19, whatsapp_phone_number='972524983967', no telegram_user_id) as a side effect of
+# proving the inbound webhook pipeline works. That was the right test, but it left a real
+# consequence: 972524983967 is the OWNER'S OWN real WhatsApp number, and once the send-token issue
+# was fixed, his own real "ref_xxxxxx" link attempt hit whatsapp_webhook.py's link_conflict branch
+# — "this WhatsApp number already has a separate account with me" — because that synthetic row
+# still owns the number, blocking the real link to his main account (id=1, telegram_user_id
+# 6984931854). This removes that one spurious row so the real link can succeed. Scoped by exact
+# id AND phone number match (never touches any other row) and only proceeds if that row has no
+# Filter attached (confirms it's genuinely just the empty test artifact, not real user data worth
+# preserving).
+on:
+  workflow_dispatch:
+    inputs:
+      whatsapp_e164:
+        description: "The WhatsApp number the spurious test account owns, digits only, no + (e.g. 972524983967)"
+        required: true
+      exclude_telegram_user_id:
+        description: "The REAL account's telegram_user_id — never touches a row with this id, just used to sanity-print it"
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Inspect, sanity-check, then remove the spurious row
+        env:
+          WA_NUMBER: ${{ inputs.whatsapp_e164 }}
+          TG_ID: ${{ inputs.exclude_telegram_user_id }}
+        run: |
+          kubectl delete pod fix-remove-spurious-wa -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fix-remove-spurious-wa
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: fix-remove-spurious-wa
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: WA_NUMBER
+                    value: "${WA_NUMBER}"
+                  - name: TG_ID
+                    value: "${TG_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    set -e
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+
+                    echo "--- real account (must be untouched) ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number FROM users WHERE telegram_user_id = \$TG_ID;"
+
+                    echo "--- row(s) currently holding this WhatsApp number ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number, language, pending_onboarding_state, created_at FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER';"
+
+                    echo "--- does that row have a Filter attached? (must be 0 to proceed) ---"
+                    FILTER_COUNT=\$(psql "\$CONN" -t -A -c "SELECT count(*) FROM \"filters\" f JOIN users u ON u.id = f.user_id WHERE u.whatsapp_phone_number = '\$WA_NUMBER' AND (u.telegram_user_id IS NULL OR u.telegram_user_id != \$TG_ID);")
+                    echo "filter count: \$FILTER_COUNT"
+
+                    if [ "\$FILTER_COUNT" != "0" ]; then
+                      echo "RESULT: that row has a Filter attached — NOT deleting automatically, needs a human decision."
+                      exit 0
+                    fi
+
+                    echo "--- deleting the spurious row(s) (no telegram_user_id, no Filter, matches the WhatsApp number) ---"
+                    psql "\$CONN" -c "DELETE FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER' AND (telegram_user_id IS NULL OR telegram_user_id != \$TG_ID);"
+
+                    echo "--- confirm: any row still holding this number? ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER';"
+
+                    echo "--- confirm: real account untouched ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number FROM users WHERE telegram_user_id = \$TG_ID;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod fix-remove-spurious-wa -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod output ---"
+          kubectl logs -n todira fix-remove-spurious-wa || true
+          kubectl delete pod fix-remove-spurious-wa -n todira --ignore-not-found
