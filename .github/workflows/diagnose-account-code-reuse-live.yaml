@@ -1,0 +1,50 @@
+name: Diagnose — does GET /account actually reuse the code across reloads, live (read-only)
+
+# Follow-up to PR #503's fix. The owner's own account still shows a DIFFERENT channel_link_code
+# after his second real attempt than the one confirmed live moments earlier, even though the
+# earlier code hadn't expired yet — worth confirming directly against the real deployed site
+# rather than guessing about page-reload timing from his side. Two real GETs to the real
+# production /account a few seconds apart; if the fix works, both responses carry the SAME code.
+on:
+  workflow_dispatch:
+    inputs:
+      uid:
+        description: "telegram_user_id to test against (must have Telegram but not WhatsApp linked)"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: First GET /account
+        env:
+          UID: ${{ inputs.uid }}
+        run: |
+          curl -sS "https://todira.app/account?uid=${UID}" -o /tmp/first.html \
+            -w "http_status=%{http_code}\n"
+          echo "--- extracted code (first request) ---"
+          grep -oE 'code: "ref_[a-z0-9]+"' /tmp/first.html || echo "(no code field found)"
+
+      - name: Wait 5 seconds (simulating a real page reload)
+        run: sleep 5
+
+      - name: Second GET /account
+        env:
+          UID: ${{ inputs.uid }}
+        run: |
+          curl -sS "https://todira.app/account?uid=${UID}" -o /tmp/second.html \
+            -w "http_status=%{http_code}\n"
+          echo "--- extracted code (second request) ---"
+          grep -oE 'code: "ref_[a-z0-9]+"' /tmp/second.html || echo "(no code field found)"
+
+      - name: Compare
+        run: |
+          FIRST=$(grep -oE 'code: "ref_[a-z0-9]+"' /tmp/first.html || echo "NONE")
+          SECOND=$(grep -oE 'code: "ref_[a-z0-9]+"' /tmp/second.html || echo "NONE")
+          echo "first:  $FIRST"
+          echo "second: $SECOND"
+          if [ "$FIRST" = "$SECOND" ]; then
+            echo "RESULT: SAME CODE — fix is working correctly on the live site."
+          else
+            echo "RESULT: DIFFERENT CODE — the code is still being regenerated on every reload."
+          fi
