@@ -68,7 +68,7 @@ jobs:
                       FROM listings l
                       WHERE l.is_delisted = false;
                     "
-                    echo "--- top 30 real city values NOT on the whitelist, by listing count (the actual gap) ---"
+                    echo "--- ALL real city values NOT on the whitelist, by listing count (the full gap — sizing a whitelist expansion) ---"
                     psql "$CONN" -c "
                       WITH whitelist(city) AS (VALUES
                         ('תל אביב יפו'), ('ירושלים'), ('חיפה'), ('ראשון לציון'), ('פתח תקווה'),
@@ -86,7 +86,7 @@ jobs:
                         AND (l.city IS NULL OR l.city NOT IN (SELECT city FROM whitelist))
                       GROUP BY l.city
                       ORDER BY total DESC
-                      LIMIT 30;
+                      LIMIT 500;
                     "
           PODYAML
           for i in $(seq 1 30); do
