@@ -2097,7 +2097,20 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
 
         code = None
         if not has_telegram or not has_whatsapp:
-            code = generate_link_code(session, user)
+            # 2026-09-27: real bug, live-confirmed — this used to call generate_link_code()
+            # unconditionally on every single page load. generate_link_code REPLACES whatever
+            # code was already stored (see its own docstring), so simply reloading /account after
+            # sending a code — a completely natural thing to do while checking whether the link
+            # worked — silently orphaned the code already sent, with no error surfaced anywhere:
+            # resolve_link_code just treats an unmatched code as "not a link code" and falls
+            # through. Now reuses the existing code as long as it's still live (unexpired);
+            # generate_link_code only runs for a genuinely first-time or truly-expired code.
+            still_valid = (
+                user.channel_link_code is not None
+                and user.channel_link_code_expires_at is not None
+                and dt.datetime.now(dt.timezone.utc) < user.channel_link_code_expires_at
+            )
+            code = user.channel_link_code if still_valid else generate_link_code(session, user)
         redirect_uid = user.telegram_user_id
         # 2026-09-25 security fix: reuse the SAME already-verified token this request came in on —
         # see filter_view's own identical fix/comment for why re-deriving from
@@ -2478,7 +2491,17 @@ def onboarding_notifications(request: Request, uid: int | None = None, wid: str 
         user = _resolve_user(request, session, uid, wid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "filter"})
-        code = None if user.telegram_user_id is not None else generate_link_code(session, user)
+        # Same fix as /account's own identical bug (see that route's own comment): reuse a still-
+        # live code across reloads instead of generate_link_code's default replace-on-every-call
+        # behavior, which silently orphaned an already-sent code on a simple page revisit.
+        code = None
+        if user.telegram_user_id is None:
+            still_valid = (
+                user.channel_link_code is not None
+                and user.channel_link_code_expires_at is not None
+                and dt.datetime.now(dt.timezone.utc) < user.channel_link_code_expires_at
+            )
+            code = user.channel_link_code if still_valid else generate_link_code(session, user)
         session.commit()
         return _render(
             request,

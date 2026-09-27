@@ -243,6 +243,23 @@ def test_notifications_step_shows_a_real_telegram_connect_link_for_a_non_telegra
     assert user.channel_link_code  # a real code was actually generated
 
 
+def test_notifications_step_reuses_an_existing_still_valid_code_instead_of_regenerating():
+    """2026-09-27: same real bug as /account's own identical fix — reloading this page (a natural
+    thing to do while checking if the Telegram connect worked) used to silently replace an
+    already-sent code with a new one via generate_link_code's default replace-on-every-call
+    behavior, orphaning it with no error shown anywhere."""
+    user = _FakeUser(uid=None)
+    user.channel_link_code = "ref_existing"
+    user.channel_link_code_expires_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
+    token = website_main.generate_wid_token("972501234567")
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.get("/onboarding/notifications", params={"wid": token})
+    assert resp.status_code == 200
+    assert "https://t.me/AmirDirotBot?start=ref_existing" in resp.text
+    assert user.channel_link_code == "ref_existing"
+
+
 def test_notifications_step_skips_straight_to_skip_link_for_an_already_telegram_user():
     user = _FakeUser(uid=555)
     with _client_for(user):
