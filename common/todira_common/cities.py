@@ -31,6 +31,31 @@ CITIES: list[str] = [
     "נצרת", "לוד", "גבעתיים", "הוד השרון", "נהריה", "אילת", "קריית אתא", "קריית גת",
     "קריית מוצקין", "קריית ביאליק", "קריית אונו", "יבנה", "אור יהודה", "צפת", "עפולה",
     "טבריה", "דימונה", "מבשרת ציון", "הר גילה", "כרמיאל",
+    # 2026-09-27: real owner request — the original 42-city list above was a "major cities" curation,
+    # not every city with real listings. diagnose-city-filter-coverage-gap.yaml confirmed live:
+    # 3,763 of 13,031 active listings (~29%) had a city outside it, entirely unreachable by picking
+    # ANY combination of checkboxes (only the empty-filter bypass reached them — see
+    # website/main.py's filter_update and the "all cities" toggle that fix added). Every city below
+    # has 10+ real active listings in that same live check — the long tail under that (hundreds of
+    # small villages/kibbutzim/moshavim with 1-9 listings each) is deliberately left to the "all
+    # cities" toggle rather than hand-typed here one at a time; a filter checkbox grid isn't the
+    # right UI for hundreds of options nobody scrolls to, and the toggle already reaches every one
+    # of them correctly. canonicalize_city() (below) picks up every new entry here automatically —
+    # no code change needed there — so a future scrape of e.g. "קרית שמונה" (defective spelling)
+    # auto-corrects to "קריית שמונה" (this list's spelling) the same way it already does for the
+    # original 42; existing rows already stored under a pre-expansion spelling were reconciled in
+    # a one-time live backfill run alongside this change (see PROJECT_STATE.md / git history for
+    # that specific run, not repeated here since it only needed to happen once).
+    "אריאל", "מעלה אדומים", "גבעת זאב", "נשר", "נתיבות", "מגדל העמק", "חריש", "עכו",
+    "קריית שמונה", "קריית ים", "אורנית", "ערד", "נוף הגליל", "מעלות תרשיחא", "טירת כרמל",
+    "אופקים", "ראש העין", "יקנעם עילית", "בית שאן", "אור עקיבא", "זכרון יעקב", "אלפי מנשה",
+    "קיסריה", "פרדס חנה כרכור", "אזור", "עתלית", "גן יבנה", "גבעת שמואל", "שלומי",
+    "יהוד מונוסון", "להבים", "סביון", "גדרה", "שדרות", "עץ אפרים", "באר יעקב", "צור הדסה",
+    "אלקנה", "רכסים", "קדימה צורן", "ראש פינה", "אפרת", "מעלה אפרים", "נס ציונה",
+    "שערי תקווה", "כפר יונה", "קריית טבעון", "קרני שומרון", "אבו גוש", "עומר", "כפר ורדים",
+    "בנימינה גבעת עדה", "קצרין", "מצפה רמון", "מטולה", "קריית מלאכי", "מגדל", "רמת ישי",
+    "ירוחם", "חצור הגלילית", "הר אדר", "ביתר עילית", "תל מונד", "אבני חפץ", "קדומים",
+    "גבעון החדשה", "ברקן", "אבן יהודה", "גני תקווה", "עלי זהב", "עוספיא", "כורזים",
 ]
 
 # Common Hebrew abbreviations/nicknames that AREN'T literal substrings of the full city name
