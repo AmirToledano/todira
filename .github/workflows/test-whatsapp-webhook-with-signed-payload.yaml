@@ -1,0 +1,132 @@
+name: Test — send a correctly-signed synthetic WhatsApp webhook POST for the owner's real link code
+
+# diagnose-whatsapp-webhook-arrival.yaml found NOTHING in the website/Caddy pod logs mentioning
+# /webhook/whatsapp or the owner's own number in the exact window he says he sent his code and got
+# no reply at all (not even the language-picker reply a brand-new WhatsApp sender should always
+# get first — see whatsapp_webhook.py's _ensure_language_selected_sync). diagnose-owner-whatsapp-
+# link-status.yaml separately confirmed zero rows exist in `users` for that number, meaning
+# get_or_create_whatsapp_user has never run for it either. diagnose-whatsapp-app-secret-presence.yaml
+# confirmed WHATSAPP_APP_SECRET is non-empty (32 chars) in the live pod, ruling out the one case
+# that logs anything on failure — but _verify_signature fails CLOSED with ZERO logging on any other
+# mismatch, so a wrong secret value is still fully consistent with total silence.
+#
+# This is the one test that can tell "Meta never delivers" apart from "our own code/secret is
+# broken" without guessing: from INSIDE the cluster (the only place that can read the real
+# whatsapp-app-secret k8s secret), build the exact JSON payload Meta's Cloud API sends for one
+# incoming text message from the owner's real WhatsApp number with his real currently-valid link
+# code as the body, sign it correctly with HMAC-SHA256 using that same secret (exactly what
+# _verify_signature in website/whatsapp_webhook.py checks), and POST it to the real public
+# https://todira.app/webhook/whatsapp — then confirm whether our own pipeline actually processes
+# it (a new `users` row appears, and/or the owner's real phone gets a real WhatsApp reply). If this
+# succeeds, our code and secret are proven fine end-to-end and the problem is entirely on Meta's
+# delivery side. If this fails too, the problem is in our own code or secret configuration.
+#
+# Real, meaningful action: this creates a genuine `users` row for the owner's real WhatsApp number
+# (exactly what a real arriving message would do) and, if the pipeline is healthy, sends him a real
+# WhatsApp message. Not a dry run — hence the distinct "test-" naming instead of "diagnose-".
+on:
+  workflow_dispatch:
+    inputs:
+      whatsapp_e164:
+        description: "The owner's own WhatsApp number, digits only, no + (e.g. 972524983967)"
+        required: true
+      link_code:
+        description: "The owner's real currently-valid ref_xxxxxx code, as shown on his /account page"
+        required: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Build the exact payload, sign it with the real cluster secret, POST it, and check the result
+        env:
+          WA_NUMBER: ${{ inputs.whatsapp_e164 }}
+          LINK_CODE: ${{ inputs.link_code }}
+        run: |
+          kubectl delete pod diag-wa-signed-post -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-wa-signed-post
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-wa-signed-post
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: WHATSAPP_APP_SECRET
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-app-secret
+                        optional: true
+                  - name: WA_NUMBER
+                    value: "${WA_NUMBER}"
+                  - name: LINK_CODE
+                    value: "${LINK_CODE}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    set -e
+                    apk add --no-cache curl openssl >/dev/null
+                    CONN="postgresql://${DATABASE_URL#*://}"
+
+                    if [ -z "$WHATSAPP_APP_SECRET" ]; then
+                      echo "RESULT: whatsapp-app-secret is not set in the cluster at all — that alone" \
+                           "would make _verify_signature fail closed for every real Meta POST too." \
+                           "Nothing to test; fix the secret first."
+                      exit 0
+                    fi
+
+                    echo "--- before: any row for this number? ---"
+                    psql "$CONN" -c "SELECT id, whatsapp_phone_number, language, channel_link_code FROM users WHERE whatsapp_phone_number = '$WA_NUMBER';"
+
+                    MSGID="wamid.DIAGTEST$(date +%s)$$"
+                    cat > /tmp/payload.json <<JSON
+                    {"entry":[{"changes":[{"value":{"contacts":[{"wa_id":"$WA_NUMBER","profile":{"name":"Diagnostic"}}],"messages":[{"from":"$WA_NUMBER","id":"$MSGID","type":"text","text":{"body":"$LINK_CODE"}}]}}]}]}
+                    JSON
+
+                    SIG=$(openssl dgst -sha256 -hmac "$WHATSAPP_APP_SECRET" /tmp/payload.json | awk '{print $2}')
+                    echo "--- POSTing signed synthetic webhook payload to the real production endpoint ---"
+                    curl -sS -D /tmp/headers.txt -o /tmp/body.txt -w "\nhttp_status=%{http_code}\n" \
+                      -X POST "https://todira.app/webhook/whatsapp" \
+                      -H "Content-Type: application/json" \
+                      -H "X-Hub-Signature-256: sha256=$SIG" \
+                      --data-binary @/tmp/payload.json
+                    echo "--- response headers ---"
+                    cat /tmp/headers.txt
+
+                    echo "--- waiting 5s for the background task to process it ---"
+                    sleep 5
+
+                    echo "--- after: any row for this number now? ---"
+                    psql "$CONN" -c "SELECT id, whatsapp_phone_number, language, channel_link_code, created_at FROM users WHERE whatsapp_phone_number = '$WA_NUMBER';"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-wa-signed-post -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod output ---"
+          kubectl logs -n todira diag-wa-signed-post || true
+          kubectl delete pod diag-wa-signed-post -n todira --ignore-not-found
+
+      - name: Real website pod logs right after the synthetic POST (confirms whether OUR code saw it)
+        run: |
+          kubectl logs -n todira -l app=todira-website --since=2m --timestamps | grep -iE "webhook|WhatsApp|error|exception" || echo "(no matches)"
