@@ -22,8 +22,6 @@ jobs:
         run: |
           curl -sS "https://todira.app/account?uid=${UID}" -o /tmp/first.html \
             -w "http_status=%{http_code}\n"
-          echo "--- extracted code (first request) ---"
-          grep -oE 'code: "ref_[a-z0-9]+"' /tmp/first.html || echo "(no code field found)"
 
       - name: Wait 5 seconds (simulating a real page reload)
         run: sleep 5
@@ -34,17 +32,30 @@ jobs:
         run: |
           curl -sS "https://todira.app/account?uid=${UID}" -o /tmp/second.html \
             -w "http_status=%{http_code}\n"
-          echo "--- extracted code (second request) ---"
-          grep -oE 'code: "ref_[a-z0-9]+"' /tmp/second.html || echo "(no code field found)"
 
-      - name: Compare
+      - name: Extract the real code field from window.__TODIRA_PAGE__ (same JSON parse the test suite uses, not a fragile grep) and compare
         run: |
-          FIRST=$(grep -oE 'code: "ref_[a-z0-9]+"' /tmp/first.html || echo "NONE")
-          SECOND=$(grep -oE 'code: "ref_[a-z0-9]+"' /tmp/second.html || echo "NONE")
-          echo "first:  $FIRST"
-          echo "second: $SECOND"
-          if [ "$FIRST" = "$SECOND" ]; then
-            echo "RESULT: SAME CODE — fix is working correctly on the live site."
-          else
-            echo "RESULT: DIFFERENT CODE — the code is still being regenerated on every reload."
-          fi
+          python3 -c "
+          import json, re, sys
+          pattern = re.compile(r'Object\.assign\(\{ lang: \"[^\"]*\", dir: \"[^\"]*\" \}, (.*)\);', re.MULTILINE)
+          def extract_code(path):
+              html = open(path, encoding='utf-8').read()
+              m = pattern.search(html)
+              if not m:
+                  print(f'{path}: window.__TODIRA_PAGE__ not found in response at all')
+                  return None
+              config = json.loads(m.group(1))
+              return config.get('code')
+          first = extract_code('/tmp/first.html')
+          second = extract_code('/tmp/second.html')
+          print(f'first code:  {first!r}')
+          print(f'second code: {second!r}')
+          if first is None or second is None:
+              print('RESULT: could not extract a code from one or both responses — see above')
+              sys.exit(1)
+          if first == second:
+              print('RESULT: SAME CODE — fix is working correctly on the live site.')
+          else:
+              print('RESULT: DIFFERENT CODE — the code is still being regenerated on every reload.')
+              sys.exit(1)
+          "
