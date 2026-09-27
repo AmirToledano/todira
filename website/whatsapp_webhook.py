@@ -313,35 +313,45 @@ def _ensure_language_selected_sync(
     return None
 
 
+# Channel linking (see todira_common/channel_link.py): a `ref_xxxxxx` code generated on the
+# website's /account page for an already-logged-in user, sent here as a plain text message to
+# attach THIS WhatsApp number to that same existing account. Checked in _process_payload_sync
+# BEFORE _ensure_language_selected_sync runs — found live 2026-09-27: a genuinely first-time
+# WhatsApp sender's very first message (their link code) used to hit the language picker's own
+# get_or_create_whatsapp_user first, creating a brand-new, disconnected user row for their number
+# and swallowing the code entirely (_ensure_language_selected_sync returns None for anything that
+# isn't a recognized language, so the code text never reached this check at all). That spurious row
+# then permanently blocked any future link attempt for the same number via the conflict branch
+# below. Returns True the moment the message is a live code — handled (success or conflict) either
+# way — so the caller skips the language picker and the rest of the normal chat flow for it.
+def _try_link_code_sync(wa_id: str, profile_name: str | None, text: str) -> bool:
+    with get_session() as session:
+        code_user = resolve_link_code(session, text)
+        if code_user is None:
+            return False
+        existing = session.scalar(
+            select(User).where(User.whatsapp_phone_number == wa_id)
+        )
+        if existing is not None and existing.id != code_user.id:
+            # This WhatsApp number already has its own separate account — linking it to a
+            # second one would mean merging two rows' filters/history, which we don't do
+            # automatically. Leave both accounts exactly as they were.
+            whatsapp_client.send_text_message(
+                wa_id, bot_text("whatsapp.link_conflict", existing.language)
+            )
+            return True
+        code_user.whatsapp_phone_number = wa_id
+        if profile_name:
+            code_user.first_name = code_user.first_name or profile_name
+        session.commit()
+        whatsapp_client.send_text_message(
+            wa_id, bot_text("whatsapp.link_success", code_user.language)
+        )
+        return True
+
+
 def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) -> None:
     with get_session() as session:
-        # Channel linking (see todira_common/channel_link.py): a `ref_xxxxxx` code generated on
-        # the website's /account page for an already-logged-in user, sent here as a plain text
-        # message to attach THIS WhatsApp number to that same existing account. Checked before
-        # get_or_create_whatsapp_user below so a first-time sender linking an account never gets
-        # a brand-new, disconnected user row created for them first.
-        code_user = resolve_link_code(session, text)
-        if code_user is not None:
-            existing = session.scalar(
-                select(User).where(User.whatsapp_phone_number == wa_id)
-            )
-            if existing is not None and existing.id != code_user.id:
-                # This WhatsApp number already has its own separate account — linking it to a
-                # second one would mean merging two rows' filters/history, which we don't do
-                # automatically. Leave both accounts exactly as they were.
-                whatsapp_client.send_text_message(
-                    wa_id, bot_text("whatsapp.link_conflict", existing.language)
-                )
-                return
-            code_user.whatsapp_phone_number = wa_id
-            if profile_name:
-                code_user.first_name = code_user.first_name or profile_name
-            session.commit()
-            whatsapp_client.send_text_message(
-                wa_id, bot_text("whatsapp.link_success", code_user.language)
-            )
-            return
-
         user = get_or_create_whatsapp_user(session, wa_id, profile_name)
         lang = user.language or DEFAULT_LANG
 
@@ -501,6 +511,13 @@ def _process_payload_sync(payload: dict) -> None:
                         list_reply_id = (message.get("interactive") or {}).get("list_reply", {}).get("id")
                     elif msg_type == "text":
                         text = (message.get("text") or {}).get("body", "")
+
+                    # A link code (see _try_link_code_sync's own docstring) is checked before
+                    # anything else, including the language picker below — it must never fall
+                    # into get_or_create_whatsapp_user first, or the code is silently swallowed
+                    # and a spurious, disconnected user row is created for the sender's number.
+                    if msg_type == "text" and text and _try_link_code_sync(wa_id, contacts.get(wa_id), text):
+                        continue
 
                     # Every message goes through this FIRST, regardless of type — a brand-new
                     # WhatsApp sender (or an existing one from before this column existed) gets the
