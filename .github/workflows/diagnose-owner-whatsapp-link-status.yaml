@@ -1,0 +1,88 @@
+name: Diagnose — why the owner's own WhatsApp link attempt didn't connect (read-only)
+
+# Real owner report: sent the ref_xxxxxx code shown on /account to the bot's WhatsApp number,
+# the message shows as delivered+read, but /account still shows WhatsApp as not connected.
+# Two live hypotheses to check without guessing:
+#   1. The code expired (channel_link_code_expires_at has a 15-minute TTL — common/todira_common/
+#      channel_link.py) before he actually sent it, so resolve_link_code silently treated it as
+#      "not a link code" (by design — no error surfaced to the user either way).
+#   2. His own WhatsApp number already has its own SEPARATE user row (created earlier via a plain
+#      conversational message to the bot, unrelated to linking — his own screenshot shows an
+#      existing prior conversation from that same number) — website/whatsapp_webhook.py's
+#      _handle_incoming_text_sync hits the "link_conflict" branch in that case and refuses to
+#      merge the two accounts, explaining why /account never shows connected.
+on:
+  workflow_dispatch:
+    inputs:
+      whatsapp_e164:
+        description: "The owner's own WhatsApp number, E.164 digits only, no + (e.g. 972524983967)"
+        required: true
+      telegram_user_id:
+        description: "The owner's own main account telegram_user_id"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Check both accounts (main Telegram-linked account + any separate WhatsApp-only row)
+        env:
+          WA_NUMBER: ${{ inputs.whatsapp_e164 }}
+          TG_ID: ${{ inputs.telegram_user_id }}
+        run: |
+          kubectl delete pod diag-wa-link -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-wa-link
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-wa-link
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: WA_NUMBER
+                    value: "${WA_NUMBER}"
+                  - name: TG_ID
+                    value: "${TG_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+                    echo "--- main account (by telegram_user_id): link code state + current whatsapp_phone_number ---"
+                    psql "\$CONN" -c "
+                      SELECT id, telegram_user_id, whatsapp_phone_number, whatsapp_notifications_opted_in,
+                             channel_link_code, channel_link_code_expires_at, now() AS server_now
+                      FROM users WHERE telegram_user_id = \$TG_ID;
+                    "
+                    echo "--- any row (main or separate) currently holding this WhatsApp number ---"
+                    psql "\$CONN" -c "
+                      SELECT id, telegram_user_id, whatsapp_phone_number, whatsapp_notifications_opted_in,
+                             first_name, created_at
+                      FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER';
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-wa-link -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-wa-link || true
+          kubectl delete pod diag-wa-link -n todira --ignore-not-found
