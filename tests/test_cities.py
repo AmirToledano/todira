@@ -105,9 +105,22 @@ def test_canonicalize_city_leaves_already_canonical_spelling_unchanged():
     assert canonicalize_city("קריית מוצקין") == "קריית מוצקין"
 
 
+def test_canonicalize_city_fixes_the_same_spelling_gap_for_a_newly_added_city():
+    # 2026-09-27: diagnose-city-filter-coverage-gap.yaml found the exact same כתיב מלא/חסר split
+    # already confirmed for קריית מוצקין also affecting newly-whitelisted cities (live: 66 "קריית
+    # שמונה" + 26 "קרית שמונה" — the same city, two spellings) — canonicalize_city needed no code
+    # change to cover them, since it already generalizes over CITIES, but this locks in that a
+    # future scrape of the defective spelling keeps auto-correcting for every new entry too.
+    assert canonicalize_city("קרית שמונה") == "קריית שמונה"
+    assert "קריית שמונה" in CITIES
+
+
 def test_canonicalize_city_leaves_unrecognized_city_unchanged():
-    # a real city not in the bundled list must never be mapped to something else
-    assert canonicalize_city("כפר יונה") == "כפר יונה"
+    # a fictional name (never a real city, so it can never accidentally become recognized by a
+    # future CITIES expansion — 2026-09-27 grew this list from 42 to 114 real entries, and "כפר
+    # יונה" used here before that change is now itself one of them) must never be mapped to
+    # something else.
+    assert canonicalize_city("עיר בדיונית שלא קיימת") == "עיר בדיונית שלא קיימת"
 
 
 def test_canonicalize_city_passes_through_none():
