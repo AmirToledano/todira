@@ -1,0 +1,84 @@
+name: Diagnose — overview of every user row, before a possible mass cleanup (read-only)
+
+# Owner asked to wipe every user account except his own to get a clean slate ("all experimental,
+# all friends, all mine"). Before touching anything: an honest count and breakdown, read-only, no
+# personal identifiers beyond counts, so the decision is informed rather than assumed.
+on:
+  workflow_dispatch:
+    inputs:
+      exclude_telegram_user_id:
+        description: "The owner's own telegram_user_id, excluded from every count below"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Overview of every user row except the owner's own
+        env:
+          TG_ID: ${{ inputs.exclude_telegram_user_id }}
+        run: |
+          kubectl delete pod diag-all-users -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-all-users
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-all-users
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: TG_ID
+                    value: "${TG_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+                    echo "--- total user rows (excluding the owner) ---"
+                    psql "\$CONN" -c "SELECT count(*) AS total_other_users FROM users WHERE telegram_user_id IS NULL OR telegram_user_id != \$TG_ID;"
+                    echo "--- breakdown by identity channel ---"
+                    psql "\$CONN" -c "
+                      SELECT
+                        count(*) FILTER (WHERE telegram_user_id IS NOT NULL) AS has_telegram,
+                        count(*) FILTER (WHERE whatsapp_phone_number IS NOT NULL) AS has_whatsapp,
+                        count(*) FILTER (WHERE google_sub IS NOT NULL) AS has_google
+                      FROM users WHERE telegram_user_id IS NULL OR telegram_user_id != \$TG_ID;
+                    "
+                    echo "--- how many have an active or past trial_ends_at set (real onboarding signal) ---"
+                    psql "\$CONN" -c "SELECT count(*) AS with_trial_end FROM users WHERE (telegram_user_id IS NULL OR telegram_user_id != \$TG_ID) AND trial_ends_at IS NOT NULL;"
+                    echo "--- how many have a Filter attached ---"
+                    psql "\$CONN" -c "
+                      SELECT count(*) AS with_filter FROM \"filters\" f
+                      JOIN users u ON u.id = f.user_id
+                      WHERE u.telegram_user_id IS NULL OR u.telegram_user_id != \$TG_ID;
+                    "
+                    echo "--- oldest and newest of these accounts ---"
+                    psql "\$CONN" -c "SELECT min(created_at) AS oldest, max(created_at) AS newest FROM users WHERE telegram_user_id IS NULL OR telegram_user_id != \$TG_ID;"
+                    echo "--- any evidence of a real paid subscription (check for a subscriptions/payments table) ---"
+                    psql "\$CONN" -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-all-users -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-all-users || true
+          kubectl delete pod diag-all-users -n todira --ignore-not-found
