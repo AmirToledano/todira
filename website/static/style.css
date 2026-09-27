@@ -1094,6 +1094,9 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
    setting an element's `.hidden` property from JS (the city search filter below) has no visible
    effect at all. Found live 2026-09-02: the filter ran correctly, nothing ever actually hid. */
 .check-chip[hidden] { display: none !important; }
+/* 2026-09-27: the "all cities" toggle sits above the search box/grid, not inside the scrollable
+   grid itself — a small margin keeps it from crowding the search input right below it. */
+.all-cities-chip { margin-bottom: 8px; }
 /* the cities grid (~40 options) gets its own scrollable box so the page doesn't get huge;
    the shorter amenity/property-type grids stay unbounded */
 .checkbox-grid-scroll {

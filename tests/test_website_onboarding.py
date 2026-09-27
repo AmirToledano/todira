@@ -132,9 +132,10 @@ def test_welcome_flow_with_a_real_city_saves_and_advances_to_step_2():
 
 
 def test_non_welcome_save_with_no_cities_is_never_blocked():
-    """Outside onboarding, zero cities still means "all cities" exactly as filter.cities_hint
-    says — this validation is deliberately scoped to the welcome flow only, never the general
-    /filter save or the apartments-sidebar panel (same POST /filter route)."""
+    """Outside onboarding, an empty cities list still means "all cities" (todira_common.matching
+    skips the city check entirely) — this validation is deliberately scoped to the welcome flow
+    only, never the general /filter save or the apartments-sidebar panel (same POST /filter
+    route)."""
     user = _FakeUser(uid=555)
     with _client_for(user):
         client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
@@ -153,10 +154,45 @@ def test_welcome_flow_error_redirect_is_shown_on_the_filter_page():
     assert "cities-error-banner" in resp.text
 
 
+# --- 2026-09-27: real bug, live-reported (diagnose-city-filter-coverage-gap.yaml confirmed 3,727
+# of 12,893 active listings, ~29%, have a real city outside CITIES' curated ~42-city whitelist) —
+# checking every individual city box is NOT the same as "no city filter": the matching-logic city
+# check is skipped entirely only when filter.cities is empty, but requires an exact whitelist
+# match when non-empty. The mandatory-city welcome block made that real unfiltered state
+# unreachable for a new user (leaving the grid empty was the only way there, and welcome blocks
+# submitting zero cities). all_cities is a first-class toggle that reaches cities=[] for real and
+# also satisfies the welcome validation on its own.
+
+
+def test_all_cities_toggle_satisfies_welcome_validation_and_saves_an_empty_city_filter():
+    user = _FakeUser(uid=555)
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.post(
+            "/filter", data=_base_form(555, welcome="1", all_cities="on"),
+        )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/onboarding/notifications?uid=555"
+    assert user.filter.cities == []
+
+
+def test_all_cities_toggle_wins_even_if_individual_cities_were_also_submitted():
+    """The front end keeps the toggle and the grid mutually exclusive via JS, but the server
+    doesn't trust that alone — all_cities always overrides whatever else came in `cities`."""
+    user = _FakeUser(uid=555)
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.post(
+            "/filter", data=_base_form(555, all_cities="on", cities=["רמת גן"]),
+        )
+    assert resp.status_code == 303
+    assert user.filter.cities == []
+
+
 # --- 2026-09-27: real bug, live-reported — _filter_form_fields.html's <script> defining
-# filterCityChips/clearAllCities used to sit AFTER {% endmacro %}, so a `{% from ... import
+# filterCityChips/onAllCitiesToggle used to sit AFTER {% endmacro %}, so a `{% from ... import
 # filter_form_fields %}` (both filter.html and apartments.html) never rendered it — the city
-# search box's typing filter and the "clear all" button silently did nothing anywhere. Now
+# search box's typing filter and the "all cities" toggle silently did nothing anywhere. Now
 # inlined inside the macro body; asserts the actual function definitions ship on the page, not
 # just that the input/button elements exist (which passed even while broken). The apartments.html
 # equivalent lives in test_website_content_gating.py, whose fixtures already build the heavier
@@ -170,25 +206,27 @@ def test_filter_page_ships_the_city_search_js_functions():
         resp = client.get("/filter", params={"uid": 555})
     assert resp.status_code == 200
     assert "function filterCityChips(query)" in resp.text
-    assert "function clearAllCities(btn)" in resp.text
+    assert "function onAllCitiesToggle(checked)" in resp.text
+    assert "function onCityChipChecked()" in resp.text
 
 
-def test_cities_hint_is_hidden_during_welcome_flow_since_zero_cities_is_blocked_there():
-    user = _FakeUser(uid=555)
-    with _client_for(user):
-        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
-        resp = client.get("/filter", params={"uid": 555, "welcome": "1"})
-    assert resp.status_code == 200
-    assert "לא מסומן כלום = כל הערים" not in resp.text
-
-
-def test_cities_hint_still_shows_outside_the_welcome_flow_where_zero_cities_is_valid():
+def test_all_cities_toggle_is_checked_when_the_filter_has_no_cities():
     user = _FakeUser(uid=555)
     with _client_for(user):
         client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
         resp = client.get("/filter", params={"uid": 555})
     assert resp.status_code == 200
-    assert "לא מסומן כלום = כל הערים" in resp.text
+    assert 'id="f-all-cities" name="all_cities" checked' in resp.text
+
+
+def test_all_cities_toggle_is_unchecked_when_specific_cities_are_selected():
+    user = _FakeUser(uid=555)
+    user.filter.cities = ["רמת גן"]
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.get("/filter", params={"uid": 555})
+    assert resp.status_code == 200
+    assert 'id="f-all-cities" name="all_cities"  onchange' in resp.text
 
 
 # --- /onboarding/notifications (step 2) ---

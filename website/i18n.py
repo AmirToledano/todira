@@ -1274,27 +1274,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "חפש/י עיר...", "en": "Search for a city...", "ru": "Поиск города...",
         "fr": "Rechercher une ville...", "ar": "ابحث عن مدينة...",
     },
+    # 2026-09-27: rewritten — checking every individual city box is NOT the same as "all cities"
+    # (an exact match against this curated ~42-city whitelist vs. no city filter at all; see
+    # filter_form_fields.html's own comment on the "all cities" toggle this now explains, and
+    # filter_update's comment on the live-confirmed 29% of active listings this used to silently
+    # exclude). The old copy ("nothing checked = all cities") described an undiscoverable
+    # unchecked-grid convention that the mandatory-city onboarding rule (task #80) also made
+    # unreachable during welcome; the explicit toggle replaces both problems at once.
     "filter.cities_hint": {
-        "he": "לא מסומן כלום = כל הערים",
-        "en": "Nothing checked = all cities",
-        "ru": "Ничего не выбрано = все города",
-        "fr": "Rien de coché = toutes les villes",
-        "ar": "لا شيء محدد = كل المدن",
+        "he": "\"כל הערים\" כולל גם יישובים שלא ברשימה למטה",
+        "en": '"All cities" also includes towns not listed below',
+        "ru": "«Все города» включает и населённые пункты, которых нет в списке ниже",
+        "fr": '« Toutes les villes » inclut aussi les villes non listées ci-dessous',
+        "ar": "\"كل المدن\" يشمل أيضًا بلدات غير مدرجة أدناه",
     },
-    # 2026-09-15: real owner report — the hint above already explains that an empty selection
-    # means "all cities" (matching.py skips the city filter entirely then, matching every real
-    # city/town, not just the ~40 in this curated list), but there was no quick way back to that
-    # state short of unchecking every box by hand — so the natural instinct is to check every
-    # single one instead, which is NOT the same thing and silently excludes any listing in a real
-    # town outside this list (confirmed live: over a thousand active listings, in towns like
-    # אריאל/חריש/נשר that simply aren't in cities_list). This button clears the whole grid in one
-    # click, reaching the true "all cities" state the hint already promises.
-    "filter.cities_clear_all": {
-        "he": "נקה הכל (כל הערים)",
-        "en": "Clear all (all cities)",
-        "ru": "Очистить всё (все города)",
-        "fr": "Tout effacer (toutes les villes)",
-        "ar": "مسح الكل (كل المدن)",
+    "filter.cities_all_label": {
+        "he": "כל הערים",
+        "en": "All cities",
+        "ru": "Все города",
+        "fr": "Toutes les villes",
+        "ar": "كل المدن",
     },
     "filter.price_min_label": {
         "he": "מחיר מינימלי", "en": "Minimum price", "ru": "Минимальная цена",

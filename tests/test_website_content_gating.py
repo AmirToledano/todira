@@ -262,10 +262,10 @@ def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(cl
 
 def test_apartments_sidebar_filter_ships_the_city_search_js_functions(client):
     """2026-09-27: real bug, live-reported — _filter_form_fields.html's <script> defining
-    filterCityChips/clearAllCities used to sit AFTER {% endmacro %}, so a
+    filterCityChips/onAllCitiesToggle used to sit AFTER {% endmacro %}, so a
     `{% from ... import filter_form_fields %}` (both filter.html and apartments.html use this,
     never a direct include) never rendered it — the city search box's typing filter and the
-    "clear all" button silently did nothing anywhere. Now inlined inside the macro body."""
+    "all cities" toggle silently did nothing anywhere. Now inlined inside the macro body."""
     user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
                       trial_ends_at=_NOW + dt.timedelta(days=2))
     fake_session = _FakeSession(user, listings=[])
@@ -275,7 +275,8 @@ def test_apartments_sidebar_filter_ships_the_city_search_js_functions(client):
 
     assert resp.status_code == 200
     assert "function filterCityChips(query)" in resp.text
-    assert "function clearAllCities(btn)" in resp.text
+    assert "function onAllCitiesToggle(checked)" in resp.text
+    assert "function onCityChipChecked()" in resp.text
 
 
 def test_apartments_listing_card_omits_posted_at_and_description_full_when_absent(client):

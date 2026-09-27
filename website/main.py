@@ -2370,6 +2370,7 @@ def filter_update(
     uid: int | None = Form(None),
     wid: str | None = Form(None),
     cities: list[str] = Form([]),
+    all_cities: str | None = Form(None),
     price_min: str = Form(""),
     price_max: str = Form(""),
     rooms_min: str = Form(""),
@@ -2397,11 +2398,23 @@ def filter_update(
     — `welcome` is only ever present on a submit from the first-time welcome flow (filter.html's
     own hidden field, only rendered when `welcome` is true there). It does two things a normal
     filter save never does: (1) blocks the save entirely — nothing written, not even the other
-    fields — when zero cities are selected, matching dorin's own "חובה לבחור עיר אחת" hard block;
-    outside onboarding, zero cities still means "all cities" exactly as filter.cities_hint says,
-    completely unaffected by this. (2) chains into step 2 (/onboarding/notifications) instead of
-    /apartments on a successful save, continuing the flow rather than dropping the new user straight
-    into the results."""
+    fields — when zero cities AND all_cities are both unset, matching dorin's own "חובה לבחור עיר
+    אחת" hard block; outside onboarding, an empty cities list still means "all cities" exactly as
+    before, completely unaffected by this. (2) chains into step 2 (/onboarding/notifications)
+    instead of /apartments on a successful save, continuing the flow rather than dropping the new
+    user straight into the results.
+
+    2026-09-27 real bug fix (live owner report, confirmed via diagnose-city-filter-coverage-gap.yaml
+    — 3,727 of 12,893 active listings, ~29%, have a real city outside CITIES' curated ~42-city
+    whitelist): `f.cities = [c for c in cities if c in CITIES]` used to run unconditionally, so
+    checking every individual box in the grid produced an exact-match filter against only those 42
+    strings — NOT the same as "no city filter" (todira_common.matching skips the city check
+    entirely only when filter.cities is empty). The only way to reach that real unfiltered state
+    was leaving the whole grid unchecked, which the welcome block above makes impossible during
+    onboarding — silently hiding ~29% of real inventory from every new user, forever, with no way
+    back short of an admin/DB edit. all_cities is a first-class way to reach cities=[] for real:
+    when set, it always wins over whatever was also submitted in `cities` (checked or not — the
+    front end keeps them mutually exclusive, but the server doesn't trust that alone)."""
     with get_session() as session:
         # session-first (like every other page), uid/wid as the low-trust fallback for a
         # bot-deep-link visitor with no real login yet — 2026-09-05 fix: this used to require uid
@@ -2412,13 +2425,13 @@ def filter_update(
         if user is None or user.filter is None:
             return RedirectResponse(_filter_redirect_url(uid, wid), status_code=303)
 
-        if welcome is not None and not any(c in CITIES for c in cities):
+        if welcome is not None and all_cities is None and not any(c in CITIES for c in cities):
             error_url = _identity_redirect_url("/filter", uid, wid)
             error_url += ("&" if "?" in error_url else "?") + "welcome=1&error=cities"
             return RedirectResponse(error_url, status_code=303)
 
         f: Filter = user.filter
-        f.cities = [c for c in cities if c in CITIES]
+        f.cities = [] if all_cities is not None else [c for c in cities if c in CITIES]
         f.price_min = _parse_int_or_none(price_min)
         f.price_max = _parse_int_or_none(price_max)
         f.rooms_min = _parse_float_or_none(rooms_min)
