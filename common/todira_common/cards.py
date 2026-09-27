@@ -387,6 +387,7 @@ def format_caption(
     has_access: bool,
     price_change_from: int | None = None,
     upgrade_url: str | None = None,
+    view_url: str | None = None,
     lang: str = DEFAULT_LANG,
 ) -> str:
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
@@ -416,9 +417,14 @@ def format_caption(
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:
-        # listing.url is scraped from Yad2, not written by this project — escaped defensively so
-        # a stray `"` in it could never break out of the href attribute.
-        safe_url = html.escape(listing.url)
+        # 2026-09-27 real owner request, matching dorin.app: the outbound link should land on
+        # THIS project's own listing page (todira.app), not send the viewer straight to the raw
+        # external source — callers now pass view_url for that (scraper/notifier.py builds
+        # /apartments?uid=...&listing={id}). Falls back to the raw scraped listing.url when no
+        # view_url is given (existing callers, e.g. bot/handlers/liked.py, untouched). listing.url
+        # itself is scraped from Yad2, not written by this project — escaped defensively either
+        # way so a stray `"` could never break out of the href attribute.
+        safe_url = html.escape(view_url or listing.url)
         link_text = bot_text("card.full_details_link_html", lang)
         footer_text = f'🔗 <a href="{safe_url}">{link_text}</a>'
     elif upgrade_url:

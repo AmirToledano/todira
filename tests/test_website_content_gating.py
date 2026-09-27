@@ -481,6 +481,43 @@ def test_go_to_listing_source_404s_for_a_missing_listing(client):
     assert resp.status_code == 404
 
 
+def test_apartments_listing_deep_link_renders_even_when_it_does_not_match_current_filter(client):
+    """2026-09-27 real owner request, matching dorin.app: the WhatsApp/Telegram "view apartment"
+    link should land straight on that listing's own detail view — see main.py's apartments() own
+    comment. Must still render even when the listing no longer matches the viewer's CURRENT filter
+    (changed since the notification was sent, e.g.) — this fetches it directly by id, independent
+    of the normal matched/paginated grid, which is empty in this test (evaluate() returns False for
+    every listing, forcing the {% if not listings %} empty-state branch — the deep-link card must
+    still render outside that branch, not get swallowed by it)."""
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listing = _FakeListing(id=77)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(False)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222, "listing": 77})
+
+    assert resp.status_code == 200
+    assert 'id="apt-deep-link-card"' in resp.text
+    assert 'data-listing-id="77"' in resp.text
+
+
+def test_apartments_no_deep_link_card_when_listing_param_absent(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert 'id="apt-deep-link-card"' not in resp.text
+
+
 # ---------------------------------------------------------------------------
 # /apartments pagination — 2026-09-06: rendering all (up to 200) matches in one page crashed real
 # visitors' browsers, so the route now paginates (APARTMENTS_PAGE_SIZE at a time) with a

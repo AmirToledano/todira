@@ -121,6 +121,16 @@
         <span class="apt-spinner" aria-hidden="true"></span> {{ t('apartments.loading_more') }}
       </div>
     {% endif %}
+    {# 2026-09-27: the ?listing= deep link's own card, rendered off the SAME matched/paginated
+       grid above (main.py's apartments() fetches it independently — see that route's own
+       comment). Deliberately OUTSIDE the {% if not listings %} branch above — the deep-linked
+       listing can exist even when the viewer's own current filter matches nothing at all (filter
+       narrowed since the match was sent, e.g.), so it must render either way. Hidden here and
+       opened via JS below, exactly simulating a real click on it (openListingDetail takes any
+       .listing-card element, not just ones already in the visible grid). #}
+    {% if deep_link_listing %}
+    <div hidden id="apt-deep-link-card">{{ listing_card(deep_link_listing, 0, false) }}</div>
+    {% endif %}
    </div>
   </div>
 
@@ -535,6 +545,14 @@
       }
     }
     window.__aptOpenListingDetail = openListingDetail; // read by the Leaflet script below, on pin click
+
+    // 2026-09-27: ?listing={id} deep link (WhatsApp/Telegram "view apartment" button) — opens
+    // straight into that listing's own detail view on load, exactly as if it had been clicked in
+    // the grid. The card itself is rendered server-side into #apt-deep-link-card (hidden) above;
+    // this just simulates the same click grid.addEventListener('click', ...) further down would
+    // handle for a real card, since openListingDetail takes any .listing-card element.
+    var deepLinkCard = document.querySelector('#apt-deep-link-card .listing-card');
+    if (deepLinkCard) { openListingDetail(deepLinkCard); }
 
     function closeListingDetail() {
       if (openMode === 'panel') {

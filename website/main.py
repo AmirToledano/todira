@@ -1129,7 +1129,13 @@ def go_to_listing_source(listing_id: int):
 
 
 @app.get("/apartments")
-def apartments(request: Request, uid: int | None = None, offset: int = 0, fragment: bool = False):
+def apartments(
+    request: Request,
+    uid: int | None = None,
+    offset: int = 0,
+    fragment: bool = False,
+    listing: int | None = None,
+):
     lang = get_lang(request)
     with get_session() as session:
         user = _resolve_user(request, session, uid)
@@ -1189,6 +1195,15 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
         # stale ?uid= also happens to be sitting in the URL from an older bookmark/deep link.
         via_session = request.session.get("user_id") == user.id
         has_access = _effective_access(request, user)
+        # 2026-09-27 real owner request, matching dorin.app: the "view apartment" link sent in a
+        # WhatsApp/Telegram match notification should land straight on THAT listing's own detail
+        # view, not just the generic /apartments grid. The listing that matched at send time might
+        # no longer be in `matches` by the time it's clicked (filter changed, or it's since fallen
+        # off the paginated window — matches is ordered newest-first with no guaranteed position),
+        # so this is fetched independently of the filter/pagination above, same as /go/{id}'s own
+        # direct-by-id lookup. Still behind the normal has_access gate below (via listing_card's own
+        # {% if has_access %} checks) — a deep link doesn't bypass the contact-info paywall.
+        deep_link_listing = session.get(Listing, listing) if listing is not None else None
 
     if has_access:
         _fill_missing_descriptions_in_background(page_items)
@@ -1204,6 +1219,7 @@ def apartments(request: Request, uid: int | None = None, offset: int = 0, fragme
         "has_access": has_access,
         "liked_ids": liked_ids,
         "hidden_ids": set(),
+        "deep_link_listing": deep_link_listing,
     }
     if fragment:
         # AJAX "load more" request (see apartments.html's own script) — just the next batch of
