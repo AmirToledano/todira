@@ -1,0 +1,96 @@
+name: Fix — one-time backfill of pre-expansion city spelling variants
+
+# ONE-OFF, real WRITE (not a diagnose-*.yaml read-only check) — 2026-09-27, run once right after
+# common/todira_common/cities.py's CITIES expansion (42 -> 114 real cities, PR #500).
+#
+# canonicalize_city() already auto-corrects a scraped listing's raw city text to this list's
+# spelling at ingestion time — no code change needed there for the 72 newly-added cities, it
+# generalizes over CITIES automatically. But that only ever runs on NEWLY scraped listings; rows
+# already sitting in the table from before this expansion are still stored under whatever spelling
+# they were first scraped with. diagnose-city-filter-coverage-gap.yaml's own full (LIMIT 500) dump
+# found the exact same כתיב מלא/חסר (doubled-letter) split already fixed for קריית מוצקין back in
+# 2026-09-02 also affecting several of the newly-whitelisted cities — e.g. live: 66 "קריית שמונה" +
+# 26 "קרית שמונה", the same real city under two spellings, only one of which (now) matches CITIES.
+# Reconciling those existing rows immediately (rather than waiting for a future re-scrape that may
+# never come for an already-delisted listing) is the whole point of this one-time run.
+#
+# Also strips leading/trailing whitespace from every city value first — the same diagnostic's
+# output showed "קריית טבעון" appearing as TWO separate GROUP BY rows (20 + 15) with what LOOKS
+# like the identical string, which Postgres would never split unless something invisible (likely
+# whitespace) actually differs between them; trimming first catches that class of issue generally,
+# not just this one city.
+#
+# Safe to re-run (idempotent) — after the first run there's nothing left matching the WHERE
+# clauses, so a second run touches 0 rows.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Backfill pre-expansion city spelling variants to CITIES' canonical spelling
+        run: |
+          kubectl delete pod fix-city-spelling -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fix-city-spelling
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: fix-city-spelling
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- before: counts for the known variant pairs ---"
+                    psql "$CONN" -c "
+                      SELECT city, count(*) FROM listings
+                      WHERE city IN ('קרית שמונה', 'קריית שמונה', 'קרית ים', 'קריית ים',
+                                      'קרית מלאכי', 'קריית מלאכי', 'עספיא', 'עוספיא')
+                      GROUP BY city ORDER BY city;
+                    "
+                    echo "--- trimming leading/trailing whitespace from every city value ---"
+                    psql "$CONN" -c "UPDATE listings SET city = TRIM(city) WHERE city IS NOT NULL AND city <> TRIM(city);"
+                    echo "--- backfilling known כתיב חסר -> כתיב מלא variant pairs ---"
+                    psql "$CONN" -c "UPDATE listings SET city = 'קריית שמונה' WHERE city = 'קרית שמונה';"
+                    psql "$CONN" -c "UPDATE listings SET city = 'קריית ים' WHERE city = 'קרית ים';"
+                    psql "$CONN" -c "UPDATE listings SET city = 'קריית מלאכי' WHERE city = 'קרית מלאכי';"
+                    psql "$CONN" -c "UPDATE listings SET city = 'עוספיא' WHERE city = 'עספיא';"
+                    echo "--- after: counts for the same pairs (only the canonical spelling should remain) ---"
+                    psql "$CONN" -c "
+                      SELECT city, count(*) FROM listings
+                      WHERE city IN ('קרית שמונה', 'קריית שמונה', 'קרית ים', 'קריית ים',
+                                      'קרית מלאכי', 'קריית מלאכי', 'עספיא', 'עוספיא')
+                      GROUP BY city ORDER BY city;
+                    "
+                    echo "--- did trimming resolve the mysterious קריית טבעון double-row? ---"
+                    psql "$CONN" -c "SELECT city, count(*) FROM listings WHERE city = 'קריית טבעון' GROUP BY city;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod fix-city-spelling -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira fix-city-spelling || true
+          kubectl delete pod fix-city-spelling -n todira --ignore-not-found
