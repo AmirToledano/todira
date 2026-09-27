@@ -219,7 +219,12 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
 
 
 async def _notify_new_matches(
-    bot: Bot, session: Session, listing: Listing, *, only_telegram_user_id: str | None = None
+    bot: Bot,
+    session: Session,
+    listing: Listing,
+    *,
+    only_telegram_user_id: str | None = None,
+    whatsapp_sent_user_ids: set[int] | None = None,
 ) -> tuple[int, int, set[int]]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
@@ -232,7 +237,22 @@ async def _notify_new_matches(
 
     `only_telegram_user_id`: see run_notifications' own docstring — when set, every OTHER user is
     silently skipped (never marked as notified, so they still get the real notification once this
-    restriction is lifted on a later run)."""
+    restriction is lifted on a later run).
+
+    `whatsapp_sent_user_ids`: 2026-09-27 real owner report — a broad filter can genuinely match
+    many listings in the same scrape run, and WhatsApp (unlike Telegram, or the website) pings the
+    phone for every single one individually; the owner's own account got flooded the moment he
+    connected. run_notifications passes ONE shared set across its whole run (every new-match
+    listing AND every price-change re-notify), so a user gets at most one real WhatsApp send per
+    run regardless of how many listings matched — the rest stay un-notified on WhatsApp
+    specifically (Telegram/website are unaffected) and simply get picked up on the NEXT run
+    instead, since a user only ever counts as "notified" here once _send_whatsapp_match_template
+    actually succeeds (see below) — nothing is silently lost, it just spreads out instead of
+    landing all at once. None (the default) means uncapped — every existing caller/test that
+    doesn't pass this continues to behave exactly as before, since a single isolated call only
+    ever considers one listing's worth of users anyway."""
+    if whatsapp_sent_user_ids is None:
+        whatsapp_sent_user_ids = set()
     matched = 0
     sent = 0
     newly_notified_user_ids: set[int] = set()
@@ -278,9 +298,10 @@ async def _notify_new_matches(
             if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
                 sent_on_any_channel = True
             await asyncio.sleep(SEND_DELAY_SECONDS)
-        if _whatsapp_eligible(user):
+        if _whatsapp_eligible(user) and user.id not in whatsapp_sent_user_ids:
             if _send_whatsapp_match_template(user, listing):
                 sent_on_any_channel = True
+                whatsapp_sent_user_ids.add(user.id)
             await asyncio.sleep(WHATSAPP_SEND_DELAY_SECONDS)
         if sent_on_any_channel:
             # One row per user per listing regardless of how many channels it went out on — this
@@ -422,18 +443,29 @@ async def run_notifications(
     matched_count = 0
     new_sent_count = 0
     price_change_sent_count = 0
+    # 2026-09-27: one shared set for the WHOLE run (new matches AND price-change re-notifies
+    # together) — see _notify_new_matches' own docstring on whatsapp_sent_user_ids for why.
+    whatsapp_sent_user_ids: set[int] = set()
 
     async with Bot(token=token) as bot:
         for listing in new_listings:
             m, s, _newly_notified = await _notify_new_matches(
-                bot, session, listing, only_telegram_user_id=only_telegram_user_id
+                bot,
+                session,
+                listing,
+                only_telegram_user_id=only_telegram_user_id,
+                whatsapp_sent_user_ids=whatsapp_sent_user_ids,
             )
             matched_count += m
             new_sent_count += s
         for listing, old_price in price_change_events:
             # a price change can also newly qualify filters that were previously priced out
             m, s, newly_notified = await _notify_new_matches(
-                bot, session, listing, only_telegram_user_id=only_telegram_user_id
+                bot,
+                session,
+                listing,
+                only_telegram_user_id=only_telegram_user_id,
+                whatsapp_sent_user_ids=whatsapp_sent_user_ids,
             )
             matched_count += m
             new_sent_count += s

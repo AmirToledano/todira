@@ -365,7 +365,6 @@ def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
-        patch.object(whatsapp_webhook, "_send_notifications_optin_prompt") as optin_mock,
     ):
         handled = whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
@@ -375,12 +374,12 @@ def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
     assert session.committed is True
     send_mock.assert_called_once()
     assert "חיברתי" in send_mock.call_args[0][1]
-    # Found live 2026-09-27: an existing account linking via a code skips onboarding entirely, so
-    # it never otherwise sees this prompt — see _try_link_code_sync's own comment on this call.
-    optin_mock.assert_called_once_with("9725500000", "he")
+    # 2026-09-27 real owner decision: linking WhatsApp auto-enables notifications immediately,
+    # no separate /account step — see _try_link_code_sync's own comment on this.
+    assert code_user.whatsapp_notifications_opted_in is True
 
 
-def test_link_code_does_not_prompt_opt_in_again_if_already_opted_in():
+def test_link_code_keeps_opt_in_true_when_already_opted_in():
     code_user = SimpleNamespace(
         id=5, whatsapp_phone_number=None, first_name=None, language="he",
         whatsapp_notifications_opted_in=True,
@@ -390,11 +389,10 @@ def test_link_code_does_not_prompt_opt_in_again_if_already_opted_in():
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
-        patch.object(whatsapp_webhook, "_send_notifications_optin_prompt") as optin_mock,
     ):
         whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
-    optin_mock.assert_not_called()
+    assert code_user.whatsapp_notifications_opted_in is True
 
 
 def test_link_code_does_not_overwrite_an_existing_first_name():
@@ -407,7 +405,6 @@ def test_link_code_does_not_overwrite_an_existing_first_name():
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
-        patch.object(whatsapp_webhook, "_send_notifications_optin_prompt"),
     ):
         whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
@@ -651,6 +648,9 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert saved_filter.price_max == 7000
     assert user.pending_onboarding_state is None
     assert session.committed
+    # 2026-09-27: notifications auto-enable immediately on WhatsApp signup — no separate opt-in
+    # step/button anymore, see this module's own docstring for the owner decision behind it.
+    assert user.whatsapp_notifications_opted_in is True
     # 2026-09-06 fix: the registration confirmation now ends with the same 3-message filter-edit
     # prompt (a real tappable button, then 2 follow-ups, matching the reference competitor bot's
     # own flow one to one) instead of a bare link, so the very first WhatsApp-only user never even
@@ -662,22 +662,16 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert "נרשמת" in send_text_mock.call_args_list[1][0][1]
     assert send_text_mock.call_args_list[2][0][1] == bot_text("whatsapp.filter_edit_followup1", "he")
     assert send_text_mock.call_args_list[3][0][1] == bot_text("whatsapp.filter_edit_followup2", "he")
-    # 2026-09-08: a second CTA button now follows the filter-edit prompt, asking the user to opt
-    # in to proactive WhatsApp Message Template notifications on /account — see
-    # _send_notifications_optin_prompt's own docstring for why this is collected as a real button
-    # tap rather than parsed from a free-text reply.
-    assert send_cta_mock.call_count == 2
+    # 2026-09-27: the second CTA button (opt-in to notifications on /account) is gone — that's now
+    # automatic, see above — only the filter-edit prompt's own CTA button remains.
+    assert send_cta_mock.call_count == 1
     # 2026-09-25 security fix: ?wid= now carries a signed, time-limited token, not the bare phone
     # number (see todira_common.wid_token's own module docstring for the account-takeover this
-    # closes) — assert each URL decodes back to the right number instead of a literal match.
+    # closes) — assert the URL decodes back to the right number instead of a literal match.
     filter_wid_url = send_cta_mock.call_args_list[0][0][3]
-    account_wid_url = send_cta_mock.call_args_list[1][0][3]
     assert filter_wid_url.startswith(f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=")
-    assert account_wid_url.startswith(f"{whatsapp_webhook.WEBSITE_URL}/account?wid=")
     filter_token = filter_wid_url.rsplit("wid=", 1)[1]
-    account_token = account_wid_url.rsplit("wid=", 1)[1]
     assert verify_wid_token(filter_token) == "9725500000"
-    assert verify_wid_token(account_token) == "9725500000"
 
 
 class _FakeRaceSession:

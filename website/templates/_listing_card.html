@@ -177,8 +177,15 @@
        see the two tests in test_website_content_gating.py asserting the real URL never appears in
        an expired user's /apartments response); /go/{id} itself is deliberately open to everyone,
        same as this escape hatch is meant to be. #}
+    {# 2026-09-27 real owner decision: contacting the poster (these two buttons specifically)
+       now needs a REAL paid subscription — has_paid_access (todira_common/access.py's
+       has_paid_access), NOT has_access above, which still counts an active 3-day trial. A trial
+       user now sees the same contact-locked-btn/paywall-popup flow (apartments.html's
+       openContactModal) an expired user always saw. "View original listing" (the footer link
+       below) is deliberately UNCHANGED — still has_access, so it keeps working through the
+       trial, same as before. #}
     <div class="contact-actions detail-only" data-listing-go-url="/go/{{ l.id }}">
-      {% if has_access %}
+      {% if has_paid_access %}
       <a class="contact-btn contact-btn-whatsapp" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.whatsapp_btn') }}</a>
       <a class="contact-btn contact-btn-phone" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.phone_btn') }}</a>
       {% else %}

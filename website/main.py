@@ -56,6 +56,7 @@ from todira_common.access import (
     PLAN_PRICES_ILS,
     extend_paid_until,
     has_full_access,
+    has_paid_access,
 )
 from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES
@@ -1195,6 +1196,7 @@ def apartments(
         # stale ?uid= also happens to be sitting in the URL from an older bookmark/deep link.
         via_session = request.session.get("user_id") == user.id
         has_access = _effective_access(request, user)
+        has_paid_access = _effective_paid_access(request, user)
         # 2026-09-27 real owner request, matching dorin.app: the "view apartment" link sent in a
         # WhatsApp/Telegram match notification should land straight on THAT listing's own detail
         # view, not just the generic /apartments grid. The listing that matched at send time might
@@ -1217,6 +1219,7 @@ def apartments(
         "user": user,
         "via_session": via_session,
         "has_access": has_access,
+        "has_paid_access": has_paid_access,
         "liked_ids": liked_ids,
         "hidden_ids": set(),
         "deep_link_listing": deep_link_listing,
@@ -1260,6 +1263,7 @@ def liked(request: Request, uid: int | None = None):
             else []
         )
         has_access = _effective_access(request, user)
+        has_paid_access = _effective_paid_access(request, user)
 
     if has_access:
         _fill_missing_descriptions_in_background(listings)
@@ -1272,6 +1276,7 @@ def liked(request: Request, uid: int | None = None):
             "uid": user.telegram_user_id,
             "user": user,
             "has_access": has_access,
+            "has_paid_access": has_paid_access,
             "liked_ids": liked_ids,
             "hidden_ids": set(),
         },
@@ -1295,6 +1300,7 @@ def hidden(request: Request, uid: int | None = None):
             else []
         )
         has_access = _effective_access(request, user)
+        has_paid_access = _effective_paid_access(request, user)
 
     return _render(
         request,
@@ -1304,6 +1310,7 @@ def hidden(request: Request, uid: int | None = None):
             "uid": user.telegram_user_id,
             "user": user,
             "has_access": has_access,
+            "has_paid_access": has_paid_access,
             "liked_ids": set(),
             "hidden_ids": hidden_ids,
         },
@@ -1413,6 +1420,17 @@ def _effective_access(request: Request, user: User) -> bool:
     if _preview_as_free(request):
         return False
     return has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
+
+
+def _effective_paid_access(request: Request, user: User) -> bool:
+    """Same preview-override pattern as _effective_access, but backed by has_paid_access — a real
+    subscription only, the 3-day trial doesn't count (2026-09-27 owner decision, see that
+    function's own docstring). Used only for the listing card's two contact buttons (WhatsApp
+    message / show phone number); every other access-gated surface keeps using _effective_access
+    above, unchanged."""
+    if _preview_as_free(request):
+        return False
+    return has_paid_access(user, is_owner=_is_owner_id(user.telegram_user_id))
 
 
 @app.get("/preview/toggle")
