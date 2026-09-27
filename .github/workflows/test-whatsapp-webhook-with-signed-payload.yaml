@@ -84,9 +84,9 @@ jobs:
                   - |
                     set -e
                     apk add --no-cache curl openssl >/dev/null
-                    CONN="postgresql://${DATABASE_URL#*://}"
+                    CONN="postgresql://\${DATABASE_URL#*://}"
 
-                    if [ -z "$WHATSAPP_APP_SECRET" ]; then
+                    if [ -z "\$WHATSAPP_APP_SECRET" ]; then
                       echo "RESULT: whatsapp-app-secret is not set in the cluster at all — that alone" \
                            "would make _verify_signature fail closed for every real Meta POST too." \
                            "Nothing to test; fix the secret first."
@@ -94,19 +94,19 @@ jobs:
                     fi
 
                     echo "--- before: any row for this number? ---"
-                    psql "$CONN" -c "SELECT id, whatsapp_phone_number, language, channel_link_code FROM users WHERE whatsapp_phone_number = '$WA_NUMBER';"
+                    psql "\$CONN" -c "SELECT id, whatsapp_phone_number, language, channel_link_code FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER';"
 
-                    MSGID="wamid.DIAGTEST$(date +%s)$$"
+                    MSGID="wamid.DIAGTEST\$(date +%s)\$\$"
                     cat > /tmp/payload.json <<JSON
-                    {"entry":[{"changes":[{"value":{"contacts":[{"wa_id":"$WA_NUMBER","profile":{"name":"Diagnostic"}}],"messages":[{"from":"$WA_NUMBER","id":"$MSGID","type":"text","text":{"body":"$LINK_CODE"}}]}}]}]}
+                    {"entry":[{"changes":[{"value":{"contacts":[{"wa_id":"\$WA_NUMBER","profile":{"name":"Diagnostic"}}],"messages":[{"from":"\$WA_NUMBER","id":"\$MSGID","type":"text","text":{"body":"\$LINK_CODE"}}]}}]}]}
                     JSON
 
-                    SIG=$(openssl dgst -sha256 -hmac "$WHATSAPP_APP_SECRET" /tmp/payload.json | awk '{print $2}')
+                    SIG=\$(openssl dgst -sha256 -hmac "\$WHATSAPP_APP_SECRET" /tmp/payload.json | awk '{print \$2}')
                     echo "--- POSTing signed synthetic webhook payload to the real production endpoint ---"
                     curl -sS -D /tmp/headers.txt -o /tmp/body.txt -w "\nhttp_status=%{http_code}\n" \
                       -X POST "https://todira.app/webhook/whatsapp" \
                       -H "Content-Type: application/json" \
-                      -H "X-Hub-Signature-256: sha256=$SIG" \
+                      -H "X-Hub-Signature-256: sha256=\$SIG" \
                       --data-binary @/tmp/payload.json
                     echo "--- response headers ---"
                     cat /tmp/headers.txt
@@ -115,7 +115,7 @@ jobs:
                     sleep 5
 
                     echo "--- after: any row for this number now? ---"
-                    psql "$CONN" -c "SELECT id, whatsapp_phone_number, language, channel_link_code, created_at FROM users WHERE whatsapp_phone_number = '$WA_NUMBER';"
+                    psql "\$CONN" -c "SELECT id, whatsapp_phone_number, language, channel_link_code, created_at FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER';"
           PODYAML
           for i in $(seq 1 30); do
             PHASE=$(kubectl get pod diag-wa-signed-post -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
