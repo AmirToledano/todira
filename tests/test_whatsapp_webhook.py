@@ -358,7 +358,7 @@ class _QueuedScalarSession:
 def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
     code_user = SimpleNamespace(
         id=5, whatsapp_phone_number=None, first_name=None, language="he",
-        whatsapp_notifications_opted_in=False,
+        whatsapp_notifications_opted_in=False, filter=None,
     )
     session = _QueuedScalarSession(results=[None])  # conflict check: nobody else has this number
     with (
@@ -382,7 +382,7 @@ def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
 def test_link_code_keeps_opt_in_true_when_already_opted_in():
     code_user = SimpleNamespace(
         id=5, whatsapp_phone_number=None, first_name=None, language="he",
-        whatsapp_notifications_opted_in=True,
+        whatsapp_notifications_opted_in=True, filter=None,
     )
     session = _QueuedScalarSession(results=[None])
     with (
@@ -398,7 +398,7 @@ def test_link_code_keeps_opt_in_true_when_already_opted_in():
 def test_link_code_does_not_overwrite_an_existing_first_name():
     code_user = SimpleNamespace(
         id=5, whatsapp_phone_number=None, first_name="שם קיים", language="he",
-        whatsapp_notifications_opted_in=False,
+        whatsapp_notifications_opted_in=False, filter=None,
     )
     session = _QueuedScalarSession(results=[None])
     with (
@@ -409,6 +409,60 @@ def test_link_code_does_not_overwrite_an_existing_first_name():
         whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
     assert code_user.first_name == "שם קיים"
+
+
+def test_link_code_sends_one_aggregate_matches_summary_not_per_listing():
+    """2026-09-27 real owner report: connecting WhatsApp used to try to push every already-
+    matching listing individually, all at once. Linking to an account that already has a filter
+    must send exactly ONE extra summary message (on top of the link-success confirmation), not one
+    per match — find_new_matches_to_show itself is mocked out here (already covered by its own
+    dedicated tests), this just checks _try_link_code_sync wires it up and sends the right text."""
+    existing_filter = SimpleNamespace(deal_type="rent", cities=["תל אביב יפו"])
+    code_user = SimpleNamespace(
+        id=5, whatsapp_phone_number=None, first_name=None, language="he",
+        whatsapp_notifications_opted_in=False, filter=existing_filter,
+    )
+    session = _QueuedScalarSession(results=[None])
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(
+            whatsapp_webhook, "find_new_matches_to_show", return_value=(3, ["a", "b", "c"])
+        ) as find_mock,
+    ):
+        whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
+
+    find_mock.assert_called_once_with(session, code_user.id, existing_filter)
+    # link-success confirmation, then exactly one aggregate summary — never one send per listing.
+    assert send_mock.call_count == 2
+    summary_call = send_mock.call_args_list[1][0]
+    assert summary_call[0] == "9725500000"
+    assert "3" in summary_call[1]
+    summary_url = summary_call[1].rsplit("apartments?wid=", 1)[1]
+    assert verify_wid_token(summary_url) == "9725500000"
+
+
+def test_link_code_sends_no_matches_yet_summary_when_filter_has_no_current_matches():
+    existing_filter = SimpleNamespace(deal_type="rent", cities=["תל אביב יפו"])
+    code_user = SimpleNamespace(
+        id=5, whatsapp_phone_number=None, first_name=None, language="he",
+        whatsapp_notifications_opted_in=False, filter=existing_filter,
+    )
+    session = _QueuedScalarSession(results=[None])
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(whatsapp_webhook, "find_new_matches_to_show", return_value=(0, [])),
+    ):
+        whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
+
+    assert send_mock.call_count == 2
+    summary_text = send_mock.call_args_list[1][0][1]
+    assert "עדיין אין דירות תואמות כרגע" in summary_text  # onboarding.no_matches_yet's static prefix
+    summary_url = summary_text.rsplit("wid=", 1)[1]
+    assert verify_wid_token(summary_url) == "9725500000"
 
 
 def test_link_code_conflict_when_whatsapp_number_already_has_a_different_account():
@@ -638,6 +692,10 @@ def test_complete_state_creates_filter_and_clears_pending_state():
         ),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_text_mock,
         patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message") as send_cta_mock,
+        # 2026-09-27: the aggregate "here's what already matches" summary — covered on its own by
+        # test_complete_state_sends_current_matches_summary_after_onboarding below; mocked out here
+        # so this test stays focused on the filter-creation/opt-in mechanics it was written for.
+        patch.object(whatsapp_webhook, "find_new_matches_to_show", return_value=(0, [])),
     ):
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "תל אביב, עד 7000, 2 חדרים")
 
@@ -654,9 +712,10 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     # 2026-09-06 fix: the registration confirmation now ends with the same 3-message filter-edit
     # prompt (a real tappable button, then 2 follow-ups, matching the reference competitor bot's
     # own flow one to one) instead of a bare link, so the very first WhatsApp-only user never even
-    # hits the "how do I change this?" dead end. send_text_message fires 4 times total: the Gemini
-    # response_message, the "נרשמת!" confirmation, then the prompt's own 2 follow-ups.
-    assert send_text_mock.call_count == 4
+    # hits the "how do I change this?" dead end. send_text_message fires 5 times total: the Gemini
+    # response_message, the "נרשמת!" confirmation, the prompt's own 2 follow-ups, then (2026-09-27)
+    # the current-matches summary.
+    assert send_text_mock.call_count == 5
     assert send_text_mock.call_args_list[0][0] == ("9725500000", "מעולה, קיבלתי הכל!")
     assert send_text_mock.call_args_list[1][0][0] == "9725500000"
     assert "נרשמת" in send_text_mock.call_args_list[1][0][1]
@@ -672,6 +731,47 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     assert filter_wid_url.startswith(f"{whatsapp_webhook.WEBSITE_URL}/filter?wid=")
     filter_token = filter_wid_url.rsplit("wid=", 1)[1]
     assert verify_wid_token(filter_token) == "9725500000"
+
+
+def test_complete_state_sends_current_matches_summary_after_onboarding():
+    """The brand-new-signup path gets the exact same one-aggregate-summary treatment as linking an
+    existing account (see test_link_code_sends_one_aggregate_matches_summary_not_per_listing) —
+    find_new_matches_to_show must be called with the JUST-CREATED filter (not code_user.filter,
+    which doesn't apply here — this is a fresh Filter row built from this onboarding message)."""
+    session = _FakeSession(existing_filter=None)
+    user = _fake_user(pending_state={"deal_type": "rent", "cities": [], "rooms_min": None,
+                                      "rooms_max": None, "price_min": None, "price_max": None,
+                                      "keywords": []})
+    complete_result = {
+        "deal_type": "rent",
+        "cities": ["תל אביב יפו"],
+        "rooms_min": 2,
+        "rooms_max": None,
+        "price_min": None,
+        "price_max": 7000,
+        "keywords": [],
+        "missing_required": [],
+        "response_message": "מעולה, קיבלתי הכל!",
+    }
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: user),
+        patch.object(
+            whatsapp_webhook.gemini_client, "parse_onboarding_message", return_value=complete_result
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_text_mock,
+        patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message"),
+        patch.object(whatsapp_webhook, "find_new_matches_to_show", return_value=(7, [])) as find_mock,
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "תל אביב, עד 7000, 2 חדרים")
+
+    saved_filter = session.added[0]
+    find_mock.assert_called_once_with(session, user.id, saved_filter)
+    assert send_text_mock.call_count == 5
+    summary_text = send_text_mock.call_args_list[4][0][1]
+    assert "7" in summary_text
+    summary_url = summary_text.rsplit("wid=", 1)[1]
+    assert verify_wid_token(summary_url) == "9725500000"
 
 
 class _FakeRaceSession:
@@ -743,13 +843,19 @@ def test_complete_state_recovers_from_a_genuine_concurrent_filter_insert_race():
         ),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
         patch.object(whatsapp_webhook.whatsapp_client, "send_cta_url_message"),
+        # recovered_filter above is a bare SimpleNamespace (id/user_id only) — find_new_matches_to_
+        # show would blow up reading .deal_type/.cities off it, and that's not what this test is
+        # about (the race recovery itself), so it's mocked out same as the test right above this.
+        patch.object(whatsapp_webhook, "find_new_matches_to_show", return_value=(0, [])),
     ):
         # Must not raise — the whole point of the fix.
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "תל אביב, עד 7000, 2 חדרים")
 
     assert session.rolled_back is True
-    assert session.commit_calls == 1  # the one failed attempt — no retry-commit needed, the
-    # OTHER concurrent request's own commit already saved the Filter row
+    # 2026-09-27: a SECOND commit now always follows (the current-matches-summary bookkeeping, see
+    # find_new_matches_to_show's own docstring) — this is the one failed INSERT attempt (the OTHER
+    # concurrent request's own commit already saved the Filter row) plus that one real commit.
+    assert session.commit_calls == 2
 
 
 # --- Help/support requests (2026-09-07) — checked before both the existing-filter chat branch and

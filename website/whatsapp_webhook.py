@@ -19,6 +19,13 @@ User.whatsapp_notifications_opted_in. 2026-09-27: auto-enabled the moment WhatsA
 onboarding-complete below and _try_link_code_sync) rather than collected as a separate explicit
 step — a real owner decision, see that field's own docstring for the compliance tradeoff this
 knowingly takes.
+
+2026-09-27: connecting WhatsApp (either path) now also sends ONE free-form summary right here
+(_send_current_matches_summary, "X apartments already match — see them all: <link>"), covering
+every listing that already matches the user's filter at connect time — see that function's own
+docstring for why this is a single aggregate link and not one push per already-matching listing.
+Going forward from that moment, genuinely NEW listings still reach the user one at a time, via the
+normal proactive template push above, as the scraper actually finds them.
 """
 from __future__ import annotations
 
@@ -36,6 +43,7 @@ from todira_common.bot_strings import bot_text
 from todira_common.channel_link import resolve_link_code
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG, SUPPORTED_LANGS
+from todira_common.listing_matches import find_new_matches_to_show
 from todira_common.matching import safe_range_update
 from todira_common.models import ContactMessage, Filter, User
 from todira_common.support import looks_like_help_request
@@ -72,6 +80,39 @@ def _send_filter_edit_prompt(wa_id: str, lang: str) -> None:
     )
     whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.filter_edit_followup1", lang))
     whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.filter_edit_followup2", lang))
+
+
+def _send_current_matches_summary(wa_id: str, lang: str, total: int) -> None:
+    """Sent once, right when WhatsApp notifications actually turn on — both _try_link_code_sync
+    and _handle_incoming_text_sync's onboarding-complete branch, right after each one's own call to
+    find_new_matches_to_show. This is the ONE aggregate link/summary for whatever already matches
+    at connect time (mirrors Telegram's own onboarding.matches_found/no_matches_yet, see
+    bot/handlers/onboarding.py's _save_filter_sync and filter_conversation.py's identical pattern)
+    — deliberately NOT one WhatsApp message per matching listing. find_new_matches_to_show already
+    recorded every one of these as SentNotification(reason=NEW) as a bookkeeping side effect, so
+    the scraper's own proactive WhatsApp push (scraper/notifier.py) only ever fires afterward, for
+    listings that show up AFTER this moment, one at a time as they're actually found. This is
+    exactly the real owner report this fixes (2026-09-27): connecting WhatsApp used to try to push
+    every already-matching listing individually, all at once, right at connect time.
+
+    Free-form send (send_text_message), not the proactive Message Template: this always runs
+    within 24h of the user's own inbound message (the link code, or the final onboarding message),
+    so it's within WhatsApp's customer-service window and needs no Meta-approved template — same
+    reasoning as _send_filter_edit_prompt above.
+
+    The link uses ?wid= (see website/main.py's _resolve_user), not ?uid= — a WhatsApp-only account
+    has no telegram_user_id to build a ?uid= link from, and the wid magic link also establishes a
+    real signed session on click, same as the filter-edit CTA."""
+    apartments_url = f"{WEBSITE_URL}/apartments?wid={generate_wid_token(wa_id)}"
+    if total > 0:
+        whatsapp_client.send_text_message(
+            wa_id,
+            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url),
+        )
+    else:
+        whatsapp_client.send_text_message(
+            wa_id, bot_text("onboarding.no_matches_yet", lang, apartments_url=apartments_url)
+        )
 
 
 # 2026-09-07: a real "תמיכה" message used to fall straight into gemini_client.chat_with_existing_user
@@ -336,13 +377,21 @@ def _try_link_code_sync(wa_id: str, profile_name: str | None, text: str) -> bool
         # this is exactly the "unconsented enrollment" pattern Meta's Utility/Marketing template
         # review looks for (see User.whatsapp_notifications_opted_in's own docstring) — a real
         # product/compliance tradeoff he's making knowingly, not something discovered/assumed here.
-        # Safe to combine with auto-enable now that scraper/notifier.py caps WhatsApp to one send
-        # per user per run (see run_notifications' own docstring) — the flood this would otherwise
-        # cause is what the owner actually reported and asked to fix, same night.
+        # Safe to combine with auto-enable now that this whole backlog of already-matching listings
+        # is collapsed into the ONE _send_current_matches_summary link below, right after this, and
+        # scraper/notifier.py separately caps its own proactive WhatsApp push to one send per user
+        # per run (see run_notifications' own docstring) — the flood this fixes is what the owner
+        # actually reported and asked to fix, same night.
         code_user.whatsapp_notifications_opted_in = True
         lang = code_user.language
+        filter_row = code_user.filter
+        total = None
+        if filter_row is not None:
+            total, _new_to_show = find_new_matches_to_show(session, code_user.id, filter_row)
         session.commit()
         whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.link_success", lang))
+        if total is not None:
+            _send_current_matches_summary(wa_id, lang, total)
         return True
 
 
@@ -431,23 +480,23 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             session.commit()
             return
 
-        session.add(
-            Filter(
-                user_id=user.id,
-                deal_type=state["deal_type"],
-                cities=state["cities"],
-                rooms_min=state["rooms_min"],
-                rooms_max=state["rooms_max"],
-                price_min=int(state["price_min"]) if state["price_min"] is not None else None,
-                price_max=int(state["price_max"]) if state["price_max"] is not None else None,
-                keywords=state["keywords"],
-            )
+        new_filter = Filter(
+            user_id=user.id,
+            deal_type=state["deal_type"],
+            cities=state["cities"],
+            rooms_min=state["rooms_min"],
+            rooms_max=state["rooms_max"],
+            price_min=int(state["price_min"]) if state["price_min"] is not None else None,
+            price_max=int(state["price_max"]) if state["price_max"] is not None else None,
+            keywords=state["keywords"],
         )
+        session.add(new_filter)
         user.pending_onboarding_state = None
         # 2026-09-27: auto-enabled here too, same owner decision/tradeoff as _try_link_code_sync's
         # own comment on this — the brand-new-signup path and the existing-account-link path now
         # behave identically (WhatsApp connected implies opted in, immediately, no separate step).
         user.whatsapp_notifications_opted_in = True
+        filter_row = new_filter
         try:
             session.commit()
         except IntegrityError:
@@ -461,11 +510,17 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             # like their onboarding just hung. Same "the other request already finished the job,
             # just confirm it" resolution as get_or_create_user/get_or_create_whatsapp_user.
             session.rollback()
-            if session.scalar(select(Filter).where(Filter.user_id == user.id)) is None:
+            # The OTHER (winning) request's row, not new_filter above — that one was never
+            # actually persisted, this session's own copy of it is stale after the rollback.
+            filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
+            if filter_row is None:
                 raise
 
         whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.onboarding_complete", lang))
         _send_filter_edit_prompt(wa_id, lang)
+        total, _new_to_show = find_new_matches_to_show(session, user.id, filter_row)
+        session.commit()
+        _send_current_matches_summary(wa_id, lang, total)
 
 
 def _process_payload_sync(payload: dict) -> None:
