@@ -1,0 +1,94 @@
+name: Fix — remove a stale WhatsApp-only account and its Filter, once confirmed redundant
+
+# diagnose-owner-whatsapp-link-status.yaml found a real, pre-existing WhatsApp-only account
+# (created via an organic WhatsApp conversation, long before the owner had a Telegram/website
+# account) that owns the owner's real WhatsApp number and has its own Filter attached --
+# fix-remove-diagnostic-whatsapp-account.yaml's built-in safety check correctly refused to delete
+# it automatically for exactly that reason. diagnose-main-account-filter-status.yaml then confirmed
+# the owner's real main (Telegram-linked) account already has its OWN current, active Filter --
+# making the old WhatsApp-only account's Filter genuinely redundant. This performs that specific,
+# now-informed deletion: removes the Filter row(s) for the stale account first (FK), then the user
+# row itself -- scoped tightly by phone number, and still excluding the real account by
+# telegram_user_id as a hard safety bound.
+on:
+  workflow_dispatch:
+    inputs:
+      whatsapp_e164:
+        description: "The WhatsApp number the stale account owns, digits only, no + — confirmed redundant before running this"
+        required: true
+      exclude_telegram_user_id:
+        description: "The REAL account's telegram_user_id — this workflow refuses to touch any row carrying it"
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Delete the stale account's Filter, then the account itself
+        env:
+          WA_NUMBER: ${{ inputs.whatsapp_e164 }}
+          TG_ID: ${{ inputs.exclude_telegram_user_id }}
+        run: |
+          kubectl delete pod fix-remove-stale-wa -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fix-remove-stale-wa
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: fix-remove-stale-wa
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: WA_NUMBER
+                    value: "${WA_NUMBER}"
+                  - name: TG_ID
+                    value: "${TG_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    set -e
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+
+                    echo "--- real account (must be untouched throughout) ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number FROM users WHERE telegram_user_id = \$TG_ID;"
+
+                    echo "--- stale row(s) to remove ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number, created_at FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER' AND (telegram_user_id IS NULL OR telegram_user_id != \$TG_ID);"
+
+                    echo "--- deleting that row's Filter (FK dependency) ---"
+                    psql "\$CONN" -c "DELETE FROM \"filters\" WHERE user_id IN (SELECT id FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER' AND (telegram_user_id IS NULL OR telegram_user_id != \$TG_ID));"
+
+                    echo "--- deleting the stale user row ---"
+                    psql "\$CONN" -c "DELETE FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER' AND (telegram_user_id IS NULL OR telegram_user_id != \$TG_ID);"
+
+                    echo "--- confirm: any row still holding this number? ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number FROM users WHERE whatsapp_phone_number = '\$WA_NUMBER';"
+
+                    echo "--- confirm: real account untouched ---"
+                    psql "\$CONN" -c "SELECT id, telegram_user_id, whatsapp_phone_number FROM users WHERE telegram_user_id = \$TG_ID;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod fix-remove-stale-wa -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod output ---"
+          kubectl logs -n todira fix-remove-stale-wa || true
+          kubectl delete pod fix-remove-stale-wa -n todira --ignore-not-found
