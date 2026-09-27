@@ -356,12 +356,16 @@ class _QueuedScalarSession:
 
 
 def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
-    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name=None, language="he")
+    code_user = SimpleNamespace(
+        id=5, whatsapp_phone_number=None, first_name=None, language="he",
+        whatsapp_notifications_opted_in=False,
+    )
     session = _QueuedScalarSession(results=[None])  # conflict check: nobody else has this number
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
+        patch.object(whatsapp_webhook, "_send_notifications_optin_prompt") as optin_mock,
     ):
         handled = whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
@@ -371,15 +375,39 @@ def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
     assert session.committed is True
     send_mock.assert_called_once()
     assert "חיברתי" in send_mock.call_args[0][1]
+    # Found live 2026-09-27: an existing account linking via a code skips onboarding entirely, so
+    # it never otherwise sees this prompt — see _try_link_code_sync's own comment on this call.
+    optin_mock.assert_called_once_with("9725500000", "he")
 
 
-def test_link_code_does_not_overwrite_an_existing_first_name():
-    code_user = SimpleNamespace(id=5, whatsapp_phone_number=None, first_name="שם קיים", language="he")
+def test_link_code_does_not_prompt_opt_in_again_if_already_opted_in():
+    code_user = SimpleNamespace(
+        id=5, whatsapp_phone_number=None, first_name=None, language="he",
+        whatsapp_notifications_opted_in=True,
+    )
     session = _QueuedScalarSession(results=[None])
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(whatsapp_webhook, "_send_notifications_optin_prompt") as optin_mock,
+    ):
+        whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
+
+    optin_mock.assert_not_called()
+
+
+def test_link_code_does_not_overwrite_an_existing_first_name():
+    code_user = SimpleNamespace(
+        id=5, whatsapp_phone_number=None, first_name="שם קיים", language="he",
+        whatsapp_notifications_opted_in=False,
+    )
+    session = _QueuedScalarSession(results=[None])
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+        patch.object(whatsapp_webhook, "_send_notifications_optin_prompt"),
     ):
         whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 

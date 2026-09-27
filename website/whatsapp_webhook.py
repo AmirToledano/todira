@@ -343,10 +343,19 @@ def _try_link_code_sync(wa_id: str, profile_name: str | None, text: str) -> bool
         code_user.whatsapp_phone_number = wa_id
         if profile_name:
             code_user.first_name = code_user.first_name or profile_name
+        already_opted_in = code_user.whatsapp_notifications_opted_in
+        lang = code_user.language
         session.commit()
-        whatsapp_client.send_text_message(
-            wa_id, bot_text("whatsapp.link_success", code_user.language)
-        )
+        whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.link_success", lang))
+        if not already_opted_in:
+            # Found live 2026-09-27: an EXISTING account (Telegram/Google) linking WhatsApp via a
+            # code skips onboarding entirely (it already has a filter), so it never went through
+            # _handle_incoming_text_sync's onboarding_complete branch below — the only other place
+            # that sends this prompt. Without this, the opt-in toggle on /account (still required —
+            # see User.whatsapp_notifications_opted_in's own docstring for why this can't just
+            # default to on) was undiscoverable unless the person went digging for it themselves;
+            # the owner's own account hit exactly this after linking.
+            _send_notifications_optin_prompt(wa_id, lang)
         return True
 
 
