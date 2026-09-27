@@ -1,0 +1,72 @@
+name: Diagnose — did Meta's webhook POST for the owner's real WhatsApp message actually arrive (read-only)
+
+# diagnose-owner-whatsapp-link-status.yaml (run 2026-09-27T06:54Z) found ZERO rows in `users` for
+# the owner's WhatsApp number (972524983967) — not even a bare row from get_or_create_whatsapp_user,
+# which runs on the very first line of any successful webhook processing for a brand-new sender.
+# That means the "code not recognized" theory is very likely wrong: the message may never have
+# reached _process_payload_sync at all. Two live things to check directly in the real website pod's
+# own logs, no guessing:
+#   1. Did a POST to /webhook/whatsapp arrive around the time he sent his message at all?
+#   2. If it did, did _verify_signature reject it (403, no row created is exactly what that looks
+#      like) — logged via "%s not set — rejecting webhook POST" (APP_SECRET missing) or simply a
+#      403 with no further log line (bad/missing signature header, e.g. WHATSAPP_APP_SECRET
+#      misconfigured relative to what's actually registered in Meta's app dashboard).
+# A total absence of any /webhook/whatsapp log line in this window would instead point at Meta's
+# side (webhook subscription/App Review/phone number not actually wired up in
+# developers.facebook.com / business.facebook.com) rather than anything in this codebase.
+on:
+  workflow_dispatch:
+    inputs:
+      since_time:
+        description: "UTC start time to search logs from, RFC3339 (e.g. 2026-09-27T06:30:00Z)"
+        required: true
+      whatsapp_e164:
+        description: "The owner's own WhatsApp number, digits only, no + (e.g. 972524983967)"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Full website pod logs since the given time
+        env:
+          SINCE: ${{ inputs.since_time }}
+        run: |
+          echo "=== current website pod(s) ==="
+          kubectl get pods -n todira -l app=todira-website -o wide
+          echo
+          echo "=== FULL logs, since ${SINCE} ==="
+          kubectl logs -n todira -l app=todira-website --since-time="${SINCE}" --timestamps > /tmp/full.log || true
+          wc -l /tmp/full.log
+          echo
+          echo "=== Caddy logs since ${SINCE} (catches the raw HTTP hit even if the app never logs it) ==="
+          kubectl logs -n todira -l app=todira-caddy --since-time="${SINCE}" --timestamps --tail=1000 > /tmp/caddy.log || true
+          wc -l /tmp/caddy.log
+
+      - name: Any request touching /webhook/whatsapp at all?
+        run: |
+          echo "--- app logs mentioning webhook/whatsapp ---"
+          grep -i "webhook/whatsapp\|WhatsApp webhook\|WHATSAPP_APP_SECRET\|verify_signature\|WhatsApp message" /tmp/full.log || echo "(no matches in app logs)"
+          echo
+          echo "--- caddy logs mentioning webhook/whatsapp ---"
+          grep -i "webhook/whatsapp" /tmp/caddy.log || echo "(no matches in caddy logs)"
+
+      - name: Any log line mentioning the owner's own WhatsApp number?
+        env:
+          WA_NUMBER: ${{ inputs.whatsapp_e164 }}
+        run: |
+          grep -F "${WA_NUMBER}" /tmp/full.log || echo "(no matches for ${WA_NUMBER} in app logs)"
+          grep -F "${WA_NUMBER}" /tmp/caddy.log || echo "(no matches for ${WA_NUMBER} in caddy logs)"
+
+      - name: Any errors/exceptions in the window at all (rules out a crash swallowing everything)
+        run: |
+          grep -iE "error|exception|traceback|CRITICAL" /tmp/full.log || echo "(no error-level lines in this window)"
