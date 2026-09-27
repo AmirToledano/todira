@@ -272,6 +272,7 @@ async def _notify_new_matches(
                 listing,
                 has_access=_has_access_for(user),
                 upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
+                view_url=f"{WEBSITE_URL}/apartments?uid={user.telegram_user_id}&listing={listing.id}",
                 lang=user_lang,
             )
             if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
@@ -380,6 +381,7 @@ async def _notify_price_change(
             has_access=_has_access_for(user),
             price_change_from=old_price,
             upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
+            view_url=f"{WEBSITE_URL}/apartments?uid={user.telegram_user_id}&listing={listing.id}",
             lang=user_lang,
         )
         if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):

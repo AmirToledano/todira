@@ -401,6 +401,24 @@ def test_has_access_true_is_unaffected_by_upgrade_url_being_set():
     assert "https://x/upgrade" not in caption
 
 
+def test_view_url_replaces_the_raw_listing_url_when_given():
+    """2026-09-27 real owner request, matching dorin.app: the outbound link should land on this
+    project's own listing page, not send the viewer straight to the raw external source (Yad2/
+    Facebook/whatever it was scraped from)."""
+    listing = make_listing(url="https://www.yad2.co.il/item/secret789")
+    caption = format_caption(
+        listing, has_access=True, view_url="https://todira.app/apartments?uid=1&listing=77"
+    )
+    assert "https://todira.app/apartments?uid=1&amp;listing=77" in caption
+    assert "secret789" not in caption
+
+
+def test_no_view_url_falls_back_to_the_raw_listing_url():
+    listing = make_listing(url="https://www.yad2.co.il/item/secret789")
+    caption = format_caption(listing, has_access=True)
+    assert "secret789" in caption
+
+
 def test_whatsapp_no_access_still_shows_description_but_hides_url_shows_lock_line():
     listing = make_listing(description="תיאור סודי", url="https://www.yad2.co.il/item/secret456")
     caption = format_caption_whatsapp(
