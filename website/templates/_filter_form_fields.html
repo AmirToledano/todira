@@ -35,7 +35,7 @@
       </div>
     </div>
     <div class="field-hint">
-      {{ t('filter.cities_hint') }} ·
+      {% if not welcome %}{{ t('filter.cities_hint') }} · {% endif %}
       <button type="button" class="link-btn" onclick="clearAllCities(this)">{{ t('filter.cities_clear_all') }}</button>
     </div>
   </div>
@@ -159,8 +159,15 @@
     </label>
   </div>
 </details>
-{% endmacro %}
 
+{# 2026-09-27: real bug — this used to sit AFTER {% endmacro %}, so it only ever rendered if this
+   file were included directly. Both filter.html and apartments.html only
+   `{% from "_filter_form_fields.html" import filter_form_fields %}`, which imports the macro alone
+   and never renders sibling top-level content — filterCityChips/clearAllCities were therefore
+   undefined on every page that used this form, silently breaking the city search box's typing
+   filter and the "clear all" button everywhere (a ReferenceError with nothing visible to the
+   user). Moved inside the macro body so it actually ships with every render. Safe to inline here
+   (not deduped/hoisted) because this macro is only ever called once per page. #}
 <script>
   function filterCityChips(query) {
     var q = query.trim();
@@ -174,3 +181,4 @@
     });
   }
 </script>
+{% endmacro %}

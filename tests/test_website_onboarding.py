@@ -153,6 +153,44 @@ def test_welcome_flow_error_redirect_is_shown_on_the_filter_page():
     assert "cities-error-banner" in resp.text
 
 
+# --- 2026-09-27: real bug, live-reported — _filter_form_fields.html's <script> defining
+# filterCityChips/clearAllCities used to sit AFTER {% endmacro %}, so a `{% from ... import
+# filter_form_fields %}` (both filter.html and apartments.html) never rendered it — the city
+# search box's typing filter and the "clear all" button silently did nothing anywhere. Now
+# inlined inside the macro body; asserts the actual function definitions ship on the page, not
+# just that the input/button elements exist (which passed even while broken). The apartments.html
+# equivalent lives in test_website_content_gating.py, whose fixtures already build the heavier
+# fake session /apartments needs.
+
+
+def test_filter_page_ships_the_city_search_js_functions():
+    user = _FakeUser(uid=555)
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.get("/filter", params={"uid": 555})
+    assert resp.status_code == 200
+    assert "function filterCityChips(query)" in resp.text
+    assert "function clearAllCities(btn)" in resp.text
+
+
+def test_cities_hint_is_hidden_during_welcome_flow_since_zero_cities_is_blocked_there():
+    user = _FakeUser(uid=555)
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.get("/filter", params={"uid": 555, "welcome": "1"})
+    assert resp.status_code == 200
+    assert "לא מסומן כלום = כל הערים" not in resp.text
+
+
+def test_cities_hint_still_shows_outside_the_welcome_flow_where_zero_cities_is_valid():
+    user = _FakeUser(uid=555)
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.get("/filter", params={"uid": 555})
+    assert resp.status_code == 200
+    assert "לא מסומן כלום = כל הערים" in resp.text
+
+
 # --- /onboarding/notifications (step 2) ---
 
 
