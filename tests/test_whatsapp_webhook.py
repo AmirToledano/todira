@@ -349,7 +349,10 @@ class _QueuedScalarSession:
         return False
 
 
-# --- _handle_incoming_text_sync: channel linking (a `ref_xxxxxx` code sent as a plain message) ---
+# --- _try_link_code_sync: channel linking (a `ref_xxxxxx` code sent as a plain message) ---
+# Checked in _process_payload_sync BEFORE _ensure_language_selected_sync / get_or_create_whatsapp_
+# user run (2026-09-27 fix — see its own docstring for the incident that found this), so these test
+# _try_link_code_sync directly rather than _handle_incoming_text_sync.
 
 
 def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
@@ -358,15 +361,14 @@ def test_link_code_attaches_this_whatsapp_number_to_the_code_owner():
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
-        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user") as get_or_create_mock,
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
     ):
-        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_abc123")
+        handled = whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
+    assert handled is True
     assert code_user.whatsapp_phone_number == "9725500000"
     assert code_user.first_name == "Amir"
     assert session.committed is True
-    get_or_create_mock.assert_not_called()  # never creates a separate new user row
     send_mock.assert_called_once()
     assert "חיברתי" in send_mock.call_args[0][1]
 
@@ -377,10 +379,9 @@ def test_link_code_does_not_overwrite_an_existing_first_name():
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
-        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user"),
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
     ):
-        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_abc123")
+        whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
     assert code_user.first_name == "שם קיים"
 
@@ -392,35 +393,60 @@ def test_link_code_conflict_when_whatsapp_number_already_has_a_different_account
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: code_user),
-        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user") as get_or_create_mock,
         patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as send_mock,
     ):
-        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_abc123")
+        handled = whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_abc123")
 
+    assert handled is True  # still "handled" — a conflict reply was sent, no merge happened
     assert code_user.whatsapp_phone_number is None  # untouched — no merge happened
     assert session.committed is False
-    get_or_create_mock.assert_not_called()
     send_mock.assert_called_once()
     assert "חשבון נפרד" in send_mock.call_args[0][1]
 
 
-def test_ref_prefixed_but_unknown_code_falls_through_to_normal_onboarding():
-    session = _FakeSession(existing_filter=_FakeFilter())
+def test_unknown_or_expired_code_is_not_handled_here():
+    session = _QueuedScalarSession(results=[])
     with (
         patch.object(whatsapp_webhook, "get_session", lambda: session),
         patch.object(whatsapp_webhook, "resolve_link_code", lambda s, t: None),
-        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: _fake_user()),
-        patch.object(
-            whatsapp_webhook.gemini_client,
-            "chat_with_existing_user",
-            return_value={"filter_changed": False, "response_message": "לא הכרתי את הקוד הזה 🙂"},
-        ) as chat_mock,
-        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as text_mock,
     ):
-        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "ref_expiredcode")
+        handled = whatsapp_webhook._try_link_code_sync("9725500000", "Amir", "ref_expiredcode")
 
-    chat_mock.assert_called_once()
-    text_mock.assert_called_once_with("9725500000", "לא הכרתי את הקוד הזה 🙂")
+    assert handled is False  # caller falls through to the language picker / normal chat flow
+
+
+def test_first_message_ever_that_is_a_valid_link_code_never_reaches_get_or_create_whatsapp_user():
+    """The exact 2026-09-27 live incident: a genuinely first-time WhatsApp sender's very first
+    message IS their link code. Regression guard for _process_payload_sync's own ordering — the
+    language picker's get_or_create_whatsapp_user must never run for this message, or a spurious,
+    disconnected user row gets created and the code is silently swallowed."""
+    payload = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "contacts": [{"wa_id": "9725500000", "profile": {"name": "Amir"}}],
+                            "messages": [
+                                {"id": "m1", "from": "9725500000", "type": "text", "text": {"body": "ref_b9zg13"}}
+                            ],
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    with (
+        patch.object(whatsapp_webhook, "_already_processed", return_value=False),
+        patch.object(whatsapp_webhook, "_try_link_code_sync", return_value=True) as link_mock,
+        patch.object(whatsapp_webhook, "_ensure_language_selected_sync") as lang_mock,
+        patch.object(whatsapp_webhook, "_handle_incoming_text_sync") as handle_mock,
+    ):
+        whatsapp_webhook._process_payload_sync(payload)
+
+    link_mock.assert_called_once_with("9725500000", "Amir", "ref_b9zg13")
+    lang_mock.assert_not_called()
+    handle_mock.assert_not_called()
 
 
 def test_existing_filter_user_gets_chat_reply_via_gemini_no_canned_block():
@@ -882,6 +908,7 @@ def test_process_payload_sync_one_bad_message_does_not_abort_the_rest_of_the_bat
 
     with (
         patch.object(whatsapp_webhook, "_already_processed", return_value=False),
+        patch.object(whatsapp_webhook, "_try_link_code_sync", return_value=False),
         patch.object(whatsapp_webhook, "_ensure_language_selected_sync", return_value="he"),
         patch.object(whatsapp_webhook, "_fire_typing_indicator"),
         patch.object(whatsapp_webhook, "_handle_incoming_text_sync", side_effect=_fake_handle),
