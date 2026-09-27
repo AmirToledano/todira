@@ -17,6 +17,21 @@
   <summary>{{ t('filter.location_section') }}</summary>
   <div class="field">
     <label for="f-cities-search"><span class="field-icon" aria-hidden="true">📍</span> {{ t('filter.cities_label') }}</label>
+    {# 2026-09-27: real bug found live — checking every individual city box is NOT the same as
+       "no city filter". common/todira_common/matching.py's city check is skipped entirely when
+       filter.cities is empty, but requires an EXACT match against CITIES (a curated ~42-city
+       whitelist) when non-empty — live-confirmed 3,727 of 12,893 active listings (~29%) have a
+       real city outside that whitelist (אריאל, מעלה אדומים, נשר, נתיבות, חריש, עכו, קריית שמונה,
+       ...), so they could only ever be reached via the empty-list bypass, never by checking boxes
+       no matter how many. Worse, the mandatory-city onboarding rule (task #80) BLOCKS submitting
+       zero cities during welcome, making that bypass state completely unreachable for a new user
+       — silently hiding ~29% of real inventory from everyone who onboards. This explicit toggle
+       is a first-class way to reach cities=[] (real "no city filter", not "42 exact strings"),
+       satisfies the welcome validation on its own, and is checked whenever f.cities is empty. #}
+    <label class="check-chip all-cities-chip">
+      <input type="checkbox" id="f-all-cities" name="all_cities" {{ 'checked' if not f.cities }} onchange="onAllCitiesToggle(this.checked)">
+      {{ t('filter.cities_all_label') }}
+    </label>
     <input id="f-cities-search" type="text" placeholder="{{ t('filter.cities_placeholder') }}" oninput="filterCityChips(this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">
     {# checkbox-grid-scroll is the scroll shell (direction:ltr so its native scrollbar renders on
        ITS right edge instead of the RTL-default left edge — real bug found live, 2026-09-24: with
@@ -28,16 +43,13 @@
       <div class="checkbox-grid" id="f-cities-grid">
         {% for city in cities_list %}
         <label class="check-chip" data-city-name="{{ city }}">
-          <input type="checkbox" name="cities" value="{{ city }}" {{ 'checked' if city in f.cities }}>
+          <input type="checkbox" name="cities" value="{{ city }}" {{ 'checked' if city in f.cities }} onchange="if (this.checked) onCityChipChecked()">
           {{ city }}
         </label>
         {% endfor %}
       </div>
     </div>
-    <div class="field-hint">
-      {% if not welcome %}{{ t('filter.cities_hint') }} · {% endif %}
-      <button type="button" class="link-btn" onclick="clearAllCities(this)">{{ t('filter.cities_clear_all') }}</button>
-    </div>
+    <div class="field-hint">{{ t('filter.cities_hint') }}</div>
   </div>
 </details>
 
@@ -163,9 +175,9 @@
 {# 2026-09-27: real bug — this used to sit AFTER {% endmacro %}, so it only ever rendered if this
    file were included directly. Both filter.html and apartments.html only
    `{% from "_filter_form_fields.html" import filter_form_fields %}`, which imports the macro alone
-   and never renders sibling top-level content — filterCityChips/clearAllCities were therefore
+   and never renders sibling top-level content — filterCityChips/onAllCitiesToggle were therefore
    undefined on every page that used this form, silently breaking the city search box's typing
-   filter and the "clear all" button everywhere (a ReferenceError with nothing visible to the
+   filter and the "all cities" toggle everywhere (a ReferenceError with nothing visible to the
    user). Moved inside the macro body so it actually ships with every render. Safe to inline here
    (not deduped/hoisted) because this macro is only ever called once per page. #}
 <script>
@@ -175,10 +187,19 @@
       chip.hidden = q.length > 0 && chip.dataset.cityName.indexOf(q) === -1;
     });
   }
-  function clearAllCities(btn) {
-    btn.closest('.field').querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+  // "All cities" and individual city checkboxes are mutually exclusive — checking one clears the
+  // other, so the submitted state is always unambiguous (see filter_update's own comment on why
+  // checking every individual box is NOT the same as this toggle: it still requires an exact
+  // match against the ~42-city whitelist, this clears the filter to cities=[] for real).
+  function onAllCitiesToggle(checked) {
+    if (!checked) return;
+    document.querySelectorAll('#f-cities-grid input[type=checkbox]').forEach(function (cb) {
       cb.checked = false;
     });
+  }
+  function onCityChipChecked() {
+    var allCities = document.getElementById('f-all-cities');
+    if (allCities) allCities.checked = false;
   }
 </script>
 {% endmacro %}
