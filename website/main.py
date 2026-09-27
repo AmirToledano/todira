@@ -356,6 +356,18 @@ def _render(request: Request, template_name: str, context: dict, status_code: in
             "lang": lang,
             "dir": "rtl" if lang in RTL_LANGS else "ltr",
             "t": make_translator(lang),
+            # 2026-09-27 real owner request: base.html's og:title/og:description (and their
+            # twitter: mirrors) used to follow `t` — i.e. whatever language THIS request's own
+            # Accept-Language resolved to. That's meaningless for a link-preview card specifically:
+            # WhatsApp/Telegram/Facebook fetch the page ONCE with their own crawler's Accept-
+            # Language (confirmed live — resolves to English), cache that single result, and show
+            # the SAME cached card to every recipient regardless of the sharer's or viewer's own
+            # phone language. So `t` was never actually personalizing the preview per-viewer; it
+            # was just picking whatever language the crawler happened to send. Fixed to Hebrew
+            # (this product's primary audience) instead — the ACTUAL page content a visitor lands
+            # on after tapping the link is completely unaffected, still resolved via `t`/`lang`
+            # above from THEIR OWN real request the normal way.
+            "og_t": make_translator(DEFAULT_LANG),
             "posted_ago": lambda posted_at: relative_time_label(posted_at, lang),
             "supported_langs": SUPPORTED_LANGS,
             "lang_labels": LANG_LABELS,

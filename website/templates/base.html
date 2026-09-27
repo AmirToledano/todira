@@ -61,8 +61,8 @@
   <meta name="description" content="{{ t('meta.description') }}">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="טודירה">
-  <meta property="og:title" content="{{ t('meta.title_home') }}">
-  <meta property="og:description" content="{{ t('meta.description') }}">
+  <meta property="og:title" content="{{ og_t('meta.title_home') }}">
+  <meta property="og:description" content="{{ og_t('meta.description') }}">
   <!-- og-image.jpg (2026-09-07): a proper 1200x630 landscape crop, not the raw tall-portrait
        todira-brand.webp — Facebook/WhatsApp/Twitter all crop link previews to ~1.91:1, so the
        portrait source either got awkwardly sliced or letterboxed depending on the client. See
@@ -72,8 +72,8 @@
   <meta property="og:image:height" content="630">
   <meta property="og:url" content="{{ request.url }}">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="{{ t('meta.title_home') }}">
-  <meta name="twitter:description" content="{{ t('meta.description') }}">
+  <meta name="twitter:title" content="{{ og_t('meta.title_home') }}">
+  <meta name="twitter:description" content="{{ og_t('meta.description') }}">
   <meta name="twitter:image" content="{{ request.base_url }}static/og-image.jpg?v=1">
   <!-- canonical + hreflang (2026-09-07): language here is a ?lang= query param/cookie, not a
        distinct URL path — without these, search engines had no signal that /apartments?lang=en
