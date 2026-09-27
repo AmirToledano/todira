@@ -1,0 +1,100 @@
+name: Diagnose — how many active listings fall outside the 42-city filter whitelist (read-only)
+
+# Real owner report: a fresh test account with ALL 42 cities checked shows ~6,495 results, while
+# the owner's own main account (still on the old "nothing checked = no city constraint at all"
+# semantics) shows ~9,000 on what's otherwise the same filter. common/todira_common/matching.py's
+# city check (`if filter_row.cities: if listing_row.city not in filter_row.cities: failed`) is
+# skipped entirely when filter_row.cities is empty — so "0 selected" was never equivalent to
+# "every city checked": CITIES (common/todira_common/cities.py) is a curated ~41/42-city
+# whitelist, not every real city Israeli listings can have. Any listing whose real city isn't on
+# that list can never match ANY checkbox combination, only the empty-list bypass. This is a
+# read-only, workflow_dispatch-only check of the real scale of that gap.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: How many active listings have a city NOT in the 42-city filter whitelist
+        run: |
+          kubectl delete pod diag-city-gap -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-city-gap
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-city-gap
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- total active listings, and how many have a city NOT in the 42-city whitelist ---"
+                    psql "$CONN" -c "
+                      WITH whitelist(city) AS (VALUES
+                        ('תל אביב יפו'), ('ירושלים'), ('חיפה'), ('ראשון לציון'), ('פתח תקווה'),
+                        ('אשדוד'), ('נתניה'), ('באר שבע'), ('בני ברק'), ('חולון'), ('רמת גן'),
+                        ('אשקלון'), ('רחובות'), ('בת ים'), ('בית שמש'), ('כפר סבא'), ('הרצליה'),
+                        ('חדרה'), ('מודיעין מכבים רעות'), ('רעננה'), ('רמלה'), ('רמת השרון'),
+                        ('נצרת'), ('לוד'), ('גבעתיים'), ('הוד השרון'), ('נהריה'), ('אילת'),
+                        ('קריית אתא'), ('קריית גת'), ('קריית מוצקין'), ('קריית ביאליק'),
+                        ('קריית אונו'), ('יבנה'), ('אור יהודה'), ('צפת'), ('עפולה'), ('טבריה'),
+                        ('דימונה'), ('מבשרת ציון'), ('הר גילה'), ('כרמיאל')
+                      )
+                      SELECT
+                        count(*) AS total_active,
+                        count(*) FILTER (WHERE l.city IS NULL) AS null_city,
+                        count(*) FILTER (WHERE l.city IS NOT NULL AND l.city NOT IN (SELECT city FROM whitelist)) AS non_whitelisted_city,
+                        count(*) FILTER (WHERE l.city IN (SELECT city FROM whitelist)) AS whitelisted_city
+                      FROM listings l
+                      WHERE l.is_delisted = false;
+                    "
+                    echo "--- top 30 real city values NOT on the whitelist, by listing count (the actual gap) ---"
+                    psql "$CONN" -c "
+                      WITH whitelist(city) AS (VALUES
+                        ('תל אביב יפו'), ('ירושלים'), ('חיפה'), ('ראשון לציון'), ('פתח תקווה'),
+                        ('אשדוד'), ('נתניה'), ('באר שבע'), ('בני ברק'), ('חולון'), ('רמת גן'),
+                        ('אשקלון'), ('רחובות'), ('בת ים'), ('בית שמש'), ('כפר סבא'), ('הרצליה'),
+                        ('חדרה'), ('מודיעין מכבים רעות'), ('רעננה'), ('רמלה'), ('רמת השרון'),
+                        ('נצרת'), ('לוד'), ('גבעתיים'), ('הוד השרון'), ('נהריה'), ('אילת'),
+                        ('קריית אתא'), ('קריית גת'), ('קריית מוצקין'), ('קריית ביאליק'),
+                        ('קריית אונו'), ('יבנה'), ('אור יהודה'), ('צפת'), ('עפולה'), ('טבריה'),
+                        ('דימונה'), ('מבשרת ציון'), ('הר גילה'), ('כרמיאל')
+                      )
+                      SELECT l.city, count(*) AS total
+                      FROM listings l
+                      WHERE l.is_delisted = false
+                        AND (l.city IS NULL OR l.city NOT IN (SELECT city FROM whitelist))
+                      GROUP BY l.city
+                      ORDER BY total DESC
+                      LIMIT 30;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-city-gap -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-city-gap || true
+          kubectl delete pod diag-city-gap -n todira --ignore-not-found
