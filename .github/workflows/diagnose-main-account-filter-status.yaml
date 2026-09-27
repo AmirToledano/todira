@@ -1,0 +1,69 @@
+name: Diagnose — does the main (Telegram-linked) account already have its own Filter (read-only)
+
+# Deciding how to resolve a real WhatsApp-only duplicate account (found via
+# diagnose-owner-whatsapp-link-status.yaml / fix-remove-diagnostic-whatsapp-account.yaml): does the
+# owner's main account already have its own Filter, making the old WhatsApp-only one's Filter safe
+# to discard, or should that old Filter's values be preserved/merged instead?
+on:
+  workflow_dispatch:
+    inputs:
+      telegram_user_id:
+        description: "The main account's telegram_user_id"
+        required: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Check the main account's Filter
+        env:
+          TG_ID: ${{ inputs.telegram_user_id }}
+        run: |
+          kubectl delete pod diag-main-filter -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-main-filter
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-main-filter
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: TG_ID
+                    value: "${TG_ID}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+                    echo "--- main account's own Filter, if any ---"
+                    psql "\$CONN" -c "
+                      SELECT f.user_id, f.deal_type, f.cities, f.rooms_min, f.rooms_max, f.price_min, f.price_max, f.keywords
+                      FROM \"filters\" f JOIN users u ON u.id = f.user_id
+                      WHERE u.telegram_user_id = \$TG_ID;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-main-filter -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-main-filter || true
+          kubectl delete pod diag-main-filter -n todira --ignore-not-found
