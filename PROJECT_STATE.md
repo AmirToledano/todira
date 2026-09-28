@@ -4,6 +4,30 @@ Read this first in any new session (especially cloud sessions without access to 
 local Claude memory). Written 2026-08-29, updated 2026-08-30, so work can continue seamlessly
 from another device.
 
+## 🟡 OPEN ACTION ITEM (2026-09-27/28) — flip the rich WhatsApp template on once Meta approves it
+The richer, Dorin-style per-listing WhatsApp card (real photo + all 8 fields + a button to that
+specific listing — a real, explicit owner requirement: "חובה לעלות תמונות של המודעות ביחד עם כל
+מה שרשמת") is fully built and merged (scraper/notifier.py's `_send_whatsapp_rich_match_template`,
+`todira_common/cards.py`'s `get_listing_photo_jpeg_bytes`/`feature_list`,
+`todira_common/whatsapp_client.py`'s `upload_media` + extended `send_template_message`). The new
+template `new_listing_match_rich` was submitted to Meta the night of 2026-09-27
+(`.github/workflows/submit-whatsapp-rich-match-template.yaml`, template id `3246627115538605`,
+category MARKETING) after two real rejections got fixed and resubmitted (emoji in the button text;
+then too many variables for the body length). As of submission it was **PENDING** review.
+
+**THE ONE THING LEFT, ONCE META SHOWS IT AS APPROVED/"Active" IN WHATSAPP MANAGER:** set
+`charts/todira/values.yaml`'s `scraper.whatsappRichMatchTemplateName` from `""` to
+`"new_listing_match_rich"` and deploy (a normal PR + merge to `main`, which auto-deploys). No
+other code change is needed — `_send_whatsapp_match_template` already dispatches to the rich path
+the moment that env var is non-empty, and falls back to the existing plain `new_listing_match`
+template otherwise. **Do not forget this step exists** — until it's done, every proactive WhatsApp
+match push keeps using the old plain 3-variable template even though the rich one is sitting
+approved and unused. Check the real approval status live (don't guess) by re-running
+`.github/workflows/diagnose-whatsapp-existing-template-detail.yaml` and looking at
+`new_listing_match_rich`'s own `status` field in the response — the existing diagnostic already
+filters to `new_listing_match`, so either read the WABA's full template list from its output or
+adapt the `params={'name': ...}` filter to the new name.
+
 ## 🔴 CURRENT BLOCKER (found 2026-08-30): the k3s cluster is unreachable — deploys are failing
 The last two CI/CD runs both failed at the `helm upgrade` step, not at build:
 - Run for commit `2180bbf` (20:30–20:53 UTC on 8/29, 3 attempts): `TLS handshake timeout` /
