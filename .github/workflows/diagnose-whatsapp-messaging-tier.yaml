@@ -1,0 +1,81 @@
+name: Diagnose — real WhatsApp messaging_limit_tier (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-28.
+#
+# Real trigger: owner reported Todira's WhatsApp notification links open in a separate external
+# browser (Safari as its own app), unlike a competitor (dorin.app) whose links open inside
+# WhatsApp's own in-app browser (IAB), with the WhatsApp header/menu still visible around the
+# page. Real, live web research (not guessed) found Meta's actual IAB feature: it only applies to
+# CTA URL buttons in marketing/utility template messages, and is automatically enabled — no
+# API/template setting — once a phone number's real messaging_limit_tier reaches 1,000+
+# business-initiated conversations/24h. This checks Todira's real current tier via the Graph API's
+# own phone-number field, rather than assuming either way.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real messaging_limit_tier + quality rating for the live phone number
+        run: |
+          kubectl delete pod diag-messaging-tier -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-messaging-tier
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-messaging-tier
+                image: python:3.11-slim
+                env:
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                  - name: WHATSAPP_PHONE_NUMBER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-phone-number-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet httpx
+                    python3 -c "
+                    import os, httpx
+                    token = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+                    phone_id = os.environ.get('WHATSAPP_PHONE_NUMBER_ID')
+                    r = httpx.get(
+                        f'https://graph.facebook.com/v21.0/{phone_id}',
+                        params={'fields': 'messaging_limit_tier,quality_rating,verified_name,display_phone_number'},
+                        headers={'Authorization': f'Bearer {token}'},
+                        timeout=15,
+                    )
+                    print('status:', r.status_code)
+                    print(r.text)
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-messaging-tier -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira diag-messaging-tier || true
+          kubectl delete pod diag-messaging-tier -n todira --ignore-not-found
