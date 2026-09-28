@@ -20,43 +20,75 @@
 </div>
 
 {% if not display_is_owner %}
+{% if has_active_subscription %}
 <div class="settings-card reveal">
-  {% if has_active_subscription %}
   <p class="field-hint" style="text-align:center">
     {{ t('upgrade.already_subscribed') }}
     <a href="/account{{ '?uid=' ~ uid if uid else '' }}">{{ t('upgrade.manage_subscription_link') }}</a>
   </p>
-  {% else %}
-  <div class="field-row">
-    <div class="field" style="text-align:center">
-      <div class="field-section-title" style="margin-top:0;padding-top:0;border-top:none">{{ t('upgrade.plan_subscription') }}</div>
-      <p style="font-family:'Rubik',sans-serif;font-weight:800;font-size:1.8rem;color:var(--teal);margin:0 0 4px">₪{{ subscription_price }}<span style="font-size:1rem;font-weight:600">{{ t('upgrade.per_month_suffix') }}</span></p>
-      <p class="field-hint" style="margin:0 0 12px">{{ t('upgrade.cancel_anytime_hint') }}</p>
-      <form method="post" action="/upgrade">
-        <input type="hidden" name="plan" value="{{ subscription_plan }}">
-        {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:10px">
-          <input type="checkbox" name="terms_agreed" required>
-          <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
-        </label>
-        <button type="submit" class="btn gold block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_subscription')) }}</button>
-      </form>
-    </div>
-  </div>
-  {% if recurring_configured %}
-  <p class="field-hint" style="text-align:center;margin-top:20px">
-    {{ t('upgrade.payment_hint_takbull_recurring') }}
-  </p>
-  {% else %}
-  <p class="field-hint" style="text-align:center;margin-top:20px">
-    {{ t('upgrade.payment_hint_manual') }}
-  </p>
-  {% endif %}
-  {% endif %}
 </div>
+{% else %}
+{# 2026-09-28 (backlog #81): dorin.app-style plan card — real owner-supplied screenshots of
+   dorin's own single plan tiers (icon badge, subtitle, big price, checkmark list, CTA,
+   disclaimer). Explicit owner call: match the VISUAL structure only, not dorin's one-time
+   week/2-week/month pricing model — Todira has exactly one plan (the recurring monthly
+   subscription), so this renders ONE card, not a 3-tier row. #}
+<div class="upgrade-plan-card reveal">
+  <div class="upgrade-plan-badge">{{ t('upgrade.plan_badge_label') }}</div>
+  <div class="upgrade-plan-icon" aria-hidden="true">👑</div>
+  <h2 class="upgrade-plan-name">{{ t('upgrade.plan_subscription') }}</h2>
+  <p class="upgrade-plan-subtitle">{{ t('upgrade.plan_subtitle') }}</p>
+  <p class="upgrade-plan-price">₪{{ subscription_price }}<span class="upgrade-plan-price-suffix">{{ t('upgrade.per_month_suffix') }}</span></p>
+
+  <ul class="upgrade-plan-checklist">
+    <li>{{ t('upgrade.checklist_scan') }}</li>
+    <li>{{ t('upgrade.checklist_alert') }}</li>
+    <li>{{ t('upgrade.checklist_filtered') }}</li>
+    <li>{{ t('upgrade.checklist_contact') }}</li>
+    <li>{{ t('upgrade.checklist_cancel') }}</li>
+  </ul>
+
+  <form method="post" action="/upgrade">
+    <input type="hidden" name="plan" value="{{ subscription_plan }}">
+    {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+    <label class="check-chip" style="text-align:start;display:flex;gap:6px;margin-bottom:14px">
+      <input type="checkbox" name="terms_agreed" required>
+      <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
+    </label>
+    <button type="submit" class="btn gold block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.plan_subscription')) }}</button>
+  </form>
+
+  <p class="upgrade-plan-disclaimer">{{ t('upgrade.cancel_anytime_hint') }}</p>
+</div>
+
+<p class="upgrade-payment-hint reveal">
+  {% if recurring_configured %}{{ t('upgrade.payment_hint_takbull_recurring') }}
+  {% else %}{{ t('upgrade.payment_hint_manual') }}
+  {% endif %}
+</p>
+{% endif %}
+
 <div class="value-anchor reveal">
   <h2>{{ t('upgrade.value_anchor_title') }}</h2>
   <p>{{ t('upgrade.value_anchor_body') }}</p>
 </div>
+
+{% if not has_active_subscription %}
+<div class="upgrade-faq reveal">
+  <h2 class="upgrade-faq-title">{{ t('upgrade.faq_title') }}</h2>
+  <details class="upgrade-faq-item">
+    <summary>{{ t('upgrade.faq_q1') }}</summary>
+    <p>{{ t('upgrade.faq_a1') }}</p>
+  </details>
+  <details class="upgrade-faq-item">
+    <summary>{{ t('upgrade.faq_q2') }}</summary>
+    <p>{{ t('upgrade.faq_a2') }}</p>
+  </details>
+  <details class="upgrade-faq-item">
+    <summary>{{ t('upgrade.faq_q3') }}</summary>
+    <p>{{ t('upgrade.faq_a3') }}</p>
+  </details>
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}

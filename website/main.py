@@ -1386,6 +1386,60 @@ def toggle_no_brokers(
     return RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)
 
 
+@app.post("/filter/region")
+def filter_set_region(
+    request: Request,
+    uid: int | None = Form(None),
+    wid: str | None = Form(None),
+    kind: str = Form(...),
+    sw_lat: float | None = Form(None),
+    sw_lng: float | None = Form(None),
+    ne_lat: float | None = Form(None),
+    ne_lng: float | None = Form(None),
+    center_lat: float | None = Form(None),
+    center_lng: float | None = Form(None),
+    radius_m: int | None = Form(None),
+):
+    """Map-drawn region filter (real owner request, backlog #79) — a rectangle or circle the
+    visitor draws directly on /apartments' own map (apartments.html's own draw-mode script)
+    narrows the listing set to that area ON TOP OF the existing city filter (both apply — AND, not
+    OR), the same "further narrows, never widens" relationship city/price/rooms already have with
+    each other. Persisted on Filter (not session-only) so it survives a reload, and since
+    matching.evaluate() is the SAME matcher /apartments and the bot's proactive WhatsApp/Telegram
+    notifications both use, a saved region also narrows which NEW listings notify the visitor —
+    not just what /apartments shows on load."""
+    if kind not in ("rect", "circle", "clear"):
+        raise StarletteHTTPException(status_code=400)
+
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None or user.filter is None:
+            return _render(request, "need_uid.html", {"target": "apartments"})
+
+        f = user.filter
+        if kind == "clear":
+            f.map_region_kind = None
+            f.map_center_lat = f.map_center_lng = f.map_radius_m = None
+            f.map_sw_lat = f.map_sw_lng = f.map_ne_lat = f.map_ne_lng = None
+        elif kind == "rect":
+            if None in (sw_lat, sw_lng, ne_lat, ne_lng):
+                raise StarletteHTTPException(status_code=400)
+            f.map_region_kind = "rect"
+            f.map_sw_lat, f.map_sw_lng = sw_lat, sw_lng
+            f.map_ne_lat, f.map_ne_lng = ne_lat, ne_lng
+            f.map_center_lat = f.map_center_lng = f.map_radius_m = None
+        else:  # circle
+            if None in (center_lat, center_lng, radius_m) or radius_m <= 0:
+                raise StarletteHTTPException(status_code=400)
+            f.map_region_kind = "circle"
+            f.map_center_lat, f.map_center_lng = center_lat, center_lng
+            f.map_radius_m = radius_m
+            f.map_sw_lat = f.map_sw_lng = f.map_ne_lat = f.map_ne_lng = None
+        session.commit()
+
+    return RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)
+
+
 def _is_owner_id(telegram_user_id: int | None) -> bool:
     """Gate for /admin/messages — deliberately keyed off the SAME OWNER_TELEGRAM_USER_ID secret
     that both the /contact form and the bot's contact-fallback handler already forward to, rather

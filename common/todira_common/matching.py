@@ -41,6 +41,18 @@ def _in_range(value, lo, hi) -> bool:
     return True
 
 
+def _haversine_m(lat1, lng1, lat2, lng2) -> float:
+    """Great-circle distance in meters — good enough at city scale (Earth treated as a sphere,
+    off by well under the width of a single building at these distances)."""
+    from math import asin, cos, radians, sin, sqrt
+
+    lat1, lng1, lat2, lng2 = (radians(float(v)) for v in (lat1, lng1, lat2, lng2))
+    dlat = lat2 - lat1
+    dlng = lng2 - lng1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlng / 2) ** 2
+    return 2 * 6371000 * asin(sqrt(a))
+
+
 def safe_range_update(current_min, current_max, proposed_min, proposed_max):
     """Used by the free-chat filter-editing paths (bot/handlers/contact_fallback.py,
     website/whatsapp_webhook.py's own equivalent) where Gemini, not a structured menu, decides
@@ -90,6 +102,36 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
     if filter_row.cities:
         if listing_row.city not in filter_row.cities:
             failed.append("city")
+
+    # Map-drawn region (2026-09-28, backlog #79) — narrows on TOP of the city filter above, not
+    # instead of it (a listing must pass both). A listing with no known coordinates can't be
+    # placed inside or outside a region either way, so it fails closed here rather than getting
+    # the "benefit of the doubt" treatment property_type/amenities get elsewhere in this file —
+    # those default to "we don't know" because the scraper never populates them for ANY listing
+    # yet (see this module's own docstring), while coordinates are only sometimes missing per
+    # source (models.Listing.latitude's own comment), so silently passing every uncoordinated
+    # listing through a drawn region would defeat the entire point of drawing one.
+    if filter_row.map_region_kind == "circle" and filter_row.map_center_lat is not None:
+        if listing_row.latitude is None or listing_row.longitude is None:
+            failed.append("map_region")
+        elif (
+            _haversine_m(
+                listing_row.latitude,
+                listing_row.longitude,
+                filter_row.map_center_lat,
+                filter_row.map_center_lng,
+            )
+            > filter_row.map_radius_m
+        ):
+            failed.append("map_region")
+    elif filter_row.map_region_kind == "rect" and filter_row.map_sw_lat is not None:
+        if listing_row.latitude is None or listing_row.longitude is None:
+            failed.append("map_region")
+        elif not (
+            filter_row.map_sw_lat <= listing_row.latitude <= filter_row.map_ne_lat
+            and filter_row.map_sw_lng <= listing_row.longitude <= filter_row.map_ne_lng
+        ):
+            failed.append("map_region")
 
     # normalize_spelling collapses כתיב מלא/חסר doubling (יי->י, וו->ו) — the same fix that made
     # city search tolerate "קרית מוצקין" vs "קריית מוצקין" (2026-09-02), generalized here to every
