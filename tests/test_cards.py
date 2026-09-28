@@ -10,7 +10,16 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from todira_common.cards import CAPTION_LIMIT, _fit_to_limit, format_caption, format_caption_whatsapp
+from todira_common.cards import (
+    CAPTION_LIMIT,
+    _RTL_LINE_WRAP_CHARS,
+    _fit_to_limit,
+    _force_rtl_block,
+    _wrap_long_rtl_line,
+    format_caption,
+    format_caption_whatsapp,
+)
+from todira_common.bot_strings import bot_text
 
 
 def make_listing(**overrides):
@@ -217,6 +226,68 @@ def test_carriage_return_only_description_still_gets_per_line_rtl_embedding():
     assert "‫📝 דירה להשכרה‬" in caption
     assert "‫במרכז העיר‬" in caption
     assert "‫קומה 3‬" in caption
+
+
+def test_long_single_line_description_gets_pre_wrapped_before_rtl_embedding():
+    # 2026-09-28: a fresh, repeated real owner report with screenshots — the 2026-09-18/09-21 fixes
+    # above only cover a description that already contains an explicit line break. This is the
+    # still-broken case those fixes never touched: ONE logical line with no \n/\r of its own, but
+    # long enough that Telegram word-wraps it itself onto 2+ visual lines — and the single
+    # RLE...PDF embedding around that one logical line doesn't carry its alignment onto the
+    # continuation line Telegram creates by its own soft-wrap. Every real screenshot example was a
+    # short single-line field (never wrapped) rendering fine and a long free-text paragraph (wrapped
+    # by the client) rendering broken — this is that exact case, using the real listing text from
+    # one of the owner's own screenshots that day.
+    long_description = "יחידת דיור משופצת כולל גינה כניסה 20.10.26"
+    caption = format_caption(make_listing(description=long_description), has_access=True)
+    description_words = long_description.split(" ")
+    description_lines = [
+        line
+        for line in caption.split("\n")
+        if any(word in line for word in description_words)
+    ]
+    assert len(description_lines) >= 2, "a long single-line description should be pre-wrapped"
+    for line in description_lines:
+        # strip the RLE/PDF embedding marks themselves before measuring visible length
+        visible = line.strip("‫‬")
+        assert len(visible) <= _RTL_LINE_WRAP_CHARS, f"line too long to guarantee no client re-wrap: {line!r}"
+        assert line.startswith("‫") and line.endswith("‬"), f"line missing its own RTL embedding: {line!r}"
+
+
+def test_wrap_long_rtl_line_never_splits_mid_word():
+    # An HTML tag or markdown marker glued to its neighboring word (format_caption's "<b>word",
+    # format_caption_whatsapp's "*word") must never be split in half by the wrap — that would ship
+    # a literal broken tag in the message, not just a misaligned line.
+    text = "🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>"
+    pieces = _wrap_long_rtl_line(text, _RTL_LINE_WRAP_CHARS)
+    assert len(pieces) > 1, "this real banner sentence is long enough that it must be split"
+    rejoined = " ".join(pieces)
+    assert rejoined == text, "wrapping must never drop, duplicate, or reorder any word"
+    assert pieces[0].startswith("🕵️ <b>")
+    assert pieces[-1].endswith("כמה!</b>")
+    for piece in pieces:
+        if "<" in piece or ">" in piece:
+            assert "<b>" in piece or "</b>" in piece, f"a tag got split in half: {piece!r}"
+
+
+def test_wrap_long_rtl_line_keeps_a_single_overlong_word_whole():
+    words = _wrap_long_rtl_line("א" * 50, _RTL_LINE_WRAP_CHARS)
+    assert words == ["א" * 50]
+
+
+def test_no_photos_banner_stays_valid_html_and_gets_rtl_embedding_per_visual_line():
+    # cards.py's send_listing_card builds this exact banner (bot_text("card.no_photos_banner")
+    # rstripped, then _force_rtl_block) before prepending it to the caption — tested here at the
+    # same level as every other RTL test in this file, since send_listing_card itself needs a fake
+    # Telegram Bot to exercise (covered separately below).
+    banner_text = bot_text("card.no_photos_banner", "he").rstrip("\n")
+    result = f"{_force_rtl_block(banner_text, 'he')}\n\n"
+    assert result.endswith("\n\n"), "the blank-line gap before the caption must survive the rewrap"
+    assert "<b>" in result and "</b>" in result
+    lines = [line for line in result.split("\n") if line]
+    assert len(lines) > 1, "the real banner sentence is long enough that it must be pre-wrapped"
+    for line in lines:
+        assert line.startswith("‫") and line.endswith("‬")
 
 
 def test_blank_spacer_line_has_no_stray_rtl_mark():

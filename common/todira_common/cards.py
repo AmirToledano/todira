@@ -141,8 +141,11 @@ _MASCOT_PATH = _DACHSHUND_DIR / "todi_detective.jpg"
 # captions can't do background colors or font-size, so the closest equivalent is BOLD (not italic
 # — italic reads as an aside, easy to skim past) and placed FIRST, before the listing's own details,
 # instead of tacked on at the very end where a real user reported missing it entirely (2026-09-03).
-# See bot_strings.py's "card.no_photos_banner" — sent through _force_rtl in send_listing_card
-# itself (a no-op for English/Russian/French, same as every other line in this file).
+# See bot_strings.py's "card.no_photos_banner" — sent through _force_rtl_block in
+# send_listing_card itself (a no-op for English/Russian/French, same as every other line in this
+# file). _force_rtl_block, not _force_rtl, since 2026-09-28: the banner sentence is long enough
+# that Telegram word-wraps it itself, and only _force_rtl_block's per-visual-line pre-wrapping (see
+# its own docstring) keeps every wrapped line right-aligned.
 
 
 def _dachshund_photo_path() -> Path:
@@ -359,6 +362,36 @@ def _force_rtl(text: str, lang: str) -> str:
     return f"{_RLE}{text}{_PDF}"
 
 
+# 2026-09-28: chosen a real, meaningful margin BELOW the natural wrap point measured directly off a
+# real owner screenshot that day (a genuine ~32-33-character line before Telegram wrapped it itself)
+# — not a round number picked blind. Deliberately conservative: this only needs to guarantee our own
+# pre-wrapped line is short enough that Telegram never has to wrap it AGAIN itself (which would just
+# reproduce the exact bug this exists to fix) — a slightly-short line costs nothing, a
+# slightly-too-long one silently undoes the whole fix.
+_RTL_LINE_WRAP_CHARS = 30
+
+
+def _wrap_long_rtl_line(line: str, width: int) -> list[str]:
+    """Break one line into several at real word boundaries only — never mid-word — so a leading/
+    trailing HTML tag or markdown marker glued to its neighboring word (format_caption's "<b>word"/
+    "word</b>", format_caption_whatsapp's "*word") is never split in half. A single word longer than
+    width on its own is kept whole rather than force-broken mid-word (rare — Hebrew doesn't compound
+    into very long single words the way German/Finnish can)."""
+    words = line.split(" ")
+    out: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}" if current else word
+        if len(candidate) > width and current:
+            out.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        out.append(current)
+    return out or [line]
+
+
 def _force_rtl_block(text: str, lang: str) -> str:
     """Same per-line embedding as _build_body_lines' own comment explains, applied to a block of
     text that can itself contain line breaks — a scraped description, which real listings (see the
@@ -376,8 +409,31 @@ def _force_rtl_block(text: str, lang: str) -> str:
     multi-paragraph description was still going through as one single _force_rtl-wrapped line,
     reproducing the exact original bug for every line after the first. splitlines() handles \\r,
     \\r\\n, \\n and the other line-boundary characters Python recognizes, and normalizing to "\\n"
-    on rejoin is itself a improvement (Telegram/WhatsApp only render "\\n" as a line break)."""
-    return "\n".join(_force_rtl(line, lang) if line else line for line in text.splitlines())
+    on rejoin is itself a improvement (Telegram/WhatsApp only render "\\n" as a line break).
+
+    2026-09-28: STILL broken per fresh real owner screenshots — a repeated report, not a new one.
+    Root cause this time is different from either fix above: a logical line that's short enough to
+    need no explicit \\n of its own can still be LONG enough that Telegram word-wraps it itself onto
+    2+ visual lines — and the RLE...PDF embedding wrapping that one logical line doesn't carry its
+    right-alignment onto the continuation line Telegram creates by its own soft-wrap. Every short
+    single-line field this file builds (price/rooms/floor, ...) never hits this because none of them
+    are ever long enough to need client-side wrapping in the first place — only free-form text
+    (this function's whole reason to exist) is. Fix: never let the client word-wrap an RTL-embedded
+    line at all. _wrap_long_rtl_line pre-splits anything over _RTL_LINE_WRAP_CHARS at a real word
+    boundary BEFORE _force_rtl ever sees it, so every VISUAL line is also its own independent
+    RLE...PDF span — the same reason the short field lines already work, just applied here too. Word
+    boundaries only (never mid-word) so an HTML tag or markdown marker glued to its neighboring word
+    (e.g. "<b>word" or "word</b>") can never be split in half. LTR languages are skipped entirely —
+    _force_rtl is already a no-op for them, and wrapping text that isn't broken to begin with would
+    only add pointless line breaks."""
+    out_lines: list[str] = []
+    for line in text.splitlines():
+        if not line:
+            out_lines.append(line)
+            continue
+        pieces = _wrap_long_rtl_line(line, _RTL_LINE_WRAP_CHARS) if lang in RTL_LANGS else [line]
+        out_lines.extend(_force_rtl(piece, lang) for piece in pieces)
+    return "\n".join(out_lines)
 
 
 def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:
@@ -581,7 +637,12 @@ async def send_listing_card(
                     _first_downloadable_photo_jpeg_bytes, listing.image_urls
                 )
         if photo is None:
-            banner = _force_rtl(bot_text("card.no_photos_banner", lang), lang)
+            # rstrip + re-append "\n\n" ourselves: _force_rtl_block's own splitlines()-based
+            # reconstruction collapses a trailing "\n\n" to one "\n" (splitlines() never emits a
+            # trailing empty segment for a string ending in \n), which would quietly shrink the
+            # blank-line gap this banner is meant to leave before the caption that follows it.
+            banner_text = bot_text("card.no_photos_banner", lang).rstrip("\n")
+            banner = f"{_force_rtl_block(banner_text, lang)}\n\n"
             no_photo_caption = (banner + caption)[:CAPTION_LIMIT]
             await bot.send_photo(
                 chat_id=chat_id,
