@@ -132,6 +132,11 @@ spec:
                   value: {{ .Values.scraper.whatsappMatchTemplateName | default "" | quote }}
                 - name: WHATSAPP_MATCH_TEMPLATE_LANGUAGE
                   value: {{ .Values.scraper.whatsappMatchTemplateLanguage | default "he" | quote }}
+                # 2026-09-27 (see values.yaml's own comment on scraper.whatsappRichMatchTemplateName):
+                # empty until new_listing_match_rich is actually APPROVED by Meta — the plain
+                # template above keeps sending until then.
+                - name: WHATSAPP_RICH_MATCH_TEMPLATE_NAME
+                  value: {{ .Values.scraper.whatsappRichMatchTemplateName | default "" | quote }}
                 # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
                 # scraper.komoMaxNewDetailFetchesPerRun for the real math these exist to protect.
                 # Only set when the value is actually present, so scraper/main.py's own Python-side
