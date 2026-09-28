@@ -500,8 +500,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Tout le pays", "ar": "في جميع أنحاء البلاد",
     },
     "home.momentum_3_label": {
-        "he": "כל אזורי יד2 במקום אחד", "en": "Every Yad2 region, in one place", "ru": "Все регионы Yad2 в одном месте",
-        "fr": "Toutes les régions Yad2 réunies", "ar": "جميع مناطق يد2 في مكان واحد",
+        "he": "כל האזורים בישראל, במקום אחד", "en": "Every region in Israel, in one place",
+        "ru": "Все регионы Израиля в одном месте", "fr": "Toutes les régions d'Israël réunies",
+        "ar": "جميع مناطق إسرائيل في مكان واحد",
     },
     "home.live_badge": {
         "he": "התראות בזמן אמת 🔔", "en": "Real-time alerts 🔔", "ru": "Уведомления в реальном времени 🔔",
@@ -1689,8 +1690,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # real-content-only behavior rather than fabricating three new translations here.
     "about.h1": {"he": "אודות טודירה", "en": "About Todira"},
     "about.body_intro": {
-        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (כגון יד2), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
-        "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (such as Yad2), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published.",
+        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
+        "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (real-estate sites and listing boards), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published.",
     },
     "about.body_disclaimer": {
         "he": "השירות אינו משרד תיווך, אינו בעל נכסים ואינו צד לעסקאות שכירות — הוא כלי טכנולוגי שמטרתו לחסוך למחפשי דירה את הצורך לרענן שוב ושוב אתרי מודעות בעצמם.",
@@ -1736,8 +1737,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "accessibility.s3_title": {"he": "3. מגבלות ידועות", "en": "3. Known limitations"},
     "accessibility.s3_body": {
-        "he": "תוכן המודעות עצמו (תמונות, טקסט תיאור) מגיע ממקורות חיצוניים (כגון יד2) שאינם בשליטת טודירה, וייתכן שאינו נגיש במלואו. אנו פועלים לשפר את הנגישות של שאר האתר באופן שוטף.",
-        "en": "Listing content itself (photos, description text) comes from external sources (such as Yad2) not controlled by Todira, and may not be fully accessible. We continue to work on improving the accessibility of the rest of the site.",
+        "he": "תוכן המודעות עצמו (תמונות, טקסט תיאור) מגיע ממקורות חיצוניים (אתרי נדל\"ן ולוחות מודעות שונים) שאינם בשליטת טודירה, וייתכן שאינו נגיש במלואו. אנו פועלים לשפר את הנגישות של שאר האתר באופן שוטף.",
+        "en": "Listing content itself (photos, description text) comes from external sources (various real-estate sites and listing boards) not controlled by Todira, and may not be fully accessible. We continue to work on improving the accessibility of the rest of the site.",
     },
     "accessibility.s4_title": {
         "he": "4. רכז נגישות ופנייה בנושא נגישות",
@@ -1892,8 +1893,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "terms.updated": {"he": "עודכן לאחרונה: ספטמבר 2026", "en": "Last updated: September 2026"},
     "terms.s1_title": {"he": "1. מה זה טודירה", "en": "1. What Todira is"},
     "terms.s1_body": {
-        "he": "טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (כגון יד2), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך במנוי בתשלום, כמפורט בעמוד השדרוג באתר.",
-        "en": "Todira is a personal service (a Telegram bot and companion website) that automatically scans apartment listings from external sources on the web (such as Yad2) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a paid subscription, as detailed on the site's upgrade page.",
+        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך במנוי בתשלום, כמפורט בעמוד השדרוג באתר.',
+        "en": "Todira is a personal service (a Telegram bot and companion website) that automatically scans apartment listings from external sources on the web (various real-estate sites and listing boards) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a paid subscription, as detailed on the site's upgrade page.",
     },
     "terms.s2_title": {"he": "2. אין אחריות על תוכן המודעות", "en": "2. No warranty on listing content"},
     "terms.s2_body": {
