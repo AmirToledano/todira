@@ -302,6 +302,32 @@ def test_apartments_excludes_hidden_listings(client):
     assert "yad2.co.il/item/2" not in resp.text
 
 
+def test_apartments_renders_saved_map_region_badge_and_prefill(client):
+    """2026-09-28 (backlog #79): /apartments' own template reads f.map_region_kind (and the
+    matching lat/lng/radius fields) to show the "filtered by area" badge, the clear button, and the
+    data-region-* attributes apartments.html's own script uses to redraw the saved shape on load —
+    covers the actual Jinja branches those add, not just that the route still returns 200."""
+    user_filter = _FakeFilter()
+    user_filter.map_region_kind = "circle"
+    user_filter.map_center_lat = 32.08
+    user_filter.map_center_lng = 34.78
+    user_filter.map_radius_m = 1500
+    user = _FakeUser(id=2, telegram_user_id=222, filter=user_filter)
+    fake_session = _FakeSession(user, scalar_queue=[user])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: type("M", (), {"matched": True})()),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'id="apt-map-region-clear"' in resp.text
+    assert 'data-region-kind="circle"' in resp.text
+    assert 'data-region-center-lat="32.08"' in resp.text
+    assert 'data-region-radius-m="1500"' in resp.text
+
+
 def test_no_brokers_toggle_flips_and_redirects(client):
     user = _FakeUser(id=2, telegram_user_id=222, filter=_FakeFilter(no_brokers=False))
     fake_session = _FakeSession(user, scalar_queue=[user])
@@ -323,3 +349,79 @@ def test_no_brokers_toggle_back_off(client):
         client.post("/apartments/no-brokers", data={"uid": 222})
 
     assert user.filter.no_brokers is False
+
+
+def test_filter_region_rect_saves_bounds_and_redirects(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=_FakeFilter())
+    fake_session = _FakeSession(user, scalar_queue=[user])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/filter/region",
+            data={
+                "uid": 222, "kind": "rect",
+                "sw_lat": 32.0, "sw_lng": 34.7, "ne_lat": 32.1, "ne_lng": 34.8,
+            },
+        )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/apartments?uid=222"
+    assert user.filter.map_region_kind == "rect"
+    assert user.filter.map_sw_lat == 32.0
+    assert user.filter.map_ne_lng == 34.8
+    assert user.filter.map_center_lat is None
+    assert fake_session.committed is True
+
+
+def test_filter_region_circle_saves_center_and_radius(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=_FakeFilter())
+    fake_session = _FakeSession(user, scalar_queue=[user])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post(
+            "/filter/region",
+            data={"uid": 222, "kind": "circle", "center_lat": 32.08, "center_lng": 34.78, "radius_m": 1500},
+        )
+
+    assert resp.status_code == 303
+    assert user.filter.map_region_kind == "circle"
+    assert user.filter.map_center_lat == 32.08
+    assert user.filter.map_radius_m == 1500
+    assert user.filter.map_sw_lat is None
+
+
+def test_filter_region_clear_resets_all_fields(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=_FakeFilter())
+    user.filter.map_region_kind = "circle"
+    user.filter.map_center_lat = 32.08
+    user.filter.map_center_lng = 34.78
+    user.filter.map_radius_m = 1500
+    fake_session = _FakeSession(user, scalar_queue=[user])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post("/filter/region", data={"uid": 222, "kind": "clear"})
+
+    assert resp.status_code == 303
+    assert user.filter.map_region_kind is None
+    assert user.filter.map_center_lat is None
+    assert user.filter.map_radius_m is None
+
+
+def test_filter_region_rejects_invalid_kind(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=_FakeFilter())
+    fake_session = _FakeSession(user, scalar_queue=[user])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post("/filter/region", data={"uid": 222, "kind": "triangle"})
+
+    assert resp.status_code == 400
+
+
+def test_filter_region_rect_missing_bounds_rejected(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=_FakeFilter())
+    fake_session = _FakeSession(user, scalar_queue=[user])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post("/filter/region", data={"uid": 222, "kind": "rect", "sw_lat": 32.0})
+
+    assert resp.status_code == 400

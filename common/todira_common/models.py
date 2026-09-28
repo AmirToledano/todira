@@ -208,6 +208,20 @@ class Filter(Base):
     move_in_earliest: Mapped[dt.date | None] = mapped_column(Date)
     move_in_latest: Mapped[dt.date | None] = mapped_column(Date)
 
+    # Map-drawn region (2026-09-28, backlog #79) — a rectangle or circle the visitor draws
+    # directly on /apartments' own map, narrowing the listing set to that area ON TOP OF cities
+    # (both apply — AND, not OR). Exactly one of the two shapes is populated at a time (kind picks
+    # which); matching.py's evaluate() is the single place that reads these, so a saved region also
+    # narrows proactive WhatsApp/Telegram matches, not just what /apartments shows on load.
+    map_region_kind: Mapped[str | None] = mapped_column(Text)  # "rect" | "circle" | None
+    map_center_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    map_center_lng: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    map_radius_m: Mapped[int | None] = mapped_column(Integer)
+    map_sw_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    map_sw_lng: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    map_ne_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    map_ne_lng: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

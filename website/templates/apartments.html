@@ -70,6 +70,23 @@
   <div class="apt-map-pane collapsed" id="apt-map-pane">
     <button type="button" class="apt-map-collapse-btn" id="apt-map-collapse-btn"
             aria-label="{{ t('apartments.map_collapse_label') }}">‹</button>
+    {# 2026-09-28 (backlog #79): draw-a-region tools — real owner request, "רדיוס מנקודה"/"ציור
+       מלבן" as the interaction model. f.map_region_kind (persisted on Filter, see main.py's
+       /filter/region and matching.py's evaluate()) drives both the clear button's visibility here
+       and the pre-drawn shape apartments.html's own script below restores on load. #}
+    <div class="apt-map-region-tools">
+      <button type="button" class="apt-map-region-btn" id="apt-map-draw-rect"
+              aria-label="{{ t('apartments.map_draw_rect_label') }}"
+              title="{{ t('apartments.map_draw_rect_label') }}">▭</button>
+      <button type="button" class="apt-map-region-btn" id="apt-map-draw-circle"
+              aria-label="{{ t('apartments.map_draw_circle_label') }}"
+              title="{{ t('apartments.map_draw_circle_label') }}">◯</button>
+      {% if f and f.map_region_kind %}
+      <button type="button" class="apt-map-region-btn apt-map-region-clear" id="apt-map-region-clear"
+              aria-label="{{ t('apartments.map_region_clear_label') }}"
+              title="{{ t('apartments.map_region_clear_label') }}">✕</button>
+      {% endif %}
+    </div>
     <details class="apt-map-settings" id="apt-map-settings">
       <summary class="apt-map-settings-btn" aria-label="{{ t('apartments.map_settings_label') }}">⚙️</summary>
       <div class="apt-map-settings-panel">
@@ -82,10 +99,21 @@
         </select>
       </div>
     </details>
-    <div id="apt-map" class="apt-map" role="img" aria-label="{{ t('apartments.map_aria_label') }}"></div>
+    <div id="apt-map" class="apt-map" role="img" aria-label="{{ t('apartments.map_aria_label') }}"
+         data-region-kind="{{ f.map_region_kind or '' if f else '' }}"
+         data-region-center-lat="{{ f.map_center_lat if f and f.map_center_lat is not none else '' }}"
+         data-region-center-lng="{{ f.map_center_lng if f and f.map_center_lng is not none else '' }}"
+         data-region-radius-m="{{ f.map_radius_m if f and f.map_radius_m is not none else '' }}"
+         data-region-sw-lat="{{ f.map_sw_lat if f and f.map_sw_lat is not none else '' }}"
+         data-region-sw-lng="{{ f.map_sw_lng if f and f.map_sw_lng is not none else '' }}"
+         data-region-ne-lat="{{ f.map_ne_lat if f and f.map_ne_lat is not none else '' }}"
+         data-region-ne-lng="{{ f.map_ne_lng if f and f.map_ne_lng is not none else '' }}"></div>
     <div class="apt-map-count" id="apt-map-count"
          data-template="{{ t('apartments.map_pins_count', shown='__SHOWN__', total='__TOTAL__') }}"
          data-empty-text="{{ t('apartments.map_no_pins') }}"></div>
+    {% if f and f.map_region_kind %}
+    <div class="apt-map-region-active-badge">{{ t('apartments.map_region_active_label') }}</div>
+    {% endif %}
   </div>
   <div class="apt-resize-handle" data-target="map" role="separator" aria-orientation="vertical"
        aria-label="{{ t('apartments.resize_map_label') }}" tabindex="0"></div>
@@ -760,6 +788,146 @@
     if (grid && 'MutationObserver' in window) {
       new MutationObserver(function () { syncPins(); }).observe(grid, { childList: true });
     }
+
+    // Map-drawn region filter (2026-09-28, backlog #79) — real owner request: draw a rectangle or
+    // circle directly on the map to narrow results to that area, ON TOP OF the city filter (see
+    // matching.py's own evaluate() for how the two combine). A plain hand-rolled drag gesture
+    // (mousedown -> mousemove -> mouseup), not the Leaflet.draw plugin — this only ever needs two
+    // shapes with no vertex-editing/multi-shape UI, so a whole extra CDN dependency wasn't worth
+    // it for what a dozen lines of Leaflet's own primitives (L.rectangle/L.circle) already cover.
+    // map.dragging is disabled for the duration of a draw so the same drag gesture draws the shape
+    // instead of panning the map underneath it — Leaflet fires 'mousedown'/'mousemove'/'mouseup' on
+    // the map for touch input too (its own DomEvent layer normalizes both), so this works on mobile
+    // with no separate touch handling.
+    var regionDrawBtns = {
+      rect: document.getElementById('apt-map-draw-rect'),
+      circle: document.getElementById('apt-map-draw-circle')
+    };
+    var regionClearBtn = document.getElementById('apt-map-region-clear');
+    var regionPreviewLayer = null;
+    var drawMode = null;
+    var drawStartLatLng = null;
+
+    function clearRegionPreview() {
+      if (regionPreviewLayer) { map.removeLayer(regionPreviewLayer); regionPreviewLayer = null; }
+    }
+
+    function endDrawMode() {
+      drawMode = null;
+      drawStartLatLng = null;
+      map.dragging.enable();
+      mapEl.classList.remove('apt-map-drawing');
+      Object.keys(regionDrawBtns).forEach(function (key) {
+        if (regionDrawBtns[key]) { regionDrawBtns[key].classList.remove('active'); }
+      });
+    }
+
+    function startDrawMode(mode) {
+      if (drawMode === mode) { endDrawMode(); clearRegionPreview(); return; }
+      endDrawMode();
+      clearRegionPreview();
+      drawMode = mode;
+      map.dragging.disable();
+      mapEl.classList.add('apt-map-drawing');
+      if (regionDrawBtns[mode]) { regionDrawBtns[mode].classList.add('active'); }
+    }
+
+    function submitRegion(fields) {
+      var form = document.createElement('form');
+      form.method = 'post';
+      form.action = '/filter/region';
+      form.style.display = 'none';
+      var allFields = Object.assign({ uid: '{{ uid or "" }}' }, fields);
+      Object.keys(allFields).forEach(function (key) {
+        var value = allFields[key];
+        if (value === '' || value === null || value === undefined) { return; }
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    }
+
+    if (regionDrawBtns.rect) {
+      regionDrawBtns.rect.addEventListener('click', function () { startDrawMode('rect'); });
+    }
+    if (regionDrawBtns.circle) {
+      regionDrawBtns.circle.addEventListener('click', function () { startDrawMode('circle'); });
+    }
+    if (regionClearBtn) {
+      regionClearBtn.addEventListener('click', function () { submitRegion({ kind: 'clear' }); });
+    }
+
+    map.on('mousedown', function (e) {
+      if (!drawMode) { return; }
+      drawStartLatLng = e.latlng;
+      clearRegionPreview();
+    });
+    map.on('mousemove', function (e) {
+      if (!drawMode || !drawStartLatLng) { return; }
+      clearRegionPreview();
+      if (drawMode === 'rect') {
+        regionPreviewLayer = L.rectangle(
+          L.latLngBounds(drawStartLatLng, e.latlng), { color: '#0f8a8a', weight: 2, fillOpacity: .12 }
+        ).addTo(map);
+      } else {
+        var radius = drawStartLatLng.distanceTo(e.latlng);
+        regionPreviewLayer = L.circle(
+          drawStartLatLng, { radius: radius, color: '#0f8a8a', weight: 2, fillOpacity: .12 }
+        ).addTo(map);
+      }
+    });
+    map.on('mouseup', function (e) {
+      if (!drawMode || !drawStartLatLng) { return; }
+      var finishedMode = drawMode;
+      var start = drawStartLatLng;
+      endDrawMode();
+      // A drag under ~30 screen pixels is treated as an accidental click, not a real shape — the
+      // button stays armed (startDrawMode was already reset above, so this just leaves nothing
+      // submitted) rather than saving a near-zero-size region nothing could ever match.
+      if (map.latLngToContainerPoint(start).distanceTo(map.latLngToContainerPoint(e.latlng)) < 30) {
+        clearRegionPreview();
+        return;
+      }
+      if (finishedMode === 'rect') {
+        var bounds = L.latLngBounds(start, e.latlng);
+        submitRegion({
+          kind: 'rect',
+          sw_lat: bounds.getSouth(), sw_lng: bounds.getWest(),
+          ne_lat: bounds.getNorth(), ne_lng: bounds.getEast()
+        });
+      } else {
+        submitRegion({
+          kind: 'circle',
+          center_lat: start.lat, center_lng: start.lng,
+          radius_m: Math.round(start.distanceTo(e.latlng))
+        });
+      }
+    });
+
+    // Restore whatever region is already saved on the filter (server-rendered as data-region-*
+    // attributes on #apt-map above) as a static, non-editable preview shape — so a visitor who
+    // drew a region, then reloaded/came back, sees it's still active rather than just trusting the
+    // "filtered by area" badge's own text.
+    (function restoreSavedRegion() {
+      var kind = mapEl.dataset.regionKind;
+      if (kind === 'rect') {
+        var swLat = parseFloat(mapEl.dataset.regionSwLat), swLng = parseFloat(mapEl.dataset.regionSwLng);
+        var neLat = parseFloat(mapEl.dataset.regionNeLat), neLng = parseFloat(mapEl.dataset.regionNeLng);
+        if (![swLat, swLng, neLat, neLng].some(isNaN)) {
+          L.rectangle([[swLat, swLng], [neLat, neLng]], { color: '#0f8a8a', weight: 2, fillOpacity: .08, dashArray: '4 4' }).addTo(map);
+        }
+      } else if (kind === 'circle') {
+        var centerLat = parseFloat(mapEl.dataset.regionCenterLat), centerLng = parseFloat(mapEl.dataset.regionCenterLng);
+        var radiusM = parseFloat(mapEl.dataset.regionRadiusM);
+        if (![centerLat, centerLng, radiusM].some(isNaN)) {
+          L.circle([centerLat, centerLng], { radius: radiusM, color: '#0f8a8a', weight: 2, fillOpacity: .08, dashArray: '4 4' }).addTo(map);
+        }
+      }
+    })();
   })();
 </script>
 {% endblock %}

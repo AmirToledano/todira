@@ -1078,6 +1078,69 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
 .value-anchor h2 { font-family: 'Rubik', sans-serif; font-size: 1.05rem; color: var(--heading); margin: 0 0 6px; }
 .value-anchor p { margin: 0; color: var(--text-muted); font-size: .85rem; line-height: 1.5; }
 
+/* /upgrade plan card (2026-09-28, backlog #81) — dorin.app-style single-tier card: an icon badge,
+   name, subtitle, big price, checkmark list, CTA and disclaimer, matching the VISUAL structure of
+   dorin's own plan cards (real owner-supplied screenshots) while keeping Todira's own recurring-
+   subscription copy/mechanics — see upgrade.html's own comment. The teal border + floating badge
+   pill echoes dorin's own "הבחירה הנפוצה" highlighted card (our only plan is always the
+   recommended one, since it's the only one). */
+.upgrade-plan-card {
+  position: relative; background: var(--card); border: 2px solid var(--teal);
+  border-radius: var(--radius-lg); padding: 36px 28px 30px; max-width: 420px; margin: 0 auto;
+  box-shadow: var(--shadow-lg); text-align: center;
+}
+.upgrade-plan-badge {
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  background: var(--teal); color: #fff; font-size: .74rem; font-weight: 700;
+  padding: 5px 16px; border-radius: 999px; white-space: nowrap;
+}
+.upgrade-plan-icon {
+  width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 50%;
+  background: var(--teal-tint); display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem;
+}
+.upgrade-plan-name { font-family: 'Rubik', sans-serif; font-size: 1.3rem; margin: 0 0 4px; color: var(--heading); }
+.upgrade-plan-subtitle { color: var(--text-muted); font-size: .88rem; margin: 0 0 18px; }
+.upgrade-plan-price {
+  font-family: 'Rubik', sans-serif; font-weight: 800; font-size: 2.4rem; color: var(--teal);
+  margin: 0 0 22px;
+}
+.upgrade-plan-price-suffix { font-size: 1rem; font-weight: 600; color: var(--text-muted); }
+.upgrade-plan-checklist {
+  list-style: none; margin: 0 0 24px; padding: 0; text-align: start; display: flex;
+  flex-direction: column; gap: 12px;
+}
+.upgrade-plan-checklist li {
+  position: relative; padding-inline-start: 26px; font-size: .9rem; color: var(--text); line-height: 1.4;
+}
+.upgrade-plan-checklist li::before {
+  content: "✓"; position: absolute; inset-inline-start: 0; top: 0; color: #15803d; font-weight: 700;
+}
+html:not([data-theme="light"]) .upgrade-plan-checklist li::before { color: #6fd897; }
+html[data-theme="dark"] .upgrade-plan-checklist li::before { color: #6fd897; }
+.upgrade-plan-disclaimer { color: var(--text-muted); font-size: .78rem; margin: 14px 0 0; }
+.upgrade-payment-hint {
+  text-align: center; color: var(--text-muted); font-size: .82rem; max-width: 420px;
+  margin: 16px auto 0;
+}
+
+.upgrade-faq { max-width: 560px; margin: 28px auto 0; }
+.upgrade-faq-title {
+  font-family: 'Rubik', sans-serif; font-size: 1.05rem; color: var(--heading); text-align: center;
+  margin: 0 0 12px;
+}
+.upgrade-faq-item {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 12px 16px; margin-bottom: 10px;
+}
+.upgrade-faq-item summary {
+  cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--text); list-style: none;
+}
+.upgrade-faq-item summary::-webkit-details-marker { display: none; }
+.upgrade-faq-item summary::after { content: "+"; float: inline-end; color: var(--text-muted); }
+.upgrade-faq-item[open] summary::after { content: "–"; }
+.upgrade-faq-item p { margin: 10px 0 0; color: var(--text-muted); font-size: .85rem; line-height: 1.5; }
+
 /* toggle-chip checkboxes (amenities, property types, etc) */
 .checkbox-grid { display: flex; flex-wrap: wrap; gap: 10px; }
 .check-chip {
@@ -1636,6 +1699,31 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
   width: 100%; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--surface-tint); color: var(--text); font-size: .8rem;
 }
+/* Map region-draw tools (2026-09-28, backlog #79) — a small button row at the map's own top-left,
+   to the right of .apt-map-collapse-btn (same row, same 28px circle style, just shifted over so
+   the two never overlap). .active marks whichever draw mode is currently armed (rect/circle);
+   .apt-map-region-clear only ever renders when a region is actually saved (apartments.html's own
+   template conditional), so it never sits there doing nothing. */
+.apt-map-region-tools {
+  position: absolute; top: 10px; left: 48px; z-index: 401; display: flex; gap: 6px;
+}
+.apt-map-region-btn {
+  width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); cursor: pointer; font-size: .9rem;
+  display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+}
+.apt-map-region-btn:hover { background: var(--teal-tint); }
+.apt-map-region-btn.active { background: var(--teal); color: #fff; border-color: var(--teal); }
+.apt-map-region-clear { color: var(--danger, #e05252); }
+.apt-map.apt-map-drawing { cursor: crosshair; }
+/* Small pill announcing an active region, stacked above .apt-map-count (bottom-left) so the two
+   never collide — same corner family as the pin-count pill, same visual weight. */
+.apt-map-region-active-badge {
+  position: absolute; bottom: 40px; left: 10px; z-index: 400;
+  background: var(--teal-tint); border: 1px solid var(--teal); color: var(--teal);
+  border-radius: 999px; padding: 4px 10px; font-size: .74rem; font-weight: 600;
+}
+
 /* Leaflet div-icon marker (2026-09-24, switched from MapLibre GL — see apartments.html's own
    script comment for why) — a plain div, not a button, so no padding/appearance reset needed. */
 .apt-map-pin {

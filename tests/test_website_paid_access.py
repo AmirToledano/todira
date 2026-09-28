@@ -241,6 +241,54 @@ def test_upgrade_page_shows_value_anchor_below_plan_cards():
     assert "עמלת תיווך" in resp.text
 
 
+def test_upgrade_page_shows_dorin_style_plan_card_for_a_real_user():
+    """2026-09-28 (backlog #81): the plan card was redesigned to match dorin.app's own visual
+    structure (icon badge, subtitle, checklist, CTA, disclaimer) — real owner-supplied screenshots
+    of dorin's plan cards. Confirms the new markup actually renders, not just that the page still
+    returns 200."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = c.get("/upgrade", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'class="upgrade-plan-card' in resp.text
+    assert 'class="upgrade-plan-badge"' in resp.text
+    assert "גישה מלאה לפרטי הקשר" in resp.text  # one real checklist item
+    assert 'class="upgrade-faq' in resp.text
+    assert "שאלות נפוצות על התשלום וההפעלה" in resp.text
+
+
+def test_upgrade_page_hides_plan_card_and_faq_for_an_active_subscriber():
+    """The dorin-style card and FAQ accordion are only for a visitor choosing a plan — an already-
+    subscribed user still sees the plain "manage your subscription" message instead, same as
+    before the redesign."""
+    user = _FakeUser(
+        id=2, telegram_user_id=222, takbull_subscription_uniqid="live-uniqid",
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = c.get("/upgrade", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert 'class="upgrade-plan-card' not in resp.text
+    assert 'class="upgrade-faq' not in resp.text
+    # the value-anchor box still shows regardless (unchanged pre-existing behavior)
+    assert "בערך המחיר של קפה ומאפה" in resp.text
+
+
 def test_upgrade_page_renders_in_english_when_lang_param_is_set():
     """2026-09-08 fix: /upgrade was hardcoded Hebrew-only, unlike every other customer-facing
     page — confirms the fix actually renders translated content."""

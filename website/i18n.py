@@ -1001,6 +1001,32 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "apartments.map_age_30": {
         "he": "30 יום", "en": "30 days", "ru": "30 дней", "fr": "30 jours", "ar": "30 يومًا",
     },
+    "apartments.map_draw_rect_label": {
+        "he": "סימון אזור מלבני", "en": "Draw a rectangle area",
+        "ru": "Нарисовать прямоугольную область", "fr": "Dessiner une zone rectangulaire",
+        "ar": "رسم منطقة مستطيلة",
+    },
+    "apartments.map_draw_circle_label": {
+        "he": "סימון אזור עגול", "en": "Draw a circle area",
+        "ru": "Нарисовать круглую область", "fr": "Dessiner une zone circulaire",
+        "ar": "رسم منطقة دائرية",
+    },
+    "apartments.map_region_clear_label": {
+        "he": "נקה אזור מסומן", "en": "Clear drawn area",
+        "ru": "Очистить область", "fr": "Effacer la zone",
+        "ar": "مسح المنطقة",
+    },
+    "apartments.map_region_drawing_hint": {
+        "he": "גרור על המפה כדי לצייר את האזור", "en": "Drag on the map to draw the area",
+        "ru": "Перетащите на карте, чтобы нарисовать область",
+        "fr": "Faites glisser sur la carte pour dessiner la zone",
+        "ar": "اسحب على الخريطة لرسم المنطقة",
+    },
+    "apartments.map_region_active_label": {
+        "he": "מסונן לפי אזור מסומן על המפה", "en": "Filtered by a drawn map area",
+        "ru": "Фильтр по области на карте", "fr": "Filtré par une zone dessinée sur la carte",
+        "ar": "تمت التصفية حسب منطقة مرسومة على الخريطة",
+    },
     # ---------- liked page ----------
     "liked.title": {
         "he": "דירות שמורות ❤️", "en": "Saved apartments ❤️", "ru": "Сохранённые квартиры ❤️",
@@ -2345,6 +2371,98 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": ", כולל מדיניות ביטול העסקה", "en": ", including the cancellation policy",
         "ru": ", включая политику отмены", "fr": ", y compris la politique d'annulation",
         "ar": "، بما في ذلك سياسة الإلغاء",
+    },
+    # 2026-09-28 (backlog #81): dorin.app-style single-card redesign — real owner-supplied
+    # screenshots of dorin's own plan cards (icon badge, subtitle, price, checkmark list, CTA,
+    # disclaimer) and FAQ accordion below the card. Owner's explicit call: match the VISUAL
+    # structure only — Todira stays a recurring monthly subscription (unlike dorin's one-time
+    # week/2-week/month passes), so copy below describes OUR real plan and mechanics, not dorin's.
+    "upgrade.plan_badge_label": {
+        "he": "הבחירה המומלצת", "en": "Recommended choice", "ru": "Рекомендуемый выбор",
+        "fr": "Choix recommandé", "ar": "الخيار الموصى به",
+    },
+    "upgrade.plan_subtitle": {
+        "he": "גישה מלאה לכל דירה שמתאימה לך, בלי הגבלה",
+        "en": "Full access to every apartment that matches you, unlimited",
+        "ru": "Полный доступ к каждой подходящей вам квартире, без ограничений",
+        "fr": "Accès complet à chaque appartement qui vous correspond, sans limite",
+        "ar": "وصول كامل لكل شقة تناسبك، بلا حدود",
+    },
+    "upgrade.checklist_scan": {
+        "he": "סריקה אוטומטית כל שעתיים מכל המקורות",
+        "en": "Automatic scan every 2 hours across all sources",
+        "ru": "Автоматическое сканирование каждые 2 часа по всем источникам",
+        "fr": "Scan automatique toutes les 2 heures sur toutes les sources",
+        "ar": "فحص تلقائي كل ساعتين من جميع المصادر",
+    },
+    "upgrade.checklist_alert": {
+        "he": "התראה מיידית בטלגרם וב-WhatsApp ברגע שיש התאמה",
+        "en": "Instant Telegram and WhatsApp alert the moment there's a match",
+        "ru": "Мгновенное уведомление в Telegram и WhatsApp при совпадении",
+        "fr": "Alerte Telegram et WhatsApp instantanée dès qu'il y a une correspondance",
+        "ar": "تنبيه فوري على تيليجرام وواتساب فور وجود تطابق",
+    },
+    "upgrade.checklist_filtered": {
+        "he": "רק דירות שבאמת עומדות בסינון שלך",
+        "en": "Only apartments that truly meet your filter",
+        "ru": "Только квартиры, действительно соответствующие вашему фильтру",
+        "fr": "Uniquement les appartements qui correspondent vraiment à votre filtre",
+        "ar": "فقط الشقق التي تطابق فعلًا فلترك",
+    },
+    "upgrade.checklist_contact": {
+        "he": "גישה מלאה לפרטי הקשר — טלפון וקישור ישיר לוואטסאפ",
+        "en": "Full access to contact details — phone number and a direct WhatsApp link",
+        "ru": "Полный доступ к контактным данным — номер телефона и прямая ссылка на WhatsApp",
+        "fr": "Accès complet aux coordonnées — numéro de téléphone et lien WhatsApp direct",
+        "ar": "وصول كامل لبيانات التواصل — رقم الهاتف ورابط واتساب مباشر",
+    },
+    "upgrade.checklist_cancel": {
+        "he": "ביטול בכל רגע, בלי התחייבות",
+        "en": "Cancel anytime, no commitment",
+        "ru": "Отмена в любой момент, без обязательств",
+        "fr": "Annulation à tout moment, sans engagement",
+        "ar": "إلغاء في أي وقت، بلا التزام",
+    },
+    "upgrade.faq_title": {
+        "he": "שאלות נפוצות על התשלום וההפעלה", "en": "Common questions about payment and activation",
+        "ru": "Частые вопросы об оплате и активации", "fr": "Questions fréquentes sur le paiement et l'activation",
+        "ar": "أسئلة شائعة حول الدفع والتفعيل",
+    },
+    "upgrade.faq_q1": {
+        "he": "האם המנוי מתחדש אוטומטית?", "en": "Does the subscription renew automatically?",
+        "ru": "Подписка продлевается автоматически?", "fr": "L'abonnement se renouvelle-t-il automatiquement ?",
+        "ar": "هل يتجدد الاشتراك تلقائيًا؟",
+    },
+    "upgrade.faq_a1": {
+        "he": "כן, המנוי מתחדש אוטומטית מדי חודש. אפשר לבטל בכל רגע מעמוד /account, וממשיכים לקבל גישה עד סוף התקופה ששולמה.",
+        "en": "Yes, the subscription renews automatically every month. You can cancel anytime from the /account page, and you keep access until the end of the period you already paid for.",
+        "ru": "Да, подписка автоматически продлевается каждый месяц. Отменить можно в любой момент на странице /account — доступ сохранится до конца уже оплаченного периода.",
+        "fr": "Oui, l'abonnement se renouvelle automatiquement chaque mois. Vous pouvez annuler à tout moment depuis la page /account, et vous gardez l'accès jusqu'à la fin de la période déjà payée.",
+        "ar": "نعم، يتجدد الاشتراك تلقائيًا كل شهر. يمكنك الإلغاء في أي وقت من صفحة /account، وستحتفظ بالوصول حتى نهاية الفترة المدفوعة بالفعل.",
+    },
+    "upgrade.faq_q2": {
+        "he": "איך משלמים? האם התשלום מאובטח?", "en": "How do I pay? Is the payment secure?",
+        "ru": "Как оплатить? Безопасен ли платёж?", "fr": "Comment payer ? Le paiement est-il sécurisé ?",
+        "ar": "كيف أدفع؟ هل الدفع آمن؟",
+    },
+    "upgrade.faq_a2": {
+        "he": "התשלום מאובטח לגמרי, דרך ביט, Apple Pay, Google Pay או כרטיס אשראי.",
+        "en": "Payment is fully secured, via Bit, Apple Pay, Google Pay or credit card.",
+        "ru": "Оплата полностью защищена — через Bit, Apple Pay, Google Pay или банковскую карту.",
+        "fr": "Le paiement est entièrement sécurisé, via Bit, Apple Pay, Google Pay ou carte de crédit.",
+        "ar": "الدفع مؤمّن بالكامل، عبر Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان.",
+    },
+    "upgrade.faq_q3": {
+        "he": "מה קורה אם אני מבטל את המנוי?", "en": "What happens if I cancel my subscription?",
+        "ru": "Что произойдёт, если я отменю подписку?", "fr": "Que se passe-t-il si j'annule mon abonnement ?",
+        "ar": "ماذا يحدث إذا ألغيت اشتراكي؟",
+    },
+    "upgrade.faq_a3": {
+        "he": "ממשיכים לקבל גישה מלאה עד סוף התקופה ששילמת עליה, ולא תחויב/י שוב.",
+        "en": "You keep full access until the end of the period you already paid for, and you won't be charged again.",
+        "ru": "Вы сохраните полный доступ до конца уже оплаченного периода, и повторного списания не будет.",
+        "fr": "Vous gardez un accès complet jusqu'à la fin de la période déjà payée, et vous ne serez plus débité.",
+        "ar": "ستحتفظ بالوصول الكامل حتى نهاية الفترة المدفوعة بالفعل، ولن يتم خصم مبلغ آخر منك.",
     },
     "upgrade.terms_error": {
         "he": "צריך לאשר את תנאי השימוש לפני שממשיכים לתשלום.",

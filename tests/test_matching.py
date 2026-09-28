@@ -44,6 +44,14 @@ def make_filter(**overrides):
         furniture_pref="any",
         no_brokers=False,
         flexible_match=False,
+        map_region_kind=None,
+        map_center_lat=None,
+        map_center_lng=None,
+        map_radius_m=None,
+        map_sw_lat=None,
+        map_sw_lng=None,
+        map_ne_lat=None,
+        map_ne_lng=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -56,6 +64,8 @@ def make_listing(**overrides):
         city="תל אביב",
         neighborhood="לב העיר",
         street="דיזנגוף",
+        latitude=None,
+        longitude=None,
         price=5000,
         rooms=3,
         floor=2,
@@ -129,6 +139,52 @@ def test_city_not_in_filter_fails():
 def test_city_in_filter_passes():
     f = make_filter(cities=["תל אביב"])
     result = evaluate(f, make_listing(city="תל אביב"))
+    assert result.matched is True
+
+
+def test_map_region_circle_outside_radius_fails():
+    f = make_filter(map_region_kind="circle", map_center_lat=32.08, map_center_lng=34.78, map_radius_m=1000)
+    result = evaluate(f, make_listing(latitude=32.20, longitude=34.90))  # ~18km away
+    assert "map_region" in result.failed_hard_filters
+
+
+def test_map_region_circle_inside_radius_passes():
+    f = make_filter(map_region_kind="circle", map_center_lat=32.08, map_center_lng=34.78, map_radius_m=1000)
+    result = evaluate(f, make_listing(latitude=32.081, longitude=34.781))  # well under 1km away
+    assert result.matched is True
+
+
+def test_map_region_circle_missing_coords_fails_closed():
+    f = make_filter(map_region_kind="circle", map_center_lat=32.08, map_center_lng=34.78, map_radius_m=1000)
+    result = evaluate(f, make_listing(latitude=None, longitude=None))
+    assert "map_region" in result.failed_hard_filters
+
+
+def test_map_region_rect_outside_bounds_fails():
+    f = make_filter(map_region_kind="rect", map_sw_lat=32.0, map_sw_lng=34.7, map_ne_lat=32.1, map_ne_lng=34.8)
+    result = evaluate(f, make_listing(latitude=33.0, longitude=35.5))
+    assert "map_region" in result.failed_hard_filters
+
+
+def test_map_region_rect_inside_bounds_passes():
+    f = make_filter(map_region_kind="rect", map_sw_lat=32.0, map_sw_lng=34.7, map_ne_lat=32.1, map_ne_lng=34.8)
+    result = evaluate(f, make_listing(latitude=32.05, longitude=34.75))
+    assert result.matched is True
+
+
+def test_map_region_and_cities_both_apply():
+    f = make_filter(
+        cities=["חיפה"],
+        map_region_kind="rect", map_sw_lat=32.0, map_sw_lng=34.7, map_ne_lat=32.1, map_ne_lng=34.8,
+    )
+    # inside the region but the wrong city — both must pass, so this still fails
+    result = evaluate(f, make_listing(city="תל אביב", latitude=32.05, longitude=34.75))
+    assert "city" in result.failed_hard_filters
+
+
+def test_no_region_set_ignores_listing_coords_entirely():
+    f = make_filter()
+    result = evaluate(f, make_listing(latitude=None, longitude=None))
     assert result.matched is True
 
 
