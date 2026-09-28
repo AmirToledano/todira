@@ -11,3 +11,12 @@ httpx>=0.27,<1.0
 # collage image for Telegram (2026-09-03, called from scraper/notifier.py's new-match push) - see
 # that function's own docstring.
 Pillow>=10.0,<12.0
+# itsdangerous: todira_common/wid_token.py signs the WhatsApp "?wid=" magic-login link
+# (scraper/notifier.py's rich-match-template send path calls generate_wid_token() directly,
+# 2026-09-27, PR #526) — was only ever listed in website/requirements.txt, so the scraper's own
+# Docker image (built from this file alone, see scraper/Dockerfile) never had it. Every scheduled
+# run since that PR's image was actually deployed has crashed with ModuleNotFoundError at import
+# time, before a single log line — confirmed live via kubectl: the pod is created and killed again
+# within ~1 second, backoffLimit=0 means the whole Job fails immediately with zero output, which is
+# why the previous diagnostics couldn't find a traceback for it.
+itsdangerous>=2.1,<3.0
