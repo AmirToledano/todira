@@ -1133,13 +1133,14 @@ def go_to_listing_source(listing_id: int):
 def apartments(
     request: Request,
     uid: int | None = None,
+    wid: str | None = None,
     offset: int = 0,
     fragment: bool = False,
     listing: int | None = None,
 ):
     lang = get_lang(request)
     with get_session() as session:
-        user = _resolve_user(request, session, uid)
+        user = _resolve_user(request, session, uid, wid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "apartments"})
         if user.filter is None:

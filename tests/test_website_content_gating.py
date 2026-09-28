@@ -176,6 +176,31 @@ def test_apartments_shows_description_and_url_for_a_trial_user(client):
     assert "secret999" in resp.text
 
 
+def test_apartments_resolves_a_whatsapp_only_user_via_wid(client):
+    """Real bug found live 2026-09-28: /apartments never declared a `wid` param at all (unlike
+    /filter, which already did), so it silently dropped it and fell through to _resolve_user's
+    uid-only branch — every ?wid= link this route ever receives (whatsapp_webhook.py's connect
+    summary, scraper/notifier.py's rich per-listing button, and /filter's own successful-save
+    redirect target, which literally is `/apartments?wid=...`) bounced a real WhatsApp-only user
+    back to a login wall instead of landing them signed in. Fixed by adding the same `wid` param
+    /filter already has and threading it through to _resolve_user, same as every other wid-aware
+    route in this file."""
+    user = _FakeUser(id=2, telegram_user_id=None, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    listing = _FakeListing(id=1)
+    fake_session = _FakeSession(user, listings=[listing])
+    token = website_main.generate_wid_token("972501234567")
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"wid": token})
+
+    assert resp.status_code == 200
+    assert "תיאור סודי" in resp.text  # the real listing rendered — never fell through to the login wall
+
+
 def test_apartments_map_workspace_renders_with_pins_for_listings_that_have_coords(client):
     """2026-09-24: the map+filter sidebar workspace (dorin.app-style layout) — a listing with real
     coordinates gets data-lat/data-lng on its card (read by the map's own JS, see apartments.html's
