@@ -62,6 +62,22 @@ jobs:
                     )
                     print('status:', r.status_code)
                     print(r.text)
+
+                    # First call's owner_business_info sub-object silently omitted
+                    # verification_status (200, no error) rather than erroring on a bad field name —
+                    # querying the Business object directly, top-level, gives a real error message
+                    # if the field name itself is wrong, instead of a silent drop.
+                    business_id = '5069506759929592'
+                    print()
+                    print('=== Business object directly (top-level verification_status) ===')
+                    r2 = httpx.get(
+                        f'https://graph.facebook.com/v21.0/{business_id}',
+                        params={'fields': 'id,name,verification_status,vertical'},
+                        headers={'Authorization': f'Bearer {token}'},
+                        timeout=15,
+                    )
+                    print('status:', r2.status_code)
+                    print(r2.text)
                     "
           PODYAML
           for i in $(seq 1 30); do
