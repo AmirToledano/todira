@@ -1,0 +1,50 @@
+name: Diagnose — is the website slow because of recent deploy churn / pod health (read-only)
+
+# Real owner report (2026-09-27/28): the live site is loading very very slowly, right after
+# several real production deploys in one evening (each PR merged tonight touched website/common/
+# charts, all in ci-cd.yaml's path filter, so each one rebuilt+redeployed the website too). See
+# ci-cd.yaml's own 2026-09-24 comment: every push to main re-tags images with github.sha, so Helm
+# always sees a "new" image and rolls the website Deployment (replicas: 1) even for an unrelated
+# change — with a real "Liveness probe failed: connection refused" window during pod startup. This
+# checks whether that's what's actually happening right now: pod age/restart count, rollout
+# history, and real resource usage against requests/limits — read-only, no changes made.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Website Deployment/pod health, rollout history, and resource usage
+        run: |
+          echo "--- website Deployment status ---"
+          kubectl get deployment -n todira -l app=website -o wide || kubectl get deployment -n todira | grep -i website
+          echo
+          echo "--- website Deployment rollout history ---"
+          kubectl rollout history deployment -n todira -l app=website 2>/dev/null || \
+            kubectl rollout history deployment/todira-website -n todira 2>/dev/null || true
+          echo
+          echo "--- website pods: age, restarts, status ---"
+          kubectl get pods -n todira -l app=website -o wide || kubectl get pods -n todira | grep -i website
+          echo
+          echo "--- website pod describe (events at the bottom) ---"
+          POD=$(kubectl get pods -n todira -o name | grep -i website | head -1)
+          if [ -n "$POD" ]; then kubectl describe "$POD" -n todira | tail -40; fi
+          echo
+          echo "--- real resource usage vs requests/limits (needs metrics-server) ---"
+          kubectl top pods -n todira 2>&1 | grep -i -E "website|NAME" || echo "metrics-server not available"
+          echo
+          echo "--- node resource pressure ---"
+          kubectl top nodes 2>&1 || echo "metrics-server not available"
+          echo
+          echo "--- recent events in the todira namespace (last 20) ---"
+          kubectl get events -n todira --sort-by='.lastTimestamp' | tail -20
