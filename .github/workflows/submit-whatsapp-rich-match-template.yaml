@@ -1,0 +1,173 @@
+name: Submit — the rich, Dorin-style WhatsApp match-template (new_listing_match_rich)
+
+# 2026-09-27 real owner requirement ("חובה לעלות תמונות של המודעות ביחד עם כל מה שרשמת") — the
+# per-listing proactive WhatsApp push must include a real photo, every real field, and a button
+# straight to that listing, not the existing plain 3-variable new_listing_match template. This is
+# a ONE-TIME submission (workflow_dispatch, run manually once) that:
+#   1. Uploads a sample header image via Meta's Resumable Upload API (the mascot illustration
+#      already in this repo, common/todira_common/assets/dachshunds/todi_detective.jpg — Meta only
+#      needs ONE representative example at submission time; the real per-send photo is a
+#      different, per-listing image uploaded at send time by scraper/notifier.py itself, via
+#      todira_common.whatsapp_client.upload_media).
+#   2. Submits the new template for review — category MARKETING (matching the real, already-
+#      APPROVED category of new_listing_match, confirmed live via
+#      diagnose-whatsapp-existing-template-detail.yaml, not guessed).
+# Once Meta approves it, set WHATSAPP_RICH_MATCH_TEMPLATE_NAME=new_listing_match_rich on the
+# scraper's own deployment to cut over — see scraper/notifier.py's own comment on that env var.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Stage the sample header image as a ConfigMap (176KB raw, well under the 1MiB cap)
+        run: |
+          kubectl delete configmap submit-rich-template-image -n todira --ignore-not-found
+          kubectl create configmap submit-rich-template-image -n todira \
+            --from-file=image=common/todira_common/assets/dachshunds/todi_detective.jpg
+
+      - name: Upload sample image + submit the new template
+        run: |
+          kubectl delete pod submit-rich-template -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: submit-rich-template
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: submit-rich-template
+                image: python:3.11-slim
+                env:
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                volumeMounts:
+                  - name: image-volume
+                    mountPath: /image
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet httpx
+                    python3 -c "
+                    import os, httpx
+
+                    token = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+                    app_id = '1578163290668893'
+                    waba_id = '1814744176326509'
+                    headers_bearer = {'Authorization': f'Bearer {token}'}
+
+                    with open('/image/image', 'rb') as f:
+                        image_bytes = f.read()
+
+                    print('--- step 1: init resumable upload session ---')
+                    r1 = httpx.post(
+                        f'https://graph.facebook.com/v21.0/{app_id}/uploads',
+                        params={'file_length': len(image_bytes), 'file_type': 'image/jpeg'},
+                        headers=headers_bearer,
+                        timeout=15,
+                    )
+                    print(r1.status_code, r1.text)
+                    r1.raise_for_status()
+                    upload_session_id = r1.json()['id']
+
+                    print()
+                    print('--- step 2: upload the sample image bytes ---')
+                    r2 = httpx.post(
+                        f'https://graph.facebook.com/v21.0/{upload_session_id}',
+                        headers={'Authorization': f'OAuth {token}', 'file_offset': '0'},
+                        content=image_bytes,
+                        timeout=30,
+                    )
+                    print(r2.status_code, r2.text)
+                    r2.raise_for_status()
+                    header_handle = r2.json()['h']
+
+                    print()
+                    print('--- step 3: submit the new template for review ---')
+                    body_text = (
+                        '🏠 {{1}}\n'
+                        'מחיר: {{2}}₪ | חדרים: {{3}}\n'
+                        'שטח: {{4}} מ\"ר | קומה: {{5}}\n'
+                        'תאריך כניסה: {{6}}\n\n'
+                        'מאפיינים: {{7}}\n\n'
+                        '{{8}}'
+                    )
+                    payload = {
+                        'name': 'new_listing_match_rich',
+                        'language': 'he',
+                        'category': 'MARKETING',
+                        'components': [
+                            {
+                                'type': 'HEADER',
+                                'format': 'IMAGE',
+                                'example': {'header_handle': [header_handle]},
+                            },
+                            {
+                                'type': 'BODY',
+                                'text': body_text,
+                                'example': {
+                                    'body_text': [[
+                                        'רוטשילד, תל אביב',
+                                        '5,500',
+                                        '3',
+                                        '65',
+                                        '2',
+                                        '16.9.2026',
+                                        'מעלית, מרפסת',
+                                        'דירה משופצת ומוארת בלב השכונה',
+                                    ]]
+                                },
+                            },
+                            {
+                                'type': 'BUTTONS',
+                                'buttons': [
+                                    {
+                                        'type': 'URL',
+                                        'text': '👀 לצפייה בדירה',
+                                        'url': 'https://todira.app/apartments?listing={{1}}',
+                                        'example': ['42'],
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                    r3 = httpx.post(
+                        f'https://graph.facebook.com/v21.0/{waba_id}/message_templates',
+                        json=payload,
+                        headers=headers_bearer,
+                        timeout=15,
+                    )
+                    print(r3.status_code, r3.text)
+                    "
+            volumes:
+              - name: image-volume
+                configMap:
+                  name: submit-rich-template-image
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod submit-rich-template -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira submit-rich-template || true
+          kubectl delete pod submit-rich-template -n todira --ignore-not-found
+          kubectl delete configmap submit-rich-template-image -n todira --ignore-not-found
