@@ -29,11 +29,12 @@ from telegram import Bot
 
 from todira_common import bright_data_client, whatsapp_client
 from todira_common.access import has_full_access
-from todira_common.cards import format_caption, send_listing_card
+from todira_common.cards import feature_list, format_caption, get_listing_photo_jpeg_bytes, send_listing_card
 from todira_common.enums import NotificationReason, Source
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
 from todira_common.models import Filter, Listing, SentNotification, User
+from todira_common.wid_token import generate_wid_token
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,16 @@ OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 # submitted for review; the name/language here must match it exactly.
 WHATSAPP_MATCH_TEMPLATE_NAME = os.environ.get("WHATSAPP_MATCH_TEMPLATE_NAME")
 WHATSAPP_MATCH_TEMPLATE_LANGUAGE = os.environ.get("WHATSAPP_MATCH_TEMPLATE_LANGUAGE", "he")
+
+# The richer, Dorin-style per-listing card (2026-09-27 real owner request: photo + every real
+# field + a button straight to that one listing, not just the plain 3-variable template above) —
+# a SEPARATE, optional template name/language, same "dormant until set" convention. Left unset
+# (the default) means _send_whatsapp_match_template keeps using the plain template above
+# unchanged; only once the owner has a real Meta-APPROVED rich template to point at (submitted via
+# .github/workflows/submit-whatsapp-rich-match-template.yaml) does setting this env var cut over.
+# Two templates, not a hard replacement, so a rich-template rejection/pending-review period never
+# leaves proactive WhatsApp pushes broken.
+WHATSAPP_RICH_MATCH_TEMPLATE_NAME = os.environ.get("WHATSAPP_RICH_MATCH_TEMPLATE_NAME")
 
 # WhatsApp sends aren't subject to Telegram's same-chat flood control (SEND_DELAY_SECONDS exists
 # specifically for that), but a short pause between API calls is still cheap insurance against
@@ -144,19 +155,17 @@ def _whatsapp_template_param(value: str, *, max_length: int = 300) -> str:
 
 
 def _send_whatsapp_match_template(user: User, listing: Listing) -> bool:
-    """The proactive "new match" WhatsApp push — see WHATSAPP_MATCH_TEMPLATE_NAME's own comment
-    and PROJECT_STATE.md for the exact template copy this must match. Only 3 body variables
+    """The proactive "new match" WhatsApp push. Dispatches to the richer, Dorin-style card
+    (_send_whatsapp_rich_match_template) once the owner has a real Meta-APPROVED rich template
+    configured (WHATSAPP_RICH_MATCH_TEMPLATE_NAME) — otherwise falls back to the plain 3-variable
+    template this function used exclusively before 2026-09-27 (see WHATSAPP_MATCH_TEMPLATE_NAME's
+    own comment and PROJECT_STATE.md for that template's exact copy). Only 3 body variables
     (location, rooms, price), each flanked by static text on both sides — no URL variable in the
     body. The "view listings" link is instead a fully STATIC website button baked into the
     template itself at creation time in Meta's WhatsApp Manager (https://todira.app/apartments,
-    no per-user query string), which needs no runtime parameter here at all. Two deliberate
-    reasons: (1) Meta has historically been stricter about a variable sitting at the very start or
-    end of a template body — keeping every variable mid-sentence sidesteps that risk entirely
-    rather than betting on current behavior; (2) unlike format_caption's Telegram card, this can't
-    do real access-gating (has_access + upgrade_url) on the content anyway — a static link to
-    /apartments (whose own access gating already hides full details behind the paywall
-    server-side) is exactly as useful as a per-user one here, so there's nothing to gain from a
-    dynamic URL variable that would only add rejection risk."""
+    no per-user query string), which needs no runtime parameter here at all."""
+    if WHATSAPP_RICH_MATCH_TEMPLATE_NAME:
+        return _send_whatsapp_rich_match_template(user, listing)
     location = listing.street or listing.neighborhood or listing.city or "דירה"
     rooms = f"{float(listing.rooms):g}" if listing.rooms is not None else "-"
     price = f"{listing.price:,}" if listing.price is not None else "-"
@@ -169,6 +178,61 @@ def _send_whatsapp_match_template(user: User, listing: Listing) -> bool:
             _whatsapp_template_param(rooms),
             _whatsapp_template_param(price),
         ],
+    )
+
+
+def _send_whatsapp_rich_match_template(user: User, listing: Listing) -> bool:
+    """The Dorin-style rich per-listing WhatsApp push (2026-09-27 real owner request: "חובה לעלות
+    תמונות של המודעות ביחד עם כל מה שרשמת" — a real photo, every real field, and a button straight
+    to THAT listing, not the plain 3-variable template above). Blocking/synchronous (downloads +
+    composites a photo, then two real HTTP calls) — the caller (_notify_new_matches) MUST run this
+    via asyncio.to_thread, same contract as get_listing_photo_jpeg_bytes/_build_collage_sync.
+
+    Body has 8 variables, matching submit-whatsapp-rich-match-template.yaml's own registered
+    template text exactly: 1=location, 2=price, 3=rooms, 4=size, 5=floor, 6=move-in date,
+    7=features (flattened, single line), 8=description. The header image is THIS listing's own
+    real photo/collage (never a placeholder) — get_listing_photo_jpeg_bytes always returns real
+    bytes (falling back to the Todi mascot only when every real photo URL fails to download), so
+    every send genuinely includes an image. The button is a dynamic URL suffix combining the
+    per-listing deep link (PR #522) with a signed ?wid= magic-login token (todira_common.wid_token)
+    since a WhatsApp-only user has no other way to land already logged in — see
+    website/main.py's _resolve_user for the wid branch this relies on."""
+    location = listing.street or listing.neighborhood or listing.city or "דירה"
+    price = f"{listing.price:,}" if listing.price is not None else "-"
+    rooms = f"{float(listing.rooms):g}" if listing.rooms is not None else "-"
+    size = f"{listing.size_sqm}" if listing.size_sqm is not None else "-"
+    floor = str(listing.floor) if listing.floor is not None else "-"
+    move_in = listing.move_in_date.strftime("%d.%m.%Y") if listing.move_in_date is not None else "-"
+    features = ", ".join(feature_list(listing, DEFAULT_LANG)) or "-"
+    description = listing.description or "-"
+
+    photo_bytes = get_listing_photo_jpeg_bytes(listing.image_urls)
+    media_id = whatsapp_client.upload_media(photo_bytes)
+    if media_id is None:
+        logger.warning(
+            "Could not upload a WhatsApp header photo for listing %s — skipping this send "
+            "rather than sending the rich template with no image",
+            listing.id,
+        )
+        return False
+
+    button_suffix = f"{listing.id}&wid={generate_wid_token(user.whatsapp_phone_number)}"
+    return whatsapp_client.send_template_message(
+        user.whatsapp_phone_number,
+        template_name=WHATSAPP_RICH_MATCH_TEMPLATE_NAME,
+        language_code=WHATSAPP_MATCH_TEMPLATE_LANGUAGE,
+        body_params=[
+            _whatsapp_template_param(location),
+            _whatsapp_template_param(price),
+            _whatsapp_template_param(rooms),
+            _whatsapp_template_param(size),
+            _whatsapp_template_param(floor),
+            _whatsapp_template_param(move_in),
+            _whatsapp_template_param(features),
+            _whatsapp_template_param(description),
+        ],
+        header_image_media_id=media_id,
+        button_url_param=button_suffix,
     )
 
 
@@ -299,7 +363,12 @@ async def _notify_new_matches(
                 sent_on_any_channel = True
             await asyncio.sleep(SEND_DELAY_SECONDS)
         if _whatsapp_eligible(user) and user.id not in whatsapp_sent_user_ids:
-            if _send_whatsapp_match_template(user, listing):
+            # asyncio.to_thread: the plain template send is just one quick HTTP POST, but the rich
+            # template (_send_whatsapp_rich_match_template, once WHATSAPP_RICH_MATCH_TEMPLATE_NAME
+            # is set) also downloads/composites a real photo first — genuinely blocking work that
+            # must never run directly on this event loop, same reasoning as send_listing_card's
+            # own asyncio.to_thread calls around _build_collage_sync.
+            if await asyncio.to_thread(_send_whatsapp_match_template, user, listing):
                 sent_on_any_channel = True
                 whatsapp_sent_user_ids.add(user.id)
             await asyncio.sleep(WHATSAPP_SEND_DELAY_SECONDS)

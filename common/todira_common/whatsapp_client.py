@@ -137,7 +137,13 @@ def send_language_picker_message(
 
 
 def send_template_message(
-    to: str, *, template_name: str, language_code: str, body_params: list[str]
+    to: str,
+    *,
+    template_name: str,
+    language_code: str,
+    body_params: list[str],
+    header_image_media_id: str | None = None,
+    button_url_param: str | None = None,
 ) -> bool:
     """Sends a pre-approved WhatsApp Message Template — see this module's own docstring for why
     this is the only way to message a user proactively, outside a conversation they started.
@@ -148,7 +154,40 @@ def send_template_message(
     (logged, returns False, never raises). `body_params` are substituted into the template's
     {{1}}, {{2}}, ... placeholders in order. Meta rejects a param containing a newline or 4+
     consecutive spaces — callers must pre-sanitize (scraper/notifier.py's own
-    _whatsapp_template_param does this before calling in)."""
+    _whatsapp_template_param does this before calling in).
+
+    `header_image_media_id` (2026-09-27, the rich per-listing match template): only set when the
+    approved template's own first component is a HEADER of format IMAGE — this is the id
+    upload_media returned for THIS send's own photo/collage, never a bare URL (Meta's own docs
+    recommend uploaded media over a `link` parameter for a dynamic per-send image). `button_url_param`:
+    only set when the approved template has a URL button whose registered url ends in a dynamic
+    `{{1}}` suffix (e.g. "https://todira.app/apartments?listing={{1}}") — this is just that one
+    suffix value (e.g. a listing id), never the full URL. Both are appended as their own
+    components only when given, so a caller sending the plain 3-variable template (no header
+    image, no dynamic button) is completely unaffected."""
+    components = []
+    if header_image_media_id is not None:
+        components.append(
+            {
+                "type": "header",
+                "parameters": [{"type": "image", "image": {"id": header_image_media_id}}],
+            }
+        )
+    components.append(
+        {
+            "type": "body",
+            "parameters": [{"type": "text", "text": param} for param in body_params],
+        }
+    )
+    if button_url_param is not None:
+        components.append(
+            {
+                "type": "button",
+                "sub_type": "url",
+                "index": "0",
+                "parameters": [{"type": "text", "text": button_url_param}],
+            }
+        )
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
@@ -156,15 +195,41 @@ def send_template_message(
         "template": {
             "name": template_name,
             "language": {"code": language_code},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [{"type": "text", "text": param} for param in body_params],
-                }
-            ],
+            "components": components,
         },
     }
     return _post_message(payload, to=to, action_desc=f"send WhatsApp template '{template_name}'")
+
+
+def upload_media(file_bytes: bytes, *, mime_type: str = "image/jpeg") -> str | None:
+    """Uploads media to WhatsApp's own CDN via the Cloud API's /media endpoint, returning a media
+    id usable as send_template_message's header_image_media_id. Needed for a per-send DYNAMIC
+    header image (a different real photo/collage per listing) — a template's header image
+    parameter takes either an uploaded media id or a public `link`, and Meta's own docs recommend
+    the uploaded-media form for reliability, so that's the only form this project uses. Same
+    fail-soft contract as every other function here: returns None and logs on any failure, never
+    raises — a failed upload just means the caller falls back to sending without a header image
+    rather than failing the whole notification."""
+    creds = _credentials()
+    if creds is None:
+        logger.error(
+            "%s/%s not set — cannot upload WhatsApp media", ACCESS_TOKEN_ENV_VAR, PHONE_NUMBER_ID_ENV_VAR
+        )
+        return None
+    access_token, phone_number_id = creds
+    url = f"https://graph.facebook.com/{_GRAPH_API_VERSION}/{phone_number_id}/media"
+    try:
+        response = _http_client.post(
+            url,
+            data={"messaging_product": "whatsapp", "type": mime_type},
+            files={"file": ("photo.jpg", file_bytes, mime_type)},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        response.raise_for_status()
+        return response.json().get("id")
+    except httpx.HTTPError:
+        logger.exception("Failed to upload WhatsApp media")
+        return None
 
 
 def mark_as_read_with_typing_indicator(message_id: str) -> bool:
