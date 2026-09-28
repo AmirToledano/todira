@@ -8,7 +8,13 @@ name: Diagnose — full detail (category, components) of the existing new_listin
 # (1814744176326509, from diagnose-whatsapp-template-approval.yaml's own comment) and the same
 # k8s-pod-with-real-secret pattern as every other diagnose-whatsapp-*.yaml in this repo.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      template_name:
+        description: "Template name to look up (default: new_listing_match_rich, to check its real approval status)"
+        required: false
+        default: "new_listing_match_rich"
+        type: string
 
 jobs:
   diagnose:
@@ -53,7 +59,7 @@ jobs:
                     waba_id = '1814744176326509'
                     r = httpx.get(
                         f'https://graph.facebook.com/v21.0/{waba_id}/message_templates',
-                        params={'name': 'new_listing_match'},
+                        params={'name': '${{ inputs.template_name }}'},
                         headers={'Authorization': f'Bearer {token}'},
                         timeout=15,
                     )
