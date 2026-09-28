@@ -1,0 +1,75 @@
+name: Diagnose — real Meta Business Verification status for the WABA (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-28.
+#
+# Real trigger: owner filled out Meta's Business Verification form ~a month ago, no response
+# since. One of the two real paths to a messaging_limit_tier upgrade (the other being organic
+# volume — see diagnose-whatsapp-messaging-tier.yaml's own comment) is completing Business
+# Verification, which can unlock a higher tier regardless of volume. This checks the real status
+# live via the Graph API's owner_business_info field on the known WABA
+# (1814744176326509, from diagnose-whatsapp-template-approval.yaml's own comment) rather than
+# assuming either way — avoids needing to already know the separate Business Manager id.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Real WABA + owning Business verification status
+        run: |
+          kubectl delete pod diag-biz-verify -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-biz-verify
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-biz-verify
+                image: python:3.11-slim
+                env:
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet httpx
+                    python3 -c "
+                    import os, httpx
+                    token = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+                    waba_id = '1814744176326509'
+                    print('=== WABA + owner_business_info (verification_status) ===')
+                    r = httpx.get(
+                        f'https://graph.facebook.com/v21.0/{waba_id}',
+                        params={'fields': 'id,name,account_review_status,owner_business_info{id,name,verification_status}'},
+                        headers={'Authorization': f'Bearer {token}'},
+                        timeout=15,
+                    )
+                    print('status:', r.status_code)
+                    print(r.text)
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-biz-verify -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira diag-biz-verify || true
+          kubectl delete pod diag-biz-verify -n todira --ignore-not-found
