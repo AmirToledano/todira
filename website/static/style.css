@@ -1718,10 +1718,12 @@ html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
 .apt-map-region-btn.active { background: var(--teal); color: #fff; border-color: var(--teal); }
 .apt-map-region-clear { color: var(--danger, #e05252); }
 .apt-map.apt-map-drawing { cursor: crosshair; }
-/* Small pill announcing an active region, stacked above .apt-map-count (bottom-left) so the two
-   never collide — same corner family as the pin-count pill, same visual weight. */
+/* Small pill announcing an active region, stacked above BOTH .apt-map-count (bottom:10px) and
+   .apt-map-settings (bottom:48px, a 28px circle spanning up to ~76px) so it never collides with
+   either — bottom:40px only cleared .apt-map-count and silently overlapped the settings gear
+   whenever a region was actually active (found via a 2026-09-28 code-review pass, real bug). */
 .apt-map-region-active-badge {
-  position: absolute; bottom: 40px; left: 10px; z-index: 400;
+  position: absolute; bottom: 84px; left: 10px; z-index: 400;
   background: var(--teal-tint); border: 1px solid var(--teal); color: var(--teal);
   border-radius: 999px; padding: 4px 10px; font-size: .74rem; font-weight: 600;
 }
