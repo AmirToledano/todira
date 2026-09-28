@@ -149,6 +149,28 @@ def _dachshund_photo_path() -> Path:
     return _MASCOT_PATH
 
 
+def get_listing_photo_jpeg_bytes(image_urls: list[str]) -> bytes:
+    """Real listing photo(s) as JPEG bytes, for any surface that needs to attach ONE image
+    somewhere other than Telegram's own send_photo (which already inlines this exact fallback
+    chain directly in send_listing_card below, since python-telegram-bot's send_photo also accepts
+    a local Path for the mascot fallback) — currently WhatsApp's rich match-template send
+    (scraper/notifier.py), which needs actual bytes to upload via the Cloud API's /media endpoint.
+
+    A 2+ photo collage when possible, else the first downloadable single photo, else the same
+    Todi-detective mascot image send_listing_card falls back to when a listing has no usable photo
+    at all — always returns real bytes, never None, so callers never need their own no-photo
+    branch. Synchronous/blocking (network downloads + image resizing) — callers MUST run this via
+    asyncio.to_thread, same contract as _build_collage_sync/_first_downloadable_photo_jpeg_bytes."""
+    photo = None
+    if len(image_urls) > 1:
+        photo = _build_collage_sync(image_urls)
+    if photo is None:
+        photo = _first_downloadable_photo_jpeg_bytes(image_urls)
+    if photo is None:
+        photo = _MASCOT_PATH.read_bytes()
+    return photo
+
+
 # 2026-09-03 rewrite: field order/labels/emphasis matching the reference bot 1:1, per a
 # real side-by-side comparison against its own screenshots. Deal-type/broker prefix, then location
 # (city bold, street a clickable Google-Maps link on Telegram — see _google_maps_url), then price/
@@ -171,11 +193,15 @@ _FEATURE_EMOJI_LABEL_KEYS = (
 )
 
 
-def _feature_list(listing: Listing, lang: str) -> list[str]:
+def feature_list(listing: Listing, lang: str) -> list[str]:
     """Each feature prefixed with its own emoji — the SAME ones the website's own amenity row
     uses (website/static/style.css's .amenity-row / _listing_card.html) for has_parking through
     furniture, so the two surfaces read consistently. is_roommate_friendly has no website
-    equivalent to match (not shown there today) — 🤝 chosen fresh."""
+    equivalent to match (not shown there today) — 🤝 chosen fresh.
+
+    Public (renamed from _feature_list 2026-09-27) — scraper/notifier.py's WhatsApp rich
+    match-template send needs this same amenity list flattened into one template body parameter,
+    not just this module's own multi-line _build_body_lines."""
     items = [
         f"{emoji}{bot_text(key, lang)}"
         for attr, emoji, key in _FEATURE_EMOJI_LABEL_KEYS
@@ -266,7 +292,7 @@ def _build_body_lines(
         move_in_label = bold(bot_text("card.move_in_label", lang))
         lines.append(f"📅 {move_in_label} {listing.move_in_date.strftime('%d.%m.%Y')}")
 
-    features = _feature_list(listing, lang)
+    features = feature_list(listing, lang)
     if features:
         features_label = bold(bot_text("card.features_label", lang))
         lines.append("")  # a visual gap before the features line — a real request, 2026-09-03

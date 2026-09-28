@@ -843,3 +843,45 @@ def test_build_collage_returns_none_when_every_download_fails(monkeypatch):
         },
     )
     assert _build_collage_sync(["u1", "u2"]) is None
+
+
+# --- get_listing_photo_jpeg_bytes (2026-09-27) — the public, always-returns-bytes wrapper
+# scraper/notifier.py's WhatsApp rich match-template send uses to get ONE image to upload, same
+# collage/first-photo/mascot fallback chain send_listing_card already inlines for Telegram. ---
+
+from todira_common.cards import get_listing_photo_jpeg_bytes  # noqa: E402
+
+
+def test_get_listing_photo_prefers_a_collage_when_2plus_photos(monkeypatch):
+    called = []
+    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: called.append(urls) or b"collage-bytes")
+    assert get_listing_photo_jpeg_bytes(["u1", "u2"]) == b"collage-bytes"
+    assert called == [["u1", "u2"]]
+
+
+def test_get_listing_photo_falls_back_to_first_photo_when_collage_fails(monkeypatch):
+    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: None)
+    monkeypatch.setattr(cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: b"single-photo-bytes")
+    assert get_listing_photo_jpeg_bytes(["u1", "u2"]) == b"single-photo-bytes"
+
+
+def test_get_listing_photo_never_attempts_a_collage_for_a_single_url(monkeypatch):
+    called = []
+    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: called.append(urls) or None)
+    monkeypatch.setattr(cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: b"single-photo-bytes")
+    assert get_listing_photo_jpeg_bytes(["u1"]) == b"single-photo-bytes"
+    assert called == []
+
+
+def test_get_listing_photo_falls_back_to_mascot_when_every_url_fails():
+    assert get_listing_photo_jpeg_bytes([]) == cards_module._MASCOT_PATH.read_bytes()
+
+
+def test_get_listing_photo_never_returns_none(monkeypatch):
+    # Real callers (scraper/notifier.py) rely on this always being real bytes, never None — no
+    # no-photo branch of their own to maintain.
+    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: None)
+    monkeypatch.setattr(cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: None)
+    result = get_listing_photo_jpeg_bytes(["u1", "u2"])
+    assert result is not None
+    assert result == cards_module._MASCOT_PATH.read_bytes()

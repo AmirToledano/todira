@@ -521,3 +521,91 @@ def test_notify_new_matches_still_skips_whatsapp_only_user_when_not_opted_in():
     mock_wa_send.assert_not_called()
     assert matched == 1
     assert sent == 0
+
+
+# --- The rich, Dorin-style per-listing card (2026-09-27: "חובה לעלות תמונות של המודעות ביחד עם כל
+# מה שרשמת" — a real owner requirement, not optional) — WHATSAPP_RICH_MATCH_TEMPLATE_NAME unset
+# (the default) means every test above is completely unaffected; these tests explicitly set it. ---
+
+
+def _rich_listing(**overrides):
+    defaults = dict(
+        id=10, street="רוטשילד", neighborhood=None, city="תל אביב יפו", price=5500, rooms=3.0,
+        size_sqm=65, floor=2, move_in_date=None, description="דירה משופצת ומוארת", image_urls=["u1", "u2"],
+        has_parking=None, has_elevator=None, has_balcony=None, pets_allowed=None, is_renovated=None,
+        is_roommate_friendly=None, safe_room_type=None, furniture=None,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def test_send_whatsapp_match_template_dispatches_to_rich_when_configured():
+    user = _user(whatsapp_phone_number="9725500000")
+    listing = _rich_listing()
+    with (
+        patch.object(notifier, "WHATSAPP_RICH_MATCH_TEMPLATE_NAME", "new_listing_match_rich"),
+        patch.object(notifier, "_send_whatsapp_rich_match_template", return_value=True) as mock_rich,
+        patch.object(notifier.whatsapp_client, "send_template_message") as mock_plain,
+    ):
+        assert notifier._send_whatsapp_match_template(user, listing) is True
+
+    mock_rich.assert_called_once_with(user, listing)
+    mock_plain.assert_not_called()
+
+
+def test_send_whatsapp_rich_match_template_builds_all_8_fields_plus_header_and_button():
+    user = _user(whatsapp_phone_number="9725500000")
+    listing = _rich_listing()
+    with (
+        patch.object(notifier, "WHATSAPP_RICH_MATCH_TEMPLATE_NAME", "new_listing_match_rich"),
+        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg-bytes") as mock_photo,
+        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-id-123") as mock_upload,
+        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_send,
+        patch.object(notifier, "generate_wid_token", return_value="signed-token"),
+    ):
+        assert notifier._send_whatsapp_rich_match_template(user, listing) is True
+
+    mock_photo.assert_called_once_with(listing.image_urls)
+    mock_upload.assert_called_once_with(b"jpeg-bytes")
+    args, kwargs = mock_send.call_args
+    assert args[0] == "9725500000"
+    assert kwargs["template_name"] == "new_listing_match_rich"
+    assert kwargs["body_params"][0] == "רוטשילד"
+    assert kwargs["body_params"][1] == "5,500"
+    assert kwargs["body_params"][2] == "3"
+    assert kwargs["body_params"][3] == "65"
+    assert kwargs["body_params"][4] == "2"
+    assert kwargs["body_params"][5] == "-"  # no move_in_date on this fixture
+    assert kwargs["body_params"][7] == "דירה משופצת ומוארת"
+    assert kwargs["header_image_media_id"] == "media-id-123"
+    assert kwargs["button_url_param"] == "10&wid=signed-token"
+
+
+def test_send_whatsapp_rich_match_template_returns_false_when_upload_fails():
+    user = _user(whatsapp_phone_number="9725500000")
+    listing = _rich_listing()
+    with (
+        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg-bytes"),
+        patch.object(notifier.whatsapp_client, "upload_media", return_value=None),
+        patch.object(notifier.whatsapp_client, "send_template_message") as mock_send,
+    ):
+        assert notifier._send_whatsapp_rich_match_template(user, listing) is False
+
+    mock_send.assert_not_called()
+
+
+def test_send_whatsapp_rich_match_template_missing_fields_render_as_dashes():
+    user = _user(whatsapp_phone_number="9725500000")
+    listing = _rich_listing(
+        street=None, neighborhood=None, city="חיפה", price=None, rooms=None, size_sqm=None,
+        floor=None, description=None,
+    )
+    with (
+        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg-bytes"),
+        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-id-123"),
+        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_send,
+    ):
+        notifier._send_whatsapp_rich_match_template(user, listing)
+
+    body_params = mock_send.call_args.kwargs["body_params"]
+    assert body_params == ["חיפה", "-", "-", "-", "-", "-", "-", "-"]
