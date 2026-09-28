@@ -140,7 +140,7 @@ jobs:
                                 'buttons': [
                                     {
                                         'type': 'URL',
-                                        'text': '👀 לצפייה בדירה',
+                                        'text': 'לצפייה בדירה',
                                         'url': 'https://todira.app/apartments?listing={{1}}',
                                         'example': ['42'],
                                     }
