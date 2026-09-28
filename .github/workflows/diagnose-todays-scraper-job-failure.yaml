@@ -1,0 +1,63 @@
+name: Diagnose — today's Failed scraper/facebook-scraper Job (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push). 2026-09-28.
+#
+# Real trigger: the owner reported not receiving new listings since yesterday, and separately
+# flagged a Bright Data "API token expiring today" email and a GitHub fine-grained PAT
+# ("local-sync") expiring in 7 days. check-scraper-job-status.yaml's own "kubectl get jobs" output
+# showed BOTH todira-scraper-29843280 AND todira-facebook-scraper-29843280 as Failed (0/1
+# completions, 37m duration) on the newest deployed image, while the prior 3 scraper runs (17-19h
+# ago) all completed successfully with real notifications sent. The routine job-status check only
+# tails the most recent *pod's* logs, and that most-recent-pod list didn't include a pod for the
+# Failed job at all (likely already garbage collected) — this workflow specifically targets that
+# job's own describe/events output and any surviving pod, which is the only way to see why it
+# failed rather than assuming it's the same root cause as the token emails.
+on:
+  workflow_dispatch:
+    inputs:
+      job_name:
+        description: "Failed Job name to inspect (e.g. todira-scraper-29843280)"
+        required: true
+        type: string
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Describe the Job itself (conditions/reason at the bottom)
+        run: |
+          echo "=== kubectl describe job ${{ inputs.job_name }} ==="
+          kubectl describe job "${{ inputs.job_name }}" -n todira || true
+
+      - name: Any pods for this job (including already-terminated ones)
+        run: |
+          echo "=== kubectl get pods -l job-name=${{ inputs.job_name }} ==="
+          kubectl get pods -n todira -l job-name="${{ inputs.job_name }}" -o wide || true
+          echo
+          PODS=$(kubectl get pods -n todira -l job-name="${{ inputs.job_name }}" -o jsonpath='{.items[*].metadata.name}' || true)
+          if [ -z "$PODS" ]; then
+            echo "No surviving pods for this job — describing job events above is the only source."
+          else
+            for POD in $PODS; do
+              echo "--- describe $POD ---"
+              kubectl describe pod "$POD" -n todira || true
+              echo "--- logs $POD (all containers, last 300 lines) ---"
+              kubectl logs -n todira "$POD" --all-containers --tail=300 || true
+              echo "--- previous (crashed) logs $POD, if any ---"
+              kubectl logs -n todira "$POD" --all-containers --previous --tail=300 2>/dev/null || echo "(no previous logs)"
+            done
+          fi
+
+      - name: Namespace events mentioning this job (sorted, last 40)
+        run: |
+          echo "=== kubectl get events, filtered ==="
+          kubectl get events -n todira --sort-by='.lastTimestamp' | grep -i "${{ inputs.job_name }}" | tail -40 || true
