@@ -15,7 +15,12 @@ import pytest
 from telegram.error import BadRequest
 
 import handlers.filter_conversation as filter_conversation
-from handlers.filter_conversation import MENU, _default_draft, _show_category
+from handlers.filter_conversation import (
+    MENU,
+    _clear_previous_menu_keyboard,
+    _default_draft,
+    _show_category,
+)
 
 
 def test_show_category_swallows_message_not_modified():
@@ -24,9 +29,10 @@ def test_show_category_swallows_message_not_modified():
             side_effect=BadRequest("Message is not modified: specified new message content...")
         )
     )
+    context = SimpleNamespace(user_data={})
     draft = _default_draft()
 
-    result = asyncio.run(_show_category(query, draft, "root", "he"))
+    result = asyncio.run(_show_category(query, context, draft, "root", "he"))
 
     assert result == MENU  # returns normally, no exception propagated
 
@@ -35,10 +41,36 @@ def test_show_category_still_raises_a_real_badrequest():
     query = SimpleNamespace(
         edit_message_text=AsyncMock(side_effect=BadRequest("Chat not found"))
     )
+    context = SimpleNamespace(user_data={})
     draft = _default_draft()
 
     with pytest.raises(BadRequest):
-        asyncio.run(_show_category(query, draft, "root", "he"))
+        asyncio.run(_show_category(query, context, draft, "root", "he"))
+
+
+def test_clear_previous_menu_keyboard_is_a_noop_when_nothing_tracked_yet():
+    context = SimpleNamespace(user_data={}, bot=SimpleNamespace(edit_message_reply_markup=AsyncMock()))
+
+    asyncio.run(_clear_previous_menu_keyboard(context, 999))
+
+    context.bot.edit_message_reply_markup.assert_not_awaited()
+
+
+def test_clear_previous_menu_keyboard_swallows_a_failed_edit():
+    # Best-effort cosmetic cleanup — an already-cleared/too-old/deleted message must never raise
+    # and interrupt the real flow that's trying to send its own next message.
+    context = SimpleNamespace(
+        user_data={"menu_message_id": 111},
+        bot=SimpleNamespace(
+            edit_message_reply_markup=AsyncMock(side_effect=BadRequest("Message to edit not found"))
+        ),
+    )
+
+    asyncio.run(_clear_previous_menu_keyboard(context, 999))  # must not raise
+
+    context.bot.edit_message_reply_markup.assert_awaited_once_with(
+        chat_id=999, message_id=111, reply_markup=None
+    )
 
 
 def test_menu_callback_cancel_clears_the_old_keyboard_explicitly():

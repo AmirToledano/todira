@@ -18,7 +18,7 @@ from handlers.filter_conversation import MENU, _default_draft, _toggle_city, tex
 
 def _make_update(text: str):
     user = SimpleNamespace(id=555, first_name="Amir", username="amirt")
-    message = SimpleNamespace(text=text, reply_text=AsyncMock())
+    message = SimpleNamespace(text=text, chat_id=999, reply_text=AsyncMock())
     return SimpleNamespace(effective_user=user, message=message)
 
 
@@ -87,6 +87,26 @@ def test_typed_city_search_shows_button_results_not_auto_add():
     markup = kwargs["reply_markup"]
     buttons = [b for row in markup.inline_keyboard for b in row]
     assert any("רמת גן" in b.text for b in buttons)
+
+
+def test_typed_city_search_clears_the_previous_menu_messages_keyboard():
+    # 2026-09-29 real owner report: typing an answer always sends a FRESH message for the next
+    # menu screen (see _category_view's own docstring for why) — left unfixed, the PREVIOUS
+    # screen's own inline keyboard just sits there, still live and tappable, and a second typed
+    # search stacks yet another one on top, several large button grids deep. The previously
+    # tracked message's keyboard must now be cleared before the new one is sent.
+    update = _make_update("רמת")
+    context = _make_context("city")
+    context.user_data["menu_message_id"] = 4242
+    context.bot = SimpleNamespace(edit_message_reply_markup=AsyncMock())
+
+    asyncio.run(text_input(update, context))
+
+    context.bot.edit_message_reply_markup.assert_awaited_once_with(
+        chat_id=999, message_id=4242, reply_markup=None
+    )
+    # the tracked id now points at the FRESH message this search just sent, not the old one
+    assert context.user_data["menu_message_id"] != 4242
 
 
 def test_menu_callback_full_shows_locpick_category():
