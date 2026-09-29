@@ -1,0 +1,95 @@
+name: Diagnose - v9, send a REAL listing via the REAL production code path (no synthetic recreation)
+
+# ONE-OFF, READ-ONLY (picks an existing real listing row, never writes), manual-only
+# (workflow_dispatch) - added 2026-09-29. v3 through v8 all sent hand-crafted synthetic messages
+# that tried to imitate a real card's shape - and every synthetic recreation eventually rendered
+# CORRECTLY (v11/v12/v13), even one sent as a real sendPhoto caption. That means the synthetic
+# recreations are missing something about what real production listings actually contain, and
+# guessing at more synthetic variations stops being useful.
+#
+# This instead execs into the LIVE bot pod (which already has the real code, the real DATABASE_URL,
+# and the real TELEGRAM_BOT_TOKEN) and runs a Python script that:
+#   1. pulls one real, recent, active listing straight from the production DB (same table the bot
+#      itself reads),
+#   2. builds its caption with the REAL cards.format_caption() - the exact function
+#      send_listing_card uses for every real notification,
+#   3. sends it with the REAL cards.send_listing_card() - the exact function every real card send
+#      in this project goes through (scraper/notifier.py's new-match push, bot's /apartments,
+#      /liked, ...).
+# This removes any question of whether a hand-built test differs from the real thing in some subtle
+# way - it IS the real thing, on real data, through the real code path, just triggered manually
+# instead of by a new-match event.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-real-card:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Find the live bot pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "Could not find a running todira-bot pod."
+            exit 1
+          fi
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          echo "Found pod: $POD"
+
+      - name: Build a real caption from a real listing and send it via the REAL send_listing_card
+        run: |
+          cat <<'PYEOF' > /tmp/send_real_card.py
+          import asyncio
+          import os
+
+          from sqlalchemy import select
+          from telegram import Bot
+
+          from todira_common.cards import format_caption, send_listing_card
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+
+          async def main() -> None:
+              token = os.environ["TELEGRAM_BOT_TOKEN"]
+              owner_id = int(os.environ["OWNER_TELEGRAM_USER_ID"])
+
+              with get_session() as session:
+                  stmt = (
+                      select(Listing)
+                      .where(Listing.is_delisted.is_(False))
+                      .where(Listing.duplicate_of_id.is_(None))
+                      .where(Listing.street.isnot(None))
+                      .where(Listing.description.isnot(None))
+                      .where(Listing.deal_type == "rent")
+                      .order_by(Listing.scraped_at.desc())
+                      .limit(1)
+                  )
+                  listing = session.scalars(stmt).first()
+                  if listing is None:
+                      print("No matching real listing found (street+description+active+rent).")
+                      return
+
+                  print(f"Using REAL listing id={listing.id} city={listing.city!r} street={listing.street!r}")
+                  caption = format_caption(listing, has_access=True, lang="he")
+                  print("=== REAL caption text (repr, so hidden control chars are visible) ===")
+                  print(repr(caption))
+                  print(f"=== caption length: {len(caption)} chars ===")
+
+                  async with Bot(token=token) as bot:
+                      ok = await send_listing_card(bot, owner_id, listing, caption, lang="he")
+                      print(f"send_listing_card returned: {ok}")
+
+
+          asyncio.run(main())
+          PYEOF
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/send_real_card.py
