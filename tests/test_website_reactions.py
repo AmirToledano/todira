@@ -45,6 +45,7 @@ class _FakeUser:
         self.free_access_granted = True
         self.trial_ends_at = None
         self.paid_until = None
+        self.language = None
 
 
 class _FakeFilter:

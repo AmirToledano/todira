@@ -47,6 +47,7 @@ class _FakeUser:
         self.free_access_granted = overrides.get("free_access_granted", False)
         self.takbull_subscription_uniqid = overrides.get("takbull_subscription_uniqid")
         self.cancel_at_period_end = overrides.get("cancel_at_period_end", False)
+        self.language = overrides.get("language")
 
 
 class _FakeSession:

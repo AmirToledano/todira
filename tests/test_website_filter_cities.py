@@ -55,6 +55,7 @@ class _FakeUser:
         self.id = 1
         self.telegram_user_id = uid
         self.filter = _FakeFilter()
+        self.language = None
 
 
 class _FakeSession:

@@ -85,6 +85,7 @@ class _FakeUser:
         first_name=None,
         channel_link_code=None,
         channel_link_code_expires_at=None,
+        language=None,
     ):
         self.id = id
         self.telegram_user_id = telegram_user_id
@@ -101,6 +102,7 @@ class _FakeUser:
         self.google_email = google_email
         self.channel_link_code = channel_link_code
         self.channel_link_code_expires_at = channel_link_code_expires_at
+        self.language = language
         # Only read by _current_user_summary (base.html's header, called on every _render()) when
         # the visitor has a REAL signed session — see test_account_config_shows_logout_button_*
         # below, the first test in this file to actually exercise that path.

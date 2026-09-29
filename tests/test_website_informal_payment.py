@@ -37,10 +37,11 @@ _NOW = dt.datetime.now(dt.timezone.utc)
 
 
 class _FakeUser:
-    def __init__(self, id, telegram_user_id=None, paid_until=None):
+    def __init__(self, id, telegram_user_id=None, paid_until=None, language=None):
         self.id = id
         self.telegram_user_id = telegram_user_id
         self.paid_until = paid_until
+        self.language = language
 
 
 class _FakePayment:
