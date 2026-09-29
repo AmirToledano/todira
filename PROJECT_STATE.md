@@ -28,7 +28,14 @@ approved and unused. Check the real approval status live (don't guess) by re-run
 filters to `new_listing_match`, so either read the WABA's full template list from its output or
 adapt the `params={'name': ...}` filter to the new name.
 
-## 🔴 CURRENT BLOCKER (found 2026-08-30): the k3s cluster is unreachable — deploys are failing
+## 🟢 RESOLVED, kept for context (found 2026-08-30, fixed same day — see the "Update 2026-08-30
+(RESOLVED)" section right below this one): the k3s cluster was briefly unreachable — deploys were
+failing
+**Not a live blocker.** The node has been up and deploying successfully for 30 days straight as of
+2026-09-29 (live-reconfirmed via `diagnose-full-cluster-health-check.yaml`: all 4 Deployments
+ready, every CronJob active with a recent `lastSuccessfulTime`, S3 backups running daily). Left
+here only because the section below it explains the root cause (a stale `KUBECONFIG_B64` after an
+instance IP change) in case it ever recurs after a future stop/modify/start.
 The last two CI/CD runs both failed at the `helm upgrade` step, not at build:
 - Run for commit `2180bbf` (20:30–20:53 UTC on 8/29, 3 attempts): `TLS handshake timeout` /
   `http2: client connection lost` talking to `https://13.60.13.78:6443`.
@@ -4856,18 +4863,20 @@ automatic recovery. Added:
   stop/start but is **permanently, unrecoverably lost** on instance termination or an EBS failure
   — and as of this writing **there is no backup of any kind**. Explicitly flagged as the top risk
   before any real launch.
-- **In progress, not yet built**: automated off-node DB backups to S3. Owner chose S3 over a
-  zero-cost "DM the dump to Telegram" alternative after an honest cost/tradeoff discussion (S3:
-  ~$0.01-0.05/month for this DB's current size even with daily backups + 30-day retention, likely
-  staying under $1/month for a long time even as the app grows; Telegram: free but worse on
-  privacy — a DB dump sitting in chat history rather than access-controlled storage — no easy
-  automatic retention/rotation, and more manual friction to restore during an actual emergency,
-  exactly when friction is least wanted). Walked the owner through creating a scoped IAM user (not
-  root) + an S3 bucket with a least-privilege policy (PutObject/GetObject/DeleteObject/ListBucket
-  on that one bucket only) — **waiting on the owner to send back the bucket name, region, and the
-  IAM access key/secret** before the actual backup CronJob (daily `pg_dump` + upload + prune
-  anything older than 30 days) can be built. Once it exists, update `RUNBOOK.md`'s backup section
-  with the real restore steps.
+- **DONE — this section was stale and got corrected 2026-09-29.** Automated off-node DB backups to
+  S3 were actually built back on 2026-09-08/09 (`charts/todira/templates/backup-cronjob.yaml`,
+  `values.yaml`'s `backup:` block, `RUNBOOK.md`'s own "Restoring the database from an S3 backup"
+  section) — this file just never got updated to say so, so it sat here for weeks claiming
+  "waiting on the owner" for a step that was long done. **Live-reconfirmed today** via a new
+  read-only diagnostic (`diagnose-full-cluster-health-check.yaml`, real `kubectl`/`aws s3api`
+  calls against production, not a guess): the CronJob runs daily at 03:00 Israel time, not
+  suspended, `lastSuccessfulTime` from today; its most recent pod's own logs show `pg_dump wrote
+  7.5M` then `Uploaded ... to s3://todira-db-backups-404813130046-eu-north-1-an`; and the real
+  bucket listing shows **15 consecutive daily backups**, one per day back to 2026-09-15, sizes
+  growing from ~1.4MB to ~7.9MB as the DB has grown. One real historical hiccup: the very first
+  production run (2 failed pods, ~2026-09-09) — already the reason the CronJob's own Telegram
+  alert step exists (captures the AWS CLI's real stderr in the alert text) — every run since has
+  succeeded. Restore steps are real and already in `RUNBOOK.md`, nothing further needed here.
 - **Also explicitly out of scope, needs the owner's own action, not buildable from a coding
   session**: an external uptime monitor (e.g. a free UptimeRobot/Better Uptime account) pointed at
   `https://todira.app/healthz` from OUTSIDE this infrastructure — the only thing that can actually
