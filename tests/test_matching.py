@@ -172,6 +172,27 @@ def test_map_region_rect_inside_bounds_passes():
     assert result.matched is True
 
 
+# 2026-09-28: real bug found via a fresh code-review sweep — the circle/rect branches only ever
+# null-checked the ONE column each elif's own condition already tested (map_center_lat / map_sw_lat),
+# then read every other map_* column unconditionally. A filter row with a partially-null shape —
+# reachable today via a legacy/hand-edited row, or any future migration that adds map_region_kind
+# before every coordinate column is guaranteed non-null together — would crash evaluate() outright
+# (TypeError: unsupported operand type(s) for <=: 'NoneType' and 'float') instead of just failing
+# the filter closed like every other missing-data case in this file already does.
+
+
+def test_map_region_circle_with_missing_lng_fails_closed_instead_of_crashing():
+    f = make_filter(map_region_kind="circle", map_center_lat=32.08, map_center_lng=None, map_radius_m=1000)
+    result = evaluate(f, make_listing(latitude=32.08, longitude=34.78))
+    assert "map_region" in result.failed_hard_filters
+
+
+def test_map_region_rect_with_missing_corner_fails_closed_instead_of_crashing():
+    f = make_filter(map_region_kind="rect", map_sw_lat=32.0, map_sw_lng=34.7, map_ne_lat=None, map_ne_lng=34.8)
+    result = evaluate(f, make_listing(latitude=32.05, longitude=34.75))
+    assert "map_region" in result.failed_hard_filters
+
+
 def test_map_region_and_cities_both_apply():
     f = make_filter(
         cities=["חיפה"],

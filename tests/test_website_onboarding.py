@@ -229,6 +229,36 @@ def test_all_cities_toggle_is_unchecked_when_specific_cities_are_selected():
     assert 'id="f-all-cities" name="all_cities"  onchange' in resp.text
 
 
+# --- 2026-09-28: real bug found via a fresh code-review sweep — a brand-new user's Filter row
+# always starts with cities==[], so the "all cities" checkbox above rendered checked by default
+# during the welcome flow too. filter_update's own mandatory-city block (task #80) only checks
+# `all_cities is None`, so a first-time user who tapped "continue" without touching the city grid
+# submitted all_cities=on for free and sailed straight past the hard block with zero interaction,
+# silently saving an unfiltered filter. The checkbox must render UNCHECKED during welcome
+# specifically (welcome always starts with empty cities anyway, so this changes nothing else).
+
+
+def test_all_cities_toggle_is_unchecked_during_welcome_even_with_no_cities():
+    user = _FakeUser(uid=555)
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.get("/filter", params={"uid": 555, "welcome": "1"})
+    assert resp.status_code == 200
+    assert 'id="f-all-cities" name="all_cities"  onchange' in resp.text
+
+
+def test_welcome_flow_still_blocked_even_though_all_cities_renders_unchecked():
+    """Confirms the checkbox-render fix above and the backend validation agree: doing nothing
+    during welcome (no cities, no all_cities toggle) is blocked end to end, not just visually."""
+    user = _FakeUser(uid=555)
+    with _client_for(user):
+        client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        resp = client.post("/filter", data=_base_form(555, welcome="1"))
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/filter?uid=555&welcome=1&error=cities"
+    assert user.filter.cities == []
+
+
 # --- /onboarding/notifications (step 2) ---
 
 

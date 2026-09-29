@@ -112,7 +112,22 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
     # source (models.Listing.latitude's own comment), so silently passing every uncoordinated
     # listing through a drawn region would defeat the entire point of drawing one.
     if filter_row.map_region_kind == "circle" and filter_row.map_center_lat is not None:
-        if listing_row.latitude is None or listing_row.longitude is None:
+        # 2026-09-28 real bug found via a fresh code-review pass: only map_center_lat was ever
+        # checked for None here — map_center_lng/map_radius_m were trusted to be set together with
+        # it, but nothing in models.py or the /filter/region route enforces that at the DB level
+        # (all four columns are independently nullable). A partially-set row (an aborted
+        # map-draw, a future write path, a manual edit) made this raise a bare TypeError
+        # comparing a float to None — and since evaluate() is called with no try/except in
+        # notifier.py's own per-listing loop, ONE such row crashed matching for every remaining
+        # listing in that scrape run, not just this filter's own owner. Missing companion fields
+        # now fail closed exactly like missing listing coordinates do, per this block's own
+        # comment above, instead of crashing.
+        if (
+            listing_row.latitude is None
+            or listing_row.longitude is None
+            or filter_row.map_center_lng is None
+            or filter_row.map_radius_m is None
+        ):
             failed.append("map_region")
         elif (
             _haversine_m(
@@ -125,7 +140,15 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
         ):
             failed.append("map_region")
     elif filter_row.map_region_kind == "rect" and filter_row.map_sw_lat is not None:
-        if listing_row.latitude is None or listing_row.longitude is None:
+        # Same real fix as the circle branch above — map_sw_lng/map_ne_lat/map_ne_lng were never
+        # checked for None.
+        if (
+            listing_row.latitude is None
+            or listing_row.longitude is None
+            or filter_row.map_sw_lng is None
+            or filter_row.map_ne_lat is None
+            or filter_row.map_ne_lng is None
+        ):
             failed.append("map_region")
         elif not (
             filter_row.map_sw_lat <= listing_row.latitude <= filter_row.map_ne_lat

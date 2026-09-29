@@ -421,7 +421,15 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
 
     context.user_data.pop("draft", None)
     apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
-    await query.edit_message_text(bot_text("filter.saved_confirmation", lang))
+    # reply_markup=None explicitly — editMessageText treats an OMITTED reply_markup as "leave
+    # unchanged" (python-telegram-bot's own Bot._post drops None-valued params before the request
+    # goes out), so without this the root menu's own keyboard (every category button + Save/
+    # Cancel) stayed live and tappable under the confirmation text even though the conversation
+    # had already ended. Tapping any of them then went nowhere — no handler matches an "f:..."
+    # callback once the conversation state is gone, so query.answer() never fires and the button
+    # just spins until Telegram's own client-side timeout, looking exactly like the bot froze.
+    # Same fix _prompt_for_text already applies for the identical reason on its own edit.
+    await query.edit_message_text(bot_text("filter.saved_confirmation", lang), reply_markup=None)
     # 2026-09-15: used to send every NEW-to-this-user current match as its own Telegram card right
     # here — a real owner complaint the same day: a broad filter matching dozens/hundreds of
     # already-existing listings flooded the chat with cards immediately on save, AND (since the
@@ -458,7 +466,10 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         return await _handle_save(update, context, draft)
     if action == "cancel":
         context.user_data.pop("draft", None)
-        await query.edit_message_text(bot_text("filter.cancelled", lang))
+        # reply_markup=None — same real bug/fix as _handle_save's own identical edit_message_text
+        # call above: an omitted reply_markup leaves the previous (root menu) keyboard live and
+        # tappable under the "cancelled" text, even though the conversation has already ended.
+        await query.edit_message_text(bot_text("filter.cancelled", lang), reply_markup=None)
         return ConversationHandler.END
     if action == "cat":
         return await _show_category(query, draft, parts[2], lang)
@@ -712,6 +723,21 @@ async def _cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ConversationHandler.END
 
 
+async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """2026-09-28 real bug found via the bot/ code-review sweep: this ConversationHandler's own
+    per-user state is tracked independently of every other handler (see the persistent=True
+    comment below on why check_update only re-enters via entry_points), so a user who leaves the
+    /filter menu open and then sends /apartments, /liked, /hidden, /profile or /start got silently
+    stuck — that OTHER command's own handler ran normally, but this conversation stayed parked in
+    MENU/AWAIT_TEXT, so a later plain-text reply (meant for whatever they were doing next) got
+    swallowed by menu_text_fallback/text_input instead. Mirrors onboarding.py's own identical fix
+    for the exact same bug class (_cancel_for_other_command there, 2026-09-25)."""
+    lang = _lang(context)
+    context.user_data.pop("draft", None)
+    await update.message.reply_text(bot_text("filter.cancelled_for_other_command", lang))
+    return ConversationHandler.END
+
+
 def build_filter_conversation_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
@@ -725,7 +751,13 @@ def build_filter_conversation_handler() -> ConversationHandler:
             ],
             AWAIT_TEXT: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, text_input)],
         },
-        fallbacks=[CommandHandler("cancel", _cancel_command)],
+        fallbacks=[
+            CommandHandler("cancel", _cancel_command),
+            CommandHandler(
+                ["start", "apartments", "liked", "hidden", "profile"],
+                _cancel_for_other_command,
+            ),
+        ],
         name="filter_conversation",
         persistent=True,
         # Without this, a user who ever abandons a /filter session mid-way (closes the chat with

@@ -673,6 +673,13 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Редактирование фильтра отменено.", "fr": "Modification du filtre annulée.",
         "ar": "تم إلغاء تعديل التفضيلات.",
     },
+    "filter.cancelled_for_other_command": {
+        "he": "ביטלתי את עריכת הסינון — שלח/י שוב את הפקודה כדי להמשיך 👍",
+        "en": "I cancelled filter editing — send the command again to continue 👍",
+        "ru": "Я отменил редактирование фильтра — отправьте команду ещё раз, чтобы продолжить 👍",
+        "fr": "J'ai annulé la modification du filtre — renvoie la commande pour continuer 👍",
+        "ar": "ألغيت تعديل التفضيلات — أرسل الأمر مرة أخرى للمتابعة 👍",
+    },
     "filter.not_a_valid_value_escalated": {
         "he": "🙋 זה לא נראה כמו הערך שביקשתי, אז ליתר ביטחון העברתי את מה שכתבת לצוות — אם זו "
         "הייתה שאלה, תקבל/י מענה בהקדם.\n\n{retry_message}",

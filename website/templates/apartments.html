@@ -743,7 +743,17 @@
     var clusterGroup = hasCluster ? L.markerClusterGroup({ spiderfyOnMaxZoom: true, showCoverageOnHover: false }) : null;
     if (clusterGroup) { map.addLayer(clusterGroup); }
     var markers = [];
-    function syncPins() {
+    // 2026-09-28 real bug found via a fresh code-review sweep: syncPins() always ended with
+    // map.fitBounds(...), and the infinite-scroll MutationObserver below called syncPins() with no
+    // way to opt out of that — so a user who manually zoomed/panned the map into one neighborhood,
+    // then scrolled the results list to trigger "load more", got the map silently snapped back out
+    // to fit every pin again, discarding their manual view every single time. fitToBounds now
+    // defaults to true (unchanged behavior for the initial load and the explicit age-filter
+    // change below) but the MutationObserver's own infinite-scroll-triggered call passes false —
+    // new pins still get added to the map, just without yanking the viewport out from under
+    // whatever the user was just looking at.
+    function syncPins(fitToBounds) {
+      if (fitToBounds === undefined) { fitToBounds = true; }
       if (clusterGroup) { clusterGroup.clearLayers(); }
       else { markers.forEach(function (m) { map.removeLayer(m); }); }
       markers = [];
@@ -774,19 +784,19 @@
           ? countEl.dataset.template.replace('__SHOWN__', points.length).replace('__TOTAL__', allCards)
           : countEl.dataset.emptyText;
       }
-      if (points.length > 0) {
+      if (fitToBounds && points.length > 0) {
         map.fitBounds(points, { padding: [60, 60], maxZoom: 14 });
       }
     }
 
     syncPins();
-    if (ageSelect) { ageSelect.addEventListener('change', syncPins); }
+    if (ageSelect) { ageSelect.addEventListener('change', function () { syncPins(true); }); }
     // Re-sync whenever infinite-scroll (the script earlier in this page) appends a new batch of
     // cards — a plain MutationObserver on the grid, decoupled from that script entirely rather
-    // than threading a callback through it.
+    // than threading a callback through it. fitToBounds=false — see syncPins' own comment above.
     var grid = document.getElementById('listing-grid');
     if (grid && 'MutationObserver' in window) {
-      new MutationObserver(function () { syncPins(); }).observe(grid, { childList: true });
+      new MutationObserver(function () { syncPins(false); }).observe(grid, { childList: true });
     }
 
     // Map-drawn region filter (2026-09-28, backlog #79) — real owner request: draw a rectangle or
