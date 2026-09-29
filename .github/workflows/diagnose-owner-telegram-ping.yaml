@@ -1,0 +1,38 @@
+name: Diagnose - send a single real ping to the configured OWNER_TELEGRAM_USER_ID
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-29. The owner reports receiving NONE
+# of the 8 labeled test messages a previous diagnostic sent, even though Telegram's own API
+# returned 200 ok:true with real message_ids for each one, and the response's own "chat" object
+# showed a first_name/last_name/username that read as the owner's real identity. Rather than guess
+# why, this sends exactly one, unmistakable ping, and separately prints (masked in the log, but
+# confirmable by the owner) the real chat this went to, so we can settle live whether
+# OWNER_TELEGRAM_USER_ID in the todira-bot-secret is actually still the owner's own chat id.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Send one real ping and print the real recipient identity (owner can confirm it's them)
+        run: |
+          BOT_TOKEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.telegram-bot-token}' | base64 -d)
+          OWNER_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$BOT_TOKEN"
+          echo "OWNER_TELEGRAM_USER_ID length: ${#OWNER_ID} chars"
+          curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${OWNER_ID}" \
+            --data-urlencode "text=PING - if you see this in Telegram, reply here. $(date -u +%H:%M:%S) UTC" \
+            -o /tmp/resp.json -w "http_status=%{http_code}\n"
+          echo "--- full response (chat identity NOT masked - confirm this is really you) ---"
+          cat /tmp/resp.json
+          echo ""
