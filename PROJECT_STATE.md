@@ -7586,9 +7586,11 @@ is directly between the owner and UPay.
 (deploy triggers automatically); 1155 tests pass, ruff clean. Nothing code-side is currently blocked
 or pending — every open item left in this file (Meta Business/personal ID verification, the
 WhatsApp rich-template approval at the very top of this file, Takbull/Grow recurring-billing
+credentials) is externally blocked on a third party, not on any code work here.
 
-## Update 2026-09-29: two more real Telegram-caption RTL fixes (PR #545 + #546), a full-project bug
-sweep found and fixed 5 more real bugs, and the RTL issue may still not be fully closed
+## Update 2026-09-29: two more real Telegram-caption RTL fixes (PR #545 + #546, RTL fix still
+unconfirmed by the owner), a full-project bug sweep found 5 more real bugs, and a new live
+diagnostic confirmed the whole production stack — including S3 DB backups — is actually healthy
 
 **PR #545 — the real root cause of the recurring "caption doesn't start from the right" report.**
 The owner sent 5 fresh screenshots (Telegram, custom green theme — an earlier guess in this same
@@ -7657,4 +7659,49 @@ or (c) a different, separate bug entirely, is NOT YET CONFIRMED. **Next session:
 screenshot of a currently-broken message from the owner (post-PR #545 and #546 deploy, dated
 2026-09-29 or later) before touching this code again** — do not assume either that it's fixed or
 that it isn't; verify live against real current output, per this project's own standing rule.
-credentials) is externally blocked on a third party, not on any code work here.
+
+**PR #548 — a new read-only `diagnose-full-cluster-health-check.yaml`**, built on direct owner
+request ("תרוץ על הכל ותראה שהכל מתחבר... ויושב כמו שצריך" — run through everything and confirm
+it's all actually wired and sitting correctly), and immediately used to catch a real doc bug (see
+next). Checks, in one `workflow_dispatch` run: every Deployment/pod's real ready state, every
+CronJob's real suspend/schedule/last-run state (scraper, facebook-scraper, backup, healthcheck,
+subscription-housekeeping), the backup CronJob's own most recent pod logs, and — the one check
+that actually proves S3 backups are uploading rather than just configured — a direct
+`aws s3api list-objects-v2` against the real bucket using production's own IAM credentials (read
+live from the `todira-bot-secret` k8s secret, same pattern as every other credential-using
+diagnostic in this repo).
+
+**Real findings from running it, 2026-09-29**: the whole stack is healthy. All 4 Deployments
+(bot/website/postgres/caddy) at 1/1 ready, both `bot` and `website` already running the image
+tagged with PR #546's merge commit (confirms the day's fixes are actually live, not just merged).
+Every CronJob active (not suspended) with a recent `lastSuccessfulTime`. Two isolated one-off job
+failures showed up in job history (a `todira-scraper` run ~11h before this check, a
+`todira-facebook-scraper` run ~12h before) but every run before and after each succeeded — old
+pods were already garbage-collected so the root cause couldn't be pulled retroactively; worth a
+look only if the pattern repeats, not urgent on its own.
+
+**This also caught a real, embarrassing doc bug** (owner's own question — "אתה בטוח שלא עשינו S3
+כבר?" — turned out to be right, this file was wrong): the "infra reliability" section further up
+this file had claimed automated S3 DB backups were still "waiting on the owner" to send back
+credentials. They were NOT — they were actually built and working since 2026-09-08/09
+(`backup-cronjob.yaml`, `RUNBOOK.md`'s own restore steps), and this file simply never got updated
+to say so. The live diagnostic proved it beyond doubt: the backup CronJob's most recent pod log
+reads `pg_dump wrote 7.5M` then `Uploaded ... to s3://todira-db-backups-...`, and the real bucket
+listing shows **15 consecutive daily backups**, one per day back to 2026-09-15, sizes growing from
+~1.4MB to ~7.9MB as the DB has grown. Corrected in place (PR #549), along with demoting the
+top-of-file "🔴 CURRENT BLOCKER" k3s-outage header (resolved 30 days ago, but still read as
+current by anyone opening this file cold) to a clearly-labeled resolved/historical note.
+
+**Lesson for future sessions, worth stating plainly**: this file is a handoff document, not a
+diary — an entry that says "waiting on X" needs to be corrected the moment X actually happens, not
+left to rot until an owner's own question catches it weeks later. When in doubt about whether
+something this file claims is still true, verify it live (as PR #548's diagnostic now makes cheap
+to do for the whole cluster in one run) rather than trusting the file's own prose at face value.
+
+**Status as of tonight**: PRs #545–#549 all merged to `main`, CI/CD green throughout (confirmed
+live via the Actions API on each merge, not assumed). 1169 tests pass, ruff clean. Production is
+confirmed healthy end-to-end — deployments, all 5 CronJobs, and S3 backups all live-verified
+working. The one open item that's actually code-related: **the RTL indentation fix still needs a
+fresh owner screenshot to confirm it actually closed the bug** (see the ⚠️ note above) — everything
+else outstanding (UPay, Meta Business verification, the WhatsApp rich-template approval, Takbull/
+Grow) is externally blocked on a third party, not on any code work here.
