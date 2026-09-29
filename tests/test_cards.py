@@ -54,12 +54,15 @@ def make_listing(**overrides):
 
 def test_basic_caption_includes_core_fields():
     # 2026-09-03 rewrite, matching the reference bot 1:1: location before price, every
-    # field its own BOLD-labeled line, ₪ (not "ש"ח") as the currency, no source tag anywhere.
+    # field its own labeled line, ₪ (not "ש"ח") as the currency, no source tag anywhere.
+    # 2026-09-29: Hebrew/Arabic labels no longer get a <b> wrap — see format_caption's own
+    # docstring for the real bug (a bold entity crossing this file's RLE...PDF embedding renders
+    # broken) that fix addresses.
     caption = format_caption(make_listing(), has_access=True)
-    assert "🛏️ <b>חדרים:</b> 4" in caption
-    assert '📐 <b>שטח:</b> 160 מ"ר' in caption
-    assert "💰 <b>מחיר:</b> 16,000₪" in caption
-    assert "📍<b>ירושלים</b> - ניות" in caption
+    assert "🛏️ חדרים: 4" in caption
+    assert '📐 שטח: 160 מ"ר' in caption
+    assert "💰 מחיר: 16,000₪" in caption
+    assert "📍ירושלים - ניות" in caption
     assert "🏷️" not in caption  # the old "🏷️ {source}" footer line is gone
     # location must come before price in the actual rendered order, not just be present somewhere
     assert caption.index("📍") < caption.index("💰")
@@ -77,33 +80,31 @@ def test_no_prefix_line_for_a_plain_rent_or_sale_listing():
 
 def test_broker_prefix_line_shown_regardless_of_deal_type():
     caption = format_caption(make_listing(deal_type="sale", is_broker_listing=True), has_access=True)
-    assert "🏢 <b>תיווך</b>" in caption
+    assert "🏢 תיווך" in caption
 
     caption = format_caption(make_listing(deal_type="rent", is_broker_listing=True), has_access=True)
-    assert "🏢 <b>תיווך</b>" in caption
+    assert "🏢 תיווך" in caption
 
 
 def test_sublet_prefix_line_shown_when_not_broker():
     caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=False), has_access=True)
-    assert "🏢 <b>סאבלט</b>" in caption
+    assert "🏢 סאבלט" in caption
     assert "תיווך" not in caption
 
 
 def test_broker_prefix_wins_over_sublet_if_somehow_both():
     caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=True), has_access=True)
-    assert "🏢 <b>תיווך</b>" in caption
+    assert "🏢 תיווך" in caption
     assert "סאבלט" not in caption
 
 
 def test_location_street_is_a_google_maps_link_on_telegram():
-    # 2026-09-28: the location line + street link together (23+ chars before the anchor even
-    # starts) run past _RTL_LINE_WRAP_CHARS, so the anchor — kept atomic, see
-    # _wrap_long_rtl_line's own docstring on why <a> can't be torn apart like <b> can — lands on
-    # its own pre-wrapped line rather than glued directly after "ניות". Both pieces are still
-    # exactly there, just no longer asserted as one contiguous run.
+    # 2026-09-29: _wrap_long_rtl_line now measures an anchor's WIDTH CONTRIBUTION by its visible
+    # link text only, not the raw span including the href — a real owner report that the city and
+    # street should share one line when they'd visually fit. "ירושלים - ניות דיזנגוף 10" is well
+    # under _RTL_LINE_WRAP_CHARS, so they now land on the same physical line.
     caption = format_caption(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert "📍<b>ירושלים</b> - ניות" in caption
-    assert '<a href="https://www.google.com/maps/search/' in caption
+    assert '📍ירושלים - ניות <a href="https://www.google.com/maps/search/' in caption
     assert ">דיזנגוף 10</a>" in caption
     assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
 
@@ -115,14 +116,14 @@ def test_location_without_street_has_no_maps_link():
 
 def test_floor_line_includes_total_when_known():
     caption = format_caption(make_listing(floor=4, floor_total=6), has_access=True)
-    assert "🏢 <b>קומה:</b> 4 מתוך 6" in caption
+    assert "🏢 קומה: 4 מתוך 6" in caption
 
 
 def test_move_in_date_is_day_month_year_not_iso():
     import datetime
 
     caption = format_caption(make_listing(move_in_date=datetime.date(2026, 9, 21)), has_access=True)
-    assert "📅 <b>כניסה:</b> 21.09.2026" in caption
+    assert "📅 כניסה: 21.09.2026" in caption
     assert "2026-09-21" not in caption
 
 
@@ -138,8 +139,10 @@ def test_features_line_uses_a_distinct_emoji_per_feature_pipe_separated():
     # line any more. See _wrap_long_rtl_line's own docstring for why this pre-wrap exists at all.
     listing = make_listing(has_parking=True, has_elevator=True, is_renovated=True)
     caption = format_caption(listing, has_access=True)
-    assert "🔑 <b>פיצ'רים:</b> 🚗חניה |" in caption
-    assert "🛗מעלית | ✨משופצת" in caption
+    # 2026-09-29: shorter now that labels aren't wrapped in <b> — see format_caption's own
+    # docstring — so the wrap point shifted one word later than it used to.
+    assert "🔑 פיצ'רים: 🚗חניה | 🛗מעלית |" in caption
+    assert "✨משופצת" in caption
 
 
 def test_features_line_excludes_false_and_unknown_amenities():
@@ -290,10 +293,13 @@ def test_no_photos_banner_stays_valid_html_and_gets_rtl_embedding_per_visual_lin
     # rstripped, then _force_rtl_block) before prepending it to the caption — tested here at the
     # same level as every other RTL test in this file, since send_listing_card itself needs a fake
     # Telegram Bot to exercise (covered separately below).
+    # 2026-09-29: the he/ar banner text dropped its own <b>...</b> wrap — see bot_strings.py's own
+    # comment and cards.py's format_caption docstring for the real bug (a bold entity crossing
+    # this file's RLE...PDF embedding renders broken) that fix addresses.
     banner_text = bot_text("card.no_photos_banner", "he").rstrip("\n")
     result = f"{_force_rtl_block(banner_text, 'he')}\n\n"
     assert result.endswith("\n\n"), "the blank-line gap before the caption must survive the rewrap"
-    assert "<b>" in result and "</b>" in result
+    assert "<b>" not in result and "</b>" not in result
     lines = [line for line in result.split("\n") if line]
     assert len(lines) > 1, "the real banner sentence is long enough that it must be pre-wrapped"
     for line in lines:
@@ -469,8 +475,8 @@ def test_no_access_still_shows_the_basic_teaser_fields():
     # user still sees everything about the match except where to actually go for it.
     listing = make_listing(has_parking=True)
     caption = format_caption(listing, has_access=False)
-    assert "💰 <b>מחיר:</b> 16,000₪" in caption
-    assert "🛏️ <b>חדרים:</b> 4" in caption
+    assert "💰 מחיר: 16,000₪" in caption
+    assert "🛏️ חדרים: 4" in caption
     assert "🚗חניה" in caption
 
 

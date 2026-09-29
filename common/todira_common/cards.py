@@ -385,7 +385,7 @@ def _force_rtl(text: str, lang: str) -> str:
 _RTL_LINE_WRAP_CHARS = 30
 
 
-_HTML_ANCHOR_SPAN_RE = re.compile(r"<a\b[^>]*>.*?</a>")
+_HTML_ANCHOR_SPAN_RE = re.compile(r"<a\b[^>]*>(.*?)</a>")
 
 
 def _wrap_long_rtl_line(line: str, width: int) -> list[str]:
@@ -404,23 +404,41 @@ def _wrap_long_rtl_line(line: str, width: int) -> list[str]:
     itself contain a real space (e.g. "רחוב הרצל") — unlike <b>, an <a> tag's own OPENING syntax
     already has an internal space (`<a href="...">`), so plain word-splitting could land a break
     right inside that markup, stranding a bare "<a" with no closing ">" on one line and
-    "href=\"...\">street</a>" on the next — genuinely broken HTML, not just misaligned text."""
+    "href=\"...\">street</a>" on the next — genuinely broken HTML, not just misaligned text.
+
+    2026-09-29: an anchor's WIDTH CONTRIBUTION for the wrap decision is now its visible link text
+    only (e.g. "דרך השדות 1"), not the full raw span including its href — a real owner report
+    ("should the city and street really be on 2 lines? there's plenty of room") traced to this:
+    the Google Maps href alone easily runs 80-100+ chars, so the old raw-length count always
+    forced a split between the location and its street link even when the two would visually fit
+    on one line together (the href itself is invisible to the reader — Telegram only renders the
+    anchor's inner text)."""
     words: list[str] = []
+    word_widths: list[int] = []
     pos = 0
     for m in _HTML_ANCHOR_SPAN_RE.finditer(line):
-        words.extend(line[pos : m.start()].split())
+        for plain_word in line[pos : m.start()].split():
+            words.append(plain_word)
+            word_widths.append(len(plain_word))
         words.append(m.group(0))
+        word_widths.append(len(m.group(1)))
         pos = m.end()
-    words.extend(line[pos:].split())
+    for plain_word in line[pos:].split():
+        words.append(plain_word)
+        word_widths.append(len(plain_word))
+
     out: list[str] = []
     current = ""
-    for word in words:
-        candidate = f"{current} {word}" if current else word
-        if len(candidate) > width and current:
+    current_width = 0
+    for word, word_width in zip(words, word_widths):
+        candidate_width = current_width + 1 + word_width if current else word_width
+        if candidate_width > width and current:
             out.append(current)
             current = word
+            current_width = word_width
         else:
-            current = candidate
+            current = f"{current} {word}" if current else word
+            current_width = candidate_width
     if current:
         out.append(current)
     return out or [line]
@@ -520,8 +538,20 @@ def format_caption(
     showing the description to everyone can't leak that regardless. `has_access` stays a required,
     not-defaulted argument: every call site must still explicitly decide, so gating a new one is
     never something a future caller can forget to do by just not passing the argument — even
-    though today it only controls the link, not the description."""
-    bold = lambda s: f"<b>{s}</b>"  # noqa: E731
+    though today it only controls the link, not the description.
+
+    2026-09-29: real bug, confirmed live via a battery of diagnostic sends — a Hebrew/Arabic
+    caption's `<b>...</b>` label wraps sit INSIDE this file's own RLE...PDF bidi embedding
+    (_force_rtl wraps the whole already-<b>-tagged line), so the embedding crosses the bold
+    entity's own boundary. A live A/B (same real listing, same real content, only <b> toggled)
+    showed the <b>-tagged version rendering broken/misaligned while the identical plain-text
+    version rendered correctly — the same real listing's <a>...</a> link, whose boundary the
+    embedding ALSO crosses, rendered fine either way, so this is specific to <b>, not entities in
+    general. No bold-vs-embedding-order fix was found that's been live-verified safe, so for
+    RTL languages (RTL_LANGS) labels are now sent as plain unformatted text instead — LTR
+    languages never use the RLE/PDF embedding at all (see _force_rtl), so their <b> labels are
+    unaffected and keep the emphasis."""
+    bold = (lambda s: s) if lang in RTL_LANGS else (lambda s: f"<b>{s}</b>")  # noqa: E731
     lines = _build_body_lines(
         listing,
         bold=bold,
