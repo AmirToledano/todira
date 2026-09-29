@@ -1,0 +1,67 @@
+name: Diagnose - v6, confirm whether the LAST physical line of a message always breaks
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-29. Owner's live screenshots of v5
+# (test 9: no link at all, test 10: link on the last line) showed a new pattern that changes the
+# earlier "a link entity corrupts later lines" theory:
+#   - test 9 (no link anywhere): the LAST line (price) rendered flush left.
+#   - test 10 (link on the last line): the LAST line (the linked street) rendered flush left, but
+#     the price line right before it (no longer last) rendered correctly.
+#   - test 7/8 (link in the middle): the LAST line (price) rendered flush left.
+# In all 4 cases so far, the one thing that is ALWAYS true of the broken line is that it is the
+# physically last line of the message - regardless of whether it has a link. This sends one more
+# test to confirm that directly: test 9's exact 4 lines, plus a 5th harmless line appended after
+# the price line. If the theory is right, the price line (now not last) should render correctly
+# this time, and the new 5th line (now last) should be the one that breaks instead.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read the real bot token and owner chat id from the live k8s secret
+        run: |
+          BOT_TOKEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.telegram-bot-token}' | base64 -d)
+          OWNER_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$BOT_TOKEN"
+          echo "::add-mask::$OWNER_ID"
+          if [ -z "$BOT_TOKEN" ] || [ -z "$OWNER_ID" ]; then
+            echo "telegram-bot-token or owner-telegram-user-id is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$BOT_TOKEN" > /tmp/bot_token.txt
+          echo "$OWNER_ID" > /tmp/owner_id.txt
+
+      - name: Send 1 more targeted test message (body base64-decoded from ASCII-only source)
+        run: |
+          BOT_TOKEN=$(cat /tmp/bot_token.txt)
+          OWNER_ID=$(cat /tmp/owner_id.txt)
+
+          send() {
+            local n="$1"
+            local body_b64="$2"
+            local body
+            body=$(echo "$body_b64" | base64 -d)
+            echo "=== sending test $n ==="
+            curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${OWNER_ID}" \
+              --data-urlencode "text=${body}" \
+              --data-urlencode "parse_mode=HTML" \
+              --data-urlencode "disable_web_page_preview=true" \
+              -o /tmp/resp.json -w "  -> http_status=%{http_code}\n"
+            cat /tmp/resp.json
+            echo ""
+          }
+
+          send 11 "4oCr8J+nqiDXkdeT15nXp9eUIDExIC0g15vXnteVINeR15PXmden15QgOSwg16LXnSDXqdeV16jXlCDXoNeV16HXpNeqINeR16HXldej4oCsCuKAq/Cfk43XoteT15kgLSDXoteT15nigKwK4oCr15DXnNeV158gMTLigKwK4oCr8J+SsCDXnteX15nXqDogNCwxNTDigqrigKwK4oCr8J+UmiDXlteVINeU16nXldeo15Qg15TXkNee15nXqteZINeU15DXl9eo15XXoNeU4oCs"
+
+          echo "=== done - does price (now not-last) render fine, and the new line 5 (now last) break instead? ==="
