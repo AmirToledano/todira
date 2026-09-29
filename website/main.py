@@ -337,16 +337,29 @@ def _current_user_summary(request: Request) -> dict | None:
     }
 
 
-def _render(request: Request, template_name: str, context: dict, status_code: int = 200) -> Response:
-    """Every page goes through this: resolves the viewer's language (?lang= > cookie > Hebrew),
+def _render(
+    request: Request,
+    template_name: str,
+    context: dict,
+    status_code: int = 200,
+    known_lang: str | None = None,
+) -> Response:
+    """Every page goes through this: resolves the viewer's language (?lang= > cookie > known_lang
+    > Accept-Language > Hebrew — see i18n.get_lang's own docstring for why known_lang exists),
     injects lang/dir/t/lang switcher data into the template context, and — only when the request
     explicitly asked for a language via ?lang= — persists it to a cookie so it survives to the
     next page without every internal link needing to carry ?lang= itself (uid already has to be
     threaded through links for auth, but lang is a site-wide preference, a cookie fits better).
     Also injects `current_user` (or None) so the header's login/logout UI is correct on every page,
     not just the ones that already resolve a full user for their own content.
+
+    known_lang: pass `user.language` here whenever the caller already resolved a real user (via
+    uid/wid) before calling this — lets an identified visitor's own on-file language preference
+    win over a guess from their browser's Accept-Language header, which is often wrong for that
+    specific case (e.g. Telegram's in-app browser sends the phone's system language, not the
+    language the person actually chose for the bot). Omit it for routes with no resolved user.
     """
-    lang = get_lang(request)
+    lang = get_lang(request, known_lang)
     current_user = _current_user_summary(request)
     is_real_owner = current_user is not None and _is_owner_id(current_user["telegram_user_id"])
     response = templates.TemplateResponse(
@@ -1138,13 +1151,16 @@ def apartments(
     fragment: bool = False,
     listing: int | None = None,
 ):
-    lang = get_lang(request)
     with get_session() as session:
         user = _resolve_user(request, session, uid, wid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "apartments"})
+        # See i18n.get_lang's own docstring: an identified visitor's own on-file language
+        # preference wins over guessing from Accept-Language (2026-09-29 real bug — Telegram's
+        # in-app browser sends the phone's system language, not the bot's own chosen language).
+        lang = get_lang(request, user.language)
         if user.filter is None:
-            return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
+            return _render(request, "no_filter.html", {"uid": user.telegram_user_id}, known_lang=user.language)
 
         hidden_ids = _listing_action_ids(session, user.id, "hidden")
         # duplicate_of_id.is_(None): 2026-09-13 cross-source dedup — a duplicate row is a real
@@ -1228,7 +1244,7 @@ def apartments(
     if fragment:
         # AJAX "load more" request (see apartments.html's own script) — just the next batch of
         # cards plus a fresh sentinel, no base.html layout at all.
-        return _render(request, "_listing_cards_fragment.html", context)
+        return _render(request, "_listing_cards_fragment.html", context, known_lang=user.language)
 
     # 2026-09-24: sidebar filter panel (dorin.app-style layout the owner asked for) reuses the
     # SAME field partial /filter's own full-page form does (_filter_form_fields.html) — needs the
@@ -1247,6 +1263,7 @@ def apartments(
         request,
         "apartments.html",
         context,
+        known_lang=user.language,
     )
 
 
@@ -1281,6 +1298,7 @@ def liked(request: Request, uid: int | None = None):
             "liked_ids": liked_ids,
             "hidden_ids": set(),
         },
+        known_lang=user.language,
     )
 
 
@@ -1315,6 +1333,7 @@ def hidden(request: Request, uid: int | None = None):
             "liked_ids": set(),
             "hidden_ids": hidden_ids,
         },
+        known_lang=user.language,
     )
 
 
@@ -1632,6 +1651,7 @@ def upgrade(request: Request, uid: int | None = None):
             "has_active_subscription": user.takbull_subscription_uniqid is not None,
             "recurring_configured": takbull_client.recurring_api_configured(),
         },
+        known_lang=user.language,
     )
 
 
@@ -1818,6 +1838,7 @@ def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
             "bit_phone": OWNER_BIT_PHONE,
             "paybox_url": OWNER_PAYBOX_URL,
         },
+        known_lang=user.language,
     )
 
 
@@ -2311,6 +2332,7 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
                 "cancelAtPeriodEnd": user.cancel_at_period_end,
             },
         },
+        known_lang=user.language,
     )
 
 
@@ -2414,13 +2436,18 @@ def filter_view(
     request: Request, uid: int | None = None, wid: str | None = None, welcome: bool = False,
     error: str | None = None,
 ):
-    lang = get_lang(request)
     with get_session() as session:
         user = _resolve_user(request, session, uid, wid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "filter"})
+        # See i18n.get_lang's own docstring: an identified visitor's own on-file language
+        # preference wins over guessing from Accept-Language (2026-09-29 real bug — Telegram's
+        # in-app browser sends the phone's system language, not the bot's own chosen language).
+        lang = get_lang(request, user.language)
         if user.filter is None:
-            return _render(request, "no_filter.html", {"uid": user.telegram_user_id})
+            return _render(
+                request, "no_filter.html", {"uid": user.telegram_user_id}, known_lang=user.language
+            )
         filter_row = user.filter
         return _render(
             request,
@@ -2447,6 +2474,7 @@ def filter_view(
                 "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
                 "furniture_labels": FURNITURE_LABELS.get(lang, FURNITURE_LABELS[DEFAULT_LANG]),
             },
+            known_lang=user.language,
         )
 
 
@@ -2613,6 +2641,7 @@ def onboarding_notifications(request: Request, uid: int | None = None, wid: str 
                 "already_connected": user.telegram_user_id is not None,
                 "telegram_link": f"https://t.me/AmirDirotBot?start={code}" if code else None,
             },
+            known_lang=user.language,
         )
 
 
@@ -2636,4 +2665,5 @@ def onboarding_trial(request: Request, uid: int | None = None, wid: str | None =
                 "wid": wid if user.telegram_user_id is None else None,
                 "trial_ends_at": user.trial_ends_at,
             },
+            known_lang=user.language,
         )

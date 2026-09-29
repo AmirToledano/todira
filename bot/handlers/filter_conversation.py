@@ -172,7 +172,9 @@ def _category_view(draft: dict, category: str, lang: str):
     return kb.render_root_summary(draft, lang), kb.root_keyboard(lang)
 
 
-async def _show_category(query, draft: dict, category: str, lang: str) -> int:
+async def _show_category(
+    query, context: ContextTypes.DEFAULT_TYPE, draft: dict, category: str, lang: str
+) -> int:
     title, markup = _category_view(draft, category, lang)
     try:
         await query.edit_message_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
@@ -186,12 +188,47 @@ async def _show_category(query, draft: dict, category: str, lang: str) -> int:
         # one) still propagates normally — this only swallows the exact "nothing to change" case.
         if "message is not modified" not in str(exc).lower():
             raise
+    # Kept in sync defensively — edits always land on the same message_id that was already
+    # tracked, but a draft persisted from before this field existed (PicklePersistence) would
+    # otherwise never pick it up until the next fresh _send_category send. getattr guard: several
+    # existing tests build a minimal fake `query` with no `.message` (or a `.message` with no
+    # `message_id`) at all, since nothing before this read either — real CallbackQuery objects
+    # always have both.
+    message_id = getattr(getattr(query, "message", None), "message_id", None)
+    if message_id is not None:
+        context.user_data["menu_message_id"] = message_id
     return MENU
 
 
-async def _send_category(message, draft: dict, category: str, lang: str) -> None:
+async def _clear_previous_menu_keyboard(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    """2026-09-29 real owner report: typing an answer (a city search, a price, a date, ...) always
+    SENDS A FRESH message for the next menu screen rather than editing the previous one in place —
+    see _category_view's own docstring for why (a typed reply isn't tied to any specific earlier
+    bot message the way a button tap is). Left unfixed, every one of those still carries its own
+    live, tappable inline keyboard — a second search or a second typed value stacks another full
+    keyboard on top of the last one, several large button grids deep, all still tappable, none of
+    them doing anything useful once superseded. Best-effort: clears whatever menu message this
+    conversation last sent, tracked in user_data["menu_message_id"], before a new one replaces it.
+    Silently gives up on any failure (already cleared, too old, deleted, chat migrated, etc.) —
+    this is cosmetic cleanup, never worth surfacing an error to the user over."""
+    message_id = context.user_data.get("menu_message_id")
+    if message_id is None:
+        return
+    try:
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id, message_id=message_id, reply_markup=None
+        )
+    except BadRequest:
+        pass
+
+
+async def _send_category(
+    message, context: ContextTypes.DEFAULT_TYPE, draft: dict, category: str, lang: str
+) -> None:
+    await _clear_previous_menu_keyboard(context, message.chat_id)
     title, markup = _category_view(draft, category, lang)
-    await message.reply_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
+    sent = await message.reply_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
+    context.user_data["menu_message_id"] = sent.message_id
 
 
 async def _prompt_for_text(query, context, *, awaiting: str, prompt: str) -> int:
@@ -333,11 +370,15 @@ async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         context.user_data["lang"] = lang
     lang = _lang(context)
     context.user_data.pop("awaiting", None)
-    await update.message.reply_text(
+    sent = await update.message.reply_text(
         kb.render_root_summary(draft, lang),
         reply_markup=kb.root_keyboard(lang),
         parse_mode=ParseMode.HTML,
     )
+    # Tracked so a later typed-answer flow (_send_category, the city-search-results reply) can
+    # clear THIS message's keyboard before it sends its own fresh one — see
+    # _clear_previous_menu_keyboard's own docstring for the real clutter this fixes.
+    context.user_data["menu_message_id"] = sent.message_id
     return MENU
 
 
@@ -461,7 +502,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     action = parts[1]
 
     if action == "root":
-        return await _show_category(query, draft, "root", lang)
+        return await _show_category(query, context, draft, "root", lang)
     if action == "save":
         return await _handle_save(update, context, draft)
     if action == "cancel":
@@ -472,13 +513,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await query.edit_message_text(bot_text("filter.cancelled", lang), reply_markup=None)
         return ConversationHandler.END
     if action == "cat":
-        return await _show_category(query, draft, parts[2], lang)
+        return await _show_category(query, context, draft, parts[2], lang)
     if action == "set":
         _apply_single_select(draft, parts[2], parts[3])
-        return await _show_category(query, draft, "root", lang)
+        return await _show_category(query, context, draft, "root", lang)
     if action == "tog":
         _apply_toggle(draft, parts[2], parts[3])
-        return await _show_category(query, draft, parts[2], lang)
+        return await _show_category(query, context, draft, parts[2], lang)
     if action == "loc":
         sub = parts[2]
         if sub == "addcity":
@@ -486,10 +527,10 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                 query, context, awaiting="city", prompt=_text_prompt("city", lang)
             )
         if sub == "full":
-            return await _show_category(query, draft, "locpick", lang)
+            return await _show_category(query, context, draft, "locpick", lang)
         if sub == "togc":
             _toggle_city(draft, int(parts[3]))
-            return await _show_category(query, draft, "locpick", lang)
+            return await _show_category(query, context, draft, "locpick", lang)
         if sub == "rmc":
             # 2026-09-25 real bug fix: see keyboards.location_keyboard's own comment on the
             # rmc button — this now removes by the city's own name (idempotent against a
@@ -503,7 +544,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             # See keyboards.location_keyboard's own 2026-09-15 comment — restores the TRUE "no
             # city restriction" state (matches every city/town, not just the 42 curated ones).
             draft["cities"] = []
-        return await _show_category(query, draft, "loc", lang)
+        return await _show_category(query, context, draft, "loc", lang)
     if action == "price":
         sub = parts[2]
         if sub == "min":
@@ -512,14 +553,14 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             return await _show_numeric_picker(query, draft, "price_max", lang)
         if sub == "reqtoggle":
             draft["require_price"] = not draft["require_price"]
-        return await _show_category(query, draft, "price", lang)
+        return await _show_category(query, context, draft, "price", lang)
     if action == "rooms":
         sub = parts[2]
         if sub == "min":
             return await _show_numeric_picker(query, draft, "rooms_min", lang)
         if sub == "max":
             return await _show_numeric_picker(query, draft, "rooms_max", lang)
-        return await _show_category(query, draft, "rooms", lang)
+        return await _show_category(query, context, draft, "rooms", lang)
     if action == "floor":
         sub = parts[2]
         if sub == "min":
@@ -528,7 +569,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             return await _show_numeric_picker(query, draft, "floor_max", lang)
         if sub == "ground":
             draft["ground_floor_only"] = not draft["ground_floor_only"]
-        return await _show_category(query, draft, "floor", lang)
+        return await _show_category(query, context, draft, "floor", lang)
     if action == "pick":
         # Quick-pick preset tap / custom-value fallback / clear, from a numeric_preset_keyboard
         # screen (see kb.numeric_preset_keyboard and _show_numeric_picker above).
@@ -541,13 +582,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             draft[field] = None
         else:
             draft[field] = kb.NUMERIC_PRESETS[field][int(sub)]
-        return await _show_category(query, draft, FIELD_TO_CATEGORY[field], lang)
+        return await _show_category(query, context, draft, FIELD_TO_CATEGORY[field], lang)
     if action == "area":
         if parts[2] == "set":
             return await _prompt_for_text(
                 query, context, awaiting="min_area_sqm", prompt=_text_prompt("min_area_sqm", lang)
             )
-        return await _show_category(query, draft, "area", lang)
+        return await _show_category(query, context, draft, "area", lang)
     if action == "kw":
         sub = parts[2]
         if sub == "set":
@@ -556,7 +597,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             )
         if sub == "clear":
             draft["keywords"] = []
-        return await _show_category(query, draft, "kw", lang)
+        return await _show_category(query, context, draft, "kw", lang)
     if action == "move":
         sub = parts[2]
         if sub == "earliest":
@@ -572,7 +613,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         if sub == "clear":
             draft["move_in_earliest"] = None
             draft["move_in_latest"] = None
-        return await _show_category(query, draft, "move", lang)
+        return await _show_category(query, context, draft, "move", lang)
 
     logger.warning("Unhandled filter callback: %s", query.data)
     return MENU
@@ -671,15 +712,17 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         # search is a hint, not a pick; the user chooses explicitly which city they meant, same
         # as tapping a box in kb.city_picker_keyboard (2026-09-02: this used to auto-add the
         # first match, which is exactly the "ניחוש אוטומטי" a real user asked to remove).
-        await update.message.reply_text(
+        await _clear_previous_menu_keyboard(context, update.message.chat_id)
+        sent = await update.message.reply_text(
             bot_text("filter.pick_city", lang),
             reply_markup=kb.city_search_results_keyboard(matches, lang),
         )
+        context.user_data["menu_message_id"] = sent.message_id
         return MENU
 
     if awaiting == "keywords":
         draft["keywords"] = [w.strip() for w in raw.split(",") if w.strip()]
-        await _send_category(update.message, draft, "kw", lang)
+        await _send_category(update.message, context, draft, "kw", lang)
         return MENU
 
     if awaiting in NUMERIC_INT_FIELDS:
@@ -689,7 +732,7 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 update, context, raw, awaiting, bot_text("filter.number_parse_failed", lang), lang
             )
         draft[awaiting] = value
-        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting], lang)
+        await _send_category(update.message, context, draft, FIELD_TO_CATEGORY[awaiting], lang)
         return MENU
 
     if awaiting in NUMERIC_FLOAT_FIELDS:
@@ -699,7 +742,7 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 update, context, raw, awaiting, bot_text("filter.number_parse_failed", lang), lang
             )
         draft[awaiting] = value
-        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting], lang)
+        await _send_category(update.message, context, draft, FIELD_TO_CATEGORY[awaiting], lang)
         return MENU
 
     if awaiting in DATE_FIELDS:
@@ -709,7 +752,7 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 update, context, raw, awaiting, bot_text("filter.date_parse_failed", lang), lang
             )
         draft[awaiting] = value
-        await _send_category(update.message, draft, FIELD_TO_CATEGORY[awaiting], lang)
+        await _send_category(update.message, context, draft, FIELD_TO_CATEGORY[awaiting], lang)
         return MENU
 
     logger.warning("Unhandled 'awaiting' key: %s", awaiting)

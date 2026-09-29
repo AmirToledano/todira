@@ -58,6 +58,7 @@ class _FakeUser:
         self.free_access_granted = False
         self.trial_ends_at = None
         self.paid_until = None
+        self.language = None
 
 
 class _FakeSession:

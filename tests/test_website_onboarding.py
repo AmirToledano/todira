@@ -59,6 +59,7 @@ class _FakeUser:
         self.channel_link_code_expires_at = None
         self.first_name = None
         self.telegram_username = None
+        self.language = None
 
 
 class _FakeSession:

@@ -48,6 +48,7 @@ class _FakeUser:
         self.free_access_granted = overrides.get("free_access_granted", False)
         self.trial_ends_at = overrides.get("trial_ends_at", _NOW - dt.timedelta(days=1))
         self.paid_until = overrides.get("paid_until")
+        self.language = overrides.get("language")
 
 
 class _FakeListing:
@@ -617,6 +618,46 @@ def test_apartments_no_deep_link_card_when_listing_param_absent(client):
 # JS-driven "load more" fragment endpoint. See main.py's apartments() route and apartments.html's
 # own script for the full mechanism.
 # ---------------------------------------------------------------------------
+
+
+def test_apartments_uses_the_identified_users_own_language_over_accept_language(client):
+    # 2026-09-29 real bug found live: a Telegram user with the bot itself set to Hebrew opened
+    # their own /apartments?uid=... link from inside Telegram's in-app browser and got an English
+    # page — that browser's own Accept-Language reflects the phone's system language, not the
+    # language the person actually chose for the bot (User.language). Sending an Accept-Language
+    # header here reproduces exactly that: with no ?lang= and no cookie, this user's own on-file
+    # "he" must now win over the request's own English-only Accept-Language guess.
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(), language="he")
+    fake_session = _FakeSession(user, listings=[])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get(
+            "/apartments", params={"uid": 222}, headers={"accept-language": "en-US,en;q=0.9"}
+        )
+
+    assert resp.status_code == 200
+    assert 'lang="he"' in resp.text
+    assert 'dir="rtl"' in resp.text
+
+
+def test_apartments_explicit_lang_query_param_still_overrides_the_users_own_language(client):
+    # An explicit ?lang= on THIS request is still the visitor actively choosing a language right
+    # now — it must keep winning over the on-file default, not be silently ignored.
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(), language="he")
+    fake_session = _FakeSession(user, listings=[])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222, "lang": "en"})
+
+    assert resp.status_code == 200
+    assert 'lang="en"' in resp.text
+    assert 'dir="ltr"' in resp.text
 
 
 def test_apartments_first_page_shows_only_page_size_and_a_sentinel(client):

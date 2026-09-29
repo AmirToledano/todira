@@ -59,6 +59,7 @@ class _FakeUser:
         self.first_name = "Amir"
         self.telegram_username = None
         self.filter = _FakeFilter()
+        self.language = None
 
 
 class _FakeSession:

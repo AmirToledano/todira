@@ -2614,14 +2614,28 @@ def _best_lang_from_accept_language(header_value: str) -> str | None:
     return best_lang
 
 
-def get_lang(request: Request) -> str:
+def get_lang(request: Request, known_lang: str | None = None) -> str:
     """?lang= wins for this request (and main.py persists it to a cookie on the response);
-    otherwise fall back to a previously-set cookie; otherwise the browser's own Accept-Language
-    header (its FIRST visit's best guess, not persisted here — a cookie is only ever set from an
-    explicit ?lang=, see main.py's _render); otherwise Hebrew."""
+    otherwise a previously-set cookie (an explicit choice made earlier on this same browser);
+    otherwise `known_lang` — the viewer's own language on file (User.language), passed in by a
+    caller that already resolved a real user via uid/wid — otherwise the browser's own
+    Accept-Language header (its FIRST visit's best guess, not persisted here — a cookie is only
+    ever set from an explicit ?lang=, see main.py's _render); otherwise Hebrew.
+
+    2026-09-29 real bug found live: a Telegram user with the bot itself set to Hebrew opened their
+    own personalized /apartments link (from inside Telegram's in-app browser) and got an English
+    page — Telegram's in-app browser's own Accept-Language reflects the PHONE's system language,
+    not the language the person actually chose for the bot, and this function had no way to know
+    the difference for an identified visitor. `known_lang` lets a caller that already has the real
+    user row (e.g. website/main.py's _resolve_user) short-circuit that guess with the actual
+    on-file preference, while still letting an explicit ?lang= or an earlier cookie choice on this
+    browser override it (both come first, since either represents THIS visitor's own explicit
+    choice for THIS browser, not the value the bot happens to have on file)."""
     candidate = request.query_params.get("lang") or request.cookies.get("lang")
     if candidate in SUPPORTED_LANGS:
         return candidate
+    if known_lang in SUPPORTED_LANGS:
+        return known_lang
     accept_language = request.headers.get("accept-language")
     if accept_language:
         detected = _best_lang_from_accept_language(accept_language)
