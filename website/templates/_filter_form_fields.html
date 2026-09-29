@@ -28,8 +28,18 @@
        — silently hiding ~29% of real inventory from everyone who onboards. This explicit toggle
        is a first-class way to reach cities=[] (real "no city filter", not "42 exact strings"),
        satisfies the welcome validation on its own, and is checked whenever f.cities is empty. #}
+    {# 2026-09-28 real bug found via a fresh code-review sweep: this box renders checked whenever
+       f.cities is empty — true for EVERY brand-new user during the welcome/onboarding flow above,
+       since a fresh Filter row always starts with no cities. filter_update's own "must choose a
+       city" welcome block (task #80, 2026-09-26) only checks `all_cities is None`, so a first-time
+       user who taps the continue button without touching the city grid at all submitted
+       all_cities=on for free — silently saving an unfiltered (all-cities) filter and sailing
+       straight past the hard block it exists to enforce, with zero interaction. Forcing it
+       unchecked specifically during welcome (it's always empty then anyway) makes "no cities
+       selected" require an explicit tap either way, while leaving every other case — an existing
+       user re-opening /filter with a real empty cities list — exactly as before. #}
     <label class="check-chip all-cities-chip">
-      <input type="checkbox" id="f-all-cities" name="all_cities" {{ 'checked' if not f.cities }} onchange="onAllCitiesToggle(this.checked)">
+      <input type="checkbox" id="f-all-cities" name="all_cities" {{ 'checked' if (not f.cities and not welcome) }} onchange="onAllCitiesToggle(this.checked)">
       {{ t('filter.cities_all_label') }}
     </label>
     <input id="f-cities-search" type="text" placeholder="{{ t('filter.cities_placeholder') }}" oninput="filterCityChips(this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">

@@ -226,6 +226,28 @@ def test_apartments_map_workspace_renders_with_pins_for_listings_that_have_coord
     assert 'data-lng=""' not in resp.text
 
 
+def test_apartments_map_does_not_auto_refit_bounds_on_infinite_scroll(client):
+    """2026-09-28 real bug found via a fresh code-review sweep: syncPins() always ended with
+    map.fitBounds(...), and the infinite-scroll MutationObserver called it with no way to opt out
+    — so a user who manually zoomed/panned the map, then scrolled to load more cards, got the map
+    silently snapped back out to fit every pin, discarding their manual view every time. syncPins
+    now takes a fitToBounds flag; the MutationObserver's own infinite-scroll call must pass false
+    while the initial call and the age-filter change still fit-to-bounds as before."""
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    fake_session = _FakeSession(user, listings=[_FakeListing(id=1, latitude=32.0853, longitude=34.7818)])
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "function syncPins(fitToBounds)" in resp.text
+    assert "new MutationObserver(function () { syncPins(false); })" in resp.text
+    assert "if (fitToBounds && points.length > 0)" in resp.text
+
+
 def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(client):
     """2026-09-24: real owner request batch — map collapse/reopen toggle, a map-settings age
     filter, and the listing-detail modal (clicking a card opens a real floating window on top of

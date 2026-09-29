@@ -96,8 +96,14 @@ def test_broker_prefix_wins_over_sublet_if_somehow_both():
 
 
 def test_location_street_is_a_google_maps_link_on_telegram():
+    # 2026-09-28: the location line + street link together (23+ chars before the anchor even
+    # starts) run past _RTL_LINE_WRAP_CHARS, so the anchor — kept atomic, see
+    # _wrap_long_rtl_line's own docstring on why <a> can't be torn apart like <b> can — lands on
+    # its own pre-wrapped line rather than glued directly after "ניות". Both pieces are still
+    # exactly there, just no longer asserted as one contiguous run.
     caption = format_caption(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert '📍<b>ירושלים</b> - ניות <a href="https://www.google.com/maps/search/' in caption
+    assert "📍<b>ירושלים</b> - ניות" in caption
+    assert '<a href="https://www.google.com/maps/search/' in caption
     assert ">דיזנגוף 10</a>" in caption
     assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
 
@@ -126,10 +132,14 @@ def test_no_features_line_when_nothing_is_known():
 
 
 def test_features_line_uses_a_distinct_emoji_per_feature_pipe_separated():
+    # 2026-09-28: with all 3 features this line runs past _RTL_LINE_WRAP_CHARS, so it now gets
+    # pre-wrapped at a word boundary (between "|"-separated features) the same as any other long
+    # RTL line — each feature is still there, pipe-separated, just not guaranteed on one physical
+    # line any more. See _wrap_long_rtl_line's own docstring for why this pre-wrap exists at all.
     listing = make_listing(has_parking=True, has_elevator=True, is_renovated=True)
     caption = format_caption(listing, has_access=True)
-    assert "🔑 <b>פיצ'רים:</b>" in caption
-    assert "🚗חניה | 🛗מעלית | ✨משופצת" in caption
+    assert "🔑 <b>פיצ'רים:</b> 🚗חניה |" in caption
+    assert "🛗מעלית | ✨משופצת" in caption
 
 
 def test_features_line_excludes_false_and_unknown_amenities():
@@ -517,7 +527,10 @@ def test_telegram_caption_escapes_html_in_scraped_fields():
     assert "<script>" not in caption
     assert "&lt;script&gt;" in caption
     assert "<b>fake bold</b>" not in caption
-    assert "A &amp; B &lt;b&gt;fake bold&lt;/b&gt;" in caption
+    # 2026-09-28: this escaped neighborhood text is long enough to get pre-wrapped like any other
+    # long RTL line — still fully present and in order, just no longer one contiguous run.
+    assert "A &amp; B &lt;b&gt;fake" in caption
+    assert "bold&lt;/b&gt;" in caption
     assert "<i>St</i>" not in caption
     assert "<img" not in caption
     assert '"onmouseover=alert(1)' not in caption
@@ -792,6 +805,24 @@ def test_send_listing_card_no_images_caption_stays_within_telegram_limit():
     long_caption = "א" * CAPTION_LIMIT  # already at the limit before the dachshund suffix
     asyncio.run(send_listing_card(bot, 555, listing, long_caption))
     assert len(bot.send_photo.await_args.kwargs["caption"]) <= CAPTION_LIMIT
+
+
+def test_send_listing_card_no_images_drops_the_banner_entirely_when_it_would_overflow_the_limit():
+    # 2026-09-28: real bug found via a fresh code-review sweep — the no-photos banner used to be
+    # prepended and the combined string then raw-sliced to CAPTION_LIMIT with a plain [:LIMIT], a
+    # cut that could land mid-HTML-tag inside the CAPTION's own markup (e.g. a listing's <a href=
+    # "..."> link) whenever banner+caption together ran over the limit, since the slice has no
+    # idea where a tag boundary is. The banner is now dropped entirely in that case instead — the
+    # caption itself is already a complete, valid string on its own, so it's sent whole and untouched.
+    from todira_common.cards import CAPTION_LIMIT
+
+    bot = _make_bot()
+    listing = make_listing(image_urls=[])
+    long_caption = "א" * CAPTION_LIMIT  # already at the limit — no room for the banner at all
+    asyncio.run(send_listing_card(bot, 555, listing, long_caption))
+    sent = bot.send_photo.await_args.kwargs["caption"]
+    assert sent == long_caption
+    assert "למפרסם" not in sent  # the banner text itself never made it in
 
 
 def test_send_listing_card_gives_up_after_second_flood_control_hit():

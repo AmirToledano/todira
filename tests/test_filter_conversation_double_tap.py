@@ -41,6 +41,46 @@ def test_show_category_still_raises_a_real_badrequest():
         asyncio.run(_show_category(query, draft, "root", "he"))
 
 
+def test_menu_callback_cancel_clears_the_old_keyboard_explicitly():
+    # 2026-09-28 real bug fix — editMessageText treats an omitted reply_markup as "leave
+    # unchanged" (python-telegram-bot's Bot._post drops None-valued params before the request),
+    # so without passing reply_markup=None explicitly here the root menu's own category/Save/
+    # Cancel keyboard stayed live and tappable under the "cancelled" text even after the
+    # conversation had already ended — tapping any button then just spun forever with no response.
+    draft = _default_draft()
+    query = SimpleNamespace(
+        data="f:cancel",
+        answer=AsyncMock(),
+        edit_message_text=AsyncMock(),
+    )
+    update = SimpleNamespace(callback_query=query)
+    context = SimpleNamespace(user_data={"draft": draft, "awaiting": None})
+
+    result = asyncio.run(filter_conversation.menu_callback(update, context))
+
+    assert result == filter_conversation.ConversationHandler.END
+    query.edit_message_text.assert_awaited_once()
+    assert query.edit_message_text.await_args.kwargs.get("reply_markup") is None
+    assert "draft" not in context.user_data
+
+
+def test_handle_save_success_clears_the_old_keyboard_explicitly(monkeypatch):
+    # Same real bug/fix as the cancel case above, on _handle_save's own success-path edit.
+    monkeypatch.setattr(filter_conversation, "_save_and_match_sync", lambda *a, **k: 0)
+    draft = _default_draft()
+    user = SimpleNamespace(id=555)
+    message = SimpleNamespace(reply_text=AsyncMock())
+    query = SimpleNamespace(edit_message_text=AsyncMock(), message=message)
+    update = SimpleNamespace(callback_query=query, effective_user=user)
+    context = SimpleNamespace(user_data={"draft": draft})
+
+    result = asyncio.run(filter_conversation._handle_save(update, context, draft))
+
+    assert result == filter_conversation.ConversationHandler.END
+    query.edit_message_text.assert_awaited_once()
+    assert query.edit_message_text.await_args.kwargs.get("reply_markup") is None
+
+
 def test_menu_callback_clear_keywords_twice_never_raises():
     """The exact real report this fixes: tapping "נקה" on an already-empty keywords list a second
     time used to surface a scary error message for a completely harmless no-op."""

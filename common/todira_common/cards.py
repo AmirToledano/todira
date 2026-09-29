@@ -8,6 +8,7 @@ import asyncio
 import html
 import io
 import logging
+import re
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
@@ -307,7 +308,20 @@ def _build_body_lines(
     # English/Russian/French, where every line is already correctly LTR-aligned on its own.
     # Skip it on the blank spacer line: an embedding around nothing still isn't actually
     # invisible-and-blank in every client.
-    return [(_force_rtl(line, lang) if line else line) for line in lines]
+    # 2026-09-28: the location line (📍city - neighborhood <a>street</a>) and the features line
+    # (🔑 label a | b | c) can both run past _RTL_LINE_WRAP_CHARS just like free-text descriptions
+    # can — see _force_rtl_block's own docstring for the full root cause (a client's own soft-wrap
+    # of one long RLE/PDF-embedded logical line doesn't carry the embedding onto the continuation
+    # line). Pre-wrap every non-blank line at real word boundaries first, same as _force_rtl_block,
+    # so each resulting list entry is its own short embedded line and never needs a client soft-wrap.
+    out_lines: list[str] = []
+    for line in lines:
+        if not line:
+            out_lines.append(line)
+            continue
+        pieces = _wrap_long_rtl_line(line, _RTL_LINE_WRAP_CHARS) if lang in RTL_LANGS else [line]
+        out_lines.extend(_force_rtl(piece, lang) for piece in pieces)
+    return out_lines
 
 
 def _price_change_header(
@@ -371,13 +385,33 @@ def _force_rtl(text: str, lang: str) -> str:
 _RTL_LINE_WRAP_CHARS = 30
 
 
+_HTML_ANCHOR_SPAN_RE = re.compile(r"<a\b[^>]*>.*?</a>")
+
+
 def _wrap_long_rtl_line(line: str, width: int) -> list[str]:
     """Break one line into several at real word boundaries only — never mid-word — so a leading/
     trailing HTML tag or markdown marker glued to its neighboring word (format_caption's "<b>word"/
     "word</b>", format_caption_whatsapp's "*word") is never split in half. A single word longer than
     width on its own is kept whole rather than force-broken mid-word (rare — Hebrew doesn't compound
-    into very long single words the way German/Finnish can)."""
-    words = line.split(" ")
+    into very long single words the way German/Finnish can). A `<b>...</b>` span (this project's
+    only OTHER tag) is deliberately left to plain word-splitting like any other text: its opening
+    tag has no internal space to tear apart, so "<b>word"/"word</b>" always stay glued to their
+    real neighbor, and a `<b>` spanning across the "\n" this function inserts is still perfectly
+    valid HTML — Telegram parses the whole caption as one string, newlines and all.
+
+    2026-09-28: a complete <a href="...">street</a> span (_build_body_lines' street_link contract)
+    is matched and kept as ONE atomic token first, even though the street name inside it may
+    itself contain a real space (e.g. "רחוב הרצל") — unlike <b>, an <a> tag's own OPENING syntax
+    already has an internal space (`<a href="...">`), so plain word-splitting could land a break
+    right inside that markup, stranding a bare "<a" with no closing ">" on one line and
+    "href=\"...\">street</a>" on the next — genuinely broken HTML, not just misaligned text."""
+    words: list[str] = []
+    pos = 0
+    for m in _HTML_ANCHOR_SPAN_RE.finditer(line):
+        words.extend(line[pos : m.start()].split())
+        words.append(m.group(0))
+        pos = m.end()
+    words.extend(line[pos:].split())
     out: list[str] = []
     current = ""
     for word in words:
@@ -643,7 +677,17 @@ async def send_listing_card(
             # blank-line gap this banner is meant to leave before the caption that follows it.
             banner_text = bot_text("card.no_photos_banner", lang).rstrip("\n")
             banner = f"{_force_rtl_block(banner_text, lang)}\n\n"
-            no_photo_caption = (banner + caption)[:CAPTION_LIMIT]
+            # 2026-09-28 real bug found via a fresh code-review pass: a raw [:CAPTION_LIMIT]
+            # character slice can cut anywhere at all — including mid-HTML-tag, straight through
+            # the footer's <a href="...">...</a> link, exactly the bug class _fit_to_limit exists
+            # to prevent (see its own docstring for the real "Can't parse entities" failure this
+            # produces). `caption` on its own is already safely fit to CAPTION_LIMIT by its own
+            # caller (format_caption's _fit_to_limit call, footer/link always kept intact) — so on
+            # the rare listing where prepending the banner would push the total over the limit,
+            # drop the banner entirely rather than risk truncating caption's own content. Losing a
+            # friendly "no photos, try asking" note costs far less than losing the whole
+            # notification to a send that Telegram rejects outright.
+            no_photo_caption = banner + caption if len(banner) + len(caption) <= CAPTION_LIMIT else caption
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=_dachshund_photo_path(),
