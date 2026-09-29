@@ -1,0 +1,95 @@
+name: Diagnose — full cluster health check (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch, never on push) — added 2026-09-29, real
+# owner request: "תרוץ על הכל ותראה שהכל מתחבר כמו שצריך ועובד כמו שצריך ויושב כמו שצריך" (run
+# through everything and confirm it's all wired correctly, works correctly, and is actually
+# sitting there). Pure reads — no patch, no job creation, nothing that could touch production
+# state. Covers, in order: every Deployment/pod's real ready state, every CronJob's real
+# suspend/schedule/last-run state (scraper, backup, healthcheck, subscription-housekeeping), and
+# — the one check that actually PROVES the S3 backup is working rather than just configured —
+# lists the real bucket's own object listing using the same credentials production uses, so a
+# silently-broken upload (wrong bucket, expired/revoked IAM key, wrong region) shows up here
+# even if the CronJob's own Telegram alert never fired for some reason.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Node + namespace overview
+        run: |
+          echo "=== nodes ==="
+          kubectl get nodes -o wide
+          echo "=== all pods in todira namespace ==="
+          kubectl get pods -n todira -o wide
+          echo "=== all deployments (ready replicas vs desired) ==="
+          kubectl get deployments -n todira -o wide
+          echo "=== PVCs (storage) ==="
+          kubectl get pvc -n todira -o wide
+
+      - name: Any pods NOT Running/Ready right now
+        run: |
+          kubectl get pods -n todira --field-selector=status.phase!=Running -o wide || true
+          echo "--- readiness detail for every pod ---"
+          kubectl get pods -n todira -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount,STATUS:.status.phase'
+
+      - name: Every CronJob's real suspend/schedule/last-run state
+        run: |
+          echo "=== all cronjobs ==="
+          kubectl get cronjobs -n todira -o wide
+          for cj in todira-scraper todira-facebook-scraper todira-backup todira-healthcheck todira-subscription-housekeeping; do
+            echo "--- $cj ---"
+            kubectl get cronjob "$cj" -n todira -o jsonpath='suspend={.spec.suspend} schedule={.spec.schedule}{"\n"}lastScheduleTime={.status.lastScheduleTime} lastSuccessfulTime={.status.lastSuccessfulTime}{"\n"}' 2>&1 || echo "(cronjob $cj not found under this name — check the real name with: kubectl get cronjobs -n todira)"
+          done
+
+      - name: Most recent job/pod for each CronJob (did the last run actually succeed?)
+        run: |
+          for app in todira-scraper todira-facebook-scraper todira-backup todira-healthcheck todira-subscription-housekeeping; do
+            echo "--- jobs for $app ---"
+            kubectl get jobs -n todira -l app="$app" -o wide --sort-by=.metadata.creationTimestamp || true
+            echo "--- most recent pod for $app (status) ---"
+            kubectl get pods -n todira -l app="$app" -o wide --sort-by=.metadata.creationTimestamp || true
+          done
+
+      - name: Real backup CronJob's most recent pod logs (proves pg_dump + upload actually ran)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-backup -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then
+            echo "No todira-backup pod found at all — either it hasn't run yet since last suspend/resume, or the label selector is wrong."
+          else
+            echo "Most recent backup pod: $POD"
+            echo "--- init container (pg_dump) logs ---"
+            kubectl logs "$POD" -n todira -c pg-dump 2>&1 || echo "(could not read pg-dump init container logs — pod may be too old/evicted)"
+            echo "--- main container (upload-to-s3) logs ---"
+            kubectl logs "$POD" -n todira -c upload-to-s3 2>&1 || echo "(could not read upload-to-s3 container logs — pod may be too old/evicted)"
+          fi
+
+      - name: The real proof — list the actual S3 bucket's own objects with production's own credentials
+        run: |
+          AWS_ACCESS_KEY_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.aws-access-key-id}' | base64 -d)
+          AWS_SECRET_ACCESS_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.aws-secret-access-key}' | base64 -d)
+          echo "::add-mask::$AWS_ACCESS_KEY_ID"
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "aws-access-key-id or aws-secret-access-key is EMPTY in todira-bot-secret — backups cannot be uploading."
+            exit 1
+          fi
+          export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+          export AWS_DEFAULT_REGION="eu-north-1"
+          pip install --quiet awscli 2>&1 | tail -5
+          echo "=== s3://todira-db-backups-404813130046-eu-north-1-an/ real object listing (newest first) ==="
+          aws s3api list-objects-v2 \
+            --bucket todira-db-backups-404813130046-eu-north-1-an \
+            --query 'reverse(sort_by(Contents, &LastModified))[:15].[Key,LastModified,Size]' \
+            --output table \
+            2>&1 || echo "FAILED to list bucket — see error above (wrong bucket name, revoked key, or wrong region are the likely causes)."
