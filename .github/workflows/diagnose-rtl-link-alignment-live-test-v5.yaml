@@ -63,7 +63,7 @@ jobs:
             echo ""
           }
 
-          send 9 "8J+nqiBURVNUIDkgLSBzYW1lIDMgbGluZXMgYXMgVEVTVCA3LCBidXQgTk8gbGluayBhdCBhbGwgKGlzb2xhdGVzIHRoZSByZWFsIGNhdXNlKQrigKvwn5ON16LXk9eZIC0g16LXk9eZ4oCsCuKAq9eQ15zXldefIDEy4oCsCuKAq/CfkrAg157Xl9eZ16g6IDQsMTUw4oKq4oCs"
-          send 10 "8J+nqiBURVNUIDEwIC0gc2FtZSAzIGxpbmVzLCBsaW5rIG1vdmVkIHRvIHRoZSBMQVNUIGxpbmUgaW5zdGVhZArigKvwn5ON16LXk9eZIC0g16LXk9eZ4oCsCuKAq/CfkrAg157Xl9eZ16g6IDQsMTUw4oKq4oCsCuKAqzxhIGhyZWY9Imh0dHBzOi8vd3d3Lmdvb2dsZS5jb20vbWFwcy9zZWFyY2gvP2FwaT0xJnF1ZXJ5PSVENyU5MCVENyU5QyVENyU5NSVENyU5RisxMiI+15DXnNeV158gMTI8L2E+4oCs"
+          send 9 "4oCr8J+nqiDXkdeT15nXp9eUIDkgLSAzINep15XXqNeV16og15vXnteVINeR15PXmden15QgNywg15DXkdecINeR15zXmSDXnNeZ16DXpyDXkdeb15zXnOKArArigKvwn5ON16LXk9eZIC0g16LXk9eZ4oCsCuKAq9eQ15zXldefIDEy4oCsCuKAq/CfkrAg157Xl9eZ16g6IDQsMTUw4oKq4oCs"
+          send 10 "4oCr8J+nqiDXkdeT15nXp9eUIDEwIC0gMyDXqdeV16jXldeqLCDXlNec15nXoNenINeR16nXldeo15Qg15TXkNeX16jXldeg15TigKwK4oCr8J+Tjdei15PXmSAtINei15PXmeKArArigKvwn5KwINee15fXmdeoOiA0LDE1MOKCquKArArigKs8YSBocmVmPSJodHRwczovL3d3dy5nb29nbGUuY29tL21hcHMvc2VhcmNoLz9hcGk9MSZxdWVyeT0lRDclOTAlRDclOUMlRDclOTUlRDclOUYrMTIiPteQ15zXldefIDEyPC9hPuKArA=="
 
           echo "=== done - compare test 9 (no link) vs test 10 (link on last line) ==="
