@@ -7577,4 +7577,75 @@ is directly between the owner and UPay.
 (deploy triggers automatically); 1155 tests pass, ruff clean. Nothing code-side is currently blocked
 or pending — every open item left in this file (Meta Business/personal ID verification, the
 WhatsApp rich-template approval at the very top of this file, Takbull/Grow recurring-billing
+
+## Update 2026-09-29: two more real Telegram-caption RTL fixes (PR #545 + #546), a full-project bug
+sweep found and fixed 5 more real bugs, and the RTL issue may still not be fully closed
+
+**PR #545 — the real root cause of the recurring "caption doesn't start from the right" report.**
+The owner sent 5 fresh screenshots (Telegram, custom green theme — an earlier guess in this same
+session that it was WhatsApp was wrong and corrected directly by the owner) showing listing cards
+where most lines were right-aligned correctly but the free-text description/no-photos-banner
+wasn't. Root cause, confirmed against the screenshots' own actual wrap points: a single LOGICAL
+line (no `\n` of its own) can still be long enough that Telegram word-wraps it itself onto 2+
+VISUAL lines — the RLE...PDF embedding (escalated over several earlier sessions: bare RLM mark ->
+per-line embedding -> `splitlines()` for `\r`-separated text) around that one logical line doesn't
+carry its right-alignment onto the continuation line Telegram creates by its own soft-wrap. Every
+short single-line field (price/rooms/floor) never hit this because none of them are ever long
+enough to need client-side wrapping. Fix: `_wrap_long_rtl_line` pre-splits anything over
+`_RTL_LINE_WRAP_CHARS` (30, calibrated below the ~32-33 char wrap point measured off a real
+screenshot) at a word boundary before `_force_rtl` ever sees it, so every visual line is also its
+own independent RLE...PDF span.
+
+**PR #546 — a full-project bug sweep** (explicitly requested: "אחרי שתסיים הכל תחפש באגים בכל
+הפרויקט"), 3 background code-review passes across `website/`, `bot/`, and `scraper+common/`. Real
+findings, all fixed with a regression test each:
+- `cards.py`'s `_build_body_lines` (location/features lines) never got the same pre-wrap PR #545
+  gave free text — fixed the same way. Doing this surfaced a SECOND, more dangerous bug: a naive
+  word-split can tear a `<a href="...">` tag's own opening syntax in half (`<a href=...>` has an
+  internal space `<a` / `href=...`, unlike `<b>`), producing literally broken HTML on the
+  continuation line. `<a>...</a>` spans are now matched and kept as one atomic token first; `<b>`
+  is deliberately left on plain word-splitting since it's safe (no internal space, and a `<b>`
+  spanning across an inserted `\n` is still valid HTML — Telegram parses the whole caption as one
+  string).
+- `cards.py`'s no-photos-banner-over-limit case used to raw-slice the combined string to
+  `CAPTION_LIMIT`, risking a cut mid-HTML-tag inside the caption's own markup. Now drops the
+  banner entirely instead when there's no room.
+- `matching.py`'s map-region circle/rect branches null-checked only the ONE column their own
+  `elif` already tested, then read every other `map_*` column unconditionally — a partially-null
+  shape row would crash `evaluate()` with a `TypeError` instead of failing closed.
+- `filter_conversation.py`: a user who left the /filter menu open and then sent /start,
+  /apartments, /liked, /hidden or /profile got that command's own handler correctly, but /filter's
+  own conversation state stayed parked in MENU/AWAIT_TEXT forever, silently swallowing whatever
+  they typed next. Mirrors `onboarding.py`'s own identical 2026-09-25 fix (a `_cancel_for_other_
+  command` fallback for every other real bot command).
+- `filter_conversation.py`: `_handle_save`'s and the cancel action's `edit_message_text` calls
+  omitted `reply_markup`, which Telegram treats as "leave unchanged" — the root menu's own
+  keyboard stayed live/tappable under the confirmation/cancelled text after the conversation had
+  already ended.
+- `_filter_form_fields.html`: the "all cities" checkbox rendered checked whenever `f.cities` is
+  empty — true for every brand-new user during onboarding (a fresh Filter always starts empty).
+  The mandatory-city welcome block (task #80) only checks `all_cities is None`, so a first-time
+  user tapping continue without touching the city grid submitted `all_cities=on` for free,
+  bypassing the hard block with zero interaction. Now forced unchecked specifically during welcome.
+- `apartments.html`: `syncPins()` always ended with `map.fitBounds(...)`, and infinite-scroll's own
+  `MutationObserver` called it with no way to opt out — a user who manually zoomed/panned the map,
+  then scrolled to load more cards, got the map silently snapped back to fit every pin, every time.
+  `syncPins` now takes a `fitToBounds` flag; only the initial load and the age-filter change auto-fit.
+
+8 new tests, 1169 tests pass full suite, ruff clean. Both PRs merged to `main`, CI/CD green on
+both (confirmed live via the Actions API, not assumed).
+
+**⚠️ IMPORTANT — the owner reports the RTL issue may still not be fully fixed, after PR #545 was
+already live.** After PR #545 shipped, the owner pushed back that they don't think the fix
+actually addressed it, and specifically clarified the bug is about **indentation** — where each
+line STARTS (should always be flush right, like real Hebrew text), not really about visual
+alignment or wrapping per se — and that this happens in *some* listings but not others, including
+some **long** listings that render completely fine (i.e. it's not simply "long lines break, short
+ones don't" — the length-correlation PR #545 was built around may not be the whole story). No
+fresh screenshots were captured after PR #545's deploy at the time of writing, so whether the
+reported cases are (a) old screenshots from before the fix, (b) a real gap PR #545 didn't close,
+or (c) a different, separate bug entirely, is NOT YET CONFIRMED. **Next session: get a FRESH
+screenshot of a currently-broken message from the owner (post-PR #545 and #546 deploy, dated
+2026-09-29 or later) before touching this code again** — do not assume either that it's fixed or
+that it isn't; verify live against real current output, per this project's own standing rule.
 credentials) is externally blocked on a third party, not on any code work here.
