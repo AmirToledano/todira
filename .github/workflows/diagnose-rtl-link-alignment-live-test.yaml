@@ -52,8 +52,17 @@ jobs:
         run: |
           BOT_TOKEN=$(cat /tmp/bot_token.txt)
           OWNER_ID=$(cat /tmp/owner_id.txt)
-          RLE=$'‫'
-          PDF=$'‬'
+          # Built via printf's own octal UTF-8 byte escapes, deliberately, rather than typing the
+          # literal RIGHT-TO-LEFT EMBEDDING / POP DIRECTIONAL FORMATTING characters directly into
+          # this file: an earlier version of this exact file had them typed in literally (same
+          # codepoints cards.py itself uses, U+202B/U+202C) and GitHub's own workflow parser
+          # silently refused to register its `on: workflow_dispatch` trigger at all — no error in
+          # the file, `list_workflows` just showed the raw file path instead of the real `name:`,
+          # and every dispatch attempt failed with "Workflow does not have 'workflow_dispatch'
+          # trigger". Real, reproducible, not a guess: fixed by moving both characters out of the
+          # committed source and generating them at runtime instead.
+          RLE=$(printf '\342\200\253')
+          PDF=$(printf '\342\200\254')
           MAPS_URL="https://www.google.com/maps/search/?api=1&query=%D7%90%D7%9C%D7%95%D7%9F+12"
 
           send() {
