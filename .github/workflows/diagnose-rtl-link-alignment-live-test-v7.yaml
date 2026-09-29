@@ -1,0 +1,68 @@
+name: Diagnose - v7, is a bare trailing blank line (no RLE, no content) enough to fix it
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-29. v6/test 11 proved that appending a
+# whole extra REAL line (its own RLE...PDF span with visible text) after the true last content
+# line fixes that line's alignment - strong evidence Telegram inlines its own message timestamp
+# into the LAST rendered line, breaking that one line's bidi resolution specifically. Every real
+# production caption always ends on _force_rtl(footer_text) as its own literal last line (see
+# cards.py's format_caption/format_caption_whatsapp) - the exact same shape that's been breaking
+# in live screenshots this whole time.
+#
+# Before picking the real production fix, this checks whether the CHEAPEST possible fix works: a
+# single bare trailing "\n" (an empty final line, no RLE, no visible content at all) after the
+# real last line. If that's enough, the fix costs nothing visible to a real reader. If not, the
+# production fix needs an actual small trailing marker instead - same shape as test 9, but with a
+# genuinely empty line appended after the price line.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read the real bot token and owner chat id from the live k8s secret
+        run: |
+          BOT_TOKEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.telegram-bot-token}' | base64 -d)
+          OWNER_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$BOT_TOKEN"
+          echo "::add-mask::$OWNER_ID"
+          if [ -z "$BOT_TOKEN" ] || [ -z "$OWNER_ID" ]; then
+            echo "telegram-bot-token or owner-telegram-user-id is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$BOT_TOKEN" > /tmp/bot_token.txt
+          echo "$OWNER_ID" > /tmp/owner_id.txt
+
+      - name: Send 1 more targeted test message (body base64-decoded from ASCII-only source)
+        run: |
+          BOT_TOKEN=$(cat /tmp/bot_token.txt)
+          OWNER_ID=$(cat /tmp/owner_id.txt)
+
+          send() {
+            local n="$1"
+            local body_b64="$2"
+            local body
+            body=$(echo "$body_b64" | base64 -d)
+            echo "=== sending test $n ==="
+            curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${OWNER_ID}" \
+              --data-urlencode "text=${body}" \
+              --data-urlencode "parse_mode=HTML" \
+              --data-urlencode "disable_web_page_preview=true" \
+              -o /tmp/resp.json -w "  -> http_status=%{http_code}\n"
+            cat /tmp/resp.json
+            echo ""
+          }
+
+          send 12 "4oCr8J+nqiDXkdeT15nXp9eUIDEyIC0g15vXnteVINeR15PXmden15QgOSwg16LXnSDXqdeV16jXlCDXqNeZ16fXlCDXkdeh15XXoyDXkdec15HXk+KArArigKvwn5ON16LXk9eZIC0g16LXk9eZ4oCsCuKAq9eQ15zXldefIDEy4oCsCuKAq/CfkrAg157Xl9eZ16g6IDQsMTUw4oKq4oCsCg=="
+
+          echo "=== done - does price render fine with only a bare trailing blank line after it? ==="
