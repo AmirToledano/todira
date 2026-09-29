@@ -1,0 +1,70 @@
+name: Diagnose - send real labeled test messages to isolate the RTL link bug (v3, ascii-only source)
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-29. v1 and v2 of this same idea (see
+# git history) both had substantial Hebrew text typed directly into a run: block's own shell
+# syntax and both failed to register a working workflow_dispatch trigger at all - GitHub's own
+# list_workflows/get_workflow showed the raw file path instead of this file's own name: field for
+# both, exactly like a parse failure, even after v2 removed the literal bidi control characters
+# that were the first suspected cause. This version keeps the ENTIRE committed YAML source
+# 7-bit-ASCII-only - every Hebrew test-message body/label below is base64-encoded (computed and
+# roundtrip-verified locally, not hand-typed) and only decoded to real UTF-8 text at runtime - to
+# isolate whether non-ASCII source content itself, not just literal bidi control chars, is what
+# GitHub's workflow parser is choking on here.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read the real bot token and owner chat id from the live k8s secret
+        run: |
+          BOT_TOKEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.telegram-bot-token}' | base64 -d)
+          OWNER_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$BOT_TOKEN"
+          echo "::add-mask::$OWNER_ID"
+          if [ -z "$BOT_TOKEN" ] || [ -z "$OWNER_ID" ]; then
+            echo "telegram-bot-token or owner-telegram-user-id is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$BOT_TOKEN" > /tmp/bot_token.txt
+          echo "$OWNER_ID" > /tmp/owner_id.txt
+
+      - name: Send 6 labeled test messages (bodies base64-decoded from ASCII-only source)
+        run: |
+          BOT_TOKEN=$(cat /tmp/bot_token.txt)
+          OWNER_ID=$(cat /tmp/owner_id.txt)
+
+          send() {
+            local n="$1"
+            local body_b64="$2"
+            local body
+            body=$(echo "$body_b64" | base64 -d)
+            echo "=== sending test $n ==="
+            curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${OWNER_ID}" \
+              --data-urlencode "text=${body}" \
+              --data-urlencode "parse_mode=HTML" \
+              --data-urlencode "disable_web_page_preview=true" \
+              -o /tmp/resp.json -w "  -> http_status=%{http_code}\n"
+            cat /tmp/resp.json
+            echo ""
+          }
+
+          send 1 "8J+nqiBURVNUIDEgLSBwbGFpbiB0ZXh0LCBubyBsaW5rIChiYXNlbGluZSkK4oCr157Xl9eZ16g6IDQsMTUw4oKq4oCs"
+          send 2 "8J+nqiBURVNUIDIgLSBleGFjdCBwcm9kdWN0aW9uIHNoYXBlIChSTEUgb3V0c2lkZSA8YT4pCuKAqzxhIGhyZWY9Imh0dHBzOi8vd3d3Lmdvb2dsZS5jb20vbWFwcy9zZWFyY2gvP2FwaT0xJnF1ZXJ5PSVENyU5MCVENyU5QyVENyU5NSVENyU5RisxMiI+15DXnNeV158gMTI8L2E+4oCs"
+          send 3 "8J+nqiBURVNUIDMgLSBoeXBvdGhlc2lzIGZpeDogUkxFIGluc2lkZSA8YT4sIGFyb3VuZCB2aXNpYmxlIHRleHQKPGEgaHJlZj0iaHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL3NlYXJjaC8/YXBpPTEmcXVlcnk9JUQ3JTkwJUQ3JTlDJUQ3JTk1JUQ3JTlGKzEyIj7igKvXkNec15XXnyAxMuKArDwvYT4="
+          send 4 "8J+nqiBURVNUIDQgLSBzYW1lIHRleHQsIE5PVCBhIGxpbmsgYXQgYWxsCuKAq9eQ15zXldefIDEy4oCs"
+          send 5 "8J+nqiBURVNUIDUgLSBjaXR5K3N0cmVldCBsaW5rIGNvbWJpbmVkLCBvbmUgbGluZSAobm90IHNwbGl0KQrigKvXoteT15kgLSDXoteT15kgPGEgaHJlZj0iaHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL3NlYXJjaC8/YXBpPTEmcXVlcnk9JUQ3JTkwJUQ3JTlDJUQ3JTk1JUQ3JTlGKzEyIj7XkNec15XXnyAxMjwvYT7igKw="
+          send 6 "8J+nqiBURVNUIDYgLSBjaXR5K3N0cmVldCwgZWFjaCB2aXNpYmxlIHBpZWNlIHdyYXBwZWQgc2VwYXJhdGVseQrigKvXoteT15kgLSDXoteT15nigKwgPGEgaHJlZj0iaHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL3NlYXJjaC8/YXBpPTEmcXVlcnk9JUQ3JTkwJUQ3JTlDJUQ3JTk1JUQ3JTlGKzEyIj7igKvXkNec15XXnyAxMuKArDwvYT4="
+
+          echo "=== done - ask the owner which numbered messages look right-aligned vs broken ==="
