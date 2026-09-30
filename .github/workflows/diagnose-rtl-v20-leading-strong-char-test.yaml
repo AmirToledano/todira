@@ -1,0 +1,116 @@
+name: Diagnose - v20, does the FIRST visible character (emoji vs real Hebrew) decide block alignment
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-30. The owner circled the actual
+# problem on a real screenshot: it's not character ORDER within a line (that's correct - each
+# line's own emoji/text reads right-to-left correctly) - it's that the WHOLE TEXT BLOCK sits
+# left-anchored inside a wider bubble, leaving a big empty gap on the right where the block should
+# start. This happens in BOTH sendPhoto and sendMessage (confirmed by the owner on both v19
+# messages), ruling out "photo captions get centered" as the mechanism.
+#
+# New hypothesis: Unicode bidi marks (RLM/RLI/PDI/ZWNJ) control CHARACTER REORDERING within a
+# line, not block/paragraph-level UI alignment. Telegram's OWN client-side "is this RTL, mirror
+# the bubble" auto-detection is a SEPARATE, simpler heuristic that likely looks at the first
+# VISIBLE/printable character of the message (skipping invisible format characters like RLM) -
+# and our caption's every line starts with an EMOJI, a neutral character with no strong direction
+# of its own. If that first-visible-char heuristic sees an emoji first, it may fail to detect RTL
+# at the block level and left-anchor the whole bubble, even though each line's own bidi algorithm
+# still correctly reorders that line's real characters.
+#
+# Tests this directly: sends the REAL caption for a real listing two ways to the owner's own
+# chat, back to back, so it can be visually compared:
+#   A) exactly as production builds it today (every line emoji-first)
+#   B) the exact same content, but with one plain, mark-free, real-Hebrew sentence prepended as
+#      its own first line (no emoji, no RLM) - if Telegram's block-alignment locks onto the very
+#      first line of the whole message, this alone might right-anchor the entire block including
+#      every emoji-led line below it
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-real-card:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Find the live bot pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "Could not find a running todira-bot pod."
+            exit 1
+          fi
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          echo "Found pod: $POD"
+
+      - name: Send A (today's real shape), B (mark-free Hebrew line prepended), C (city before pin)
+        run: |
+          cat <<'PYEOF' > /tmp/send_abc.py
+          import asyncio
+          import os
+
+          from sqlalchemy import select
+          from telegram import Bot
+          from telegram.constants import ParseMode
+
+          from todira_common.cards import format_caption
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+
+          async def main() -> None:
+              token = os.environ["TELEGRAM_BOT_TOKEN"]
+              owner_id = int(os.environ["OWNER_TELEGRAM_USER_ID"])
+
+              with get_session() as session:
+                  stmt = (
+                      select(Listing)
+                      .where(Listing.is_delisted.is_(False))
+                      .where(Listing.duplicate_of_id.is_(None))
+                      .where(Listing.street.isnot(None))
+                      .where(Listing.description.isnot(None))
+                      .where(Listing.deal_type == "rent")
+                      .order_by(Listing.scraped_at.desc())
+                      .limit(1)
+                  )
+                  listing = session.scalars(stmt).first()
+                  if listing is None:
+                      print("No matching real listing found.")
+                      return
+
+                  print(f"Using REAL listing id={listing.id} city={listing.city!r} street={listing.street!r}")
+                  caption_a = format_caption(listing, has_access=True, lang="he")
+
+                  # B: same real caption, with ONE plain mark-free Hebrew sentence prepended as its
+                  # own first line - no emoji, no RLM/RLI/PDI on this one extra line.
+                  caption_b = "בדיקת יישור - שורה ראשונה בעברית רגילה בלי סימנים\n" + caption_a
+
+                  async with Bot(token=token) as bot:
+                      await bot.send_message(chat_id=owner_id, text="‏⬇️ A — בדיוק כמו היום (כל שורה מתחילה באימוג'י):")
+                      await bot.send_photo(
+                          chat_id=owner_id,
+                          photo=listing.image_urls[0] if listing.image_urls else "https://raw.githubusercontent.com/AmirToledano/todira/main/common/todira_common/assets/dachshunds/todi_detective.jpg",
+                          caption=caption_a,
+                          parse_mode=ParseMode.HTML,
+                      )
+                      print("A sent.")
+
+                      await bot.send_message(chat_id=owner_id, text="‏⬇️ B — אותו דבר, אבל עם שורה ראשונה נוספת בעברית נקייה (בלי אימוג'י/סימנים) לפני הכל:")
+                      await bot.send_photo(
+                          chat_id=owner_id,
+                          photo=listing.image_urls[0] if listing.image_urls else "https://raw.githubusercontent.com/AmirToledano/todira/main/common/todira_common/assets/dachshunds/todi_detective.jpg",
+                          caption=caption_b,
+                          parse_mode=ParseMode.HTML,
+                      )
+                      print("B sent.")
+
+
+          asyncio.run(main())
+          PYEOF
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/send_abc.py
