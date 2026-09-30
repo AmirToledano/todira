@@ -1073,3 +1073,49 @@ def test_process_payload_sync_one_bad_message_does_not_abort_the_rest_of_the_bat
 
     # The second (good) message still got processed despite the first one raising.
     assert _fake_handle.calls == ["9725500002"]
+
+
+def test_failed_delivery_status_is_logged_with_meta_error_but_never_the_recipient(caplog):
+    # Found 2026-10-01: statuses used to be dropped silently, so a message Meta accepted (200) but
+    # never delivered left no trace at all.
+    payload = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "statuses": [
+                                {
+                                    "id": "wamid.SECRET",
+                                    "status": "failed",
+                                    "recipient_id": "972500000000",
+                                    "pricing": {"category": "marketing"},
+                                    "errors": [
+                                        {
+                                            "code": 131049,
+                                            "title": "healthy ecosystem engagement",
+                                            "error_data": {"details": "not delivered"},
+                                        }
+                                    ],
+                                },
+                                {
+                                    "id": "wamid.OTHER",
+                                    "status": "delivered",
+                                    "recipient_id": "972500000000",
+                                    "pricing": {"category": "utility"},
+                                },
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    with caplog.at_level("INFO", logger=whatsapp_webhook.logger.name):
+        whatsapp_webhook._process_payload_sync(payload)
+
+    text = caplog.text
+    assert "delivery FAILED" in text and "131049" in text and "marketing" in text
+    assert "status=delivered" in text and "utility" in text
+    assert "972500000000" not in text
+    assert "wamid" not in text
