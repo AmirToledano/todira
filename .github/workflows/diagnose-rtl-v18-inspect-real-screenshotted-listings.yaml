@@ -1,0 +1,87 @@
+name: Diagnose - v18, inspect the EXACT real listings from the owner's own broken screenshot
+
+# ONE-OFF, READ-ONLY (only reads Listing rows, never writes, never sends), manual-only
+# (workflow_dispatch) - added 2026-09-30, right after PR #572 (the Isolates+RLM+absorber fix)
+# was merged and deployed, and confirmed live via v9 on listing id=17433.
+#
+# The owner then reported REAL Telegram screenshots (sent 2026-09-30 ~10:13-10:14 Israel time,
+# by the todira-scraper CronJob's own new-match push, confirmed via
+# diagnose-full-cluster-health-check.yaml to already be running image 0d5eb1a - the exact commit
+# PR #572 shipped) that are STILL not right-aligned. This is a real, unexplained gap: v9's own
+# diagnostic (same image, same shared cards.py, different listing) rendered correctly. Something
+# about THESE SPECIFIC listings' real content must differ in a way v9's one sample listing didn't
+# exercise.
+#
+# Read-only: finds the exact 3 listings from the owner's screenshots by street+city match and
+# prints format_caption's real repr() for each (hidden control chars visible) plus format_caption's
+# own line-by-line breakdown, so the actual byte-level RLM/RLI/PDI structure that was really SENT
+# can be inspected directly, rather than guessed at from a screenshot.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Find the live bot pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "Could not find a running todira-bot pod."
+            exit 1
+          fi
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          echo "Found pod: $POD"
+
+      - name: Read-only - find the exact screenshotted listings and print format_caption's real repr()
+        run: |
+          cat <<'PYEOF' > /tmp/inspect_real_listings.py
+          from sqlalchemy import or_, select
+
+          from todira_common.cards import format_caption
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+          # (city substring, street substring) pairs taken directly from the owner's own screenshots
+          TARGETS = [
+              ("מעלות תרשיחא", "כנרת"),
+              ("חיפה", "בודנהיימר"),
+              ("חיפה", "רבי עקיבא"),
+          ]
+
+          with get_session() as session:
+              for city_sub, street_sub in TARGETS:
+                  stmt = (
+                      select(Listing)
+                      .where(Listing.city.ilike(f"%{city_sub}%"))
+                      .where(Listing.street.ilike(f"%{street_sub}%"))
+                      .order_by(Listing.scraped_at.desc())
+                      .limit(1)
+                  )
+                  listing = session.scalars(stmt).first()
+                  print(f"\n\n===== target city~={city_sub!r} street~={street_sub!r} =====")
+                  if listing is None:
+                      print("NOT FOUND in DB (may have been delisted/removed already).")
+                      continue
+                  print(
+                      f"Using REAL listing id={listing.id} city={listing.city!r} "
+                      f"street={listing.street!r} scraped_at={listing.scraped_at}"
+                  )
+                  caption = format_caption(listing, has_access=True, lang="he")
+                  print("--- repr() so hidden control chars are visible ---")
+                  print(repr(caption))
+                  print(f"--- caption length: {len(caption)} chars ---")
+                  print("--- line by line, each with its own repr() ---")
+                  for i, line in enumerate(caption.split("\n")):
+                      print(f"  line {i}: {line!r}")
+          PYEOF
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/inspect_real_listings.py
