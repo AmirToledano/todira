@@ -288,7 +288,6 @@ async def _notify_new_matches(
     listing: Listing,
     *,
     only_telegram_user_id: str | None = None,
-    whatsapp_sent_user_ids: set[int] | None = None,
 ) -> tuple[int, int, set[int]]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
@@ -303,20 +302,19 @@ async def _notify_new_matches(
     silently skipped (never marked as notified, so they still get the real notification once this
     restriction is lifted on a later run).
 
-    `whatsapp_sent_user_ids`: 2026-09-27 real owner report — a broad filter can genuinely match
-    many listings in the same scrape run, and WhatsApp (unlike Telegram, or the website) pings the
-    phone for every single one individually; the owner's own account got flooded the moment he
-    connected. run_notifications passes ONE shared set across its whole run (every new-match
-    listing AND every price-change re-notify), so a user gets at most one real WhatsApp send per
-    run regardless of how many listings matched — the rest stay un-notified on WhatsApp
-    specifically (Telegram/website are unaffected) and simply get picked up on the NEXT run
-    instead, since a user only ever counts as "notified" here once _send_whatsapp_match_template
-    actually succeeds (see below) — nothing is silently lost, it just spreads out instead of
-    landing all at once. None (the default) means uncapped — every existing caller/test that
-    doesn't pass this continues to behave exactly as before, since a single isolated call only
-    ever considers one listing's worth of users anyway."""
-    if whatsapp_sent_user_ids is None:
-        whatsapp_sent_user_ids = set()
+    2026-09-27 through 2026-09-30: this used to cap WhatsApp to one send per user per run (a
+    shared `whatsapp_sent_user_ids` set threaded through every call in the run), added after a
+    real report that a broad filter flooded WhatsApp with one push per matching listing at once.
+    Real owner report the other direction, 2026-09-30: the cap's own claim that the rest "get
+    picked up on the next run instead" was false whenever the SAME user also had Telegram linked —
+    Telegram sends uncapped and immediately writes the shared, channel-agnostic
+    SentNotification(reason=NEW) row for every matching listing in this run, which is exactly the
+    row `_already_notified` checks to decide whether a listing is even reconsidered on a future
+    run. A user with both channels linked (the common case) never got a "next run" for the
+    listings WhatsApp skipped — they were silently dropped from WhatsApp forever, not deferred.
+    Explicit owner call: WhatsApp should be a full notification channel exactly like Telegram and
+    the website, not a throttled one — cap removed, every match now sends on every eligible
+    channel."""
     matched = 0
     sent = 0
     newly_notified_user_ids: set[int] = set()
@@ -362,7 +360,7 @@ async def _notify_new_matches(
             if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
                 sent_on_any_channel = True
             await asyncio.sleep(SEND_DELAY_SECONDS)
-        if _whatsapp_eligible(user) and user.id not in whatsapp_sent_user_ids:
+        if _whatsapp_eligible(user):
             # asyncio.to_thread: the plain template send is just one quick HTTP POST, but the rich
             # template (_send_whatsapp_rich_match_template, once WHATSAPP_RICH_MATCH_TEMPLATE_NAME
             # is set) also downloads/composites a real photo first — genuinely blocking work that
@@ -370,7 +368,6 @@ async def _notify_new_matches(
             # own asyncio.to_thread calls around _build_collage_sync.
             if await asyncio.to_thread(_send_whatsapp_match_template, user, listing):
                 sent_on_any_channel = True
-                whatsapp_sent_user_ids.add(user.id)
             await asyncio.sleep(WHATSAPP_SEND_DELAY_SECONDS)
         if sent_on_any_channel:
             # One row per user per listing regardless of how many channels it went out on — this
@@ -512,9 +509,6 @@ async def run_notifications(
     matched_count = 0
     new_sent_count = 0
     price_change_sent_count = 0
-    # 2026-09-27: one shared set for the WHOLE run (new matches AND price-change re-notifies
-    # together) — see _notify_new_matches' own docstring on whatsapp_sent_user_ids for why.
-    whatsapp_sent_user_ids: set[int] = set()
 
     async with Bot(token=token) as bot:
         for listing in new_listings:
@@ -523,7 +517,6 @@ async def run_notifications(
                 session,
                 listing,
                 only_telegram_user_id=only_telegram_user_id,
-                whatsapp_sent_user_ids=whatsapp_sent_user_ids,
             )
             matched_count += m
             new_sent_count += s
@@ -534,7 +527,6 @@ async def run_notifications(
                 session,
                 listing,
                 only_telegram_user_id=only_telegram_user_id,
-                whatsapp_sent_user_ids=whatsapp_sent_user_ids,
             )
             matched_count += m
             new_sent_count += s

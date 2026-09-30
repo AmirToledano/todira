@@ -437,21 +437,23 @@ def test_notify_new_matches_sends_via_both_channels_when_linked_to_both():
     assert len(added) == 1
 
 
-def test_notify_new_matches_skips_whatsapp_send_when_user_already_capped_this_run():
-    """2026-09-27 real owner report: a broad filter matching many listings in one scrape run used
-    to fire a separate WhatsApp message per listing, flooding the phone the moment notifications
-    were enabled. whatsapp_sent_user_ids (shared across a whole run by run_notifications) caps
-    this to at most one real WhatsApp send per user — this listing's match is still counted and
-    matched against the filter, but no second WhatsApp API call happens for a user already in the
-    set, and (since nothing was actually sent) no SentNotification row is written either, so the
-    listing is picked up again on a later run instead of being silently lost."""
+def test_notify_new_matches_sends_whatsapp_for_every_matching_listing_no_cap():
+    """2026-09-27 through 2026-09-30: a real owner report about WhatsApp flooding led to a
+    per-run cap (at most one real WhatsApp send per user per scrape run, via a shared
+    whatsapp_sent_user_ids set) — removed 2026-09-30 after a second real owner report the other
+    direction: the cap's own claim that skipped listings "get picked up on the next run instead"
+    was false whenever the same user also had Telegram linked (the common case), since Telegram
+    sends uncapped and immediately writes the shared, channel-agnostic SentNotification row that
+    _already_notified checks — those listings were silently dropped from WhatsApp forever, not
+    deferred. Explicit owner call: WhatsApp is a full channel like Telegram and the website now,
+    with no artificial cap — this call (no whatsapp_sent_user_ids arg exists anymore) always
+    attempts the send for a matching, opted-in user."""
     listing = SimpleNamespace(id=10, price=5000, description=None, street="רוטשילד", neighborhood=None, city="תל אביב", rooms=3.0)
     filter_row = SimpleNamespace(user_id=1)
     user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
     added = []
     session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: added.append(obj), commit=lambda: None)
     bot = SimpleNamespace()
-    already_sent_this_run = {1}  # user.id == 1, already got a WhatsApp send earlier this same run
 
     with (
         patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"),
@@ -459,44 +461,17 @@ def test_notify_new_matches_skips_whatsapp_send_when_user_already_capped_this_ru
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
         patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_wa_send,
-    ):
-        matched, sent, newly_notified = asyncio.run(
-            notifier._notify_new_matches(
-                bot, session, listing, whatsapp_sent_user_ids=already_sent_this_run
-            )
-        )
-
-    mock_wa_send.assert_not_called()
-    assert matched == 1  # still correctly evaluated as a real match against the filter
-    assert sent == 0  # but nothing actually went out this call
-    assert added == []  # no SentNotification row — a later run can still notify this user
-    assert newly_notified == set()
-
-
-def test_notify_new_matches_whatsapp_send_adds_user_to_the_shared_cap_set():
-    listing = SimpleNamespace(id=10, price=5000, description=None, street="רוטשילד", neighborhood=None, city="תל אביב", rooms=3.0)
-    filter_row = SimpleNamespace(user_id=1)
-    user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
-    session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: None, commit=lambda: None)
-    bot = SimpleNamespace()
-    shared_cap_set: set[int] = set()
-
-    with (
-        patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"),
-        patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
-        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
-        patch.object(notifier, "_already_notified", return_value=False),
-        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True),
         patch.object(notifier, "WHATSAPP_SEND_DELAY_SECONDS", 0),
     ):
-        asyncio.run(
-            notifier._notify_new_matches(
-                bot, session, listing, whatsapp_sent_user_ids=shared_cap_set
-            )
+        matched, sent, newly_notified = asyncio.run(
+            notifier._notify_new_matches(bot, session, listing)
         )
 
-    assert shared_cap_set == {1}  # user.id == 1 — a second listing in the same run's shared set
-    # would now see this user already capped, per the test above.
+    mock_wa_send.assert_called_once()
+    assert matched == 1
+    assert sent == 1
+    assert len(added) == 1
+    assert newly_notified == {1}
 
 
 def test_notify_new_matches_still_skips_whatsapp_only_user_when_not_opted_in():
