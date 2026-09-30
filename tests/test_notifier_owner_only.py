@@ -113,9 +113,7 @@ def test_run_notifications_threads_only_telegram_user_id_through(monkeypatch):
 
     calls = []
 
-    async def _fake_notify_new_matches(
-        bot, session, listing, *, only_telegram_user_id=None, whatsapp_sent_user_ids=None
-    ):
+    async def _fake_notify_new_matches(bot, session, listing, *, only_telegram_user_id=None):
         calls.append(("new", only_telegram_user_id))
         return 0, 0, set()
 
