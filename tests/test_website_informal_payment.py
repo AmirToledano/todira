@@ -45,12 +45,13 @@ class _FakeUser:
 
 
 class _FakePayment:
-    def __init__(self, id, user_id, plan="weekly", amount_ils=15, status="pending"):
+    def __init__(self, id, user_id, plan="weekly", amount_ils=15, status="pending", gateway=None):
         self.id = id
         self.user_id = user_id
         self.plan = plan
         self.amount_ils = amount_ils
         self.status = status
+        self.gateway = gateway
         self.paid_at = None
 
 
@@ -211,3 +212,38 @@ def test_confirm_404s_for_someone_elses_payment(client):
 
     assert resp.status_code == 404
     assert payment.status == "pending"  # untouched
+
+
+def test_confirm_404s_for_a_pending_gateway_payment_so_it_cannot_be_self_confirmed(client):
+    # Found 2026-09-30: POST /upgrade creates the caller's OWN pending Takbull/Grow payment, and this
+    # self-service endpoint used to accept it too - a free month for anyone, once a real gateway is
+    # configured. Only the gateway's own webhook may ever mark such a payment paid.
+    for gateway in ("takbull", "grow"):
+        user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
+        payment = _FakePayment(id=9, user_id=2, plan="monthly", status="pending", gateway=gateway)
+        fake_session = _FakeSession(
+            users_by_telegram_id={222: user},
+            get_map={(website_main.Payment, 9): payment},
+        )
+
+        with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+            resp = client.post("/upgrade/pay/confirm", data={"payment_id": 9, "uid": "222"})
+
+        assert resp.status_code == 404
+        assert payment.status == "pending"
+        assert user.paid_until is None
+        assert fake_session.committed is False
+
+
+def test_upgrade_pay_page_404s_for_a_gateway_payment(client):
+    user = _FakeUser(id=2, telegram_user_id=222)
+    payment = _FakePayment(id=9, user_id=2, gateway="takbull")
+    fake_session = _FakeSession(
+        users_by_telegram_id={222: user},
+        get_map={(website_main.Payment, 9): payment},
+    )
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/upgrade/pay", params={"payment_id": 9, "uid": 222})
+
+    assert resp.status_code == 404

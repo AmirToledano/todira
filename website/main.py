@@ -1822,7 +1822,7 @@ def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
     with get_session() as session:
         payment = session.get(Payment, payment_id)
         user = _resolve_user(request, session, uid)
-        if user is None or payment is None or payment.user_id != user.id:
+        if user is None or payment is None or payment.user_id != user.id or payment.gateway is not None:
             return _render(request, "404.html", {}, status_code=404)
         redirect_uid = user.telegram_user_id
 
@@ -1844,10 +1844,15 @@ def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
 
 @app.post("/upgrade/pay/confirm")
 def upgrade_pay_confirm(request: Request, payment_id: int = Form(...), uid: int | None = Form(None)):
+    """Self-service "I paid" confirmation for the informal flow ONLY (gateway=None). A pending
+    Takbull/Grow payment must never be confirmable from here: its own gateway webhook is the only
+    thing allowed to mark it paid, otherwise anyone could POST /upgrade (creating their own
+    pending gateway payment) and then confirm it themselves for free access — found 2026-09-30 in
+    a code-review pass, unexploitable only while no real gateway is configured."""
     with get_session() as session:
         payment = session.get(Payment, payment_id)
         user = _resolve_user(request, session, uid)
-        if user is None or payment is None or payment.user_id != user.id:
+        if user is None or payment is None or payment.user_id != user.id or payment.gateway is not None:
             return _render(request, "404.html", {}, status_code=404)
 
         if payment.status == "pending":

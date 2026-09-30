@@ -668,6 +668,34 @@ def test_incomplete_state_persists_pending_onboarding_without_creating_filter():
     assert user.pending_onboarding_state["deal_type"] == "rent"
 
 
+def test_later_onboarding_turn_assigns_a_new_dict_so_progress_is_actually_saved():
+    # Found 2026-09-30: the handler mutated the JSONB dict loaded from the row and assigned that
+    # SAME object back - SQLAlchemy sees no change, emits no UPDATE, and every turn after the first
+    # silently lost its progress. The fix copies first; this pins that the stored value is a NEW
+    # dict carrying the update while the originally loaded one is left untouched.
+    session = _FakeSession(existing_filter=None)
+    loaded_state = {
+        "deal_type": "rent", "cities": [], "rooms_min": None, "rooms_max": None,
+        "price_min": None, "price_max": None, "keywords": [],
+    }
+    user = _fake_user(pending_state=loaded_state)
+    turn_two = {
+        "rooms_min": 2, "rooms_max": 3, "missing_required": ["cities"],
+        "response_message": "באיזו עיר?",
+    }
+    with (
+        patch.object(whatsapp_webhook, "get_session", lambda: session),
+        patch.object(whatsapp_webhook, "get_or_create_whatsapp_user", lambda *a: user),
+        patch.object(whatsapp_webhook.gemini_client, "parse_onboarding_message", return_value=turn_two),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+    ):
+        whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "2-3 חדרים")
+
+    assert user.pending_onboarding_state is not loaded_state
+    assert user.pending_onboarding_state["rooms_min"] == 2
+    assert loaded_state["rooms_min"] is None
+
+
 def test_complete_state_creates_filter_and_clears_pending_state():
     session = _FakeSession(existing_filter=None)
     user = _fake_user(pending_state={"deal_type": "rent", "cities": [], "rooms_min": None,

@@ -870,6 +870,9 @@ def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Lis
         for listing in session.scalars(
             select(Listing).where(
                 Listing.is_delisted.is_(False),
+                # A cross-source duplicate row is deliberately never notified (see _upsert_listings),
+                # so it would pass ~never_notified_exists forever and re-send the same apartment.
+                Listing.duplicate_of_id.is_(None),
                 Listing.scraped_at >= retry_window_cutoff,
                 ~never_notified_exists,
             )

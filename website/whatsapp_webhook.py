@@ -460,7 +460,10 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
             )
             return
 
-        state = user.pending_onboarding_state or dict(_EMPTY_ONBOARDING_STATE)
+        # dict(...) copy, not the loaded JSONB dict itself: mutating that in place and assigning it
+        # back is the SAME object to SQLAlchemy (no change detected, no UPDATE) — so every turn
+        # after the first silently lost its progress. Found 2026-09-30 in a code-review pass.
+        state = dict(user.pending_onboarding_state or _EMPTY_ONBOARDING_STATE)
         result = gemini_client.parse_onboarding_message(text, state, cities.CITIES, lang)
 
         if result is None:
