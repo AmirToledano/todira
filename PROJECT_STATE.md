@@ -7705,3 +7705,99 @@ working. The one open item that's actually code-related: **the RTL indentation f
 fresh owner screenshot to confirm it actually closed the bug** (see the ⚠️ note above) — everything
 else outstanding (UPay, Meta Business verification, the WhatsApp rich-template approval, Takbull/
 Grow) is externally blocked on a third party, not on any code work here.
+
+## RTL caption alignment — the real story (PRs #565–#572, 2026-09-29/30)
+
+The ⚠️ note above turned out to be right to be cautious: PR #545's fix (pre-wrapping long lines)
+was not the actual root cause, and the bug kept reproducing on real production sends. What
+followed was a much longer live-diagnostic investigation, using one-off `workflow_dispatch`-only
+GitHub Actions workflows (`diagnose-rtl-*-live-test-v3` through `v17`, all deleted from the
+runbook mentally once superseded but left in `.github/workflows/` as the evidence trail) that send
+real Telegram messages to the owner's own chat, and — the methodology breakthrough — `kubectl
+exec` into the live bot pod to pull a REAL `Listing` row from the REAL database and call the REAL
+`format_caption`/`send_listing_card` functions (v9, v13), rather than ever hand-reconstructing
+synthetic test content. Short synthetic messages repeatedly gave false negatives; the bug only
+reliably reproduced on real, full-length listing content.
+
+**Root cause, finally confirmed (v9/v11)**: `_force_rtl` wrapped each line in an RLE...PDF bidi
+*embedding* (U+202B/U+202C). Whenever a `<b>...</b>` bold tag sat inside that embedding, the
+embedding's directional state leaked across the tag's own boundary and broke Telegram's right
+alignment for that line. A live A/B send of the exact same real listing (id 21873), identical
+content with only `<b>` toggled, showed the bold version rendering broken while the plain-text
+version rendered correctly — isolating `<b>` specifically (an `<a>` link crossing the same
+embedding rendered fine either way).
+
+**First shipped fix (PR #565, then #566)**: since no safe way to keep `<b>` inside the embedding
+was found at the time, RTL captions (he/ar) had their `<b>` labels dropped entirely — plain text
+only. This fixed alignment (owner-confirmed) but lost bold styling, which the owner then asked to
+get back (PR #568's diagnostic). PR #565 also tried measuring an `<a>` anchor's visible-text-only
+width instead of its full raw href length, to let city+street sit on one physical line — this
+caused a real regression (line rendered close to the right edge but not flush), live-confirmed and
+reverted in PR #566; the two-line split for that case is still what ships today.
+
+**Second opinion + the real fix (PRs #569–#572)**: rather than keep guessing, the owner's own
+suggestion was to hand the full investigation (write-up + relevant code) to Gemini for an outside
+technical opinion (`/tmp/.../scratchpad/gemini-rtl-bug-prompt.md`, sent via file, its answer
+pasted back as a PDF). Gemini correctly diagnosed the mechanism: bidi **embeddings** (RLE/PDF)
+leak directional state across an entity boundary; bidi **isolates** (RLI U+2067 / PDI U+2069,
+Unicode 6.3+) scope their content and do not. It proposed switching to isolates, adding an RLM
+(U+200F) immediately before each line's leading character (protects a leading neutral/emoji
+character from being read before Telegram resolves paragraph direction), and a trailing invisible
+RLM+LRM "absorber" line at the very end of the whole caption (protects the true last line from
+Telegram's own timestamp/read-receipt UI injection corrupting its bidi resolution — this matches
+an independently-confirmed earlier finding, v6/v7, that a short last line always broke unless
+something followed it).
+
+Live-tested (v14, internally "test 17") on the exact real listing 21873 content, bold included —
+confirmed by the owner as correct: alignment flush right on every line, bold restored. (One
+dispatch of v14 initially reported success on a false premise — the GitHub Actions job itself was
+green because `curl` succeeded, but Telegram's API had actually rejected the message with a 400 due
+to a transcription bug that corrupted `<a href=` into `8a href=` while embedding the base64 payload
+into the workflow file. Job status is not proof of a successful send; the fix was re-verified by
+reading the actual response body, and the workflow itself now asserts tag balance before sending
+and checks Telegram's own `ok` field before declaring success.)
+
+**Shipped to production (PR #572)**: `cards.py`'s `_force_rtl` rewritten around `_RLM`/`_RLI`/
+`_PDI`/`_LRM` constants and a new `_isolate()` helper; a regex (`_HTML_TAGGED_SPAN_RE`) finds every
+`<b>`/`<a>` span on a line and isolates its inner text in place (tags themselves untouched), and
+isolates every plain-text run around/between them — generic regardless of how many tags appear per
+line. `format_caption`'s `bold`/`street_link`/footer construction reverted back to their simple,
+un-worked-around form (`<b>{s}</b>`, plain `<a href=...>`) since `_force_rtl` now handles isolation
+universally. The RTL footer gets a trailing `RLM+LRM` absorber line, correctly counted against
+`CAPTION_LIMIT` before the fit-to-limit trim (footer itself is never trimmed, so the absorber
+always survives). `bot_strings.py`'s `card.no_photos_banner` he/ar entries got their `<b>` wrap
+back too. ~22 tests in `test_cards.py` rewritten for the new mark scheme, with a `rtl()` test
+helper that calls the real `_force_rtl` (not a hand-reimplementation) so expected fragments stay
+honest. Full suite: 1173 tests pass, ruff clean.
+
+**Deliberately NOT re-attempted**: combining city+street onto one physical line (the PR #565
+regression). No live-verified-safe way to mix a plain-text run and a link-entity run inside one
+bidi span was found; revisit only if specifically asked, and only with a fresh live A/B test before
+shipping.
+
+**Separately investigated, no code change**: a real production listing showed a badly garbled,
+interleaved description (words from different lines merged with no spaces) — worse than the
+alignment bug, initially suspected to be related. `kubectl exec`'d a read-only DB capture (v13) of
+both the raw pre-formatting text and the exact caption `format_caption` builds, and confirmed the
+garbling is already present in Komo's own raw source `<meta name="Description">` content — not
+something this codebase's formatting introduces or can fix. Owner's explicit call: leave it, a
+handful of garbled listings out of the full set is acceptable, don't spend more time on it.
+
+**Also shipped this window (PR #567), unrelated bug found by real owner report**: a broad WhatsApp
+filter (all cities, 2–6 rooms) was only producing 2–3 messages/day despite clearly matching far
+more real listings. Root cause: a 2026-09-27 `whatsapp_sent_user_ids` cap (at most one real
+WhatsApp send per user per scrape run) whose own docstring claimed a skipped listing "gets picked
+up on the next run instead" — false whenever the same user also has Telegram linked (the common
+case): Telegram's send is uncapped and immediately writes the same channel-agnostic
+`SentNotification(reason=NEW)` row that gates all *future* reconsideration of that (user, listing)
+pair on *any* channel. A dual-channel user's WhatsApp-skipped listings were quietly dropped
+forever, never actually deferred. Per explicit owner instruction ("אני רוצה שווצאפ תשמש כמקור
+להודעות כרגיל כמו האתר וטלגרם בדיוק אותו דבר" — WhatsApp should be a full notification channel
+exactly like Telegram and the website, no cap), the cap was removed entirely from
+`_notify_new_matches`/`run_notifications`.
+
+**Status as of this session**: PRs #565–#572 all merged to `main`. PR #572 (the Isolates fix) is
+the one that matters going forward — everything before it in this range was either a stepping
+stone (the bold-removal workaround, now superseded) or an independent WhatsApp bug fix. CI/CD
+deploy confirmed via the Actions API after each merge, not assumed. Full suite green (1173 tests),
+ruff clean throughout.
