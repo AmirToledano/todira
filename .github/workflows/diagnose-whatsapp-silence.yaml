@@ -1,0 +1,98 @@
+name: Diagnose - why no WhatsApp match messages arrived since the last burst (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch) - added 2026-10-01. The owner's phone shows a
+# burst of plain-template WhatsApp match messages at 13:09-13:10 Israel time and then NOTHING: no
+# organic match pushes all afternoon/evening, and the one rich-template test send (Meta answered 200)
+# never showed up either. Looks at, without guessing:
+#   1. the recent scraper Jobs (did the hourly 09:00-22:00 Israel runs happen, did they finish) and
+#      each pod's own summary/WhatsApp log lines,
+#   2. the DB: the owner's recent sent_notifications, the newest listings, and whether the owner is
+#      still WhatsApp-eligible with an active filter,
+#   3. the website pod's webhook traffic (Meta posts delivery "statuses" to the same webhook).
+# Prints no phone numbers and no message ids.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Recent scraper Jobs and each pod's own summary / WhatsApp log lines
+        run: |
+          date -u
+          echo "=== main scraper jobs, oldest first ==="
+          kubectl get jobs -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp \
+            -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp,DONE:.status.completionTime,SUCCEEDED:.status.succeeded,FAILED:.status.failed || true
+          echo
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}'); do
+            echo "################ $POD"
+            kubectl get pod "$POD" -n todira -o jsonpath='{.status.phase}{" started="}{.status.startTime}{"\n"}'
+            kubectl logs -n todira "$POD" 2>&1 | grep -iE "whatsapp|summary|notifications_sent|matched|suspend|Traceback|Error|Failed" | tail -25
+          done
+
+      - name: DB - owner eligibility, recent notifications, newest listings
+        run: |
+          cat <<'PYEOF' > /tmp/silence.py
+          import datetime as dt
+          import os
+
+          from sqlalchemy import func, select
+
+          from todira_common.db import get_session
+          from todira_common.models import Filter, Listing, SentNotification, User
+
+          with get_session() as s:
+              owner = s.scalars(
+                  select(User).where(User.telegram_user_id == int(os.environ["OWNER_TELEGRAM_USER_ID"]))
+              ).first()
+              print("now (UTC):", dt.datetime.now(dt.timezone.utc).isoformat())
+              print("owner found:", owner is not None)
+              if owner is None:
+                  raise SystemExit(0)
+              print("is_active:", owner.is_active, "| notifications_enabled:", owner.notifications_enabled)
+              print("whatsapp number linked:", bool(owner.whatsapp_phone_number),
+                    "| whatsapp opted in:", bool(owner.whatsapp_notifications_opted_in))
+              f = s.scalar(select(Filter).where(Filter.user_id == owner.id))
+              print("owner has a filter:", f is not None)
+              if f is not None:
+                  print("filter: deal_type=%s cities=%s rooms=%s-%s price=%s-%s" % (
+                      f.deal_type, f.cities, f.rooms_min, f.rooms_max, f.price_min, f.price_max))
+
+              print("--- owner's 12 most recent sent_notifications (UTC) ---")
+              rows = s.execute(
+                  select(SentNotification.sent_at, SentNotification.reason, SentNotification.listing_id)
+                  .where(SentNotification.user_id == owner.id)
+                  .order_by(SentNotification.sent_at.desc())
+                  .limit(12)
+              ).all()
+              for r in rows:
+                  print(r.sent_at.isoformat(), r.reason, "listing", r.listing_id)
+              print("total sent_notifications for owner:",
+                    s.scalar(select(func.count()).select_from(SentNotification).where(SentNotification.user_id == owner.id)))
+
+              print("--- newest 8 active listings by scraped_at (UTC) ---")
+              for l in s.scalars(
+                  select(Listing).where(Listing.is_delisted.is_(False)).order_by(Listing.scraped_at.desc()).limit(8)
+              ):
+                  print(l.scraped_at.isoformat(), l.source, l.deal_type, l.city, "id", l.id, "dup_of", l.duplicate_of_id)
+              cutoff = dt.datetime(2026, 9, 30, 10, 10, tzinfo=dt.timezone.utc)
+              print("listings first inserted or re-scraped since 10:10Z:",
+                    s.scalar(select(func.count()).select_from(Listing).where(Listing.scraped_at >= cutoff)))
+          PYEOF
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/silence.py
+
+      - name: Website pod - WhatsApp webhook traffic (Meta delivery statuses arrive here)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}')
+          echo "pod: $POD"
+          kubectl logs -n todira "$POD" --since=6h 2>&1 | grep -iE "webhook/whatsapp|whatsapp" | sed -E 's/[0-9]{11,}/<num>/g' | tail -40
