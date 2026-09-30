@@ -136,6 +136,23 @@ def test_parse_details_html_description_html_entities_unescaped():
     assert item["description"] == "דירה & מרפסת \xa0גדולה"
 
 
+def test_parse_details_html_street_html_entities_unescaped():
+    # Real bug, found 2026-09-30 via an owner screenshot: og:title's own content="..." attribute
+    # is real HTML source text, and Komo's real data for this listing contains a literal `"`
+    # inside a street name (Hebrew gershayim, e.g. "הפלמ"ח") — which the source page itself
+    # HTML-encodes as `&quot;` inside the attribute. This file used to hand-replace only &nbsp;
+    # and skip a real html.unescape() entirely, so &quot; (and any other entity) leaked straight
+    # into `street`/`city` as literal, un-decoded text instead of a plain `"`.
+    html = (
+        '<div class="price modaaWPrice"><span>3,000</span></div>'
+        '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;2 חדרים '
+        '&nbsp;בבן עמי, הפלמ&quot;ח 1" />'
+    )
+    item = _parse_details_html(html, modaa_num="4471462")
+    assert item["street"] == 'הפלמ"ח 1'
+    assert item["city"] == "בן עמי"
+
+
 def test_parse_details_html_no_images_at_all_leaves_images_empty():
     # Neither a gallery nor an og:image — must degrade to an empty list, not raise (same
     # benefit-of-the-doubt policy as every other optional field here).
