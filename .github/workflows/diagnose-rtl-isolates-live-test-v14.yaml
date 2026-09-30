@@ -1,0 +1,64 @@
+name: Diagnose - v14, Gemini's proposed fix - Isolates (RLI/PDI) + RLM + last-line absorber
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-30. Sent the full RTL investigation
+# history + relevant code to Gemini for a second opinion (owner's own request). Gemini's technical
+# answer: switch from bidi EMBEDDINGS (RLE U+202B / PDF U+202C) to bidi ISOLATES (RLI U+2067 /
+# PDI U+2069, Unicode 6.3+) - isolates don't leak directional state across a styling entity
+# boundary the way embeddings do, which lines up with our own confirmed finding that <b> crossing
+# an embedding breaks alignment. Also recommends: an explicit RLM (U+200F) immediately before each
+# line's leading emoji (forcing paragraph direction before the neutral emoji is even read), and a
+# trailing invisible RLM+LRM absorber line at the very end of the whole message - which matches
+# our OWN independently-confirmed "last line" finding (v6/v7: a short last line breaks unless
+# something follows it).
+#
+# Tests all three together on the EXACT real listing 21873 content (same fields, same real
+# multi-line description, same real footer link, WITH bold restored) - same successful methodology
+# as v9/v10 (real sendPhoto caption, full real content, not a short synthetic fragment).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read the real bot token and owner chat id from the live k8s secret
+        run: |
+          BOT_TOKEN=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.telegram-bot-token}' | base64 -d)
+          OWNER_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$BOT_TOKEN"
+          echo "::add-mask::$OWNER_ID"
+          if [ -z "$BOT_TOKEN" ] || [ -z "$OWNER_ID" ]; then
+            echo "telegram-bot-token or owner-telegram-user-id is empty in todira-bot-secret."
+            exit 1
+          fi
+          echo "$BOT_TOKEN" > /tmp/bot_token.txt
+          echo "$OWNER_ID" > /tmp/owner_id.txt
+
+      - name: Send test 16 as a real sendPhoto caption - Isolates + RLM + absorber (body base64-decoded from ASCII-only source)
+        run: |
+          BOT_TOKEN=$(cat /tmp/bot_token.txt)
+          OWNER_ID=$(cat /tmp/owner_id.txt)
+          PHOTO_URL="https://raw.githubusercontent.com/AmirToledano/todira/main/common/todira_common/assets/dachshunds/todi_detective.jpg"
+
+          BODY_B64="4oCP8J+nquKAjOKBpyDXkdeT15nXp9eUIDE2IC0g15TXptei16og15In157Xmdeg15k6IElzb2xhdGVzIChSTEkvUERJKSArIFJMTSDXnNek16DXmSDXkNeZ157XldeSJ9eZICsg16HXldek15Ig16nXldeo15Qg15DXl9eo15XXoNeU4oGpCuKAj/Cfk43igIw8Yj7igafXm9ek16gg16nXnteo15nXlNeV4oGpPC9iPgrigI84YSBocmVmPSJodHRwczovL3d3dy5nb29nbGUuY29tL21hcHMvc2VhcmNoLz9hcGk9MSZxdWVyeT0lRDclOTMlRDclQTglRDclOUElMjAlRDclOTQlRDclQTklRDclOTMlRDclOTUlRDclQUElMjAxJTJDJTIwJUQ3JTlCJUQ3JUE0JUQ3JUE4JTIwJUQ3JUE5JUQ3JTlFJUQ3JUE4JUQ3JTk5JUQ3JTk0JUQ3JTk1Ij7igafXk9eo15og15TXqdeT15XXqiAx4oGpPC9hPgrigI/wn5Kw4oCMPGI+4oGn157Xl9eZ16g64oGpPC9iPiDigacxNSw1MDDigqrigakK4oCP8J+bj++4j+KAjDxiPuKBp9eX15PXqNeZ15064oGpPC9iPiDigaczLjXigakK4oCP8J+TkOKAjDxiPuKBp9ep15jXlzrigak8L2I+IOKBpzEyMCDXniLXqOKBqQrigI/wn4+i4oCMPGI+4oGn16fXldee15Q64oGpPC9iPiDigacw4oGpCgrigI/wn5Od4oCM4oGn15HXmdeqINek16jXmNeZINec15TXqdeb16jXlCDXkdeb16TXqCDXqdee16jXmdeU15Us4oGpCuKAj+KBp9eT16jXmiDXlNep15PXldeqIDEg157XldeT16LXlCA3MjY3NDUgLSDXkdeZ16rigakK4oCP4oGn16LXldeo16TXmSDXqdee15XXqCDXlNeZ15jXkS4g15PXqNeaINek16jXmNeZ16rigakK4oCP4oGnLteS15nXoNeUINen15PXnteZ16og15XXkNeX15XXqNeZ16ogKCDXnteV16bXnNeq4oGpCuKAj+KBp9eR16LXpteZ150pINep16LXqCDXl9ep157XnNeZINecIDIg15fXoNeZ15XXquKBqQrigI/igafXnten15XXqNeV16osINeVMiDXoNeV16HXpNeV16og15zXkCDXnten15XXqNeV16ou4oGpCuKAj+KBp9ep16LXqCDXnNeU15XXnNeb15kg16jXktecIC4g15nXl9eZ15PXqiDXlNeV16jXmded4oGpCuKAj+KBp9ei150g15fXk9eoINeQ16jXldeg15XXqiDXldeX15PXqCDXkNee15HXmNeZ15QuINeX15PXqOKBqQrigI/igafXkNee15HXmNeZ15Qg16DXldeh16Mg157Xqdek15fXqteZLiDXnteY15HXlyAr4oGpCuKAj+KBp9ek15nXoNeqINeQ15XXm9ecLiDXntee15Mg16LXnSDXm9eg15nXodeUINeg16TXqNeT16rigakK4oCP4oGn15vXldec15wg16nXmdeo15XXqteZ150g15XXnten15zXl9eqLCDXmdeb15XXnCDXnNep157XqeKBqQrigI/igafXnNee16rXkdeS16gv16og15DXlSDXnNen15HXnNeqINen15TXnC7igakKCuKAj/CflJfigIw8YSBocmVmPSJodHRwczovL3d3dy5ob21lbGVzcy5jby5pbC9yZW50L3ZpZXdhZCw3MjY3NDUuYXNweCI+4oGn15zXpNeo15jXmSDXlNeT15nXqNeUINeU157XnNeQ15nXnSA+PuKBqTwvYT4K4oCP4oCO"
+          BODY=$(echo "$BODY_B64" | base64 -d)
+
+          echo "=== sending test 16 as sendPhoto caption ==="
+          curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto" \
+            --data-urlencode "chat_id=${OWNER_ID}" \
+            --data-urlencode "photo=${PHOTO_URL}" \
+            --data-urlencode "caption=${BODY}" \
+            --data-urlencode "parse_mode=HTML" \
+            -o /tmp/resp.json -w "  -> http_status=%{http_code}\n"
+          cat /tmp/resp.json
+          echo ""
+          echo "=== done - does Gemini's Isolates+RLM+absorber approach fix bold alignment? ==="
