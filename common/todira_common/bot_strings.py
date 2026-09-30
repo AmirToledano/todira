@@ -1168,19 +1168,15 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Passe à l'abonnement premium pour voir le lien de l'annonce originale",
         "ar": "قم بترقية اشتراكك لرؤية رابط الإعلان الأصلي",
     },
-    # 2026-09-29: he/ar dropped their <b>...</b> wrap — see cards.py's format_caption docstring on
-    # why an RTL caption's bold entity crossing this project's own RLE...PDF embedding renders
-    # broken; en/ru/fr never use that embedding (LTR captions are already correctly aligned) so
-    # their <b> stays.
     "card.no_photos_banner": {
-        "he": "🕵️ דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!\n\n",
+        "he": "🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>\n\n",
         "en": "🕵️ <b>This listing has no photos, but it may still be worth asking the poster for "
         "some!</b>\n\n",
         "ru": "🕵️ <b>В этом объявлении нет фотографий, но стоит попросить их у "
         "автора!</b>\n\n",
         "fr": "🕵️ <b>Cette annonce n'a pas de photos, mais ça vaut peut-être le coup d'en "
         "demander à l'annonceur !</b>\n\n",
-        "ar": "🕵️ لا تحتوي هذه الشقة على صور، لكن يستحق التواصل مع المعلن وطلب بعضها!\n\n",
+        "ar": "🕵️ <b>لا تحتوي هذه الشقة على صور، لكن يستحق التواصل مع المعلن وطلب بعضها!</b>\n\n",
     },
     "card.feature_parking": {
         "he": "חניה", "en": "Parking", "ru": "Парковка", "fr": "Parking", "ar": "موقف سيارات",
