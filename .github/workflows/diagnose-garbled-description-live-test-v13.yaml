@@ -1,0 +1,63 @@
+name: Diagnose - v13, capture the REAL raw+rendered text for the garbled-description report
+
+# ONE-OFF, READ-ONLY (picks an existing real listing row, never writes), manual-only
+# (workflow_dispatch) - added 2026-09-30. A real, freshly-sent production notification (Tel
+# Aviv-Yafo, Binyamin of Tudela 53, 14,000, 4 rooms, floor 1, no-photos banner) showed a NEW,
+# more severe symptom than the earlier RTL-alignment bug: the free-text description rendered as a
+# deeply garbled, interleaved wall of text with words from different lines merged together, no
+# spaces - e.g. "ריצוףחשמלצרנרתחלונותמזגנימסדלתותוותמט". This captures BOTH the raw
+# (pre-formatting) description text straight from the DB and the exact final caption text
+# format_caption actually built for it, so a fresh diagnostic write-up can quote real ground truth
+# instead of a screenshot transcription.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Find the live bot pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          echo "Found pod: $POD"
+
+      - name: Pull the real listing's raw description + the exact caption format_caption builds
+        run: |
+          cat <<'PYEOF' > /tmp/capture.py
+          from sqlalchemy import select
+
+          from todira_common.cards import format_caption
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+          with get_session() as session:
+              stmt = (
+                  select(Listing)
+                  .where(Listing.city == "תל אביב יפו")
+                  .where(Listing.street.like("%בנימין%"))
+                  .where(Listing.price == 14000)
+                  .order_by(Listing.scraped_at.desc())
+                  .limit(1)
+              )
+              listing = session.scalars(stmt).first()
+              if listing is None:
+                  print("No matching listing found by city/street/price.")
+              else:
+                  print(f"listing id={listing.id} source={listing.source} url={listing.url}")
+                  print("=== RAW description straight from the DB (repr) ===")
+                  print(repr(listing.description))
+                  caption = format_caption(listing, has_access=True, lang="he")
+                  print("=== Full rendered caption format_caption built (repr) ===")
+                  print(repr(caption))
+          PYEOF
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/capture.py
