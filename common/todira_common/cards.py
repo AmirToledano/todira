@@ -380,8 +380,25 @@ _RLM = "‏"  # RIGHT-TO-LEFT MARK
 _RLI = "⁧"  # RIGHT-TO-LEFT ISOLATE
 _PDI = "⁩"  # POP DIRECTIONAL ISOLATE — closes the most recent LRI/RLI/FSI
 _LRM = "‎"  # LEFT-TO-RIGHT MARK — only used in format_caption's trailing absorber
+_ZWNJ = "‌"  # ZERO WIDTH NON-JOINER — see _LEADING_EMOJI_RE's own comment for why this exists
 
 _HTML_TAGGED_SPAN_RE = re.compile(r"<b>(.*?)</b>|<a\b[^>]*>(.*?)</a>")
+
+# 2026-09-30: found via a byte-for-byte diff against diagnose-rtl-isolates-live-test-v14.yaml's own
+# BODY_B64 payload — the ONE message this whole investigation has direct owner confirmation for
+# ("לדעתי היישור קו מעולה אצלנו עכשיו") — after real post-deploy screenshots showed the bug still
+# live in production despite that confirmation. Every emoji-led line in the confirmed-good payload
+# has the SAME shape: RLM, then the BARE emoji (never wrapped in its own isolate), then a ZWNJ,
+# then the rest of the line. This file's own first version of the isolates fix instead wrapped the
+# leading emoji together with its trailing space in its own RLI...PDI isolate — plausible-looking,
+# but never itself independently live-verified, and likely the actual remaining bug: an isolate
+# whose only content is a single neutral/emoji character (no strong directional character inside
+# it at all) is exactly the case UAX#9 leaves the most room for a renderer to resolve unexpectedly.
+# Matched here exactly rather than re-guessed at.
+_LEADING_EMOJI_RE = re.compile(
+    r"^([\U0001F300-\U0001FAFF☀-➿]️?"
+    r"(?:‍[\U0001F300-\U0001FAFF☀-➿]️?)*) ?"
+)
 
 
 def _isolate(text: str, lang: str) -> str:
@@ -398,6 +415,14 @@ def _force_rtl(text: str, lang: str) -> str:
     # RTL isolate on it would misalign it instead of fixing anything.
     if lang not in RTL_LANGS:
         return text
+    # The leading icon (💰/🛏️/📍/...), if this line has one, is pulled off BEFORE any isolating
+    # happens and re-attached bare, followed by a ZWNJ — see _LEADING_EMOJI_RE's own comment.
+    prefix = ""
+    emoji_match = _LEADING_EMOJI_RE.match(text)
+    if emoji_match:
+        prefix = f"{emoji_match.group(1)}{_ZWNJ}"
+        text = text[emoji_match.end() :]
+
     # A `<b>...</b>` or `<a href="...">...</a>` span gets its OWN inner text isolated in place
     # (never touching its opening/closing tag itself) — callers never need to isolate a tag's
     # inner text themselves, this handles any of them uniformly, however many appear on one line.
@@ -417,7 +442,7 @@ def _force_rtl(text: str, lang: str) -> str:
         pos = m.end()
     if pos < len(text):
         pieces.append(_isolate(text[pos:], lang))
-    return f"{_RLM}{''.join(pieces)}"
+    return f"{_RLM}{prefix}{''.join(pieces)}"
 
 
 # 2026-09-28: chosen a real, meaningful margin BELOW the natural wrap point measured directly off a
@@ -587,7 +612,13 @@ def format_caption(
         listing,
         bold=bold,
         street_link=lambda text, url: f'<a href="{url}">{text}</a>',
-        escape=html.escape,
+        # quote=False: this text lands as HTML element CONTENT (a city/street name, never inside an
+        # attribute), where only &, <, > are meaningful to Telegram's own HTML parser. html.escape's
+        # own default (quote=True) also turns a literal " into "&quot;" - real bug, found live
+        # 2026-09-30 via an owner screenshot of a street containing Hebrew gershayim ("הפלמ"ח"):
+        # Telegram doesn't treat &quot; as a recognized named entity outside an attribute, so it
+        # rendered as literal, garbled text instead of a plain " character.
+        escape=lambda s: html.escape(s, quote=False),
         lang=lang,
     )
 
@@ -620,7 +651,9 @@ def format_caption(
         # the footer — which _fit_to_limit never trims — always keeps it.
         footer += f"\n{_RLM}{_LRM}"
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
-    description = html.escape((listing.description or "").strip())
+    # quote=False here too — same reasoning as _build_body_lines' own escape= above, this is
+    # message text, never an attribute value.
+    description = html.escape((listing.description or "").strip(), quote=False)
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
