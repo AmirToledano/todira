@@ -8,7 +8,6 @@ import asyncio
 import html
 import io
 import logging
-import re
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
@@ -20,7 +19,7 @@ from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TelegramError
 
 from todira_common.bot_strings import bot_text
-from todira_common.language import DEFAULT_LANG, RTL_LANGS
+from todira_common.language import DEFAULT_LANG
 from todira_common.models import Listing
 
 logger = logging.getLogger(__name__)
@@ -142,11 +141,9 @@ _MASCOT_PATH = _DACHSHUND_DIR / "todi_detective.jpg"
 # captions can't do background colors or font-size, so the closest equivalent is BOLD (not italic
 # — italic reads as an aside, easy to skim past) and placed FIRST, before the listing's own details,
 # instead of tacked on at the very end where a real user reported missing it entirely (2026-09-03).
-# See bot_strings.py's "card.no_photos_banner" — sent through _force_rtl_block in
-# send_listing_card itself (a no-op for English/Russian/French, same as every other line in this
-# file). _force_rtl_block, not _force_rtl, since 2026-09-28: the banner sentence is long enough
-# that Telegram word-wraps it itself, and only _force_rtl_block's per-visual-line pre-wrapping (see
-# its own docstring) keeps every wrapped line right-aligned.
+# See bot_strings.py's "card.no_photos_banner" — sent as plain text in send_listing_card itself,
+# same as every other line in this file (see _build_body_lines' own module comment for why this
+# file no longer adds any bidi marks at all).
 
 
 def _dachshund_photo_path() -> Path:
@@ -302,26 +299,7 @@ def _build_body_lines(
         lines.append("")  # a visual gap before the features line — a real request, 2026-09-03
         lines.append(f"🔑 {features_label} {' | '.join(features)}")
 
-    # Every line gets its OWN RTL embedding, not just the caption as a whole — see _force_rtl's own
-    # docstring for why (2026-09-14: escalated from a bare RLM mark to a real RLE/PDF embedding).
-    # Only Hebrew/Arabic need this at all (language.RTL_LANGS) — _force_rtl is itself a no-op for
-    # English/Russian/French, where every line is already correctly LTR-aligned on its own.
-    # Skip it on the blank spacer line: an embedding around nothing still isn't actually
-    # invisible-and-blank in every client.
-    # 2026-09-28: the location line (📍city - neighborhood <a>street</a>) and the features line
-    # (🔑 label a | b | c) can both run past _RTL_LINE_WRAP_CHARS just like free-text descriptions
-    # can — see _force_rtl_block's own docstring for the full root cause (a client's own soft-wrap
-    # of one long RLE/PDF-embedded logical line doesn't carry the embedding onto the continuation
-    # line). Pre-wrap every non-blank line at real word boundaries first, same as _force_rtl_block,
-    # so each resulting list entry is its own short embedded line and never needs a client soft-wrap.
-    out_lines: list[str] = []
-    for line in lines:
-        if not line:
-            out_lines.append(line)
-            continue
-        pieces = _wrap_long_rtl_line(line, _RTL_LINE_WRAP_CHARS) if lang in RTL_LANGS else [line]
-        out_lines.extend(_force_rtl(piece, lang) for piece in pieces)
-    return out_lines
+    return lines
 
 
 def _price_change_header(
@@ -343,212 +321,35 @@ def _price_change_header(
         emoji, label_key = "📈", "card.price_increased"
     label = bold(bot_text(label_key, lang))
     was_price = bot_text("card.was_price", lang, price=f"{price_change_from:,}")
-    return f"{_force_rtl(f'{emoji} {label} {was_price}', lang)}\n\n"
+    return f"{emoji} {label} {was_price}\n\n"
 
 
-# 2026-09-14: escalated from a bare RLM mark (U+200F) to a real bidi EMBEDDING (RLE U+202B ...
-# PDF U+202C) — nearly every line in this card deliberately starts with an emoji (📍, 💰, 🛏️, ...),
-# which has no strong bidi direction of its own, so without any override the caption's rendered
-# alignment can fall back to LTR. A leading RLM mark alone never fully fixed it: a mark only
-# nudges a neutral run, it doesn't force one.
+# 2026-09-14 through 2026-09-30: this file went through a long series of increasingly elaborate
+# attempts to FORCE correct right-alignment for Hebrew/Arabic captions with explicit Unicode bidi
+# control characters — a bare RLM mark, then a full RLE...PDF embedding around every line, then
+# RLI/PDI isolates with a leading RLM+ZWNJ on every icon, then a trailing RLM+LRM "absorber" line.
+# Each attempt fixed some real, live-confirmed symptom and broke or left another — see this file's
+# git history and PROJECT_STATE.md for the full trail (diagnose-rtl-*-live-test-v3 through v21).
 #
-# 2026-09-29/30: real live A/B testing (see the diagnose-rtl-*-live-test-v3 through v17 one-off
-# workflows in .github/workflows/, all sent as real messages to the owner's own Telegram) found
-# the RLE...PDF embedding had its own real bug: a `<b>...</b>` bold entity whose boundary falls
-# INSIDE the embedding (i.e. the embedding wraps the whole line, `<b>` and all) renders that line
-# broken — confirmed via a same-listing, same-content A/B where only `<b>` was toggled. PR #565
-# worked around this by dropping `<b>` for RTL languages entirely, which fixed alignment but lost
-# real bold styling the owner wanted back.
-#
-# The actual fix (2026-09-30, after a second opinion from Gemini — see that same live-test
-# history for the exact prompt and answer): switch from bidi EMBEDDINGS (RLE/PDF) to bidi
-# ISOLATES (RLI U+2067 / PDI U+2069, Unicode 6.3+). An isolate scopes its content instead of just
-# forcing a direction and leaking that state across whatever comes next — nesting one INSIDE a
-# `<b>`/`<a>` tag's own inner text, while another independent isolate wraps the plain text around
-# it, does NOT reproduce the embedding-crossing bug. Live-confirmed correct (v17) on the exact
-# real listing that failed under the old embedding+<b> combination, with bold restored. RLM
-# (U+200F) is still added at the very start of each line — an isolate scopes content, it doesn't
-# by itself guarantee THIS line reads as RTL before its first (neutral) character is seen, so the
-# mark still earns its place for the reason the very first fix used it.
-#
-# A separate real finding from the same live-test history: the physically LAST line of a message
-# (any message, isolate or not) tends to render misaligned — Telegram appears to lay its
-# timestamp/read-receipt UI into that line when there's room, and that disturbs its own bidi
-# resolution. format_caption appends a tiny trailing RLM+LRM "absorber" after the real footer for
-# RTL languages so that line is never the message's true last one — see its own comment there.
-_RLM = "‏"  # RIGHT-TO-LEFT MARK
-_RLI = "⁧"  # RIGHT-TO-LEFT ISOLATE
-_PDI = "⁩"  # POP DIRECTIONAL ISOLATE — closes the most recent LRI/RLI/FSI
-_LRM = "‎"  # LEFT-TO-RIGHT MARK — only used in format_caption's trailing absorber
-_ZWNJ = "‌"  # ZERO WIDTH NON-JOINER — see _LEADING_EMOJI_RE's own comment for why this exists
-
-_HTML_TAGGED_SPAN_RE = re.compile(r"<b>(.*?)</b>|<a\b[^>]*>(.*?)</a>")
-
-# 2026-09-30: found via a byte-for-byte diff against diagnose-rtl-isolates-live-test-v14.yaml's own
-# BODY_B64 payload — the ONE message this whole investigation has direct owner confirmation for
-# ("לדעתי היישור קו מעולה אצלנו עכשיו") — after real post-deploy screenshots showed the bug still
-# live in production despite that confirmation. Every emoji-led line in the confirmed-good payload
-# has the SAME shape: RLM, then the BARE emoji (never wrapped in its own isolate), then a ZWNJ,
-# then the rest of the line. This file's own first version of the isolates fix instead wrapped the
-# leading emoji together with its trailing space in its own RLI...PDI isolate — plausible-looking,
-# but never itself independently live-verified, and likely the actual remaining bug: an isolate
-# whose only content is a single neutral/emoji character (no strong directional character inside
-# it at all) is exactly the case UAX#9 leaves the most room for a renderer to resolve unexpectedly.
-# Matched here exactly rather than re-guessed at.
-_LEADING_EMOJI_RE = re.compile(
-    r"^([\U0001F300-\U0001FAFF☀-➿]️?"
-    r"(?:‍[\U0001F300-\U0001FAFF☀-➿]️?)*) ?"
-)
+# 2026-09-30, the actual resolution: the owner copied a real message from a working reference bot
+# (Dorin's) directly out of Telegram Desktop for a side-by-side comparison. It contains ZERO
+# invisible bidi marks of any kind and no manual line pre-wrapping — completely plain Hebrew text,
+# bold and links included — and renders flush right. A live test sending our own real listing
+# content the same way (v21) confirmed it: dropping every mark and every pre-wrap this file used
+# to add fixed the alignment, while every mark-based attempt before it left a persistent gap on the
+# right that no further tuning closed. Telegram's own native bidi handling of a real RTL message
+# needs no help from this project — every mark added here was apparently confusing Telegram's own
+# client-side text-block positioning rather than fixing anything. This file now builds every
+# caption as plain text: real `<b>`/`<a>` HTML entities, real line breaks, no bidi characters.
 
 
-def _isolate(text: str, lang: str) -> str:
-    """Wraps `text` in a right-to-left Unicode ISOLATE, not an embedding — see _force_rtl's own
-    module comment for why that distinction is what let bold come back. No-op for LTR languages."""
-    if lang not in RTL_LANGS:
-        return text
-    return f"{_RLI}{text}{_PDI}"
-
-
-def _force_rtl(text: str, lang: str) -> str:
-    # 2026-09-26: only Hebrew/Arabic (language.RTL_LANGS) need the override at all — every line in
-    # an English/Russian/French caption is already correctly LTR-aligned on its own, and forcing an
-    # RTL isolate on it would misalign it instead of fixing anything.
-    if lang not in RTL_LANGS:
-        return text
-    # The leading icon (💰/🛏️/📍/...), if this line has one, is pulled off BEFORE any isolating
-    # happens and re-attached bare, followed by a ZWNJ — see _LEADING_EMOJI_RE's own comment.
-    prefix = ""
-    emoji_match = _LEADING_EMOJI_RE.match(text)
-    if emoji_match:
-        prefix = f"{emoji_match.group(1)}{_ZWNJ}"
-        text = text[emoji_match.end() :]
-
-    # A `<b>...</b>` or `<a href="...">...</a>` span gets its OWN inner text isolated in place
-    # (never touching its opening/closing tag itself) — callers never need to isolate a tag's
-    # inner text themselves, this handles any of them uniformly, however many appear on one line.
-    # Every plain-text run between/around such spans (which, for most lines, is the whole thing —
-    # a plain field line or a free-text description line never has a tag at all) gets its own
-    # separate isolate too.
-    pieces: list[str] = []
-    pos = 0
-    for m in _HTML_TAGGED_SPAN_RE.finditer(text):
-        if m.start() > pos:
-            pieces.append(_isolate(text[pos : m.start()], lang))
-        whole = m.group(0)
-        inner = m.group(1) if m.group(1) is not None else m.group(2)
-        open_end = whole.index(">") + 1
-        close_start = len(whole) - whole[::-1].index("<") - 1
-        pieces.append(f"{whole[:open_end]}{_isolate(inner, lang)}{whole[close_start:]}")
-        pos = m.end()
-    if pos < len(text):
-        pieces.append(_isolate(text[pos:], lang))
-    return f"{_RLM}{prefix}{''.join(pieces)}"
-
-
-# 2026-09-28: chosen a real, meaningful margin BELOW the natural wrap point measured directly off a
-# real owner screenshot that day (a genuine ~32-33-character line before Telegram wrapped it itself)
-# — not a round number picked blind. Deliberately conservative: this only needs to guarantee our own
-# pre-wrapped line is short enough that Telegram never has to wrap it AGAIN itself (which would just
-# reproduce the exact bug this exists to fix) — a slightly-short line costs nothing, a
-# slightly-too-long one silently undoes the whole fix.
-_RTL_LINE_WRAP_CHARS = 30
-
-
-_HTML_ANCHOR_SPAN_RE = re.compile(r"<a\b[^>]*>.*?</a>")
-
-
-def _wrap_long_rtl_line(line: str, width: int) -> list[str]:
-    """Break one line into several at real word boundaries only — never mid-word — so a leading/
-    trailing HTML tag or markdown marker glued to its neighboring word (format_caption's "<b>word"/
-    "word</b>", format_caption_whatsapp's "*word") is never split in half. A single word longer than
-    width on its own is kept whole rather than force-broken mid-word (rare — Hebrew doesn't compound
-    into very long single words the way German/Finnish can). A `<b>...</b>` span (this project's
-    only OTHER tag) is deliberately left to plain word-splitting like any other text: its opening
-    tag has no internal space to tear apart, so "<b>word"/"word</b>" always stay glued to their
-    real neighbor, and a `<b>` spanning across the "\n" this function inserts is still perfectly
-    valid HTML — Telegram parses the whole caption as one string, newlines and all.
-
-    2026-09-28: a complete <a href="...">street</a> span (_build_body_lines' street_link contract)
-    is matched and kept as ONE atomic token first, even though the street name inside it may
-    itself contain a real space (e.g. "רחוב הרצל") — unlike <b>, an <a> tag's own OPENING syntax
-    already has an internal space (`<a href="...">`), so plain word-splitting could land a break
-    right inside that markup, stranding a bare "<a" with no closing ">" on one line and
-    "href=\"...\">street</a>" on the next — genuinely broken HTML, not just misaligned text.
-
-    2026-09-29: tried measuring an anchor's WIDTH CONTRIBUTION by its visible link text only (not
-    the full raw span+href) so a short location + street link could share one physical line
-    instead of always splitting — reverted the same day: a live A/B on the same real listing
-    showed that single combined line (plain city text followed by the <a> link, both inside one
-    RLE...PDF span) rendering SLIGHTLY off (close to the right edge but not flush), while the
-    original two-separate-lines shape (city alone, then the link alone, each its own embedding)
-    rendered perfectly. Mixing a plain-text run and a link-entity run inside the same bidi
-    embedding is its own subtly-broken case, distinct from (but adjacent to) the <b>-crossing-the-
-    embedding bug format_caption's own docstring covers — no live-verified-safe fix for THAT one
-    found yet either, so back to counting the anchor's full raw length (href included), which
-    reliably forces the split that's actually been confirmed correct."""
-    words: list[str] = []
-    pos = 0
-    for m in _HTML_ANCHOR_SPAN_RE.finditer(line):
-        words.extend(line[pos : m.start()].split())
-        words.append(m.group(0))
-        pos = m.end()
-    words.extend(line[pos:].split())
-    out: list[str] = []
-    current = ""
-    for word in words:
-        candidate = f"{current} {word}" if current else word
-        if len(candidate) > width and current:
-            out.append(current)
-            current = word
-        else:
-            current = candidate
-    if current:
-        out.append(current)
-    return out or [line]
-
-
-def _force_rtl_block(text: str, lang: str) -> str:
-    """Same per-line embedding as _build_body_lines' own comment explains, applied to a block of
-    text that can itself contain line breaks — a scraped description, which real listings (see the
-    2026-09-18 screenshots) often submit as several physical lines. A single _force_rtl call around
-    the whole block only wraps it in ONE embedding, but a newline resets the bidi embedding level
-    per rendered line, so only the block's first line actually rendered RTL-aligned and every line
-    after it fell back to the same broken alignment _build_body_lines was fixed for on 2026-09-14 —
-    this is that same fix, extended to free-form multi-line text instead of just this file's own
-    fixed field lines.
-
-    splitlines(), not split("\n") — 2026-09-21: real screenshots taken DAYS after this function's
-    own 2026-09-18 fix went live still showed broken alignment, and a live DB dump
-    (diagnose-homeless-description-raw-chars.yaml) proved why: real Homeless descriptions use bare
-    "\\r" as their line separator, not "\\n" — split("\\n") never split them at all, so the entire
-    multi-paragraph description was still going through as one single _force_rtl-wrapped line,
-    reproducing the exact original bug for every line after the first. splitlines() handles \\r,
-    \\r\\n, \\n and the other line-boundary characters Python recognizes, and normalizing to "\\n"
-    on rejoin is itself a improvement (Telegram/WhatsApp only render "\\n" as a line break).
-
-    2026-09-28: STILL broken per fresh real owner screenshots — a repeated report, not a new one.
-    Root cause this time is different from either fix above: a logical line that's short enough to
-    need no explicit \\n of its own can still be LONG enough that Telegram word-wraps it itself onto
-    2+ visual lines — and the RLE...PDF embedding wrapping that one logical line doesn't carry its
-    right-alignment onto the continuation line Telegram creates by its own soft-wrap. Every short
-    single-line field this file builds (price/rooms/floor, ...) never hits this because none of them
-    are ever long enough to need client-side wrapping in the first place — only free-form text
-    (this function's whole reason to exist) is. Fix: never let the client word-wrap an RTL-embedded
-    line at all. _wrap_long_rtl_line pre-splits anything over _RTL_LINE_WRAP_CHARS at a real word
-    boundary BEFORE _force_rtl ever sees it, so every VISUAL line is also its own independent
-    RLE...PDF span — the same reason the short field lines already work, just applied here too. Word
-    boundaries only (never mid-word) so an HTML tag or markdown marker glued to its neighboring word
-    (e.g. "<b>word" or "word</b>") can never be split in half. LTR languages are skipped entirely —
-    _force_rtl is already a no-op for them, and wrapping text that isn't broken to begin with would
-    only add pointless line breaks."""
-    out_lines: list[str] = []
-    for line in text.splitlines():
-        if not line:
-            out_lines.append(line)
-            continue
-        pieces = _wrap_long_rtl_line(line, _RTL_LINE_WRAP_CHARS) if lang in RTL_LANGS else [line]
-        out_lines.extend(_force_rtl(piece, lang) for piece in pieces)
-    return "\n".join(out_lines)
+def _normalize_line_breaks(text: str) -> str:
+    """Homeless's own scraped descriptions sometimes use a bare "\\r" as their line separator
+    (found live 2026-09-21, diagnose-homeless-description-raw-chars.yaml) — Telegram/WhatsApp only
+    treat a literal "\\n" as a line break, so a bare \\r (or \\r\\n) needs normalizing first or it
+    renders as no line break at all. splitlines() handles \\r, \\r\\n, \\n and the other
+    line-boundary characters Python recognizes."""
+    return "\n".join(text.splitlines())
 
 
 def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:
@@ -603,10 +404,9 @@ def format_caption(
     never something a future caller can forget to do by just not passing the argument — even
     though today it only controls the link, not the description.
 
-    2026-09-29/30: real bug, confirmed live via a long battery of diagnostic sends to the owner's
-    own Telegram (see _force_rtl's own module comment for the full history and the fix). Bold is
-    back — plain `<b>{s}</b>` same as always, since _force_rtl itself now isolates any tag's inner
-    text wherever one shows up, not something bold()/street_link() need to do themselves."""
+    2026-09-30: real bug, confirmed live via a long battery of diagnostic sends to the owner's own
+    Telegram (see the module comment above _normalize_line_breaks for the full history). Every
+    line is plain HTML text now — no bidi marks, `<b>{s}</b>` same as always."""
     bold = lambda s: f"<b>{s}</b>"  # noqa: E731
     lines = _build_body_lines(
         listing,
@@ -640,16 +440,7 @@ def format_caption(
         footer_text = f'🔒 <a href="{upgrade_url}">{link_text}</a>'
     else:
         footer_text = f"🔒 {bot_text('card.upgrade_required_plain', lang)}"
-    footer = f"\n\n{_force_rtl(footer_text, lang)}"
-    if lang in RTL_LANGS:
-        # 2026-09-30: real live finding — the physically LAST line of a Telegram message tends to
-        # render misaligned (Telegram appears to lay its own timestamp/read-receipt UI into that
-        # line when there's room, disturbing its bidi resolution) — see _force_rtl's own module
-        # comment. A tiny trailing mark-only line the reader never sees "absorbs" that spot
-        # instead of the real footer link. Appended to the footer itself (not after
-        # _fit_to_limit) so its few characters are always counted in the length budget below and
-        # the footer — which _fit_to_limit never trims — always keeps it.
-        footer += f"\n{_RLM}{_LRM}"
+    footer = f"\n\n{footer_text}"
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     # quote=False here too — same reasoning as _build_body_lines' own escape= above, this is
     # message text, never an attribute value.
@@ -657,7 +448,7 @@ def format_caption(
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_force_rtl_block(f'📝 {description}', lang)}"
+        body += f"\n\n📝 {_normalize_line_breaks(description)}"
 
     return _fit_to_limit(header, body, footer, CAPTION_LIMIT)
 
@@ -693,34 +484,29 @@ def format_caption_whatsapp(
         # Placed right after the location line, matching where it visually sits on Telegram. A
         # maps_url only exists when listing.street is set, which always makes _build_body_lines
         # add a "📍..." line too — but found defensively (default -1, appends at the end) rather
-        # than assumed, so this can never raise even if that correlation ever changes. "in", not
-        # "startswith" — every line now carries its own RTL embedding (see _build_body_lines), so
-        # the location line no longer literally starts with "📍" itself. Wrapped with _force_rtl
-        # here too — this line is inserted AFTER _build_body_lines already returned (so it never
-        # went through that function's own wrapping), and it's the one line most likely to need
-        # it: it's nothing BUT a long strong-LTR Google Maps URL, no Hebrew at all.
+        # than assumed, so this can never raise even if that correlation ever changes.
         location_index = next(
             (i for i, line in enumerate(lines) if "📍" in line), len(lines) - 1
         )
-        lines.insert(location_index + 1, _force_rtl(f"🗺️ {maps_url}", lang))
+        lines.insert(location_index + 1, f"🗺️ {maps_url}")
 
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:
         link_text = bot_text("card.full_details_link_plain", lang)
-        footer = f"\n\n{_force_rtl(f'🔗 {link_text}', lang)}\n{listing.url}"
+        footer = f"\n\n🔗 {link_text}\n{listing.url}"
     elif upgrade_url:
         upgrade_text = f"{bot_text('card.upgrade_to_see_link', lang)}:"
-        footer = f"\n\n{_force_rtl(f'🔒 {upgrade_text}', lang)}\n{upgrade_url}"
+        footer = f"\n\n🔒 {upgrade_text}\n{upgrade_url}"
     else:
         upgrade_text = bot_text("card.upgrade_required_plain", lang)
-        footer = f"\n\n{_force_rtl(f'🔒 {upgrade_text}', lang)}"
+        footer = f"\n\n🔒 {upgrade_text}"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
     description = (listing.description or "").strip()
     if description and remaining > 20:
         if len(description) > remaining:
             description = description[: remaining - 1] + "…"
-        body += f"\n\n{_force_rtl_block(f'📝 {description}', lang)}"
+        body += f"\n\n📝 {_normalize_line_breaks(description)}"
 
     return _fit_to_limit(header, body, footer, WHATSAPP_MESSAGE_LIMIT)
 
@@ -774,12 +560,8 @@ async def send_listing_card(
                     _first_downloadable_photo_jpeg_bytes, listing.image_urls
                 )
         if photo is None:
-            # rstrip + re-append "\n\n" ourselves: _force_rtl_block's own splitlines()-based
-            # reconstruction collapses a trailing "\n\n" to one "\n" (splitlines() never emits a
-            # trailing empty segment for a string ending in \n), which would quietly shrink the
-            # blank-line gap this banner is meant to leave before the caption that follows it.
             banner_text = bot_text("card.no_photos_banner", lang).rstrip("\n")
-            banner = f"{_force_rtl_block(banner_text, lang)}\n\n"
+            banner = f"{banner_text}\n\n"
             # 2026-09-28 real bug found via a fresh code-review pass: a raw [:CAPTION_LIMIT]
             # character slice can cut anywhere at all — including mid-HTML-tag, straight through
             # the footer's <a href="...">...</a> link, exactly the bug class _fit_to_limit exists
