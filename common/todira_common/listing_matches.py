@@ -60,7 +60,7 @@ def find_matching_listings(
         # listing outside it through), so applying it here too only ever removes rows that would
         # have failed evaluate() anyway — never changes which listings can match.
         query = query.where(Listing.city.in_(filter_row.cities))
-    recent = session.scalars(query.order_by(Listing.scraped_at.desc()))
+    recent = session.scalars(query.order_by(Listing.first_seen_at.desc(), Listing.id.desc()))
 
     matches: list[Listing] = []
     for listing in recent:

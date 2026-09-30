@@ -1189,7 +1189,9 @@ def apartments(
         # recent, with the rest silently invisible however far the user scrolled. `page_items`
         # below still slices to APARTMENTS_PAGE_SIZE per request either way — this only widens the
         # candidate pool that gets filtered+paginated, not how much renders into the DOM at once.
-        listings = session.scalars(listings_query.order_by(Listing.scraped_at.desc())).all()
+        listings = session.scalars(
+            listings_query.order_by(Listing.first_seen_at.desc(), Listing.id.desc())
+        ).all()
         # 2026-09-06: previously didn't exclude hidden listings at all (unlike the bot's own
         # /apartments, see find_matching_listings) — a listing hidden via the Telegram 🙈 button
         # kept showing up here regardless. Same UserListingAction table, so this is a real fix, not
