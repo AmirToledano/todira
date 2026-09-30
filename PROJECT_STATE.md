@@ -7895,3 +7895,43 @@ zero `‏`/`‎`/`⁧`/`⁩`/`‌` characters in a real caption, and
 step. If the owner ever reports a right-alignment complaint again, do not reach for a bidi mark;
 start from the assumption that plain text is correct and look elsewhere (e.g. a client-rendering
 quirk specific to their device, not something this file can fix).
+
+## Update 2026-09-30, later: rich WhatsApp template live, plus four more real bugs from a sweep
+
+**Rich WhatsApp template switched on and verified end to end (PR #584/#585).** Meta showed
+`new_listing_match_rich` as `APPROVED` (MARKETING) via `diagnose-whatsapp-existing-template-detail.yaml`;
+`scraper.whatsappRichMatchTemplateName` is now `"new_listing_match_rich"`. The new one-off
+`test-real-rich-whatsapp-send.yaml` clones the live `todira-scraper` CronJob pod spec and calls the real
+`notifier._send_whatsapp_rich_match_template` on a real listing, sending only to the owner's own opted-in
+account. First run: media upload 200, template send 200, owner confirmed receipt. **Do not log Meta's success
+body or a `wamid`: a message id base64-encodes the recipient's phone number** (one run's logs were deleted
+for exactly this reason; the workflow now prints only the HTTP status). The 15 finished `diagnose-rtl-*`
+workflows were deleted.
+
+**Bugs found and fixed by a read-only code-review sweep, each verified by hand (PR #586, #587):**
+1. `cards.py`: a description long enough to need truncating was dropped from the caption ENTIRELY (Telegram
+   and WhatsApp). The 4-character `"\n\n📝 "` prefix wasn't in the length budget, so `_fit_to_limit`
+   popped the whole description line. Truncation also ran after HTML-escaping and could split an entity.
+   New `_truncated_description_block` budgets the prefix and truncates before escaping.
+2. `website/main.py`: `/upgrade/pay/confirm` (and `/upgrade/pay`) accepted a pending Takbull/Grow payment,
+   so anyone could create their own via `POST /upgrade` and confirm it for +30 days free. Now `gateway is
+   None` only. Not exploitable while no real gateway is configured (the informal flow is the live path by
+   design), but would have been the moment Takbull went live.
+3. `website/whatsapp_webhook.py`: onboarding mutated the loaded JSONB dict in place and assigned the same
+   object back; SQLAlchemy sees no change and emits no UPDATE, so every turn after the first lost its
+   progress. Reproduced on SQLAlchemy 2.0.52. Now copies first. **General rule: never mutate a loaded
+   JSON/JSONB column value in place and re-assign it; copy, or use MutableDict.**
+4. `scraper/main.py`: `_find_unnotified_recent_listings` retried cross-source duplicate rows, which are
+   never notified by design, re-sending the same apartment every run. Added `duplicate_of_id IS NULL`.
+
+**Left open, needs an owner decision (and a schema change):** `_upsert_listings` refreshes `scraped_at` on
+every re-scrape (a deliberate 2026-09-25 fix for the delisting grace period), so `_find_unnotified_recent_
+listings`' "last 7 days" window now covers every still-active listing. A filter edit that doesn't record
+`SentNotification` rows (website `/filter`, `/filter/region`, WhatsApp chat edits) can therefore trigger
+cards for older never-notified listings on the next run. A proper fix needs a first-seen/created timestamp
+on `Listing` (none exists today).
+
+**Still waiting on third parties, nothing to do from code:** Upay/Takbull approval (then
+`TAKBULL_API_KEY`/`TAKBULL_API_SECRET`), and Meta Business verification (the owner entered wrong details and
+expects to resubmit if it is rejected). Content/marketing work is paused on purpose until the owner brings
+better marketing/content skills.
