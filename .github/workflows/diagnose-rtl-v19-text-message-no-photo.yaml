@@ -1,0 +1,102 @@
+name: Diagnose - v19, same real caption as a plain text message (no photo)
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-30. Decisive test suggested by a
+# second Gemini opinion on real owner screenshots that still looked "not right-aligned" even
+# after PR #575's bare-icon+ZWNJ fix was deployed and independently byte-verified (via v18) to
+# exactly match the one message this whole investigation has direct owner confirmation for.
+#
+# Gemini's hypothesis: the bidi byte sequence is correct (RTL paragraph direction, correct
+# reading order, bold/link isolation all fine) - but Telegram's iOS client applies text-align:
+# center to PHOTO CAPTIONS specifically (an app-level UI layout choice, not a bidi/Unicode
+# question at all), which no Unicode control character can override. A normal text message (no
+# photo) uses a different bubble layout that right-aligns RTL text properly.
+#
+# This sends the EXACT same real format_caption() output for a real listing, twice: once via
+# sendPhoto (today's real production path, for a side-by-side comparison) and once via
+# sendMessage (plain text, no photo) - so the owner can compare the two and confirm/refute the
+# hypothesis directly, rather than guessing further.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-real-card:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Find the live bot pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "Could not find a running todira-bot pod."
+            exit 1
+          fi
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          echo "Found pod: $POD"
+
+      - name: Send the same real caption as sendPhoto AND sendMessage for a side-by-side compare
+        run: |
+          cat <<'PYEOF' > /tmp/send_compare.py
+          import asyncio
+          import os
+
+          from sqlalchemy import select
+          from telegram import Bot
+          from telegram.constants import ParseMode
+
+          from todira_common.cards import format_caption, send_listing_card
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+
+          async def main() -> None:
+              token = os.environ["TELEGRAM_BOT_TOKEN"]
+              owner_id = int(os.environ["OWNER_TELEGRAM_USER_ID"])
+
+              with get_session() as session:
+                  stmt = (
+                      select(Listing)
+                      .where(Listing.is_delisted.is_(False))
+                      .where(Listing.duplicate_of_id.is_(None))
+                      .where(Listing.street.isnot(None))
+                      .where(Listing.description.isnot(None))
+                      .where(Listing.deal_type == "rent")
+                      .order_by(Listing.scraped_at.desc())
+                      .limit(1)
+                  )
+                  listing = session.scalars(stmt).first()
+                  if listing is None:
+                      print("No matching real listing found.")
+                      return
+
+                  print(f"Using REAL listing id={listing.id} city={listing.city!r} street={listing.street!r}")
+                  caption = format_caption(listing, has_access=True, lang="he")
+
+                  async with Bot(token=token) as bot:
+                      await bot.send_message(
+                          chat_id=owner_id,
+                          text="‏⬇️ בדיקה v19 — אותה הודעה, קודם כטקסט רגיל (בלי תמונה), אחר כך כרגיל עם תמונה:",
+                      )
+                      print("Sending as plain sendMessage (no photo)...")
+                      await bot.send_message(
+                          chat_id=owner_id,
+                          text=caption,
+                          parse_mode=ParseMode.HTML,
+                      )
+                      print("sendMessage done.")
+
+                      print("Sending as the real sendPhoto (production path)...")
+                      ok = await send_listing_card(bot, owner_id, listing, caption, lang="he")
+                      print(f"send_listing_card (sendPhoto) returned: {ok}")
+
+
+          asyncio.run(main())
+          PYEOF
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/send_compare.py
