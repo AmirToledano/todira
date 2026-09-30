@@ -1,0 +1,46 @@
+name: Diagnose - how many users can receive proactive WhatsApp pushes (read-only, counts only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch) - 2026-10-01. Meta bills about 0.0353 per proactive
+# WhatsApp template message; the owner needs to know how many users those messages were going to. Prints
+# COUNTS only (never a phone number, name or id).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Count WhatsApp-eligible users
+        run: |
+          cat <<'PYEOF' > /tmp/recipients.py
+          from sqlalchemy import func, select
+
+          from todira_common.db import get_session
+          from todira_common.models import Filter, User
+
+          with get_session() as s:
+              def count(*conditions):
+                  return s.scalar(select(func.count()).select_from(User).where(*conditions))
+
+              print("users total:", count())
+              print("with a linked WhatsApp number:", count(User.whatsapp_phone_number.isnot(None)))
+              print("linked AND opted in to WhatsApp pushes:", count(
+                  User.whatsapp_phone_number.isnot(None), User.whatsapp_notifications_opted_in.is_(True)))
+              print("of those, also is_active + notifications_enabled:", count(
+                  User.whatsapp_phone_number.isnot(None), User.whatsapp_notifications_opted_in.is_(True),
+                  User.is_active.is_(True), User.notifications_enabled.is_(True)))
+              print("of those, WhatsApp-only (no Telegram):", count(
+                  User.whatsapp_phone_number.isnot(None), User.whatsapp_notifications_opted_in.is_(True),
+                  User.telegram_user_id.is_(None)))
+          PYEOF
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/recipients.py
