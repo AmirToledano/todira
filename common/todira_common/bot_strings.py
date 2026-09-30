@@ -11,10 +11,9 @@ also covers the two deeper layers a /filter conversation actually renders throug
 (every inline-keyboard button/category-title/summary label the menu screens show, under the "kb.*"
 key prefix) and todira_common/cards.py (the listing-card caption itself — field labels, features,
 buttons — shared by scraper/notifier.py's push and bot/handlers/liked.py's on-demand cards, under
-the "card.*" prefix). cards.py's RTL bidi embedding (_force_rtl/_force_rtl_block) is now
-conditional on todira_common.language.RTL_LANGS (Hebrew/Arabic only) rather than applied
-unconditionally — forcing an RTL override on already-correctly-LTR English/Russian/French text
-would misalign it, not fix anything.
+the "card.*" prefix). cards.py builds every caption as plain text (no bidi marks at all, see
+its own module comment above _normalize_line_breaks) — Telegram/WhatsApp handle Hebrew/Arabic's
+right-to-left direction natively, no per-language override needed here.
 
 Translations were produced by this assistant, not reviewed by a native speaker of each language —
 same caveat website/i18n.py's own header already states for the website's copy; good enough for
@@ -1099,9 +1098,8 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Étage maximum", "ar": "الحد الأقصى للطابق",
     },
     # --- todira_common/cards.py — the listing-card caption itself (scraper/notifier.py's push,
-    # bot/handlers/liked.py's on-demand cards). Field labels/features/buttons only; the RTL bidi
-    # embedding in cards._force_rtl is now conditional on language.RTL_LANGS (Hebrew/Arabic only —
-    # forcing RTL on English/Russian/French would misalign text that's already correctly LTR).
+    # bot/handlers/liked.py's on-demand cards). Field labels/features/buttons only; every caption
+    # is plain text (no bidi marks) regardless of language — see cards.py's own module comment.
     "card.broker": {
         "he": "תיווך", "en": "Broker", "ru": "Агент", "fr": "Agence", "ar": "وسيط",
     },

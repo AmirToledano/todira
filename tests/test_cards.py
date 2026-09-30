@@ -12,12 +12,7 @@ from types import SimpleNamespace
 
 from todira_common.cards import (
     CAPTION_LIMIT,
-    _RTL_LINE_WRAP_CHARS,
-    _ZWNJ,
     _fit_to_limit,
-    _force_rtl,
-    _force_rtl_block,
-    _wrap_long_rtl_line,
     format_caption,
     format_caption_whatsapp,
 )
@@ -25,19 +20,11 @@ from todira_common.bot_strings import bot_text
 
 
 def _b(text: str) -> str:
-    """The plain `<b>...</b>` shape _build_body_lines' own `bold` closure builds for Telegram
-    RTL/LTR alike (as of 2026-09-30, bold is back) — _force_rtl (called on the whole line after)
-    is what actually isolates its inner text; this only builds the PRE-isolate input _force_rtl
-    itself expects, matching production exactly."""
+    """The plain `<b>...</b>` shape _build_body_lines' own `bold` closure builds for Telegram —
+    every caption line is plain HTML text now (see cards.py's own module comment above
+    _normalize_line_breaks for the full RTL-marks-removal history), so this is simply what
+    production emits, not a pre-transform input the way it used to be."""
     return f"<b>{text}</b>"
-
-
-def rtl(line: str, lang: str = "he") -> str:
-    """The exact real-production transform (RLM + per-run isolate, tag-aware) a fully-built
-    Hebrew/Arabic line goes through — see cards.py's _force_rtl for the full history/mechanism.
-    Building expected test fragments through the real function (not a hand-reimplementation of
-    its algorithm) keeps these tests honest about what production actually does."""
-    return _force_rtl(line, lang)
 
 
 def make_listing(**overrides):
@@ -73,13 +60,11 @@ def make_listing(**overrides):
 def test_basic_caption_includes_core_fields():
     # 2026-09-03 rewrite, matching the reference bot 1:1: location before price, every
     # field its own BOLD-labeled line, ₪ (not "ש"ח") as the currency, no source tag anywhere.
-    # 2026-09-30: bold is back — see cards.py's _force_rtl module comment for the full RTL
-    # history (embeddings -> dropped bold -> isolates) that landed on this final shape.
     caption = format_caption(make_listing(), has_access=True)
-    assert rtl(f"🛏️ {_b('חדרים:')} 4") in caption
-    assert rtl(f'📐 {_b("שטח:")} 160 מ"ר') in caption
-    assert rtl(f"💰 {_b('מחיר:')} 16,000₪") in caption
-    assert rtl(f"📍{_b('ירושלים')} - ניות") in caption
+    assert f"🛏️ {_b('חדרים:')} 4" in caption
+    assert f'📐 {_b("שטח:")} 160 מ"ר' in caption
+    assert f"💰 {_b('מחיר:')} 16,000₪" in caption
+    assert f"📍{_b('ירושלים')} - ניות" in caption
     assert "🏷️" not in caption  # the old "🏷️ {source}" footer line is gone
     # location must come before price in the actual rendered order, not just be present somewhere
     assert caption.index("📍") < caption.index("💰")
@@ -97,36 +82,28 @@ def test_no_prefix_line_for_a_plain_rent_or_sale_listing():
 
 def test_broker_prefix_line_shown_regardless_of_deal_type():
     caption = format_caption(make_listing(deal_type="sale", is_broker_listing=True), has_access=True)
-    assert rtl(f"🏢 {_b('תיווך')}") in caption
+    assert f"🏢 {_b('תיווך')}" in caption
 
     caption = format_caption(make_listing(deal_type="rent", is_broker_listing=True), has_access=True)
-    assert rtl(f"🏢 {_b('תיווך')}") in caption
+    assert f"🏢 {_b('תיווך')}" in caption
 
 
 def test_sublet_prefix_line_shown_when_not_broker():
     caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=False), has_access=True)
-    assert rtl(f"🏢 {_b('סאבלט')}") in caption
+    assert f"🏢 {_b('סאבלט')}" in caption
     assert "תיווך" not in caption
 
 
 def test_broker_prefix_wins_over_sublet_if_somehow_both():
     caption = format_caption(make_listing(deal_type="sublet", is_broker_listing=True), has_access=True)
-    assert rtl(f"🏢 {_b('תיווך')}") in caption
+    assert f"🏢 {_b('תיווך')}" in caption
     assert "סאבלט" not in caption
 
 
 def test_location_street_is_a_google_maps_link_on_telegram():
-    # 2026-09-28: the location line + street link together (23+ chars before the anchor even
-    # starts) run past _RTL_LINE_WRAP_CHARS, so the anchor — kept atomic, see
-    # _wrap_long_rtl_line's own docstring on why <a> can't be torn apart like <b> can — lands on
-    # its own pre-wrapped line rather than glued directly after "ניות". Both pieces are still
-    # exactly there, just no longer asserted as one contiguous run. 2026-09-29: a same-day attempt
-    # to combine them onto one line (measuring the anchor's visible text instead of its raw+href
-    # length) was reverted after a live check — see _wrap_long_rtl_line's own docstring.
     caption = format_caption(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert rtl(f"📍{_b('ירושלים')} - ניות") in caption
-    assert '<a href="https://www.google.com/maps/search/' in caption
-    assert ">⁧דיזנגוף 10⁩</a>" in caption
+    assert f'📍{_b("ירושלים")} - ניות <a href="https://www.google.com/maps/search/' in caption
+    assert ">דיזנגוף 10</a>" in caption
     assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
 
 
@@ -154,14 +131,14 @@ def test_street_with_a_literal_quote_mark_renders_plain_not_as_quot_entity():
 
 def test_floor_line_includes_total_when_known():
     caption = format_caption(make_listing(floor=4, floor_total=6), has_access=True)
-    assert rtl(f"🏢 {_b('קומה:')} 4 מתוך 6") in caption
+    assert f"🏢 {_b('קומה:')} 4 מתוך 6" in caption
 
 
 def test_move_in_date_is_day_month_year_not_iso():
     import datetime
 
     caption = format_caption(make_listing(move_in_date=datetime.date(2026, 9, 21)), has_access=True)
-    assert rtl(f"📅 {_b('כניסה:')} 21.09.2026") in caption
+    assert f"📅 {_b('כניסה:')} 21.09.2026" in caption
     assert "2026-09-21" not in caption
 
 
@@ -171,15 +148,10 @@ def test_no_features_line_when_nothing_is_known():
 
 
 def test_features_line_uses_a_distinct_emoji_per_feature_pipe_separated():
-    # 2026-09-28: with all 3 features this line runs past _RTL_LINE_WRAP_CHARS, so it now gets
-    # pre-wrapped at a word boundary (between "|"-separated features) the same as any other long
-    # RTL line — each feature is still there, pipe-separated, just not guaranteed on one physical
-    # line any more. See _wrap_long_rtl_line's own docstring for why this pre-wrap exists at all.
     listing = make_listing(has_parking=True, has_elevator=True, is_renovated=True)
     caption = format_caption(listing, has_access=True)
     features_label = _b("פיצ'רים:")
-    assert rtl(f"🔑 {features_label} 🚗חניה |") in caption
-    assert rtl("🛗מעלית | ✨משופצת") in caption
+    assert f"🔑 {features_label} 🚗חניה | 🛗מעלית | ✨משופצת" in caption
 
 
 def test_features_line_excludes_false_and_unknown_amenities():
@@ -191,15 +163,10 @@ def test_features_line_excludes_false_and_unknown_amenities():
 
 
 def test_features_line_includes_safe_room_and_furniture_with_their_own_emoji():
-    # "🛋️מרוהטת" itself lands as the pre-wrap's own continuation line here (see
-    # _wrap_long_rtl_line), so it goes through _force_rtl as a line-leading icon just like a real
-    # field label would — a ZWNJ (not a literal "" between them) now separates the emoji from the
-    # word that follows it, same as every other line-leading icon; see _LEADING_EMOJI_RE's comment.
     listing = make_listing(safe_room_type="safe_room", furniture="furnished")
     caption = format_caption(listing, has_access=True)
     assert '🛡️ממ"ד' in caption
-    assert "🛋️" in caption and "מרוהטת" in caption
-    assert caption.index("🛋️") < caption.index("מרוהטת")
+    assert "🛋️מרוהטת" in caption
 
 
 def test_features_line_is_not_italicized_anymore():
@@ -210,150 +177,85 @@ def test_features_line_is_not_italicized_anymore():
 
 def test_description_gets_a_note_emoji_prefix():
     caption = format_caption(make_listing(description="דירה מקסימה"), has_access=True)
-    assert rtl("📝 דירה מקסימה") in caption
+    assert "📝 דירה מקסימה" in caption
 
 
 def test_footer_link_text_and_no_source_tag():
     caption = format_caption(make_listing(), has_access=True)
-    assert '<a href="https://www.yad2.co.il/item/abc123">⁧לפרטי הדירה המלאים &gt;&gt;⁩</a>' in caption
+    assert '<a href="https://www.yad2.co.il/item/abc123">לפרטי הדירה המלאים &gt;&gt;</a>' in caption
     assert "🏷️" not in caption
 
 
-def test_caption_starts_with_a_real_rtl_mark():
-    # 2026-09-03: real user report + screenshot - Telegram rendered the caption's alignment
-    # starting from the middle/left instead of the right, because nearly every line starts with
-    # an emoji (no strong bidi direction of its own). Escalated 2026-09-14 (bare mark -> RLE/PDF
-    # embedding) then again 2026-09-30 (embedding -> RLI/PDI isolate, once a live A/B proved an
-    # embedding crossing a <b> tag's own boundary rendered broken) — see _force_rtl's own module
-    # comment for the full history. An explicit RLM at the very start of every line is still part
-    # of the final shape either way.
-    caption = format_caption(make_listing(), has_access=True)
-    assert caption.startswith("‏")
+def test_caption_has_no_bidi_control_characters():
+    # 2026-09-30, the actual resolution to a long RTL-alignment saga (see cards.py's own module
+    # comment above _normalize_line_breaks for the full history): a real reference bot's own
+    # message, copied directly out of Telegram Desktop, contains ZERO invisible bidi marks and
+    # renders correctly right-aligned on its own. Every earlier mark-based attempt this project
+    # tried (a bare RLM, RLE/PDF embeddings, RLI/PDI isolates + ZWNJ) left a persistent
+    # misalignment that no further mark tuning closed — dropping every mark fixed it instead.
+    # This test locks in that resolution: no caption, in any language, should ever carry one of
+    # these control characters again.
+    for lang in ("he", "ar", "en", "ru", "fr"):
+        caption = format_caption(make_listing(street="דיזנגוף 10"), has_access=True, lang=lang)
+        for mark in ("‏", "‎", "⁧", "⁩", "‌", "‫", "‬"):
+            assert mark not in caption, f"stray bidi control character {mark!r} in lang={lang} caption"
 
 
-def test_every_body_line_carries_its_own_rtl_mark_not_just_the_first():
-    # A second real user report the same day: the block kept drifting further left line by line -
-    # a single mark at the very front of the caption only anchors the FIRST line's direction, not
-    # every line independently. Every real content line needs its own mark. The one deliberate
-    # exception is the trailing RLM+LRM absorber line itself (see format_caption's own comment) -
-    # it's a mark-only line with no real content, so it's excluded here rather than asserted on.
-    caption = format_caption(make_listing(has_parking=True), has_access=True)
-    lines = [line for line in caption.split("\n") if line]
-    for line in lines[:-1]:
-        assert line.startswith("‏"), f"line missing its own RTL mark: {line!r}"
-
-
-def test_multiline_description_carries_rtl_isolate_on_every_physical_line():
-    # 2026-09-18: real user screenshots showed several cards still rendering mid-caption text
-    # starting from the middle instead of the right — traced to a real listing description that
-    # itself contains several physical lines (a very common shape for scraped listings, e.g.
-    # "דירת 5 חדרים...\nחדשה מהקבלן...\n2 חניות\nמחסן"). format_caption/format_caption_whatsapp
-    # only wrapped the WHOLE description block in one _force_rtl call — a single embedding that a
-    # bidi paragraph separator (a newline) resets per rendered line, exactly the same bug
-    # test_every_body_line_carries_its_own_rtl_mark_not_just_the_first already covers for this
-    # file's own fixed field lines. Every physical line of the description needs its own mark too.
+def test_multiline_description_keeps_every_physical_line():
+    # 2026-09-18: real user screenshots showed a scraped description containing several physical
+    # lines (e.g. "דירת 5 חדרים...\nחדשה מהקבלן...\n2 חניות\nמחסן") — every physical line must
+    # still be present and in order in the final caption.
     multiline_description = "דירת 5 חדרים יפיפייה\nחדשה מהקבלן עדיין לא אוכלסה\n2 חניות\nמחסן"
     caption = format_caption(make_listing(description=multiline_description), has_access=True)
-    assert rtl("📝 דירת 5 חדרים יפיפייה") in caption
-    assert rtl("חדשה מהקבלן עדיין לא אוכלסה") in caption
-    assert rtl("2 חניות") in caption
-    assert rtl("מחסן") in caption
+    assert "📝 דירת 5 חדרים יפיפייה" in caption
+    assert "חדשה מהקבלן עדיין לא אוכלסה" in caption
+    assert "2 חניות" in caption
+    assert "מחסן" in caption
 
 
-def test_whatsapp_multiline_description_carries_rtl_isolate_on_every_physical_line():
+def test_whatsapp_multiline_description_keeps_every_physical_line():
     multiline_description = "דירת 5 חדרים יפיפייה\nחדשה מהקבלן עדיין לא אוכלסה\n2 חניות\nמחסן"
     caption = format_caption_whatsapp(
         make_listing(description=multiline_description), has_access=True
     )
-    assert rtl("📝 דירת 5 חדרים יפיפייה") in caption
-    assert rtl("חדשה מהקבלן עדיין לא אוכלסה") in caption
-    assert rtl("2 חניות") in caption
-    assert rtl("מחסן") in caption
+    assert "📝 דירת 5 חדרים יפיפייה" in caption
+    assert "חדשה מהקבלן עדיין לא אוכלסה" in caption
+    assert "2 חניות" in caption
+    assert "מחסן" in caption
 
 
-def test_carriage_return_only_description_still_gets_per_line_rtl_isolate():
-    # 2026-09-21: real screenshots taken DAYS after the 2026-09-18 fix above went live still
-    # showed broken alignment for real Homeless listings — a live DB dump
-    # (diagnose-homeless-description-raw-chars.yaml) proved why: real Homeless descriptions use
-    # bare "\r" as their line separator, not "\n". split("\n") never split them at all, so the
-    # fix above silently didn't apply to this real, common case. splitlines() (used now) handles
-    # "\r" too.
+def test_carriage_return_only_description_still_splits_into_separate_lines():
+    # 2026-09-21: real Homeless listings use a bare "\r" as their line separator, not "\n" —
+    # _normalize_line_breaks (splitlines()-based) handles "\r" too.
     cr_description = "דירה להשכרה\rבמרכז העיר\rקומה 3"
     caption = format_caption(make_listing(description=cr_description), has_access=True)
-    assert rtl("📝 דירה להשכרה") in caption
-    assert rtl("במרכז העיר") in caption
-    assert rtl("קומה 3") in caption
+    assert "📝 דירה להשכרה" in caption
+    assert "במרכז העיר" in caption
+    assert "קומה 3" in caption
 
 
-def test_long_single_line_description_gets_pre_wrapped_before_rtl_isolate():
-    # 2026-09-28: a fresh, repeated real owner report with screenshots — the 2026-09-18/09-21 fixes
-    # above only cover a description that already contains an explicit line break. This is the
-    # still-broken case those fixes never touched: ONE logical line with no \n/\r of its own, but
-    # long enough that Telegram word-wraps it itself onto 2+ visual lines — and the single
-    # RTL mark/isolate around that one logical line doesn't carry its alignment onto the
-    # continuation line Telegram creates by its own soft-wrap. Every real screenshot example was a
-    # short single-line field (never wrapped) rendering fine and a long free-text paragraph (wrapped
-    # by the client) rendering broken — this is that exact case, using the real listing text from
-    # one of the owner's own screenshots that day.
+def test_long_single_line_description_is_not_manually_pre_wrapped():
+    # 2026-09-30: manual pre-wrapping (this file used to force short lines to keep a client
+    # soft-wrap from interacting badly with bidi marks) is gone along with the marks themselves —
+    # Telegram/WhatsApp are left to wrap long lines on their own, same as the real reference bot
+    # this approach was modeled on.
     long_description = "יחידת דיור משופצת כולל גינה כניסה 20.10.26"
     caption = format_caption(make_listing(description=long_description), has_access=True)
-    description_words = long_description.split(" ")
-    description_lines = [
-        line
-        for line in caption.split("\n")
-        if any(word in line for word in description_words)
-    ]
-    assert len(description_lines) >= 2, "a long single-line description should be pre-wrapped"
-    for line in description_lines:
-        # strip the RLM/RLI/PDI marks themselves before measuring visible length
-        visible = line.strip("‏⁧⁩")
-        assert len(visible) <= _RTL_LINE_WRAP_CHARS, f"line too long to guarantee no client re-wrap: {line!r}"
-        # 2026-09-30: the FIRST physical line carries the description's own "📝" leading icon —
-        # RLM, then the bare emoji + ZWNJ (see _LEADING_EMOJI_RE), THEN the isolate — so only every
-        # OTHER (icon-less) continuation line has RLI immediately after RLM.
-        assert line.startswith("‏") and line.endswith("⁩"), f"line missing its own RTL mark: {line!r}"
+    assert f"📝 {long_description}" in caption
 
 
-def test_wrap_long_rtl_line_never_splits_mid_word():
-    # An HTML tag or markdown marker glued to its neighboring word (format_caption's "<b>word",
-    # format_caption_whatsapp's "*word") must never be split in half by the wrap — that would ship
-    # a literal broken tag in the message, not just a misaligned line.
-    text = "🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>"
-    pieces = _wrap_long_rtl_line(text, _RTL_LINE_WRAP_CHARS)
-    assert len(pieces) > 1, "this real banner sentence is long enough that it must be split"
-    rejoined = " ".join(pieces)
-    assert rejoined == text, "wrapping must never drop, duplicate, or reorder any word"
-    assert pieces[0].startswith("🕵️ <b>")
-    assert pieces[-1].endswith("כמה!</b>")
-    for piece in pieces:
-        if "<" in piece or ">" in piece:
-            assert "<b>" in piece or "</b>" in piece, f"a tag got split in half: {piece!r}"
-
-
-def test_wrap_long_rtl_line_keeps_a_single_overlong_word_whole():
-    words = _wrap_long_rtl_line("א" * 50, _RTL_LINE_WRAP_CHARS)
-    assert words == ["א" * 50]
-
-
-def test_no_photos_banner_stays_valid_html_and_gets_rtl_isolate_per_visual_line():
+def test_no_photos_banner_stays_valid_html():
     # cards.py's send_listing_card builds this exact banner (bot_text("card.no_photos_banner")
-    # rstripped, then _force_rtl_block) before prepending it to the caption — tested here at the
-    # same level as every other RTL test in this file, since send_listing_card itself needs a fake
-    # Telegram Bot to exercise (covered separately below). Bold is back (2026-09-30) — see
-    # bot_strings.py's own no_photos_banner entries and cards.py's _force_rtl module comment.
+    # rstripped, "\n\n" appended) before prepending it to the caption — tested here at the same
+    # level as every other format test in this file, since send_listing_card itself needs a fake
+    # Telegram Bot to exercise (covered separately below).
     banner_text = bot_text("card.no_photos_banner", "he").rstrip("\n")
-    result = f"{_force_rtl_block(banner_text, 'he')}\n\n"
-    assert result.endswith("\n\n"), "the blank-line gap before the caption must survive the rewrap"
+    result = f"{banner_text}\n\n"
+    assert result.endswith("\n\n"), "the blank-line gap before the caption must survive"
     assert "<b>" in result and "</b>" in result
-    lines = [line for line in result.split("\n") if line]
-    assert len(lines) > 1, "the real banner sentence is long enough that it must be pre-wrapped"
-    for line in lines:
-        # the FIRST physical line carries the banner's own "🕵️" leading icon — see
-        # test_long_single_line_description_gets_pre_wrapped_before_rtl_isolate's own comment.
-        assert line.startswith("‏") and line.endswith("⁩")
 
 
-def test_blank_spacer_line_has_no_stray_rtl_mark():
+def test_blank_spacer_line_stays_truly_blank():
     caption = format_caption(make_listing(has_parking=True), has_access=True)
     lines = caption.split("\n")
     assert "" in lines  # the spacer before the features line
@@ -370,14 +272,14 @@ def test_blank_line_separates_floor_from_features():
 
 def test_price_drop_header_prepended():
     caption = format_caption(make_listing(price=16000), price_change_from=18000, has_access=True)
-    assert caption.lstrip("‏⁧").startswith("📉")
+    assert caption.startswith("📉")
     assert "ירידת מחיר" in caption
     assert "18,000" in caption
 
 
 def test_price_increase_header_prepended():
     caption = format_caption(make_listing(price=18000), price_change_from=16000, has_access=True)
-    assert caption.lstrip("‏⁧").startswith("📈")
+    assert caption.startswith("📈")
     assert "עליית מחיר" in caption
     assert "16,000" in caption
 
@@ -402,8 +304,8 @@ def test_whatsapp_caption_uses_markdown_not_html():
     caption = format_caption_whatsapp(listing, has_access=True)
     assert "<b>" not in caption
     assert "<i>" not in caption
-    assert rtl("🛏️ *חדרים:* 4") in caption
-    assert rtl("🔑 *פיצ'רים:* 🚗חניה") in caption
+    assert "🛏️ *חדרים:* 4" in caption
+    assert "🔑 *פיצ'רים:* 🚗חניה" in caption
     assert "_" not in caption  # no more italics markdown either
 
 
@@ -412,17 +314,11 @@ def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
     # Telegram's HTML <a> tag — same underlying Google Maps URL, just on its own tappable line
     # right after the location line instead of inline.
     caption = format_caption_whatsapp(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert rtl("📍*ירושלים* - ניות דיזנגוף 10") in caption
+    assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
     assert "<a href" not in caption
     lines = caption.split("\n")
-    # Every line carries its own leading RTL mark (see _build_body_lines) right before its
-    # emoji, so the location line no longer literally starts with "📍" - "in", not "startswith".
     location_line = next(i for i, line in enumerate(lines) if "📍" in line)
-    # The maps line is inserted after _build_body_lines already returned, so it carries its own
-    # separate RTL mark rather than one from that function - see format_caption_whatsapp's
-    # own comment on why. "🗺️" is this line's own leading icon (see _LEADING_EMOJI_RE), so it
-    # stays bare + ZWNJ rather than isolated with the URL.
-    assert lines[location_line + 1].startswith(f"‏🗺️{_ZWNJ}⁧https://www.google.com/maps/search/")
+    assert lines[location_line + 1].startswith("🗺️ https://www.google.com/maps/search/")
 
 
 def test_whatsapp_price_change_header_is_bold_with_asterisks():
@@ -523,8 +419,8 @@ def test_no_access_still_shows_the_basic_teaser_fields():
     # user still sees everything about the match except where to actually go for it.
     listing = make_listing(has_parking=True)
     caption = format_caption(listing, has_access=False)
-    assert rtl(f"💰 {_b('מחיר:')} 16,000₪") in caption
-    assert rtl(f"🛏️ {_b('חדרים:')} 4") in caption
+    assert f"💰 {_b('מחיר:')} 16,000₪" in caption
+    assert f"🛏️ {_b('חדרים:')} 4" in caption
     assert "🚗חניה" in caption
 
 
@@ -581,10 +477,7 @@ def test_telegram_caption_escapes_html_in_scraped_fields():
     assert "<script>" not in caption
     assert "&lt;script&gt;" in caption
     assert "<b>fake bold</b>" not in caption
-    # 2026-09-28: this escaped neighborhood text is long enough to get pre-wrapped like any other
-    # long RTL line — still fully present and in order, just no longer one contiguous run.
-    assert "A &amp; B &lt;b&gt;fake" in caption
-    assert "bold&lt;/b&gt;" in caption
+    assert "A &amp; B &lt;b&gt;fake bold&lt;/b&gt;" in caption
     assert "<i>St</i>" not in caption
     assert "<img" not in caption
     assert '"onmouseover=alert(1)' not in caption
@@ -618,26 +511,9 @@ def test_format_caption_renders_english_labels():
     assert "מחיר" not in caption
 
 
-def test_format_caption_english_has_no_rtl_embedding():
-    # Hebrew/Arabic need the RTL bidi override (cards._force_rtl) since nearly every line starts
-    # with a direction-neutral emoji — English/Russian/French are already correctly LTR-aligned
-    # on their own, and forcing an RTL embedding there would misalign them instead.
-    caption = format_caption(make_listing(), has_access=True, lang="en")
-    assert "‫" not in caption  # RLE
-    assert "‬" not in caption  # PDF
-
-
-def test_format_caption_hebrew_keeps_rtl_mark():
-    caption = format_caption(make_listing(), has_access=True, lang="he")
-    assert "‏" in caption  # RLM
-    assert "⁧" in caption  # RLI
-    assert "⁩" in caption  # PDI
-
-
-def test_format_caption_renders_arabic_labels_with_rtl_mark():
+def test_format_caption_renders_arabic_labels():
     caption = format_caption(make_listing(), has_access=True, lang="ar")
     assert "السعر:" in caption
-    assert "‏" in caption
 
 
 def test_format_caption_renders_russian_and_french_labels():
