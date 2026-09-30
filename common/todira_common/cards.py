@@ -385,7 +385,7 @@ def _force_rtl(text: str, lang: str) -> str:
 _RTL_LINE_WRAP_CHARS = 30
 
 
-_HTML_ANCHOR_SPAN_RE = re.compile(r"<a\b[^>]*>(.*?)</a>")
+_HTML_ANCHOR_SPAN_RE = re.compile(r"<a\b[^>]*>.*?</a>")
 
 
 def _wrap_long_rtl_line(line: str, width: int) -> list[str]:
@@ -406,39 +406,33 @@ def _wrap_long_rtl_line(line: str, width: int) -> list[str]:
     right inside that markup, stranding a bare "<a" with no closing ">" on one line and
     "href=\"...\">street</a>" on the next — genuinely broken HTML, not just misaligned text.
 
-    2026-09-29: an anchor's WIDTH CONTRIBUTION for the wrap decision is now its visible link text
-    only (e.g. "דרך השדות 1"), not the full raw span including its href — a real owner report
-    ("should the city and street really be on 2 lines? there's plenty of room") traced to this:
-    the Google Maps href alone easily runs 80-100+ chars, so the old raw-length count always
-    forced a split between the location and its street link even when the two would visually fit
-    on one line together (the href itself is invisible to the reader — Telegram only renders the
-    anchor's inner text)."""
+    2026-09-29: tried measuring an anchor's WIDTH CONTRIBUTION by its visible link text only (not
+    the full raw span+href) so a short location + street link could share one physical line
+    instead of always splitting — reverted the same day: a live A/B on the same real listing
+    showed that single combined line (plain city text followed by the <a> link, both inside one
+    RLE...PDF span) rendering SLIGHTLY off (close to the right edge but not flush), while the
+    original two-separate-lines shape (city alone, then the link alone, each its own embedding)
+    rendered perfectly. Mixing a plain-text run and a link-entity run inside the same bidi
+    embedding is its own subtly-broken case, distinct from (but adjacent to) the <b>-crossing-the-
+    embedding bug format_caption's own docstring covers — no live-verified-safe fix for THAT one
+    found yet either, so back to counting the anchor's full raw length (href included), which
+    reliably forces the split that's actually been confirmed correct."""
     words: list[str] = []
-    word_widths: list[int] = []
     pos = 0
     for m in _HTML_ANCHOR_SPAN_RE.finditer(line):
-        for plain_word in line[pos : m.start()].split():
-            words.append(plain_word)
-            word_widths.append(len(plain_word))
+        words.extend(line[pos : m.start()].split())
         words.append(m.group(0))
-        word_widths.append(len(m.group(1)))
         pos = m.end()
-    for plain_word in line[pos:].split():
-        words.append(plain_word)
-        word_widths.append(len(plain_word))
-
+    words.extend(line[pos:].split())
     out: list[str] = []
     current = ""
-    current_width = 0
-    for word, word_width in zip(words, word_widths):
-        candidate_width = current_width + 1 + word_width if current else word_width
-        if candidate_width > width and current:
+    for word in words:
+        candidate = f"{current} {word}" if current else word
+        if len(candidate) > width and current:
             out.append(current)
             current = word
-            current_width = word_width
         else:
-            current = f"{current} {word}" if current else word
-            current_width = candidate_width
+            current = candidate
     if current:
         out.append(current)
     return out or [line]

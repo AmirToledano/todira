@@ -99,12 +99,16 @@ def test_broker_prefix_wins_over_sublet_if_somehow_both():
 
 
 def test_location_street_is_a_google_maps_link_on_telegram():
-    # 2026-09-29: _wrap_long_rtl_line now measures an anchor's WIDTH CONTRIBUTION by its visible
-    # link text only, not the raw span including the href — a real owner report that the city and
-    # street should share one line when they'd visually fit. "ירושלים - ניות דיזנגוף 10" is well
-    # under _RTL_LINE_WRAP_CHARS, so they now land on the same physical line.
+    # 2026-09-28: the location line + street link together (23+ chars before the anchor even
+    # starts) run past _RTL_LINE_WRAP_CHARS, so the anchor — kept atomic, see
+    # _wrap_long_rtl_line's own docstring on why <a> can't be torn apart like <b> can — lands on
+    # its own pre-wrapped line rather than glued directly after "ניות". Both pieces are still
+    # exactly there, just no longer asserted as one contiguous run. 2026-09-29: a same-day attempt
+    # to combine them onto one line (measuring the anchor's visible text instead of its raw+href
+    # length) was reverted after a live check — see _wrap_long_rtl_line's own docstring.
     caption = format_caption(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert '📍ירושלים - ניות <a href="https://www.google.com/maps/search/' in caption
+    assert "📍ירושלים - ניות" in caption
+    assert '<a href="https://www.google.com/maps/search/' in caption
     assert ">דיזנגוף 10</a>" in caption
     assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
 
