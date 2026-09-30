@@ -1,0 +1,128 @@
+name: Diagnose - v21, zero bidi marks at all, matching Dorin's own copied raw text
+
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-30. The owner copied Dorin's real bot
+# message text directly out of Telegram DESKTOP ("Copy Text" on a real, correctly right-aligned
+# message of theirs). The copied text contains ZERO invisible bidi marks (no RLM/RLI/PDI/ZWNJ of
+# any kind) and NO manual pre-wrapping (long lines are left as one long logical line, no forced
+# \n breaks) - just plain Hebrew text with normal spaces between an emoji and its label. And it
+# renders flush right.
+#
+# This reframes the entire investigation: every fix tried so far (RLE/PDF embeddings, then
+# RLI/PDI isolates + ZWNJ) assumed Telegram's own native bidi handling of a Hebrew caption was
+# insufficient and needed explicit direction marks - but Dorin's own real, working bot message
+# proves Telegram handles plain, mark-free Hebrew text (with bold, emoji, links, the works)
+# correctly on its own. The marks this project has been adding may be actively CONFUSING
+# Telegram's client-side text-block positioning (consistent with the owner's own screenshot
+# showing a persistent right-side gap that no mark arrangement has fully closed).
+#
+# Sends the SAME real listing content with ZERO _force_rtl/_RLM/_RLI/_PDI/_ZWNJ involvement at
+# all - plain "emoji label: value" lines, real <b> bold tags, real <a href> links, NO manual
+# pre-wrapping - as close to Dorin's own observed shape as this file's own data allows, so the
+# owner can compare directly against today's real production shape.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send-real-card:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Find the live bot pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "Could not find a running todira-bot pod."
+            exit 1
+          fi
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          echo "Found pod: $POD"
+
+      - name: Send a real listing with ZERO bidi marks and no manual pre-wrap
+        run: |
+          cat <<'PYEOF' > /tmp/send_zero_marks.py
+          import asyncio
+          import os
+
+          from sqlalchemy import select
+          from telegram import Bot
+          from telegram.constants import ParseMode
+
+          from todira_common.cards import send_listing_card
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+
+          def plain_caption(listing) -> str:
+              """Zero bidi marks, zero manual pre-wrap - matches the shape of a real Dorin bot
+              message the owner copied directly out of Telegram Desktop (no RLM/RLI/PDI/ZWNJ at
+              all, one long logical line per field/description, not hard-wrapped)."""
+              lines = []
+              location = f"📍 {listing.city}"
+              if listing.street:
+                  maps_q = f"{listing.street}, {listing.city}".replace(" ", "%20")
+                  location += (
+                      f' - <a href="https://www.google.com/maps/search/?api=1&query={maps_q}">'
+                      f"{listing.street}</a>"
+                  )
+              lines.append(location)
+              if listing.price is not None:
+                  lines.append(f"💰 <b>מחיר:</b> {listing.price:,}₪")
+              lines.append(f"🛏️ <b>חדרים:</b> {listing.rooms or '?'}")
+              if listing.size_sqm:
+                  lines.append(f'📐 <b>שטח:</b> {listing.size_sqm} מ"ר')
+              if listing.floor is not None:
+                  lines.append(f"🏢 <b>קומה:</b> {listing.floor}")
+              lines.append("")
+              description = (listing.description or "").strip()
+              if description:
+                  lines.append(f"📝 {description}")
+              lines.append("")
+              lines.append(f'🔗 <a href="{listing.url}">לפרטי הדירה המלאים &gt;&gt;</a>')
+              return "\n".join(lines)
+
+
+          async def main() -> None:
+              token = os.environ["TELEGRAM_BOT_TOKEN"]
+              owner_id = int(os.environ["OWNER_TELEGRAM_USER_ID"])
+
+              with get_session() as session:
+                  stmt = (
+                      select(Listing)
+                      .where(Listing.is_delisted.is_(False))
+                      .where(Listing.duplicate_of_id.is_(None))
+                      .where(Listing.street.isnot(None))
+                      .where(Listing.description.isnot(None))
+                      .where(Listing.deal_type == "rent")
+                      .order_by(Listing.scraped_at.desc())
+                      .limit(1)
+                  )
+                  listing = session.scalars(stmt).first()
+                  if listing is None:
+                      print("No matching real listing found.")
+                      return
+
+                  print(f"Using REAL listing id={listing.id} city={listing.city!r} street={listing.street!r}")
+                  caption = plain_caption(listing)
+                  print("=== caption (repr, confirms literally zero RLM/RLI/PDI/ZWNJ) ===")
+                  print(repr(caption))
+
+                  async with Bot(token=token) as bot:
+                      await bot.send_message(
+                          chat_id=owner_id,
+                          text="בדיקה v21 - בלי שום סימן נסתר, בדיוק כמו ההודעה של דורין שהעתקת:",
+                      )
+                      ok = await send_listing_card(bot, owner_id, listing, caption, lang="he")
+                      print(f"send_listing_card returned: {ok}")
+
+
+          asyncio.run(main())
+          PYEOF
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/send_zero_marks.py
