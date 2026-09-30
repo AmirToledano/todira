@@ -59,7 +59,11 @@ def test_query_filters_out_delisted_and_requires_never_notified():
     sql = str(session.executed[0].compile())
     assert "is_delisted" in sql
     assert "NOT (EXISTS" in sql or "NOT EXISTS" in sql
-    assert "scraped_at" in sql
+    # The 7-day window is measured from when the listing was FIRST seen. scraped_at is refreshed on
+    # every re-scrape, so using it made the window cover every still-active listing.
+    where_clause = sql.split("WHERE", 1)[1]  # the SELECT column list names every column
+    assert "first_seen_at" in where_clause
+    assert "scraped_at" not in where_clause
 
 
 def test_query_excludes_cross_source_duplicate_rows():

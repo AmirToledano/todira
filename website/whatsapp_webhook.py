@@ -35,6 +35,7 @@ import html
 import logging
 import os
 import threading
+import time
 from collections import OrderedDict
 
 import httpx
@@ -526,6 +527,45 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         _send_current_matches_summary(wa_id, lang, total)
 
 
+# error code -> time.monotonic() of the last owner alert, so a burst of failures (every message of a
+# scraper run fails the same way) produces ONE Telegram message, not hundreds.
+_DELIVERY_ALERT_COOLDOWN_SECONDS = 6 * 60 * 60
+_last_delivery_alert_at: dict[object, float] = {}
+_delivery_alert_lock = threading.Lock()
+
+
+def _alert_owner_of_delivery_failure(errors: list[tuple]) -> None:
+    """Best-effort Telegram message to the owner when Meta reports a WhatsApp send as failed — found
+    2026-10-01: a WhatsApp Business account with unsettled payments (Meta error 131042) silently
+    rejected every message for hours while each send still answered HTTP 200, and nothing told the
+    owner. At most one alert per error code per _DELIVERY_ALERT_COOLDOWN_SECONDS. Never raises."""
+    if not TELEGRAM_BOT_TOKEN or not OWNER_TELEGRAM_USER_ID:
+        return
+    now = time.monotonic()
+    fresh = []
+    with _delivery_alert_lock:
+        for code, title, details in errors:
+            last = _last_delivery_alert_at.get(code)
+            if last is None or now - last >= _DELIVERY_ALERT_COOLDOWN_SECONDS:
+                _last_delivery_alert_at[code] = now
+                fresh.append((code, title, details))
+    if not fresh:
+        return
+    lines = ["⚠️ <b>וואטסאפ: Meta מדווחת שהודעות לא נמסרות</b>", ""]
+    for code, title, details in fresh:
+        lines.append(f"קוד {html.escape(str(code))}: {html.escape(str(title))}")
+        if details:
+            lines.append(html.escape(str(details)))
+    try:
+        httpx.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": OWNER_TELEGRAM_USER_ID, "text": "\n".join(lines), "parse_mode": "HTML"},
+            timeout=10.0,
+        )
+    except httpx.HTTPError:
+        logger.exception("Failed to push a WhatsApp delivery-failure alert to Telegram")
+
+
 def _log_delivery_statuses(value: dict) -> None:
     """Meta reports what happened to every message WE sent (sent/delivered/read/failed) as a
     "statuses" entry on this same webhook. They used to be dropped silently, which made a message
@@ -542,6 +582,7 @@ def _log_delivery_statuses(value: dict) -> None:
                 for error in status.get("errors") or []
             ]
             logger.warning("WhatsApp delivery FAILED (category=%s): %s", category, errors)
+            _alert_owner_of_delivery_failure(errors)
         else:
             logger.info("WhatsApp delivery status=%s (category=%s)", status.get("status"), category)
 

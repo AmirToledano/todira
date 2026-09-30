@@ -1119,3 +1119,58 @@ def test_failed_delivery_status_is_logged_with_meta_error_but_never_the_recipien
     assert "status=delivered" in text and "utility" in text
     assert "972500000000" not in text
     assert "wamid" not in text
+
+
+def _failed_status_payload(code, title="t", details="d"):
+    return {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "statuses": [
+                                {
+                                    "status": "failed",
+                                    "errors": [{"code": code, "title": title, "error_data": {"details": details}}],
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+
+def test_delivery_failure_alerts_the_owner_once_per_error_code_not_per_message():
+    # Found 2026-10-01: unsettled WhatsApp billing (Meta error 131042) rejected every message for
+    # hours and nothing told the owner. A scraper run fails dozens of messages the same way, so the
+    # alert is rate-limited per error code.
+    whatsapp_webhook._last_delivery_alert_at.clear()
+    with (
+        patch.object(whatsapp_webhook, "TELEGRAM_BOT_TOKEN", "tok"),
+        patch.object(whatsapp_webhook, "OWNER_TELEGRAM_USER_ID", "42"),
+        patch.object(whatsapp_webhook.httpx, "post") as post_mock,
+    ):
+        for _ in range(5):
+            whatsapp_webhook._process_payload_sync(_failed_status_payload(131042, "payment issue", "<pay>"))
+        assert post_mock.call_count == 1
+        body = post_mock.call_args.kwargs["json"]
+        assert body["chat_id"] == "42" and "131042" in body["text"]
+        assert "&lt;pay&gt;" in body["text"]  # Meta's text is escaped for Telegram's HTML parse mode
+
+        whatsapp_webhook._process_payload_sync(_failed_status_payload(131049, "other"))
+        assert post_mock.call_count == 2  # a DIFFERENT error code still alerts
+    whatsapp_webhook._last_delivery_alert_at.clear()
+
+
+def test_delivered_status_never_alerts_the_owner():
+    whatsapp_webhook._last_delivery_alert_at.clear()
+    payload = {"entry": [{"changes": [{"value": {"statuses": [{"status": "delivered"}]}}]}]}
+    with (
+        patch.object(whatsapp_webhook, "TELEGRAM_BOT_TOKEN", "tok"),
+        patch.object(whatsapp_webhook, "OWNER_TELEGRAM_USER_ID", "42"),
+        patch.object(whatsapp_webhook.httpx, "post") as post_mock,
+    ):
+        whatsapp_webhook._process_payload_sync(payload)
+    post_mock.assert_not_called()

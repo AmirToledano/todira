@@ -287,7 +287,14 @@ class Listing(Base):
     image_urls: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
 
     posted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Refreshed on EVERY re-scrape (scraper/main.py's _upsert_listings) — "last confirmed still
+    # active", which is what the delisting grace period needs. NOT "when did we first see this".
     scraped_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    # Set once on INSERT and never updated (migration 0018): the real "new listing" clock — the
+    # retry-unnotified window and every "newest first" ordering use this, not scraped_at.
+    first_seen_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 

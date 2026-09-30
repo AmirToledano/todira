@@ -136,6 +136,26 @@ def test_existing_listing_update_refreshes_scraped_at():
     assert "scraped_at=now()" in compiled
 
 
+def test_existing_listing_update_never_touches_first_seen_at():
+    # first_seen_at is set once (server default on INSERT) and is the clock the retry window and
+    # every "newest first" ordering use - a re-scrape must not advance it.
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=5000)
+    session = _QueueSession([_CannedResult((42, 5000)), _CannedResult(None)])
+
+    _upsert_listings(session, [existing_item])
+
+    assert "first_seen_at" not in str(session.executed_stmts[-1].compile())
+
+
+def test_new_listing_insert_leaves_first_seen_at_to_the_server_default():
+    new_item = _make_item("new-1", "https://example.com/new-1")
+    session = _QueueSession([_CannedResult(None), _CannedResult((5001,))])
+
+    _upsert_listings(session, [new_item])
+
+    assert "first_seen_at" not in str(session.executed_stmts[-1].compile())
+
+
 def test_price_drop_on_existing_listing_is_reported():
     existing_item = _make_item("existing-1", "https://example.com/existing-1", price=4000)
     session = _QueueSession(

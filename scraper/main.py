@@ -855,7 +855,12 @@ def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Lis
     a full-table scan) and self-limiting: the very first successful send removes a listing from
     this set on the next run, same as it always would have. A listing nobody has ever matched
     (normal — most listings match no one's filter) also has zero SentNotification rows and gets
-    re-evaluated here too; harmless, just a cheap no-op re-check, not a bug."""
+    re-evaluated here too; harmless, just a cheap no-op re-check, not a bug.
+
+    The window is measured from Listing.first_seen_at (set once on INSERT, migration 0018), NOT
+    scraped_at: scraped_at is refreshed on every re-scrape, so using it made "the last 7 days"
+    cover every still-active listing — a filter edit that recorded no SentNotification rows could
+    then trigger cards for months-old listings on the next run."""
     retry_window_cutoff = func.now() - func.make_interval(0, 0, 0, 0, _RETRY_UNNOTIFIED_HOURS)
     never_notified_exists = (
         select(SentNotification.id)
@@ -873,7 +878,7 @@ def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Lis
                 # A cross-source duplicate row is deliberately never notified (see _upsert_listings),
                 # so it would pass ~never_notified_exists forever and re-send the same apartment.
                 Listing.duplicate_of_id.is_(None),
-                Listing.scraped_at >= retry_window_cutoff,
+                Listing.first_seen_at >= retry_window_cutoff,
                 ~never_notified_exists,
             )
         )
