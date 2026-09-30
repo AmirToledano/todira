@@ -526,6 +526,26 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         _send_current_matches_summary(wa_id, lang, total)
 
 
+def _log_delivery_statuses(value: dict) -> None:
+    """Meta reports what happened to every message WE sent (sent/delivered/read/failed) as a
+    "statuses" entry on this same webhook. They used to be dropped silently, which made a message
+    Meta accepted (HTTP 200) but never delivered completely invisible — found 2026-10-01 when a real
+    owner stopped receiving match pushes while every send still answered 200. Logs only the status,
+    the pricing category and, for a failure, Meta's own error code/title/details. Never the
+    recipient or the message id: a wamid base64-encodes the recipient's phone number."""
+    for status in value.get("statuses") or []:
+        pricing = status.get("pricing") or {}
+        category = pricing.get("category")
+        if status.get("status") == "failed":
+            errors = [
+                (error.get("code"), error.get("title"), (error.get("error_data") or {}).get("details"))
+                for error in status.get("errors") or []
+            ]
+            logger.warning("WhatsApp delivery FAILED (category=%s): %s", category, errors)
+        else:
+            logger.info("WhatsApp delivery status=%s (category=%s)", status.get("status"), category)
+
+
 def _process_payload_sync(payload: dict) -> None:
     """Runs as a FastAPI BackgroundTask — i.e. AFTER the 200 below has already been sent to Meta.
     Doing the actual work (DB + Gemini + the WhatsApp send) here instead of inline in
@@ -540,6 +560,7 @@ def _process_payload_sync(payload: dict) -> None:
     for entry in entries:
         for change in entry.get("changes", []):
             value = change.get("value", {})
+            _log_delivery_statuses(value)
             messages = value.get("messages")
             if not messages:
                 continue  # a delivery/read status update, not an incoming message
