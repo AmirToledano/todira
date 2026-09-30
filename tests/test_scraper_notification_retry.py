@@ -62,6 +62,15 @@ def test_query_filters_out_delisted_and_requires_never_notified():
     assert "scraped_at" in sql
 
 
+def test_query_excludes_cross_source_duplicate_rows():
+    # _upsert_listings never notifies a duplicate row (it is left out of new_ids), so without this
+    # filter it would pass "never notified" on every run and re-send the same apartment.
+    session = _RecordingSession(rows=[])
+    _find_unnotified_recent_listings(session, exclude_ids=set())
+
+    assert "duplicate_of_id IS NULL" in str(session.executed[0].compile())
+
+
 def test_excludes_ids_already_handled_as_genuinely_new_this_run():
     session = _RecordingSession(rows=[_FakeListing(1), _FakeListing(2), _FakeListing(3)])
     result = _find_unnotified_recent_listings(session, exclude_ids={2})
