@@ -12,7 +12,14 @@ name: Test - send ONE real rich WhatsApp listing card to the owner's own account
 # is never printed: a successful Meta response echoes the recipient (and a message id encodes it), so
 # only the HTTP status is logged on success, plus Meta's error body on failure.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      which:
+        description: "Which template path to send: rich, plain or both (default both)"
+        required: false
+        default: "both"
+        type: choice
+        options: [both, rich, plain]
 
 jobs:
   test:
@@ -86,8 +93,14 @@ jobs:
                   raise SystemExit("RESULT: no suitable real listing found")
               print(f"using REAL listing id={listing.id} city={listing.city!r} street={listing.street!r}")
 
-              ok = notifier._send_whatsapp_rich_match_template(user, listing)
-              print("_send_whatsapp_rich_match_template returned:", ok)
+              which = os.environ.get("WHICH", "both")
+              if which in ("rich", "both"):
+                  ok = notifier._send_whatsapp_rich_match_template(user, listing)
+                  print("rich template send returned:", ok)
+              if which in ("plain", "both"):
+                  notifier.WHATSAPP_RICH_MATCH_TEMPLATE_NAME = None
+                  ok = notifier._send_whatsapp_match_template(user, listing)
+                  print("plain template send returned:", ok)
           PYEOF
 
           kubectl get cronjob todira-scraper -n todira -o json > /tmp/cronjob.json
@@ -99,6 +112,7 @@ jobs:
           container = pod_spec["containers"][0]
           container["name"] = "rich-send-test"
           container["command"] = ["python", "-u", "-c", open("/tmp/rich_send_test.py").read()]
+          container.setdefault("env", []).append({"name": "WHICH", "value": "${{ inputs.which }}"})
           container.pop("args", None)
           pod_spec["restartPolicy"] = "Never"
           pod = {
@@ -121,3 +135,11 @@ jobs:
           echo "--- pod logs ---"
           kubectl logs -n todira test-rich-wa-send || true
           kubectl delete pod test-rich-wa-send -n todira --ignore-not-found
+
+      - name: Meta's delivery statuses for those sends, as logged by the website webhook
+        run: |
+          # Statuses (sent / delivered / read / failed, with Meta's error code on a failure) arrive
+          # asynchronously on the website's own webhook - give them a moment, then read the log.
+          sleep 40
+          POD=$(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[0].metadata.name}')
+          kubectl logs -n todira "$POD" --since=5m 2>&1 | grep "WhatsApp delivery" || echo "no delivery status lines yet"
