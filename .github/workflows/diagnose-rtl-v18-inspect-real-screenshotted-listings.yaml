@@ -52,10 +52,17 @@ jobs:
           from todira_common.models import Listing
 
           # (city substring, street substring) pairs taken directly from the owner's own screenshots
+          # — second batch (2026-09-30, ~10:16-10:18 Israel time) added after PR #575's fix
+          # (bare-icon+ZWNJ, quote=False escaping) shipped; "בן עמי"/"הפלמ" is the one with the
+          # literal "&quot;" street-name bug.
           TARGETS = [
               ("מעלות תרשיחא", "כנרת"),
               ("חיפה", "בודנהיימר"),
               ("חיפה", "רבי עקיבא"),
+              ("חיפה", "דובנוב"),
+              ("בן עמי", "הפלמ"),
+              ("קריית אתא", "אברמסקי"),
+              ("חיפה", "ארלוזורוב"),
           ]
 
           with get_session() as session:
