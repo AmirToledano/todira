@@ -303,13 +303,11 @@ scraper:
   # listing). Submitted for Meta review the same night (submit-whatsapp-rich-match-template.yaml,
   # template id 3246627115538605, status PENDING at submission time) after two real rejections
   # (emoji in the button text, then too many variables for the body length) got fixed and
-  # resubmitted. LEAVE THIS EMPTY until Meta's WhatsApp Manager shows new_listing_match_rich as
-  # "Active"/APPROVED — scraper/notifier.py's _send_whatsapp_match_template only dispatches to the
-  # rich path when this is non-empty; empty (the current, correct state) means every proactive
-  # WhatsApp push keeps using the plain whatsappMatchTemplateName above, completely unaffected.
-  # THE ONE STEP NEEDED ONCE APPROVED: set this to "new_listing_match_rich" and deploy — no code
-  # change required, the send-time logic is already built and tested.
-  whatsappRichMatchTemplateName: ""
+  # resubmitted. Confirmed APPROVED (status=APPROVED, category=MARKETING) live on 2026-09-30 via
+  # diagnose-whatsapp-existing-template-detail.yaml — scraper/notifier.py's
+  # _send_whatsapp_match_template dispatches to the rich path now that this is non-empty; falls
+  # back to the plain whatsappMatchTemplateName above only if this were ever emptied again.
+  whatsappRichMatchTemplateName: "new_listing_match_rich"
   # 2026-09-15: facebook-scraper-cronjob.yaml — a SEPARATE CronJob from the main scraper above,
   # deliberately (see that file's own comment for the full account-safety reasoning: every request
   # runs through the dedicated scraping account's own real, authenticated session from this

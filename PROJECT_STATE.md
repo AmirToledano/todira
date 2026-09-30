@@ -4,29 +4,21 @@ Read this first in any new session (especially cloud sessions without access to 
 local Claude memory). Written 2026-08-29, updated 2026-08-30, so work can continue seamlessly
 from another device.
 
-## 🟡 OPEN ACTION ITEM (2026-09-27/28) — flip the rich WhatsApp template on once Meta approves it
+## 🟢 RESOLVED (2026-09-30) — the rich WhatsApp template was approved by Meta and switched on
 The richer, Dorin-style per-listing WhatsApp card (real photo + all 8 fields + a button to that
 specific listing — a real, explicit owner requirement: "חובה לעלות תמונות של המודעות ביחד עם כל
-מה שרשמת") is fully built and merged (scraper/notifier.py's `_send_whatsapp_rich_match_template`,
-`todira_common/cards.py`'s `get_listing_photo_jpeg_bytes`/`feature_list`,
-`todira_common/whatsapp_client.py`'s `upload_media` + extended `send_template_message`). The new
-template `new_listing_match_rich` was submitted to Meta the night of 2026-09-27
+מה שרשמת") was submitted to Meta the night of 2026-09-27
 (`.github/workflows/submit-whatsapp-rich-match-template.yaml`, template id `3246627115538605`,
 category MARKETING) after two real rejections got fixed and resubmitted (emoji in the button text;
-then too many variables for the body length). As of submission it was **PENDING** review.
+then too many variables for the body length).
 
-**THE ONE THING LEFT, ONCE META SHOWS IT AS APPROVED/"Active" IN WHATSAPP MANAGER:** set
-`charts/todira/values.yaml`'s `scraper.whatsappRichMatchTemplateName` from `""` to
-`"new_listing_match_rich"` and deploy (a normal PR + merge to `main`, which auto-deploys). No
-other code change is needed — `_send_whatsapp_match_template` already dispatches to the rich path
-the moment that env var is non-empty, and falls back to the existing plain `new_listing_match`
-template otherwise. **Do not forget this step exists** — until it's done, every proactive WhatsApp
-match push keeps using the old plain 3-variable template even though the rich one is sitting
-approved and unused. Check the real approval status live (don't guess) by re-running
-`.github/workflows/diagnose-whatsapp-existing-template-detail.yaml` and looking at
-`new_listing_match_rich`'s own `status` field in the response — the existing diagnostic already
-filters to `new_listing_match`, so either read the WABA's full template list from its output or
-adapt the `params={'name': ...}` filter to the new name.
+Re-ran `diagnose-whatsapp-existing-template-detail.yaml` live on 2026-09-30 (same night as the RTL
+fix, PR #582/#583) and got `"status":"APPROVED"` back from Meta's own API for
+`new_listing_match_rich`. Flipped `charts/todira/values.yaml`'s
+`scraper.whatsappRichMatchTemplateName` from `""` to `"new_listing_match_rich"` and merged/deployed
+(PR #584) — no code change needed, `_send_whatsapp_match_template` already dispatched to the rich
+path the moment that value went non-empty. Every proactive WhatsApp match push now sends the full
+rich card (photo + all 8 fields + per-listing button) instead of the old plain 3-variable template.
 
 ## 🟢 RESOLVED, kept for context (found 2026-08-30, fixed same day — see the "Update 2026-08-30
 (RESOLVED)" section right below this one): the k3s cluster was briefly unreachable — deploys were
