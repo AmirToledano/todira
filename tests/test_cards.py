@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from todira_common.cards import (
     CAPTION_LIMIT,
     _RTL_LINE_WRAP_CHARS,
+    _ZWNJ,
     _fit_to_limit,
     _force_rtl,
     _force_rtl_block,
@@ -134,6 +135,23 @@ def test_location_without_street_has_no_maps_link():
     assert "google.com/maps" not in caption
 
 
+def test_street_with_a_literal_quote_mark_renders_plain_not_as_quot_entity():
+    # Real bug, found 2026-09-30 via an owner screenshot: a street name containing Hebrew
+    # gershayim (e.g. "הפלמ"ח 1", an abbreviation punctuation mark, not markup) rendered as
+    # literal, garbled "הפלמ&quot;ח 1" text in a real Telegram message. Root cause: html.escape's
+    # own default (quote=True) escapes a bare `"` to `&quot;` even in plain element CONTENT, where
+    # Telegram's own HTML parser doesn't recognize &quot; as a named entity (unlike &lt;/&gt;/&amp;)
+    # — only inside an attribute value does a literal `"` need escaping at all, and street/city
+    # text is never placed inside one. See format_caption's own escape=/description escaping.
+    caption = format_caption(make_listing(street='הפלמ"ח 1'), has_access=True)
+    assert "&quot;" not in caption
+    assert 'הפלמ"ח 1' in caption
+
+    caption_desc = format_caption(make_listing(description='דירה ברח\' פלמ"ח, קומה גבוהה'), has_access=True)
+    assert "&quot;" not in caption_desc
+    assert 'פלמ"ח' in caption_desc
+
+
 def test_floor_line_includes_total_when_known():
     caption = format_caption(make_listing(floor=4, floor_total=6), has_access=True)
     assert rtl(f"🏢 {_b('קומה:')} 4 מתוך 6") in caption
@@ -173,10 +191,15 @@ def test_features_line_excludes_false_and_unknown_amenities():
 
 
 def test_features_line_includes_safe_room_and_furniture_with_their_own_emoji():
+    # "🛋️מרוהטת" itself lands as the pre-wrap's own continuation line here (see
+    # _wrap_long_rtl_line), so it goes through _force_rtl as a line-leading icon just like a real
+    # field label would — a ZWNJ (not a literal "" between them) now separates the emoji from the
+    # word that follows it, same as every other line-leading icon; see _LEADING_EMOJI_RE's comment.
     listing = make_listing(safe_room_type="safe_room", furniture="furnished")
     caption = format_caption(listing, has_access=True)
     assert '🛡️ממ"ד' in caption
-    assert "🛋️מרוהטת" in caption
+    assert "🛋️" in caption and "מרוהטת" in caption
+    assert caption.index("🛋️") < caption.index("מרוהטת")
 
 
 def test_features_line_is_not_italicized_anymore():
@@ -187,7 +210,7 @@ def test_features_line_is_not_italicized_anymore():
 
 def test_description_gets_a_note_emoji_prefix():
     caption = format_caption(make_listing(description="דירה מקסימה"), has_access=True)
-    assert "📝 דירה מקסימה" in caption
+    assert rtl("📝 דירה מקסימה") in caption
 
 
 def test_footer_link_text_and_no_source_tag():
@@ -285,7 +308,10 @@ def test_long_single_line_description_gets_pre_wrapped_before_rtl_isolate():
         # strip the RLM/RLI/PDI marks themselves before measuring visible length
         visible = line.strip("‏⁧⁩")
         assert len(visible) <= _RTL_LINE_WRAP_CHARS, f"line too long to guarantee no client re-wrap: {line!r}"
-        assert line.startswith("‏⁧") and line.endswith("⁩"), f"line missing its own RTL mark: {line!r}"
+        # 2026-09-30: the FIRST physical line carries the description's own "📝" leading icon —
+        # RLM, then the bare emoji + ZWNJ (see _LEADING_EMOJI_RE), THEN the isolate — so only every
+        # OTHER (icon-less) continuation line has RLI immediately after RLM.
+        assert line.startswith("‏") and line.endswith("⁩"), f"line missing its own RTL mark: {line!r}"
 
 
 def test_wrap_long_rtl_line_never_splits_mid_word():
@@ -322,7 +348,9 @@ def test_no_photos_banner_stays_valid_html_and_gets_rtl_isolate_per_visual_line(
     lines = [line for line in result.split("\n") if line]
     assert len(lines) > 1, "the real banner sentence is long enough that it must be pre-wrapped"
     for line in lines:
-        assert line.startswith("‏⁧") and line.endswith("⁩")
+        # the FIRST physical line carries the banner's own "🕵️" leading icon — see
+        # test_long_single_line_description_gets_pre_wrapped_before_rtl_isolate's own comment.
+        assert line.startswith("‏") and line.endswith("⁩")
 
 
 def test_blank_spacer_line_has_no_stray_rtl_mark():
@@ -374,8 +402,8 @@ def test_whatsapp_caption_uses_markdown_not_html():
     caption = format_caption_whatsapp(listing, has_access=True)
     assert "<b>" not in caption
     assert "<i>" not in caption
-    assert "🛏️ *חדרים:* 4" in caption
-    assert "🔑 *פיצ'רים:* 🚗חניה" in caption
+    assert rtl("🛏️ *חדרים:* 4") in caption
+    assert rtl("🔑 *פיצ'רים:* 🚗חניה") in caption
     assert "_" not in caption  # no more italics markdown either
 
 
@@ -384,7 +412,7 @@ def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
     # Telegram's HTML <a> tag — same underlying Google Maps URL, just on its own tappable line
     # right after the location line instead of inline.
     caption = format_caption_whatsapp(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
+    assert rtl("📍*ירושלים* - ניות דיזנגוף 10") in caption
     assert "<a href" not in caption
     lines = caption.split("\n")
     # Every line carries its own leading RTL mark (see _build_body_lines) right before its
@@ -392,8 +420,9 @@ def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
     location_line = next(i for i, line in enumerate(lines) if "📍" in line)
     # The maps line is inserted after _build_body_lines already returned, so it carries its own
     # separate RTL mark rather than one from that function - see format_caption_whatsapp's
-    # own comment on why.
-    assert lines[location_line + 1].startswith("‏⁧🗺️ https://www.google.com/maps/search/")
+    # own comment on why. "🗺️" is this line's own leading icon (see _LEADING_EMOJI_RE), so it
+    # stays bare + ZWNJ rather than isolated with the URL.
+    assert lines[location_line + 1].startswith(f"‏🗺️{_ZWNJ}⁧https://www.google.com/maps/search/")
 
 
 def test_whatsapp_price_change_header_is_bold_with_asterisks():
