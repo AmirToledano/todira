@@ -7975,3 +7975,17 @@ WhatsApp failures). `diagnose-whatsapp-messaging-tier.yaml` prints tier and qual
 limit, 300 chars in the WhatsApp rich template); no second "rest of the description" message. Marketing /
 content skills stay paused until the owner brings better ones. Still waiting on third parties: Upay/Takbull
 approval, Meta Business verification (owner entered wrong details and expects to resubmit if rejected).
+
+### What the WhatsApp account is actually billed for (Meta pricing_analytics, read 2026-10-01)
+`diagnose-whatsapp-billing.yaml` (read-only) asked Meta's Graph API for 30 days of `pricing_analytics`. The
+account is charged ONLY for template messages, all in category **MARKETING / REGULAR: 717 messages, 25.31 in
+the account currency (USD per Meta's billing screen), about 0.0353 per message**. By day (Israel time): Sep 27
+565 msgs = 19.94, Sep 28 9 = 0.32, Sep 29 5 = 0.18, Sep 30 138 = 4.87. Customer-service messages (replies
+within 24h of the user writing to the bot) are free (SERVICE / FREE_CUSTOMER_SERVICE, cost 0). **Both the old
+plain `new_listing_match` and the rich `new_listing_match_rich` template are billed as MARKETING at the same
+price; the rich one is not more expensive.** That unsettled ~25 is what Meta error 131042 refers to. The owner
+paid nothing before because the first charges only just came due. Consequence for the product: every WhatsApp
+match push costs about 3.5 cents, so the "no cap, WhatsApp is a full channel like Telegram" decision
+(2026-09-30) costs real money with a broad filter (~100 pushes/hour); options are a per-user daily cap, WhatsApp
+only for paying users, or a digest. The account-fields query was refused (needs BSP permission), so the exact
+amount currently due and the currency field are only visible in Meta's Billing hub.
