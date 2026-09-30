@@ -347,33 +347,77 @@ def _price_change_header(
 
 
 # 2026-09-14: escalated from a bare RLM mark (U+200F) to a real bidi EMBEDDING (RLE U+202B ...
-# PDF U+202C). History: nearly every line in this card deliberately starts with an emoji (📍, 💰,
-# 🛏️, ...), which has no strong bidi direction of its own, so without any override the caption's
-# rendered alignment can fall back to LTR — a real user report + screenshot, 2026-09-03. A leading
-# RLM (tried 2026-09-02 through 2026-09-13, in three escalating forms: one mark for the whole
-# caption, then one per line, then a second reinforcing one on the street/maps line specifically)
-# never fully fixed it: RLM is a MARK, not an override — it only nudges a neutral run, and real
-# owner screenshots (2026-09-14) kept showing some lines still starting away from the right edge
-# even with a mark on every line. RLE...PDF is a real embedding: everything between the two is
-# forced to RTL embedding level regardless of what it contains (an emoji, a bolded Hebrew label, or
-# an embedded LTR run like a Google Maps URL), which is exactly what a mark can't guarantee. Used
-# per LINE (not once for the whole caption) since Telegram/WhatsApp apparently resolve direction
-# per rendered line, not just once for the whole paragraph (the same reason the per-line-mark
-# escalation happened on 2026-09-03) — like every fix in this history, this one is unconfirmed
-# until a real screenshot says otherwise: no local render (browser dir="auto", or anything else
-# this sandbox can run) reproduces Telegram's own client-side quirk closely enough to verify it
-# here, so this needs a real live test, not just tests passing.
-_RLE = "‫"  # RIGHT-TO-LEFT EMBEDDING
-_PDF = "‬"  # POP DIRECTIONAL FORMATTING — closes the most recent LRE/RLE/LRO/RLO
+# PDF U+202C) — nearly every line in this card deliberately starts with an emoji (📍, 💰, 🛏️, ...),
+# which has no strong bidi direction of its own, so without any override the caption's rendered
+# alignment can fall back to LTR. A leading RLM mark alone never fully fixed it: a mark only
+# nudges a neutral run, it doesn't force one.
+#
+# 2026-09-29/30: real live A/B testing (see the diagnose-rtl-*-live-test-v3 through v17 one-off
+# workflows in .github/workflows/, all sent as real messages to the owner's own Telegram) found
+# the RLE...PDF embedding had its own real bug: a `<b>...</b>` bold entity whose boundary falls
+# INSIDE the embedding (i.e. the embedding wraps the whole line, `<b>` and all) renders that line
+# broken — confirmed via a same-listing, same-content A/B where only `<b>` was toggled. PR #565
+# worked around this by dropping `<b>` for RTL languages entirely, which fixed alignment but lost
+# real bold styling the owner wanted back.
+#
+# The actual fix (2026-09-30, after a second opinion from Gemini — see that same live-test
+# history for the exact prompt and answer): switch from bidi EMBEDDINGS (RLE/PDF) to bidi
+# ISOLATES (RLI U+2067 / PDI U+2069, Unicode 6.3+). An isolate scopes its content instead of just
+# forcing a direction and leaking that state across whatever comes next — nesting one INSIDE a
+# `<b>`/`<a>` tag's own inner text, while another independent isolate wraps the plain text around
+# it, does NOT reproduce the embedding-crossing bug. Live-confirmed correct (v17) on the exact
+# real listing that failed under the old embedding+<b> combination, with bold restored. RLM
+# (U+200F) is still added at the very start of each line — an isolate scopes content, it doesn't
+# by itself guarantee THIS line reads as RTL before its first (neutral) character is seen, so the
+# mark still earns its place for the reason the very first fix used it.
+#
+# A separate real finding from the same live-test history: the physically LAST line of a message
+# (any message, isolate or not) tends to render misaligned — Telegram appears to lay its
+# timestamp/read-receipt UI into that line when there's room, and that disturbs its own bidi
+# resolution. format_caption appends a tiny trailing RLM+LRM "absorber" after the real footer for
+# RTL languages so that line is never the message's true last one — see its own comment there.
+_RLM = "‏"  # RIGHT-TO-LEFT MARK
+_RLI = "⁧"  # RIGHT-TO-LEFT ISOLATE
+_PDI = "⁩"  # POP DIRECTIONAL ISOLATE — closes the most recent LRI/RLI/FSI
+_LRM = "‎"  # LEFT-TO-RIGHT MARK — only used in format_caption's trailing absorber
+
+_HTML_TAGGED_SPAN_RE = re.compile(r"<b>(.*?)</b>|<a\b[^>]*>(.*?)</a>")
+
+
+def _isolate(text: str, lang: str) -> str:
+    """Wraps `text` in a right-to-left Unicode ISOLATE, not an embedding — see _force_rtl's own
+    module comment for why that distinction is what let bold come back. No-op for LTR languages."""
+    if lang not in RTL_LANGS:
+        return text
+    return f"{_RLI}{text}{_PDI}"
 
 
 def _force_rtl(text: str, lang: str) -> str:
     # 2026-09-26: only Hebrew/Arabic (language.RTL_LANGS) need the override at all — every line in
     # an English/Russian/French caption is already correctly LTR-aligned on its own, and forcing an
-    # RTL embedding on it would misalign it instead of fixing anything.
+    # RTL isolate on it would misalign it instead of fixing anything.
     if lang not in RTL_LANGS:
         return text
-    return f"{_RLE}{text}{_PDF}"
+    # A `<b>...</b>` or `<a href="...">...</a>` span gets its OWN inner text isolated in place
+    # (never touching its opening/closing tag itself) — callers never need to isolate a tag's
+    # inner text themselves, this handles any of them uniformly, however many appear on one line.
+    # Every plain-text run between/around such spans (which, for most lines, is the whole thing —
+    # a plain field line or a free-text description line never has a tag at all) gets its own
+    # separate isolate too.
+    pieces: list[str] = []
+    pos = 0
+    for m in _HTML_TAGGED_SPAN_RE.finditer(text):
+        if m.start() > pos:
+            pieces.append(_isolate(text[pos : m.start()], lang))
+        whole = m.group(0)
+        inner = m.group(1) if m.group(1) is not None else m.group(2)
+        open_end = whole.index(">") + 1
+        close_start = len(whole) - whole[::-1].index("<") - 1
+        pieces.append(f"{whole[:open_end]}{_isolate(inner, lang)}{whole[close_start:]}")
+        pos = m.end()
+    if pos < len(text):
+        pieces.append(_isolate(text[pos:], lang))
+    return f"{_RLM}{''.join(pieces)}"
 
 
 # 2026-09-28: chosen a real, meaningful margin BELOW the natural wrap point measured directly off a
@@ -534,18 +578,11 @@ def format_caption(
     never something a future caller can forget to do by just not passing the argument — even
     though today it only controls the link, not the description.
 
-    2026-09-29: real bug, confirmed live via a battery of diagnostic sends — a Hebrew/Arabic
-    caption's `<b>...</b>` label wraps sit INSIDE this file's own RLE...PDF bidi embedding
-    (_force_rtl wraps the whole already-<b>-tagged line), so the embedding crosses the bold
-    entity's own boundary. A live A/B (same real listing, same real content, only <b> toggled)
-    showed the <b>-tagged version rendering broken/misaligned while the identical plain-text
-    version rendered correctly — the same real listing's <a>...</a> link, whose boundary the
-    embedding ALSO crosses, rendered fine either way, so this is specific to <b>, not entities in
-    general. No bold-vs-embedding-order fix was found that's been live-verified safe, so for
-    RTL languages (RTL_LANGS) labels are now sent as plain unformatted text instead — LTR
-    languages never use the RLE/PDF embedding at all (see _force_rtl), so their <b> labels are
-    unaffected and keep the emphasis."""
-    bold = (lambda s: s) if lang in RTL_LANGS else (lambda s: f"<b>{s}</b>")  # noqa: E731
+    2026-09-29/30: real bug, confirmed live via a long battery of diagnostic sends to the owner's
+    own Telegram (see _force_rtl's own module comment for the full history and the fix). Bold is
+    back — plain `<b>{s}</b>` same as always, since _force_rtl itself now isolates any tag's inner
+    text wherever one shows up, not something bold()/street_link() need to do themselves."""
+    bold = lambda s: f"<b>{s}</b>"  # noqa: E731
     lines = _build_body_lines(
         listing,
         bold=bold,
@@ -573,6 +610,15 @@ def format_caption(
     else:
         footer_text = f"🔒 {bot_text('card.upgrade_required_plain', lang)}"
     footer = f"\n\n{_force_rtl(footer_text, lang)}"
+    if lang in RTL_LANGS:
+        # 2026-09-30: real live finding — the physically LAST line of a Telegram message tends to
+        # render misaligned (Telegram appears to lay its own timestamp/read-receipt UI into that
+        # line when there's room, disturbing its bidi resolution) — see _force_rtl's own module
+        # comment. A tiny trailing mark-only line the reader never sees "absorbs" that spot
+        # instead of the real footer link. Appended to the footer itself (not after
+        # _fit_to_limit) so its few characters are always counted in the length budget below and
+        # the footer — which _fit_to_limit never trims — always keeps it.
+        footer += f"\n{_RLM}{_LRM}"
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     description = html.escape((listing.description or "").strip())
     if description and remaining > 20:
