@@ -1,15 +1,22 @@
-name: Diagnose - v14, Gemini's proposed fix - Isolates (RLI/PDI) + RLM + last-line absorber
+name: Diagnose - v14 (fixed), Gemini's proposed fix - Isolates (RLI/PDI) + RLM + last-line absorber
 
-# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-30. Sent the full RTL investigation
-# history + relevant code to Gemini for a second opinion (owner's own request). Gemini's technical
-# answer: switch from bidi EMBEDDINGS (RLE U+202B / PDF U+202C) to bidi ISOLATES (RLI U+2067 /
-# PDI U+2069, Unicode 6.3+) - isolates don't leak directional state across a styling entity
-# boundary the way embeddings do, which lines up with our own confirmed finding that <b> crossing
-# an embedding breaks alignment. Also recommends: an explicit RLM (U+200F) immediately before each
-# line's leading emoji (forcing paragraph direction before the neutral emoji is even read), and a
-# trailing invisible RLM+LRM absorber line at the very end of the whole message - which matches
-# our OWN independently-confirmed "last line" finding (v6/v7: a short last line breaks unless
-# something follows it).
+# ONE-OFF, manual-only (workflow_dispatch) - added 2026-09-30. First dispatch of this workflow
+# actually FAILED at send time (400 Bad Request: "Unexpected end tag at byte offset 384") - a real
+# transcription error while embedding the base64 payload into this file corrupted "<a href=" into
+# "8a href=" (a dropped "<"). The job step itself showed green in GitHub Actions because the curl
+# call succeeded even though Telegram's API rejected the message - job status alone is NOT proof
+# of a successful send; the response body must always be checked. This is the corrected version,
+# rebuilt with an explicit assertion pass (tag-balance + roundtrip decode checks) BEFORE ever
+# writing the base64 into this file, so the same class of bug can't recur silently.
+#
+# Sent the full RTL investigation history + relevant code to Gemini for a second opinion (owner's
+# own request). Gemini's technical answer: switch from bidi EMBEDDINGS (RLE U+202B / PDF U+202C)
+# to bidi ISOLATES (RLI U+2067 / PDI U+2069, Unicode 6.3+) - isolates don't leak directional state
+# across a styling entity boundary the way embeddings do, which lines up with our own confirmed
+# finding that <b> crossing an embedding breaks alignment. Also recommends an explicit RLM
+# (U+200F) immediately before each line's leading emoji, and a trailing invisible RLM+LRM absorber
+# line at the very end of the whole message - matching our own independently-confirmed "last line"
+# finding (v6/v7: a short last line breaks unless something follows it).
 #
 # Tests all three together on the EXACT real listing 21873 content (same fields, same real
 # multi-line description, same real footer link, WITH bold restored) - same successful methodology
@@ -43,16 +50,28 @@ jobs:
           echo "$BOT_TOKEN" > /tmp/bot_token.txt
           echo "$OWNER_ID" > /tmp/owner_id.txt
 
-      - name: Send test 16 as a real sendPhoto caption - Isolates + RLM + absorber (body base64-decoded from ASCII-only source)
+      - name: Sanity-check the decoded body has balanced tags before ever sending it
+        run: |
+          BODY_B64="4oCP8J+nquKAjOKBpyDXkdeT15nXp9eUIDE3IC0g15TXptei16og15LXnteZ16DXmSDXqdeV15EsINeU16TXotedINeR15zXmSDXqdeS15nXkNeqINep15nXk9eV16ggKElzb2xhdGVzK1JMTSthYnNvcmJlcinigakK4oCP8J+TjeKAjDxiPuKBp9eb16TXqCDXqdee16jXmdeU15Xigak8L2I+CuKAjzxhIGhyZWY9Imh0dHBzOi8vd3d3Lmdvb2dsZS5jb20vbWFwcy9zZWFyY2gvP2FwaT0xJnF1ZXJ5PSVENyU5MyVENyVBOCVENyU5QSUyMCVENyU5NCVENyVBOSVENyU5MyVENyU5NSVENyVBQSUyMDElMkMlMjAlRDclOUIlRDclQTQlRDclQTglMjAlRDclQTklRDclOUUlRDclQTglRDclOTklRDclOTQlRDclOTUiPuKBp9eT16jXmiDXlNep15PXldeqIDHigak8L2E+CuKAj/CfkrDigIw8Yj7igafXnteX15nXqDrigak8L2I+IOKBpzE1LDUwMOKCquKBqQrigI/wn5uP77iP4oCMPGI+4oGn15fXk9eo15nXnTrigak8L2I+IOKBpzMuNeKBqQrigI/wn5OQ4oCMPGI+4oGn16nXmNeXOuKBqTwvYj4g4oGnMTIwINeeIteo4oGpCuKAj/Cfj6LigIw8Yj7igafXp9eV157XlDrigak8L2I+IOKBpzDigakKCuKAj/Cfk53igIzigafXkdeZ16og16TXqNeY15kg15zXlNep15vXqNeUINeR15vXpNeoINep157XqNeZ15TXlSzigakK4oCP4oGn15PXqNeaINeU16nXk9eV16ogMSDXnteV15PXoteUIDcyNjc0NSAtINeR15nXquKBqQrigI/igafXoteV16jXpNeZINep157XldeoINeU15nXmNeRLiDXk9eo15og16TXqNeY15nXquKBqQrigI/igacu15LXmdeg15Qg16fXk9ee15nXqiDXldeQ15fXldeo15nXqiAoINee15XXptec16rigakK4oCP4oGn15HXotem15nXnSkg16nXoteoINeX16nXntec15kg15wgMiDXl9eg15nXldeq4oGpCuKAj+KBp9ee16fXldeo15XXqiwg15UyINeg15XXodek15XXqiDXnNeQINee16fXldeo15XXqi7igakK4oCP4oGn16nXoteoINec15TXldec15vXmSDXqNeS15wgLiDXmdeX15nXk9eqINeU15XXqNeZ153igakK4oCP4oGn16LXnSDXl9eT16gg15DXqNeV16DXldeqINeV15fXk9eoINeQ157XkdeY15nXlC4g15fXk9eo4oGpCuKAj+KBp9eQ157XkdeY15nXlCDXoNeV16HXoyDXntep16TXl9eq15kuINee15jXkdeXICvigakK4oCP4oGn16TXmdeg16og15DXldeb15wuINee157XkyDXotedINeb16DXmdeh15Qg16DXpNeo15PXquKBqQrigI/igafXm9eV15zXnCDXqdeZ16jXldeq15nXnSDXldee16fXnNeX16osINeZ15vXldecINec16nXntep4oGpCuKAj+KBp9ec157XqteR15LXqC/XqiDXkNeVINec16fXkdec16og16fXlNecLuKBqQoK4oCP8J+Ul+KAjDxhIGhyZWY9Imh0dHBzOi8vd3d3LmhvbWVsZXNzLmNvLmlsL3JlbnQvdmlld2FkLDcyNjc0NS5hc3B4Ij7igafXnNek16jXmNeZINeU15PXmdeo15Qg15TXntec15DXmdedID4+4oGpPC9hPgrigI/igI4="
+          echo "$BODY_B64" | base64 -d > /tmp/body.txt
+          python3 - <<'PYEOF'
+          text = open("/tmp/body.txt", encoding="utf-8").read()
+          assert "8a href" not in text, "corrupted <a href found!"
+          assert text.count("<a href=") == 2, text.count("<a href=")
+          assert text.count("</a>") == 2, text.count("</a>")
+          assert text.count("<b>") == 5, text.count("<b>")
+          assert text.count("</b>") == 5, text.count("</b>")
+          print("Sanity checks passed - body has balanced, uncorrupted tags.")
+          PYEOF
+
+      - name: Send test 17 as a real sendPhoto caption - Isolates + RLM + absorber, corrected (body base64-decoded from ASCII-only source)
         run: |
           BOT_TOKEN=$(cat /tmp/bot_token.txt)
           OWNER_ID=$(cat /tmp/owner_id.txt)
           PHOTO_URL="https://raw.githubusercontent.com/AmirToledano/todira/main/common/todira_common/assets/dachshunds/todi_detective.jpg"
+          BODY=$(cat /tmp/body.txt)
 
-          BODY_B64="4oCP8J+nquKAjOKBpyDXkdeT15nXp9eUIDE2IC0g15TXptei16og15In157Xmdeg15k6IElzb2xhdGVzIChSTEkvUERJKSArIFJMTSDXnNek16DXmSDXkNeZ157XldeSJ9eZICsg16HXldek15Ig16nXldeo15Qg15DXl9eo15XXoNeU4oGpCuKAj/Cfk43igIw8Yj7igafXm9ek16gg16nXnteo15nXlNeV4oGpPC9iPgrigI84YSBocmVmPSJodHRwczovL3d3dy5nb29nbGUuY29tL21hcHMvc2VhcmNoLz9hcGk9MSZxdWVyeT0lRDclOTMlRDclQTglRDclOUElMjAlRDclOTQlRDclQTklRDclOTMlRDclOTUlRDclQUElMjAxJTJDJTIwJUQ3JTlCJUQ3JUE0JUQ3JUE4JTIwJUQ3JUE5JUQ3JTlFJUQ3JUE4JUQ3JTk5JUQ3JTk0JUQ3JTk1Ij7igafXk9eo15og15TXqdeT15XXqiAx4oGpPC9hPgrigI/wn5Kw4oCMPGI+4oGn157Xl9eZ16g64oGpPC9iPiDigacxNSw1MDDigqrigakK4oCP8J+bj++4j+KAjDxiPuKBp9eX15PXqNeZ15064oGpPC9iPiDigaczLjXigakK4oCP8J+TkOKAjDxiPuKBp9ep15jXlzrigak8L2I+IOKBpzEyMCDXniLXqOKBqQrigI/wn4+i4oCMPGI+4oGn16fXldee15Q64oGpPC9iPiDigacw4oGpCgrigI/wn5Od4oCM4oGn15HXmdeqINek16jXmNeZINec15TXqdeb16jXlCDXkdeb16TXqCDXqdee16jXmdeU15Us4oGpCuKAj+KBp9eT16jXmiDXlNep15PXldeqIDEg157XldeT16LXlCA3MjY3NDUgLSDXkdeZ16rigakK4oCP4oGn16LXldeo16TXmSDXqdee15XXqCDXlNeZ15jXkS4g15PXqNeaINek16jXmNeZ16rigakK4oCP4oGnLteS15nXoNeUINen15PXnteZ16og15XXkNeX15XXqNeZ16ogKCDXnteV16bXnNeq4oGpCuKAj+KBp9eR16LXpteZ150pINep16LXqCDXl9ep157XnNeZINecIDIg15fXoNeZ15XXquKBqQrigI/igafXnten15XXqNeV16osINeVMiDXoNeV16HXpNeV16og15zXkCDXnten15XXqNeV16ou4oGpCuKAj+KBp9ep16LXqCDXnNeU15XXnNeb15kg16jXktecIC4g15nXl9eZ15PXqiDXlNeV16jXmded4oGpCuKAj+KBp9ei150g15fXk9eoINeQ16jXldeg15XXqiDXldeX15PXqCDXkNee15HXmNeZ15QuINeX15PXqOKBqQrigI/igafXkNee15HXmNeZ15Qg16DXldeh16Mg157Xqdek15fXqteZLiDXnteY15HXlyAr4oGpCuKAj+KBp9ek15nXoNeqINeQ15XXm9ecLiDXntee15Mg16LXnSDXm9eg15nXodeUINeg16TXqNeT16rigakK4oCP4oGn15vXldec15wg16nXmdeo15XXqteZ150g15XXnten15zXl9eqLCDXmdeb15XXnCDXnNep157XqeKBqQrigI/igafXnNee16rXkdeS16gv16og15DXlSDXnNen15HXnNeqINen15TXnC7igakKCuKAj/CflJfigIw8YSBocmVmPSJodHRwczovL3d3dy5ob21lbGVzcy5jby5pbC9yZW50L3ZpZXdhZCw3MjY3NDUuYXNweCI+4oGn15zXpNeo15jXmSDXlNeT15nXqNeUINeU157XnNeQ15nXnSA+PuKBqTwvYT4K4oCP4oCO"
-          BODY=$(echo "$BODY_B64" | base64 -d)
-
-          echo "=== sending test 16 as sendPhoto caption ==="
+          echo "=== sending test 17 as sendPhoto caption ==="
           curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto" \
             --data-urlencode "chat_id=${OWNER_ID}" \
             --data-urlencode "photo=${PHOTO_URL}" \
@@ -61,4 +80,10 @@ jobs:
             -o /tmp/resp.json -w "  -> http_status=%{http_code}\n"
           cat /tmp/resp.json
           echo ""
+          RESP_OK=$(python3 -c "import json; print(json.load(open('/tmp/resp.json')).get('ok'))")
+          echo "=== Telegram API ok field: $RESP_OK ==="
+          if [ "$RESP_OK" != "True" ]; then
+            echo "SEND FAILED - see response above."
+            exit 1
+          fi
           echo "=== done - does Gemini's Isolates+RLM+absorber approach fix bold alignment? ==="
