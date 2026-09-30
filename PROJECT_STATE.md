@@ -7796,8 +7796,65 @@ forever, never actually deferred. Per explicit owner instruction ("אני רוצ
 exactly like Telegram and the website, no cap), the cap was removed entirely from
 `_notify_new_matches`/`run_notifications`.
 
-**Status as of this session**: PRs #565–#572 all merged to `main`. PR #572 (the Isolates fix) is
-the one that matters going forward — everything before it in this range was either a stepping
-stone (the bold-removal workaround, now superseded) or an independent WhatsApp bug fix. CI/CD
-deploy confirmed via the Actions API after each merge, not assumed. Full suite green (1173 tests),
-ruff clean throughout.
+**PR #572 was NOT the end of it — a real post-deploy owner report caught two more bugs (PRs
+#575/#577)**. Confirmed as "excellent" was one hand-built diagnostic message (v14); PR #572's
+*generalized* `_force_rtl` (used for every real caption) diverged from that confirmed-good payload
+in a way no test caught, because every existing test built its expected strings by calling the
+same (buggy) `_force_rtl` rather than an independent source of truth. The owner sent fresh
+screenshots of real, freshly-scraped listings shortly after the PR #572 deploy and reported the
+alignment still broken — corrected me directly when I first misread one screenshot's WhatsApp-style
+notification-banner overlay as the whole message being WhatsApp rather than Telegram (it was a
+separate push notification that happened to slide down over the Telegram screenshot).
+
+Root-caused via a byte-for-byte diff against `diagnose-rtl-isolates-live-test-v14.yaml`'s own
+confirmed-good payload (the actual bytes sent, not a re-derived assumption): every icon-led line in
+that payload leaves the leading emoji BARE (never wrapped in its own RLI...PDI isolate) and follows
+it with a ZWNJ (U+200C) instead — PR #572's `_force_rtl` instead isolated the emoji together with
+its trailing space, a plausible-looking but never independently live-verified structure, and likely
+the actual bug: an isolate containing nothing but a neutral/emoji character (no strong directional
+character inside it at all) is exactly the case Unicode's own bidi isolate rules leave most open to
+a renderer resolving unexpectedly. **PR #575** fixes this (`_LEADING_EMOJI_RE` pulls the icon off
+first, re-attaches it bare + ZWNJ, matching the confirmed-good shape byte-for-byte) using a new
+read-only diagnostic, `diagnose-rtl-v18-inspect-real-screenshotted-listings.yaml`, that pulls the
+owner's own exact screenshotted listings straight from the production DB via `kubectl exec` and
+prints `format_caption`'s real `repr()` — inspecting the actual bytes sent instead of guessing from
+a screenshot, the same methodology that broke the case open.
+
+The same screenshot batch also caught a second, unrelated bug: a street name with Hebrew gershayim
+(`הפלמ"ח 1`) rendered as literal `הפלמ&quot;ח 1`. `html.escape()`'s own default (`quote=True`)
+escapes a bare `"` even in plain HTML element content, but Telegram's own HTML parser only
+recognizes `&lt;`/`&gt;`/`&amp;` as named entities outside an attribute value — street/city/
+description text is never placed inside one. **PR #575** also fixes this (`quote=False` at all
+three text-content escape sites in `cards.py`; the one legitimate attribute-value escape, the
+footer's `safe_url` inside `href="..."`, is untouched).
+
+Re-running the v18 diagnostic against the *deployed* PR #575 fix surfaced a THIRD bug, one level
+further back: the `הפלמ"ח 1` listing's `street` value in the **database itself** still contained
+`&quot;`, not just in the rendered caption. Traced to `scraper/komo_client.py`'s
+`_parse_details_html`: Komo's `og:title` meta tag is real HTML source text (`content="..."`), and
+this function only ever hand-replaced `&nbsp;`, never calling a real `html.unescape()` the way this
+same file's description/image-URL parsing already does a few lines down — so any OTHER entity
+(`&quot;`, `&amp;`, `&#39;`, ...) leaked straight through into `street`/`city` as literal,
+un-decoded text. **PR #577** fixes this (`html.unescape()` first, then normalize the resulting NBSP
+back to a plain space, matching the old `&nbsp;`-only behavior exactly for that case while fixing
+every other entity too) — this only fixes parsing for future scrapes; the one already-bad DB row
+found this way was not backfilled (single known instance so far, not worth a backfill script on its
+own; revisit if more turn up).
+
+**Lesson worth stating plainly for future sessions**: an owner's "this looks great" on ONE
+hand-built diagnostic message is real, valuable signal — but it verifies that message's exact
+bytes, not the general code path a later refactor claims matches it. When generalizing a
+hand-confirmed fix into production code, diff the generalized output against the confirmed-good
+bytes directly (as PR #575 did) rather than trusting that "looks the same" holds; and when a test
+suite's own expected values are built by calling the same function under test, a bug in that
+function can hide from its own tests indefinitely — `test_cards.py`'s `rtl()` helper is convenient
+for staying honest about small formatting details, but it cannot catch a systemic error in
+`_force_rtl` itself, only an external byte-level reference (a live-confirmed payload) can.
+
+**Status as of this session**: PRs #565–#577 all merged to `main`. PR #575 (bare-icon+ZWNJ, quote
+fix) and PR #577 (Komo entity-decoding) are the two that matter most going forward, on top of PR
+#572's isolates switch — everything else in the range was either a stepping stone, an independent
+WhatsApp bug fix, or a read-only diagnostic. CI/CD deploy confirmed via the Actions API after every
+merge, not assumed; the PR #575/#577 fixes were re-verified live via v18 against the owner's own
+real screenshotted listings post-deploy, not just via the test suite. Full suite green (1175
+tests), ruff clean throughout.
