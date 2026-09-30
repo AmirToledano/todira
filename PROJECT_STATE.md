@@ -7935,3 +7935,43 @@ on `Listing` (none exists today).
 `TAKBULL_API_KEY`/`TAKBULL_API_SECRET`), and Meta Business verification (the owner entered wrong details and
 expects to resubmit if it is rejected). Content/marketing work is paused on purpose until the owner brings
 better marketing/content skills.
+
+## Update 2026-10-01 (night): WhatsApp went silent because of UNSETTLED META BILLING; first_seen_at; delivery alerts
+
+**Payments vocabulary for this project: only Takbull (clearing through Upay) exists. Nothing else was ever
+part of the plan; do not mention or build for any other gateway.** (`website/main.py` still carries a
+dormant second-gateway branch and `grow_client.py` from an early experiment; the owner confirmed it was only
+a test. Safe to delete as dead code in a future cleanup.)
+
+**Root cause of "no WhatsApp messages since 13:10 Israel time" (owner report, verified live):** Meta answered
+HTTP 200 to every send, then rejected each message asynchronously with error **131042 "Business eligibility
+payment issue": the WhatsApp Business account has unsettled payments.** Both the old plain template and the
+new rich one failed. Account health was fine (messaging tier TIER_250, quality GREEN), the scraper ran every
+hour and recorded notifications, and no send logged a failure, because the failure only shows up in Meta's
+delivery-status webhook, which the handler used to drop silently. **Only the owner can fix it: settle the
+balance / payment method in Meta Business Suite > Billing for the WhatsApp Business account.** Messages that
+failed in the meantime are NOT retried (the scraper records a send as done on HTTP 200). The rich template is
+category MARKETING, which Meta prices higher than a utility template, and the owner's broad filter produced
+roughly 100 pushes per hour, so check the actual per-message cost in Billing.
+
+**Shipped:**
+- PR #591: `_log_delivery_statuses` logs every Meta status (status, pricing category, and on failure the
+  error code/title/details). Never the recipient or message id (a wamid base64-encodes the phone number).
+- PR #593: a failed status also sends ONE Telegram alert to the owner, at most once per error code per 6h
+  (`_alert_owner_of_delivery_failure`).
+- PR #593: migration **0018** adds `listings.first_seen_at` (NOT NULL, default now(), indexed, set once on
+  INSERT). `_find_unnotified_recent_listings` measures its 7-day window from it, and the bot/website/onboarding
+  "newest first" orderings use it (`first_seen_at desc, id desc`). Existing rows were backfilled to at least 8
+  days old (outside the window) so the migration cannot flood anyone. Validated on a local Postgres 16.
+- PR #587: the three sweep fixes (gateway-payment self-confirm hole, WhatsApp onboarding JSONB in-place
+  mutation, duplicate rows in the retry net); PR #586: long descriptions truncated instead of dropped.
+
+**Reusable tools (manual workflows):** `test-real-rich-whatsapp-send.yaml` (input `which` = both / rich /
+plain: sends to the owner's own opted-in account via the real scraper code path, then prints Meta's delivery
+statuses from the website log) and `diagnose-whatsapp-silence.yaml` (per scraper run: Meta answers and
+WhatsApp failures). `diagnose-whatsapp-messaging-tier.yaml` prints tier and quality rating.
+
+**Decisions by the owner:** long descriptions are shown (cut with "..." only at Telegram's 1024-char caption
+limit, 300 chars in the WhatsApp rich template); no second "rest of the description" message. Marketing /
+content skills stay paused until the owner brings better ones. Still waiting on third parties: Upay/Takbull
+approval, Meta Business verification (owner entered wrong details and expects to resubmit if rejected).
