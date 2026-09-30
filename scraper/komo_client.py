@@ -384,7 +384,16 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
     # og:title looks like "להשכרה&nbsp;דירות&nbsp;2 חדרים  &nbsp;בירושלים, שערי ירושלים 5" — a
     # comma always separates "<rooms text> ב<city>" from "<street> <house number>" (confirmed live
     # for the one sample listing; see module docstring step 3).
-    og_title = og_title_match.group(1).replace("&nbsp;", " ")
+    #
+    # 2026-09-30: real bug, found via an owner screenshot — a street containing Hebrew gershayim
+    # ("הפלמ"ח 1") came out of this attribute as the literal, un-decoded "הפלמ&quot;ח 1", because
+    # this only hand-replaced &nbsp; and never ran a real html.unescape() the way this file's own
+    # description/image-URL parsing already does a few lines down. A raw meta content="..."
+    # attribute is real HTML source text — ANY entity can appear in it (&quot;, &amp;, &#39;, ...),
+    # not just &nbsp;. html.unescape() first (it also turns &nbsp; into U+00A0 NBSP, not a plain
+    # space), then normalize that NBSP to a real space — same end result as before for the
+    # already-confirmed &nbsp; case, but now correct for every other entity too.
+    og_title = html.unescape(og_title_match.group(1)).replace("\xa0", " ")
     head, _, street_part = og_title.partition(",")
 
     rooms_match = _ROOMS_RE.search(head)
