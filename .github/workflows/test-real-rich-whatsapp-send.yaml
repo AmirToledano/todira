@@ -9,8 +9,8 @@ name: Test - send ONE real rich WhatsApp listing card to the owner's own account
 # CronJob, so it includes WHATSAPP_RICH_MATCH_TEMPLATE_NAME exactly as deployed) and calls the real
 # notifier._send_whatsapp_rich_match_template on a real recent listing, sending ONLY to the owner's
 # own opted-in account (OWNER_TELEGRAM_USER_ID) - never an arbitrary user. The owner's phone number
-# is never printed: a successful Meta response echoes the recipient, so only the message id or the
-# error body is logged.
+# is never printed: a successful Meta response echoes the recipient (and a message id encodes it), so
+# only the HTTP status is logged on success, plus Meta's error body on failure.
 on:
   workflow_dispatch: {}
 
@@ -53,12 +53,9 @@ jobs:
               if response.status_code >= 400:
                   print("META", endpoint, response.status_code, response.text)
               else:
-                  try:
-                      body = response.json()
-                      ids = [m.get("id") for m in body.get("messages", [])] or body.get("id")
-                  except Exception:
-                      ids = None
-                  print("META", endpoint, response.status_code, "ok, id:", ids)
+                  # A success body echoes the recipient, and a message id (wamid) base64-encodes
+                  # the recipient's number - neither may reach the log, so only the status prints.
+                  print("META", endpoint, response.status_code, "ok")
               return response
 
 
