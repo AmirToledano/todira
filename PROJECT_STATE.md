@@ -7858,3 +7858,48 @@ WhatsApp bug fix, or a read-only diagnostic. CI/CD deploy confirmed via the Acti
 merge, not assumed; the PR #575/#577 fixes were re-verified live via v18 against the owner's own
 real screenshotted listings post-deploy, not just via the test suite. Full suite green (1175
 tests), ruff clean throughout.
+
+## RTL caption alignment — the actual final fix (PR #582, 2026-09-30): remove every bidi mark
+
+Even after PR #575/#577, the owner kept reporting the same right-side gap on real messages — the
+isolates/ZWNJ scheme from PR #572 fixed the *character-order* bugs each earlier PR chased, but
+never closed the gap itself. Two more rounds of live A/B tests (v19: `sendMessage` vs `sendPhoto`,
+same content — ruled out Gemini's "photo captions get centered" theory, since the gap showed up in
+both; v20: prepending a plain Hebrew sentence before the first emoji — moved the block further
+right but not flush) narrowed it down without fully explaining it.
+
+**The decisive evidence came from the owner, not from a diagnostic.** They opened Telegram Desktop,
+found a real working reference bot ("Dorin's") known to render flush-right, and used
+"Copy Text" on one of its own messages. The copied text contained **zero** invisible bidi
+characters — no RLM/RLI/PDI/ZWNJ of any kind — and no manual line pre-wrapping, just plain Hebrew
+text with ordinary spaces, `<b>` bold, and a link. A live test sending our own real listing content
+the same way (`diagnose-rtl-v21-zero-marks-like-dorin.yaml`) confirmed it renders correctly.
+
+**Conclusion**: every bidi mark this project ever added — the original RLM, the RLE/PDF embedding,
+the RLI/PDI isolates + ZWNJ — was solving a real symptom along the way while leaving (or worsening)
+the actual bug: Telegram's own client-side text-*block* positioning, which no Unicode directional
+character can influence. Telegram/WhatsApp resolve plain RTL text correctly on their own; the marks
+were confusing that resolution, not helping it.
+
+**Shipped (PR #582)**: `cards.py` gutted of all bidi-mark machinery — `_RLM`/`_RLI`/`_PDI`/`_LRM`/
+`_ZWNJ`, `_isolate()`, `_force_rtl()`, `_force_rtl_block()`, `_wrap_long_rtl_line()`,
+`_LEADING_EMOJI_RE`, the HTML-span regexes, the trailing RLM+LRM footer absorber — all removed.
+Every caption builder (`_build_body_lines`, `_price_change_header`, `format_caption`,
+`format_caption_whatsapp`, `send_listing_card`'s no-photos banner) now returns plain text: real
+`<b>`/`<a>` HTML, real `\n` line breaks, nothing invisible. The one still-valid piece of the old
+machinery was kept, renamed: `_normalize_line_breaks` (splitlines-based) still normalizes Homeless's
+occasional bare-`\r` descriptions to real `\n` — unrelated to bidi, still needed.
+
+`test_cards.py` rewritten throughout for plain-text assertions; new
+`test_caption_has_no_bidi_control_characters` locks in zero bidi marks across all 5 languages going
+forward. Full suite: 1170 passed, ruff clean.
+
+**Verified twice after deploy, not just by test suite**: CI/CD confirmed fully green via the Actions
+API (all 6 jobs succeeded). Then `diagnose-rtl-real-caption-live-test-v9.yaml` — which calls the
+real, deployed `format_caption()`/`send_listing_card()` against a real, current DB listing, not a
+synthetic recreation — was dispatched fresh against the post-#582 code. Its repr() output confirmed
+zero `‏`/`‎`/`⁧`/`⁩`/`‌` characters in a real caption, and
+`send_listing_card returned: True`. This is the actual, final resolution — not another intermediate
+step. If the owner ever reports a right-alignment complaint again, do not reach for a bidi mark;
+start from the assumption that plain text is correct and look elsewhere (e.g. a client-rendering
+quirk specific to their device, not something this file can fix).
