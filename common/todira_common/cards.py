@@ -352,6 +352,37 @@ def _normalize_line_breaks(text: str) -> str:
     return "\n".join(text.splitlines())
 
 
+def _truncated_description_block(raw: str, budget: int, escape: Callable[[str], str]) -> str:
+    """The "\\n\\n📝 <description>" block, cut to fit `budget` characters of the caption's total
+    length (counted AFTER escaping, since Telegram's limit applies to the final HTML text), or ""
+    when there's no description or too little room left to be worth adding one.
+
+    Real bug, found 2026-09-30 in a code-review pass: the old inline version budgeted only the
+    description's own length and forgot the 4-character "\\n\\n📝 " prefix — so a description long
+    enough to need truncating always landed a few characters over the limit, and _fit_to_limit's
+    drop-trailing-body-lines safety net then removed the whole description as one "line," leaving a
+    caption with no description at all for exactly the listings that had the most to say. It also
+    truncated AFTER escaping, which could cut an HTML entity in half ("&amp;" -> "&am…"); escaping
+    one character at a time while counting avoids both."""
+    text = _normalize_line_breaks(raw.strip())
+    prefix = "\n\n📝 "
+    room = budget - len(prefix)
+    if not text or room <= 20:
+        return ""
+    escaped_whole = escape(text)
+    if len(escaped_whole) <= room:
+        return prefix + escaped_whole
+    pieces: list[str] = []
+    used = 0
+    for char in text:
+        piece = escape(char)
+        if used + len(piece) > room - 1:
+            break
+        pieces.append(piece)
+        used += len(piece)
+    return prefix + "".join(pieces).rstrip() + "…"
+
+
 def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:
     """Real production bug, found 2026-09-14 while chasing an unrelated RTL report: the owner's
     own live run logged 18+ failed sends, `telegram.error.BadRequest: Can't parse entities: can't
@@ -444,11 +475,9 @@ def format_caption(
     remaining = CAPTION_LIMIT - len(header) - len(body) - len(footer)
     # quote=False here too — same reasoning as _build_body_lines' own escape= above, this is
     # message text, never an attribute value.
-    description = html.escape((listing.description or "").strip(), quote=False)
-    if description and remaining > 20:
-        if len(description) > remaining:
-            description = description[: remaining - 1] + "…"
-        body += f"\n\n📝 {_normalize_line_breaks(description)}"
+    body += _truncated_description_block(
+        listing.description or "", remaining, lambda s: html.escape(s, quote=False)
+    )
 
     return _fit_to_limit(header, body, footer, CAPTION_LIMIT)
 
@@ -502,11 +531,7 @@ def format_caption_whatsapp(
         upgrade_text = bot_text("card.upgrade_required_plain", lang)
         footer = f"\n\n🔒 {upgrade_text}"
     remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
-    description = (listing.description or "").strip()
-    if description and remaining > 20:
-        if len(description) > remaining:
-            description = description[: remaining - 1] + "…"
-        body += f"\n\n📝 {_normalize_line_breaks(description)}"
+    body += _truncated_description_block(listing.description or "", remaining, lambda s: s)
 
     return _fit_to_limit(header, body, footer, WHATSAPP_MESSAGE_LIMIT)
 

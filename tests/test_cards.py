@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from todira_common.cards import (
     CAPTION_LIMIT,
+    WHATSAPP_MESSAGE_LIMIT,
     _fit_to_limit,
     format_caption,
     format_caption_whatsapp,
@@ -184,6 +185,47 @@ def test_footer_link_text_and_no_source_tag():
     caption = format_caption(make_listing(), has_access=True)
     assert '<a href="https://www.yad2.co.il/item/abc123">לפרטי הדירה המלאים &gt;&gt;</a>' in caption
     assert "🏷️" not in caption
+
+
+def test_long_description_is_truncated_not_dropped_on_telegram():
+    # Real bug, found 2026-09-30: a description long enough to need truncating used to disappear
+    # ENTIRELY, because the 4-character "\\n\\n📝 " prefix wasn't counted in the budget and
+    # _fit_to_limit then dropped the over-limit description line whole.
+    caption = format_caption(
+        make_listing(street="דיזנגוף 10", description="דירה מרווחת ומוארת " * 200), has_access=True
+    )
+    assert len(caption) <= CAPTION_LIMIT
+    assert "📝 דירה מרווחת" in caption
+    assert "…" in caption
+    assert caption.rstrip().endswith("</a>")  # the footer link is still intact
+
+
+def test_long_description_is_truncated_not_dropped_on_whatsapp():
+    caption = format_caption_whatsapp(
+        make_listing(street="דיזנגוף 10", description="דירה מרווחת ומוארת " * 500), has_access=True
+    )
+    assert len(caption) <= WHATSAPP_MESSAGE_LIMIT
+    assert "📝 דירה מרווחת" in caption
+    assert "…" in caption
+
+
+def test_truncating_a_description_never_splits_an_html_entity():
+    # Truncation happens BEFORE escaping, one character at a time - cutting already-escaped text
+    # could leave a dangling half-entity like "&am" in front of the ellipsis.
+    caption = format_caption(
+        make_listing(street="דיזנגוף 10", description="בניין & חניה " * 200), has_access=True
+    )
+    assert len(caption) <= CAPTION_LIMIT
+    description_part = caption.split("📝 ", 1)[1].split("\n\n🔗", 1)[0]
+    assert description_part.endswith("…")
+    body = description_part[:-1]
+    assert body.count("&") == body.count("&amp;")
+
+
+def test_short_description_is_left_whole():
+    caption = format_caption(make_listing(street="דיזנגוף 10", description="דירה קטנה ויפה"), has_access=True)
+    assert "📝 דירה קטנה ויפה" in caption
+    assert "…" not in caption
 
 
 def test_caption_has_no_bidi_control_characters():
