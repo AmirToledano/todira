@@ -1,0 +1,97 @@
+name: Diagnose - what the WhatsApp Business account is actually billed for (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch) - 2026-10-01. Meta rejects every WhatsApp send with
+# error 131042 ("Business eligibility payment issue: unsettled payments") and the owner does not remember
+# ever paying Meta for anything. Asks Meta's own Graph API, for the known WABA, (1) the account's billing
+# related fields and (2) pricing_analytics: how many messages were sent and what each pricing category
+# cost, per day, for the last 30 days. Nothing here can change or pay anything. No phone numbers are
+# involved (analytics are aggregated).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Ask Meta for the account's billing fields and 30 days of pricing analytics
+        run: |
+          kubectl delete pod diag-wa-billing -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-wa-billing
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-wa-billing
+                image: python:3.11-slim
+                env:
+                  - name: WHATSAPP_ACCESS_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: whatsapp-access-token
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet httpx
+                    python3 - <<'PY'
+                    import json, os, time
+                    import httpx
+
+                    token = os.environ["WHATSAPP_ACCESS_TOKEN"]
+                    waba = "1814744176326509"
+                    headers = {"Authorization": f"Bearer {token}"}
+                    base = f"https://graph.facebook.com/v21.0/{waba}"
+
+                    def show(title, response):
+                        print("=====", title, "-> HTTP", response.status_code)
+                        try:
+                            print(json.dumps(response.json(), ensure_ascii=False, indent=1)[:6000])
+                        except Exception:
+                            print(response.text[:2000])
+
+                    show(
+                        "account fields",
+                        httpx.get(
+                            base,
+                            params={"fields": "id,name,currency,timezone_id,account_review_status,business_verification_status,primary_funding_id,health_status"},
+                            headers=headers, timeout=20,
+                        ),
+                    )
+
+                    end = int(time.time())
+                    start = end - 30 * 86400
+                    field = (
+                        f"pricing_analytics.start({start}).end({end}).granularity(DAILY)"
+                        '.metric_types(["COST","VOLUME"]).dimensions(["PRICING_CATEGORY","PRICING_TYPE"])'
+                    )
+                    show("pricing analytics, last 30 days", httpx.get(base, params={"fields": field}, headers=headers, timeout=30))
+
+                    field2 = (
+                        f"conversation_analytics.start({start}).end({end}).granularity(DAILY)"
+                        '.metric_types(["COST","CONVERSATION"]).dimensions(["CONVERSATION_CATEGORY","CONVERSATION_TYPE"])'
+                    )
+                    show("conversation analytics, last 30 days (older billing model)", httpx.get(base, params={"fields": field2}, headers=headers, timeout=30))
+                    PY
+          PODYAML
+          for i in $(seq 1 40); do
+            PHASE=$(kubectl get pod diag-wa-billing -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- pod logs ---"
+          kubectl logs -n todira diag-wa-billing || true
+          kubectl delete pod diag-wa-billing -n todira --ignore-not-found
