@@ -1,5 +1,36 @@
 # ToDira — Project State Handoff
 
+## ▶ WHERE WE STOPPED (2026-10-01, ~03:00 Israel) — read this first
+**WhatsApp proactive pushes are PAUSED on purpose** (`charts/todira/values.yaml` `scraper.whatsappMatchTemplateName: ""`,
+PR #597, deployed). Reason: Meta bills every proactive template message (MARKETING, about 0.0353 each; 717 messages =
+25.31 so far, all to the only 2 users in the DB), the owner did not know WhatsApp costs money, and Meta rejected all sends
+with error 131042 (unsettled payments) until the owner pays the open balance in Meta Billing hub (owner added a Visa
+8320 card but had NOT yet paid the balance). Telegram and the website are unaffected. Do NOT turn WhatsApp back on, and do
+not mention or build for any payment gateway other than Takbull (via Upay), without the owner's explicit decision.
+
+**Proposed next steps (owner was asked "start?", answered good night):**
+1. Build a **WhatsApp cost guard**: read Meta's `pricing_analytics` daily (the Graph call in
+   `.github/workflows/diagnose-whatsapp-billing.yaml` works with the current token), send the owner a daily Telegram report
+   ("yesterday: N messages, X USD") and AUTO-PAUSE WhatsApp pushes when a monthly budget is exceeded.
+2. Then a **digest** mode: one WhatsApp message every few hours ("23 new matches" + link to the site) included in the
+   50 NIS plan, with real-time pushes kept on Telegram. Optional paid add-on for real-time WhatsApp with a daily cap
+   (about 5/day is roughly 20 NIS/month of Meta cost at about 0.13 NIS per message; check the day's exchange rate).
+   Rejected for now: metered per-message billing (complex, Takbull not live yet). Alternative noted: the free 24h
+   customer-service window (service messages cost 0) with a daily reminder template.
+3. After the owner pays the Meta balance: re-run `test-real-rich-whatsapp-send.yaml` (input `which`) to confirm
+   deliveries, but only while WhatsApp stays gated or on purpose.
+
+**Still waiting on third parties:** Upay/Takbull approval (then TAKBULL_API_KEY/TAKBULL_API_SECRET), Meta Business
+verification (owner entered wrong details, will redo if rejected). Content/marketing work stays paused until the owner
+brings better marketing/content skills.
+
+**Shipped tonight (all deployed):** RTL fix (zero bidi marks) confirmed by the owner on phone; long descriptions truncated
+not dropped (#586); payment self-confirm hole, WhatsApp onboarding JSONB bug, duplicate-listing retry fixed (#587);
+delivery-status logging + Telegram alert on failed WhatsApp deliveries (#591/#593); `listings.first_seen_at` migration
+0018 (#593); WhatsApp pause (#597). Owner preference: Hebrew only, short answers, never guess, no paid spend without an
+explicit yes.
+
+
 Read this first in any new session (especially cloud sessions without access to this machine's
 local Claude memory). Written 2026-08-29, updated 2026-08-30, so work can continue seamlessly
 from another device.
