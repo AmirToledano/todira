@@ -16,7 +16,13 @@ not mention or build for any payment gateway other than Takbull (via Upay), with
    50 NIS plan, with real-time pushes kept on Telegram. Optional paid add-on for real-time WhatsApp with a daily cap
    (about 5/day is roughly 20 NIS/month of Meta cost at about 0.13 NIS per message; check the day's exchange rate).
    Rejected for now: metered per-message billing (complex, Takbull not live yet). Alternative noted: the free 24h
-   customer-service window (service messages cost 0) with a daily reminder template.
+   customer-service window (service messages cost 0) with a daily reminder template. **Owner's observation
+   (2026-10-01): the competitor bots (Yaeli's and Dorin's) periodically send an automatic check-in ("are you still
+   here?" / "did you find an apartment?") with quick-reply buttons ("found one" / "still looking" / "why are you
+   asking?") - consistent with this being how they keep the free window open: each button tap is a customer reply
+   that reopens 24h of free-form messages.** Worth building as option 3 (check-in template costs about 0.13 NIS
+   per day per user; free-form match messages are free while the window is open; a user who stops replying
+   falls back to the digest or Telegram).
 3. After the owner pays the Meta balance: re-run `test-real-rich-whatsapp-send.yaml` (input `which`) to confirm
    deliveries, but only while WhatsApp stays gated or on purpose.
 
