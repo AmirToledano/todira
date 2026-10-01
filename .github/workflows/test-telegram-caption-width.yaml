@@ -1,0 +1,85 @@
+name: Test - does a blank full-width last line fix the narrow-block RTL gap in short Telegram captions
+
+# ONE-OFF, manual-only (workflow_dispatch) - 2026-10-01. Telegram lays a media caption's text out in a
+# block exactly as wide as its LONGEST line, anchored to the bubble's left edge, and right-aligns RTL
+# lines inside that block. A short caption (no long description) therefore ends up with a visible gap on
+# the right (owner's screenshot of a Bat Yam listing). This sends the SAME real short listing to the
+# owner's own Telegram several times: once exactly as production builds it, and with a final line made
+# only of blank characters (Braille blank U+2800, Hangul filler U+3164) of different lengths, so the owner
+# can see which one makes the text block span the bubble without wrapping into an extra blank line.
+# Telegram only (free). Uses the real format_caption/send_listing_card on a real listing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Send the variants to the owner's own Telegram
+        run: |
+          cat <<'PYEOF' > /tmp/send_variants.py
+          import asyncio
+          import os
+
+          from sqlalchemy import select
+          from telegram import Bot
+
+          from todira_common.cards import format_caption, send_listing_card
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+          BRAILLE = "⠀"
+          HANGUL = "ㅤ"
+
+
+          async def main() -> None:
+              token = os.environ["TELEGRAM_BOT_TOKEN"]
+              owner_id = int(os.environ["OWNER_TELEGRAM_USER_ID"])
+              with get_session() as session:
+                  base = (
+                      select(Listing)
+                      .where(Listing.is_delisted.is_(False))
+                      .where(Listing.duplicate_of_id.is_(None))
+                      .where(Listing.image_urls != [])
+                  )
+                  listing = session.scalars(
+                      base.where(Listing.city == "בת ים", Listing.price == 8000).order_by(Listing.scraped_at.desc()).limit(1)
+                  ).first()
+                  if listing is None:
+                      listing = session.scalars(
+                          base.where(Listing.description.is_(None)).order_by(Listing.scraped_at.desc()).limit(1)
+                      ).first()
+                  if listing is None:
+                      print("no suitable listing")
+                      return
+                  print(f"using REAL listing id={listing.id} city={listing.city!r} description_len={len(listing.description or '')}")
+                  caption = format_caption(listing, has_access=True, lang="he")
+
+                  variants = [
+                      ("A - כמו היום, בלי שורה נסתרת", caption),
+                      ("B - שורה נסתרת ברייל U+2800 x20", caption + "\n" + BRAILLE * 20),
+                      ("C - שורה נסתרת U+2800 x28", caption + "\n" + BRAILLE * 28),
+                      ("D - שורה נסתרת U+2800 x36", caption + "\n" + BRAILLE * 36),
+                      ("E - שורה נסתרת U+3164 x14", caption + "\n" + HANGUL * 14),
+                      ("F - שורה נסתרת U+3164 x18", caption + "\n" + HANGUL * 18),
+                  ]
+                  async with Bot(token=token) as bot:
+                      for label, text in variants:
+                          await bot.send_message(chat_id=owner_id, text=f"בדיקת רוחב: גרסה {label}")
+                          ok = await send_listing_card(bot, owner_id, listing, text, lang="he")
+                          print(f"{label}: send_listing_card returned {ok}, caption length {len(text)}")
+
+
+          asyncio.run(main())
+          PYEOF
+          POD=$(kubectl get pods -n todira -l app=todira-bot -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$POD" -- python3 - < /tmp/send_variants.py
