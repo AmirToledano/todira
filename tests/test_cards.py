@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from todira_common.cards import (
     CAPTION_LIMIT,
     WHATSAPP_MESSAGE_LIMIT,
+    _WIDTH_PAD,
     _fit_to_limit,
     format_caption,
     format_caption_whatsapp,
@@ -226,6 +227,36 @@ def test_short_description_is_left_whole():
     caption = format_caption(make_listing(street="דיזנגוף 10", description="דירה קטנה ויפה"), has_access=True)
     assert "📝 דירה קטנה ויפה" in caption
     assert "…" not in caption
+
+
+def test_short_caption_gets_a_blank_full_width_last_line():
+    # Owner's screenshot, 2026-10-01: Telegram sizes a caption's text block to its LONGEST line, so a
+    # short caption (no real description) ended mid-bubble with a big empty gap on the right.
+    caption = format_caption(make_listing(street=None, description=None), has_access=True)
+    assert caption.endswith("\n" + _WIDTH_PAD)
+    assert set(_WIDTH_PAD) == {"\u2800"}
+    assert len(caption) <= CAPTION_LIMIT
+
+
+def test_caption_with_a_long_line_does_not_get_the_pad():
+    # A line that already wraps across the bubble makes the text block full width on its own.
+    long_line = "דירה מרווחת ומוארת עם נוף פתוח ומרפסת שמש גדולה " * 2
+    caption = format_caption(make_listing(description=long_line), has_access=True)
+    assert "\u2800" not in caption
+
+
+def test_width_pad_never_pushes_the_caption_past_the_limit():
+    from todira_common.cards import _with_width_pad_if_short
+
+    almost_full = "א " * ((CAPTION_LIMIT - 10) // 2)  # one long line, but also check the raw guard
+    assert _with_width_pad_if_short("א\nב", 30) == "א\nב"  # no room for 34 + newline
+    assert len(_with_width_pad_if_short("א\nב", 200)) <= 200
+    assert _with_width_pad_if_short(almost_full, CAPTION_LIMIT) == almost_full
+
+
+def test_width_pad_is_not_applied_to_whatsapp_captions():
+    caption = format_caption_whatsapp(make_listing(street=None, description=None), has_access=True)
+    assert "\u2800" not in caption
 
 
 def test_caption_has_no_bidi_control_characters():

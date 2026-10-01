@@ -8,6 +8,7 @@ import asyncio
 import html
 import io
 import logging
+import re
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
@@ -343,6 +344,33 @@ def _price_change_header(
 # caption as plain text: real `<b>`/`<a>` HTML entities, real line breaks, no bidi characters.
 
 
+# 2026-10-01 (owner's screenshot of a short Bat Yam card, final request): Telegram lays a media
+# caption's text out in a block exactly as wide as its LONGEST line, anchored to the bubble's left
+# edge, and right-aligns RTL lines inside that block. A short caption (no description, or one made of
+# short lines) therefore ends in the middle of the bubble with a big empty gap on the right, while a
+# caption with any long line spans the whole bubble and is flush right. Bidi marks cannot influence
+# this (it is block width, not direction). The fix is to make the block as wide as the bubble: one
+# final line of Braille-blank characters (U+2800, not whitespace, so Telegram does not trim it),
+# added ONLY when no line is already long, and long enough that it wraps rather than falling short -
+# at worst it adds a blank line or two at the very bottom.
+_WIDTH_PAD = "\u2800" * 34
+_LONG_LINE_VISIBLE_CHARS = 36
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _visible_length(line: str) -> int:
+    return len(html.unescape(_HTML_TAG_RE.sub("", line)))
+
+
+def _with_width_pad_if_short(caption: str, limit: int) -> str:
+    """See _WIDTH_PAD. Never pushes the caption past `limit`."""
+    if len(caption) + 1 + len(_WIDTH_PAD) > limit:
+        return caption
+    if any(_visible_length(line) >= _LONG_LINE_VISIBLE_CHARS for line in caption.split("\n")):
+        return caption
+    return f"{caption}\n{_WIDTH_PAD}"
+
+
 def _normalize_line_breaks(text: str) -> str:
     """Homeless's own scraped descriptions sometimes use a bare "\\r" as their line separator
     (found live 2026-09-21, diagnose-homeless-description-raw-chars.yaml) — Telegram/WhatsApp only
@@ -479,7 +507,7 @@ def format_caption(
         listing.description or "", remaining, lambda s: html.escape(s, quote=False)
     )
 
-    return _fit_to_limit(header, body, footer, CAPTION_LIMIT)
+    return _with_width_pad_if_short(_fit_to_limit(header, body, footer, CAPTION_LIMIT), CAPTION_LIMIT)
 
 
 WHATSAPP_MESSAGE_LIMIT = 4096

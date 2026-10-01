@@ -64,17 +64,13 @@ jobs:
                   print(f"using REAL listing id={listing.id} city={listing.city!r} description_len={len(listing.description or '')}")
                   caption = format_caption(listing, has_access=True, lang="he")
 
-                  variants = [
-                      ("A - כמו היום, בלי שורה נסתרת", caption),
-                      ("B - שורה נסתרת ברייל U+2800 x20", caption + "\n" + BRAILLE * 20),
-                      ("C - שורה נסתרת U+2800 x28", caption + "\n" + BRAILLE * 28),
-                      ("D - שורה נסתרת U+2800 x36", caption + "\n" + BRAILLE * 36),
-                      ("E - שורה נסתרת U+3164 x14", caption + "\n" + HANGUL * 14),
-                      ("F - שורה נסתרת U+3164 x18", caption + "\n" + HANGUL * 18),
-                  ]
+                  # After the production fix (cards.py _with_width_pad_if_short) format_caption itself adds
+                  # the blank full-width last line to short captions, so this sends the REAL production
+                  # caption of the same short listing, once.
+                  variants = [("כמו שזה נשלח עכשיו בפרודקשן", caption)]
                   async with Bot(token=token) as bot:
                       for label, text in variants:
-                          await bot.send_message(chat_id=owner_id, text=f"בדיקת רוחב: גרסה {label}")
+                          await bot.send_message(chat_id=owner_id, text=f"בדיקת רוחב: {label}")
                           ok = await send_listing_card(bot, owner_id, listing, text, lang="he")
                           print(f"{label}: send_listing_card returned {ok}, caption length {len(text)}")
 
