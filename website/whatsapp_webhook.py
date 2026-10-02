@@ -550,39 +550,53 @@ def _message_sent_at(message: dict) -> dt.datetime | None:
         return None
 
 
-def _touch_inbound_sync(wa_id: str, sent_at: dt.datetime | None = None) -> bool:
-    """Stamps now as the user's last inbound message. Returns True when this message REOPENED a
-    closed window for an opted-in user — the caller then sends the one-link summary of everything
-    that was found while they were away. A number with no user row yet is a no-op (the row is
+# The one-link "while you were away" summary covers listings first seen since the user's previous
+# message, but never reaches further back than this, and defaults to this many hours when the previous
+# message time is unknown (a user from before the column existed, or an explicit "continue").
+_DIGEST_MAX_LOOKBACK = dt.timedelta(days=7)
+_DIGEST_DEFAULT_LOOKBACK = dt.timedelta(hours=48)
+
+
+def _touch_inbound_sync(wa_id: str, sent_at: dt.datetime | None = None) -> dt.datetime | None:
+    """Stamps the user's last inbound message. Returns None normally; when this message REOPENED a
+    closed window for an opted-in user it returns the moment to summarize FROM (their previous
+    message time, at most 7 days back, 48h if unknown) — the caller then sends the one-link summary
+    of what was found while they were away. A number with no user row yet is a no-op (the row is
     created later in this same message's handling; its first stamp lands on their next message)."""
     now = dt.datetime.now(dt.timezone.utc)
     stamp = min(sent_at, now) if sent_at is not None else now
     with get_session() as session:
         user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
         if user is None:
-            return False
+            return None
         previous = user.whatsapp_last_inbound_at
         was_closed = not window_open(previous, now)
         # Never move the stamp backwards (a late redelivery of an older message).
         if previous is None or stamp > (previous if previous.tzinfo else previous.replace(tzinfo=dt.timezone.utc)):
             user.whatsapp_last_inbound_at = stamp
         session.commit()
-        return was_closed and bool(user.whatsapp_notifications_opted_in)
+        if not (was_closed and user.whatsapp_notifications_opted_in):
+            return None
+        previous_utc = None if previous is None else (previous if previous.tzinfo else previous.replace(tzinfo=dt.timezone.utc))
+        return max(previous_utc or now - _DIGEST_DEFAULT_LOOKBACK, now - _DIGEST_MAX_LOOKBACK)
 
 
-def _touch_inbound_safely(wa_id: str, sent_at: dt.datetime | None = None) -> bool:
+def _touch_inbound_safely(wa_id: str, sent_at: dt.datetime | None = None) -> dt.datetime | None:
     """_touch_inbound_sync, but a DB hiccup in the stamp must never block handling the message."""
     try:
         return _touch_inbound_sync(wa_id, sent_at)
     except Exception:
         logger.exception("Could not stamp WhatsApp inbound time")
-        return False
+        return None
 
 
-def _send_missed_digest_sync(wa_id: str) -> None:
-    """ONE free-form message with one link, covering every matching listing the user hasn't been
-    shown yet (found while their window was closed and nothing could be sent). Marks them shown, so
-    it can never repeat and the scraper never re-sends them one by one."""
+def _send_missed_digest_sync(wa_id: str, since: dt.datetime | None = None) -> None:
+    """ONE free-form message with one link, covering the matching listings first seen since `since`
+    (default: the last 48 hours) that the user hasn't been shown yet — found while their window was
+    closed and nothing could be sent. Marks exactly those shown, so it can never repeat and the
+    scraper never re-sends them one by one. Older unseen matches stay on the website."""
+    if since is None:
+        since = dt.datetime.now(dt.timezone.utc) - _DIGEST_DEFAULT_LOOKBACK
     with get_session() as session:
         user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
         if user is None:
@@ -590,7 +604,7 @@ def _send_missed_digest_sync(wa_id: str) -> None:
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
         if filter_row is None:
             return
-        _total, new_to_show = find_new_matches_to_show(session, user.id, filter_row)
+        _total, new_to_show = find_new_matches_to_show(session, user.id, filter_row, since=since)
         session.commit()
         lang = user.language or DEFAULT_LANG
     if not new_to_show:
@@ -782,7 +796,7 @@ def _process_payload_sync(payload: dict) -> None:
                         if button_reply_id in _CHECKIN_BUTTON_IDS:
                             _handle_checkin_button_sync(wa_id, button_reply_id)
                             if reopened_window and button_reply_id == CHECKIN_CONTINUE_ID:
-                                _send_missed_digest_sync(wa_id)
+                                _send_missed_digest_sync(wa_id, reopened_window)
                             continue
                         list_reply_id = (interactive.get("list_reply") or {}).get("id")
                     elif msg_type == "text":
@@ -816,7 +830,7 @@ def _process_payload_sync(payload: dict) -> None:
                         _fire_typing_indicator(message["id"])
                     _handle_incoming_text_sync(wa_id, contacts.get(wa_id), text)
                     if reopened_window:
-                        _send_missed_digest_sync(wa_id)
+                        _send_missed_digest_sync(wa_id, reopened_window)
                 except Exception:
                     logger.exception(
                         "Error processing one WhatsApp message in the batch (id=%s) — "

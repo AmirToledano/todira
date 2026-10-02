@@ -203,22 +203,41 @@ def _patch_session(session):
     return patch.object(whatsapp_webhook, "get_session", lambda: session)
 
 
-def test_touch_inbound_reports_a_reopened_window_for_opted_in_user():
-    user = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=40))
+def test_touch_inbound_returns_the_summary_start_when_a_closed_window_reopens():
+    """Away for 48h, then taps: the summary starts from the moment of the PREVIOUS message."""
+    previous = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=48)
+    user = _wa_user(whatsapp_last_inbound_at=previous)
     with _patch_session(_WebhookSession(user)):
-        assert whatsapp_webhook._touch_inbound_sync("9725500000") is True
+        since = whatsapp_webhook._touch_inbound_sync("9725500000")
+    assert since == previous
     assert whatsapp_window.window_open(user.whatsapp_last_inbound_at) is True
+
+
+def test_touch_inbound_summary_never_reaches_back_more_than_a_week():
+    user = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30))
+    with _patch_session(_WebhookSession(user)):
+        since = whatsapp_webhook._touch_inbound_sync("9725500000")
+    age = dt.datetime.now(dt.timezone.utc) - since
+    assert dt.timedelta(days=6, hours=23) < age < dt.timedelta(days=7, minutes=1)
+
+
+def test_touch_inbound_defaults_to_48_hours_when_the_previous_message_time_is_unknown():
+    user = _wa_user(whatsapp_last_inbound_at=None)
+    with _patch_session(_WebhookSession(user)):
+        since = whatsapp_webhook._touch_inbound_sync("9725500000")
+    age = dt.datetime.now(dt.timezone.utc) - since
+    assert dt.timedelta(hours=47, minutes=59) < age < dt.timedelta(hours=48, minutes=1)
 
 
 def test_touch_inbound_reports_no_reopen_when_window_was_already_open():
     user = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=3))
     with _patch_session(_WebhookSession(user)):
-        assert whatsapp_webhook._touch_inbound_sync("9725500000") is False
+        assert whatsapp_webhook._touch_inbound_sync("9725500000") is None
 
 
 def test_touch_inbound_is_a_noop_for_an_unknown_number():
     with _patch_session(_WebhookSession(None)):
-        assert whatsapp_webhook._touch_inbound_sync("9725599999") is False
+        assert whatsapp_webhook._touch_inbound_sync("9725599999") is None
 
 
 def test_continue_button_keeps_opt_in_and_acks():
@@ -296,6 +315,9 @@ def test_missed_digest_sends_nothing_when_nothing_was_missed():
     mock_text.assert_not_called()
 
 
+_SINCE = dt.datetime(2026, 9, 30, 12, 0, tzinfo=dt.timezone.utc)
+
+
 def _payload(message):
     return {"entry": [{"changes": [{"value": {"contacts": [], "messages": [message]}}]}]}
 
@@ -307,7 +329,7 @@ def test_payload_button_tap_is_stamped_answered_and_digests_after_a_closed_windo
     }
     with (
         patch.object(whatsapp_webhook, "_already_processed", return_value=False),
-        patch.object(whatsapp_webhook, "_touch_inbound_safely", return_value=True) as mock_touch,
+        patch.object(whatsapp_webhook, "_touch_inbound_safely", return_value=_SINCE) as mock_touch,
         patch.object(whatsapp_webhook, "_handle_checkin_button_sync") as mock_handle,
         patch.object(whatsapp_webhook, "_send_missed_digest_sync") as mock_digest,
         patch.object(whatsapp_webhook, "_ensure_language_selected_sync") as mock_lang,
@@ -315,7 +337,7 @@ def test_payload_button_tap_is_stamped_answered_and_digests_after_a_closed_windo
         whatsapp_webhook._process_payload_sync(_payload(message))
 
     mock_handle.assert_called_once_with("9725500000", "checkin_continue")
-    mock_digest.assert_called_once_with("9725500000")
+    mock_digest.assert_called_once_with("9725500000", _SINCE)
     mock_lang.assert_not_called()
     assert mock_touch.call_count == 2  # before handling and again in the finally
 
@@ -327,7 +349,7 @@ def test_payload_button_tap_inside_open_window_sends_no_digest():
     }
     with (
         patch.object(whatsapp_webhook, "_already_processed", return_value=False),
-        patch.object(whatsapp_webhook, "_touch_inbound_safely", return_value=False),
+        patch.object(whatsapp_webhook, "_touch_inbound_safely", return_value=None),
         patch.object(whatsapp_webhook, "_handle_checkin_button_sync"),
         patch.object(whatsapp_webhook, "_send_missed_digest_sync") as mock_digest,
     ):
@@ -673,3 +695,67 @@ def test_listing_photo_route_builds_caches_and_404s_unknown_listings():
     assert second.content == b"jpeg-bytes"
     assert calls == [["u1", "u2"]]  # built once, then served from the cache
     assert missing.status_code == 404
+
+
+def test_missed_digest_only_covers_listings_first_seen_since_the_users_previous_message():
+    """The user's own scenario: away for 48h, then taps. They get what appeared in those 48h."""
+    from todira_common import listing_matches
+
+    since = dt.datetime(2026, 9, 30, 12, 0, tzinfo=dt.timezone.utc)
+    old = SimpleNamespace(id=1, first_seen_at=since - dt.timedelta(hours=1))
+    new_a = SimpleNamespace(id=2, first_seen_at=since + dt.timedelta(hours=1))
+    new_b = SimpleNamespace(id=3, first_seen_at=since + dt.timedelta(hours=30))
+    already_shown = SimpleNamespace(id=4, first_seen_at=since + dt.timedelta(hours=2))
+    added = []
+
+    class _Session:
+        def scalars(self, query):
+            return [4]  # ids already shown
+
+        def add(self, row):
+            added.append(row.listing_id)
+
+    with patch.object(
+        listing_matches, "find_matching_listings", return_value=[old, new_a, new_b, already_shown]
+    ):
+        total, shown = listing_matches.find_new_matches_to_show(
+            _Session(), 1, SimpleNamespace(), since=since
+        )
+
+    assert total == 4
+    assert [m.id for m in shown] == [2, 3]
+    assert added == [2, 3]  # only these are marked shown; the older one stays unseen
+
+
+def test_missed_digest_passes_the_cutoff_to_the_matcher():
+    user = _wa_user()
+    seen = {}
+
+    def _fake_find(session, user_id, filter_row, limit=None, since=None):
+        seen["since"] = since
+        return 5, [object()]
+
+    with (
+        _patch_session(_WebhookSession(user, filter_row=SimpleNamespace(id=1))),
+        patch.object(whatsapp_webhook, "find_new_matches_to_show", _fake_find),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message"),
+    ):
+        whatsapp_webhook._send_missed_digest_sync("9725500000", _SINCE)
+
+    assert seen["since"] == _SINCE
+
+
+def test_a_new_users_first_message_opens_their_window_even_though_the_row_is_created_mid_message():
+    """Signup: the user sends their link code (or first message). Their row only gets the phone
+    number / is created while this message is handled, so the stamp that counts is the one taken
+    AFTER handling (the `finally`) - this pins that it happens even when the handler returns early."""
+    message = {"id": "m1", "from": "9725500000", "type": "text", "text": {"body": "ref_abc123"}, "timestamp": "1790930400"}
+    with (
+        patch.object(whatsapp_webhook, "_already_processed", return_value=False),
+        patch.object(whatsapp_webhook, "_touch_inbound_safely", return_value=None) as mock_touch,
+        patch.object(whatsapp_webhook, "_try_link_code_sync", return_value=True),
+    ):
+        whatsapp_webhook._process_payload_sync(_payload(message))
+
+    assert mock_touch.call_count == 2
+    assert mock_touch.call_args_list[-1].args[1] == dt.datetime(2026, 10, 2, 8, 40, tzinfo=dt.timezone.utc)

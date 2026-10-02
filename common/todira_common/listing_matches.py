@@ -8,6 +8,8 @@ and todira_common/whatsapp_client.py's own moves.
 """
 from __future__ import annotations
 
+import datetime as dt
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -74,12 +76,18 @@ def find_matching_listings(
 
 
 def find_new_matches_to_show(
-    session: Session, user_id: int, filter_row: Filter, limit: int | None = None
+    session: Session,
+    user_id: int,
+    filter_row: Filter,
+    limit: int | None = None,
+    since: dt.datetime | None = None,
 ) -> tuple[int, list[Listing]]:
     """Returns (total_current_matches, matches_not_yet_shown_to_this_user) — for the "here's what
     matches right now" summary shown right after saving a filter (filter_conversation.py,
     onboarding.py) or right after connecting WhatsApp (website/whatsapp_webhook.py), NOT for
     /apartments (which should always show everything on demand, see find_matching_listings above).
+    `since` (2026-10-02): only listings FIRST SEEN at/after it are returned and marked shown — used by the
+    WhatsApp "while you were away" summary so it covers the time away, not every older unseen match.
     `limit=None` (the default, and what every real call site uses) means `total` is the TRUE
     current match count, not bounded by anything — see find_matching_listings' own 2026-09-15
     comment on why that matters here specifically.
@@ -99,7 +107,10 @@ def find_new_matches_to_show(
             select(SentNotification.listing_id).where(SentNotification.user_id == user_id)
         )
     )
-    new_to_show = [m for m in matches if m.id not in already_shown_ids]
+    new_to_show = [
+        m for m in matches
+        if m.id not in already_shown_ids and (since is None or m.first_seen_at >= since)
+    ]
     for listing in new_to_show:
         session.add(
             SentNotification(user_id=user_id, listing_id=listing.id, reason=NotificationReason.NEW)
