@@ -34,21 +34,22 @@ jobs:
           from todira_common.models import Listing
 
           with get_session() as session:
-              listing = session.scalars(
+              listings = session.scalars(
                   select(Listing).where(Listing.source == "komo", Listing.is_delisted.is_(False))
-                  .order_by(Listing.first_seen_at.desc()).limit(1)
-              ).first()
-              url = listing.url
-          print("probing komo listing id", listing.id)
-          page = komo_client._isp_proxy_get(url, context_label="amenity probe")
-          print("page length", len(page))
-          flat = re.sub(r"\s+", " ", page)
-          flat = re.sub(r"\d{8,}", "<digits>", flat)
-          for kw in ("תאריך כניסה", "כניסה", "מעלית", "חניה", "חנייה", "מרפסת", "מזגן", "ממ\"ד", "ממד", "מחסן", "משופץ", "מרוהט", "בעלי חיים", "שותפים", "מיזוג"):
-              hits = [m.start() for m in re.finditer(re.escape(kw), flat)]
-              print(f"=== {kw!r}: {len(hits)} hits")
-              for pos in hits[:3]:
-                  print("   ...", flat[max(0, pos - 160): pos + 160], "...")
+                  .order_by(Listing.first_seen_at.desc()).limit(4)
+              ).all()
+              urls = [(l.id, l.url) for l in listings]
+          for listing_id, url in urls:
+              page = komo_client._isp_proxy_get(url, context_label="amenity probe")
+              flat = re.sub(r"\s+", " ", page)
+              flat = re.sub(r"\d{8,}", "<digits>", flat)
+              print("=== listing", listing_id)
+              m = re.search(r"<ul[^>]*>(?:(?!</ul>).)*class='maalit.*?</ul>", flat)
+              print("AMENITY UL:", re.sub(r"<span.*?</span>", "", m.group(0))[:1800] if m else "none found")
+              e = re.search(r'<div class="enter[^"]*".{0,260}', flat)
+              print("ENTER:", e.group(0) if e else "none found")
+              fl = re.search(r'<div class="floor[^"]*".{0,200}', flat)
+              print("FLOOR:", fl.group(0) if fl else "none found")
           PYEOF
           kubectl get cronjob todira-scraper -n todira -o json > /tmp/cronjob.json
           python3 - <<'PYEOF'
