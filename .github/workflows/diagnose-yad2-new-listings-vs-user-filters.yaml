@@ -1,0 +1,62 @@
+name: Diagnose — how many new Yad2 listings match ANY user's filter (read-only, aggregate counts only)
+
+# Owner question (2026-10-02): eager detail fetch for every new Yad2 listing costs ~$15-20/month beyond
+# Bright Data's free 5,000 requests. How many of those new listings could ever be sent to someone
+# (city of at least one active filter)? Aggregate counts only — no user data printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Counts
+        run: |
+          kubectl delete pod diag-yad2-vs-filters -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-yad2-vs-filters
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-yad2-vs-filters
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -c "SELECT count(*) AS total_users, count(*) FILTER (WHERE is_active) AS active_users FROM users;"
+                    psql "$CONN" -c "SELECT count(*) AS filters_with_cities, count(DISTINCT c) AS distinct_cities FROM filters f, unnest(f.cities) c WHERE cardinality(f.cities) > 0;"
+                    psql "$CONN" -c "
+                      WITH wanted AS (SELECT DISTINCT unnest(cities) AS city FROM filters),
+                      recent AS (
+                        SELECT (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, city
+                        FROM listings WHERE source = 'yad2' AND first_seen_at >= now() - interval '5 days')
+                      SELECT day, count(*) AS new_yad2,
+                             count(*) FILTER (WHERE city IN (SELECT city FROM wanted)) AS in_a_users_city
+                      FROM recent GROUP BY day ORDER BY day;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-yad2-vs-filters -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-yad2-vs-filters || true
+          kubectl delete pod diag-yad2-vs-filters -n todira --ignore-not-found
