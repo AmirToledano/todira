@@ -355,13 +355,14 @@ def test_image_cta_message_has_image_header_body_and_url_button(monkeypatch):
     calls, fake_post = _capture_post()
     with patch.object(whatsapp_client._http_client, "post", fake_post):
         assert whatsapp_client.send_image_cta_message(
-            "9725500000", media_id="m1", body="text", button_text="btn", url="https://x"
+            "9725500000", image_url="https://todira.app/media/listing/1.jpg", body="text", button_text="btn", url="https://x"
         ) is True
 
     interactive = calls[0]["interactive"]
     assert calls[0]["type"] == "interactive"
     assert interactive["type"] == "cta_url"
-    assert interactive["header"] == {"type": "image", "image": {"id": "m1"}}
+    # Meta rejects an uploaded media id here (error 131008) - the header must be a public link.
+    assert interactive["header"] == {"type": "image", "image": {"link": "https://todira.app/media/listing/1.jpg"}}
     assert interactive["body"] == {"text": "text"}
     assert interactive["action"]["parameters"] == {"display_text": "btn", "url": "https://x"}
 
@@ -613,3 +614,62 @@ def test_no_production_code_can_send_a_whatsapp_template():
             if re.search(r"send_template_message|\"type\":\s*\"template\"", text) and path.name != "whatsapp_client.py":
                 offenders.append(str(path.relative_to(root)))
     assert offenders == []
+
+
+def test_a_failed_send_never_logs_the_recipients_phone_number(monkeypatch, caplog):
+    """The repo and its Actions logs are public: a log line carrying the recipient leaked the owner's
+    number once (2026-10-02)."""
+    import httpx
+
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "t")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "1")
+    with patch.object(whatsapp_client._http_client, "post", side_effect=httpx.ConnectError("boom")):
+        with caplog.at_level("ERROR"):
+            assert whatsapp_client.send_text_message("972506960111", "hi") is False
+    assert "972506960111" not in caplog.text
+
+    monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN")
+    with caplog.at_level("ERROR"):
+        whatsapp_client.send_text_message("972506960111", "hi")
+    assert "972506960111" not in caplog.text
+
+
+def test_listing_photo_route_builds_caches_and_404s_unknown_listings():
+    import importlib.util
+
+    from fastapi.testclient import TestClient
+
+    spec = importlib.util.spec_from_file_location(
+        "website_main_photo", Path(__file__).resolve().parent.parent / "website" / "main.py"
+    )
+    website_main = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(website_main)
+
+    from contextlib import contextmanager
+
+    rows = {7: ["u1", "u2"]}
+
+    @contextmanager
+    def _fake_get_session():
+        yield SimpleNamespace(
+            execute=lambda query: SimpleNamespace(first=lambda: None if not rows else (rows[7],))
+        )
+
+    calls = []
+    client = TestClient(website_main.app, follow_redirects=False)
+    with (
+        patch.object(website_main, "get_session", _fake_get_session),
+        patch.object(
+            website_main, "get_listing_photo_jpeg_bytes", lambda urls: calls.append(urls) or b"jpeg-bytes"
+        ),
+    ):
+        first = client.get("/media/listing/7.jpg")
+        second = client.get("/media/listing/7.jpg")
+        rows.clear()
+        missing = client.get("/media/listing/999.jpg")
+
+    assert first.status_code == 200 and first.content == b"jpeg-bytes"
+    assert first.headers["content-type"] == "image/jpeg"
+    assert second.content == b"jpeg-bytes"
+    assert calls == [["u1", "u2"]]  # built once, then served from the cache
+    assert missing.status_code == 404

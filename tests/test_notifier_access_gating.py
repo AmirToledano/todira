@@ -370,22 +370,25 @@ def _rich_listing(**overrides):
     return SimpleNamespace(**defaults)
 
 
-def test_send_whatsapp_match_message_sends_photo_text_and_view_button():
+def _ok_photo_response():
+    return SimpleNamespace(raise_for_status=lambda: None)
+
+
+def test_send_whatsapp_match_message_sends_photo_link_text_and_view_button():
     user = _wa_user(trial_ends_at=_NOW + dt.timedelta(days=1))
     listing = _rich_listing()
     with (
-        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg") as mock_photo,
-        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-1") as mock_upload,
+        patch.object(notifier.httpx, "get", return_value=_ok_photo_response()) as mock_warm,
         patch.object(notifier.whatsapp_client, "send_image_cta_message", return_value=True) as mock_send,
         patch.object(notifier, "generate_wid_token", return_value="signed"),
     ):
         assert notifier._send_whatsapp_match_message(user, listing) is True
 
-    mock_photo.assert_called_once_with(listing.image_urls)
-    mock_upload.assert_called_once_with(b"jpeg")
+    photo_url = f"{notifier.WEBSITE_URL}/media/listing/10.jpg"
+    assert mock_warm.call_args.args[0] == photo_url  # photo prepared before Meta fetches it
     args, kwargs = mock_send.call_args
     assert args[0] == "9725500000"
-    assert kwargs["media_id"] == "media-1"
+    assert kwargs["image_url"] == photo_url
     assert kwargs["url"].endswith("/apartments?wid=signed&listing=10")
     assert "רוטשילד" in kwargs["body"]
     assert "דירה משופצת ומוארת" in kwargs["body"]
@@ -395,8 +398,7 @@ def test_send_whatsapp_match_message_sends_photo_text_and_view_button():
 def test_send_whatsapp_match_message_button_goes_to_upgrade_for_user_without_access():
     user = _wa_user()  # trial expired, no paid_until -> no access
     with (
-        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg"),
-        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-1"),
+        patch.object(notifier.httpx, "get", return_value=_ok_photo_response()),
         patch.object(notifier.whatsapp_client, "send_image_cta_message", return_value=True) as mock_send,
         patch.object(notifier, "generate_wid_token", return_value="signed"),
     ):
@@ -405,10 +407,9 @@ def test_send_whatsapp_match_message_button_goes_to_upgrade_for_user_without_acc
     assert "/upgrade?wid=signed" in mock_send.call_args.kwargs["url"]
 
 
-def test_send_whatsapp_match_message_returns_false_when_upload_fails():
+def test_send_whatsapp_match_message_returns_false_when_the_photo_cannot_be_prepared():
     with (
-        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg"),
-        patch.object(notifier.whatsapp_client, "upload_media", return_value=None),
+        patch.object(notifier.httpx, "get", side_effect=notifier.httpx.ConnectError("boom")),
         patch.object(notifier.whatsapp_client, "send_image_cta_message") as mock_send,
     ):
         assert notifier._send_whatsapp_match_message(_wa_user(), _rich_listing()) is False

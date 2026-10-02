@@ -57,9 +57,7 @@ def _post_message(payload: dict, *, to: str, action_desc: str) -> bool:
     (never raises; a False return means "didn't go out", logged, not fatal to the caller)."""
     creds = _credentials()
     if creds is None:
-        logger.error(
-            "%s/%s not set — cannot %s to %s", ACCESS_TOKEN_ENV_VAR, PHONE_NUMBER_ID_ENV_VAR, action_desc, to
-        )
+        logger.error("%s/%s not set — cannot %s", ACCESS_TOKEN_ENV_VAR, PHONE_NUMBER_ID_ENV_VAR, action_desc)
         return False
     if payload.get("type") == "template":
         # Meta bills every template message. This project never sends one (owner's rule, 2026-10-02),
@@ -73,7 +71,9 @@ def _post_message(payload: dict, *, to: str, action_desc: str) -> bool:
         response.raise_for_status()
         return True
     except httpx.HTTPError:
-        logger.exception("Failed to %s to %s", action_desc, to)
+        # Never log the recipient: the repository (and its Actions logs) are public, and a phone
+        # number is personal data.
+        logger.exception("Failed to %s", action_desc)
         return False
 
 
@@ -112,10 +112,11 @@ def send_cta_url_message(to: str, body: str, button_text: str, url: str) -> bool
 
 
 def send_image_cta_message(
-    to: str, *, media_id: str, body: str, button_text: str, url: str
+    to: str, *, image_url: str, body: str, button_text: str, url: str
 ) -> bool:
     """One free-form message: the listing's photo on top, the text, and a tappable URL button —
-    "interactive cta_url" with an image header. Free-form, so only valid inside the 24h window (see
+    "interactive cta_url" with an image header. Meta requires the header image as a public `link`
+    (an uploaded media id is rejected with error 131008 "header image must contain link"). Free-form, so only valid inside the 24h window (see
     todira_common/whatsapp_window.py) — and therefore free. `body` max 1024 characters."""
     payload = {
         "messaging_product": "whatsapp",
@@ -123,7 +124,7 @@ def send_image_cta_message(
         "type": "interactive",
         "interactive": {
             "type": "cta_url",
-            "header": {"type": "image", "image": {"id": media_id}},
+            "header": {"type": "image", "image": {"link": image_url}},
             "body": {"text": body},
             "action": {"name": "cta_url", "parameters": {"display_text": button_text, "url": url}},
         },

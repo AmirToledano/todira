@@ -23,6 +23,8 @@ import asyncio
 import logging
 import os
 
+import httpx
+
 from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
@@ -33,8 +35,7 @@ from todira_common.bot_strings import bot_text
 from todira_common.cards import (
     format_caption,
     format_caption_whatsapp,
-    get_listing_photo_jpeg_bytes,
-    send_listing_card,
+        send_listing_card,
 )
 from todira_common.enums import NotificationReason, Source
 from todira_common.language import DEFAULT_LANG
@@ -154,13 +155,19 @@ def _send_whatsapp_match_message(user: User, listing: Listing) -> bool:
         limit=WHATSAPP_INTERACTIVE_BODY_LIMIT,
         lang=lang,
     )
-    media_id = whatsapp_client.upload_media(get_listing_photo_jpeg_bytes(listing.image_urls))
-    if media_id is None:
-        logger.warning("Could not upload a WhatsApp photo for listing %s — skipping this send", listing.id)
+    # Meta needs the header photo as a public link, so the website serves the listing's photo/collage
+    # (website/main.py's /media/listing/{id}.jpg). Requesting it here first builds and caches it, so
+    # Meta's own fetch a moment later is instant instead of waiting on the collage download.
+    photo_url = f"{WEBSITE_URL}/media/listing/{listing.id}.jpg"
+    try:
+        warm = httpx.get(photo_url, timeout=45.0)
+        warm.raise_for_status()
+    except httpx.HTTPError:
+        logger.warning("Could not prepare the WhatsApp photo for listing %s — skipping this send", listing.id)
         return False
     return whatsapp_client.send_image_cta_message(
         user.whatsapp_phone_number,
-        media_id=media_id,
+        image_url=photo_url,
         body=body,
         button_text=bot_text(
             "whatsapp.view_listing_button" if has_access else "whatsapp.upgrade_button", lang
@@ -297,7 +304,7 @@ async def _notify_new_matches(
             await asyncio.sleep(SEND_DELAY_SECONDS)
         if not wa_paused and _whatsapp_eligible(user):
             # asyncio.to_thread: _send_whatsapp_match_message downloads/composites a real photo and
-            # makes two HTTP calls — genuinely blocking work that must never run directly on this
+            # makes HTTP calls — genuinely blocking work that must never run directly on this
             # event loop, same reasoning as send_listing_card's own asyncio.to_thread calls around
             # _build_collage_sync.
             if await asyncio.to_thread(_send_whatsapp_match_message, user, listing):

@@ -44,6 +44,7 @@ import mimetypes
 import os
 import secrets
 import threading
+from collections import OrderedDict
 import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -58,6 +59,7 @@ from todira_common.access import (
     has_full_access,
     has_paid_access,
 )
+from todira_common.cards import get_listing_photo_jpeg_bytes
 from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES
 from todira_common.db import get_session
@@ -527,6 +529,37 @@ def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
     except ValueError:
         return False
     return time.time() - auth_date <= 60 * 60 * 24
+
+
+# 2026-10-02: Meta requires an interactive WhatsApp message's header image as a PUBLIC link (an uploaded
+# media id is rejected), so the scraper's free-form listing messages point at this route. The photo /
+# collage is built once per listing (it downloads up to 4 external photos) and kept in a small in-memory
+# LRU; the scraper requests it once just before sending, so Meta's own fetch is instant. Listing photos
+# are public data already shown on the site.
+_LISTING_PHOTO_CACHE_MAX = 300
+_listing_photo_cache: "OrderedDict[int, bytes]" = OrderedDict()
+_listing_photo_lock = threading.Lock()
+
+
+@app.get("/media/listing/{listing_id}.jpg")
+def listing_photo(listing_id: int) -> Response:
+    with _listing_photo_lock:
+        cached = _listing_photo_cache.get(listing_id)
+        if cached is not None:
+            _listing_photo_cache.move_to_end(listing_id)
+    if cached is None:
+        with get_session() as session:
+            row = session.execute(select(Listing.image_urls).where(Listing.id == listing_id)).first()
+        if row is None:
+            return Response(status_code=404)
+        cached = get_listing_photo_jpeg_bytes(list(row[0] or []))
+        with _listing_photo_lock:
+            _listing_photo_cache[listing_id] = cached
+            while len(_listing_photo_cache) > _LISTING_PHOTO_CACHE_MAX:
+                _listing_photo_cache.popitem(last=False)
+    return Response(
+        content=cached, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"}
+    )
 
 
 @app.get("/healthz")
