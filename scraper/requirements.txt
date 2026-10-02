@@ -20,3 +20,7 @@ Pillow>=10.0,<12.0
 # within ~1 second, backoffLimit=0 means the whole Job fails immediately with zero output, which is
 # why the previous diagnostics couldn't find a traceback for it.
 itsdangerous>=2.1,<3.0
+# curl_cffi: scraper/yad2_client.py's free map-API route (_fetch_json_with_browser_tls, 2026-10-02) — sends
+# the request with a real Chrome TLS/HTTP2 fingerprint, which Yad2's Radware lets through from our own IP
+# where a plain httpx request gets the challenge page. Opt-in via YAD2_FREE_MAP_FETCH.
+curl_cffi>=0.7,<1.0

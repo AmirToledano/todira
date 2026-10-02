@@ -138,6 +138,8 @@ spec:
                 - name: KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN
                   value: {{ .Values.scraper.komoMaxNewDetailFetchesPerRun | quote }}
                 {{- end }}
+                - name: YAD2_FREE_MAP_FETCH
+                  value: {{ .Values.scraper.yad2FreeMapFetch | default false | quote }}
                 {{- if .Values.scraper.yad2MaxPagesPerRegion }}
                 - name: YAD2_MAX_PAGES_PER_REGION
                   value: {{ .Values.scraper.yad2MaxPagesPerRegion | quote }}

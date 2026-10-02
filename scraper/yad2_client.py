@@ -836,6 +836,57 @@ def _fetch_direct(url: str) -> str | None:
     return bright_data_client.fetch_via_web_unlocker(url)
 
 
+_FREE_MAP_FETCH_ENV_VAR = "YAD2_FREE_MAP_FETCH"
+
+
+def _fetch_json_with_browser_tls(url: str) -> str | None:
+    """FREE route for Yad2's map API (2026-10-02): a plain client (httpx/urllib) gets Radware's
+    challenge page from this project's own cloud IP, but the SAME request sent with a real browser
+    TLS/HTTP2 fingerprint (curl_cffi's `impersonate="chrome"`) returns the real JSON — confirmed live
+    from the production pod's own egress IP via diagnose-yad2-browser-tls-from-production-ip.yaml
+    (200 markers, real JSON, for chrome/safari/firefox profiles; plain urllib control got the
+    challenge). That makes the ~100 map-API requests/day (previously ~$4.5/month of Web Unlocker
+    requests, and a big slice of Bright Data's 5,000 free requests) cost nothing. It does NOT work
+    for listing detail pages (still the Radware challenge, see the same diagnostic's follow-up), so
+    those keep going through Web Unlocker.
+
+    Opt-in via YAD2_FREE_MAP_FETCH=true (helm scraper.yad2FreeMapFetch) and always followed by the
+    Web Unlocker fallback in fetch_map_markers, so a future Radware tightening degrades to the old
+    paid behaviour instead of an outage. Returns the raw JSON text, or None on anything else (not
+    enabled, curl_cffi missing, network error, non-200, non-JSON) — never raises."""
+    if os.environ.get(_FREE_MAP_FETCH_ENV_VAR, "").strip().lower() != "true":
+        return None
+    try:
+        from curl_cffi import requests as curl_requests
+    except ImportError:
+        logger.warning("curl_cffi is not installed — skipping the free Yad2 map fetch")
+        return None
+    try:
+        response = curl_requests.get(
+            url,
+            headers={"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"},
+            impersonate="chrome",
+            timeout=30,
+            allow_redirects=False,
+        )
+    except Exception:
+        logger.warning("Free Yad2 map fetch failed (network) — falling back to Web Unlocker: %s", url)
+        return None
+    if response.status_code != 200:
+        logger.warning(
+            "Free Yad2 map fetch got status %s — falling back to Web Unlocker: %s",
+            response.status_code, url,
+        )
+        return None
+    body = response.text
+    try:
+        json.loads(body)
+    except ValueError:
+        logger.warning("Free Yad2 map fetch returned non-JSON (challenge page?) — falling back: %s", url)
+        return None
+    return body
+
+
 def fetch_map_markers(
     bbox: str, *, area: int | None = None, region: int, zoom: int = 11, host: str | None = None
 ) -> Iterator[dict[str, Any]]:
@@ -863,7 +914,9 @@ def fetch_map_markers(
     for a primary discovery source, so a real outage surfaces as a countable error rather than a
     silently-empty run."""
     url = _build_map_url(bbox, area=area, region=region, zoom=zoom, host=host)
-    body = _fetch_direct(url)
+    body = _fetch_json_with_browser_tls(url)
+    if body is None:
+        body = _fetch_direct(url)
     if body is None:
         raise Yad2MapFetchError(
             f"Direct (un-proxied) request failed to fetch Yad2's map API: {url} — see its own "
