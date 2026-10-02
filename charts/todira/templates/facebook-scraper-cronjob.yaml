@@ -102,13 +102,6 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: whatsapp-phone-number-id
                       optional: true
-                - name: WHATSAPP_MATCH_TEMPLATE_NAME
-                  value: {{ .Values.scraper.whatsappMatchTemplateName | default "" | quote }}
-                - name: WHATSAPP_MATCH_TEMPLATE_LANGUAGE
-                  value: {{ .Values.scraper.whatsappMatchTemplateLanguage | default "he" | quote }}
-                # 2026-09-27 — see values.yaml's own comment on scraper.whatsappRichMatchTemplateName.
-                - name: WHATSAPP_RICH_MATCH_TEMPLATE_NAME
-                  value: {{ .Values.scraper.whatsappRichMatchTemplateName | default "" | quote }}
                 # Real ACCOUNT-SAFETY cap (not a credit-cost one) on new-listing detail-page
                 # fetches per run — see scraper/main.py's own _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR
                 # comment. Same optional-only-if-set pattern as komoMaxNewDetailFetchesPerRun etc.

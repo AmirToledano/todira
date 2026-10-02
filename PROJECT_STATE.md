@@ -1,30 +1,22 @@
 # ToDira — Project State Handoff
 
-## ▶ WHERE WE STOPPED (2026-10-01, ~03:00 Israel) — read this first
-**WhatsApp proactive pushes are PAUSED on purpose** (`charts/todira/values.yaml` `scraper.whatsappMatchTemplateName: ""`,
-PR #597, deployed). Reason: Meta bills every proactive template message (MARKETING, about 0.0353 each; 717 messages =
-25.31 so far, all to the only 2 users in the DB), the owner did not know WhatsApp costs money, and Meta rejected all sends
-with error 131042 (unsettled payments) until the owner pays the open balance in Meta Billing hub (owner added a Visa
-new card but had NOT yet paid the balance). Telegram and the website are unaffected. Do NOT turn WhatsApp back on, and do
-not mention or build for any payment gateway other than Takbull (via Upay), without the owner's explicit decision.
+## ▶ WHERE WE STOPPED (2026-10-02) — read this first
+**WhatsApp is now ZERO-COST by design (built 2026-10-02).** Meta bills every business-initiated template message
+(about 0.0353 each; 717 = $25.31 in 30 days), so NO template is ever sent anymore (all template code/config removed).
+Instead: a listing goes out as ONE free-form message (photo + all fields + a "listing details" button, built from
+`format_caption_whatsapp`) only while the user's 24h window is open - `users.whatsapp_last_inbound_at` is stamped on every
+inbound message incl. button taps (`website/whatsapp_webhook.py`), rule in `common/todira_common/whatsapp_window.py`
+(23.5h safe margin). `scraper/whatsapp_checkin.py` (main scraper run only) sends "still looking?" with 3 reply buttons
+(continue / found / stop) once the window is 20h old; a tap reopens a free window. No tap = nothing is sent (no paid
+fallback) until the user writes again; then ONE digest link ("N new apartments while you were away", marks them shown).
+"found"/"stop" turn `whatsapp_notifications_opted_in` off; sending "המשך" turns it back on. Telegram is unchanged.
+Migration 0019 adds `whatsapp_last_inbound_at` / `whatsapp_checkin_sent_at` (NULL = window closed, so nothing is sent
+until each user next writes). Do NOT reintroduce template sends without the owner's explicit decision.
+Do not mention or build for any payment gateway other than Takbull (via Upay).
 
-**Proposed next steps (owner was asked "start?", answered good night):**
-1. Build a **WhatsApp cost guard**: read Meta's `pricing_analytics` daily (the Graph call in
-   `.github/workflows/diagnose-whatsapp-billing.yaml` works with the current token), send the owner a daily Telegram report
-   ("yesterday: N messages, X USD") and AUTO-PAUSE WhatsApp pushes when a monthly budget is exceeded.
-2. Then a **digest** mode: one WhatsApp message every few hours ("23 new matches" + link to the site) included in the
-   50 NIS plan, with real-time pushes kept on Telegram. Optional paid add-on for real-time WhatsApp with a daily cap
-   (about 5/day is roughly 20 NIS/month of Meta cost at about 0.13 NIS per message; check the day's exchange rate).
-   Rejected for now: metered per-message billing (complex, Takbull not live yet). Alternative noted: the free 24h
-   customer-service window (service messages cost 0) with a daily reminder template. **Owner's observation
-   (2026-10-01): the competitor bots (Yaeli's and Dorin's) periodically send an automatic check-in ("are you still
-   here?" / "did you find an apartment?") with quick-reply buttons ("found one" / "still looking" / "why are you
-   asking?") - consistent with this being how they keep the free window open: each button tap is a customer reply
-   that reopens 24h of free-form messages.** Worth building as option 3 (check-in template costs about 0.13 NIS
-   per day per user; free-form match messages are free while the window is open; a user who stops replying
-   falls back to the digest or Telegram).
-3. After the owner pays the Meta balance: re-run `test-real-rich-whatsapp-send.yaml` (input `which`) to confirm
-   deliveries, but only while WhatsApp stays gated or on purpose.
+**Public repo hygiene (2026-10-02):** the repo is public ON PURPOSE (owner shows it in interviews). Never commit personal
+identifiers: the owner's Telegram id (legacy `?uid=` URLs authenticate without a signature), personal phone, email, card
+digits. They were scrubbed from the tree in PR #602 (the id still exists in old git history).
 
 **Still waiting on third parties:** Upay/Takbull approval (then TAKBULL_API_KEY/TAKBULL_API_SECRET), Meta Business
 verification (owner entered wrong details, will redo if rejected). Content/marketing work stays paused until the owner

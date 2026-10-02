@@ -285,38 +285,10 @@ scraper:
   # are the actual intended, non-suspended behavior — see scraper/main.py's own
   # _notifications_suspended docstring for what this flag controls when true.
   notificationsSuspended: false
-  # Proactive WhatsApp Message Template push (2026-09-08, scraper/notifier.py's own
-  # _whatsapp_eligible) — the APPROVED template's exact name/language in Meta's WhatsApp Manager.
-  # Not secret (a template name isn't a credential — whatsappAccessToken/whatsappPhoneNumberId
-  # above are what actually authorize sending). See PROJECT_STATE.md for the exact copy submitted
-  # for Meta's review — this must match that template's real name/language exactly, or every send
-  # just fails (logged, not fatal).
-  # 2026-09-10: Meta approved `new_listing_match` (confirmed "Active" in WhatsApp Manager, owner's
-  # own screenshot) — name/language set here to match. Still safe to ship as-is: `scraper.
-  # suspended` above is still `true` (owner's own deliberate hold), so no scraper run happens yet
-  # to actually trigger a send either way — this just removes the one remaining blocker so the
-  # very next unpause starts sending immediately, instead of needing a second follow-up deploy.
-  # 2026-10-01 PAUSED ON PURPOSE (empty): scraper/notifier.py's _whatsapp_eligible() requires this to be
-  # non-empty for ANY proactive WhatsApp push (plain or rich) to be attempted, so "" turns them all off.
-  # Meta bills every proactive template message as MARKETING at about 0.0353 (717 messages = 25.31 over
-  # 30 days, read from pricing_analytics), the owner did not know WhatsApp was a paid channel, and the
-  # owner's broad filter alone is ~100 pushes per hour. Do NOT restore "new_listing_match" until the owner
-  # has decided how to cap the cost (per-user daily cap, paying users only, or a digest). Telegram is
-  # unaffected. To turn WhatsApp pushes back on: set this back to "new_listing_match".
-  whatsappMatchTemplateName: ""
-  whatsappMatchTemplateLanguage: "he"
-  # 2026-09-27 real owner requirement ("חובה לעלות תמונות של המודעות ביחד עם כל מה שרשמת") — the
-  # richer, Dorin-style per-listing card (real photo + all 8 fields + a button to that specific
-  # listing). Submitted for Meta review the same night (submit-whatsapp-rich-match-template.yaml,
-  # template id 3246627115538605, status PENDING at submission time) after two real rejections
-  # (emoji in the button text, then too many variables for the body length) got fixed and
-  # resubmitted. Confirmed APPROVED (status=APPROVED, category=MARKETING) live on 2026-09-30 via
-  # diagnose-whatsapp-existing-template-detail.yaml — scraper/notifier.py's
-  # _send_whatsapp_match_template dispatches to the rich path now that this is non-empty; falls
-  # back to the plain whatsappMatchTemplateName above only if this were ever emptied again.
-  # 2026-10-01: currently moot - the whole WhatsApp push path is gated by whatsappMatchTemplateName
-  # above, which is empty (paused, see its comment), so neither template is sent.
-  whatsappRichMatchTemplateName: "new_listing_match_rich"
+  # WhatsApp is FREE-FORM ONLY (2026-10-02): no Message Template is ever sent (Meta bills every template
+  # message; 717 of them cost $25.31 in 30 days). Listings go out only inside the 24h window opened by the
+  # user's own last message, kept open by the daily "still looking?" check-in (scraper/whatsapp_checkin.py).
+  # The old whatsappMatchTemplateName / whatsappRichMatchTemplateName values were removed on purpose.
   # 2026-09-15: facebook-scraper-cronjob.yaml — a SEPARATE CronJob from the main scraper above,
   # deliberately (see that file's own comment for the full account-safety reasoning: every request
   # runs through the dedicated scraping account's own real, authenticated session from this

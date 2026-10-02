@@ -35,6 +35,7 @@ from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import _compute_detail_updates, normalize
 from notifier import run_notifications
+from whatsapp_checkin import run_whatsapp_checkins
 from yad2_client import (
     REGION_SLUGS,
     REGIONS_ON_MAP_API,
@@ -1648,6 +1649,15 @@ def run_once() -> dict[str, int]:
             summary.update(
                 asyncio.run(run_notifications(session, new_listings, price_change_events))
             )
+        # Every run, independent of whether anything new was found: keeps users' free 24h WhatsApp
+        # windows open (see whatsapp_checkin.py). Fail-soft — never takes the scraper run down.
+        # Only on the main scraper (SCRAPE_SOURCES unset): the Facebook CronJob also runs this
+        # function, and two jobs must not both ask the same user.
+        if not os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip():
+            try:
+                summary.update(run_whatsapp_checkins(session))
+            except Exception:
+                logger.exception("WhatsApp check-in step failed")
 
     return summary
 

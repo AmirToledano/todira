@@ -88,6 +88,17 @@ class User(Base):
     whatsapp_notifications_opted_in: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )
+    # Zero-cost WhatsApp (2026-10-02). Meta bills every business-initiated TEMPLATE message, but any
+    # free-form message sent within 24h of the user's own last inbound message (text OR a button
+    # tap) is a free "service" message. So the bot only ever sends listings inside that window:
+    # whatsapp_last_inbound_at is stamped by website/whatsapp_webhook.py on every inbound message,
+    # and todira_common/whatsapp_window.py is the one place that decides whether the window is open.
+    # NULL = never heard from them (or from before this column existed) = window closed.
+    whatsapp_last_inbound_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the "still looking?" check-in was last sent. A check-in is sent once per window (only when
+    # this is older than whatsapp_last_inbound_at), near the end of the window, with reply buttons —
+    # tapping one reopens a fresh 24h window. See scraper/whatsapp_checkin.py.
+    whatsapp_checkin_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # In-progress WhatsApp onboarding state across stateless webhook calls — see migration
     # 0003_whatsapp_users. None once no onboarding is in progress (not started, or completed).
     pending_onboarding_state: Mapped[dict | None] = mapped_column(JSONB)

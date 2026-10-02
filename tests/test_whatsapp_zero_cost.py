@@ -1,0 +1,396 @@
+"""Zero-cost WhatsApp (2026-10-02): the 24h window rule, the "still looking?" check-in, the webhook's
+inbound stamping + button replies + missed-listings digest, and the new send message shapes.
+
+The owner's rule: never pay Meta. Free-form messages are free only inside 24h of the user's own last
+inbound message, so everything here protects "nothing is sent outside the window".
+"""
+from __future__ import annotations
+
+import datetime as dt
+import os
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
+
+for _dir in ("website", "scraper"):
+    _path = str(Path(__file__).resolve().parent.parent / _dir)
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+import whatsapp_checkin  # noqa: E402
+import whatsapp_webhook  # noqa: E402
+from todira_common import whatsapp_client, whatsapp_window  # noqa: E402
+from todira_common.bot_strings import BOT_STRINGS, bot_text  # noqa: E402
+
+_NOW = dt.datetime(2026, 10, 2, 12, 0, tzinfo=dt.timezone.utc)
+
+
+def _ago(**kwargs):
+    return _NOW - dt.timedelta(**kwargs)
+
+
+# --- window rules ---
+
+
+def test_window_closed_when_never_heard_from_user():
+    assert whatsapp_window.window_open(None, _NOW) is False
+
+
+def test_window_open_within_safe_margin_and_closed_after():
+    assert whatsapp_window.window_open(_ago(hours=23), _NOW) is True
+    assert whatsapp_window.window_open(_ago(hours=23, minutes=45), _NOW) is False
+    assert whatsapp_window.window_open(_ago(hours=25), _NOW) is False
+
+
+def test_window_handles_naive_timestamps_as_utc():
+    naive = (_NOW - dt.timedelta(hours=1)).replace(tzinfo=None)
+    assert whatsapp_window.window_open(naive, _NOW) is True
+
+
+def test_checkin_not_due_early_in_the_window():
+    assert whatsapp_window.checkin_due(_ago(hours=5), None, _NOW) is False
+
+
+def test_checkin_due_near_the_end_of_an_open_window():
+    assert whatsapp_window.checkin_due(_ago(hours=21), None, _NOW) is True
+
+
+def test_checkin_not_due_once_the_window_is_closed():
+    """No template fallback: a closed window means silence until the user writes again."""
+    assert whatsapp_window.checkin_due(_ago(hours=30), None, _NOW) is False
+
+
+def test_checkin_not_repeated_within_the_same_window():
+    last_inbound = _ago(hours=21)
+    assert whatsapp_window.checkin_due(last_inbound, _ago(hours=1), _NOW) is False
+
+
+def test_checkin_due_again_after_a_new_window_opened():
+    assert whatsapp_window.checkin_due(_ago(hours=21), _ago(hours=40), _NOW) is True
+
+
+# --- the check-in runner ---
+
+
+class _FakeScalars:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+class _FakeSession:
+    def __init__(self, users):
+        self.users = users
+        self.commits = 0
+
+    def scalars(self, _query):
+        return _FakeScalars(self.users)
+
+    def commit(self):
+        self.commits += 1
+
+
+def _wa_user(**overrides):
+    defaults = dict(
+        id=1, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True,
+        whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=21),
+        whatsapp_checkin_sent_at=None, language="he",
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def test_run_checkins_sends_buttons_to_due_users_and_stamps_them():
+    user = _wa_user()
+    session = _FakeSession([user])
+    with (
+        patch.object(whatsapp_checkin.whatsapp_client, "send_reply_buttons_message", return_value=True) as mock_send,
+        patch.object(whatsapp_checkin, "_SEND_DELAY_SECONDS", 0),
+    ):
+        result = whatsapp_checkin.run_whatsapp_checkins(session)
+
+    assert result == {"whatsapp_checkins_sent": 1}
+    args = mock_send.call_args.args
+    assert args[0] == "9725500000"
+    assert [button_id for button_id, _t in args[2]] == [
+        "checkin_continue", "checkin_found", "checkin_stop",
+    ]
+    assert user.whatsapp_checkin_sent_at is not None
+    assert session.commits == 1
+
+
+def test_run_checkins_skips_users_not_due_and_users_with_closed_windows():
+    early = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=2))
+    closed = _wa_user(id=2, whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=40))
+    with patch.object(whatsapp_checkin.whatsapp_client, "send_reply_buttons_message") as mock_send:
+        result = whatsapp_checkin.run_whatsapp_checkins(_FakeSession([early, closed]))
+
+    mock_send.assert_not_called()
+    assert result == {"whatsapp_checkins_sent": 0}
+
+
+def test_run_checkins_does_not_stamp_when_the_send_fails():
+    user = _wa_user()
+    with (
+        patch.object(whatsapp_checkin.whatsapp_client, "send_reply_buttons_message", return_value=False),
+        patch.object(whatsapp_checkin, "_SEND_DELAY_SECONDS", 0),
+    ):
+        result = whatsapp_checkin.run_whatsapp_checkins(_FakeSession([user]))
+
+    assert result == {"whatsapp_checkins_sent": 0}
+    assert user.whatsapp_checkin_sent_at is None
+
+
+def test_checkin_button_titles_fit_whatsapps_20_character_limit_in_every_language():
+    for key in (
+        "whatsapp.checkin_continue_button", "whatsapp.checkin_found_button",
+        "whatsapp.checkin_stop_button", "whatsapp.view_listing_button", "whatsapp.upgrade_button",
+    ):
+        for lang, title in BOT_STRINGS[key].items():
+            assert len(title) <= 20, (key, lang, title)
+
+
+def test_every_new_whatsapp_string_exists_in_all_five_languages():
+    for key in BOT_STRINGS:
+        if key.startswith("whatsapp.checkin_") or key in (
+            "whatsapp.resume_ack", "whatsapp.missed_digest",
+            "whatsapp.view_listing_button", "whatsapp.upgrade_button",
+        ):
+            assert set(BOT_STRINGS[key]) == {"he", "en", "ru", "fr", "ar"}, key
+    assert "{total}" in bot_text("whatsapp.missed_digest", "he", total="{total}", url="u")
+
+
+# --- webhook: button replies, opt-in changes, digest ---
+
+
+class _WebhookSession:
+    def __init__(self, user, filter_row=None):
+        self.user = user
+        self.filter_row = filter_row
+        self.commits = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def scalar(self, query):
+        # Both lookups below are by phone number (User) or by user id (Filter).
+        return self.filter_row if "filters" in str(query) else self.user
+
+    def commit(self):
+        self.commits += 1
+
+
+def _patch_session(session):
+    return patch.object(whatsapp_webhook, "get_session", lambda: session)
+
+
+def test_touch_inbound_reports_a_reopened_window_for_opted_in_user():
+    user = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=40))
+    with _patch_session(_WebhookSession(user)):
+        assert whatsapp_webhook._touch_inbound_sync("9725500000") is True
+    assert whatsapp_window.window_open(user.whatsapp_last_inbound_at) is True
+
+
+def test_touch_inbound_reports_no_reopen_when_window_was_already_open():
+    user = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=3))
+    with _patch_session(_WebhookSession(user)):
+        assert whatsapp_webhook._touch_inbound_sync("9725500000") is False
+
+
+def test_touch_inbound_is_a_noop_for_an_unknown_number():
+    with _patch_session(_WebhookSession(None)):
+        assert whatsapp_webhook._touch_inbound_sync("9725599999") is False
+
+
+def test_continue_button_keeps_opt_in_and_acks():
+    user = _wa_user()
+    with (
+        _patch_session(_WebhookSession(user)),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as mock_text,
+    ):
+        whatsapp_webhook._handle_checkin_button_sync("9725500000", "checkin_continue")
+
+    assert user.whatsapp_notifications_opted_in is True
+    assert mock_text.call_args.args[1] == bot_text("whatsapp.checkin_continue_ack", "he")
+
+
+def test_found_and_stop_buttons_turn_notifications_off():
+    for button_id, ack_key in (
+        ("checkin_found", "whatsapp.checkin_found_ack"),
+        ("checkin_stop", "whatsapp.checkin_stop_ack"),
+    ):
+        user = _wa_user()
+        with (
+            _patch_session(_WebhookSession(user)),
+            patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as mock_text,
+        ):
+            whatsapp_webhook._handle_checkin_button_sync("9725500000", button_id)
+
+        assert user.whatsapp_notifications_opted_in is False
+        assert mock_text.call_args.args[1] == bot_text(ack_key, "he")
+
+
+def test_resume_word_reenables_a_stopped_user_who_has_a_filter():
+    user = _wa_user(whatsapp_notifications_opted_in=False)
+    with (
+        _patch_session(_WebhookSession(user, filter_row=SimpleNamespace(id=1))),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as mock_text,
+    ):
+        assert whatsapp_webhook._try_resume_sync("9725500000", "המשך") is True
+
+    assert user.whatsapp_notifications_opted_in is True
+    mock_text.assert_called_once()
+
+
+def test_resume_word_ignored_when_already_opted_in_or_not_a_resume_word():
+    user = _wa_user()
+    with _patch_session(_WebhookSession(user, filter_row=SimpleNamespace(id=1))):
+        assert whatsapp_webhook._try_resume_sync("9725500000", "המשך") is False
+        assert whatsapp_webhook._try_resume_sync("9725500000", "שלום") is False
+
+
+def test_missed_digest_sends_one_link_with_the_count_and_marks_them_shown():
+    user = _wa_user()
+    with (
+        _patch_session(_WebhookSession(user, filter_row=SimpleNamespace(id=1))),
+        patch.object(
+            whatsapp_webhook, "find_new_matches_to_show", return_value=(9, [object(), object(), object()])
+        ),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as mock_text,
+        patch.object(whatsapp_webhook, "generate_wid_token", return_value="signed"),
+    ):
+        whatsapp_webhook._send_missed_digest_sync("9725500000")
+
+    mock_text.assert_called_once()
+    body = mock_text.call_args.args[1]
+    assert "3" in body and "wid=signed" in body
+
+
+def test_missed_digest_sends_nothing_when_nothing_was_missed():
+    with (
+        _patch_session(_WebhookSession(_wa_user(), filter_row=SimpleNamespace(id=1))),
+        patch.object(whatsapp_webhook, "find_new_matches_to_show", return_value=(4, [])),
+        patch.object(whatsapp_webhook.whatsapp_client, "send_text_message") as mock_text,
+    ):
+        whatsapp_webhook._send_missed_digest_sync("9725500000")
+
+    mock_text.assert_not_called()
+
+
+def _payload(message):
+    return {"entry": [{"changes": [{"value": {"contacts": [], "messages": [message]}}]}]}
+
+
+def test_payload_button_tap_is_stamped_answered_and_digests_after_a_closed_window():
+    message = {
+        "id": "m1", "from": "9725500000", "type": "interactive",
+        "interactive": {"type": "button_reply", "button_reply": {"id": "checkin_continue", "title": "x"}},
+    }
+    with (
+        patch.object(whatsapp_webhook, "_already_processed", return_value=False),
+        patch.object(whatsapp_webhook, "_touch_inbound_safely", return_value=True) as mock_touch,
+        patch.object(whatsapp_webhook, "_handle_checkin_button_sync") as mock_handle,
+        patch.object(whatsapp_webhook, "_send_missed_digest_sync") as mock_digest,
+        patch.object(whatsapp_webhook, "_ensure_language_selected_sync") as mock_lang,
+    ):
+        whatsapp_webhook._process_payload_sync(_payload(message))
+
+    mock_handle.assert_called_once_with("9725500000", "checkin_continue")
+    mock_digest.assert_called_once_with("9725500000")
+    mock_lang.assert_not_called()
+    assert mock_touch.call_count == 2  # before handling and again in the finally
+
+
+def test_payload_button_tap_inside_open_window_sends_no_digest():
+    message = {
+        "id": "m1", "from": "9725500000", "type": "interactive",
+        "interactive": {"type": "button_reply", "button_reply": {"id": "checkin_continue", "title": "x"}},
+    }
+    with (
+        patch.object(whatsapp_webhook, "_already_processed", return_value=False),
+        patch.object(whatsapp_webhook, "_touch_inbound_safely", return_value=False),
+        patch.object(whatsapp_webhook, "_handle_checkin_button_sync"),
+        patch.object(whatsapp_webhook, "_send_missed_digest_sync") as mock_digest,
+    ):
+        whatsapp_webhook._process_payload_sync(_payload(message))
+
+    mock_digest.assert_not_called()
+
+
+# --- new send message shapes ---
+
+
+def _capture_post():
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs["json"])
+        return SimpleNamespace(raise_for_status=lambda: None, status_code=200)
+
+    return calls, fake_post
+
+
+def test_image_cta_message_has_image_header_body_and_url_button(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "t")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "1")
+    calls, fake_post = _capture_post()
+    with patch.object(whatsapp_client._http_client, "post", fake_post):
+        assert whatsapp_client.send_image_cta_message(
+            "9725500000", media_id="m1", body="text", button_text="btn", url="https://x"
+        ) is True
+
+    interactive = calls[0]["interactive"]
+    assert calls[0]["type"] == "interactive"
+    assert interactive["type"] == "cta_url"
+    assert interactive["header"] == {"type": "image", "image": {"id": "m1"}}
+    assert interactive["body"] == {"text": "text"}
+    assert interactive["action"]["parameters"] == {"display_text": "btn", "url": "https://x"}
+
+
+def test_reply_buttons_message_shape(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "t")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "1")
+    calls, fake_post = _capture_post()
+    with patch.object(whatsapp_client._http_client, "post", fake_post):
+        whatsapp_client.send_reply_buttons_message("9725500000", "q?", [("a", "A"), ("b", "B")])
+
+    interactive = calls[0]["interactive"]
+    assert interactive["type"] == "button"
+    assert interactive["action"]["buttons"] == [
+        {"type": "reply", "reply": {"id": "a", "title": "A"}},
+        {"type": "reply", "reply": {"id": "b", "title": "B"}},
+    ]
+
+
+def test_button_ids_match_between_the_checkin_sender_and_the_webhook():
+    assert whatsapp_checkin.CHECKIN_CONTINUE_ID == whatsapp_webhook.CHECKIN_CONTINUE_ID
+    assert whatsapp_checkin.CHECKIN_FOUND_ID == whatsapp_webhook.CHECKIN_FOUND_ID
+    assert whatsapp_checkin.CHECKIN_STOP_ID == whatsapp_webhook.CHECKIN_STOP_ID
+
+
+def test_whatsapp_caption_respects_the_interactive_body_limit_and_can_drop_the_link_line():
+    from types import SimpleNamespace as NS
+
+    from todira_common.cards import format_caption_whatsapp
+
+    listing = NS(
+        id=1, url="https://example.com/x", source="yad2", deal_type="rent", is_broker_listing=False,
+        rooms=4, floor=2, floor_total=3, size_sqm=100, price=9000, move_in_date=None,
+        has_parking=None, has_elevator=None, has_balcony=None, pets_allowed=None, is_renovated=None,
+        is_roommate_friendly=None, safe_room_type=None, furniture=None, street=None,
+        neighborhood="ניות", city="ירושלים", description="א" * 3000,
+    )
+    caption = format_caption_whatsapp(listing, has_access=True, link_in_body=False, limit=1024)
+    assert len(caption) <= 1024
+    assert "https://" not in caption
+    with_link = format_caption_whatsapp(listing, has_access=True, view_url="https://todira.app/v", limit=1024)
+    assert "https://todira.app/v" in with_link and len(with_link) <= 1024
