@@ -1,4 +1,4 @@
-name: Diagnose — Yad2 listing PAGE from our own IP: headers-only retry + a real headless browser (read-only)
+name: "Diagnose — Yad2 listing page from our own IP, headers-only retry and a real headless browser (read-only)"
 
 # Follow-up to diagnose-yad2-browser-tls-from-production-ip.yaml (2026-10-02): with a browser TLS
 # fingerprint (curl_cffi) the Yad2 MAP API returned real JSON (200 markers) from our own IP — free —
