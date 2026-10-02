@@ -543,17 +543,8 @@ def format_caption_whatsapp(
     lines = _build_body_lines(
         listing, bold=bold, street_link=lambda text, url: text, escape=lambda s: s, lang=lang
     )
-    maps_url = _google_maps_url(listing)
-    if maps_url:
-        # Placed right after the location line, matching where it visually sits on Telegram. A
-        # maps_url only exists when listing.street is set, which always makes _build_body_lines
-        # add a "📍..." line too — but found defensively (default -1, appends at the end) rather
-        # than assumed, so this can never raise even if that correlation ever changes.
-        location_index = next(
-            (i for i, line in enumerate(lines) if "📍" in line), len(lines) - 1
-        )
-        lines.insert(location_index + 1, f"🗺️ {maps_url}")
-
+    # 2026-10-02 owner decision: no Google Maps link on WhatsApp. A WhatsApp text can't turn the street
+    # into a link (only a raw, very long URL auto-links), so the full address stays as plain text.
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:
