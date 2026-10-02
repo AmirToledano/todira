@@ -1,0 +1,73 @@
+name: Diagnose - does a Komo listing page contain move-in date and amenities? (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch) - 2026-10-02. Live data shows Komo listings (about
+# two thirds of everything notified) have NO move-in date and NO features stored, so WhatsApp/Telegram
+# cards for them show no move-in date or features. Before changing the scraper, this fetches ONE real
+# recent Komo detail page through the scraper's own proxy path and prints, for each keyword (move-in,
+# elevator, parking, balcony, ...), the surrounding markup - so we can see whether the page has the
+# data at all and how it is marked up. Phone-like digit runs are masked in the output.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch one real Komo detail page in a pod cloned from the live scraper CronJob
+        run: |
+          cat <<'PYEOF' > /tmp/komo_probe.py
+          import re
+
+          from sqlalchemy import select
+
+          import komo_client
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+
+          with get_session() as session:
+              listing = session.scalars(
+                  select(Listing).where(Listing.source == "komo", Listing.is_delisted.is_(False))
+                  .order_by(Listing.first_seen_at.desc()).limit(1)
+              ).first()
+              url = listing.url
+          print("probing komo listing id", listing.id)
+          page = komo_client._isp_proxy_get(url, context_label="amenity probe")
+          print("page length", len(page))
+          flat = re.sub(r"\s+", " ", page)
+          flat = re.sub(r"\d{8,}", "<digits>", flat)
+          for kw in ("תאריך כניסה", "כניסה", "מעלית", "חניה", "חנייה", "מרפסת", "מזגן", "ממ\"ד", "ממד", "מחסן", "משופץ", "מרוהט", "בעלי חיים", "שותפים", "מיזוג"):
+              hits = [m.start() for m in re.finditer(re.escape(kw), flat)]
+              print(f"=== {kw!r}: {len(hits)} hits")
+              for pos in hits[:3]:
+                  print("   ...", flat[max(0, pos - 160): pos + 160], "...")
+          PYEOF
+          kubectl get cronjob todira-scraper -n todira -o json > /tmp/cronjob.json
+          python3 - <<'PYEOF'
+          import json
+          cron = json.load(open("/tmp/cronjob.json"))
+          pod_spec = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+          c = pod_spec["containers"][0]
+          c["name"] = "komo-probe"
+          c["command"] = ["python", "-u", "-c", open("/tmp/komo_probe.py").read()]
+          c.pop("args", None)
+          pod_spec["restartPolicy"] = "Never"
+          json.dump({"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "diag-komo-probe", "namespace": "todira"}, "spec": pod_spec}, open("/tmp/pod.json", "w"))
+          PYEOF
+          kubectl delete pod diag-komo-probe -n todira --ignore-not-found --wait=true
+          kubectl apply -f /tmp/pod.json
+          for i in $(seq 1 60); do
+            PHASE=$(kubectl get pod diag-komo-probe -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          kubectl logs -n todira diag-komo-probe | head -150 || true
+          kubectl delete pod diag-komo-probe -n todira --ignore-not-found
