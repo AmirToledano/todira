@@ -190,11 +190,12 @@ _DEFAULT_HOMELESS_BACKFILL_MAX_PER_RUN = 30
 # minutes — with no cap at all, unlike Komo/Homeless/Facebook's own per-run caps above, which all
 # exist for exactly this "unbounded backlog" reason. Same safety-net pattern applied here.
 _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR = "BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN"
-# 2026-10-02: default 0 = eager enrichment OFF. Owner found ~$20-50/month for fetching every new Yad2
-# listing too much. Yad2 detail is now fetched on demand instead, in notifier._maybe_fetch_description,
-# only for a listing a paying/trial user is actually about to be sent (one $0.0015 request each).
-# Set the env var (helm scraper.brightDataEnrichMaxNewListingsPerRun) to turn eager mode back on.
-_DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 0
+# 2026-10-02: eager enrichment of every genuinely-new Yad2 listing STAYS ON (owner: "don't turn it
+# off") at 50 per run — real volume is ~400-600 new listings/day over 14 runs (~43/run), so this
+# covers a normal day with headroom; realistic cost ~$20/month, hard ceiling 50*14*30*$0.0015 = ~$31.
+# Anything past the cap still gets fetched on demand at notification time
+# (notifier._maybe_fetch_description), so nothing sent to a user ever lacks its details.
+_DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 50
 
 # 2026-09-26: real gap found live (diagnose-description-coverage-per-source.yaml) — only 6.2%
 # description coverage among the 470 most-recent active Yad2 listings, despite Bright Data being
