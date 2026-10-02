@@ -45,6 +45,9 @@ from todira_common.uid_token import signed_login_query
 from todira_common.whatsapp_window import window_open
 from todira_common.wid_token import generate_wid_token
 
+from normalize import _compute_detail_updates
+from yad2_client import fetch_listing_detail_via_web_unlocker
+
 logger = logging.getLogger(__name__)
 
 # Mirrors website/main.py's WEBSITE_URL/_is_owner_id and bot/handlers/start.py's own copies — a
@@ -208,17 +211,22 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
     no-op'ing on every listing whose one scrape-time enrichment attempt failed. Found from a real
     owner screenshot of a listing with a genuine description on its own Yad2 page reaching
     Telegram with none."""
-    if listing.description or not bright_data_client.is_configured():
+    if listing.description or not bright_data_client.web_unlocker_configured():
         return
     if listing.source != Source.YAD2:
         return
     if not any(_has_access_for(user) for user in recipients):
         return
-    description = await asyncio.to_thread(
-        bright_data_client.fetch_yad2_description_via_web_unlocker, listing.url
-    )
-    if description:
-        listing.description = description
+    detail = await asyncio.to_thread(fetch_listing_detail_via_web_unlocker, listing.url)
+    updates = _compute_detail_updates(detail) if detail else None
+    if updates:
+        # 2026-10-02: the full detail record (move-in, amenities, floor, real photos, description),
+        # not just the description — and this is now THE place Yad2 detail is fetched (scraper/main.py's
+        # eager per-new-listing enrichment and backfill are off by default, owner asked to cut the
+        # ~$20-50/month cost): one Web Unlocker request only for a listing a paying/trial user is
+        # actually about to be sent.
+        for column, value in updates.items():
+            setattr(listing, column, value)
         session.commit()
 
 
