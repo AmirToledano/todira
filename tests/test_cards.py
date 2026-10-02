@@ -989,3 +989,32 @@ def test_get_listing_photo_never_returns_none(monkeypatch):
     result = get_listing_photo_jpeg_bytes(["u1", "u2"])
     assert result is not None
     assert result == cards_module._MASCOT_PATH.read_bytes()
+
+
+def test_move_in_note_is_shown_when_there_is_no_date_and_translated_for_known_words():
+    listing = make_listing(move_in_date=None)
+    listing.move_in_note = "מיידית"
+    he = format_caption(listing, has_access=True)
+    assert f"📅 {_b('כניסה:')} מיידית" in he
+    en = format_caption(listing, has_access=True, lang="en")
+    assert "Immediate" in en
+    listing.move_in_note = "גמיש"
+    assert "גמיש" in format_caption(listing, has_access=True)
+
+
+def test_move_in_note_is_html_escaped_and_never_beats_a_real_date():
+    import datetime as dt
+
+    listing = make_listing(move_in_date=None)
+    listing.move_in_note = "<b>x</b>"
+    assert "<b>x</b>" not in format_caption(listing, has_access=True)
+    listing.move_in_date = dt.date(2026, 11, 1)
+    listing.move_in_note = "מיידית"
+    caption = format_caption(listing, has_access=True)
+    assert "01.11.2026" in caption and "מיידית" not in caption
+
+
+def test_whatsapp_caption_also_shows_the_move_in_note():
+    listing = make_listing(move_in_date=None)
+    listing.move_in_note = "מיידית"
+    assert "📅 *כניסה:* מיידית" in format_caption_whatsapp(listing, has_access=True)

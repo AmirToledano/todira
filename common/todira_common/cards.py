@@ -236,6 +236,9 @@ def _deal_type_prefix_word(listing: Listing, lang: str) -> str | None:
     return None
 
 
+_MOVE_IN_NOTE_KEYS = {"מיידית": "card.move_in_immediate", "גמיש": "card.move_in_flexible"}
+
+
 def _build_body_lines(
     listing: Listing,
     *,
@@ -290,9 +293,16 @@ def _build_body_lines(
             floor_line += f" {bot_text('card.floor_of', lang)} {listing.floor_total}"
         lines.append(floor_line)
 
+    move_in_label = bold(bot_text("card.move_in_label", lang))
     if listing.move_in_date is not None:
-        move_in_label = bold(bot_text("card.move_in_label", lang))
         lines.append(f"📅 {move_in_label} {listing.move_in_date.strftime('%d.%m.%Y')}")
+    elif getattr(listing, "move_in_note", None):
+        # A source that gives text, not a date (Komo: "מיידית" / "גמיש"). Known words are translated;
+        # anything else is shown as the source wrote it.
+        note = listing.move_in_note
+        note_key = _MOVE_IN_NOTE_KEYS.get(note)
+        shown = bot_text(note_key, lang) if note_key else escape(note)
+        lines.append(f"📅 {move_in_label} {shown}")
 
     features = feature_list(listing, lang)
     if features:

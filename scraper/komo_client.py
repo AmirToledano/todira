@@ -164,13 +164,36 @@ def _firstinfo_block_re(class_name: str) -> re.Pattern[str]:
     """Builds the regex for one `firstInfoBlockWrap` stat box by its own class name (e.g.
     "floor", "mr") — see module docstring's step 3 for the confirmed real markup shape this
     matches. A helper instead of one regex per field since every box shares the same structure."""
+    # 2026-10-02: the "firstInfoBlockWrap" class is only on the 4-box layout (25% wide boxes);
+    # a listing with 3 boxes (33% wide) renders `class="mr "` / `class="floor ..."` without it, which
+    # made this miss the size (and sometimes the floor) on those pages - confirmed on live pages.
     return re.compile(
-        rf'class="{re.escape(class_name)} firstInfoBlockWrap"[^>]*>\s*'
+        rf'class="{re.escape(class_name)}(?: firstInfoBlockWrap)? ?"[^>]*>\s*'
         r'<div class="firstInfo"[^>]*>\s*([^<]+?)\s*<'
     )
 
 
 _FLOOR_RE = _firstinfo_block_re("floor")
+# The entry-date box ("תאריך כניסה"). Confirmed live on 25 pages (2026-10-02): its value is free text,
+# "מיידית" (immediate) on 21 of 25, "גמיש" (flexible) on 1, and 3 pages have no such box at all.
+_ENTER_RE = _firstinfo_block_re("enter")
+# The amenity list: every possible amenity is always rendered as an <li>, and one the poster actually
+# ticked carries the extra class "add" (`<li class='maalit add'>`), an unticked one has a bare class
+# (`<li class='maalit '>`). Confirmed live on 25 pages: only 1 of 25 ticked anything, so most Komo
+# listings genuinely have no amenities data.
+_AMENITY_TICKED_RE = re.compile(r"<li class='([A-Za-z]+) add'>")
+# Komo amenity class -> raw-dict key normalize.py already reads (only ever True: an unticked amenity
+# is "unknown", never "confirmed absent").
+_KOMO_AMENITY_TO_RAW_KEY = {
+    "maalit": "elevator",
+    "pets": "petsAllowed",
+    "renovated": "renovated",
+    "shutafim": "roommates",
+    "mamad": "safeRoom",
+    "riut": "furnished",
+}
+# Floor box text that is not a number.
+_GROUND_FLOOR_TEXT = "קרקע"
 _SIZE_SQM_RE = _firstinfo_block_re("mr")
 
 
@@ -405,7 +428,13 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
     street = street_part.strip() or None
 
     floor_match = _FLOOR_RE.search(page_html)
-    floor = int(floor_match.group(1)) if floor_match and floor_match.group(1).isdigit() else None
+    floor_text = floor_match.group(1).strip() if floor_match else ""
+    if floor_text.isdigit():
+        floor = int(floor_text)
+    elif floor_text == _GROUND_FLOOR_TEXT:
+        floor = 0  # a ground-floor listing's box reads "קרקע" - the same as Yad2's floor 0
+    else:
+        floor = None
 
     size_match = _SIZE_SQM_RE.search(page_html)
     square_meters = (
@@ -424,7 +453,7 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
         if og_image_match:
             images = [urljoin(DETAILS_PAGE_URL, html.unescape(og_image_match.group(1)))]
 
-    return {
+    result: dict[str, Any] = {
         "id": modaa_num,
         "url": urljoin(DETAILS_PAGE_URL, f"?modaaNum={modaa_num}"),
         "price": price,
@@ -437,6 +466,16 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
         "neighborhood": None,  # not present anywhere on Komo's own details page — see docstring
         "city": city,
     }
+    # 2026-10-02: move-in text and ticked amenities (see _ENTER_RE / _AMENITY_TICKED_RE). Added to the
+    # dict only when present, so a page without them looks exactly as before.
+    enter_match = _ENTER_RE.search(page_html)
+    if enter_match and enter_match.group(1).strip():
+        result["move_in_text"] = html.unescape(enter_match.group(1)).strip()
+    for amenity_class in _AMENITY_TICKED_RE.findall(page_html):
+        raw_key = _KOMO_AMENITY_TO_RAW_KEY.get(amenity_class)
+        if raw_key is not None:
+            result[raw_key] = True
+    return result
 
 
 def fetch_listing_detail(modaa_num: str) -> dict[str, Any] | None:
