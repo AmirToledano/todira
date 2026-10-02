@@ -1,0 +1,67 @@
+name: Diagnose — new listings per day per source (read-only, aggregate counts only)
+
+# Owner question (2026-10-02): how much would fetching full detail for EVERY new Yad2 listing cost
+# per month? Needs the real number of genuinely-new Yad2 listings per day (first_seen_at), not a
+# guess. Read-only, prints only aggregate counts.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: New listings per day per source
+        run: |
+          kubectl delete pod diag-new-per-day -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-new-per-day
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-new-per-day
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -c "
+                      SELECT source, (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, count(*) AS new_listings
+                      FROM listings
+                      WHERE first_seen_at >= now() - interval '14 days'
+                      GROUP BY 1, 2 ORDER BY 1, 2;
+                    "
+                    psql "$CONN" -c "
+                      SELECT source, count(*) AS last_7d, round(count(*)/7.0, 1) AS per_day
+                      FROM listings WHERE first_seen_at >= now() - interval '7 days'
+                      GROUP BY 1 ORDER BY 1;
+                    "
+                    psql "$CONN" -c "
+                      SELECT count(*) AS yad2_active_without_description
+                      FROM listings WHERE source = 'yad2' AND is_delisted = false AND description IS NULL;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-new-per-day -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-new-per-day || true
+          kubectl delete pod diag-new-per-day -n todira --ignore-not-found
