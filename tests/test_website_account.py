@@ -588,13 +588,13 @@ def test_account_config_shows_logged_in_via_session_for_a_real_signed_session(cl
     assert config["isLoggedInViaSession"] is True
 
 
-def test_account_config_hides_logged_in_via_session_when_accessed_only_via_uid(client):
-    """The mirror case: a visitor who only ever passed ?uid= (e.g. opened via a Telegram deep
-    link) has no browser session to log out of — real invariant, not just "off by default"."""
+def test_account_config_reports_a_session_when_opened_via_a_signed_bot_link(client):
+    """2026-10-02: a signed ?t= bot link signs the visitor in (a real session cookie), so unlike the
+    old unsigned ?uid= there IS a session to log out of."""
     user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
 
     config = _account_config(resp.text)
-    assert config["isLoggedInViaSession"] is False
+    assert config["isLoggedInViaSession"] is True

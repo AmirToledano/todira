@@ -30,6 +30,7 @@ from todira_common.language import DEFAULT_LANG
 from todira_common.models import Filter
 from todira_common.schemas import FilterData
 from todira_common.users import get_or_create_user
+from todira_common.uid_token import signed_login_query
 from handlers.apartments import find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
@@ -461,7 +462,7 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     )
 
     context.user_data.pop("draft", None)
-    apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
+    apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
     # reply_markup=None explicitly — editMessageText treats an OMITTED reply_markup as "leave
     # unchanged" (python-telegram-bot's own Bot._post drops None-valued params before the request
     # goes out), so without this the root menu's own keyboard (every category button + Save/

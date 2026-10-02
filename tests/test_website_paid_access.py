@@ -382,3 +382,9 @@ def test_upgrade_submit_rejects_missing_terms_agreement():
 
     assert resp.status_code == 400
     assert fake_session.added == []  # no Payment row created — rejected before any gateway logic
+
+
+# 2026-10-02: a signed ?t= bot link now signs the visitor in (request.session["user_id"] is set during
+# the request), so the header's _current_user_summary runs a column lookup via session.execute(). The
+# fake has no such lookup; "no row" is the right answer for it.
+_FakeSession.execute = lambda self, *args, **kwargs: type("_NoRow", (), {"first": lambda s: None})()

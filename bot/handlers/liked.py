@@ -21,6 +21,7 @@ from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG, normalize_language_code
 from todira_common.models import Listing, UserListingAction
 from todira_common.users import get_or_create_user
+from todira_common.uid_token import signed_login_query
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(bot_text("liked.no_liked_yet", lang))
         return
 
-    upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
+    upgrade_url = f"{WEBSITE_URL}/upgrade?{signed_login_query(update.effective_user.id)}"
     for listing in results:
         await send_listing_card(
             context.bot,
@@ -95,7 +96,7 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(bot_text("liked.no_hidden", lang))
         return
 
-    upgrade_url = f"{WEBSITE_URL}/upgrade?uid={update.effective_user.id}"
+    upgrade_url = f"{WEBSITE_URL}/upgrade?{signed_login_query(update.effective_user.id)}"
     for listing in results:
         await send_listing_card(
             context.bot,

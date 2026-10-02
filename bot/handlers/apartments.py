@@ -17,6 +17,7 @@ from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
 from todira_common.listing_matches import find_matching_listings, find_new_matches_to_show
 from todira_common.models import Filter, User
+from todira_common.uid_token import signed_login_query
 
 __all__ = ["find_matching_listings", "find_new_matches_to_show", "apartments", "build_apartments_handler"]
 
@@ -56,7 +57,7 @@ async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text(bot_text("apartments.no_filter_yet", lang))
         return
 
-    apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
+    apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
     if total:
         await update.message.reply_text(
             bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)

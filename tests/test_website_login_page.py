@@ -60,7 +60,7 @@ def test_login_page_injects_whatsapp_number_when_configured(client):
 def test_login_page_redirects_already_logged_in_visitor():
     from starlette.requests import Request as StarletteRequest
 
-    request = StarletteRequest({"type": "http", "session": {"user_id": 7}})
+    request = StarletteRequest({"type": "http", "session": {"user_id": 7}, "query_string": b""})
     resp = website_main.login(request, next="/liked")
 
     assert resp.status_code == 303
@@ -74,10 +74,34 @@ def test_login_page_next_param_is_sanitized_by_safe_next(client):
     assert "next: \"/apartments\"" in resp.text
 
 
-def test_login_page_injects_uid_for_the_react_form(client):
+@pytest.mark.no_uid_shim
+def test_login_page_drops_a_bare_uid_instead_of_forwarding_it_to_the_google_button(client):
+    """2026-10-02 security: a bare ?uid= is unproven, and forwarding it into the Google sign-in is
+    exactly how someone could link their own Google account to a victim's."""
     resp = client.get("/login", params={"uid": 123456})
     assert resp.status_code == 200
-    assert "uid: 123456" in resp.text
+    assert "uid: 123456" not in resp.text
+
+
+@pytest.mark.no_uid_shim
+def test_login_page_with_a_valid_signed_token_signs_the_visitor_in(client):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from todira_common.uid_token import generate_uid_token
+
+    user = SimpleNamespace(id=7, telegram_user_id=123456)
+
+    @contextmanager
+    def _fake_get_session():
+        yield SimpleNamespace(scalar=lambda query: user, get=lambda model, pk: user)
+
+    with patch.object(website_main, "get_session", _fake_get_session):
+        resp = client.get("/login", params={"t": generate_uid_token(123456), "next": "/liked"})
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/liked"
+
 
 
 def test_login_page_injects_null_uid_when_none_given(client):

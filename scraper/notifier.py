@@ -40,6 +40,7 @@ from todira_common.enums import NotificationReason, Source
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
 from todira_common.models import Filter, Listing, SentNotification, User
+from todira_common.uid_token import signed_login_query
 from todira_common.whatsapp_window import window_open
 from todira_common.wid_token import generate_wid_token
 
@@ -285,8 +286,8 @@ async def _notify_new_matches(
             caption = format_caption(
                 listing,
                 has_access=_has_access_for(user),
-                upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
-                view_url=f"{WEBSITE_URL}/apartments?uid={user.telegram_user_id}&listing={listing.id}",
+                upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
+                view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
                 lang=user_lang,
             )
             if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
@@ -398,8 +399,8 @@ async def _notify_price_change(
             listing,
             has_access=_has_access_for(user),
             price_change_from=old_price,
-            upgrade_url=f"{WEBSITE_URL}/upgrade?uid={user.telegram_user_id}",
-            view_url=f"{WEBSITE_URL}/apartments?uid={user.telegram_user_id}&listing={listing.id}",
+            upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
+            view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
             lang=user_lang,
         )
         if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):

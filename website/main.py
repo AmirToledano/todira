@@ -75,6 +75,7 @@ from todira_common.models import ContactMessage, Filter, Listing, Payment, User,
 # carries a signed, time-limited token instead of the raw number. Lives in todira_common.wid_token,
 # not here, so whatsapp_webhook.py can generate one too without a circular import (this module does
 # `from whatsapp_webhook import router` below).
+from todira_common.uid_token import verify_uid_token
 from todira_common.wid_token import generate_wid_token, verify_wid_token as _verify_wid_token  # noqa: F401 (generate_wid_token re-exported for tests, see test_website_filter_whatsapp.py)
 from fastapi import FastAPI, Form, Request
 
@@ -451,21 +452,31 @@ def _resolve_user(request: Request, session, uid: int | None, wid: str | None = 
     strictly safer than the alternative of threading ?wid=<phone number> through every link on
     the site (browser history, referrers, screenshots) the way ?uid= already does for a plain
     numeric Telegram id."""
+    # 2026-10-02 SECURITY: a bare ?uid=<telegram id> is NO LONGER trusted (a Telegram id is public
+    # knowledge and the repo is public: anyone could open another user's pages, edit their filter, and
+    # take the account over via /auth/google/start?uid=). The bot/notifier now link with ?t=<signed
+    # token> (todira_common/uid_token.py); a valid token proves the visitor was sent this link, and
+    # establishes the normal signed session cookie. It takes priority over an existing session, so
+    # tapping a bot link always lands on the account that link belongs to. The `uid` argument stays
+    # in the signature only because every route and template still passes it along; it is ignored.
+    signed_token = request.query_params.get("t")
+    if signed_token:
+        telegram_user_id = verify_uid_token(signed_token)
+        if telegram_user_id is not None:
+            user = _get_user_by_uid(session, telegram_user_id)
+            if user is not None:
+                pending_google_sub = request.session.get("pending_google_sub")
+                if pending_google_sub and user.google_sub is None:
+                    user.google_sub = pending_google_sub
+                    session.commit()
+                    request.session.pop("pending_google_sub", None)
+                request.session["user_id"] = user.id
+                return user
     session_user_id = request.session.get("user_id")
     if session_user_id is not None:
         user = session.get(User, session_user_id)
         if user is not None:
             return user
-    if uid is not None:
-        user = _get_user_by_uid(session, uid)
-        if user is not None:
-            pending_google_sub = request.session.get("pending_google_sub")
-            if pending_google_sub and user.google_sub is None:
-                user.google_sub = pending_google_sub
-                session.commit()
-                request.session.pop("pending_google_sub", None)
-                request.session["user_id"] = user.id
-        return user
     if wid:
         phone_number = _verify_wid_token(wid)
         if phone_number is None:
@@ -475,6 +486,25 @@ def _resolve_user(request: Request, session, uid: int | None, wid: str | None = 
             request.session["user_id"] = user.id
         return user
     return None
+
+
+def _trusted_link_uid(request: Request, uid: int | None) -> int | None:
+    """The Telegram id a page may use to LINK a Google account to an existing account (the Google
+    sign-in's `?uid=`), or None. Trusted only when it is proven: a valid signed ?t= token on this
+    request, or a uid that matches the account the visitor is already signed in as. A bare number
+    from the query string is never enough — it would let anyone link their own Google account to a
+    victim's account (the takeover this whole change closes)."""
+    signed_token = request.query_params.get("t")
+    if signed_token:
+        verified = verify_uid_token(signed_token)
+        if verified is not None:
+            return verified
+    session_user_id = request.session.get("user_id")
+    if uid is None or session_user_id is None:
+        return None
+    with get_session() as session:
+        user = session.get(User, session_user_id)
+        return uid if user is not None and user.telegram_user_id == uid else None
 
 
 def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
@@ -603,6 +633,13 @@ def login(request: Request, next: str = "/apartments", uid: int | None = None):
     "hamburger menu → login") still can't be linked automatically; that part is inherent to how
     OAuth works, not a bug — Google alone can't tell us which existing Telegram/WhatsApp account
     it belongs to. See google_pending.html for the recovery path in that case."""
+    uid = _trusted_link_uid(request, uid)
+    if request.query_params.get("t") and uid is not None:
+        # A valid signed bot link: sign this browser in as that account (see _resolve_user).
+        with get_session() as session:
+            linked_user = _get_user_by_uid(session, uid)
+            if linked_user is not None:
+                request.session["user_id"] = linked_user.id
     if request.session.get("user_id") is not None:
         return RedirectResponse(_safe_next(next), status_code=303)
     # 2026-09-25: seventh page moved into a React island (website/landing-react/login.html), same
@@ -728,6 +765,7 @@ def auth_google_start(request: Request, next: str = "/apartments", uid: int | No
         logger.warning("Rejected /auth/google/start: GOOGLE_CLIENT_ID is not configured")
         return _render(request, "auth_error.html", {}, status_code=400)
 
+    uid = _trusted_link_uid(request, uid)
     state = secrets.token_urlsafe(24)
     request.session["oauth_state"] = state
     request.session["oauth_next"] = _safe_next(next)

@@ -294,13 +294,16 @@ def test_resolve_user_completes_pending_google_link_once_a_real_uid_shows_up():
     user = _FakeUser(id=7, telegram_user_id=123456, google_sub=None)
     fake_session = _FakeSession(scalar_results=[user])
 
+    from todira_common.uid_token import generate_uid_token
+
     scope = {
         "type": "http",
         "session": {"pending_google_sub": "google-sub-unknown"},
+        "query_string": f"t={generate_uid_token(123456)}".encode(),
     }
     request = StarletteRequest(scope)
 
-    result = website_main._resolve_user(request, fake_session, 123456)
+    result = website_main._resolve_user(request, fake_session, None)
 
     assert result is user
     assert user.google_sub == "google-sub-unknown"
@@ -309,22 +312,49 @@ def test_resolve_user_completes_pending_google_link_once_a_real_uid_shows_up():
     assert request.session.get("user_id") == 7
 
 
-def test_resolve_user_leaves_a_plain_uid_visit_unaffected_with_no_pending_link():
-    """No pending_google_sub in the session at all — the overwhelmingly common case (any normal
-    bot deep-link visit) — must stay exactly as low-trust/ephemeral as before: no session
-    established, no DB write."""
+def test_resolve_user_with_a_signed_token_and_no_pending_link_just_signs_in():
+    """No pending_google_sub in the session — the overwhelmingly common case (any normal bot link
+    visit): the visitor is signed in by the signed token, and no Google link is written."""
     from starlette.requests import Request as StarletteRequest
+    from todira_common.uid_token import generate_uid_token
 
     user = _FakeUser(id=7, telegram_user_id=123456, google_sub=None)
     fake_session = _FakeSession(scalar_results=[user])
 
-    request = StarletteRequest({"type": "http", "session": {}})
-    result = website_main._resolve_user(request, fake_session, 123456)
+    request = StarletteRequest(
+        {"type": "http", "session": {}, "query_string": f"t={generate_uid_token(123456)}".encode()}
+    )
+    result = website_main._resolve_user(request, fake_session, None)
 
     assert result is user
     assert user.google_sub is None
     assert fake_session.committed is False
-    assert request.session.get("user_id") is None
+    assert request.session.get("user_id") == 7
+
+
+def test_google_start_ignores_a_bare_uid_so_nobody_can_link_google_to_a_victim():
+    """The takeover this change closes: /auth/google/start?uid=<victim> used to stash the victim's
+    id, and the callback then linked the attacker's own Google account to the victim."""
+    from starlette.requests import Request as StarletteRequest
+
+    request = StarletteRequest({"type": "http", "session": {}, "query_string": b""})
+    with patch.object(website_main, "GOOGLE_CLIENT_ID", "client-id"):
+        website_main.auth_google_start(request, next="/apartments", uid=555)
+
+    assert "oauth_link_uid" not in request.session
+
+
+def test_google_start_keeps_a_uid_proven_by_a_signed_token():
+    from starlette.requests import Request as StarletteRequest
+    from todira_common.uid_token import generate_uid_token
+
+    request = StarletteRequest(
+        {"type": "http", "session": {}, "query_string": f"t={generate_uid_token(555)}".encode()}
+    )
+    with patch.object(website_main, "GOOGLE_CLIENT_ID", "client-id"):
+        website_main.auth_google_start(request, next="/apartments", uid=None)
+
+    assert request.session["oauth_link_uid"] == 555
 
 
 def test_callback_links_google_to_already_authenticated_session():

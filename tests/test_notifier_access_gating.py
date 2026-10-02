@@ -15,6 +15,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 
 import notifier
 from todira_common.enums import Source
+from todira_common.uid_token import verify_uid_token
 
 _NOW = dt.datetime.now(dt.timezone.utc)
 
@@ -69,7 +70,9 @@ def test_notify_new_matches_passes_has_access_false_for_an_expired_user():
     mock_format.assert_called_once()
     _, kwargs = mock_format.call_args
     assert kwargs["has_access"] is False
-    assert kwargs["upgrade_url"] == f"{notifier.WEBSITE_URL}/upgrade?uid=555"
+    assert kwargs["upgrade_url"].startswith(f"{notifier.WEBSITE_URL}/upgrade?t=")
+    token = kwargs["upgrade_url"].split("?t=", 1)[1]
+    assert verify_uid_token(token) == 555  # a signed link for THIS user, never a bare id
 
 
 def test_notify_new_matches_passes_has_access_true_for_a_trial_user():

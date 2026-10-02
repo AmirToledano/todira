@@ -608,3 +608,9 @@ def test_webhook_ignores_renewal_flagged_payload_when_no_matching_subscription_f
 
     assert resp.status_code == 200
     assert fake_session.committed is False
+
+
+# 2026-10-02: a signed ?t= bot link now signs the visitor in (request.session["user_id"] is set during
+# the request), so the header's _current_user_summary runs a column lookup via session.execute(). The
+# fake has no such lookup; "no row" is the right answer for it.
+_FakeSession.execute = lambda self, *args, **kwargs: type("_NoRow", (), {"first": lambda s: None})()
