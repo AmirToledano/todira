@@ -13,3 +13,7 @@ google-genai>=0.3,<1.0
 # a Gemini call that times out - pinned explicitly rather than relying on an undeclared transitive
 # dep, matching bot/requirements.txt's own httpx comment.
 requests>=2.31,<3.0
+# Pillow + python-telegram-bot: /media/listing/{id}.jpg builds the WhatsApp listing photo/collage with
+# todira_common/cards.py (get_listing_photo_jpeg_bytes), which imports both at module level.
+Pillow>=10.0,<12.0
+python-telegram-bot>=21,<22
