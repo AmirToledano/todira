@@ -222,12 +222,11 @@ def test_touch_inbound_summary_is_elastic_to_any_length_of_absence():
         assert since == previous, away
 
 
-def test_touch_inbound_defaults_to_48_hours_when_the_previous_message_time_is_unknown():
+def test_touch_inbound_has_no_cutoff_when_the_previous_message_time_is_unknown():
     user = _wa_user(whatsapp_last_inbound_at=None)
     with _patch_session(_WebhookSession(user)):
         since = whatsapp_webhook._touch_inbound_sync("9725500000")
-    age = dt.datetime.now(dt.timezone.utc) - since
-    assert dt.timedelta(hours=47, minutes=59) < age < dt.timedelta(hours=48, minutes=1)
+    assert since == whatsapp_webhook._NO_CUTOFF
 
 
 def test_touch_inbound_reports_no_reopen_when_window_was_already_open():
