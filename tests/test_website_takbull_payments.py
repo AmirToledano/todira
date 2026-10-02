@@ -3,9 +3,9 @@ real recurring ₪49.90/month subscription API (2026-09-21, tried first in /upgr
 chain), plus /webhooks/takbull/{secret} — the server-to-server confirmation that actually grants
 access, for both the initial charge and a renewal cycle.
 
-Same importlib-loading approach and fake-session pattern as test_website_grow_payments.py (see
-that file's comment) — kept as its own module rather than sharing fakes, matching this repo's
-existing per-file-isolation convention for these website tests.
+Same importlib-loading approach as the other website test files (see test_website_paid_access.py's
+comment) — kept as its own module rather than sharing fakes, matching this repo's existing
+per-file-isolation convention for these website tests.
 """
 from __future__ import annotations
 

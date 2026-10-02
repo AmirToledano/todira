@@ -1,8 +1,7 @@
-"""Thin wrapper around Takbull's hosted payment page for real plan purchases — same role as
-website/grow_client.py, offered as a zero-monthly-fee alternative the owner chose specifically
-because Grow's fixed monthly fee (₪29-69) wasn't justifiable against Todira's unproven revenue.
-website/main.py's /upgrade tries this BEFORE Grow (see that route's own comment for the exact
-fallback order).
+"""Thin wrapper around Takbull's payment API for real plan purchases — the owner's payment
+provider (a zero-monthly-fee plan, chosen because a fixed monthly fee wasn't justifiable against
+Todira's unproven revenue). website/main.py's /upgrade tries this first and falls back to the
+informal click-trust flow while it isn't configured (see that route's own comment).
 
 Verified live 2026-09-06 against the owner's own real Takbull account (not guessed):
 - The plan is "עסקים מהיר – 50 מסמכים" (₪0/month, 1.4% per transaction) — hosted payment pages and
@@ -23,7 +22,7 @@ Verified live 2026-09-06 against the owner's own real Takbull account (not guess
   than silently mis-crediting.
 - Takbull's webhook has NO signature/HMAC verification (confirmed against their own published
   security guidance, which recommends validating sensitive actions server-side rather than
-  trusting the payload alone) — and unlike Grow, the webhook URL is configured ONCE in their
+  trusting the payload alone) — the webhook URL is configured ONCE in their
   dashboard for ALL orders, not passed per-transaction, so the per-payment webhook_token trick
   Payment already has (see its own comment) doesn't apply here. Same defense, different shape: a
   single shared secret baked into the URL PATH itself (TAKBULL_WEBHOOK_SECRET below), registered
@@ -31,8 +30,7 @@ Verified live 2026-09-06 against the owner's own real Takbull account (not guess
   /webhooks/takbull/{secret} route.
 
 Scope: this module originally also had a one-time-charge-per-purchase hosted-page flow
-(is_configured()/build_checkout_url(), see grow_client.py's own comment for the equivalent Grow
-concept) — removed 2026-09-25 as confirmed-dead code, see the removal note further down.
+(is_configured()/build_checkout_url()) — removed 2026-09-25 as confirmed-dead code, see the removal note further down.
 
 2026-09-21 addition — real recurring subscription billing (₪49.90/month, see
 todira_common/access.py's SUBSCRIPTION_PLAN): Takbull's ₪0/month hosted-page trick above has no
@@ -57,8 +55,8 @@ unconfirmed; ask Takbull support directly rather than hunting for a menu that ma
 recurring_api_configured() gates every function below on both
 being set — NOT YET LIVE-VERIFIED end to end (no real subscription has been created or renewed
 through this yet); the first real subscription checkout is what actually confirms these field
-names/response shapes, same "verify live, don't guess" posture as grow_client.py's own module
-docstring. In particular: the exact webhook payload shape for a RENEWAL charge (month 2+, fired
+names/response shapes, same "verify live, don't guess" posture as everywhere else in this project.
+In particular: the exact webhook payload shape for a RENEWAL charge (month 2+, fired
 automatically by Takbull's own recurring engine, not by anything this site does) is inferred from
 the documented IsSubscriptionPayment field, not confirmed against a real renewal event — see
 website/main.py's /webhooks/takbull for how that's handled defensively (matches by
@@ -99,7 +97,7 @@ def recurring_api_configured() -> bool:
     """Gates every function below (create_subscription_checkout_url/cancel_subscription) — see the
     module docstring for why recurring billing needs Takbull's real API (API_Key/API_Secret),
     unlike the ₪0/month hosted-page flow above which needs neither. website/main.py's /upgrade
-    falls back to the earlier one-time plans/Grow/informal flow when this is False."""
+    falls back to the informal click-trust flow when this is False."""
     return bool(
         os.environ.get(WEBHOOK_SECRET_ENV_VAR, "").strip()
         and os.environ.get(API_KEY_ENV_VAR, "").strip()
@@ -129,8 +127,7 @@ def create_subscription_checkout_url(
     (checkout_url, uniqid) — the uniqid is Takbull's own identifier for this subscription, stored
     on both User.takbull_subscription_uniqid and Payment.subscription_uniqid so a later
     cancel_subscription() call and every renewal-charge webhook can be tied back to it. Returns
-    None on any failure (logged, never raises), same fail-soft contract as grow_client.py's
-    create_checkout_url. `amount_ils` is passed as a string (Takbull's own examples show it that
+    None on any failure (logged, never raises), same fail-soft contract as every other gateway call here. `amount_ils` is passed as a string (Takbull's own examples show it that
     way; the request otherwise mirrors the one-time GetTakbullPaymentPageRedirectUrl shape with
     DealType=4/RecuringInterval=5 added)."""
     if not recurring_api_configured():

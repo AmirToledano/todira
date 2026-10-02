@@ -447,17 +447,17 @@ class PendingGoogleLink(Base):
 
 
 class Payment(Base):
-    """A single real payment attempt through a gateway (Grow/Meshulam, see website/grow_client.py)
+    """A single real payment attempt through a gateway (Takbull)
     — replaces the earlier informal model where a user's plan-selection CLICK directly extended
     paid_until with no verification. Created as "pending" the moment a user picks a plan and is
     redirected to the gateway's hosted checkout; flipped to "paid" only by the gateway's own
-    server-to-server webhook (website's /webhooks/grow) confirming a real charge — extend_paid_until
+    server-to-server webhook (website's /webhooks/takbull) confirming a real charge — extend_paid_until
     (todira_common/access.py) is called at THAT point, not on the click. "failed"/"cancelled" cover
     a checkout the user abandoned or the gateway declined; those rows are kept (not deleted) as a
     plain audit trail of what was attempted.
 
     Deliberately still supports gateway=None/status="paid" rows too: website/main.py's /upgrade
-    falls back to the old click-trust flow whenever Grow isn't configured (no account yet) — see
+    falls back to the old click-trust flow whenever Takbull isn't configured — see
     that route's own comment — so this table stays the single source of truth for "what plan is
     this person currently on and since when" under BOTH models, not just the gateway one.
 
@@ -479,23 +479,17 @@ class Payment(Base):
     amount_ils: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     # "pending" | "paid" | "failed" | "cancelled"
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending")
-    # "grow" once real gateway checkout is wired; None for a row created under the earlier
+    # "takbull" for a real gateway checkout; None for a row created under the earlier
     # informal click-trust fallback (see the class docstring above).
     gateway: Mapped[str | None] = mapped_column(Text)
-    # Grow's own transaction/process identifier, set once the webhook confirms payment — lets a
+    # The gateway's own transaction identifier, set once the webhook confirms payment — lets a
     # webhook retry/replay be recognized as the SAME payment instead of double-crediting the user.
     gateway_transaction_id: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     # Takbull's uniqId for the recurring order this charge belongs to (None for a one-time-plan
     # payment) — see the class docstring above and website/main.py's /webhooks/takbull.
     subscription_uniqid: Mapped[str | None] = mapped_column(Text, index=True)
-    # A random per-payment secret WE generate and embed in the notifyUrl we hand to Grow (see
-    # website/grow_client.py) — required as a query param on the incoming /webhooks/grow call
-    # before it can mark this row paid. This exists because Grow's own webhook authentication
-    # (signature header? shared secret? IP allowlist?) is unverified — this sandbox's network
-    # egress blocks every Grow/Meshulam docs domain, see grow_client.py's module docstring — so
-    # without this, `payments.id` (a guessable sequential integer) would be the only thing
-    # standing between a random POST and a free subscription. Not needed for a NULL-gateway row
-    # (the informal click-trust fallback never goes through the webhook at all).
+    # Legacy column (unused since 2026-10-02): held a per-payment secret for a one-time-payment gateway
+    # webhook that no longer exists. Kept only so the table and its migration history stay as they were.
     webhook_token: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

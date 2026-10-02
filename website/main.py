@@ -81,7 +81,6 @@ from todira_common.uid_token import verify_uid_token
 from todira_common.wid_token import generate_wid_token, verify_wid_token as _verify_wid_token  # noqa: F401 (generate_wid_token re-exported for tests, see test_website_filter_whatsapp.py)
 from fastapi import FastAPI, Form, Request
 
-import grow_client
 import takbull_client
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -261,7 +260,7 @@ WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app")
 # without it, /account still shows the Telegram linking option, just not the WhatsApp one.
 WHATSAPP_PUBLIC_NUMBER = os.environ.get("WHATSAPP_PUBLIC_NUMBER", "").strip()
 
-# Informal Bit/PayBox payment (2026-09-05 — the owner decided against עוסק פטור/Grow for now, see
+# Informal Bit/PayBox payment (2026-09-05 — the owner's click-trust fallback while no real gateway is configured, see
 # /upgrade/pay below) — the owner's own phone number for Bit and, optionally, a PayBox payment
 # link he generates himself from the PayBox app. Deliberately NOT a "click to open the app
 # pre-filled" deep link: neither Bit nor PayBox publish a documented URL scheme for that (checked
@@ -1671,21 +1670,6 @@ def admin_toggle_free_access(request: Request, user_id: int):
     return RedirectResponse("/admin/users", status_code=303)
 
 
-# 2026-09-10 fix: this used to also feed /upgrade, /upgrade/pay, and /account's payment history
-# table — a real i18n gap, since those pages render in the visitor's own language everywhere else
-# (see i18n.py's upgrade.plan_weekly/biweekly/monthly) but always showed this Hebrew-only string.
-# Narrowed to its one legitimate remaining use below: the checkout description sent to Grow's own
-# hosted payment page, which is the merchant's (owner's) side of the transaction, not something
-# the visitor's browser ever renders — that one stays Hebrew on purpose, matching the rest of the
-# Grow integration's own account-side text.
-PLAN_LABELS_HE = {
-    "weekly": "שבועי — ₪15",
-    "biweekly": "שבועיים — ₪25",
-    "monthly": "חודשי — ₪40",
-    SUBSCRIPTION_PLAN: "חודשי — ₪49.90",
-}
-
-
 @app.get("/upgrade")
 def upgrade(request: Request, uid: int | None = None):
     with get_session() as session:
@@ -1738,7 +1722,7 @@ def upgrade_submit(
     """Plan selection — 2026-09-21: the only real plan is the recurring ₪49.90/month subscription
     (SUBSCRIPTION_PLAN); the earlier one-time weekly/biweekly/monthly plans are no longer offered
     (their PLAN_PRICES_ILS/PLAN_DURATIONS entries stay only so historical Payment rows still
-    resolve). Tries real gateways in order, falling back one step at a time:
+    resolve). Tries the real gateway first, falling back to the informal model:
     1. Takbull's real recurring API (2026-09-21) once TAKBULL_WEBHOOK_SECRET/TAKBULL_API_KEY/
        TAKBULL_API_SECRET are all configured — see takbull_client.py's module docstring for the
        real API this is built from. Creates a pending Payment, calls Takbull to open a NEW
@@ -1746,16 +1730,11 @@ def upgrade_submit(
        User.takbull_subscription_uniqid set) only once /webhooks/takbull below confirms the first
        real charge. Every later month's charge is Takbull's own recurring engine firing
        automatically, not anything this route does again.
-    2. Grow/Meshulam once GROW_PAGE_CODE/GROW_USER_ID/GROW_API_KEY are all configured — a ONE-TIME
-       ₪49.90 charge for 30 days' access (Grow has no recurring-billing API here, see
-       grow_client.py's own comment), offered only as a fallback while Takbull's recurring API
-       isn't configured yet. Access is granted only once /webhooks/grow below confirms a real
-       charge.
-    3. The earlier informal click-trust model (2026-09-04 decision: the click itself IS the
-       payment signal, a Bit transfer happens outside this system) whenever neither gateway is
+    2. The earlier informal click-trust model (2026-09-04 decision: the click itself IS the
+       payment signal, a Bit transfer happens outside this system) whenever Takbull isn't
        configured yet.
     The owner's /admin/users free-access toggle remains the remedy for a click/payment that turns
-    out not to have actually happened, under any of the three models.
+    out not to have actually happened, under either model.
 
     2026-09-17: terms_agreed is a real, required field now (see upgrade.html's own checkbox) — the
     payment processor's own compliance requirement is active, explicit consent to the Terms of Use
@@ -1818,61 +1797,27 @@ def upgrade_submit(
             session.commit()
             return RedirectResponse(checkout_url, status_code=303)
 
-        if not grow_client.is_configured():
-            payment = Payment(
-                user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway=None
-            )
-            session.add(payment)
-            session.commit()
-            payment_id = payment.id
-            redirect_uid = user.telegram_user_id
-            qs = f"?payment_id={payment_id}" + (f"&uid={redirect_uid}" if redirect_uid else "")
-            return RedirectResponse(f"/upgrade/pay{qs}", status_code=303)
-
-        webhook_token = secrets.token_urlsafe(24)
         payment = Payment(
-            user_id=user.id,
-            plan=plan,
-            amount_ils=amount,
-            status="pending",
-            gateway="grow",
-            webhook_token=webhook_token,
+            user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway=None
         )
         session.add(payment)
         session.commit()
         payment_id = payment.id
         redirect_uid = user.telegram_user_id
-
-    uid_qs = f"&uid={redirect_uid}" if redirect_uid else ""
-    checkout_url = grow_client.create_checkout_url(
-        payment_id=payment_id,
-        amount_ils=amount,
-        description=f"טודירה — מנוי {PLAN_LABELS_HE.get(plan, plan)}",
-        success_url=f"{WEBSITE_URL}/upgrade/success?payment_id={payment_id}{uid_qs}",
-        cancel_url=f"{WEBSITE_URL}/upgrade?{uid_qs.lstrip('&')}" if redirect_uid else f"{WEBSITE_URL}/upgrade",
-        notify_url=f"{WEBSITE_URL}/webhooks/grow?token={webhook_token}",
-    )
-    if checkout_url is None:
-        with get_session() as session:
-            failed = session.get(Payment, payment_id)
-            if failed is not None:
-                failed.status = "failed"
-                session.commit()
-        return _render(request, "auth_error.html", {}, status_code=502)
-
-    return RedirectResponse(checkout_url, status_code=303)
+        qs = f"?payment_id={payment_id}" + (f"&uid={redirect_uid}" if redirect_uid else "")
+        return RedirectResponse(f"/upgrade/pay{qs}", status_code=303)
 
 
 @app.get("/upgrade/success")
 def upgrade_success(request: Request, payment_id: int | None = None, uid: int | None = None):
-    """Landing page for every payment path: where Grow redirects the browser after checkout
-    (access is granted server-to-server by /webhooks/grow below, which may land slightly before or
+    """Landing page for every payment path: where the payment gateway redirects the browser after checkout
+    (access is granted server-to-server by /webhooks/takbull below, which may land slightly before or
     after this redirect — this just reports the payment's CURRENT status, never grants anything
     itself), where /upgrade/pay/confirm below sends the browser after the informal Bit/PayBox flow
     (there access WAS already granted by that POST, so this always shows "paid" immediately), and
     Takbull's own static "דף תודה" (thank-you page) redirect — 2026-09-18 real request, configured
-    directly in Takbull's dashboard (Payment Page settings), NOT per-transaction like Grow's
-    success_url, so it never carries payment_id/uid at all. payment_id is optional for exactly that
+    directly in Takbull's dashboard (Payment Page settings), NOT per-transaction like a success_url,
+    so it never carries payment_id/uid at all. payment_id is optional for exactly that
     case: landing here with no payment_id at all means "Takbull's own thank-you redirect, which
     only ever fires after a real successful charge on their side" — shown as paid immediately
     rather than looked up, since there's nothing to look up."""
@@ -1918,7 +1863,7 @@ def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
 @app.post("/upgrade/pay/confirm")
 def upgrade_pay_confirm(request: Request, payment_id: int = Form(...), uid: int | None = Form(None)):
     """Self-service "I paid" confirmation for the informal flow ONLY (gateway=None). A pending
-    Takbull/Grow payment must never be confirmable from here: its own gateway webhook is the only
+    Takbull payment must never be confirmable from here: its own gateway webhook is the only
     thing allowed to mark it paid, otherwise anyone could POST /upgrade (creating their own
     pending gateway payment) and then confirm it themselves for free access — found 2026-09-30 in
     a code-review pass, unexploitable only while no real gateway is configured."""
@@ -1937,71 +1882,6 @@ def upgrade_pay_confirm(request: Request, payment_id: int = Form(...), uid: int 
 
     uid_qs = f"&uid={redirect_uid}" if redirect_uid else ""
     return RedirectResponse(f"/upgrade/success?payment_id={payment_id}{uid_qs}", status_code=303)
-
-
-def _looks_like_a_successful_grow_payload(body: dict) -> bool:
-    """UNVERIFIED — see webhooks_grow's own comment below and grow_client.py's module docstring.
-    Accepts any of a few plausible "it worked" shapes rather than betting everything on one
-    guessed key name. Update this once a real sandbox transaction shows the actual payload."""
-    status = str(body.get("status", body.get("statusCode", ""))).strip().lower()
-    if status in {"1", "true", "success", "ok", "approved"}:
-        return True
-    return bool(body.get("transactionId") or body.get("asmachta"))
-
-
-@app.post("/webhooks/grow")
-async def webhooks_grow(request: Request, token: str | None = None):
-    """Grow's server-to-server payment confirmation. The exact payload shape Grow sends here is
-    UNVERIFIED (see grow_client.py's module docstring — this sandbox's network egress blocks every
-    Grow/Meshulam docs domain), so this logs the full raw body unconditionally and only ever marks
-    a payment paid when it can positively identify BOTH a pending payment matching `token` (the
-    per-payment secret WE generated and embedded in the notifyUrl handed to Grow at checkout time
-    — see /upgrade above; this stands in for Grow's own webhook authentication, which is equally
-    unverified) AND a plausible success signal in the body. Anything less confident is left
-    pending rather than guessed at — a real customer payment can always still be reconciled by
-    hand via /admin/users' free-access toggle. Always returns 200 so Grow doesn't retry-storm this
-    endpoint even when the payload can't be made sense of yet (matches whatsapp_webhook.py's own
-    documented always-200 contract)."""
-    try:
-        body = dict(await request.json())
-    except Exception:
-        body = dict(await request.form())
-    logger.info("Grow webhook raw payload (token=%s): %r", token, body)
-
-    if not token:
-        logger.warning("Grow webhook received with no token — ignoring")
-        return Response(status_code=200)
-
-    with get_session() as session:
-        payment = session.scalar(
-            select(Payment).where(Payment.webhook_token == token, Payment.status == "pending")
-        )
-        if payment is None:
-            logger.warning("Grow webhook token did not match any pending payment — ignoring")
-            return Response(status_code=200)
-
-        if not _looks_like_a_successful_grow_payload(body):
-            logger.warning(
-                "Grow webhook for payment_id=%s had no recognizable success signal — left "
-                "pending, see the raw payload logged above",
-                payment.id,
-            )
-            return Response(status_code=200)
-
-        user = session.get(User, payment.user_id)
-        if user is None:
-            logger.error("Grow webhook for payment_id=%s references a deleted user", payment.id)
-            return Response(status_code=200)
-
-        payment.status = "paid"
-        payment.paid_at = dt.datetime.now(dt.timezone.utc)
-        payment.gateway_transaction_id = str(
-            body.get("transactionId") or body.get("asmachta") or body.get("processId") or payment.id
-        )
-        extend_paid_until(user, payment.plan)
-        session.commit()
-
-    return Response(status_code=200)
 
 
 def _looks_like_a_successful_takbull_payload(body: dict) -> bool:
@@ -2423,9 +2303,9 @@ def account_cancel_subscription(
     call Takbull's CancelSubscription API here — Takbull has no documented "un-cancel" API
     counterpart, so calling it immediately would make /account/resume-subscription below unable to
     actually resume anything. Instead this only flips the local flag; the real Takbull-side cancel
-    happens once the period actually ends (scraper's daily housekeeping — see
-    todira_common/access.py's module docstring and scraper/main.py), so a resume clicked before
-    then needs no API call at all and the recurring order keeps working uninterrupted throughout."""
+    happens a few days BEFORE the period ends (website/subscription_housekeeping.py's daily job;
+    before 2026-10-02 it waited until AFTER, which let one more renewal charge through), so a resume
+    clicked before then needs no API call at all and the recurring order keeps working."""
     with get_session() as session:
         user = _resolve_user(request, session, uid, wid)
         if user is None:
@@ -2448,6 +2328,12 @@ def account_resume_subscription(
         user = _resolve_user(request, session, uid, wid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
+        if user.takbull_subscription_uniqid is None:
+            # The recurring order was already cancelled on Takbull's side (see
+            # subscription_housekeeping.py: it cancels a few days BEFORE paid_until so a renewal can
+            # never be charged after the customer cancelled). Takbull has no un-cancel, so there is
+            # nothing to resume - the customer keeps access until paid_until and can subscribe again.
+            return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
         user.cancel_at_period_end = False
         session.commit()
 
