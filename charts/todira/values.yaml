@@ -199,6 +199,10 @@ scraper:
   #   they were already meant as a safety margin, not a tight prediction.
   komoMaxNewDetailFetchesPerRun: 300
   yad2MaxPagesPerRegion: 5
+  # 2026-10-02: fetch Yad2's map API for free with a browser TLS fingerprint (curl_cffi) from our own IP,
+  # falling back to Bright Data Web Unlocker if Yad2 ever blocks it. See scraper/yad2_client.py's
+  # _fetch_json_with_browser_tls. Saves ~100 paid requests/day.
+  yad2FreeMapFetch: true
   # 2026-09-13: same real-money-per-fetch reasoning as komoMaxNewDetailFetchesPerRun above, one
   # order of magnitude smaller — Homeless is added description enrichment (a per-listing detail-
   # page fetch, only for genuinely-new listings; see homeless_client.fetch_listing_description and

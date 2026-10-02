@@ -884,3 +884,63 @@ def test_fetch_region_via_map_api_unions_multiple_sub_areas_for_one_region(monke
 
     assert len(requested_urls) == 2  # both sub-areas were actually fetched, not just the first
     assert {item["id"] for item in items} == {"beer-sheva", "ashdod"}  # union of both
+
+
+# --- _fetch_json_with_browser_tls (2026-10-02): the FREE map-API route, falls back to Web Unlocker ---
+
+
+def _fake_curl_module(monkeypatch, status=200, text='{"data": {"markers": []}}', raises=None):
+    import sys
+    import types
+
+    calls = []
+
+    def _get(url, **kwargs):
+        calls.append((url, kwargs))
+        if raises:
+            raise raises
+        return types.SimpleNamespace(status_code=status, text=text)
+
+    fake = types.SimpleNamespace(get=_get)
+    pkg = types.ModuleType("curl_cffi")
+    pkg.requests = fake
+    monkeypatch.setitem(sys.modules, "curl_cffi", pkg)
+    monkeypatch.setitem(sys.modules, "curl_cffi.requests", fake)
+    return calls
+
+
+def test_free_map_fetch_is_off_unless_enabled(monkeypatch):
+    monkeypatch.delenv("YAD2_FREE_MAP_FETCH", raising=False)
+    calls = _fake_curl_module(monkeypatch)
+    assert yad2_client._fetch_json_with_browser_tls("https://gw.yad2.co.il/x") is None
+    assert calls == []
+
+
+def test_free_map_fetch_returns_json_body_with_browser_impersonation(monkeypatch):
+    monkeypatch.setenv("YAD2_FREE_MAP_FETCH", "true")
+    calls = _fake_curl_module(monkeypatch)
+    body = yad2_client._fetch_json_with_browser_tls("https://gw.yad2.co.il/x")
+    assert json.loads(body) == {"data": {"markers": []}}
+    assert calls[0][1]["impersonate"] == "chrome"
+    assert calls[0][1]["allow_redirects"] is False
+
+
+@pytest.mark.parametrize(
+    "status,text,raises",
+    [(302, "", None), (200, "<html>Radware challenge</html>", None), (200, "{}", ConnectionError("boom"))],
+)
+def test_free_map_fetch_returns_none_on_challenge_or_error(monkeypatch, status, text, raises):
+    monkeypatch.setenv("YAD2_FREE_MAP_FETCH", "true")
+    _fake_curl_module(monkeypatch, status=status, text=text, raises=raises)
+    assert yad2_client._fetch_json_with_browser_tls("https://gw.yad2.co.il/x") is None
+
+
+def test_fetch_map_markers_falls_back_to_web_unlocker_when_free_route_fails(monkeypatch):
+    monkeypatch.setenv("YAD2_FREE_MAP_FETCH", "true")
+    _fake_curl_module(monkeypatch, status=302, text="")
+    seen = []
+    monkeypatch.setattr(
+        yad2_client, "_fetch_direct", lambda url: seen.append(url) or '{"data": {"markers": []}}'
+    )
+    assert list(fetch_map_markers("31.9,34.7,32.1,34.8", area=1, region=3)) == []
+    assert len(seen) == 1
