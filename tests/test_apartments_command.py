@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 from types import SimpleNamespace
+import pytest
 from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
@@ -48,7 +49,7 @@ def test_no_matches_tells_user_none_found_currently_and_still_links_the_website(
     update.message.reply_text.assert_awaited_once()
     text = update.message.reply_text.await_args.args[0]
     assert "לא נמצאו" in text
-    assert "/apartments?uid=555" in text
+    assert "/apartments?t=TOKEN555" in text
 
 
 def test_matches_sends_true_total_count_and_website_link_not_cards():
@@ -61,7 +62,7 @@ def test_matches_sends_true_total_count_and_website_link_not_cards():
     update.message.reply_text.assert_awaited_once()
     text = update.message.reply_text.await_args.args[0]
     assert "3794" in text
-    assert "/apartments?uid=555" in text
+    assert "/apartments?t=TOKEN555" in text
 
 
 def test_count_matches_sync_returns_none_when_no_filter_saved(monkeypatch):
@@ -106,3 +107,10 @@ def test_count_matches_sync_returns_true_uncapped_total(monkeypatch):
     tg_user = SimpleNamespace(id=555)
 
     assert apartments_module._count_matches_sync(tg_user) == (3794, "he")
+
+
+@pytest.fixture(autouse=True)
+def _fixed_login_token():
+    """The signed ?t= token embeds a timestamp, so exact-string assertions on links need it pinned."""
+    with patch.object(apartments_module, "signed_login_query", lambda telegram_user_id: f"t=TOKEN{telegram_user_id}"):
+        yield

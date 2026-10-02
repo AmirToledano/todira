@@ -201,6 +201,7 @@ def test_logout_clears_session_and_redirects_home(client):
 def test_resolve_user_prefers_session_over_uid_param():
     class _FakeRequest:
         session = {"user_id": 7}
+        query_params: dict = {}
 
     session_user = _FakeUser(id=7, telegram_user_id=123456)
     uid_user = _FakeUser(id=99, telegram_user_id=555)
@@ -212,20 +213,76 @@ def test_resolve_user_prefers_session_over_uid_param():
     assert result is session_user
 
 
-def test_resolve_user_falls_back_to_uid_param_without_session():
+def test_resolve_user_never_trusts_a_bare_uid_param():
+    """2026-10-02 security: a Telegram id is public knowledge; ?uid=<id> alone must not log anyone in."""
     class _FakeRequest:
-        session = {}
+        session: dict = {}
+        query_params: dict = {}
 
     uid_user = _FakeUser(id=99, telegram_user_id=555)
     fake_session = _FakeSession(users_by_telegram_id={555: uid_user}, users_by_pk={})
 
-    result = website_main._resolve_user(_FakeRequest(), fake_session, 555)
-    assert result is uid_user
+    assert website_main._resolve_user(_FakeRequest(), fake_session, 555) is None
+
+
+def test_resolve_user_accepts_a_valid_signed_token_and_signs_the_session_in():
+    from todira_common.uid_token import generate_uid_token
+
+    class _FakeRequest:
+        session: dict = {}
+        query_params = {"t": generate_uid_token(555)}
+
+    uid_user = _FakeUser(id=99, telegram_user_id=555)
+    fake_session = _FakeSession(users_by_telegram_id={555: uid_user}, users_by_pk={})
+    request = _FakeRequest()
+
+    assert website_main._resolve_user(request, fake_session, None) is uid_user
+    assert request.session["user_id"] == 99
+
+
+def test_resolve_user_rejects_a_forged_or_tampered_token():
+    from todira_common.uid_token import generate_uid_token
+
+    class _FakeRequest:
+        session: dict = {}
+        query_params = {"t": generate_uid_token(555)[:-2] + "xx"}
+
+    uid_user = _FakeUser(id=99, telegram_user_id=555)
+    fake_session = _FakeSession(users_by_telegram_id={555: uid_user}, users_by_pk={})
+
+    assert website_main._resolve_user(_FakeRequest(), fake_session, 555) is None
+
+
+def test_resolve_user_token_wins_over_an_existing_session_for_a_different_account():
+    """Tapping a bot link must land on the account that link belongs to, even if this browser was
+    signed in as someone else."""
+    from todira_common.uid_token import generate_uid_token
+
+    class _FakeRequest:
+        session = {"user_id": 7}
+        query_params = {"t": generate_uid_token(555)}
+
+    session_user = _FakeUser(id=7, telegram_user_id=123456)
+    token_user = _FakeUser(id=99, telegram_user_id=555)
+    fake_session = _FakeSession(users_by_telegram_id={555: token_user}, users_by_pk={7: session_user})
+    request = _FakeRequest()
+
+    assert website_main._resolve_user(request, fake_session, None) is token_user
+    assert request.session["user_id"] == 99
+
+
+def test_a_token_for_one_user_cannot_be_reused_as_another_users_token():
+    from todira_common.uid_token import generate_uid_token, verify_uid_token
+
+    assert verify_uid_token(generate_uid_token(555)) == 555
+    assert verify_uid_token("555") is None
+    assert verify_uid_token("") is None
 
 
 def test_resolve_user_returns_none_when_nothing_matches():
     class _FakeRequest:
-        session = {}
+        session: dict = {}
+        query_params: dict = {}
 
     fake_session = _FakeSession()
     assert website_main._resolve_user(_FakeRequest(), fake_session, None) is None
@@ -261,7 +318,8 @@ def test_apartments_hides_insecure_notice_when_reached_via_real_session(client):
     assert "לא מאובטח" not in resp.text
 
 
-def test_apartments_shows_insecure_notice_for_uid_only_access(client):
+@pytest.mark.no_uid_shim
+def test_apartments_with_a_bare_uid_shows_the_sign_in_page_not_the_users_apartments(client):
     user = _FakeUser(id=7, telegram_user_id=123456)
     user.filter = _FakeFilter()
     fake_session = _FakeSession(users_by_telegram_id={123456: user}, users_by_pk={})
@@ -270,10 +328,11 @@ def test_apartments_shows_insecure_notice_for_uid_only_access(client):
     def _fake_get_session():
         yield fake_session
 
-    with patch.object(website_main, "get_session", _fake_get_session), patch.object(
-        website_main, "evaluate", return_value=type("Result", (), {"matched": False})()
-    ):
+    with patch.object(website_main, "get_session", _fake_get_session):
         resp = client.get("/apartments", params={"uid": 123456})
 
     assert resp.status_code == 200
-    assert "לא מאובטח" in resp.text
+    assert "לא מאובטח" not in resp.text
+    assert "טודירה" in resp.text  # a real page rendered (need_uid.html), not a crash
+    assert "data-listing-id" not in resp.text  # none of the user's listings were rendered
+

@@ -212,3 +212,9 @@ def test_non_numeric_input_does_not_prevent_the_rest_of_the_form_from_saving(cli
     assert fake_user.filter.floor_min is None
     assert fake_user.filter.cities == ["רמת גן"]
     assert fake_user.filter.no_brokers is True
+
+
+# 2026-10-02: a signed ?t= bot link now signs the visitor in (request.session["user_id"] is set during
+# the request), so the header's _current_user_summary runs a column lookup via session.execute(). The
+# fake has no such lookup; "no row" is the right answer for it.
+_FakeSession.execute = lambda self, *args, **kwargs: type("_NoRow", (), {"first": lambda s: None})()

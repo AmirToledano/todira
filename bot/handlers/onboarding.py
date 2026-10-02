@@ -34,6 +34,7 @@ from todira_common.language import DEFAULT_LANG
 from todira_common.matching import safe_range_update
 from todira_common.models import Filter
 from todira_common.users import get_or_create_user
+from todira_common.uid_token import signed_login_query
 from handlers.apartments import find_new_matches_to_show
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
@@ -229,7 +230,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # real owner complaint the same day (a broad filter flooded the chat immediately, and the
     # count/send was silently capped at RESULT_LIMIT=10 regardless of the true number matching).
     # Now always just points at the website's own /apartments?uid=... view instead, same as there.
-    apartments_url = f"{WEBSITE_URL}/apartments?uid={update.effective_user.id}"
+    apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
     if total:
         await update.message.reply_text(
             bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)

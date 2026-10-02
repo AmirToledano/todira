@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from types import SimpleNamespace
+import pytest
 from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
@@ -52,7 +53,7 @@ def test_valid_token_links_google_sub_to_a_brand_new_user():
     assert outcome == "normal"
     assert reply.startswith(start_module.GOOGLE_LINKED_NOTE)
     assert start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.app/account?uid=555"
+        name="Amir", account_url="https://todira.app/account?t=TOKEN555"
     ) in reply
     assert session.committed is True
 
@@ -90,7 +91,7 @@ def test_valid_token_does_not_overwrite_an_existing_different_google_link():
     assert user.google_sub == "already-linked-sub"  # untouched
     assert not reply.startswith(start_module.GOOGLE_LINKED_NOTE)
     assert reply == start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.app/account?uid=555"
+        name="Amir", account_url="https://todira.app/account?t=TOKEN555"
     )
 
 
@@ -104,7 +105,7 @@ def test_expired_or_unknown_token_falls_through_with_no_note():
 
     assert outcome == "normal"
     assert reply == start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.app/account?uid=555"
+        name="Amir", account_url="https://todira.app/account?t=TOKEN555"
     )
 
 
@@ -157,3 +158,10 @@ def test_google_linked_note_is_prepended_before_the_renewal_nudge_too():
     assert reply.startswith(start_module.GOOGLE_LINKED_NOTE)
     assert "חיפה" in reply
     assert user.google_sub == "google-sub-3"
+
+
+@pytest.fixture(autouse=True)
+def _fixed_login_token():
+    """The signed ?t= token embeds a timestamp, so exact-string assertions on links need it pinned."""
+    with patch.object(start_module, "signed_login_query", lambda telegram_user_id: f"t=TOKEN{telegram_user_id}"):
+        yield

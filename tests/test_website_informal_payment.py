@@ -247,3 +247,9 @@ def test_upgrade_pay_page_404s_for_a_gateway_payment(client):
         resp = client.get("/upgrade/pay", params={"payment_id": 9, "uid": 222})
 
     assert resp.status_code == 404
+
+
+# 2026-10-02: a signed ?t= bot link now signs the visitor in (request.session["user_id"] is set during
+# the request), so the header's _current_user_summary runs a column lookup via session.execute(). The
+# fake has no such lookup; "no row" is the right answer for it.
+_FakeSession.execute = lambda self, *args, **kwargs: type("_NoRow", (), {"first": lambda s: None})()

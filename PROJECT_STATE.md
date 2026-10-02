@@ -14,6 +14,14 @@ Migration 0019 adds `whatsapp_last_inbound_at` / `whatsapp_checkin_sent_at` (NUL
 until each user next writes). Do NOT reintroduce template sends without the owner's explicit decision.
 Do not mention or build for any payment gateway other than Takbull (via Upay).
 
+**Signed login links (2026-10-02, security):** the site NO LONGER trusts a bare `?uid=<telegram id>` (it let anyone view
+or edit another user's account and, via `/auth/google/start?uid=`, take it over by linking their own Google account).
+Every bot/notifier link now carries `?t=<signed token>` (`common/todira_common/uid_token.py`, 180 days, same secret as the
+`wid` tokens); `website/main.py::_resolve_user` verifies it, sets the normal session cookie, and gives it priority over an
+existing session. `_trusted_link_uid` gates the Google-link `uid` the same way. Old chat links with a bare uid now land on
+the sign-in page (users tap a fresh bot link or log in). Tests: `tests/conftest.py` has an autouse shim that adds the signed
+`t` to test requests naming a uid; `@pytest.mark.no_uid_shim` opts out for the rejection tests.
+
 **Public repo hygiene (2026-10-02):** the repo is public ON PURPOSE (owner shows it in interviews). Never commit personal
 identifiers: the owner's Telegram id (legacy `?uid=` URLs authenticate without a signature), personal phone, email, card
 digits. They were scrubbed from the tree in PR #602 (the id still exists in old git history).

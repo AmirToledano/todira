@@ -27,6 +27,7 @@ from todira_common.google_link import resolve_google_link_token
 from todira_common.bot_strings import BOT_STRINGS, bot_text
 from todira_common.language import DEFAULT_LANG, normalize_language_code
 from todira_common.models import User
+from todira_common.uid_token import signed_login_query
 from sqlalchemy import select
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -151,7 +152,7 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                 "start.welcome",
                 lang,
                 name=tg_user.first_name or "",
-                account_url=f"{WEBSITE_URL}/account?uid={tg_user.id}",
+                account_url=f"{WEBSITE_URL}/account?{signed_login_query(tg_user.id)}",
             )
 
         # Only a returning user who already onboarded (has a filter) can have "expired" access in
@@ -164,7 +165,7 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                 lang,
                 name=tg_user.first_name or "",
                 cities_line=bot_text("start.renewal_cities_line", lang, cities=cities) if cities else "",
-                upgrade_url=f"{WEBSITE_URL}/upgrade?uid={tg_user.id}",
+                upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(tg_user.id)}",
             )
             return "expired", note + reply
 
@@ -172,7 +173,7 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
             "start.welcome",
             lang,
             name=tg_user.first_name or "",
-            account_url=f"{WEBSITE_URL}/account?uid={tg_user.id}",
+            account_url=f"{WEBSITE_URL}/account?{signed_login_query(tg_user.id)}",
         )
 
 
