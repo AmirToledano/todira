@@ -7,7 +7,7 @@ name: Fix — remove the spurious WhatsApp account my own diagnostic test create
 # was fixed, his own real "ref_xxxxxx" link attempt hit whatsapp_webhook.py's link_conflict branch
 # — "this WhatsApp number already has a separate account with me" — because that synthetic row
 # still owns the number, blocking the real link to his main account (id=1, telegram_user_id
-# 6984931854). This removes that one spurious row so the real link can succeed. Scoped by exact
+# <owner-uid>). This removes that one spurious row so the real link can succeed. Scoped by exact
 # id AND phone number match (never touches any other row) and only proceeds if that row has no
 # Filter attached (confirms it's genuinely just the empty test artifact, not real user data worth
 # preserving).
