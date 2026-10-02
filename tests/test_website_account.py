@@ -276,7 +276,7 @@ def test_account_config_carries_the_connected_identity_for_each_linked_channel(c
     user = _FakeUser(
         id=2, telegram_user_id=222, whatsapp_phone_number="972501234567",
         google_sub="g-sub-123", telegram_username="amir_toledano",
-        google_email="amir81358@gmail.com",
+        google_email="owner@example.com",
     )
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
@@ -285,7 +285,7 @@ def test_account_config_carries_the_connected_identity_for_each_linked_channel(c
     config = _account_config(resp.text)
     assert config["telegramUsername"] == "amir_toledano"
     assert config["whatsappPhoneNumber"] == "972501234567"
-    assert config["googleEmail"] == "amir81358@gmail.com"
+    assert config["googleEmail"] == "owner@example.com"
 
 
 def test_account_config_identity_fields_are_null_when_not_set(client):

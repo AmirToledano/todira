@@ -235,7 +235,7 @@ def test_callback_links_google_to_the_uid_being_viewed(client):
     def _fake_get_session():
         yield fake_session
 
-    transport = _mock_google_exchange("google-sub-new", email="amir81358@gmail.com")
+    transport = _mock_google_exchange("google-sub-new", email="owner@example.com")
     with patch.object(website_main, "get_session", _fake_get_session), patch.object(
         httpx, "post", lambda url, **kw: httpx.Client(transport=transport).post(url, **kw)
     ), patch.object(
@@ -246,7 +246,7 @@ def test_callback_links_google_to_the_uid_being_viewed(client):
     assert resp.status_code == 303
     assert resp.headers["location"] == "/apartments"
     assert existing_user.google_sub == "google-sub-new"
-    assert existing_user.google_email == "amir81358@gmail.com"
+    assert existing_user.google_email == "owner@example.com"
     assert fake_session.committed is True
 
 
@@ -343,7 +343,7 @@ def test_callback_links_google_to_already_authenticated_session():
     def _fake_get_session():
         yield fake_session
 
-    transport = _mock_google_exchange("google-sub-new-2", email="amir81358@gmail.com")
+    transport = _mock_google_exchange("google-sub-new-2", email="owner@example.com")
     scope = {"type": "http", "session": {"oauth_state": "abc", "user_id": 42}}
     request = StarletteRequest(scope)
 
@@ -359,7 +359,7 @@ def test_callback_links_google_to_already_authenticated_session():
     assert resp.status_code == 303
     assert resp.headers["location"] == "/apartments"
     assert existing_user.google_sub == "google-sub-new-2"
-    assert existing_user.google_email == "amir81358@gmail.com"
+    assert existing_user.google_email == "owner@example.com"
     assert fake_session.committed is True
     assert request.session.get("user_id") == 42
 
@@ -440,7 +440,7 @@ def test_create_account_makes_a_standalone_user_with_a_blank_filter_and_logs_in(
         "session": {
             "pending_google_sub": "google-sub-new",
             "pending_google_first_name": "Amir",
-            "pending_google_email": "amir81358@gmail.com",
+            "pending_google_email": "owner@example.com",
         },
         "query_string": b"",
         "headers": [],
@@ -460,7 +460,7 @@ def test_create_account_makes_a_standalone_user_with_a_blank_filter_and_logs_in(
     new_user, new_filter = fake_session.added
     assert new_user.google_sub == "google-sub-new"
     assert new_user.first_name == "Amir"
-    assert new_user.google_email == "amir81358@gmail.com"
+    assert new_user.google_email == "owner@example.com"
     assert new_user.telegram_user_id is None
     assert new_user.whatsapp_phone_number is None
     assert new_filter.user_id == new_user.id  # both None under the fake session — real FK wiring

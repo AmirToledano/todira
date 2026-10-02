@@ -5,7 +5,7 @@
 PR #597, deployed). Reason: Meta bills every proactive template message (MARKETING, about 0.0353 each; 717 messages =
 25.31 so far, all to the only 2 users in the DB), the owner did not know WhatsApp costs money, and Meta rejected all sends
 with error 131042 (unsettled payments) until the owner pays the open balance in Meta Billing hub (owner added a Visa
-8320 card but had NOT yet paid the balance). Telegram and the website are unaffected. Do NOT turn WhatsApp back on, and do
+new card but had NOT yet paid the balance). Telegram and the website are unaffected. Do NOT turn WhatsApp back on, and do
 not mention or build for any payment gateway other than Takbull (via Upay), without the owner's explicit decision.
 
 **Proposed next steps (owner was asked "start?", answered good night):**
@@ -6894,10 +6894,10 @@ project's control where that consent can be captured before the customer leaves 
 
 **The key saga's real ending**: after multiple keys died within an hour of creation overnight
 (see the last several entries), Bright Data support (a human, not just Sophie) confirmed via the
-account's real audit log: `amir81358@gmail.com` already had 2 keys assigned — a user can only
+account's real audit log: `owner@example.com` already had 2 keys assigned — a user can only
 hold one key generated at a time, which is why the "Add API key" dropdown only ever offered the
 secondary `kyc@todira.app` user. The actual fix: **Refresh** the existing Active key already
-assigned to `amir81358@gmail.com` (expires 14-12-2026) — Bright Data's own R&D team had shipped a
+assigned to `owner@example.com` (expires 14-12-2026) — Bright Data's own R&D team had shipped a
 migration invalidating old hashed-format tokens in favor of UUID tokens, and a Refresh reissues
 the same key as a UUID token. Done live; `diagnose-bright-data-account-status.yaml` confirmed
 `/customer/balance` → real `200` immediately after, and a full `safe-single-test-run.yaml` cycle
