@@ -551,16 +551,18 @@ def _message_sent_at(message: dict) -> dt.datetime | None:
 
 
 # The one-link "while you were away" summary covers listings first seen since the user's previous
-# message - however long that was (hours, days, weeks: no fixed window). Only when the previous message
-# time is unknown (a user from before the column existed, or an explicit "continue") does it fall back
-# to this many hours.
-_DIGEST_DEFAULT_LOOKBACK = dt.timedelta(hours=48)
+# message - however long that was (hours, days, weeks: no fixed window). When the previous message time
+# is unknown (a user from before the column existed, or an explicit "continue") there is no cutoff at
+# all: it covers everything the user has not been shown yet.
+
+
+_NO_CUTOFF = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
 
 
 def _touch_inbound_sync(wa_id: str, sent_at: dt.datetime | None = None) -> dt.datetime | None:
     """Stamps the user's last inbound message. Returns None normally; when this message REOPENED a
     closed window for an opted-in user it returns the moment to summarize FROM (their previous
-    message time, whatever the gap; 48h only if unknown) — the caller then sends the one-link summary
+    message time, whatever the gap) - or, when that time is unknown, the epoch (no cutoff) — the caller then sends the one-link summary
     of what was found while they were away. A number with no user row yet is a no-op (the row is
     created later in this same message's handling; its first stamp lands on their next message)."""
     now = dt.datetime.now(dt.timezone.utc)
@@ -578,7 +580,7 @@ def _touch_inbound_sync(wa_id: str, sent_at: dt.datetime | None = None) -> dt.da
         if not (was_closed and user.whatsapp_notifications_opted_in):
             return None
         previous_utc = None if previous is None else (previous if previous.tzinfo else previous.replace(tzinfo=dt.timezone.utc))
-        return previous_utc or now - _DIGEST_DEFAULT_LOOKBACK
+        return previous_utc or _NO_CUTOFF
 
 
 def _touch_inbound_safely(wa_id: str, sent_at: dt.datetime | None = None) -> dt.datetime | None:
@@ -592,11 +594,9 @@ def _touch_inbound_safely(wa_id: str, sent_at: dt.datetime | None = None) -> dt.
 
 def _send_missed_digest_sync(wa_id: str, since: dt.datetime | None = None) -> None:
     """ONE free-form message with one link, covering the matching listings first seen since `since`
-    (default: the last 48 hours) that the user hasn't been shown yet — found while their window was
+    (default: no cutoff) that the user hasn't been shown yet — found while their window was
     closed and nothing could be sent. Marks exactly those shown, so it can never repeat and the
     scraper never re-sends them one by one. Older unseen matches stay on the website."""
-    if since is None:
-        since = dt.datetime.now(dt.timezone.utc) - _DIGEST_DEFAULT_LOOKBACK
     with get_session() as session:
         user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
         if user is None:
