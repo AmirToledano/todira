@@ -377,14 +377,12 @@ def test_send_whatsapp_match_message_sends_photo_text_and_view_button():
         patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg") as mock_photo,
         patch.object(notifier.whatsapp_client, "upload_media", return_value="media-1") as mock_upload,
         patch.object(notifier.whatsapp_client, "send_image_cta_message", return_value=True) as mock_send,
-        patch.object(notifier.whatsapp_client, "send_template_message") as mock_template,
         patch.object(notifier, "generate_wid_token", return_value="signed"),
     ):
         assert notifier._send_whatsapp_match_message(user, listing) is True
 
     mock_photo.assert_called_once_with(listing.image_urls)
     mock_upload.assert_called_once_with(b"jpeg")
-    mock_template.assert_not_called()
     args, kwargs = mock_send.call_args
     assert args[0] == "9725500000"
     assert kwargs["media_id"] == "media-1"
@@ -418,7 +416,7 @@ def test_send_whatsapp_match_message_returns_false_when_upload_fails():
     mock_send.assert_not_called()
 
 
-def _run_notify(user, listing):
+def _run_notify(user, listing, paused=False):
     filter_row = SimpleNamespace(user_id=1)
     added = []
     session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: added.append(obj), commit=lambda: None)
@@ -426,6 +424,7 @@ def _run_notify(user, listing):
         patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier.whatsapp_guard, "is_paused", return_value=paused),
         patch.object(notifier, "format_caption", return_value="caption"),
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_telegram,
         patch.object(notifier, "_send_whatsapp_match_message", return_value=True) as mock_wa,
@@ -487,3 +486,18 @@ def test_notify_new_matches_skips_whatsapp_only_user_when_not_opted_in():
 
     mock_wa.assert_not_called()
     assert (matched, sent) == (1, 0)
+
+
+def test_notify_new_matches_sends_no_whatsapp_when_the_circuit_breaker_is_paused():
+    """Once anything billable was detected (todira_common/whatsapp_guard.py), no proactive WhatsApp
+    send happens at all - even with an open window - and nothing is recorded, so the listing is not
+    lost: the digest covers it once the owner resumes."""
+    (matched, sent, _n), added, _telegram, mock_wa = _run_notify(_wa_user(), _rich_listing(), paused=True)
+
+    mock_wa.assert_not_called()
+    assert (matched, sent) == (1, 0)
+    assert added == []
+
+
+def test_notifier_has_no_way_to_send_a_template_even_through_the_client():
+    assert not hasattr(notifier.whatsapp_client, "send_template_message")

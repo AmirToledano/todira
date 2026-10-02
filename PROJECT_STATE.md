@@ -14,6 +14,18 @@ Migration 0019 adds `whatsapp_last_inbound_at` / `whatsapp_checkin_sent_at` (NUL
 until each user next writes). Do NOT reintroduce template sends without the owner's explicit decision.
 Do not mention or build for any payment gateway other than Takbull (via Upay).
 
+**WhatsApp "never pay" guard rails (2026-10-02), defence in depth:** (1) STRUCTURAL: no template sender exists and
+`whatsapp_client._post_message` refuses any `type: template` payload; a test scans the code for template sends.
+(2) WINDOW: proactive sends only inside the user's free 24h window, stamped from META'S message timestamp (never "now", so
+a late webhook redelivery cannot fake a fresh window; the stamp never moves backwards), 23.5h safety margin.
+(3) CIRCUIT BREAKER: `common/todira_common/whatsapp_guard.py`, persistent flag in table `app_flags` (migration 0020), fail-CLOSED.
+The webhook trips it the moment a delivery status says `pricing.billable == true`; `scraper/whatsapp_cost_guard.py`
+(every ~3h, main scraper run only) trips it if Meta's pricing_analytics show ANY cost since 2026-10-02. Tripped = no listing
+pushes and no check-ins, owner gets a Telegram alert; resume with `whatsapp_guard.resume()` only on the owner's decision.
+Webhook replies to a user's own message are unaffected (not proactive). Env `WHATSAPP_BUSINESS_ACCOUNT_ID` (helm value
+`scraper.whatsappBusinessAccountId`) feeds the cost guard. Manual check workflow: `.github/workflows/test-free-whatsapp-send.yaml`
+(owner only, only when the window is open, logs status only).
+
 **Signed login links (2026-10-02, security):** the site NO LONGER trusts a bare `?uid=<telegram id>` (it let anyone view
 or edit another user's account and, via `/auth/google/start?uid=`, take it over by linking their own Google account).
 Every bot/notifier link now carries `?t=<signed token>` (`common/todira_common/uid_token.py`, 180 days, same secret as the

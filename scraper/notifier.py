@@ -27,7 +27,7 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from todira_common import bright_data_client, whatsapp_client
+from todira_common import bright_data_client, whatsapp_client, whatsapp_guard
 from todira_common.access import has_full_access
 from todira_common.bot_strings import bot_text
 from todira_common.cards import (
@@ -252,6 +252,8 @@ async def _notify_new_matches(
     sent = 0
     newly_notified_user_ids: set[int] = set()
     to_notify: list[tuple[Filter, User]] = []
+    # Circuit breaker (todira_common/whatsapp_guard.py): fail-closed, read once per listing.
+    wa_paused = whatsapp_guard.is_paused(session)
     for filter_row in _candidate_filters(session, listing):
         if not evaluate(filter_row, listing).matched:
             continue
@@ -265,7 +267,7 @@ async def _notify_new_matches(
             only_telegram_user_id
         ):
             continue
-        if user.telegram_user_id is None and not _whatsapp_eligible(user):
+        if user.telegram_user_id is None and (wa_paused or not _whatsapp_eligible(user)):
             # No channel to actually push through. A Google-only standalone account (2026-09-05)
             # legitimately has neither; a WhatsApp-only or -linked account has a channel to send
             # to but hasn't opted in yet (see _whatsapp_eligible). Either way they can still check
@@ -293,7 +295,7 @@ async def _notify_new_matches(
             if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
                 sent_on_any_channel = True
             await asyncio.sleep(SEND_DELAY_SECONDS)
-        if _whatsapp_eligible(user):
+        if not wa_paused and _whatsapp_eligible(user):
             # asyncio.to_thread: _send_whatsapp_match_message downloads/composites a real photo and
             # makes two HTTP calls — genuinely blocking work that must never run directly on this
             # event loop, same reasoning as send_listing_card's own asyncio.to_thread calls around
