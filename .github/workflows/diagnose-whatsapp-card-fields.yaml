@@ -1,0 +1,77 @@
+name: Diagnose - which fields do the owner's recent notified listings actually have (read-only)
+
+# ONE-OFF, READ-ONLY, manual-only (workflow_dispatch) - 2026-10-02. The owner reports that WhatsApp listing
+# messages lack floor, move-in date and features. The message builder shows each of those whenever the
+# listing HAS the value, so this checks the real data behind the owner's most recent notifications: per
+# listing, its source and whether floor / move-in date / features are set. Prints no phone numbers or
+# ids of people - only listing ids and booleans.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Field coverage of the owner's recent notified listings, plus overall coverage per source
+        run: |
+          cat <<'PYEOF' > /tmp/fields.py
+          import os
+          from sqlalchemy import select, func, text
+          from todira_common.db import get_session
+          from todira_common.models import Listing, SentNotification, User
+          from todira_common.cards import feature_list
+
+          with get_session() as session:
+              owner = session.scalars(select(User).where(User.telegram_user_id == int(os.environ["OWNER_TELEGRAM_USER_ID"]))).first()
+              rows = session.execute(
+                  select(SentNotification.listing_id, SentNotification.sent_at)
+                  .where(SentNotification.user_id == owner.id)
+                  .order_by(SentNotification.sent_at.desc()).limit(25)
+              ).all()
+              print("owner's last 25 notified listings (newest first): id source floor move_in features desc_len")
+              for listing_id, sent_at in rows:
+                  l = session.get(Listing, listing_id)
+                  print(l.id, l.source, l.floor is not None, l.move_in_date is not None,
+                        len(feature_list(l, "he")), len(l.description or ""))
+              print()
+              print("coverage over ALL active listings, per source: n, with floor, with move_in, with any feature")
+              for source in session.scalars(select(Listing.source).distinct()):
+                  q = select(Listing).where(Listing.source == source, Listing.is_delisted.is_(False))
+                  items = session.scalars(q).all()
+                  n = len(items)
+                  if not n: continue
+                  print(source, n,
+                        sum(1 for i in items if i.floor is not None),
+                        sum(1 for i in items if i.move_in_date is not None),
+                        sum(1 for i in items if feature_list(i, "he")))
+          PYEOF
+          kubectl get cronjob todira-scraper -n todira -o json > /tmp/cronjob.json
+          python3 - <<'PYEOF'
+          import json
+          cron = json.load(open("/tmp/cronjob.json"))
+          pod_spec = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+          c = pod_spec["containers"][0]
+          c["name"] = "fields"
+          c["command"] = ["python", "-u", "-c", open("/tmp/fields.py").read()]
+          c.pop("args", None)
+          pod_spec["restartPolicy"] = "Never"
+          json.dump({"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "diag-card-fields", "namespace": "todira"}, "spec": pod_spec}, open("/tmp/pod.json", "w"))
+          PYEOF
+          kubectl delete pod diag-card-fields -n todira --ignore-not-found --wait=true
+          kubectl apply -f /tmp/pod.json
+          for i in $(seq 1 40); do
+            PHASE=$(kubectl get pod diag-card-fields -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          kubectl logs -n todira diag-card-fields || true
+          kubectl delete pod diag-card-fields -n todira --ignore-not-found
