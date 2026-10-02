@@ -36,6 +36,7 @@ from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import _compute_detail_updates, normalize
 from notifier import run_notifications
 from whatsapp_checkin import run_whatsapp_checkins
+from whatsapp_cost_guard import run_cost_guard
 from yad2_client import (
     REGION_SLUGS,
     REGIONS_ON_MAP_API,
@@ -1654,6 +1655,11 @@ def run_once() -> dict[str, int]:
         # Only on the main scraper (SCRAPE_SOURCES unset): the Facebook CronJob also runs this
         # function, and two jobs must not both ask the same user.
         if not os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip():
+            try:
+                # Cost backstop FIRST: if it trips, the check-ins below see the pause flag.
+                summary.update(run_cost_guard(session))
+            except Exception:
+                logger.exception("WhatsApp cost guard step failed")
             try:
                 summary.update(run_whatsapp_checkins(session))
             except Exception:

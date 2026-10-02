@@ -180,140 +180,22 @@ def test_cta_url_returns_false_on_http_error(monkeypatch):
         )
 
 
-# --- send_template_message (2026-09-08 proactive-notification feature) ---
+# --- templates are never sent (2026-10-02: Meta bills every template message; owner's rule is zero cost) ---
 
 
-def test_template_returns_false_when_credentials_not_configured(monkeypatch):
-    monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
-    monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
-    assert (
-        whatsapp_client.send_template_message(
-            "972550000000", template_name="new_listing_match", language_code="he", body_params=["x"]
-        )
-        is False
-    )
+def test_no_template_sender_exists():
+    assert not hasattr(whatsapp_client, "send_template_message")
 
 
-def test_template_sends_correct_payload_on_success(monkeypatch):
+def test_post_message_refuses_a_template_payload_without_calling_meta(monkeypatch):
     monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
     monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
+    payload = {"messaging_product": "whatsapp", "to": "9725500000", "type": "template", "template": {"name": "x"}}
 
-    class _FakeResponse:
-        status_code = 200
+    with patch.object(whatsapp_client._http_client, "post") as post_mock:
+        assert whatsapp_client._post_message(payload, to="9725500000", action_desc="send template") is False
 
-        def raise_for_status(self):
-            pass
-
-    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
-        assert (
-            whatsapp_client.send_template_message(
-                "972550000000",
-                template_name="new_listing_match",
-                language_code="he",
-                body_params=["רוטשילד, תל אביב", "3", "5,500", "https://todira.app/apartments"],
-            )
-            is True
-        )
-
-    call_kwargs = post_mock.call_args.kwargs
-    assert call_kwargs["json"] == {
-        "messaging_product": "whatsapp",
-        "to": "972550000000",
-        "type": "template",
-        "template": {
-            "name": "new_listing_match",
-            "language": {"code": "he"},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": "רוטשילד, תל אביב"},
-                        {"type": "text", "text": "3"},
-                        {"type": "text", "text": "5,500"},
-                        {"type": "text", "text": "https://todira.app/apartments"},
-                    ],
-                }
-            ],
-        },
-    }
-    assert call_kwargs["headers"]["Authorization"] == "Bearer test-token"
-    assert "123456" in post_mock.call_args.args[0]
-
-
-def test_template_returns_false_on_http_error(monkeypatch):
-    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
-    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
-
-    with patch.object(whatsapp_client._http_client, "post", side_effect=httpx.ConnectError("boom")):
-        assert (
-            whatsapp_client.send_template_message(
-                "972550000000", template_name="new_listing_match", language_code="he", body_params=["x"]
-            )
-            is False
-        )
-
-
-# --- send_template_message's optional header image / dynamic button (2026-09-27, the rich
-# per-listing card) — both default to None so every test above (the plain 3-variable template)
-# stays completely unaffected. ---
-
-
-def test_template_with_header_image_adds_a_header_component_first(monkeypatch):
-    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
-    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
-
-    class _FakeResponse:
-        status_code = 200
-
-        def raise_for_status(self):
-            pass
-
-    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
-        assert (
-            whatsapp_client.send_template_message(
-                "972550000000",
-                template_name="new_listing_match_rich",
-                language_code="he",
-                body_params=["רוטשילד", "5,500"],
-                header_image_media_id="media-id-123",
-            )
-            is True
-        )
-
-    components = post_mock.call_args.kwargs["json"]["template"]["components"]
-    assert components[0] == {
-        "type": "header",
-        "parameters": [{"type": "image", "image": {"id": "media-id-123"}}],
-    }
-    assert components[1]["type"] == "body"
-
-
-def test_template_with_button_url_param_adds_a_button_component_last(monkeypatch):
-    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
-    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123456")
-
-    class _FakeResponse:
-        status_code = 200
-
-        def raise_for_status(self):
-            pass
-
-    with patch.object(whatsapp_client._http_client, "post", return_value=_FakeResponse()) as post_mock:
-        whatsapp_client.send_template_message(
-            "972550000000",
-            template_name="new_listing_match_rich",
-            language_code="he",
-            body_params=["רוטשילד"],
-            button_url_param="42&wid=abc123",
-        )
-
-    components = post_mock.call_args.kwargs["json"]["template"]["components"]
-    assert components[-1] == {
-        "type": "button",
-        "sub_type": "url",
-        "index": "0",
-        "parameters": [{"type": "text", "text": "42&wid=abc123"}],
-    }
+    post_mock.assert_not_called()
 
 
 # --- upload_media (2026-09-27, the rich per-listing card's dynamic header image) ---

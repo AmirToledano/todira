@@ -18,7 +18,7 @@ import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from todira_common import whatsapp_client
+from todira_common import whatsapp_client, whatsapp_guard
 from todira_common.bot_strings import bot_text
 from todira_common.language import DEFAULT_LANG
 from todira_common.models import User
@@ -48,6 +48,8 @@ def send_checkin(user: User) -> bool:
 
 def run_whatsapp_checkins(session: Session) -> dict[str, int]:
     """Sends every due check-in. Returns {"whatsapp_checkins_sent": n} for the run summary."""
+    if whatsapp_guard.is_paused(session):
+        return {"whatsapp_checkins_sent": 0, "whatsapp_paused": 1}
     now = dt.datetime.now(dt.timezone.utc)
     users = session.scalars(
         select(User).where(

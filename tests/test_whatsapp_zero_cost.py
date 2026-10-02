@@ -13,6 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 
@@ -104,6 +106,14 @@ def _wa_user(**overrides):
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
+
+
+@pytest.fixture(autouse=True)
+def _breaker_not_tripped():
+    # Replace the module reference inside whatsapp_checkin only (not the real guard module, which the
+    # circuit-breaker tests below exercise directly).
+    with patch.object(whatsapp_checkin, "whatsapp_guard", SimpleNamespace(is_paused=lambda session: False)):
+        yield
 
 
 def test_run_checkins_sends_buttons_to_due_users_and_stamps_them():
@@ -394,3 +404,212 @@ def test_whatsapp_caption_respects_the_interactive_body_limit_and_can_drop_the_l
     assert "https://" not in caption
     with_link = format_caption_whatsapp(listing, has_access=True, view_url="https://todira.app/v", limit=1024)
     assert "https://todira.app/v" in with_link and len(with_link) <= 1024
+
+
+def test_checkins_are_not_sent_while_the_circuit_breaker_is_paused():
+    with (
+        patch.object(whatsapp_checkin.whatsapp_guard, "is_paused", return_value=True),
+        patch.object(whatsapp_checkin.whatsapp_client, "send_reply_buttons_message") as mock_send,
+    ):
+        result = whatsapp_checkin.run_whatsapp_checkins(_FakeSession([_wa_user()]))
+
+    mock_send.assert_not_called()
+    assert result["whatsapp_checkins_sent"] == 0
+
+
+# --- circuit breaker ---
+
+
+def test_guard_fails_closed_when_the_flag_cannot_be_read():
+    from todira_common import whatsapp_guard
+
+    class _BrokenSession:
+        def get(self, *args, **kwargs):
+            raise RuntimeError("db down")
+
+    assert whatsapp_guard.is_paused(_BrokenSession()) is True
+
+
+def test_guard_pause_and_resume_roundtrip():
+    from todira_common import whatsapp_guard
+
+    store = {}
+
+    class _Session:
+        def get(self, model, key):
+            return store.get(key)
+
+        def add(self, row):
+            store[row.key] = row
+
+        def commit(self):
+            pass
+
+    session = _Session()
+    assert whatsapp_guard.is_paused(session) is False
+    whatsapp_guard.pause(session, "billable message seen")
+    assert whatsapp_guard.is_paused(session) is True
+    whatsapp_guard.resume(session)
+    assert whatsapp_guard.is_paused(session) is False
+
+
+def _status_value(billable):
+    return {"statuses": [{"status": "delivered", "pricing": {"billable": billable, "category": "service" if not billable else "marketing", "pricing_model": "PMP"}}]}
+
+
+def test_a_billable_delivery_status_trips_the_breaker_and_alerts_the_owner():
+    with (
+        patch.object(whatsapp_webhook, "_trip_billing_breaker") as mock_trip,
+    ):
+        whatsapp_webhook._log_delivery_statuses(_status_value(True))
+
+    mock_trip.assert_called_once_with("marketing", "PMP", None)
+
+
+def test_a_free_delivery_status_never_trips_the_breaker():
+    with patch.object(whatsapp_webhook, "_trip_billing_breaker") as mock_trip:
+        whatsapp_webhook._log_delivery_statuses(_status_value(False))
+
+    mock_trip.assert_not_called()
+
+
+def test_tripping_the_breaker_pauses_once_and_alerts_once():
+    from contextlib import contextmanager
+
+    state = {"paused": False, "pauses": 0}
+
+    @contextmanager
+    def _fake_get_session():
+        yield object()
+
+    def _fake_is_paused(_session):
+        return state["paused"]
+
+    def _fake_pause(_session, reason):
+        state["paused"] = True
+        state["pauses"] += 1
+        assert "marketing" in reason
+
+    with (
+        patch.object(whatsapp_webhook, "get_session", _fake_get_session),
+        patch.object(whatsapp_webhook.whatsapp_guard, "is_paused", _fake_is_paused),
+        patch.object(whatsapp_webhook.whatsapp_guard, "pause", _fake_pause),
+        patch.object(whatsapp_webhook, "alert_owner") as mock_alert,
+    ):
+        whatsapp_webhook._trip_billing_breaker("marketing", "PMP", "regular")
+        whatsapp_webhook._trip_billing_breaker("marketing", "PMP", "regular")
+
+    assert state["pauses"] == 1
+    mock_alert.assert_called_once()
+
+
+# --- the inbound timestamp is Meta's, never "now" for a late redelivery ---
+
+
+def test_message_sent_at_reads_metas_epoch_timestamp():
+    assert whatsapp_webhook._message_sent_at({"timestamp": "1790930400"}) == dt.datetime(
+        2026, 10, 2, 8, 40, tzinfo=dt.timezone.utc
+    )
+    assert whatsapp_webhook._message_sent_at({}) is None
+    assert whatsapp_webhook._message_sent_at({"timestamp": "garbage"}) is None
+
+
+def test_a_late_redelivery_of_an_old_message_cannot_make_the_window_look_fresh():
+    user = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=40))
+    old_message_time = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=30)
+    with _patch_session(_WebhookSession(user)):
+        whatsapp_webhook._touch_inbound_sync("9725500000", old_message_time)
+
+    assert whatsapp_window.window_open(user.whatsapp_last_inbound_at) is False
+
+
+def test_the_stamp_never_moves_backwards():
+    newer = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+    user = _wa_user(whatsapp_last_inbound_at=newer)
+    with _patch_session(_WebhookSession(user)):
+        whatsapp_webhook._touch_inbound_sync("9725500000", newer - dt.timedelta(hours=5))
+
+    assert user.whatsapp_last_inbound_at == newer
+
+
+# --- cost guard backstop ---
+
+
+def test_cost_guard_sums_pricing_analytics_cost():
+    import whatsapp_cost_guard
+
+    payload = {"pricing_analytics": {"data": [{"data_points": [{"cost": 0}, {"cost": 0.0353}, {"cost": "0.1"}]}]}}
+    assert whatsapp_cost_guard.total_cost(payload) == pytest.approx(0.1353)
+    assert whatsapp_cost_guard.total_cost({}) == 0.0
+
+
+def test_cost_guard_pauses_and_alerts_when_any_cost_appears(monkeypatch):
+    import whatsapp_cost_guard
+
+    monkeypatch.setenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1")
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "t")
+    flags = {}
+    with (
+        patch.object(whatsapp_cost_guard.whatsapp_guard, "get_flag", lambda s, k: flags.get(k)),
+        patch.object(whatsapp_cost_guard.whatsapp_guard, "set_flag", lambda s, k, v: flags.__setitem__(k, v)),
+        patch.object(whatsapp_cost_guard.whatsapp_guard, "is_paused", lambda s: bool(flags.get("whatsapp_paused"))),
+        patch.object(whatsapp_cost_guard, "_fetch_cost", return_value=0.0353),
+        patch.object(whatsapp_cost_guard, "alert_owner") as mock_alert,
+    ):
+        result = whatsapp_cost_guard.run_cost_guard(object())
+
+    assert result == {"whatsapp_cost_alarm": 1}
+    assert flags["whatsapp_paused"]
+    mock_alert.assert_called_once()
+
+
+def test_cost_guard_stays_quiet_at_zero_cost_and_ignores_analytics_errors(monkeypatch):
+    import whatsapp_cost_guard
+
+    monkeypatch.setenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1")
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "t")
+    flags = {}
+    common = (
+        patch.object(whatsapp_cost_guard.whatsapp_guard, "get_flag", lambda s, k: flags.get(k)),
+        patch.object(whatsapp_cost_guard.whatsapp_guard, "set_flag", lambda s, k, v: flags.__setitem__(k, v)),
+        patch.object(whatsapp_cost_guard, "alert_owner"),
+    )
+    with common[0], common[1], common[2], patch.object(whatsapp_cost_guard, "_fetch_cost", return_value=0.0):
+        assert whatsapp_cost_guard.run_cost_guard(object()) == {"whatsapp_cost_checked": 1}
+    assert "whatsapp_paused" not in flags
+
+    flags.clear()
+    with common[0], common[1], common[2], patch.object(whatsapp_cost_guard, "_fetch_cost", return_value=None):
+        assert whatsapp_cost_guard.run_cost_guard(object()) == {}
+    assert "whatsapp_paused" not in flags
+
+
+def test_cost_guard_is_throttled_to_once_per_few_hours(monkeypatch):
+    import whatsapp_cost_guard
+
+    monkeypatch.setenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1")
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "t")
+    recent = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=30)).isoformat()
+    with (
+        patch.object(whatsapp_cost_guard.whatsapp_guard, "get_flag", lambda s, k: recent),
+        patch.object(whatsapp_cost_guard, "_fetch_cost") as mock_fetch,
+    ):
+        assert whatsapp_cost_guard.run_cost_guard(object()) == {}
+
+    mock_fetch.assert_not_called()
+
+
+# --- static guarantee: nothing in the code base can build a template message ---
+
+
+def test_no_production_code_can_send_a_whatsapp_template():
+    import re
+
+    root = Path(__file__).resolve().parent.parent
+    offenders = []
+    for folder in ("common", "scraper", "website", "bot"):
+        for path in (root / folder).rglob("*.py"):
+            text = path.read_text()
+            if re.search(r"send_template_message|\"type\":\s*\"template\"", text) and path.name != "whatsapp_client.py":
+                offenders.append(str(path.relative_to(root)))
+    assert offenders == []

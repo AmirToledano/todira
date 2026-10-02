@@ -289,6 +289,8 @@ scraper:
   # message; 717 of them cost $25.31 in 30 days). Listings go out only inside the 24h window opened by the
   # user's own last message, kept open by the daily "still looking?" check-in (scraper/whatsapp_checkin.py).
   # The old whatsappMatchTemplateName / whatsappRichMatchTemplateName values were removed on purpose.
+  # WhatsApp Business Account id (not secret; already in this repo's diagnostics) - read by the cost guard.
+  whatsappBusinessAccountId: "1814744176326509"
   # 2026-09-15: facebook-scraper-cronjob.yaml — a SEPARATE CronJob from the main scraper above,
   # deliberately (see that file's own comment for the full account-safety reasoning: every request
   # runs through the dedicated scraping account's own real, authenticated session from this

@@ -126,6 +126,9 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: whatsapp-phone-number-id
                       optional: true
+                # Not secret. Lets scraper/whatsapp_cost_guard.py read Meta's pricing analytics.
+                - name: WHATSAPP_BUSINESS_ACCOUNT_ID
+                  value: {{ .Values.scraper.whatsappBusinessAccountId | default "" | quote }}
                 # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
                 # scraper.komoMaxNewDetailFetchesPerRun for the real math these exist to protect.
                 # Only set when the value is actually present, so scraper/main.py's own Python-side

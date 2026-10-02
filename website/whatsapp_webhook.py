@@ -38,13 +38,14 @@ import time
 from collections import OrderedDict
 
 import httpx
-from todira_common import cities, gemini_client, whatsapp_client
+from todira_common import cities, gemini_client, whatsapp_client, whatsapp_guard
 from todira_common.bot_strings import bot_text
 from todira_common.channel_link import resolve_link_code
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG, SUPPORTED_LANGS
 from todira_common.listing_matches import find_new_matches_to_show
 from todira_common.matching import safe_range_update
+from todira_common.owner_alert import alert_owner
 from todira_common.models import ContactMessage, Filter, User
 from todira_common.support import looks_like_help_request
 from todira_common.users import get_or_create_whatsapp_user
@@ -539,26 +540,40 @@ _CHECKIN_BUTTON_IDS = {CHECKIN_CONTINUE_ID, CHECKIN_FOUND_ID, CHECKIN_STOP_ID}
 _RESUME_WORDS = {"המשך", "continue", "продолжить", "continuer", "متابعة", "start", "חידוש"}
 
 
-def _touch_inbound_sync(wa_id: str) -> bool:
+def _message_sent_at(message: dict) -> dt.datetime | None:
+    """When the USER sent this message, per Meta's own `timestamp` (epoch seconds). Used instead of
+    "now" so a webhook Meta redelivers hours late can never make the 24h window look fresher than it
+    really is (which could let a message go out after the window closed)."""
+    try:
+        return dt.datetime.fromtimestamp(int(message.get("timestamp")), dt.timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _touch_inbound_sync(wa_id: str, sent_at: dt.datetime | None = None) -> bool:
     """Stamps now as the user's last inbound message. Returns True when this message REOPENED a
     closed window for an opted-in user — the caller then sends the one-link summary of everything
     that was found while they were away. A number with no user row yet is a no-op (the row is
     created later in this same message's handling; its first stamp lands on their next message)."""
     now = dt.datetime.now(dt.timezone.utc)
+    stamp = min(sent_at, now) if sent_at is not None else now
     with get_session() as session:
         user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
         if user is None:
             return False
-        was_closed = not window_open(user.whatsapp_last_inbound_at, now)
-        user.whatsapp_last_inbound_at = now
+        previous = user.whatsapp_last_inbound_at
+        was_closed = not window_open(previous, now)
+        # Never move the stamp backwards (a late redelivery of an older message).
+        if previous is None or stamp > (previous if previous.tzinfo else previous.replace(tzinfo=dt.timezone.utc)):
+            user.whatsapp_last_inbound_at = stamp
         session.commit()
         return was_closed and bool(user.whatsapp_notifications_opted_in)
 
 
-def _touch_inbound_safely(wa_id: str) -> bool:
+def _touch_inbound_safely(wa_id: str, sent_at: dt.datetime | None = None) -> bool:
     """_touch_inbound_sync, but a DB hiccup in the stamp must never block handling the message."""
     try:
-        return _touch_inbound_sync(wa_id)
+        return _touch_inbound_sync(wa_id, sent_at)
     except Exception:
         logger.exception("Could not stamp WhatsApp inbound time")
         return False
@@ -675,6 +690,27 @@ def _alert_owner_of_delivery_failure(errors: list[tuple]) -> None:
         logger.exception("Failed to push a WhatsApp delivery-failure alert to Telegram")
 
 
+def _trip_billing_breaker(category, pricing_model, pricing_type) -> None:
+    """Meta says a message WE sent is BILLABLE. The owner's rule is zero cost, so this pauses every
+    proactive WhatsApp send (todira_common/whatsapp_guard.py) and alerts the owner. Never raises, and
+    never logs a recipient or message id."""
+    reason = f"billable WhatsApp message reported by Meta (category={category}, type={pricing_type}, model={pricing_model})"
+    logger.error("WhatsApp BILLING breaker tripped: %s", reason)
+    try:
+        with get_session() as session:
+            already_paused = whatsapp_guard.is_paused(session)
+            if not already_paused:
+                whatsapp_guard.pause(session, reason)
+        if not already_paused:
+            alert_owner(
+                "🛑 <b>וואטסאפ הושהה אוטומטית</b>\n"
+                f"מטא דיווחה על הודעה שמחויבת בתשלום (קטגוריה: {html.escape(str(category))}). "
+                "כל השליחות היזומות נעצרו עד שתחליט להמשיך."
+            )
+    except Exception:
+        logger.exception("Could not trip the WhatsApp billing breaker")
+
+
 def _log_delivery_statuses(value: dict) -> None:
     """Meta reports what happened to every message WE sent (sent/delivered/read/failed) as a
     "statuses" entry on this same webhook. They used to be dropped silently, which made a message
@@ -685,6 +721,8 @@ def _log_delivery_statuses(value: dict) -> None:
     for status in value.get("statuses") or []:
         pricing = status.get("pricing") or {}
         category = pricing.get("category")
+        if pricing.get("billable") is True:
+            _trip_billing_breaker(category, pricing.get("pricing_model"), pricing.get("type"))
         if status.get("status") == "failed":
             errors = [
                 (error.get("code"), error.get("title"), (error.get("error_data") or {}).get("details"))
@@ -733,7 +771,7 @@ def _process_payload_sync(payload: dict) -> None:
                         continue
 
                     # Every inbound message (any type) reopens the free 24h window.
-                    reopened_window = _touch_inbound_safely(wa_id)
+                    reopened_window = _touch_inbound_safely(wa_id, _message_sent_at(message))
 
                     msg_type = message.get("type")
                     list_reply_id = None
@@ -790,7 +828,7 @@ def _process_payload_sync(payload: dict) -> None:
                     # linked to one) while this very message is processed had nothing to stamp at the
                     # top of the loop, yet its window is open right now.
                     if message.get("from"):
-                        _touch_inbound_safely(message["from"])
+                        _touch_inbound_safely(message["from"], _message_sent_at(message))
 
 
 @router.post("/webhook/whatsapp")

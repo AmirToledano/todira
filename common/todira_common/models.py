@@ -501,3 +501,18 @@ class Payment(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     paid_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppFlag(Base):
+    """Tiny key/value store for process-wide switches that must survive restarts and be visible to
+    every pod (website, scraper). First use (2026-10-02): "whatsapp_paused" - the circuit breaker that
+    stops every proactive WhatsApp send the moment anything billable is detected. See
+    todira_common/whatsapp_guard.py."""
+
+    __tablename__ = "app_flags"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

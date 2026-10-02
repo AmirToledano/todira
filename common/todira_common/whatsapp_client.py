@@ -6,20 +6,16 @@ never raises. Callers (whatsapp_webhook.py, scraper/notifier.py) treat a False r
 message didn't go out" without crashing the whole request/run.
 
 Lives in todira_common (moved here 2026-09-08, was website/whatsapp_client.py) because it's no
-longer website-only: send_template_message below is used by scraper/notifier.py for proactive
-pushes, the same way todira_common/cards.py and bright_data_client.py are already shared between
+longer website-only: scraper/notifier.py and scraper/whatsapp_checkin.py use it for proactive
+sends, the same way todira_common/cards.py and bright_data_client.py are already shared between
 the bot and the scraper.
 
-Two message-sending regimes:
-- Free-form text/interactive messages (send_text_message, send_cta_url_message,
-  mark_as_read_with_typing_indicator) only work within 24 hours of the user's own last message
-  (WhatsApp's "customer service window") — fine for direct replies in an active conversation
-  (whatsapp_webhook.py's onboarding/chat), never for a proactive push out of nowhere.
-- send_template_message uses a pre-approved WhatsApp Message Template, Meta's only mechanism for
-  business-initiated messages outside that window — this is what a proactive "a new listing
-  matches your filter" push (scraper/notifier.py) actually needs, and it requires the recipient's
-  own opt-in plus a template Meta has already reviewed and approved (see PROJECT_STATE.md for the
-  submitted template copy and the User.whatsapp_notifications_opted_in field this is gated on).
+ONLY free-form messages exist here (2026-10-02, owner's rule: never pay Meta). A free-form message
+(text, interactive, image + button) is free when sent within 24 hours of the user's own last inbound
+message ("customer service window", see todira_common/whatsapp_window.py) and is rejected by Meta
+outside it. Message Templates - the only way to message someone outside the window, and billed per
+message - are deliberately NOT supported: there is no template sender, and _post_message refuses any
+payload of type "template".
 """
 from __future__ import annotations
 
@@ -64,6 +60,11 @@ def _post_message(payload: dict, *, to: str, action_desc: str) -> bool:
         logger.error(
             "%s/%s not set — cannot %s to %s", ACCESS_TOKEN_ENV_VAR, PHONE_NUMBER_ID_ENV_VAR, action_desc, to
         )
+        return False
+    if payload.get("type") == "template":
+        # Meta bills every template message. This project never sends one (owner's rule, 2026-10-02),
+        # so even a future bug that builds such a payload cannot reach Meta.
+        logger.error("Refusing to send a WhatsApp template message (templates are billed)")
         return False
     access_token, phone_number_id = creds
     url = f"https://graph.facebook.com/{_GRAPH_API_VERSION}/{phone_number_id}/messages"
@@ -178,77 +179,9 @@ def send_language_picker_message(
     return _post_message(payload, to=to, action_desc="send WhatsApp language picker")
 
 
-def send_template_message(
-    to: str,
-    *,
-    template_name: str,
-    language_code: str,
-    body_params: list[str],
-    header_image_media_id: str | None = None,
-    button_url_param: str | None = None,
-) -> bool:
-    """Sends a pre-approved WhatsApp Message Template — see this module's own docstring for why
-    this is the only way to message a user proactively, outside a conversation they started.
-
-    `template_name`/`language_code` must exactly match a template Meta has already APPROVED in
-    WhatsApp Manager (see PROJECT_STATE.md for the exact copy submitted) — an unapproved or
-    misspelled name fails the whole send, same fail-soft contract as every other function here
-    (logged, returns False, never raises). `body_params` are substituted into the template's
-    {{1}}, {{2}}, ... placeholders in order. Meta rejects a param containing a newline or 4+
-    consecutive spaces — callers must pre-sanitize (scraper/notifier.py's own
-    _whatsapp_template_param does this before calling in).
-
-    `header_image_media_id` (2026-09-27, the rich per-listing match template): only set when the
-    approved template's own first component is a HEADER of format IMAGE — this is the id
-    upload_media returned for THIS send's own photo/collage, never a bare URL (Meta's own docs
-    recommend uploaded media over a `link` parameter for a dynamic per-send image). `button_url_param`:
-    only set when the approved template has a URL button whose registered url ends in a dynamic
-    `{{1}}` suffix (e.g. "https://todira.app/apartments?listing={{1}}") — this is just that one
-    suffix value (e.g. a listing id), never the full URL. Both are appended as their own
-    components only when given, so a caller sending the plain 3-variable template (no header
-    image, no dynamic button) is completely unaffected."""
-    components = []
-    if header_image_media_id is not None:
-        components.append(
-            {
-                "type": "header",
-                "parameters": [{"type": "image", "image": {"id": header_image_media_id}}],
-            }
-        )
-    components.append(
-        {
-            "type": "body",
-            "parameters": [{"type": "text", "text": param} for param in body_params],
-        }
-    )
-    if button_url_param is not None:
-        components.append(
-            {
-                "type": "button",
-                "sub_type": "url",
-                "index": "0",
-                "parameters": [{"type": "text", "text": button_url_param}],
-            }
-        )
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {"code": language_code},
-            "components": components,
-        },
-    }
-    return _post_message(payload, to=to, action_desc=f"send WhatsApp template '{template_name}'")
-
-
 def upload_media(file_bytes: bytes, *, mime_type: str = "image/jpeg") -> str | None:
     """Uploads media to WhatsApp's own CDN via the Cloud API's /media endpoint, returning a media
-    id usable as send_template_message's header_image_media_id. Needed for a per-send DYNAMIC
-    header image (a different real photo/collage per listing) — a template's header image
-    parameter takes either an uploaded media id or a public `link`, and Meta's own docs recommend
-    the uploaded-media form for reliability, so that's the only form this project uses. Same
+    id usable as send_image_cta_message's media_id (a different real photo/collage per listing). Same
     fail-soft contract as every other function here: returns None and logs on any failure, never
     raises — a failed upload just means the caller falls back to sending without a header image
     rather than failing the whole notification."""
