@@ -33,23 +33,38 @@ jobs:
           from todira_common.db import get_session
           from todira_common.models import Listing
 
+          from collections import Counter
+
           with get_session() as session:
               listings = session.scalars(
                   select(Listing).where(Listing.source == "komo", Listing.is_delisted.is_(False))
-                  .order_by(Listing.first_seen_at.desc()).limit(3)
+                  .order_by(Listing.first_seen_at.desc()).limit(25)
               ).all()
               urls = [(l.id, l.url) for l in listings]
+          li_classes = Counter()
+          li_per_listing = []
+          enter_values = Counter()
           for listing_id, url in urls:
-              page = komo_client._isp_proxy_get(url, context_label="amenity probe")
+              try:
+                  page = komo_client._isp_proxy_get(url, context_label="amenity probe")
+              except Exception as exc:
+                  print("fetch failed", listing_id, type(exc).__name__)
+                  continue
               flat = re.sub(r"\s+", " ", page)
-              flat = re.sub(r"\d{8,}", "<digits>", flat)
-              print("=== listing", listing_id)
-              m = re.search(r"<ul[^>]*>(?:(?!</ul>).)*class='maalit.*?</ul>", flat)
-              print("AMENITY UL:", re.sub(r"<i class='[^']*'></i>", "<i/>", m.group(0))[:2600] if m else "none found")
-              e = re.search(r'<div class="enter[^"]*".{0,260}', flat)
-              print("ENTER:", e.group(0) if e else "none found")
-              fl = re.search(r'<div class="floor[^"]*".{0,200}', flat)
-              print("FLOOR:", fl.group(0) if fl else "none found")
+              lis = re.findall(r"<li class='([^']*)'>", flat)
+              li_per_listing.append((listing_id, tuple(lis)))
+              li_classes.update(lis)
+              e = re.search(r'<div class="enter[^"]*"[^>]*> <div class="firstInfo" >([^<]*)<', flat)
+              enter_values[e.group(1).strip() if e else "<no enter block>"] += 1
+          print("distinct <li class> values across listings (count):")
+          for k, v in li_classes.most_common():
+              print("  ", repr(k), v)
+          print("distinct amenity-list contents (how many listings share each):")
+          for k, v in Counter(t for _i, t in li_per_listing).most_common(8):
+              print("  ", v, k)
+          print("entry-date values:")
+          for k, v in enter_values.most_common():
+              print("  ", repr(k), v)
           PYEOF
           kubectl get cronjob todira-scraper -n todira -o json > /tmp/cronjob.json
           python3 - <<'PYEOF'
