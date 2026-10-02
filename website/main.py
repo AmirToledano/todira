@@ -1179,7 +1179,7 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
     Homeless URL gets nonsense, not real enrichment. Komo/Homeless get their own real descriptions
     from their own scrapers now (komo_client.py/homeless_client.py) — this was never their path to
     begin with, so narrowing it to Yad2 loses nothing for them."""
-    if not bright_data_client.is_configured():
+    if not bright_data_client.web_unlocker_configured():
         return
     for listing in listings:
         if listing.description or listing.source != Source.YAD2:

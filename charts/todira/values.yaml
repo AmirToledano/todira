@@ -211,12 +211,10 @@ scraper:
   # of genuinely-new Yad2 listings combined with Web Unlocker's own 90s per-request timeout had no
   # cap at all — unlike every other per-run cap on this page. See
   # scraper/main.py's _bright_data_enrich_max_per_run's own comment.
-  # 2026-10-02: raised 15 -> 80 on the owner's explicit go-ahead ("take details for ALL new Yad2
-  # listings"). Real data (diagnose-yad2-new-listings-per-day.yaml): ~400-600 new Yad2 listings per
-  # normal day, 14 runs/day (schedule above) -> 15/run (=210/day) left most of them without
-  # move-in/features/description. 80/run = up to 1,120/day of headroom; hard cost ceiling at
-  # $1.50/1,000 successful Web Unlocker requests = ~$1.7/day (~$50/month) even if every run hit the cap.
-  brightDataEnrichMaxNewListingsPerRun: 80
+  # 2026-10-02: 0 = eager per-new-listing Yad2 enrichment OFF (owner: ~$20-50/month was too much).
+  # Yad2 detail is fetched on demand at notification time for listings a paying/trial user is
+  # actually sent (scraper/notifier.py's _maybe_fetch_description). Raise to turn eager mode back on.
+  brightDataEnrichMaxNewListingsPerRun: 0
   # 2026-09-15 EMERGENCY SUSPEND, real root cause confirmed live, not guessed: production's Bright
   # Data DCA enrichment (scraper/main.py's _enrich_new_listings_via_bright_data, used only for
   # extra Yad2 listing detail — description/property type/amenities/etc., never required for a

@@ -201,6 +201,13 @@ def is_configured() -> bool:
     )
 
 
+def web_unlocker_configured() -> bool:
+    """True when the Web Unlocker route is usable — only BRIGHT_DATA_API_KEY is needed. The DCA
+    collector id that is_configured() also requires is a dead end on this account (see
+    fetch_listing_description's docstring) and must not gate the working Web Unlocker callers."""
+    return bool(os.environ.get(API_KEY_ENV_VAR, "").strip())
+
+
 def _looks_like_pending_status(rows: object) -> bool:
     """True for a "still processing" poll response — NOT a real result, even though it's a
     non-empty (truthy) dict. Confirmed real 2026-09-14 (a production run's own logs, hours of

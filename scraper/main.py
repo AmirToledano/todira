@@ -190,7 +190,11 @@ _DEFAULT_HOMELESS_BACKFILL_MAX_PER_RUN = 30
 # minutes — with no cap at all, unlike Komo/Homeless/Facebook's own per-run caps above, which all
 # exist for exactly this "unbounded backlog" reason. Same safety-net pattern applied here.
 _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR = "BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN"
-_DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 15
+# 2026-10-02: default 0 = eager enrichment OFF. Owner found ~$20-50/month for fetching every new Yad2
+# listing too much. Yad2 detail is now fetched on demand instead, in notifier._maybe_fetch_description,
+# only for a listing a paying/trial user is actually about to be sent (one $0.0015 request each).
+# Set the env var (helm scraper.brightDataEnrichMaxNewListingsPerRun) to turn eager mode back on.
+_DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 0
 
 # 2026-09-26: real gap found live (diagnose-description-coverage-per-source.yaml) — only 6.2%
 # description coverage among the 470 most-recent active Yad2 listings, despite Bright Data being
@@ -206,7 +210,9 @@ _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 15
 # new-listing cap above (a real per-request Web Unlocker cost/timeout, not "assume the backlog is
 # small").
 _BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR = "BRIGHT_DATA_BACKFILL_MAX_PER_RUN"
-_DEFAULT_BRIGHT_DATA_BACKFILL_MAX_PER_RUN = 30
+# 2026-10-02: default 0 = backfill OFF, same cost reason as _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
+# above (it kept chasing every Yad2 listing missing a description, ~420 requests/day at the old 30).
+_DEFAULT_BRIGHT_DATA_BACKFILL_MAX_PER_RUN = 0
 
 # 2026-09-15: Facebook's own per-run cap is NOT a credit-cost safety net like Komo/Homeless's own
 # caps above (Facebook charges nothing per request) — it's an ACCOUNT-SAFETY net. Every request

@@ -20,6 +20,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
 _SCRAPER_DIR = Path(__file__).resolve().parent.parent / "scraper"
@@ -68,6 +70,14 @@ _REAL_DETAIL = {
     "additionalDetails": {"buildingTopFloor": 4},
     "metaData": {"description": "דירה יפה ומוארת"},
 }
+
+
+@pytest.fixture(autouse=True)
+def _eager_enrichment_on(monkeypatch):
+    """2026-10-02: eager per-new-listing enrichment is OFF by default now (cost cut — Yad2 detail is
+    fetched on demand in notifier._maybe_fetch_description). These tests exercise the eager path
+    itself, so they turn it on explicitly."""
+    monkeypatch.setenv(scraper_main._BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, "15")
 
 
 def test_not_configured_is_a_pure_noop():

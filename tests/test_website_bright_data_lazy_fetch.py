@@ -68,7 +68,7 @@ class _FakeGetSession:
 def test_fill_missing_descriptions_does_nothing_when_bright_data_not_configured():
     listing = _FakeListing(id=1, description=None)
     with (
-        patch.object(website_main.bright_data_client, "is_configured", return_value=False),
+        patch.object(website_main.bright_data_client, "web_unlocker_configured", return_value=False),
         patch.object(website_main.threading, "Thread") as thread_mock,
     ):
         website_main._fill_missing_descriptions_in_background([listing])
@@ -79,7 +79,7 @@ def test_fill_missing_descriptions_skips_listings_that_already_have_one():
     already_has_one = _FakeListing(id=1, description="כבר יש תיאור")
     missing = _FakeListing(id=2, description=None, url="https://yad2.co.il/item/missing")
     with (
-        patch.object(website_main.bright_data_client, "is_configured", return_value=True),
+        patch.object(website_main.bright_data_client, "web_unlocker_configured", return_value=True),
         patch.object(website_main.threading, "Thread") as thread_mock,
     ):
         website_main._fill_missing_descriptions_in_background([already_has_one, missing])
@@ -94,7 +94,7 @@ def test_fill_missing_descriptions_fires_one_thread_per_missing_listing():
     a = _FakeListing(id=1, description=None, url="https://yad2.co.il/item/a")
     b = _FakeListing(id=2, description=None, url="https://yad2.co.il/item/b")
     with (
-        patch.object(website_main.bright_data_client, "is_configured", return_value=True),
+        patch.object(website_main.bright_data_client, "web_unlocker_configured", return_value=True),
         patch.object(website_main.threading, "Thread") as thread_mock,
     ):
         website_main._fill_missing_descriptions_in_background([a, b])
@@ -115,7 +115,7 @@ def test_fill_missing_descriptions_skips_non_yad2_sources(monkeypatch):
     )
     yad2 = _FakeListing(id=3, description=None, url="https://yad2.co.il/item/3", source=Source.YAD2)
     with (
-        patch.object(website_main.bright_data_client, "is_configured", return_value=True),
+        patch.object(website_main.bright_data_client, "web_unlocker_configured", return_value=True),
         patch.object(website_main.threading, "Thread") as thread_mock,
     ):
         website_main._fill_missing_descriptions_in_background([komo, homeless, yad2])
