@@ -36,7 +36,7 @@ jobs:
           with get_session() as session:
               listings = session.scalars(
                   select(Listing).where(Listing.source == "komo", Listing.is_delisted.is_(False))
-                  .order_by(Listing.first_seen_at.desc()).limit(4)
+                  .order_by(Listing.first_seen_at.desc()).limit(3)
               ).all()
               urls = [(l.id, l.url) for l in listings]
           for listing_id, url in urls:
@@ -45,7 +45,7 @@ jobs:
               flat = re.sub(r"\d{8,}", "<digits>", flat)
               print("=== listing", listing_id)
               m = re.search(r"<ul[^>]*>(?:(?!</ul>).)*class='maalit.*?</ul>", flat)
-              print("AMENITY UL:", re.sub(r"<span.*?</span>", "", m.group(0))[:1800] if m else "none found")
+              print("AMENITY UL:", re.sub(r"<i class='[^']*'></i>", "<i/>", m.group(0))[:2600] if m else "none found")
               e = re.search(r'<div class="enter[^"]*".{0,260}', flat)
               print("ENTER:", e.group(0) if e else "none found")
               fl = re.search(r'<div class="floor[^"]*".{0,200}', flat)
