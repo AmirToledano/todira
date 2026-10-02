@@ -10,22 +10,20 @@ PicklePersistence like the bot has), so in-progress onboarding state is persiste
 User.pending_onboarding_state (JSONB) between turns instead of living in memory — see migration
 0003_whatsapp_users.
 
-Proactive "a new listing matches your filter" pushes (2026-09-08): WhatsApp only allows free-form
-replies within 24 hours of the user's last message (the "customer service window") — fine for
-this webhook's own replies (always responding to something just received), but a proactive push
-outside that window needs a pre-approved Message Template, which is what
-todira_common.whatsapp_client.send_template_message + scraper/notifier.py use, gated on
-User.whatsapp_notifications_opted_in. 2026-09-27: auto-enabled the moment WhatsApp connects (both
-onboarding-complete below and _try_link_code_sync) rather than collected as a separate explicit
-step — a real owner decision, see that field's own docstring for the compliance tradeoff this
-knowingly takes.
+Proactive pushes (2026-10-02, zero-cost): this project NEVER sends a paid Message Template. A listing
+goes out as a free-form message only inside the 24h window opened by the user's own last message
+(every inbound message, including a button tap, is stamped on User.whatsapp_last_inbound_at here), and
+scraper/whatsapp_checkin.py asks "still looking?" with reply buttons near the end of each window so the
+user taps and the window reopens. A user whose window closed gets nothing until they write again, and
+then ONE link summarizing what they missed (_send_missed_digest_sync). See todira_common/
+whatsapp_window.py.
 
 2026-09-27: connecting WhatsApp (either path) now also sends ONE free-form summary right here
 (_send_current_matches_summary, "X apartments already match — see them all: <link>"), covering
 every listing that already matches the user's filter at connect time — see that function's own
 docstring for why this is a single aggregate link and not one push per already-matching listing.
 Going forward from that moment, genuinely NEW listings still reach the user one at a time, via the
-normal proactive template push above, as the scraper actually finds them.
+normal proactive free-form push above, as the scraper actually finds them.
 """
 from __future__ import annotations
 
@@ -35,6 +33,7 @@ import html
 import logging
 import os
 import threading
+import datetime as dt
 import time
 from collections import OrderedDict
 
@@ -49,6 +48,7 @@ from todira_common.matching import safe_range_update
 from todira_common.models import ContactMessage, Filter, User
 from todira_common.support import looks_like_help_request
 from todira_common.users import get_or_create_whatsapp_user
+from todira_common.whatsapp_window import window_open
 from todira_common.wid_token import generate_wid_token
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -527,6 +527,115 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         _send_current_matches_summary(wa_id, lang, total)
 
 
+# --- Zero-cost WhatsApp (2026-10-02) -----------------------------------------------------------
+# Every inbound message (text or button tap) reopens WhatsApp's free 24h window, so it is stamped on
+# the user's row here; scraper/notifier.py only ever sends inside that window (never a paid
+# template), and scraper/whatsapp_checkin.py asks "still looking?" near the end of each window so the
+# user taps a button and the window reopens. The button ids below are shared with that module.
+CHECKIN_CONTINUE_ID = "checkin_continue"
+CHECKIN_FOUND_ID = "checkin_found"
+CHECKIN_STOP_ID = "checkin_stop"
+_CHECKIN_BUTTON_IDS = {CHECKIN_CONTINUE_ID, CHECKIN_FOUND_ID, CHECKIN_STOP_ID}
+_RESUME_WORDS = {"המשך", "continue", "продолжить", "continuer", "متابعة", "start", "חידוש"}
+
+
+def _touch_inbound_sync(wa_id: str) -> bool:
+    """Stamps now as the user's last inbound message. Returns True when this message REOPENED a
+    closed window for an opted-in user — the caller then sends the one-link summary of everything
+    that was found while they were away. A number with no user row yet is a no-op (the row is
+    created later in this same message's handling; its first stamp lands on their next message)."""
+    now = dt.datetime.now(dt.timezone.utc)
+    with get_session() as session:
+        user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
+        if user is None:
+            return False
+        was_closed = not window_open(user.whatsapp_last_inbound_at, now)
+        user.whatsapp_last_inbound_at = now
+        session.commit()
+        return was_closed and bool(user.whatsapp_notifications_opted_in)
+
+
+def _touch_inbound_safely(wa_id: str) -> bool:
+    """_touch_inbound_sync, but a DB hiccup in the stamp must never block handling the message."""
+    try:
+        return _touch_inbound_sync(wa_id)
+    except Exception:
+        logger.exception("Could not stamp WhatsApp inbound time")
+        return False
+
+
+def _send_missed_digest_sync(wa_id: str) -> None:
+    """ONE free-form message with one link, covering every matching listing the user hasn't been
+    shown yet (found while their window was closed and nothing could be sent). Marks them shown, so
+    it can never repeat and the scraper never re-sends them one by one."""
+    with get_session() as session:
+        user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
+        if user is None:
+            return
+        filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        if filter_row is None:
+            return
+        _total, new_to_show = find_new_matches_to_show(session, user.id, filter_row)
+        session.commit()
+        lang = user.language or DEFAULT_LANG
+    if not new_to_show:
+        return
+    whatsapp_client.send_text_message(
+        wa_id,
+        bot_text(
+            "whatsapp.missed_digest", lang,
+            total=len(new_to_show),
+            url=f"{WEBSITE_URL}/apartments?wid={generate_wid_token(wa_id)}",
+        ),
+    )
+
+
+def _set_opt_in_sync(wa_id: str, opted_in: bool) -> str | None:
+    """Returns the user's language (None if there is no such user)."""
+    with get_session() as session:
+        user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
+        if user is None:
+            return None
+        user.whatsapp_notifications_opted_in = opted_in
+        session.commit()
+        return user.language or DEFAULT_LANG
+
+
+def _handle_checkin_button_sync(wa_id: str, button_id: str) -> None:
+    """The user's tap on a check-in button (scraper/whatsapp_checkin.py). The tap itself already
+    reopened the window (_touch_inbound_sync); this just answers it."""
+    if button_id == CHECKIN_CONTINUE_ID:
+        lang = _set_opt_in_sync(wa_id, True)
+        if lang is not None:
+            whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.checkin_continue_ack", lang))
+    elif button_id == CHECKIN_FOUND_ID:
+        lang = _set_opt_in_sync(wa_id, False)
+        if lang is not None:
+            whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.checkin_found_ack", lang))
+    elif button_id == CHECKIN_STOP_ID:
+        lang = _set_opt_in_sync(wa_id, False)
+        if lang is not None:
+            whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.checkin_stop_ack", lang))
+
+
+def _try_resume_sync(wa_id: str, text: str) -> bool:
+    """A user who stopped (or found an apartment) sends "המשך" to start again. True when handled."""
+    if text.strip().strip("״\"'.!").lower() not in _RESUME_WORDS:
+        return False
+    with get_session() as session:
+        user = session.scalar(select(User).where(User.whatsapp_phone_number == wa_id))
+        if user is None or user.whatsapp_notifications_opted_in:
+            return False
+        if session.scalar(select(Filter).where(Filter.user_id == user.id)) is None:
+            return False
+        user.whatsapp_notifications_opted_in = True
+        session.commit()
+        lang = user.language or DEFAULT_LANG
+    whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.resume_ack", lang))
+    return True
+
+
+
 # error code -> time.monotonic() of the last owner alert, so a burst of failures (every message of a
 # scraper run fails the same way) produces ONE Telegram message, not hundreds.
 _DELIVERY_ALERT_COOLDOWN_SECONDS = 6 * 60 * 60
@@ -623,13 +732,27 @@ def _process_payload_sync(payload: dict) -> None:
                     if _already_processed(message.get("id")):
                         continue
 
+                    # Every inbound message (any type) reopens the free 24h window.
+                    reopened_window = _touch_inbound_safely(wa_id)
+
                     msg_type = message.get("type")
                     list_reply_id = None
                     text = None
                     if msg_type == "interactive":
-                        list_reply_id = (message.get("interactive") or {}).get("list_reply", {}).get("id")
+                        interactive = message.get("interactive") or {}
+                        button_reply_id = (interactive.get("button_reply") or {}).get("id")
+                        if button_reply_id in _CHECKIN_BUTTON_IDS:
+                            _handle_checkin_button_sync(wa_id, button_reply_id)
+                            if reopened_window and button_reply_id == CHECKIN_CONTINUE_ID:
+                                _send_missed_digest_sync(wa_id)
+                            continue
+                        list_reply_id = (interactive.get("list_reply") or {}).get("id")
                     elif msg_type == "text":
                         text = (message.get("text") or {}).get("body", "")
+
+                    if msg_type == "text" and text and _try_resume_sync(wa_id, text):
+                        _send_missed_digest_sync(wa_id)
+                        continue
 
                     # A link code (see _try_link_code_sync's own docstring) is checked before
                     # anything else, including the language picker below — it must never fall
@@ -654,12 +777,20 @@ def _process_payload_sync(payload: dict) -> None:
                     if message.get("id"):
                         _fire_typing_indicator(message["id"])
                     _handle_incoming_text_sync(wa_id, contacts.get(wa_id), text)
+                    if reopened_window:
+                        _send_missed_digest_sync(wa_id)
                 except Exception:
                     logger.exception(
                         "Error processing one WhatsApp message in the batch (id=%s) — "
                         "continuing with the rest of the batch",
                         message.get("id"),
                     )
+                finally:
+                    # Second stamp, AFTER handling: a number that only gets a user row (or gets
+                    # linked to one) while this very message is processed had nothing to stamp at the
+                    # top of the loop, yet its window is open right now.
+                    if message.get("from"):
+                        _touch_inbound_safely(message["from"])
 
 
 @router.post("/webhook/whatsapp")

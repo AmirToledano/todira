@@ -519,9 +519,16 @@ def format_caption_whatsapp(
     has_access: bool,
     price_change_from: int | None = None,
     upgrade_url: str | None = None,
+    view_url: str | None = None,
+    link_in_body: bool = True,
+    limit: int = WHATSAPP_MESSAGE_LIMIT,
     lang: str = DEFAULT_LANG,
 ) -> str:
-    """Same content/order as format_caption, WhatsApp's own markdown (*bold*, no HTML tags — the
+    """`view_url`: the link for a user with access (falls back to the raw listing.url).
+    `link_in_body=False` drops that link line — for a message that carries the link as its own
+    button (whatsapp_client.send_image_cta_message). `limit`: 1024 for an interactive body.
+
+    Same content/order as format_caption, WhatsApp's own markdown (*bold*, no HTML tags — the
     Cloud API's text messages don't render HTML) and no inline keyboard equivalent; the listing
     URL at the end is the only action available (WhatsApp's like/hide/found buttons would need
     interactive "reply button" messages, a separate message type — not built yet, plain text with
@@ -551,17 +558,17 @@ def format_caption_whatsapp(
     header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:
         link_text = bot_text("card.full_details_link_plain", lang)
-        footer = f"\n\n🔗 {link_text}\n{listing.url}"
+        footer = f"\n\n🔗 {link_text}\n{view_url or listing.url}" if link_in_body else ""
     elif upgrade_url:
         upgrade_text = f"{bot_text('card.upgrade_to_see_link', lang)}:"
         footer = f"\n\n🔒 {upgrade_text}\n{upgrade_url}"
     else:
         upgrade_text = bot_text("card.upgrade_required_plain", lang)
         footer = f"\n\n🔒 {upgrade_text}"
-    remaining = WHATSAPP_MESSAGE_LIMIT - len(header) - len(body) - len(footer)
+    remaining = limit - len(header) - len(body) - len(footer)
     body += _truncated_description_block(listing.description or "", remaining, lambda s: s)
 
-    return _fit_to_limit(header, body, footer, WHATSAPP_MESSAGE_LIMIT)
+    return _fit_to_limit(header, body, footer, limit)
 
 
 async def send_listing_card(

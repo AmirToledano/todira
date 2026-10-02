@@ -110,6 +110,48 @@ def send_cta_url_message(to: str, body: str, button_text: str, url: str) -> bool
     return _post_message(payload, to=to, action_desc="send WhatsApp CTA button message")
 
 
+def send_image_cta_message(
+    to: str, *, media_id: str, body: str, button_text: str, url: str
+) -> bool:
+    """One free-form message: the listing's photo on top, the text, and a tappable URL button —
+    "interactive cta_url" with an image header. Free-form, so only valid inside the 24h window (see
+    todira_common/whatsapp_window.py) — and therefore free. `body` max 1024 characters."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "header": {"type": "image", "image": {"id": media_id}},
+            "body": {"text": body},
+            "action": {"name": "cta_url", "parameters": {"display_text": button_text, "url": url}},
+        },
+    }
+    return _post_message(payload, to=to, action_desc="send WhatsApp image + button message")
+
+
+def send_reply_buttons_message(to: str, body: str, buttons: list[tuple[str, str]]) -> bool:
+    """Up to 3 quick-reply buttons. `buttons` is [(button_id, title), ...]; a title is max 20
+    characters. A tap arrives on the webhook as message.type == "interactive" with
+    interactive.button_reply.id, and counts as an inbound message — it reopens the 24h window."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": button_id, "title": title}}
+                    for button_id, title in buttons
+                ]
+            },
+        },
+    }
+    return _post_message(payload, to=to, action_desc="send WhatsApp reply-buttons message")
+
+
 def send_language_picker_message(
     to: str, body: str, button_text: str, language_rows: list[tuple[str, str]]
 ) -> bool:

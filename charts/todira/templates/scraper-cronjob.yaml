@@ -111,9 +111,8 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: bright-data-isp-pass
                       optional: true
-                # Proactive WhatsApp Message Template push (2026-09-08, todira_common/
-                # whatsapp_client.py + notifier.py's _whatsapp_eligible/_send_whatsapp_match_
-                # template) — same access-token/phone-number-id secret website-deployment.yaml
+                # Free-form WhatsApp push + check-in (todira_common/whatsapp_client.py,
+                # notifier.py's _whatsapp_eligible/_send_whatsapp_match_message, whatsapp_checkin.py) — same access-token/phone-number-id secret website-deployment.yaml
                 # already uses for the webhook's own replies, both optional here the same way.
                 - name: WHATSAPP_ACCESS_TOKEN
                   valueFrom:
@@ -127,16 +126,6 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: whatsapp-phone-number-id
                       optional: true
-                # Not secret — see values.yaml's own comment on scraper.whatsappMatchTemplateName.
-                - name: WHATSAPP_MATCH_TEMPLATE_NAME
-                  value: {{ .Values.scraper.whatsappMatchTemplateName | default "" | quote }}
-                - name: WHATSAPP_MATCH_TEMPLATE_LANGUAGE
-                  value: {{ .Values.scraper.whatsappMatchTemplateLanguage | default "he" | quote }}
-                # 2026-09-27 (see values.yaml's own comment on scraper.whatsappRichMatchTemplateName):
-                # empty until new_listing_match_rich is actually APPROVED by Meta — the plain
-                # template above keeps sending until then.
-                - name: WHATSAPP_RICH_MATCH_TEMPLATE_NAME
-                  value: {{ .Values.scraper.whatsappRichMatchTemplateName | default "" | quote }}
                 # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
                 # scraper.komoMaxNewDetailFetchesPerRun for the real math these exist to protect.
                 # Only set when the value is actually present, so scraper/main.py's own Python-side

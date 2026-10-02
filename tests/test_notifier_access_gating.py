@@ -311,202 +311,55 @@ def test_notify_price_change_excludes_a_user_just_notified_as_new_matches_in_thi
     assert sent == 1
 
 
-# --- Proactive WhatsApp Message Template push (2026-09-08) ---
+# --- Zero-cost WhatsApp push (2026-10-02): free-form message, only inside the 24h window ---
+
+_OPEN_WINDOW = _NOW - dt.timedelta(hours=3)
+_CLOSED_WINDOW = _NOW - dt.timedelta(hours=30)
 
 
-def test_whatsapp_eligible_false_when_template_not_configured():
-    user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
-    with patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", None):
-        assert notifier._whatsapp_eligible(user) is False
+def _wa_user(**overrides):
+    defaults = dict(
+        telegram_user_id=None,
+        whatsapp_phone_number="9725500000",
+        whatsapp_notifications_opted_in=True,
+        whatsapp_last_inbound_at=_OPEN_WINDOW,
+    )
+    defaults.update(overrides)
+    return _user(**defaults)
+
+
+def test_whatsapp_eligible_true_when_linked_opted_in_and_window_open():
+    assert notifier._whatsapp_eligible(_wa_user()) is True
+
+
+def test_whatsapp_eligible_false_when_window_closed():
+    assert notifier._whatsapp_eligible(_wa_user(whatsapp_last_inbound_at=_CLOSED_WINDOW)) is False
+
+
+def test_whatsapp_eligible_false_when_never_heard_from_user():
+    assert notifier._whatsapp_eligible(_wa_user(whatsapp_last_inbound_at=None)) is False
 
 
 def test_whatsapp_eligible_false_when_no_phone_number():
-    user = _user(telegram_user_id=None, whatsapp_phone_number=None, whatsapp_notifications_opted_in=True)
-    with patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"):
-        assert notifier._whatsapp_eligible(user) is False
+    assert notifier._whatsapp_eligible(_wa_user(whatsapp_phone_number=None)) is False
 
 
 def test_whatsapp_eligible_false_when_not_opted_in():
-    user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=False)
-    with patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"):
-        assert notifier._whatsapp_eligible(user) is False
+    assert notifier._whatsapp_eligible(_wa_user(whatsapp_notifications_opted_in=False)) is False
 
 
-def test_whatsapp_eligible_true_when_all_three_conditions_met():
-    user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
-    with patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"):
-        assert notifier._whatsapp_eligible(user) is True
-
-
-def test_whatsapp_template_param_collapses_whitespace():
-    assert notifier._whatsapp_template_param("רוטשילד   \n  תל אביב") == "רוטשילד תל אביב"
-
-
-def test_whatsapp_template_param_truncates_long_values():
-    long_value = "א" * 400
-    result = notifier._whatsapp_template_param(long_value, max_length=10)
-    assert result == "א" * 9 + "…"
-    assert len(result) == 10
-
-
-def test_send_whatsapp_match_template_builds_expected_params():
-    user = _user(whatsapp_phone_number="9725500000")
-    listing = SimpleNamespace(
-        street="רוטשילד", neighborhood=None, city="תל אביב יפו", rooms=3.0, price=5500,
-    )
-    with patch.object(
-        notifier.whatsapp_client, "send_template_message", return_value=True
-    ) as mock_send, patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"):
-        assert notifier._send_whatsapp_match_template(user, listing) is True
-
-    mock_send.assert_called_once()
-    args, kwargs = mock_send.call_args
-    assert args[0] == "9725500000"
-    assert kwargs["template_name"] == "new_listing_match"
-    assert kwargs["language_code"] == notifier.WHATSAPP_MATCH_TEMPLATE_LANGUAGE
-    assert kwargs["body_params"] == ["רוטשילד", "3", "5,500"]
-
-
-def test_send_whatsapp_match_template_falls_back_to_city_when_no_street():
-    user = _user(whatsapp_phone_number="9725500000")
-    listing = SimpleNamespace(street=None, neighborhood=None, city="חיפה", rooms=None, price=None)
-    with patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_send:
-        notifier._send_whatsapp_match_template(user, listing)
-
-    body_params = mock_send.call_args.kwargs["body_params"]
-    assert body_params[0] == "חיפה"
-    assert body_params[1] == "-"
-    assert body_params[2] == "-"
-
-
-def test_notify_new_matches_sends_via_whatsapp_for_whatsapp_only_opted_in_user():
-    """A user with no Telegram link at all, but a linked + opted-in WhatsApp number and a real
-    template configured, must now actually get pushed — this is the whole point of the feature,
-    unlike test_notify_new_matches_skips_a_user_with_no_telegram_id above (opted-out/not-
-    configured case, still correctly skipped)."""
-    listing = SimpleNamespace(id=10, price=5000, description=None, street="רוטשילד", neighborhood=None, city="תל אביב", rooms=3.0)
-    filter_row = SimpleNamespace(user_id=1)
-    user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
-    added = []
-    session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: added.append(obj), commit=lambda: None)
-    bot = SimpleNamespace()
-
-    with (
-        patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"),
-        patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
-        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
-        patch.object(notifier, "_already_notified", return_value=False),
-        patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_telegram_send,
-        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_wa_send,
-        patch.object(notifier, "WHATSAPP_SEND_DELAY_SECONDS", 0),
-    ):
-        matched, sent, _newly_notified = asyncio.run(notifier._notify_new_matches(bot, session, listing))
-
-    mock_telegram_send.assert_not_awaited()
-    mock_wa_send.assert_called_once()
-    assert matched == 1
-    assert sent == 1
-    assert len(added) == 1
-    assert added[0].reason == notifier.NotificationReason.NEW
-
-
-def test_notify_new_matches_sends_via_both_channels_when_linked_to_both():
-    listing = SimpleNamespace(id=10, price=5000, description=None, street="רוטשילד", neighborhood=None, city="תל אביב", rooms=3.0)
-    filter_row = SimpleNamespace(user_id=1)
-    user = _user(telegram_user_id=555, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
-    added = []
-    session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: added.append(obj), commit=lambda: None)
-    bot = SimpleNamespace()
-
-    with (
-        patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"),
-        patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
-        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
-        patch.object(notifier, "_already_notified", return_value=False),
-        patch.object(notifier, "format_caption", return_value="caption"),
-        patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_telegram_send,
-        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_wa_send,
-        patch.object(notifier, "SEND_DELAY_SECONDS", 0),
-        patch.object(notifier, "WHATSAPP_SEND_DELAY_SECONDS", 0),
-    ):
-        matched, sent, _newly_notified = asyncio.run(notifier._notify_new_matches(bot, session, listing))
-
-    mock_telegram_send.assert_awaited_once()
-    mock_wa_send.assert_called_once()
-    assert sent == 1  # one SentNotification row even though both channels fired
-    assert len(added) == 1
-
-
-def test_notify_new_matches_sends_whatsapp_for_every_matching_listing_no_cap():
-    """2026-09-27 through 2026-09-30: a real owner report about WhatsApp flooding led to a
-    per-run cap (at most one real WhatsApp send per user per scrape run, via a shared
-    whatsapp_sent_user_ids set) — removed 2026-09-30 after a second real owner report the other
-    direction: the cap's own claim that skipped listings "get picked up on the next run instead"
-    was false whenever the same user also had Telegram linked (the common case), since Telegram
-    sends uncapped and immediately writes the shared, channel-agnostic SentNotification row that
-    _already_notified checks — those listings were silently dropped from WhatsApp forever, not
-    deferred. Explicit owner call: WhatsApp is a full channel like Telegram and the website now,
-    with no artificial cap — this call (no whatsapp_sent_user_ids arg exists anymore) always
-    attempts the send for a matching, opted-in user."""
-    listing = SimpleNamespace(id=10, price=5000, description=None, street="רוטשילד", neighborhood=None, city="תל אביב", rooms=3.0)
-    filter_row = SimpleNamespace(user_id=1)
-    user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
-    added = []
-    session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: added.append(obj), commit=lambda: None)
-    bot = SimpleNamespace()
-
-    with (
-        patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"),
-        patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
-        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
-        patch.object(notifier, "_already_notified", return_value=False),
-        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_wa_send,
-        patch.object(notifier, "WHATSAPP_SEND_DELAY_SECONDS", 0),
-    ):
-        matched, sent, newly_notified = asyncio.run(
-            notifier._notify_new_matches(bot, session, listing)
-        )
-
-    mock_wa_send.assert_called_once()
-    assert matched == 1
-    assert sent == 1
-    assert len(added) == 1
-    assert newly_notified == {1}
-
-
-def test_notify_new_matches_still_skips_whatsapp_only_user_when_not_opted_in():
-    """Same as test_notify_new_matches_skips_a_user_with_no_telegram_id, but explicit about the
-    reason: a linked WhatsApp number alone is NOT consent — see User.whatsapp_notifications_
-    opted_in's own docstring."""
-    listing = SimpleNamespace(id=10, price=5000, description=None)
-    filter_row = SimpleNamespace(user_id=1)
-    user = _user(telegram_user_id=None, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=False)
-    session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: None, commit=lambda: None)
-    bot = SimpleNamespace()
-
-    with (
-        patch.object(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME", "new_listing_match"),
-        patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
-        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
-        patch.object(notifier, "_already_notified", return_value=False),
-        patch.object(notifier.whatsapp_client, "send_template_message") as mock_wa_send,
-    ):
-        matched, sent, _newly_notified = asyncio.run(notifier._notify_new_matches(bot, session, listing))
-
-    mock_wa_send.assert_not_called()
-    assert matched == 1
-    assert sent == 0
-
-
-# --- The rich, Dorin-style per-listing card (2026-09-27: "חובה לעלות תמונות של המודעות ביחד עם כל
-# מה שרשמת" — a real owner requirement, not optional) — WHATSAPP_RICH_MATCH_TEMPLATE_NAME unset
-# (the default) means every test above is completely unaffected; these tests explicitly set it. ---
+def test_notifier_has_no_paid_template_path_left():
+    """The owner's rule (2026-10-02): never pay for WhatsApp. No template sender may exist here."""
+    assert not hasattr(notifier, "_send_whatsapp_match_template")
+    assert not hasattr(notifier, "_send_whatsapp_rich_match_template")
+    assert not hasattr(notifier, "WHATSAPP_MATCH_TEMPLATE_NAME")
 
 
 def _rich_listing(**overrides):
     defaults = dict(
         id=10, street="רוטשילד", neighborhood=None, city="תל אביב יפו", price=5500, rooms=3.0,
-        size_sqm=65, floor=2, move_in_date=None, description="דירה משופצת ומוארת", image_urls=["u1", "u2"],
+        size_sqm=65, floor=2, floor_total=None, move_in_date=None, is_broker_listing=False, source="yad2", description="דירה משופצת ומוארת",
+        image_urls=["u1", "u2"], lat=None, lon=None, deal_type="rent", url="https://example.com/x",
         has_parking=None, has_elevator=None, has_balcony=None, pets_allowed=None, is_renovated=None,
         is_roommate_friendly=None, safe_room_type=None, furniture=None,
     )
@@ -514,73 +367,120 @@ def _rich_listing(**overrides):
     return SimpleNamespace(**defaults)
 
 
-def test_send_whatsapp_match_template_dispatches_to_rich_when_configured():
-    user = _user(whatsapp_phone_number="9725500000")
+def test_send_whatsapp_match_message_sends_photo_text_and_view_button():
+    user = _wa_user(trial_ends_at=_NOW + dt.timedelta(days=1))
     listing = _rich_listing()
     with (
-        patch.object(notifier, "WHATSAPP_RICH_MATCH_TEMPLATE_NAME", "new_listing_match_rich"),
-        patch.object(notifier, "_send_whatsapp_rich_match_template", return_value=True) as mock_rich,
-        patch.object(notifier.whatsapp_client, "send_template_message") as mock_plain,
+        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg") as mock_photo,
+        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-1") as mock_upload,
+        patch.object(notifier.whatsapp_client, "send_image_cta_message", return_value=True) as mock_send,
+        patch.object(notifier.whatsapp_client, "send_template_message") as mock_template,
+        patch.object(notifier, "generate_wid_token", return_value="signed"),
     ):
-        assert notifier._send_whatsapp_match_template(user, listing) is True
-
-    mock_rich.assert_called_once_with(user, listing)
-    mock_plain.assert_not_called()
-
-
-def test_send_whatsapp_rich_match_template_builds_all_8_fields_plus_header_and_button():
-    user = _user(whatsapp_phone_number="9725500000")
-    listing = _rich_listing()
-    with (
-        patch.object(notifier, "WHATSAPP_RICH_MATCH_TEMPLATE_NAME", "new_listing_match_rich"),
-        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg-bytes") as mock_photo,
-        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-id-123") as mock_upload,
-        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_send,
-        patch.object(notifier, "generate_wid_token", return_value="signed-token"),
-    ):
-        assert notifier._send_whatsapp_rich_match_template(user, listing) is True
+        assert notifier._send_whatsapp_match_message(user, listing) is True
 
     mock_photo.assert_called_once_with(listing.image_urls)
-    mock_upload.assert_called_once_with(b"jpeg-bytes")
+    mock_upload.assert_called_once_with(b"jpeg")
+    mock_template.assert_not_called()
     args, kwargs = mock_send.call_args
     assert args[0] == "9725500000"
-    assert kwargs["template_name"] == "new_listing_match_rich"
-    assert kwargs["body_params"][0] == "רוטשילד"
-    assert kwargs["body_params"][1] == "5,500"
-    assert kwargs["body_params"][2] == "3"
-    assert kwargs["body_params"][3] == "65"
-    assert kwargs["body_params"][4] == "2"
-    assert kwargs["body_params"][5] == "-"  # no move_in_date on this fixture
-    assert kwargs["body_params"][7] == "דירה משופצת ומוארת"
-    assert kwargs["header_image_media_id"] == "media-id-123"
-    assert kwargs["button_url_param"] == "10&wid=signed-token"
+    assert kwargs["media_id"] == "media-1"
+    assert kwargs["url"].endswith("/apartments?wid=signed&listing=10")
+    assert "רוטשילד" in kwargs["body"]
+    assert "דירה משופצת ומוארת" in kwargs["body"]
+    assert len(kwargs["body"]) <= notifier.WHATSAPP_INTERACTIVE_BODY_LIMIT
 
 
-def test_send_whatsapp_rich_match_template_returns_false_when_upload_fails():
-    user = _user(whatsapp_phone_number="9725500000")
-    listing = _rich_listing()
+def test_send_whatsapp_match_message_button_goes_to_upgrade_for_user_without_access():
+    user = _wa_user()  # trial expired, no paid_until -> no access
     with (
-        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg-bytes"),
-        patch.object(notifier.whatsapp_client, "upload_media", return_value=None),
-        patch.object(notifier.whatsapp_client, "send_template_message") as mock_send,
+        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg"),
+        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-1"),
+        patch.object(notifier.whatsapp_client, "send_image_cta_message", return_value=True) as mock_send,
+        patch.object(notifier, "generate_wid_token", return_value="signed"),
     ):
-        assert notifier._send_whatsapp_rich_match_template(user, listing) is False
+        notifier._send_whatsapp_match_message(user, _rich_listing())
+
+    assert "/upgrade?wid=signed" in mock_send.call_args.kwargs["url"]
+
+
+def test_send_whatsapp_match_message_returns_false_when_upload_fails():
+    with (
+        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg"),
+        patch.object(notifier.whatsapp_client, "upload_media", return_value=None),
+        patch.object(notifier.whatsapp_client, "send_image_cta_message") as mock_send,
+    ):
+        assert notifier._send_whatsapp_match_message(_wa_user(), _rich_listing()) is False
 
     mock_send.assert_not_called()
 
 
-def test_send_whatsapp_rich_match_template_missing_fields_render_as_dashes():
-    user = _user(whatsapp_phone_number="9725500000")
-    listing = _rich_listing(
-        street=None, neighborhood=None, city="חיפה", price=None, rooms=None, size_sqm=None,
-        floor=None, description=None,
-    )
+def _run_notify(user, listing):
+    filter_row = SimpleNamespace(user_id=1)
+    added = []
+    session = SimpleNamespace(get=lambda model, pk: user, add=lambda obj: added.append(obj), commit=lambda: None)
     with (
-        patch.object(notifier, "get_listing_photo_jpeg_bytes", return_value=b"jpeg-bytes"),
-        patch.object(notifier.whatsapp_client, "upload_media", return_value="media-id-123"),
-        patch.object(notifier.whatsapp_client, "send_template_message", return_value=True) as mock_send,
+        patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
+        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
+        patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "format_caption", return_value="caption"),
+        patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_telegram,
+        patch.object(notifier, "_send_whatsapp_match_message", return_value=True) as mock_wa,
+        patch.object(notifier, "SEND_DELAY_SECONDS", 0),
+        patch.object(notifier, "WHATSAPP_SEND_DELAY_SECONDS", 0),
     ):
-        notifier._send_whatsapp_rich_match_template(user, listing)
+        result = asyncio.run(notifier._notify_new_matches(SimpleNamespace(), session, listing))
+    return result, added, mock_telegram, mock_wa
 
-    body_params = mock_send.call_args.kwargs["body_params"]
-    assert body_params == ["חיפה", "-", "-", "-", "-", "-", "-", "-"]
+
+def test_notify_new_matches_sends_via_whatsapp_for_whatsapp_only_user_in_window():
+    (matched, sent, newly), added, mock_telegram, mock_wa = _run_notify(_wa_user(), _rich_listing())
+
+    mock_telegram.assert_not_awaited()
+    mock_wa.assert_called_once()
+    assert (matched, sent) == (1, 1)
+    assert len(added) == 1 and added[0].reason == notifier.NotificationReason.NEW
+    assert newly == {1}
+
+
+def test_notify_new_matches_sends_nothing_and_records_nothing_when_window_closed():
+    """Window closed = no free message possible = nothing sent AND no SentNotification row, so the
+    listing is still unseen and website/whatsapp_webhook.py's digest covers it when they reply."""
+    (matched, sent, _newly), added, mock_telegram, mock_wa = _run_notify(
+        _wa_user(whatsapp_last_inbound_at=_CLOSED_WINDOW), _rich_listing()
+    )
+
+    mock_telegram.assert_not_awaited()
+    mock_wa.assert_not_called()
+    assert (matched, sent) == (1, 0)
+    assert added == []
+
+
+def test_notify_new_matches_sends_via_both_channels_when_linked_to_both():
+    (_m, sent, _n), added, mock_telegram, mock_wa = _run_notify(
+        _wa_user(telegram_user_id=555), _rich_listing()
+    )
+
+    mock_telegram.assert_awaited_once()
+    mock_wa.assert_called_once()
+    assert sent == 1  # one SentNotification row even though both channels fired
+    assert len(added) == 1
+
+
+def test_notify_new_matches_telegram_still_works_when_whatsapp_window_closed():
+    (_m, sent, _n), added, mock_telegram, mock_wa = _run_notify(
+        _wa_user(telegram_user_id=555, whatsapp_last_inbound_at=_CLOSED_WINDOW), _rich_listing()
+    )
+
+    mock_telegram.assert_awaited_once()
+    mock_wa.assert_not_called()
+    assert sent == 1
+
+
+def test_notify_new_matches_skips_whatsapp_only_user_when_not_opted_in():
+    (matched, sent, _n), added, _mock_telegram, mock_wa = _run_notify(
+        _wa_user(whatsapp_notifications_opted_in=False), _rich_listing()
+    )
+
+    mock_wa.assert_not_called()
+    assert (matched, sent) == (1, 0)

@@ -383,6 +383,69 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "🔔 הפעלת התראות", "en": "🔔 Turn on notifications", "ru": "🔔 Включить уведомления",
         "fr": "🔔 Activer les notifications", "ar": "🔔 تفعيل الإشعارات",
     },
+    # Zero-cost WhatsApp (2026-10-02): "still looking?" check-in + the replies to its buttons. The
+    # button titles are max 20 characters (WhatsApp's own limit) — tests/test_whatsapp_checkin.py
+    # enforces that for every language.
+    "whatsapp.view_listing_button": {
+        "he": "לפרטי הדירה 🔗", "en": "Listing details 🔗", "ru": "О квартире 🔗",
+        "fr": "Voir l'annonce 🔗", "ar": "تفاصيل الشقة 🔗",
+    },
+    "whatsapp.upgrade_button": {
+        "he": "🔒 שדרוג לצפייה", "en": "🔒 Upgrade to view", "ru": "🔒 Улучшить план",
+        "fr": "🔒 Passer à Premium", "ar": "🔒 الترقية للعرض",
+    },
+    "whatsapp.checkin_body": {
+        "he": "היי! עדיין מחפש דירה? 🏠 לחץ על אחד הכפתורים כדי שאמשיך לשלוח לך דירות חדשות.",
+        "en": "Hi! Still looking for an apartment? 🏠 Tap a button so I keep sending you new listings.",
+        "ru": "Привет! Всё ещё ищете квартиру? 🏠 Нажмите кнопку, чтобы я продолжил присылать новые объявления.",
+        "fr": "Salut ! Tu cherches toujours un appartement ? 🏠 Appuie sur un bouton pour que je continue à t'envoyer les nouvelles annonces.",
+        "ar": "مرحباً! هل ما زلت تبحث عن شقة؟ 🏠 اضغط على زر لأواصل إرسال الإعلانات الجديدة لك.",
+    },
+    "whatsapp.checkin_continue_button": {
+        "he": "כן, תמשיכו 🔎", "en": "Yes, keep going 🔎", "ru": "Да, продолжайте 🔎",
+        "fr": "Oui, continue 🔎", "ar": "نعم، تابعوا 🔎",
+    },
+    "whatsapp.checkin_found_button": {
+        "he": "מצאתי דירה 🎉", "en": "Found one 🎉", "ru": "Нашёл жильё 🎉",
+        "fr": "J'ai trouvé 🎉", "ar": "وجدت شقة 🎉",
+    },
+    "whatsapp.checkin_stop_button": {
+        "he": "עצרו הודעות", "en": "Stop messages", "ru": "Остановить",
+        "fr": "Arrêter", "ar": "أوقفوا الرسائل",
+    },
+    "whatsapp.checkin_continue_ack": {
+        "he": "מעולה, ממשיך לחפש בשבילך 🔎",
+        "en": "Great, I'll keep searching for you 🔎",
+        "ru": "Отлично, продолжаю искать для вас 🔎",
+        "fr": "Super, je continue à chercher pour toi 🔎",
+        "ar": "رائع، سأواصل البحث من أجلك 🔎",
+    },
+    "whatsapp.checkin_found_ack": {
+        "he": "איזה כיף, מזל טוב על הדירה! 🎉 הפסקתי לשלוח הודעות. אם תרצה לחזור לחפש, שלח לי ״המשך״.",
+        "en": "Congratulations on the apartment! 🎉 I've stopped the messages. To start searching again, send me \"continue\".",
+        "ru": "Поздравляю с квартирой! 🎉 Я остановил сообщения. Чтобы снова искать, отправьте «продолжить».",
+        "fr": "Félicitations pour l'appartement ! 🎉 J'ai arrêté les messages. Pour rechercher à nouveau, envoie-moi « continuer ».",
+        "ar": "مبروك على الشقة! 🎉 أوقفت الرسائل. للعودة إلى البحث أرسل لي «متابعة».",
+    },
+    "whatsapp.checkin_stop_ack": {
+        "he": "בסדר, הפסקתי לשלוח הודעות. אם תרצה לחזור לחפש, שלח לי ״המשך״.",
+        "en": "Okay, I've stopped the messages. To start searching again, send me \"continue\".",
+        "ru": "Хорошо, я остановил сообщения. Чтобы снова искать, отправьте «продолжить».",
+        "fr": "D'accord, j'ai arrêté les messages. Pour rechercher à nouveau, envoie-moi « continuer ».",
+        "ar": "حسناً، أوقفت الرسائل. للعودة إلى البحث أرسل لي «متابعة».",
+    },
+    "whatsapp.resume_ack": {
+        "he": "חזרתי לחפש בשבילך! 🔎", "en": "I'm searching for you again! 🔎",
+        "ru": "Снова ищу для вас! 🔎", "fr": "Je recherche de nouveau pour toi ! 🔎",
+        "ar": "عدت إلى البحث من أجلك! 🔎",
+    },
+    "whatsapp.missed_digest": {
+        "he": "בזמן שלא היית כאן נמצאו {total} דירות חדשות שמתאימות לחיפוש שלך 🏠\nכל הדירות כאן: {url}",
+        "en": "While you were away I found {total} new apartments matching your search 🏠\nAll of them here: {url}",
+        "ru": "Пока вас не было, я нашёл {total} новых квартир по вашему запросу 🏠\nВсе здесь: {url}",
+        "fr": "Pendant ton absence, j'ai trouvé {total} nouveaux appartements qui te correspondent 🏠\nTous ici : {url}",
+        "ar": "أثناء غيابك وجدت {total} شقق جديدة تناسب بحثك 🏠\nكلها هنا: {url}",
+    },
     "whatsapp.help_request_body": {
         "he": "תודה שכתבת! ההודעה שלך התקבלה ואנחנו נחזור אליך בהקדם 🙏\nאפשר גם לפנות ישירות דרך "
         "עמוד יצירת הקשר שלנו:",
