@@ -221,10 +221,9 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
     updates = _compute_detail_updates(detail) if detail else None
     if updates:
         # 2026-10-02: the full detail record (move-in, amenities, floor, real photos, description),
-        # not just the description — and this is now THE place Yad2 detail is fetched (scraper/main.py's
-        # eager per-new-listing enrichment and backfill are off by default, owner asked to cut the
-        # ~$20-50/month cost): one Web Unlocker request only for a listing a paying/trial user is
-        # actually about to be sent.
+        # not just the description. Safety net behind scraper/main.py's eager per-new-listing
+        # enrichment (capped per run, so overflow listings and ones whose eager fetch failed land
+        # here): one Web Unlocker request, only for a listing a paying/trial user is about to be sent.
         for column, value in updates.items():
             setattr(listing, column, value)
         session.commit()

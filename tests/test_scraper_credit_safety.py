@@ -195,7 +195,7 @@ def test_bright_data_enrich_cap_defaults_when_env_var_unset(monkeypatch):
     assert (
         scraper_main._bright_data_enrich_max_per_run()
         == scraper_main._DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
-        == 0  # 2026-10-02: eager Yad2 enrichment is off unless explicitly turned on (cost)
+        == 50  # 2026-10-02: eager enrichment stays on, capped at 50/run (~$31/month ceiling)
     )
 
 
