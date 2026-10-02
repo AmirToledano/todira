@@ -3,7 +3,7 @@
 keys are kept below ONLY so historical Payment rows priced under them still mean something; /upgrade
 no longer offers them). Payment itself is website/takbull_client.py's job (Takbull's recurring-
 order API, DealType=4 — see that module's own comment for the real API docs this is built from);
-website/main.py's /upgrade falls back to Grow, then the earlier informal click-trust model, when
+website/main.py's /upgrade falls back to the earlier informal click-trust model when
 Takbull's recurring API isn't configured yet. This module only answers "does this user get the
 real thing, or the free lite tier" and "how long does a given plan extend access for" — bot/
 website/notifier all call it rather than re-deriving the rule themselves.

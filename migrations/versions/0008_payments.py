@@ -1,9 +1,9 @@
 """add payments table — 2026-09-05 real payment-gateway readiness
 
-Tracks a real payment attempt through a gateway (Grow/Meshulam) end to end: created "pending" the
+Tracks a real payment attempt through a gateway (a payment gateway) end to end: created "pending" the
 moment a user picks a plan, flipped to "paid" only by the gateway's own webhook confirming a real
 charge. Also doubles as the record for the earlier informal click-trust model (gateway=NULL) when
-Grow isn't configured yet — see common/todira_common/models.py's Payment docstring and
+no gateway is configured yet — see common/todira_common/models.py's Payment docstring and
 website/main.py's /upgrade for how the two coexist.
 
 Revision ID: 0008_payments

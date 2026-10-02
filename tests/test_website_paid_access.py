@@ -315,10 +315,10 @@ def test_upgrade_page_renders_in_english_when_lang_param_is_set():
 
 
 def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instructions():
-    """Grow isn't configured in these tests (no GROW_* env vars set) — /upgrade falls back to the
+    """Takbull isn't configured in these tests — /upgrade falls back to the
     informal Bit/PayBox flow: a pending Payment, then a redirect to the instructions page.
     extend_paid_until only runs once /upgrade/pay/confirm is actually clicked — see
-    test_website_informal_payment.py. See test_website_grow_payments.py for the real-gateway path."""
+    test_website_informal_payment.py. See test_website_takbull_payments.py for the real-gateway path."""
     user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
 
@@ -329,7 +329,6 @@ def test_upgrade_submit_creates_pending_payment_and_redirects_to_pay_instruction
     with (
         patch.object(website_main, "get_session", _fake_get_session),
         patch.object(website_main.takbull_client, "recurring_api_configured", lambda: False),
-        patch.object(website_main.grow_client, "is_configured", lambda: False),
     ):
         c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
         resp = c.post(

@@ -1690,7 +1690,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # real-content-only behavior rather than fabricating three new translations here.
     "about.h1": {"he": "אודות טודירה", "en": "About Todira"},
     "about.body_intro": {
-        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
+        "he": 'טודירה הוא שירות אישי (בוט בטלגרם, בוט בוואטסאפ ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
         "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (real-estate sites and listing boards), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published.",
     },
     "about.body_disclaimer": {
@@ -1769,8 +1769,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Your Telegram user ID and the username shown by Telegram, if you registered via the bot.",
     },
     "privacy.s1_item2": {
-        "he": "מספר הטלפון שלך בוואטסאפ ותוכן ההודעות שהוחלפו עם הבוט, אם נרשמת/השתמשת בשירות דרך וואטסאפ.",
-        "en": "Your WhatsApp phone number and the content of messages exchanged with the bot, if you registered/used the service via WhatsApp.",
+        "he": "מספר הטלפון שלך בוואטסאפ, תוכן ההודעות שהוחלפו עם הבוט ומועד ההודעה האחרונה ששלחת (לצורך ניהול חלון ההתקשרות של וואטסאפ), אם נרשמת/השתמשת בשירות דרך וואטסאפ.",
+        "en": "Your WhatsApp phone number, the content of messages exchanged with the bot and the time of your last message (used to manage WhatsApp's messaging window), if you registered/used the service via WhatsApp.",
     },
     "privacy.s1_item3": {
         "he": "כתובת האימייל ושם התצוגה שלך מחשבון Google, אם התחברת עם Google.",
@@ -1832,7 +1832,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": " — התחברות עם חשבון Google (Sign in with Google), ו-Gemini API לפענוח הודעות טקסט חופשי.",
         "en": " — Sign in with Google, and the Gemini API for parsing free-text messages.",
     },
-    "privacy.s3_item4_label": {"he": "Takbull / Grow", "en": "Takbull / Grow"},
+    "privacy.s3_item4_label": {"he": "Takbull (דרך UPAY)", "en": "Takbull (via UPAY)"},
     "privacy.s3_item4_body": {
         "he": " — עיבוד תשלומים עבור מנוי בתשלום. פרטי האשראי עצמם מוזנים ישירות בדף הסליקה המאובטח של הספק ולעולם אינם עוברים דרך שרתי טודירה.",
         "en": " — payment processing for paid subscriptions. Your card details are entered directly on the processor's own secure checkout page and never pass through Todira's servers.",
@@ -1893,8 +1893,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "terms.updated": {"he": "עודכן לאחרונה: ספטמבר 2026", "en": "Last updated: September 2026"},
     "terms.s1_title": {"he": "1. מה זה טודירה", "en": "1. What Todira is"},
     "terms.s1_body": {
-        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך במנוי בתשלום, כמפורט בעמוד השדרוג באתר.',
-        "en": "Todira is a personal service (a Telegram bot and companion website) that automatically scans apartment listings from external sources on the web (various real-estate sites and listing boards) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a paid subscription, as detailed on the site's upgrade page.",
+        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך במנוי חודשי בתשלום בסך ₪49.90 לחודש, המתחדש אוטומטית מדי חודש עד לביטולו, כמפורט בעמוד השדרוג באתר. ניתן לבטל את המנוי בכל עת מעמוד החשבון באתר. הביטול מונע חיובים עתידיים, והגישה לשירות נשארת פעילה עד תום התקופה ששולמה. הודעות בוואטסאפ נשלחות רק בתוך 24 שעות מההודעה האחרונה שלך אל הבוט; כדי להמשיך לקבל הודעות יש להגיב מדי פעם להודעת הבדיקה האוטומטית ("עדיין מחפש?"), וניתן להפסיק את ההודעות בכל עת בלחיצה על "עצרו הודעות".',
+        "en": "Todira is a personal service (a Telegram bot, a WhatsApp bot and a companion website) that automatically scans apartment listings from external sources on the web (various real-estate sites and listing boards) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a paid monthly subscription of ₪49.90 per month, which renews automatically every month until cancelled, as detailed on the site's upgrade page. You can cancel the subscription at any time from your account page on the site; cancelling prevents any future charges, and access to the service stays active until the end of the period already paid for. WhatsApp messages are sent only within 24 hours of your last message to the bot; to keep receiving messages you need to reply now and then to the automatic check-in message (“Still looking?”), and you can stop the messages at any time by tapping “Stop messages”.",
     },
     "terms.s2_title": {"he": "2. אין אחריות על תוכן המודעות", "en": "2. No warranty on listing content"},
     "terms.s2_body": {
@@ -1933,8 +1933,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "terms.s9_title": {"he": "9. אספקת השירות", "en": "9. Service delivery"},
     "terms.s9_body": {
-        "he": "השירות ניתן במלואו באופן דיגיטלי, ואינו כרוך במשלוח פיזי של מוצר כלשהו. עם אישור תשלום עבור מנוי בתשלום, הגישה למנוי מופעלת באופן אוטומטי ומיידי (בדרך כלל תוך דקות ספורות ממועד אישור העסקה), ישירות דרך הבוט בטלגרם ו/או האתר, ללא צורך בפעולה נוספת מצד המשתמש.",
-        "en": "The service is provided entirely digitally and does not involve physical shipping of any product. Upon confirmation of payment for a paid subscription, access is activated automatically and immediately (typically within a few minutes of transaction confirmation), directly through the Telegram bot and/or the website, with no further action required from the user.",
+        "he": "השירות ניתן במלואו באופן דיגיטלי, ואינו כרוך במשלוח פיזי של מוצר כלשהו. עם אישור תשלום עבור מנוי בתשלום, הגישה למנוי מופעלת באופן אוטומטי ומיידי (בדרך כלל תוך דקות ספורות ממועד אישור העסקה), ישירות דרך הבוט בטלגרם, הבוט בוואטסאפ ו/או האתר, ללא צורך בפעולה נוספת מצד המשתמש.",
+        "en": "The service is provided entirely digitally and does not involve physical shipping of any product. Upon confirmation of payment for a paid subscription, access is activated automatically and immediately (typically within a few minutes of transaction confirmation), directly through the Telegram bot, the WhatsApp bot and/or the website, with no further action required from the user.",
     },
     "terms.s10_title": {"he": "10. ביטול עסקה והחזרים", "en": "10. Cancellation and refunds"},
     "terms.s10_body": {
@@ -2318,13 +2318,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Списание автоматически продлевается каждый месяц, пока вы не отмените подписку. 🐾",
         "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Le prélèvement se renouvelle automatiquement chaque mois jusqu'à l'annulation. 🐾",
         "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
-    },
-    "upgrade.payment_hint_grow": {
-        "he": "התשלום מאובטח דרך Grow — ביט, פייבוקס, Apple Pay, Google Pay או כרטיס אשראי. 🐾",
-        "en": "Payment is secured through Grow — Bit, PayBox, Apple Pay, Google Pay or credit card. 🐾",
-        "ru": "Оплата защищена через Grow — Bit, PayBox, Apple Pay, Google Pay или банковская карта. 🐾",
-        "fr": "Le paiement est sécurisé via Grow — Bit, PayBox, Apple Pay, Google Pay ou carte de crédit. 🐾",
-        "ar": "الدفع مؤمّن عبر Grow — Bit أو PayBox أو Apple Pay أو Google Pay أو بطاقة ائتمان. 🐾",
     },
     "upgrade.payment_hint_manual": {
         "he": "התשלום מתבצע ידנית בביט/PayBox — אחרי הלחיצה תועבר/י לעמוד עם כל פרטי התשלום. 🐾",

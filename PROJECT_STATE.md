@@ -26,6 +26,15 @@ Webhook replies to a user's own message are unaffected (not proactive). Env `WHA
 `scraper.whatsappBusinessAccountId`) feeds the cost guard. Manual check workflow: `.github/workflows/test-free-whatsapp-send.yaml`
 (owner only, only when the window is open, logs status only).
 
+**Payments / legal pass (2026-10-02):** (1) Grow is GONE from the code (client, `/webhooks/grow`, env, helm, tests): only Takbull
+(via UPAY) exists; until its API keys are set `/upgrade` uses the informal click-trust fallback. (2) CONSUMER-PROTECTION FIX:
+`website/subscription_housekeeping.py` used to cancel a cancelled subscription on Takbull only AFTER `paid_until` passed, so
+a renewal could still be charged after the customer cancelled; it now cancels `CANCEL_LEAD_TIME` (3 days) BEFORE, and
+`/account/resume-subscription` is a no-op once the Takbull order is gone. (3) Terms/Privacy (he+en, `website/i18n.py`, then
+regenerate `landing-react/src/content.json` and `npm run build`) now mention the WhatsApp bot, the 24h-window/check-in rule,
+the ₪49.90/month auto-renewing subscription and how to cancel, and the WhatsApp last-message timestamp. NOT verified: whether
+a lawyer should review them; whether Takbull's renewal fires before/after `paid_until` (3-day lead covers both).
+
 **Signed login links (2026-10-02, security):** the site NO LONGER trusts a bare `?uid=<telegram id>` (it let anyone view
 or edit another user's account and, via `/auth/google/start?uid=`, take it over by linking their own Google account).
 Every bot/notifier link now carries `?t=<signed token>` (`common/todira_common/uid_token.py`, 180 days, same secret as the

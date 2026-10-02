@@ -1,7 +1,7 @@
 """Tests for the informal Bit/PayBox payment flow (website/main.py's /upgrade/pay and
-/upgrade/pay/confirm, 2026-09-05) — used whenever Grow isn't configured. See
+/upgrade/pay/confirm, 2026-09-05) — used whenever Takbull isn't configured. See
 test_website_paid_access.py for /upgrade itself creating the pending Payment, and
-test_website_grow_payments.py for the real-gateway path this coexists with.
+test_website_takbull_payments.py for the real-gateway path this coexists with.
 
 Same importlib-loading approach as the other website test files (see test_website_paid_access.py's
 own comment) — website/main.py shares a basename with scraper/main.py so it can't go through a
@@ -215,10 +215,10 @@ def test_confirm_404s_for_someone_elses_payment(client):
 
 
 def test_confirm_404s_for_a_pending_gateway_payment_so_it_cannot_be_self_confirmed(client):
-    # Found 2026-09-30: POST /upgrade creates the caller's OWN pending Takbull/Grow payment, and this
+    # Found 2026-09-30: POST /upgrade creates the caller's OWN pending Takbull payment, and this
     # self-service endpoint used to accept it too - a free month for anyone, once a real gateway is
     # configured. Only the gateway's own webhook may ever mark such a payment paid.
-    for gateway in ("takbull", "grow"):
+    for gateway in ("takbull",):
         user = _FakeUser(id=2, telegram_user_id=222, paid_until=None)
         payment = _FakePayment(id=9, user_id=2, plan="monthly", status="pending", gateway=gateway)
         fake_session = _FakeSession(

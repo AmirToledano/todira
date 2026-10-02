@@ -54,8 +54,8 @@ jobs:
             echo ""
             echo "VERDICT: at least one of takbull-api-key/takbull-api-secret is EMPTY live — "
             echo "recurring_api_configured() returns False in production right now, so /upgrade is "
-            echo "NOT using the new recurring API. It's falling through to Grow (if configured) or "
-            echo "the old manual/click-trust Takbull hosted-page flow."
+            echo "NOT using the new recurring API. It's falling through to "
+            echo "the informal click-trust flow."
           else
             echo ""
             echo "VERDICT: both keys are present and non-empty live — recurring_api_configured() "
