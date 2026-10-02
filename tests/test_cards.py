@@ -382,16 +382,14 @@ def test_whatsapp_caption_uses_markdown_not_html():
     assert "_" not in caption  # no more italics markdown either
 
 
-def test_whatsapp_street_stays_plain_text_with_a_separate_maps_line():
-    # WhatsApp text messages can't make custom text a link (only raw URLs auto-link), unlike
-    # Telegram's HTML <a> tag — same underlying Google Maps URL, just on its own tappable line
-    # right after the location line instead of inline.
+def test_whatsapp_street_stays_plain_text_and_has_no_maps_link():
+    # WhatsApp can't make custom text a link (only a raw, very long URL auto-links), and the owner
+    # decided (2026-10-02) not to show a Google Maps URL there at all. Telegram/website keep it.
     caption = format_caption_whatsapp(make_listing(street="דיזנגוף 10"), has_access=True)
     assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
     assert "<a href" not in caption
-    lines = caption.split("\n")
-    location_line = next(i for i, line in enumerate(lines) if "📍" in line)
-    assert lines[location_line + 1].startswith("🗺️ https://www.google.com/maps/search/")
+    assert "google.com/maps" not in caption
+    assert "🗺️" not in caption
 
 
 def test_whatsapp_price_change_header_is_bold_with_asterisks():
