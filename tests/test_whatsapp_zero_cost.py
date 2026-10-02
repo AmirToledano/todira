@@ -213,12 +213,13 @@ def test_touch_inbound_returns_the_summary_start_when_a_closed_window_reopens():
     assert whatsapp_window.window_open(user.whatsapp_last_inbound_at) is True
 
 
-def test_touch_inbound_summary_never_reaches_back_more_than_a_week():
-    user = _wa_user(whatsapp_last_inbound_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30))
-    with _patch_session(_WebhookSession(user)):
-        since = whatsapp_webhook._touch_inbound_sync("9725500000")
-    age = dt.datetime.now(dt.timezone.utc) - since
-    assert dt.timedelta(days=6, hours=23) < age < dt.timedelta(days=7, minutes=1)
+def test_touch_inbound_summary_is_elastic_to_any_length_of_absence():
+    for away in (dt.timedelta(hours=26), dt.timedelta(days=3), dt.timedelta(days=30)):
+        previous = dt.datetime.now(dt.timezone.utc) - away
+        user = _wa_user(whatsapp_last_inbound_at=previous)
+        with _patch_session(_WebhookSession(user)):
+            since = whatsapp_webhook._touch_inbound_sync("9725500000")
+        assert since == previous, away
 
 
 def test_touch_inbound_defaults_to_48_hours_when_the_previous_message_time_is_unknown():

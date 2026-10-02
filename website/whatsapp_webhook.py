@@ -551,16 +551,16 @@ def _message_sent_at(message: dict) -> dt.datetime | None:
 
 
 # The one-link "while you were away" summary covers listings first seen since the user's previous
-# message, but never reaches further back than this, and defaults to this many hours when the previous
-# message time is unknown (a user from before the column existed, or an explicit "continue").
-_DIGEST_MAX_LOOKBACK = dt.timedelta(days=7)
+# message - however long that was (hours, days, weeks: no fixed window). Only when the previous message
+# time is unknown (a user from before the column existed, or an explicit "continue") does it fall back
+# to this many hours.
 _DIGEST_DEFAULT_LOOKBACK = dt.timedelta(hours=48)
 
 
 def _touch_inbound_sync(wa_id: str, sent_at: dt.datetime | None = None) -> dt.datetime | None:
     """Stamps the user's last inbound message. Returns None normally; when this message REOPENED a
     closed window for an opted-in user it returns the moment to summarize FROM (their previous
-    message time, at most 7 days back, 48h if unknown) — the caller then sends the one-link summary
+    message time, whatever the gap; 48h only if unknown) — the caller then sends the one-link summary
     of what was found while they were away. A number with no user row yet is a no-op (the row is
     created later in this same message's handling; its first stamp lands on their next message)."""
     now = dt.datetime.now(dt.timezone.utc)
@@ -578,7 +578,7 @@ def _touch_inbound_sync(wa_id: str, sent_at: dt.datetime | None = None) -> dt.da
         if not (was_closed and user.whatsapp_notifications_opted_in):
             return None
         previous_utc = None if previous is None else (previous if previous.tzinfo else previous.replace(tzinfo=dt.timezone.utc))
-        return max(previous_utc or now - _DIGEST_DEFAULT_LOOKBACK, now - _DIGEST_MAX_LOOKBACK)
+        return previous_utc or now - _DIGEST_DEFAULT_LOOKBACK
 
 
 def _touch_inbound_safely(wa_id: str, sent_at: dt.datetime | None = None) -> dt.datetime | None:
