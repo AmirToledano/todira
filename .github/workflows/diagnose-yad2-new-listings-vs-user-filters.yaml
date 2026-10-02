@@ -42,6 +42,8 @@ jobs:
                 args:
                   - |
                     CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -c "SELECT count(*) AS total_filters, count(*) FILTER (WHERE cardinality(cities) = 0) AS filters_without_cities, count(*) FILTER (WHERE deal_type = 'rent') AS rent_filters FROM filters;"
+                    psql "$CONN" -c "SELECT count(*) FILTER (WHERE free_access_granted) AS free_access, count(*) FILTER (WHERE trial_ends_at > now()) AS in_trial, count(*) FILTER (WHERE paid_until > now()) AS paying FROM users;"
                     psql "$CONN" -c "SELECT count(*) AS total_users, count(*) FILTER (WHERE is_active) AS active_users FROM users;"
                     psql "$CONN" -c "SELECT count(*) AS filters_with_cities, count(DISTINCT c) AS distinct_cities FROM filters f, unnest(f.cities) c WHERE cardinality(f.cities) > 0;"
                     psql "$CONN" -c "
