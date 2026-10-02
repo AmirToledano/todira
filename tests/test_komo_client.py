@@ -393,3 +393,107 @@ def test_fetch_search_results_skips_items_with_no_id(monkeypatch):
     )
 
     assert list(fetch_search_results("jerusalem")) == []
+
+
+# --- 2026-10-02: move-in text, ticked amenities, ground floor, 3-box layout (all confirmed live on
+# 25 real pages via .github/workflows/diagnose-komo-detail-amenities.yaml) ---
+
+_REAL_AMENITY_UL_ONE_TICKED = (
+    "<ul class=\"modaaWNewUl md_c_183 \" style=\"list-style-type: none;\" >"
+    "<li class='mamad '><span class='faspan nocolor'><i class='fa-light'></i></span>ממד</li>"
+    "<li class='maalit add'><span class='faspan nocolor'><i class='fa-light'></i></span>מעלית</li>"
+    "<li class='soragim '>סורגים</li><li class='pets add'>חיות מחמד</li>"
+    "<li class='renovated add'>משופצת</li><li class='longRent '>לטווח ארוך</li></ul>"
+)
+
+
+def _page_with(extra_html: str, *, floor_box: str | None = None, size_box: str | None = None) -> str:
+    base = (
+        '<div class="price modaaWPrice" ><span class="ModaaWDetailsValue" >5,000</span></div>'
+        '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;3 חדרים  &nbsp;בחיפה, הנשיא 5" />'
+    )
+    floor_box = floor_box or (
+        '<div class="floor firstInfoBlockWrap" style="width:25%;" >'
+        '<div class="firstInfo" > 2 </div><div class="firstInfoTitle" > קומה</div></div>'
+    )
+    size_box = size_box or (
+        '<div class="mr firstInfoBlockWrap" style="width:25%;" >'
+        '<div class="firstInfo" > 80 </div><div class="firstInfoTitle" > מ"ר</div></div>'
+    )
+    return base + floor_box + size_box + extra_html
+
+
+def test_parse_details_reads_immediate_move_in_text():
+    enter = (
+        '<div class="enter " style="width:25%;" > <div class="firstInfo" > מיידית </div> '
+        '<div class="firstInfoTitle" > תאריך כניסה</div></div>'
+    )
+    item = _parse_details_html(_page_with(enter), modaa_num="1")
+    assert item["move_in_text"] == "מיידית"
+
+
+def test_parse_details_reads_flexible_move_in_text():
+    enter = '<div class="enter " style="width:25%;"><div class="firstInfo" >גמיש</div></div>'
+    assert _parse_details_html(_page_with(enter), modaa_num="1")["move_in_text"] == "גמיש"
+
+
+def test_parse_details_has_no_move_in_key_when_the_page_has_no_entry_box():
+    item = _parse_details_html(_page_with(""), modaa_num="1")
+    assert "move_in_text" not in item
+
+
+def test_parse_details_only_ticked_amenities_count_and_unticked_are_ignored():
+    item = _parse_details_html(_page_with(_REAL_AMENITY_UL_ONE_TICKED), modaa_num="1")
+    assert item["elevator"] is True
+    assert item["petsAllowed"] is True
+    assert item["renovated"] is True
+    assert "safeRoom" not in item  # <li class='mamad '> is NOT ticked
+    assert "roommates" not in item
+
+
+def test_parse_details_no_amenity_keys_when_nothing_is_ticked():
+    unticked = "<ul><li class='mamad '>ממד</li><li class='maalit '>מעלית</li></ul>"
+    item = _parse_details_html(_page_with(unticked), modaa_num="1")
+    assert not ({"elevator", "petsAllowed", "renovated", "roommates", "safeRoom", "furnished"} & set(item))
+
+
+def test_parse_details_ground_floor_is_floor_zero():
+    ground = (
+        '<div class="floor firstInfoBlockWrap" style="width:33%;" >'
+        '<div class="firstInfo" > קרקע </div><div class="firstInfoTitle" > קומה</div></div>'
+    )
+    assert _parse_details_html(_page_with("", floor_box=ground), modaa_num="1")["floor"] == 0
+
+
+def test_parse_details_reads_size_from_the_3_box_layout_without_firstinfoblockwrap():
+    """Live page 30327: `<div class="mr " style="width:33%;">` - the size used to be missed."""
+    size = (
+        '<div class="mr " style="width:33%;" > <div class="firstInfo" > 35 </div> '
+        '<div class="firstInfoTitle" > מ"ר</div></div>'
+    )
+    assert _parse_details_html(_page_with("", size_box=size), modaa_num="1")["square_meters"] == 35
+
+
+def test_normalize_carries_komo_move_in_text_and_ticked_amenities_into_the_listing():
+    from normalize import normalize
+
+    item = normalize(
+        {
+            "id": "55", "url": "https://www.komo.co.il/x", "price": 5000, "rooms": 3.0,
+            "floor": 0, "move_in_text": "מיידית", "elevator": True, "petsAllowed": True,
+            "safeRoom": True, "furnished": True,
+        },
+        source="komo",
+    )
+    assert item.floor == 0
+    assert item.move_in_note == "מיידית"
+    assert item.has_elevator is True and item.pets_allowed is True
+    assert item.safe_room_type == "safe_room" and item.furniture == "furnished"
+
+
+def test_normalize_leaves_amenities_unknown_when_komo_ticked_nothing():
+    from normalize import normalize
+
+    item = normalize({"id": "56", "url": "https://www.komo.co.il/y", "price": 5000}, source="komo")
+    assert item.has_elevator is None and item.safe_room_type is None
+    assert item.furniture is None and item.move_in_note is None

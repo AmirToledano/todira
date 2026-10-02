@@ -145,6 +145,8 @@ class NormalizedListing(BaseModel):
     is_broker_listing: bool | None = None
 
     move_in_date: dt.date | None = None
+    # Free-text move-in ('מיידית' = immediate, 'גמיש' = flexible) for a source that gives text, not a date.
+    move_in_note: str | None = None
     description: str | None = None
     image_urls: list[str] = Field(default_factory=list)
 

@@ -294,6 +294,9 @@ class Listing(Base):
     is_broker_listing: Mapped[bool | None] = mapped_column(Boolean)
 
     move_in_date: Mapped[dt.date | None] = mapped_column(Date)
+    # Free-text move-in when the source gives text instead of a date (Komo: 'מיידית' immediate, 'גמיש'
+    # flexible). Shown only when move_in_date is unset; never used for filtering.
+    move_in_note: Mapped[str | None] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
     image_urls: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
 

@@ -1253,6 +1253,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "כניסה: {date}", "en": "Move in: {date}", "ru": "Заезд: {date}",
         "fr": "Entrée: {date}", "ar": "الدخول: {date}",
     },
+    "card.move_in_immediate": {
+        "he": "מיידית", "en": "immediate", "ru": "сразу", "fr": "immédiate", "ar": "فوري",
+    },
+    "card.move_in_flexible": {
+        "he": "גמיש", "en": "flexible", "ru": "гибко", "fr": "flexible", "ar": "مرن",
+    },
     # Price-change badge (2026-09-24, real owner request comparing against dorin.app's own card —
     # a struck-through previous price + a colored percentage badge next to the current one). Only
     # the sign-free number goes here; the +/- and color are decided in the template/CSS from

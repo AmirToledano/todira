@@ -142,7 +142,7 @@
       {% if l.rooms %}<span class="feature-badge">{{ l.rooms }} {{ t('card.rooms') }} 🛏️</span>{% endif %}
       {% if l.floor is not none %}<span class="feature-badge">{{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %} 🏢</span>{% endif %}
       {% if l.size_sqm %}<span class="feature-badge">{{ l.size_sqm }} {{ t('card.sqm') }} 📐</span>{% endif %}
-      {% if l.move_in_date %}<span class="feature-badge">{{ t('card.move_in_date', date=l.move_in_date.strftime('%d.%m.%y')) }} 📅</span>{% endif %}
+      {% if l.move_in_date %}<span class="feature-badge">{{ t('card.move_in_date', date=l.move_in_date.strftime('%d.%m.%y')) }} 📅</span>{% elif l.move_in_note %}<span class="feature-badge">{{ t('card.move_in_date', date=(t('card.move_in_immediate') if l.move_in_note == 'מיידית' else (t('card.move_in_flexible') if l.move_in_note == 'גמיש' else l.move_in_note))) }} 📅</span>{% endif %}
       {% if l.has_parking %}<span class="feature-badge">{{ t('card.amenity_parking') }} 🚗</span>{% endif %}
       {% if l.has_elevator %}<span class="feature-badge">{{ t('card.amenity_elevator') }} 🛗</span>{% endif %}
       {% if l.has_balcony %}<span class="feature-badge">{{ t('card.amenity_balcony') }} 🌿</span>{% endif %}

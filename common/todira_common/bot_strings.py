@@ -1188,6 +1188,12 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     "card.move_in_label": {
         "he": "כניסה:", "en": "Move-in:", "ru": "Въезд:", "fr": "Entrée :", "ar": "الانتقال:",
     },
+    "card.move_in_immediate": {
+        "he": "מיידית", "en": "Immediate", "ru": "Сразу", "fr": "Immédiate", "ar": "فوري",
+    },
+    "card.move_in_flexible": {
+        "he": "גמיש", "en": "Flexible", "ru": "Гибко", "fr": "Flexible", "ar": "مرن",
+    },
     "card.features_label": {
         "he": "פיצ'רים:", "en": "Features:", "ru": "Особенности:",
         "fr": "Caractéristiques :", "ar": "المميزات:",
