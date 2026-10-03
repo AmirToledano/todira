@@ -1,5 +1,30 @@
 # ToDira — Project State Handoff
 
+## ▶ OPEN ITEMS WAITING FOR THE OWNER (2026-10-03) — come back to these
+Owner asked (2026-10-03) to keep a list of everything he has not answered yet. Answer in Hebrew, short.
+1. **Yad2 detail-fetch cost (biggest open question).** Facts: Bright Data bill Sept = $11.52 (paid 2026-10-01); free tier
+   5,000 requests/month (3,473 left on 10-02, renews 11-01); balance $0.85 (account suspends at 0 unless Auto-recharge is on —
+   owner should enable it in Billing); ISP product is pay-per-GB and unused by code. Only 3 users (1 in trial, 0 paying); ~500
+   new Yad2 listings/day, only ~11/day in a user's city. DONE: map API now fetched FREE with curl_cffi browser TLS (flag
+   `YAD2_FREE_MAP_FETCH`, helm `scraper.yad2FreeMapFetch: true`, Web Unlocker fallback) — verify on the first scheduled run
+   after deploy (image must build with curl_cffi). Eager enrichment of new Yad2 listings stays ON at 50/run (owner said keep),
+   backfill of old listings OFF. OPEN decision: (A, recommended) add display-time enrichment everywhere listings are shown
+   (filter-save "matches now" summary, bot /apartments, website) — today a NEW user's initial matches only carry details if
+   the listing was already enriched (notifier fetches at send time only); then eager can be cut. (B) test headless Chromium
+   for detail pages (worked once from our IP, blocked on the 2nd load). (C) home residential IP/tunnel (needs an always-on
+   device at the owner's home). Probes: `.github/workflows/diagnose-yad2-*.yaml`.
+2. **Legal (not legal advice; official sites were unreachable, based on search summaries):** Terms currently say the user waives
+   the 14-day distance-sale cancellation right — risky; recommended: honor 14 days with a fee of at most the lower of 5% / NIS 100
+   (Consumer Protection Law s.14ג). Owner has NOT decided. The "upgrade" button inside a WhatsApp card for users without access
+   is borderline vs the spam law (s.30א).
+3. **Takbull:** no separate coordination expected; API key/secret come from Takbull; set `TAKBULL_API_KEY`/`TAKBULL_API_SECRET`
+   as GitHub secrets (owner, never in chat) and run ONE real test charge to verify the recurring webhook payload + renewal date.
+4. **Meta/WhatsApp:** owner to confirm the Meta balance; verify tomorrow that a full day cost 0 (`diagnose-whatsapp-billing.yaml`).
+5. **Promo video:** v3 (`todira-promo-v3.mp4`, end-card fix applied) is the approved base. Ideas from the guides the owner shared
+   are in the 2026-10-03 reply (safe zones for Reels, 60fps + motion blur, no masked Hebrew reveals, beat-synced music, animated
+   Todi mascot, embed the ad on the landing hero).
+6. Telegram numeric id of the owner still exists in old git history (not rewritten; not exploitable).
+
 ## ▶ WHERE WE STOPPED (2026-10-02) — read this first
 **WhatsApp is now ZERO-COST by design (built 2026-10-02).** Meta bills every business-initiated template message
 (about 0.0353 each; 717 = $25.31 in 30 days), so NO template is ever sent anymore (all template code/config removed).
