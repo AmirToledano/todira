@@ -1,0 +1,136 @@
+name: "Diagnose — can Gemini's URL-context tool read Yad2 pages for us (free tier)? (read-only)"
+
+# Owner question (2026-10-03): can Google AI Studio / Gemini help fetch listings or enrich them, cheaper
+# than Bright Data? Gemini's API has a `url_context` tool: Google's own servers fetch the page, so it
+# may not hit Yad2's Radware block. This tests it with the project's existing GEMINI_API_KEY (free tier)
+# on (1) the Yad2 map API URL and (2) 3 recent Yad2 listing pages that ALREADY have a description in
+# our DB, and compares what Gemini returns with the DB value (to catch hallucination). Prints only
+# status codes / match booleans / lengths — never the key, never listing text.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the probe in a throwaway pod
+        run: |
+          POD_NAME="gemini-urlctx-diag-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import json, os, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "requests", "psycopg2-binary"])
+          import requests, psycopg2
+
+          key = os.environ["GEMINI_API_KEY"]
+          dsn = "postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]
+          cur = psycopg2.connect(dsn).cursor()
+          cur.execute("select url, description from listings where source='yad2' and description is not null and is_delisted=false order by first_seen_at desc limit 3")
+          rows = cur.fetchall()
+
+          MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+
+          def ask(model, url, prompt):
+              body = {"contents": [{"parts": [{"text": prompt + "\n\nURL: " + url}]}],
+                      "tools": [{"url_context": {}}],
+                      "generationConfig": {"temperature": 0}}
+              r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                                headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body, timeout=120)
+              return r
+
+          def meta(r):
+              try:
+                  d = r.json()
+                  cand = (d.get("candidates") or [{}])[0]
+                  ucm = cand.get("urlContextMetadata", {}).get("urlMetadata", [])
+                  statuses = [m.get("urlRetrievalStatus") for m in ucm]
+                  text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []))
+                  usage = d.get("usageMetadata", {})
+                  return statuses, text, usage, d.get("error", {}).get("message", "")[:120]
+              except Exception as e:
+                  return [], "", {}, f"parse error {type(e).__name__}"
+
+          PROMPT = ('Open the URL with your URL-context tool. Return ONLY JSON {"description": <the listing description text, verbatim>, "ok": true}. '
+                    'If you could not actually open the page, return {"ok": false}. NEVER guess or invent text.')
+
+          print("== A) map API URL via url_context ==")
+          MAP = "https://gw.yad2.co.il/realestate-feed/rent/map?area=1&region=3&bBox=31.987679,34.732856,32.146966,34.857736&zoom=11"
+          for m in MODELS:
+              r = ask(m, MAP, 'Open the URL with your URL-context tool. Return ONLY JSON {"markers_count": <number of items in data.markers>, "ok": true}; if you could not open it return {"ok": false}. Never guess.')
+              st, text, usage, err = meta(r)
+              print(f"{m}: http={r.status_code} retrieval={st} usage_prompt_tokens={usage.get('promptTokenCount')} out_len={len(text)} err={err!r}")
+              time.sleep(3)
+
+          print("== B) 3 listing pages: Gemini output vs DB description ==")
+          for i, (url, desc) in enumerate(rows):
+              for m in MODELS[:1]:
+                  r = ask(m, url, PROMPT)
+                  st, text, usage, err = meta(r)
+                  ok_flag = '"ok": true' in text.replace('"ok":true', '"ok": true')
+                  got = ""
+                  try:
+                      s = text[text.index("{"): text.rindex("}") + 1]
+                      got = (json.loads(s).get("description") or "")
+                  except Exception:
+                      pass
+                  exact = got.strip() == desc.strip()
+                  head = bool(got) and desc.strip()[:40] in got
+                  print(f"listing{i} {m}: http={r.status_code} retrieval={st} tokens={usage.get('promptTokenCount')} claimed_ok={ok_flag} got_len={len(got)} db_len={len(desc)} exact_match={exact} first40_match={head} err={err!r}")
+                  time.sleep(3)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 420
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: GEMINI_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: gemini-api-key
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 130); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|http=|Traceback|Error" || echo "(no logs captured)"
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
