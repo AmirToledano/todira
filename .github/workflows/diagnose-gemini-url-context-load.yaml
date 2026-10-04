@@ -5,7 +5,12 @@ name: "Diagnose - Gemini URL-context under realistic load (read-only, aggregate 
 # (2) a burst of 8 parallel calls to see 429/503 behaviour when several listings are shown at once.
 # Prints only counts, statuses and latency numbers - never page text, urls or the key.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Gemini model id to probe (free-tier quota is per model)"
+        required: false
+        default: "gemini-3.6-flash"
 
 jobs:
   diagnose:
@@ -36,7 +41,7 @@ jobs:
           cur.execute("""select url from listings where source='yad2' and is_delisted=false
                          order by first_seen_at desc limit 38""")
           urls = [r[0] for r in cur.fetchall()]
-          MODEL = "gemini-3.6-flash"
+          MODEL = os.environ.get("PROBE_MODEL", "gemini-3.6-flash")
           PROMPT = ('Open the URL with your URL-context tool and read the listing. Return ONLY JSON with keys: '
                     '"description" (verbatim text), "building_top_floor" (integer or null), "ok" (true). '
                     'If you could not actually open the page return {"ok": false}. NEVER guess.')
@@ -123,6 +128,8 @@ jobs:
                       secretKeyRef:
                         name: todira-postgres-secret
                         key: database-url
+                  - name: PROBE_MODEL
+                    value: "${{ inputs.model }}"
                   - name: GEMINI_API_KEY
                     valueFrom:
                       secretKeyRef:
