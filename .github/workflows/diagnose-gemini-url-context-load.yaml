@@ -1,0 +1,132 @@
+name: "Diagnose - Gemini URL-context under realistic load (read-only, aggregate only)"
+
+# Before building display-time enrichment on Gemini, measure what could break it: (1) success rate and
+# latency over 30 recent Yad2 listings (ANY listing, enriched or not) fetched one by one at ~8 per minute;
+# (2) a burst of 8 parallel calls to see 429/503 behaviour when several listings are shown at once.
+# Prints only counts, statuses and latency numbers - never page text, urls or the key.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the probe in a throwaway pod
+        run: |
+          POD_NAME="gemini-load-diag-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import json, os, statistics, subprocess, sys, time
+          from concurrent.futures import ThreadPoolExecutor
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "requests", "psycopg2-binary"])
+          import requests, psycopg2
+
+          key = os.environ["GEMINI_API_KEY"]
+          dsn = "postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]
+          cur = psycopg2.connect(dsn).cursor()
+          cur.execute("""select url from listings where source='yad2' and is_delisted=false
+                         order by first_seen_at desc limit 38""")
+          urls = [r[0] for r in cur.fetchall()]
+          MODEL = "gemini-3.6-flash"
+          PROMPT = ('Open the URL with your URL-context tool and read the listing. Return ONLY JSON with keys: '
+                    '"description" (verbatim text), "building_top_floor" (integer or null), "ok" (true). '
+                    'If you could not actually open the page return {"ok": false}. NEVER guess.')
+
+          def call(url):
+              t0 = time.time()
+              body = {"contents": [{"parts": [{"text": PROMPT + "\n\nURL: " + url}]}], "tools": [{"url_context": {}}],
+                      "generationConfig": {"temperature": 0}}
+              try:
+                  r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
+                                    headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body, timeout=120)
+              except Exception as e:
+                  return ("exception:" + type(e).__name__, time.time() - t0, False)
+              dt = time.time() - t0
+              if r.status_code != 200:
+                  return (f"http_{r.status_code}", dt, False)
+              d = r.json(); cand = (d.get("candidates") or [{}])[0]
+              st = [m.get("urlRetrievalStatus") for m in cand.get("urlContextMetadata", {}).get("urlMetadata", [])]
+              if st != ["URL_RETRIEVAL_STATUS_SUCCESS"]:
+                  return ("retrieval_" + ",".join(str(s) for s in st), dt, False)
+              text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []))
+              try:
+                  g = json.loads(text[text.index("{"): text.rindex("}") + 1])
+              except Exception:
+                  return ("unparseable", dt, False)
+              has_desc = bool((g.get("description") or "").strip())
+              return ("ok" if g.get("ok") and has_desc else "ok_but_empty", dt, bool(g.get("ok") and has_desc))
+
+          def summarize(label, res):
+              kinds = {}
+              for k, _, _ in res:
+                  kinds[k] = kinds.get(k, 0) + 1
+              lat = sorted(dt for _, dt, _ in res)
+              usable = sum(1 for _, _, u in res if u)
+              p95 = lat[min(len(lat) - 1, int(len(lat) * 0.95))] if lat else 0
+              print(f"== {label}: n={len(res)} usable={usable} kinds={kinds} latency_s median={statistics.median(lat):.1f} p95={p95:.1f} max={max(lat):.1f}")
+
+          seq = []
+          for u in urls[:30]:
+              seq.append(call(u)); time.sleep(7)
+          summarize("sequential (~8/min)", seq)
+          time.sleep(60)
+          with ThreadPoolExecutor(8) as ex:
+              burst = list(ex.map(call, urls[30:38]))
+          summarize("burst of 8 parallel", burst)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 1500
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: GEMINI_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: gemini-api-key
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 460); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|Traceback|Error" || echo "(no logs captured)"
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
