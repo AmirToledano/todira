@@ -70,7 +70,7 @@ def test_disabled_by_default_and_never_calls_the_network(monkeypatch):
 def _enable(monkeypatch):
     monkeypatch.setenv(g.ENABLED_ENV_VAR, "true")
     monkeypatch.setenv("GEMINI_API_KEY", "k")
-    monkeypatch.setattr(g, "_paused_until", 0.0)
+    monkeypatch.setattr(g, "_paused_until", {})
 
 
 def test_success_path_sends_url_context_tool_and_returns_updates(monkeypatch):
@@ -94,6 +94,7 @@ def test_429_opens_the_circuit_breaker_so_the_next_call_skips_gemini(monkeypatch
     monkeypatch.setattr(
         g.httpx, "post", lambda *a, **k: calls.append(1) or types.SimpleNamespace(status_code=429, json=lambda: {})
     )
+    monkeypatch.setenv(g.MODEL_ENV_VAR, "only-model")
     assert g.fetch_yad2_detail_updates(_URL) is None
     assert g.fetch_yad2_detail_updates(_URL) is None
     assert len(calls) == 1
@@ -107,5 +108,43 @@ def test_network_error_and_server_error_return_none(monkeypatch):
 
     monkeypatch.setattr(g.httpx, "post", _boom)
     assert g.fetch_yad2_detail_updates(_URL) is None
-    monkeypatch.setattr(g.httpx, "post", lambda *a, **k: types.SimpleNamespace(status_code=503, json=lambda: {}))
+    monkeypatch.setattr(g.httpx, "post", lambda *a, **k: types.SimpleNamespace(status_code=500, json=lambda: {}))
     assert g.fetch_yad2_detail_updates(_URL) is None
+
+
+def test_a_limited_model_falls_through_to_the_next_one_and_daily_quota_pauses_it_for_hours(monkeypatch):
+    _enable(monkeypatch)
+    monkeypatch.setenv(g.MODEL_ENV_VAR, "model-a,model-b")
+    seen = []
+
+    def _post(url, **kwargs):
+        seen.append(url)
+        if "model-a" in url:
+            return types.SimpleNamespace(
+                status_code=429, text="GenerateRequestsPerDayPerProjectPerModel-FreeTier", json=lambda: {}
+            )
+        return types.SimpleNamespace(status_code=200, json=lambda: _payload({"ok": True, "description": "x"}))
+
+    monkeypatch.setattr(g.httpx, "post", _post)
+    assert g.fetch_yad2_detail_updates(_URL) == {"description": "x"}
+    assert g.fetch_yad2_detail_updates(_URL) == {"description": "x"}
+    assert [u.split("/models/")[1].split(":")[0] for u in seen] == ["model-a", "model-b", "model-b"]
+    assert g._paused_until["model-a"] - g.time.monotonic() > 2 * 3600
+
+
+def test_overloaded_503_tries_the_next_model_and_all_limited_returns_none(monkeypatch):
+    _enable(monkeypatch)
+    monkeypatch.setenv(g.MODEL_ENV_VAR, "model-a,model-b")
+    codes = {"model-a": 503, "model-b": 429}
+
+    def _post(url, **kwargs):
+        model = url.split("/models/")[1].split(":")[0]
+        return types.SimpleNamespace(status_code=codes[model], json=lambda: {})
+
+    monkeypatch.setattr(g.httpx, "post", _post)
+    assert g.fetch_yad2_detail_updates(_URL) is None
+
+
+def test_default_chain_tries_flash_lite_first(monkeypatch):
+    monkeypatch.delenv(g.MODEL_ENV_VAR, raising=False)
+    assert g._models() == ["gemini-3.5-flash-lite", "gemini-3.6-flash"]

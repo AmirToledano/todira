@@ -21,6 +21,14 @@ Owner asked (2026-10-03) to keep a list of everything he has not answered yet. A
    Verify after deploy: scraper logs show Gemini hits, Bright Data usage drops. Free-tier caveats: ~10 RPM, prompts may be used
    by Google for training (only public listing URLs are sent). Owner has Google AI Pro = $10/month Cloud credits that must be
    activated via the Google Developer Program page to move the key to a paid tier (higher limits, no training).
+   **UPDATE 2026-10-05 (Gemini holes found by probes):** the free tier has a DAILY cap PER MODEL (quota id
+   GenerateRequestsPerDayPerProjectPerModel-FreeTier): `gemini-3.6-flash` was already exhausted a few hours after the deploy
+   (every call 429). `gemini-3.5-flash-lite` (separate quota): 30/30 pages at ~8/min, 3.4s median; accuracy vs DB on 19 pages:
+   floor/parking/elevator/balcony/safe-room 100%, description identical up to whitespace; 8 PARALLEL calls = 2x 503 and 22s
+   latency, so never fan out; ~5% of calls fail. FIXED: `gemini_url_detail` now tries a model chain (`YAD2_GEMINI_MODEL`,
+   default `gemini-3.5-flash-lite,gemini-3.6-flash`), skips a limited/overloaded model (daily 429 = 3h pause). So "100%" is
+   impossible: always degrade to showing the listing without details. Probes: `diagnose-gemini-url-context-load.yaml` /
+   `-accuracy.yaml` (both take a `model` input). Google AI Pro $10 credits would lift the cap (a page is ~170 tokens).
 2. **[2026-10-05 owner said "do what's needed"] DONE:** Terms s10 (he+en) now HONOR the 14-day distance-sale cancellation: refund minus the lower of 5% / NIS 100 (Consumer Protection Law s.14ג), subscription cancel any time, stays active to end of paid period. Landing bundle rebuilt. Still: lawyer review recommended; ask UPAY/Takbull IN WRITING whether the processing fee is returned on a refund, the chargeback fee and any reserve (search only found UPAY ~1.4%+VAT incl. 0.2% missing-document fee; nothing on refunds/chargebacks). WhatsApp check-in diagnostic (workflow `diagnose-whatsapp-checkin-state.yaml`): owner's check-in WAS stamped sent 21.2h after his last message (Meta accepted it); nothing sent afterwards by design (no tap). Owner later said he saw no check-in and 24h+ passed without another: investigate again.
 2. **Legal (not legal advice; official sites were unreachable, based on search summaries):** Terms currently say the user waives
    the 14-day distance-sale cancellation right — risky; recommended: honor 14 days with a fee of at most the lower of 5% / NIS 100

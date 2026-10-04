@@ -13,9 +13,17 @@ What it can't give: photos (the map API already carries them), property type, br
 only returned when it is a FUTURE date shown on the page (a past/immediate date renders as "immediate" and
 comes back null — which is exactly how the card treats a missing date, so nothing is lost).
 
+Models (2026-10-05): the free tier has a DAILY request cap PER MODEL (quota id
+GenerateRequestsPerDayPerProjectPerModel-FreeTier — gemini-3.6-flash's was exhausted within a day of going
+live). So several models are tried in order (YAD2_GEMINI_MODEL, comma separated; default flash-lite first):
+a model that answers 429 (or 503 overloaded) is skipped and the next one is tried; a daily-quota 429 pauses
+that model for hours, a per-minute one for minutes. gemini-3.5-flash-lite was measured live: 30/30 pages
+retrieved at ~8/min (3.4s median), and on 19 pages every field matched the DB (floor/parking/elevator/
+balcony/safe-room 100%, description identical up to whitespace); 8 PARALLEL calls gave 2x 503 and 22s median
+latency, so callers should not fan out.
+
 Safety: opt-in via YAD2_DETAIL_VIA_GEMINI=true; callers always fall back to Web Unlocker when this returns
-None. A 429 (free-tier rate limit) opens a circuit breaker for a few minutes so a burst doesn't hammer the
-quota. Only public listing URLs are sent (no user data) — relevant because free-tier prompts may be used by
+None. Only public listing URLs are sent (no user data) — relevant because free-tier prompts may be used by
 Google to improve its products. Never raises."""
 from __future__ import annotations
 
@@ -31,10 +39,11 @@ logger = logging.getLogger(__name__)
 
 ENABLED_ENV_VAR = "YAD2_DETAIL_VIA_GEMINI"
 MODEL_ENV_VAR = "YAD2_GEMINI_MODEL"
-_DEFAULT_MODEL = "gemini-3.6-flash"
+_DEFAULT_MODELS = "gemini-3.5-flash-lite,gemini-3.6-flash"
 _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 _TIMEOUT_SECONDS = 90.0
 _RATE_LIMIT_PAUSE_SECONDS = 600.0
+_DAILY_QUOTA_PAUSE_SECONDS = 3 * 3600.0
 _MAX_DESCRIPTION_CHARS = 4000
 
 _PROMPT = (
@@ -46,8 +55,8 @@ _PROMPT = (
     "page does not say."
 )
 
-# monotonic deadline until which Gemini is skipped after a 429
-_paused_until = 0.0
+# model -> monotonic deadline until which that model is skipped after a 429
+_paused_until: dict[str, float] = {}
 
 
 def is_enabled() -> bool:
@@ -100,37 +109,52 @@ def _parse_updates(payload: dict, today: dt.date) -> dict | None:
     return updates or None
 
 
+def _models() -> list[str]:
+    raw = os.environ.get(MODEL_ENV_VAR, "").strip() or _DEFAULT_MODELS
+    return [m.strip() for m in raw.split(",") if m.strip()]
+
+
 def fetch_yad2_detail_updates(url: str) -> dict | None:
-    """Column->value updates for a Listing row, or None (not enabled, rate-limited, page not retrieved,
-    unparseable, nothing usable). Only fields the page actually states are included."""
-    global _paused_until
-    if not is_enabled() or time.monotonic() < _paused_until:
+    """Column->value updates for a Listing row, or None (not enabled, every model limited, page not
+    retrieved, unparseable, nothing usable). Only fields the page actually states are included."""
+    if not is_enabled():
         return None
-    model = os.environ.get(MODEL_ENV_VAR, "").strip() or _DEFAULT_MODEL
     body = {
         "contents": [{"parts": [{"text": f"{_PROMPT}\n\nURL: {url}"}]}],
         "tools": [{"url_context": {}}],
         "generationConfig": {"temperature": 0},
     }
-    try:
-        response = httpx.post(
-            _URL.format(model=model),
-            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"].strip(), "Content-Type": "application/json"},
-            json=body,
-            timeout=_TIMEOUT_SECONDS,
-        )
-    except httpx.HTTPError:
-        logger.warning("Gemini URL-context request failed (network) for %s", url)
-        return None
-    if response.status_code == 429:
-        _paused_until = time.monotonic() + _RATE_LIMIT_PAUSE_SECONDS
-        logger.warning("Gemini free-tier rate limit hit — skipping Gemini for %.0f min", _RATE_LIMIT_PAUSE_SECONDS / 60)
-        return None
-    if response.status_code != 200:
-        logger.warning("Gemini URL-context returned HTTP %s for %s", response.status_code, url)
-        return None
-    try:
-        return _parse_updates(response.json(), dt.date.today())
-    except (ValueError, AttributeError, TypeError):
-        logger.warning("Gemini URL-context response unparseable for %s", url)
-        return None
+    for model in _models():
+        if time.monotonic() < _paused_until.get(model, 0.0):
+            continue
+        try:
+            response = httpx.post(
+                _URL.format(model=model),
+                headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"].strip(), "Content-Type": "application/json"},
+                json=body,
+                timeout=_TIMEOUT_SECONDS,
+            )
+        except httpx.HTTPError:
+            logger.warning("Gemini URL-context request failed (network) for %s", url)
+            return None
+        if response.status_code == 429:
+            daily = "PerDay" in (getattr(response, "text", "") or "")
+            pause = _DAILY_QUOTA_PAUSE_SECONDS if daily else _RATE_LIMIT_PAUSE_SECONDS
+            _paused_until[model] = time.monotonic() + pause
+            logger.warning(
+                "Gemini %s quota hit (%s) — skipping that model for %.0f min",
+                model, "daily" if daily else "rate", pause / 60,
+            )
+            continue
+        if response.status_code == 503:
+            logger.warning("Gemini %s overloaded (503) for %s — trying the next model", model, url)
+            continue
+        if response.status_code != 200:
+            logger.warning("Gemini URL-context returned HTTP %s for %s", response.status_code, url)
+            return None
+        try:
+            return _parse_updates(response.json(), dt.date.today())
+        except (ValueError, AttributeError, TypeError):
+            logger.warning("Gemini URL-context response unparseable for %s", url)
+            return None
+    return None
