@@ -13,6 +13,14 @@ Owner asked (2026-10-03) to keep a list of everything he has not answered yet. A
    the listing was already enriched (notifier fetches at send time only); then eager can be cut. (B) test headless Chromium
    for detail pages (worked once from our IP, blocked on the 2nd load). (C) home residential IP/tunnel (needs an always-on
    device at the owner's home). Probes: `.github/workflows/diagnose-yad2-*.yaml`.
+   **UPDATE 2026-10-04 (big): Gemini's `url_context` tool (Google fetches the page, so Radware doesn't block it) reads Yad2
+   LISTING pages for free with the existing free-tier key: 19/20 retrieved, description = Bright Data copy up to whitespace,
+   floor/parking/elevator/balcony/safe-room 100% (entrance date only if future). MERGED: `common/todira_common/gemini_url_detail.py`
+   is now tried first by scraper enrichment, notifier send-time fetch and website lazy fill; Web Unlocker only as fallback; flag
+   `YAD2_DETAIL_VIA_GEMINI` / helm `scraper.yad2DetailViaGemini: true`; 429 -> 10-min breaker. NOT usable for the map API.
+   Verify after deploy: scraper logs show Gemini hits, Bright Data usage drops. Free-tier caveats: ~10 RPM, prompts may be used
+   by Google for training (only public listing URLs are sent). Owner has Google AI Pro = $10/month Cloud credits that must be
+   activated via the Google Developer Program page to move the key to a paid tier (higher limits, no training).
 2. **Legal (not legal advice; official sites were unreachable, based on search summaries):** Terms currently say the user waives
    the 14-day distance-sale cancellation right — risky; recommended: honor 14 days with a fee of at most the lower of 5% / NIS 100
    (Consumer Protection Law s.14ג). Owner has NOT decided. The "upgrade" button inside a WhatsApp card for users without access
