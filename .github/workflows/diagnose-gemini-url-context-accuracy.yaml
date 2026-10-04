@@ -4,7 +4,7 @@ name: "Diagnose — accuracy of Gemini URL-context vs our stored Yad2 detail fie
 # tool read 2 of 2 reachable Yad2 listing pages (1 exact, 1 off by one character; one 503). This checks 10
 # listings for ALL the fields our enrichment stores (description, floor_total, move_in_date, parking,
 # elevator, balcony, safe room) against the DB values that came from Bright Data (ground truth), with
-# retries on 503. Prints only per-field match counts and token usage — no listing text, no keys.
+# retries on 503. Prints only per-field match counts, token usage, entrance dates and the KIND of any text difference (never the text itself) — no keys.
 on:
   workflow_dispatch: {}
 
@@ -55,7 +55,7 @@ jobs:
               return r, 3
 
           tot = {"n": 0, "retrieved": 0, "http_fail": 0}
-          fields = {k: [0, 0] for k in ["description_exact", "description_head", "floor", "entrance", "parking", "elevator", "balcony", "safe_room"]}
+          fields = {k: [0, 0] for k in ["description_exact", "description_head", "description_whitespace_normalized", "floor", "entrance", "parking", "elevator", "balcony", "safe_room"]}
           tokens = []
           for url, desc, ft, mid, park, elev, balc, safe in rows:
               tot["n"] += 1
@@ -77,6 +77,15 @@ jobs:
                   fields[name][1] += 1
                   if ok: fields[name][0] += 1
               gd = (g.get("description") or "").strip()
+              norm = lambda t: " ".join(t.split())
+              cmp("description_whitespace_normalized", norm(gd) == norm(desc))
+              if gd.strip() != desc.strip():
+                  import difflib
+                  sm = difflib.SequenceMatcher(None, desc.strip(), gd.strip())
+                  ops = [(t, desc.strip()[i1:i2], gd.strip()[j1:j2]) for t, i1, i2, j1, j2 in sm.get_opcodes() if t != "equal"]
+                  kinds = sorted({("digit" if any(c.isdigit() for c in a + b) else "space" if (a + b).isspace() else "punct" if not any(c.isalnum() for c in a + b) else "letters") for _, a, b in ops})
+                  print(f"desc diff: db_len={len(desc.strip())} gem_len={len(gd.strip())} n_ops={len(ops)} kinds={kinds}")
+              print(f"entrance db={mid} gemini={g.get('entrance_date')!r}")
               cmp("description_exact", gd == desc.strip())
               cmp("description_head", bool(gd) and desc.strip()[:40] in gd)
               if ft is not None: cmp("floor", g.get("building_top_floor") == ft)
@@ -134,6 +143,6 @@ jobs:
             sleep 3
           done
           echo "--- results ---"
-          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|http=|retrieval|unparseable|listings|match DB|Traceback|Error" || echo "(no logs captured)"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|http=|retrieval|unparseable|listings|match DB|desc diff|entrance db|Traceback|Error" || echo "(no logs captured)"
           kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
           kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
