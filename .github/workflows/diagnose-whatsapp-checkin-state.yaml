@@ -1,0 +1,84 @@
+name: "Diagnose - why no WhatsApp check-in after 20 hours (read-only, aggregate only)"
+
+# Read-only, manual-only. The owner reports that ~20 hours after his last message to the bot he got
+# no "still looking?" check-in (scraper/whatsapp_checkin.py). Candidate causes, checked without
+# guessing: the circuit breaker is paused; the user is not opted in; whatsapp_last_inbound_at is
+# empty (never stamped); the check-in was already marked sent for this window; or the scraper never
+# ran the step. Prints ONLY counts and booleans - no phone numbers, ids or message text.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Aggregate DB state
+        run: |
+          kubectl delete pod diag-wa-checkin -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-wa-checkin
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-wa-checkin
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- circuit breaker flag (app_flags) ---"
+                    psql "$CONN" -c "SELECT key, (value <> '') AS has_value, updated_at FROM app_flags;"
+                    echo "--- WhatsApp users, aggregate ---"
+                    psql "$CONN" -c "
+                      SELECT count(*) AS users_with_whatsapp,
+                             count(*) FILTER (WHERE whatsapp_notifications_opted_in) AS opted_in,
+                             count(*) FILTER (WHERE whatsapp_last_inbound_at IS NOT NULL) AS has_last_inbound,
+                             count(*) FILTER (WHERE whatsapp_last_inbound_at > now() - interval '23 hours 30 minutes') AS window_open,
+                             count(*) FILTER (WHERE whatsapp_last_inbound_at <= now() - interval '20 hours'
+                                                AND whatsapp_last_inbound_at > now() - interval '23 hours 30 minutes') AS in_checkin_zone,
+                             count(*) FILTER (WHERE whatsapp_checkin_sent_at IS NOT NULL) AS checkin_ever_sent,
+                             count(*) FILTER (WHERE whatsapp_checkin_sent_at >= whatsapp_last_inbound_at) AS checkin_sent_this_window
+                      FROM users WHERE whatsapp_phone_number IS NOT NULL;
+                    "
+                    echo "--- hours since last inbound, per WhatsApp user (no ids) ---"
+                    psql "$CONN" -c "
+                      SELECT round(extract(epoch FROM (now() - whatsapp_last_inbound_at)) / 3600.0, 1) AS hours_since_inbound,
+                             whatsapp_notifications_opted_in AS opted_in,
+                             (whatsapp_checkin_sent_at IS NOT NULL) AS checkin_sent
+                      FROM users WHERE whatsapp_phone_number IS NOT NULL
+                      ORDER BY whatsapp_last_inbound_at DESC NULLS LAST LIMIT 10;
+                    "
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-wa-checkin -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-wa-checkin || true
+          kubectl delete pod diag-wa-checkin -n todira --ignore-not-found
+
+      - name: Did the scraper run the check-in step (counts only)
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -6); do
+            kubectl logs -n todira "$POD" > /tmp/pod.log 2>&1 || true
+            echo "pod run: summary lines=$(grep -c 'Scraper run summary' /tmp/pod.log) checkins_key=$(grep -c 'whatsapp_checkins_sent' /tmp/pod.log) paused_key=$(grep -c 'whatsapp_paused' /tmp/pod.log) checkin_step_errors=$(grep -c 'WhatsApp check-in step failed' /tmp/pod.log) checkin_sent_gt0=$(grep -c \"'whatsapp_checkins_sent': [1-9]\" /tmp/pod.log)"
+          done
