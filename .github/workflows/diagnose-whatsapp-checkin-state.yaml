@@ -66,6 +66,12 @@ jobs:
                       FROM users WHERE whatsapp_phone_number IS NOT NULL
                       ORDER BY whatsapp_last_inbound_at DESC NULLS LAST LIMIT 10;
                     "
+                    echo "--- hours from last inbound to check-in stamp, and hours since the stamp (no ids) ---"
+                    psql "$CONN" -c "
+                      SELECT round(extract(epoch FROM (whatsapp_checkin_sent_at - whatsapp_last_inbound_at)) / 3600.0, 1) AS inbound_to_checkin_hours,
+                             round(extract(epoch FROM (now() - whatsapp_checkin_sent_at)) / 3600.0, 1) AS hours_since_checkin
+                      FROM users WHERE whatsapp_phone_number IS NOT NULL AND whatsapp_checkin_sent_at IS NOT NULL;
+                    "
           PODYAML
           for i in $(seq 1 30); do
             PHASE=$(kubectl get pod diag-wa-checkin -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
@@ -81,4 +87,16 @@ jobs:
           for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -6); do
             kubectl logs -n todira "$POD" > /tmp/pod.log 2>&1 || true
             echo "pod run: summary lines=$(grep -c 'Scraper run summary' /tmp/pod.log) checkins_key=$(grep -c 'whatsapp_checkins_sent' /tmp/pod.log) paused_key=$(grep -c 'whatsapp_paused' /tmp/pod.log) checkin_step_errors=$(grep -c 'WhatsApp check-in step failed' /tmp/pod.log) checkin_sent_gt0=$(grep -c \"'whatsapp_checkins_sent': [1-9]\" /tmp/pod.log)"
+          done
+
+      - name: Meta delivery statuses seen by the website webhook (counts only)
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl logs -n todira "$POD" --since=96h > /tmp/web.log 2>&1 || true
+            echo "website log lines: $(wc -l < /tmp/web.log)"
+            echo "--- delivery status counts ---"
+            grep -o 'WhatsApp delivery status=[a-z]* (category=[a-z_]*)' /tmp/web.log | sort | uniq -c || true
+            echo "failed deliveries: $(grep -c 'WhatsApp delivery FAILED' /tmp/web.log)"
+            echo "--- failure error codes ---"
+            grep 'WhatsApp delivery FAILED' /tmp/web.log | grep -o "'code': [0-9]*" | sort | uniq -c || true
           done
