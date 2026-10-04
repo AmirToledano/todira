@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing
-from todira_common import bright_data_client
+from todira_common import bright_data_client, gemini_url_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common.models import Listing, SentNotification
@@ -632,6 +632,12 @@ async def _fetch_and_apply_yad2_detail_updates(
 
     async def _fetch_one(listing_id: int, url: str) -> tuple[int, dict] | None:
         async with semaphore:
+            # 2026-10-04: Gemini's URL-context tool first (free tier, verified accurate — see
+            # todira_common/gemini_url_detail.py); Bright Data Web Unlocker ($0.0015/request) only when
+            # Gemini is off, rate-limited or couldn't read the page.
+            gemini_updates = await asyncio.to_thread(gemini_url_detail.fetch_yad2_detail_updates, url)
+            if gemini_updates:
+                return (listing_id, gemini_updates)
             detail = await asyncio.to_thread(fetch_listing_detail_via_web_unlocker, url)
         if detail is None:
             return None

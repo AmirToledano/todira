@@ -157,6 +157,44 @@ def test_maybe_fetch_description_fetches_and_caches_when_a_recipient_is_paying()
     assert committed == [True]
 
 
+def test_maybe_fetch_description_prefers_gemini_and_skips_web_unlocker_when_it_works():
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
+    committed = []
+    session = SimpleNamespace(commit=lambda: committed.append(True))
+    recipients = [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
+
+    with (
+        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: True),
+        patch.object(
+            notifier.gemini_url_detail, "fetch_yad2_detail_updates", lambda url: {"description": "מג'מיני", "floor_total": 5}
+        ),
+        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
+        patch.object(notifier, "fetch_listing_detail_via_web_unlocker") as mock_wu,
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
+
+    mock_wu.assert_not_called()
+    assert listing.description == "מג'מיני" and listing.floor_total == 5
+    assert committed == [True]
+
+
+def test_maybe_fetch_description_falls_back_to_web_unlocker_when_gemini_returns_nothing():
+    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
+    session = SimpleNamespace(commit=lambda: None)
+    recipients = [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
+
+    with (
+        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: True),
+        patch.object(notifier.gemini_url_detail, "fetch_yad2_detail_updates", lambda url: None),
+        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
+        patch.object(notifier, "fetch_listing_detail_via_web_unlocker", lambda url: {"raw": 1}),
+        patch.object(notifier, "_compute_detail_updates", lambda detail: {"description": "מבריט דאטה"}),
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
+
+    assert listing.description == "מבריט דאטה"
+
+
 def test_maybe_fetch_description_does_not_cache_on_fetch_failure():
     listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     committed = []

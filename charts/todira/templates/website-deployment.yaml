@@ -138,6 +138,8 @@ spec:
             # lazily fetch a still-missing description for a paying viewer, same optional secrets
             # the scraper's own discovery-time trigger already uses. All optional; unset means
             # fetch_listing_description always returns None, same as before this feature existed.
+            - name: YAD2_DETAIL_VIA_GEMINI
+              value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
             - name: BRIGHT_DATA_API_KEY
               valueFrom:
                 secretKeyRef:

@@ -203,6 +203,10 @@ scraper:
   # falling back to Bright Data Web Unlocker if Yad2 ever blocks it. See scraper/yad2_client.py's
   # _fetch_json_with_browser_tls. Saves ~100 paid requests/day.
   yad2FreeMapFetch: true
+  # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
+  # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
+  # common/todira_common/gemini_url_detail.py.
+  yad2DetailViaGemini: true
   # 2026-09-13: same real-money-per-fetch reasoning as komoMaxNewDetailFetchesPerRun above, one
   # order of magnitude smaller — Homeless is added description enrichment (a per-listing detail-
   # page fetch, only for genuinely-new listings; see homeless_client.fetch_listing_description and

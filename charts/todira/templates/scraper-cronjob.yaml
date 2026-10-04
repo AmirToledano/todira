@@ -66,6 +66,15 @@ spec:
                 # existed. See that module's own docstring for what the owner still needs to set
                 # these up (a Bright Data account + a Scraper Studio scraper targeting Yad2 listing
                 # DETAIL pages, not the existing broken search-results one).
+                # 2026-10-04: Yad2 listing details via Gemini's free URL-context tool (Web Unlocker only as fallback)
+                - name: GEMINI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: gemini-api-key
+                      optional: true
+                - name: YAD2_DETAIL_VIA_GEMINI
+                  value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
                 - name: BRIGHT_DATA_API_KEY
                   valueFrom:
                     secretKeyRef:
