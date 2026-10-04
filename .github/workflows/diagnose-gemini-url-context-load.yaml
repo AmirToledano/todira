@@ -74,6 +74,26 @@ jobs:
               p95 = lat[min(len(lat) - 1, int(len(lat) * 0.95))] if lat else 0
               print(f"== {label}: n={len(res)} usable={usable} kinds={kinds} latency_s median={statistics.median(lat):.1f} p95={p95:.1f} max={max(lat):.1f}")
 
+          # First, one probe call: if the free tier is rate/quota limited, show WHICH quota (no key, no text).
+          rr = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
+                             headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                             json={"contents": [{"parts": [{"text": "Reply with the word ok"}]}]}, timeout=60)
+          print("== probe plain call (no tools):", rr.status_code)
+          if rr.status_code != 200:
+              try:
+                  e = rr.json().get("error", {})
+                  print("== error status:", e.get("status"), "| message:", (e.get("message") or "")[:300])
+                  for d in e.get("details", []):
+                      for v in d.get("violations", []) or []:
+                          print("== violation:", v.get("quotaMetric"), v.get("quotaId"), v.get("quotaDimensions"))
+                      if d.get("retryDelay"):
+                          print("== retryDelay:", d.get("retryDelay"))
+              except Exception as ex:
+                  print("== unparseable error body", type(ex).__name__)
+          rt = call(urls[0])
+          print("== probe url_context call:", rt[0])
+          if rr.status_code == 429 and rt[0] == "http_429":
+              sys.exit(0)
           seq = []
           for u in urls[:30]:
               seq.append(call(u)); time.sleep(7)
