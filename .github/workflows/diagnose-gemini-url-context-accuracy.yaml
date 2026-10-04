@@ -1,0 +1,139 @@
+name: "Diagnose — accuracy of Gemini URL-context vs our stored Yad2 detail fields (read-only)"
+
+# Follow-up to diagnose-gemini-url-context-for-yad2.yaml (2026-10-04): there Gemini's free-tier url_context
+# tool read 2 of 2 reachable Yad2 listing pages (1 exact, 1 off by one character; one 503). This checks 10
+# listings for ALL the fields our enrichment stores (description, floor_total, move_in_date, parking,
+# elevator, balcony, safe room) against the DB values that came from Bright Data (ground truth), with
+# retries on 503. Prints only per-field match counts and token usage — no listing text, no keys.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the probe in a throwaway pod
+        run: |
+          POD_NAME="gemini-acc-diag-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import json, os, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "requests", "psycopg2-binary"])
+          import requests, psycopg2
+
+          key = os.environ["GEMINI_API_KEY"]
+          dsn = "postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]
+          cur = psycopg2.connect(dsn).cursor()
+          cur.execute("""select url, description, floor_total, move_in_date, has_parking, has_elevator, has_balcony, safe_room_type
+                         from listings where source='yad2' and description is not null and is_delisted=false
+                         order by first_seen_at desc limit 10""")
+          rows = cur.fetchall()
+          MODEL = "gemini-3.6-flash"
+          PROMPT = ('Open the URL with your URL-context tool and read the listing. Return ONLY JSON with keys: '
+                    '"description" (verbatim text), "building_top_floor" (integer or null), "entrance_date" (YYYY-MM-DD or null, null if immediate/flexible), '
+                    '"parking" (true/false/null), "elevator" (true/false/null), "balcony" (true/false/null), "safe_room" (true/false/null), "ok" (true). '
+                    'If you could not actually open the page return {"ok": false}. NEVER guess; use null when the page does not say.')
+
+          def call(url):
+              body = {"contents": [{"parts": [{"text": PROMPT + "\n\nURL: " + url}]}], "tools": [{"url_context": {}}],
+                      "generationConfig": {"temperature": 0}}
+              for attempt in range(4):
+                  r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
+                                    headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body, timeout=120)
+                  if r.status_code in (429, 500, 503):
+                      time.sleep(10 * (attempt + 1)); continue
+                  return r, attempt
+              return r, 3
+
+          tot = {"n": 0, "retrieved": 0, "http_fail": 0}
+          fields = {k: [0, 0] for k in ["description_exact", "description_head", "floor", "entrance", "parking", "elevator", "balcony", "safe_room"]}
+          tokens = []
+          for url, desc, ft, mid, park, elev, balc, safe in rows:
+              tot["n"] += 1
+              r, tries = call(url)
+              if r.status_code != 200:
+                  tot["http_fail"] += 1; print(f"http={r.status_code}"); time.sleep(5); continue
+              d = r.json(); cand = (d.get("candidates") or [{}])[0]
+              st = [m.get("urlRetrievalStatus") for m in cand.get("urlContextMetadata", {}).get("urlMetadata", [])]
+              tokens.append((d.get("usageMetadata") or {}).get("promptTokenCount"))
+              if st != ["URL_RETRIEVAL_STATUS_SUCCESS"]:
+                  print("retrieval", st); time.sleep(5); continue
+              tot["retrieved"] += 1
+              text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []))
+              try:
+                  g = json.loads(text[text.index("{"): text.rindex("}") + 1])
+              except Exception:
+                  print("unparseable"); time.sleep(5); continue
+              def cmp(name, ok):
+                  fields[name][1] += 1
+                  if ok: fields[name][0] += 1
+              gd = (g.get("description") or "").strip()
+              cmp("description_exact", gd == desc.strip())
+              cmp("description_head", bool(gd) and desc.strip()[:40] in gd)
+              if ft is not None: cmp("floor", g.get("building_top_floor") == ft)
+              if mid is not None: cmp("entrance", g.get("entrance_date") == str(mid))
+              for name, dbv, gv in (("parking", park, g.get("parking")), ("elevator", elev, g.get("elevator")), ("balcony", balc, g.get("balcony"))):
+                  if dbv is not None: cmp(name, gv == dbv)
+              if safe is not None: cmp("safe_room", g.get("safe_room") == (safe == "safe_room"))
+              time.sleep(6)
+          print("== summary ==")
+          print("listings", tot, "prompt_tokens_each", tokens)
+          for k, (ok, n) in fields.items():
+              print(f"{k}: {ok}/{n} match DB")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 900
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: GEMINI_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: gemini-api-key
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 290); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|http=|retrieval|unparseable|listings|match DB|Traceback|Error" || echo "(no logs captured)"
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
