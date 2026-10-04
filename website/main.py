@@ -51,7 +51,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-from todira_common import bright_data_client
+from todira_common import bright_data_client, gemini_url_detail
 from todira_common.access import (
     SUBSCRIPTION_PLAN,
     PLAN_PRICES_ILS,
@@ -1141,7 +1141,11 @@ def _ensure_description_sync(listing_id: int, url: str) -> None:
     # this lazy-fill safety net permanently broken and silently no-op'ing on every listing whose
     # one scrape-time enrichment attempt failed. Found from a real owner screenshot of a listing
     # with a genuine description on its own Yad2 page reaching Telegram with none.
-    description = bright_data_client.fetch_yad2_description_via_web_unlocker(url)
+    # 2026-10-04: Gemini's URL-context tool first (free tier), Web Unlocker only as the fallback.
+    gemini_updates = gemini_url_detail.fetch_yad2_detail_updates(url)
+    description = (gemini_updates or {}).get("description")
+    if not description:
+        description = bright_data_client.fetch_yad2_description_via_web_unlocker(url)
     if not description:
         return
     with get_session() as session:
@@ -1179,7 +1183,7 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
     Homeless URL gets nonsense, not real enrichment. Komo/Homeless get their own real descriptions
     from their own scrapers now (komo_client.py/homeless_client.py) — this was never their path to
     begin with, so narrowing it to Yad2 loses nothing for them."""
-    if not bright_data_client.web_unlocker_configured():
+    if not (gemini_url_detail.is_enabled() or bright_data_client.web_unlocker_configured()):
         return
     for listing in listings:
         if listing.description or listing.source != Source.YAD2:
