@@ -6,7 +6,12 @@ name: "Diagnose — accuracy of Gemini URL-context vs our stored Yad2 detail fie
 # elevator, balcony, safe room) against the DB values that came from Bright Data (ground truth), with
 # retries on 503. Prints only per-field match counts, token usage, entrance dates and the KIND of any text difference (never the text itself) — no keys.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Gemini model id to check (free-tier quota is per model)"
+        required: false
+        default: "gemini-3.6-flash"
 
 jobs:
   diagnose:
@@ -35,9 +40,9 @@ jobs:
           cur = psycopg2.connect(dsn).cursor()
           cur.execute("""select url, description, floor_total, move_in_date, has_parking, has_elevator, has_balcony, safe_room_type
                          from listings where source='yad2' and description is not null and is_delisted=false
-                         order by first_seen_at desc limit 10""")
+                         order by first_seen_at desc limit 20""")
           rows = cur.fetchall()
-          MODEL = "gemini-3.6-flash"
+          MODEL = os.environ.get("PROBE_MODEL", "gemini-3.6-flash")
           PROMPT = ('Open the URL with your URL-context tool and read the listing. Return ONLY JSON with keys: '
                     '"description" (verbatim text), "building_top_floor" (integer or null), "entrance_date" (YYYY-MM-DD or null, null if immediate/flexible), '
                     '"parking" (true/false/null), "elevator" (true/false/null), "balcony" (true/false/null), "safe_room" (true/false/null), "ok" (true). '
@@ -108,7 +113,7 @@ jobs:
             namespace: todira
           spec:
             restartPolicy: Never
-            activeDeadlineSeconds: 900
+            activeDeadlineSeconds: 1200
             containers:
               - name: diag
                 image: python:3.12-slim
@@ -119,6 +124,8 @@ jobs:
                       secretKeyRef:
                         name: todira-postgres-secret
                         key: database-url
+                  - name: PROBE_MODEL
+                    value: "${{ inputs.model }}"
                   - name: GEMINI_API_KEY
                     valueFrom:
                       secretKeyRef:
