@@ -27,6 +27,14 @@ Owner asked (2026-10-03) to keep a list of everything he has not answered yet. A
    is borderline vs the spam law (s.30א).
 3. **Takbull:** no separate coordination expected; API key/secret come from Takbull; set `TAKBULL_API_KEY`/`TAKBULL_API_SECRET`
    as GitHub secrets (owner, never in chat) and run ONE real test charge to verify the recurring webhook payload + renewal date.
+   **UPDATE 2026-10-04 (Takbull rep chat + store screenshots):** the owner is on the free documents package (1 payment page,
+   50 documents). A Takbull rep told him to buy the "חבילה לאתרים 50" package (monthly, NIS 49) and then take the API keys
+   from Settings. The store table shows that NIS 49 package has "מנויים / הוראות קבע: לא" while "חבילה לאתר מנויים 50" (NIS 69)
+   says כן. Our code uses DealType=4 (recurring) so it very likely needs the NIS 69 one: ask the rep IN WRITING before paying
+   (does the NIS 49 package allow DealType=4 via API?). Already built and waiting only for keys: IPN webhook (GET+POST
+   `/webhooks/takbull/{secret}` + ValidateNotification), thank-you/redirect page, cancel API, 3-day-early cancel. Email-parsing
+   automation is NOT needed (IPN grants access). The owner's Gemini share link could not be opened (egress blocked) - ask him
+   to paste the text if something in it matters.
 4. **Meta/WhatsApp:** owner to confirm the Meta balance; verify tomorrow that a full day cost 0 (`diagnose-whatsapp-billing.yaml`).
 5. **Promo video:** v3 (`todira-promo-v3.mp4`, end-card fix applied) is the approved base. Ideas from the guides the owner shared
    are in the 2026-10-03 reply (safe zones for Reels, 60fps + motion blur, no masked Hebrew reveals, beat-synced music, animated
