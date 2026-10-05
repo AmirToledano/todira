@@ -21,3 +21,7 @@ Pillow>=10.0,<12.0
 # a Gemini call that times out - pinned explicitly rather than relying on an undeclared transitive
 # dep, same reasoning as this file's own httpx comment above.
 requests>=2.31,<3.0
+# itsdangerous: todira_common/uid_token.py (imported by handlers/apartments.py and handlers/liked.py's
+# signed "?t=" login links, 2026-10) signs them with it - not pulled in by anything else the bot
+# installs, so without this line the bot crash-loops at import time (found live 2026-10-05).
+itsdangerous>=2.1,<3.0
