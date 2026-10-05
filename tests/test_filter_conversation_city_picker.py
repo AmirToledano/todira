@@ -270,3 +270,28 @@ def test_menu_callback_rmc_double_tap_never_removes_the_wrong_city():
         filter_conversation.menu_callback(SimpleNamespace(callback_query=second_tap), context)
     )
     assert context.user_data["draft"]["cities"] == ["רמת גן"]
+
+
+def test_city_picker_is_alphabetical_and_has_back_on_top_and_bottom():
+    """2026-10-05 real owner report: the list was in an arbitrary order, and the only way out was a
+    "back" button at the very bottom of a screen-high list."""
+    markup = kb.city_picker_keyboard({"cities": ["חיפה", "אשדוד"]}, "he")
+    rows = markup.inline_keyboard
+    assert rows[0][0].callback_data == "f:cat:loc"  # back, first row
+    assert rows[-1][0].callback_data == "f:cat:loc"  # back, last row
+    city_buttons = [
+        b for row in rows for b in row if b.callback_data.startswith("f:loc:togc:")
+    ]
+    names = [b.text.split(" ", 1)[1] for b in city_buttons]
+    assert names == sorted(names)
+    assert len(names) == len(CITIES)
+    for b in city_buttons:  # sorting the display must not change what a tap selects
+        assert CITIES[int(b.callback_data.rsplit(":", 1)[1])] == b.text.split(" ", 1)[1]
+
+
+def test_location_keyboard_lists_chosen_cities_alphabetically():
+    markup = kb.location_keyboard({"cities": ["חיפה", "אשדוד", "ירושלים"]}, "he")
+    removals = [
+        b.text for row in markup.inline_keyboard for b in row if b.callback_data.startswith("f:loc:rmc:")
+    ]
+    assert [t.split(" ", 1)[1] for t in removals] == ["אשדוד", "חיפה", "ירושלים"]

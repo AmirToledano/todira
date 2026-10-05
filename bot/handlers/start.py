@@ -63,6 +63,7 @@ def _format_cities(cities: list[str], lang: str) -> str:
     comma-separated join, which reads naturally enough in each of them."""
     if not cities:
         return ""
+    cities = sorted(cities)  # alphabetical, not in the order they were picked (2026-10-05)
     if lang != "he":
         return ", ".join(cities)
     if len(cities) == 1:
