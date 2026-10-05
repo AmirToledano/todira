@@ -319,12 +319,12 @@ def test_long_single_line_description_is_not_manually_pre_wrapped():
 
 def test_no_photos_banner_stays_valid_html():
     # cards.py's send_listing_card builds this exact banner (bot_text("card.no_photos_banner")
-    # rstripped, "\n\n" appended) before prepending it to the caption — tested here at the same
+    # rstripped, "\n\n" prepended) before appending it to the caption — tested here at the same
     # level as every other format test in this file, since send_listing_card itself needs a fake
     # Telegram Bot to exercise (covered separately below).
     banner_text = bot_text("card.no_photos_banner", "he").rstrip("\n")
-    result = f"{banner_text}\n\n"
-    assert result.endswith("\n\n"), "the blank-line gap before the caption must survive"
+    result = f"\n\n{banner_text}"
+    assert result.startswith("\n\n"), "the blank-line gap after the caption must survive"
     assert "<b>" in result and "</b>" in result
 
 
@@ -1018,3 +1018,14 @@ def test_whatsapp_caption_also_shows_the_move_in_note():
     listing = make_listing(move_in_date=None)
     listing.move_in_note = "מיידית"
     assert "📅 *כניסה:* מיידית" in format_caption_whatsapp(listing, has_access=True)
+
+
+def test_send_listing_card_no_images_puts_the_banner_after_the_details():
+    """2026-10-05 owner request: a push notification shows only the start of the caption, so the
+    listing's own details must come first and the "no photos" note last."""
+    bot = _make_bot()
+    listing = make_listing(image_urls=[])
+    asyncio.run(send_listing_card(bot, 555, listing, "DETAILS-FIRST"))
+    sent = bot.send_photo.await_args.kwargs["caption"]
+    assert sent.startswith("DETAILS-FIRST")
+    assert sent.endswith(bot_text("card.no_photos_banner", "he").rstrip("\n"))
