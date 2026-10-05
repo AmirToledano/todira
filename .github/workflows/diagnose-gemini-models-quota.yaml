@@ -1,0 +1,109 @@
+name: "Diagnose - which Gemini models this key can use and which are quota-limited right now (read-only)"
+
+# Read-only, manual. Lists the models the project's key can call (ListModels is free), then makes ONE tiny plain
+# call per candidate Gemini model and reports only the HTTP status and, for a 429, which quota (per-day vs
+# per-minute) - so the Yad2 detail chain (common/todira_common/gemini_url_detail.py) can use every model the
+# owner's Google AI Pro subscription gives. Never prints the key or any generated text.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run in a throwaway pod
+        run: |
+          POD_NAME="gemini-models-diag-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import os, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "requests"])
+          import requests
+
+          key = os.environ["GEMINI_API_KEY"]
+          H = {"x-goog-api-key": key, "Content-Type": "application/json"}
+          names = []
+          page = None
+          while True:
+              r = requests.get("https://generativelanguage.googleapis.com/v1beta/models",
+                               headers=H, params={"pageSize": 100, **({"pageToken": page} if page else {})}, timeout=60)
+              print("== list status", r.status_code)
+              if r.status_code != 200:
+                  break
+              d = r.json()
+              for m in d.get("models", []):
+                  if "generateContent" in m.get("supportedGenerationMethods", []) and "gemini" in m["name"]:
+                      names.append(m["name"].split("/", 1)[1])
+              page = d.get("nextPageToken")
+              if not page:
+                  break
+          print("== generateContent gemini models:", len(names))
+          skip = ("embedding", "tts", "image", "live", "audio", "robotics", "computer-use", "native")
+          for n in sorted(names):
+              tag = "SKIP(non-text)" if any(s in n for s in skip) else ""
+              if tag:
+                  continue
+              rr = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{n}:generateContent", headers=H,
+                                 json={"contents": [{"parts": [{"text": "Reply with the word ok"}]}]}, timeout=90)
+              info = ""
+              if rr.status_code != 200:
+                  try:
+                      e = rr.json().get("error", {})
+                      q = [v.get("quotaId") for d in e.get("details", []) for v in (d.get("violations") or [])]
+                      info = f" quota={q} status={e.get('status')}"
+                  except Exception:
+                      info = " (unparseable)"
+              print(f"== {n}: HTTP {rr.status_code}{info}")
+              time.sleep(2)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF2
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 900
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "/script/pod.py"]
+                env:
+                  - name: GEMINI_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: gemini-api-key
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF2
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 280); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|Traceback|Error" || echo "(no logs captured)"
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
