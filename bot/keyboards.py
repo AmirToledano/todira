@@ -118,7 +118,7 @@ def render_root_summary(draft: dict, lang: str) -> str:
         + deal_type_labels(lang).get(draft["deal_type"], draft["deal_type"]),
         f"🏠 {bot_text('kb.label.property_type', lang)}: "
         + (", ".join(property_labels[p] for p in draft["property_types"]) or all_label),
-        f"📍 {bot_text('kb.label.cities', lang)}: " + (", ".join(draft["cities"]) or all_label),
+        f"📍 {bot_text('kb.label.cities', lang)}: " + (", ".join(sorted(draft["cities"])) or all_label),
         f"💰 {bot_text('kb.label.price', lang)}: "
         + _fmt_range(draft["price_min"], draft["price_max"], lang, " ₪"),
         f"🛏️ {bot_text('kb.label.rooms', lang)}: "
@@ -253,7 +253,7 @@ def location_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
                 )
             ]
         )
-    for city in draft["cities"]:
+    for city in sorted(draft["cities"]):  # alphabetical, not in the order they were picked
         # 2026-09-25 real bug fix: this used to encode the city's LIST INDEX, which goes stale the
         # instant one is removed — a real double-tap (or any tap racing a slow re-render) on the
         # same rendered button sent the SAME stale index twice, so the second tap silently removed
@@ -271,9 +271,15 @@ def city_picker_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
     ☑️/⬜ pattern, same as "property type") — the primary way to add a city now; typed search
     (below) is a convenience for anyone who'd rather not scroll ~40 buttons, not the only path
     anymore."""
-    rows: list[list[InlineKeyboardButton]] = []
+    # 2026-10-05 real owner report: ~40 buttons with the only way out ("back") at the very bottom of
+    # a screen-high list, so after tapping a city there was no visible way back. "Back" is now ALSO
+    # the first row, and the list is alphabetical (callback_data still carries the index into
+    # cities.CITIES, so sorting the display changes nothing about what a tap selects).
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(bot_text("kb.back", lang), callback_data="f:cat:loc")]
+    ]
     row: list[InlineKeyboardButton] = []
-    for idx, city in enumerate(cities.CITIES):
+    for idx, city in sorted(enumerate(cities.CITIES), key=lambda pair: pair[1]):
         mark = "☑️" if city in draft["cities"] else "⬜"
         row.append(InlineKeyboardButton(f"{mark} {city}", callback_data=f"f:loc:togc:{idx}"))
         if len(row) == 2:

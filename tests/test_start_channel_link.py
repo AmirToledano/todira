@@ -184,7 +184,7 @@ def test_returning_user_with_expired_access_and_a_filter_gets_renewal_nudge():
         outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), None)
 
     assert outcome == "expired"
-    assert "ירושלים, הר גילה ומבשרת ציון" in reply
+    assert "הר גילה, ירושלים ומבשרת ציון" in reply
     assert "https://todira.app/upgrade?t=TOKEN555" in reply
 
 
