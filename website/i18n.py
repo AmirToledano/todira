@@ -971,6 +971,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Описание объекта", "fr": "Description du bien",
         "ar": "وصف العقار",
     },
+    "apartments.detail_also_on": {
+        "he": "המודעה פורסמה גם ב:", "en": "Also posted on:",
+        "ru": "Также опубликовано на:", "fr": "Aussi publiée sur :",
+        "ar": "نُشر أيضًا على:",
+    },
     "apartments.detail_posted_on": {
         "he": "פורסם ב-{date}", "en": "Posted on {date}",
         "ru": "Опубликовано {date}", "fr": "Publié le {date}",
