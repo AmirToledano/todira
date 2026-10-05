@@ -1,0 +1,32 @@
+name: "Diagnose - did the last scraper runs get listing details from Gemini? (read-only, counts only)"
+
+# Read-only, manual. For the most recent scraper runs prints the run-summary line (counts only: new listings,
+# enriched/backfilled with details, errors ...) and how many Gemini warnings of each kind the run logged
+# (429 quota, 503 overloaded, unreadable page, network). Digit runs of 6+ are masked; no listing text is printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Last scraper runs
+        run: |
+          kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.schedule}{"\n"}' || true
+          PODS=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+          [ -z "$PODS" ] && { echo "no scraper pods kept"; exit 0; }
+          for POD in $(echo $PODS | tr ' ' '\n' | tail -6); do
+            echo "=== $POD ($(kubectl get pod $POD -n todira -o jsonpath='{.status.phase} started {.status.startTime}'))"
+            LOG=$(kubectl logs -n todira "$POD" 2>&1)
+            echo "$LOG" | grep "Scraper run summary" | sed -E 's/[0-9]{6,}/<n>/g' | cut -c1-600
+            echo "gemini 429: $(echo "$LOG" | grep -c 'Gemini .*429\|HTTP 429')  503: $(echo "$LOG" | grep -c 'overloaded (503)')  unparseable: $(echo "$LOG" | grep -c 'unparseable')  network: $(echo "$LOG" | grep -c 'failed (network)')  other-http: $(echo "$LOG" | grep -c 'Gemini URL-context returned HTTP')"
+          done
