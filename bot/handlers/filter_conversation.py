@@ -532,6 +532,12 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         if sub == "togc":
             _toggle_city(draft, int(parts[3]))
             return await _show_category(query, context, draft, "locpick", lang)
+        if sub == "pickc":
+            # A city chosen from the typed-search results: back to the city summary, not into the
+            # big checkbox list (2026-10-05 real owner report — typing "מבשרת" and tapping it
+            # opened the whole list instead of returning to the chosen-cities view).
+            _toggle_city(draft, int(parts[3]))
+            return await _show_category(query, context, draft, "loc", lang)
         if sub == "rmc":
             # 2026-09-25 real bug fix: see keyboards.location_keyboard's own comment on the
             # rmc button — this now removes by the city's own name (idempotent against a

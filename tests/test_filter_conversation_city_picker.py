@@ -68,7 +68,7 @@ def test_city_search_results_keyboard_has_one_button_per_match_plus_back():
     buttons = [b for row in markup.inline_keyboard for b in row]
     assert len(buttons) == 3  # 2 matches + back
     ramat_gan_idx = CITIES.index("רמת גן")
-    assert any(b.callback_data == f"f:loc:togc:{ramat_gan_idx}" for b in buttons)
+    assert any(b.callback_data == f"f:loc:pickc:{ramat_gan_idx}" for b in buttons)
 
 
 def test_typed_city_search_shows_button_results_not_auto_add():
@@ -138,6 +138,26 @@ def test_menu_callback_togc_toggles_and_stays_on_locpick():
     buttons = [b for row in kwargs["reply_markup"].inline_keyboard for b in row]
     haifa_button = next(b for b in buttons if "חיפה" in b.text)
     assert haifa_button.text.startswith("☑️")  # still on the picker, now checked
+
+
+def test_menu_callback_pickc_adds_city_and_returns_to_city_summary_not_checkbox_list():
+    """2026-10-05 real owner report: typing a city and tapping the result opened the whole checkbox
+    list instead of returning to the chosen-cities view."""
+    idx = CITIES.index("מבשרת ציון")
+    query = SimpleNamespace(
+        data=f"f:loc:pickc:{idx}", answer=AsyncMock(), edit_message_text=AsyncMock()
+    )
+    update = SimpleNamespace(callback_query=query)
+    context = _make_context(None)
+
+    result = asyncio.run(filter_conversation.menu_callback(update, context))
+
+    assert result == MENU
+    assert context.user_data["draft"]["cities"] == ["מבשרת ציון"]
+    _, kwargs = query.edit_message_text.call_args
+    buttons = [b for row in kwargs["reply_markup"].inline_keyboard for b in row]
+    assert any(b.callback_data == "f:loc:rmc:מבשרת ציון" for b in buttons)  # chosen-cities view
+    assert not any(b.callback_data.startswith("f:loc:togc:") for b in buttons)  # not the big list
 
 
 # 2026-09-15: real owner report — cities=[] already means "no city restriction at all" (matching.py

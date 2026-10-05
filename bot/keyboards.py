@@ -291,10 +291,10 @@ def city_picker_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
 def city_search_results_keyboard(matches: list[str], lang: str) -> InlineKeyboardMarkup:
     """Renders typed-search candidates (from cities.find_matches) as tappable buttons instead of
     silently picking the first match — a user chooses explicitly which city they meant, same as
-    tapping a box in city_picker_keyboard. `matches` are always members of cities.CITIES, so
+    tapping a box in city_picker_keyboard. Uses its own `pickc` action (not the checkbox list's `togc`): after a typed search the user returns to the city summary, not to the 40-city checkbox list (real owner report, 2026-10-05). `matches` are always members of cities.CITIES, so
     `.index()` never raises."""
     rows = [
-        [InlineKeyboardButton(f"➕ {city}", callback_data=f"f:loc:togc:{cities.CITIES.index(city)}")]
+        [InlineKeyboardButton(f"➕ {city}", callback_data=f"f:loc:pickc:{cities.CITIES.index(city)}")]
         for city in matches
     ]
     rows.append([InlineKeyboardButton(bot_text("kb.back", lang), callback_data="f:cat:loc")])
