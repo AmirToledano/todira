@@ -53,8 +53,33 @@ jobs:
 
       - run: python -m pytest tests/ -v
 
+  # 2026-10-05: the test job above installs requirements-test.txt (a superset of every service's own
+  # requirements), so a package a service imports but doesn't list passes it and then crash-loops the real
+  # container (bot / itsdangerous). This installs ONLY each service's own requirements.txt in a clean
+  # environment and imports its modules exactly as its Dockerfile lays them out.
+  import-check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [bot, scraper, website]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Lay out the service like its Dockerfile and install only its own requirements
+        run: |
+          mkdir /tmp/svc
+          cp -r ${{ matrix.service }}/. /tmp/svc/
+          cp -r common/todira_common /tmp/svc/todira_common
+          pip install -r ${{ matrix.service }}/requirements.txt
+
+      - run: python .github/scripts/check_service_imports.py /tmp/svc
+
   build-and-push:
-    needs: [vars, test]
+    needs: [vars, test, import-check]
     runs-on: ubuntu-latest
     permissions:
       contents: read
