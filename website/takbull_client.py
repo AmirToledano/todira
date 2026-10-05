@@ -67,12 +67,14 @@ from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import quote, urlencode
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 WEBHOOK_SECRET_ENV_VAR = "TAKBULL_WEBHOOK_SECRET"
+PAYMENT_PAGE_URL_ENV_VAR = "TAKBULL_PAYMENT_PAGE_URL"
 API_KEY_ENV_VAR = "TAKBULL_API_KEY"
 API_SECRET_ENV_VAR = "TAKBULL_API_SECRET"
 
@@ -91,6 +93,32 @@ _DEAL_TYPE_RECURRING = 4
 # that website/main.py's /upgrade route never calls either function anywhere, and a repo-wide grep
 # found no other caller either. Removed rather than left as dead code that could itself cause the
 # exact confusion this question came from.
+
+
+def hosted_page_configured() -> bool:
+    """The FREE flow (2026-10-05, owner decision: no paid Takbull package for now): the customer pays on the owner's own
+    hosted payment page (one product, ₪49.90 = 30 days of access, no auto-renewal) and Takbull's free "automation"
+    webhook tells us about it. Needs the page URL and the webhook secret (the secret is the only thing protecting
+    /webhooks/takbull/<secret>, which has no signature scheme of its own); NO API key — those are paywalled."""
+    return bool(
+        os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
+        and os.environ.get(WEBHOOK_SECRET_ENV_VAR, "").strip()
+    )
+
+
+def build_hosted_checkout_url(*, payment_id: int, email: str | None) -> str | None:
+    """The owner's hosted payment page with `order_reference` (our payments.id) and, when we know it, the customer's
+    email pre-filled (that query parameter was confirmed live to pre-fill the checkout form on 2026-09-06;
+    order_reference carrying through to the webhook is documented by Takbull but NOT yet confirmed end to end — which
+    is why /webhooks/takbull also matches by email and by "the only user waiting"). Pure string building: no network."""
+    base_url = os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
+    if not base_url:
+        return None
+    params = {"order_reference": str(payment_id)}
+    if email:
+        params["email"] = email
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}{urlencode(params, quote_via=quote)}"
 
 
 def recurring_api_configured() -> bool:

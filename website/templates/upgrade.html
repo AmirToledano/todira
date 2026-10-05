@@ -63,6 +63,7 @@
 
 <p class="upgrade-payment-hint reveal">
   {% if recurring_configured %}{{ t('upgrade.payment_hint_takbull_recurring') }}
+  {% elif hosted_page_configured %}{{ t('upgrade.payment_hint_takbull_onetime') }}
   {% else %}{{ t('upgrade.payment_hint_manual') }}
   {% endif %}
 </p>

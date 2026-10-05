@@ -84,6 +84,12 @@ websiteImage:
   repository: ghcr.io/CHANGE-ME/todira-website
   tag: latest
 
+# 2026-10-05: Gemini models tried (in order) for Yad2 listing details; the free tier has a DAILY cap PER MODEL, so a longer
+# chain = more free quota. Empty = the verified default in common/todira_common/gemini_url_detail.py. Models checked
+# against our DB (19-20 listings): gemini-3.5-flash-lite and gemini-3.6-flash good; gemini-3.1-flash-lite had 3/19 wrong
+# safe-room answers (not used). Add others only after running diagnose-gemini-url-context-accuracy.yaml with that model.
+yad2GeminiModels: ""
+
 website:
   nodePort: 30080 # http://<node public IP>:30080 — kept as a direct fallback even with HTTPS below
   # real HTTPS via Caddy (see caddy-deployment.yaml) — requires the EC2 security group to allow
@@ -93,6 +99,12 @@ website:
   # option explicitly refuses to verify a subdomain of a shared free service like DuckDNS, only a
   # root domain)
   domain: todira.app
+  # 2026-10-05: the owner's Takbull hosted payment page for the FREE flow (one product: "30 days of access", ₪49.90;
+  # see website/takbull_client.py hosted_page_configured). Empty = flow off (/upgrade keeps its current behaviour).
+  # Set it only AFTER the page's product list was changed to that single product, otherwise the webhook's amount
+  # check leaves every payment pending. Also needs the GitHub secret TAKBULL_WEBHOOK_SECRET and the same secret
+  # in the "Hook Address" path registered in Takbull (https://<domain>/webhooks/takbull/<secret>, event "עסקה חדשה").
+  takbullPaymentPageUrl: ""
   # E.164 digits (no leading '+') of the actual WhatsApp number people message — builds the
   # /account page's wa.me channel-linking deep link. Not secret. Leave empty to hide that option
   # until it's known (it's a display value, not an API credential, so it's not the same as the

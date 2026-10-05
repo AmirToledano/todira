@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing
-from todira_common import bright_data_client, gemini_url_detail
+from todira_common import gemini_url_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common.models import Listing, SentNotification
@@ -33,7 +33,7 @@ from homeless_client import fetch_search_results as fetch_homeless_results
 import komo_client
 from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
-from normalize import _compute_detail_updates, normalize
+from normalize import normalize
 from notifier import run_notifications
 from whatsapp_checkin import run_whatsapp_checkins
 from whatsapp_cost_guard import run_cost_guard
@@ -43,7 +43,6 @@ from yad2_client import (
     Yad2FetchError,
     Yad2MapFetchError,
     fetch_forsale_region,
-    fetch_listing_detail_via_web_unlocker,
     fetch_region_pages,
     fetch_region_via_map_api,
 )
@@ -60,7 +59,7 @@ from yad2_client import (
 # this routes through Web Unlocker instead — a single stateless POST per listing, no shared
 # trigger/poll job id at all, so that race is structurally impossible here. Revisit (higher, or
 # lower if Bright Data's own rate limits complain) only with real evidence, not preemptively.
-_BRIGHT_DATA_ENRICH_CONCURRENCY = 5
+_BRIGHT_DATA_ENRICH_CONCURRENCY = 1  # 2026-10-05: Gemini calls are serialised anyway (see gemini_url_detail)
 
 # 2026-09-15: real, confirmed kill-switch — see charts/todira/values.yaml's own comment on
 # scraper.brightDataEnrichmentSuspended for the live diagnostic (.github/workflows/
@@ -191,10 +190,11 @@ _DEFAULT_HOMELESS_BACKFILL_MAX_PER_RUN = 30
 # exist for exactly this "unbounded backlog" reason. Same safety-net pattern applied here.
 _BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR = "BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN"
 # 2026-10-02: eager enrichment of every genuinely-new Yad2 listing STAYS ON (owner: "don't turn it
-# off") at 50 per run — real volume is ~400-600 new listings/day over 14 runs (~43/run), so this
-# covers a normal day with headroom; realistic cost ~$20/month, hard ceiling 50*14*30*$0.0015 = ~$31.
-# Anything past the cap still gets fetched on demand at notification time
-# (notifier._maybe_fetch_description), so nothing sent to a user ever lacks its details.
+# off") at 50 per run — real volume is ~400-600 new listings/day over 14 runs (~43/run).
+# 2026-10-05: the fetch is Gemini-only now (free, no Bright Data cost): ~7s between requests, so a full
+# run of 50 takes ~6 minutes; when every Gemini model is out of daily quota the calls return instantly and the
+# listing simply keeps its search-card fields until a viewer opens it (todira_common/listing_enrichment.py) or
+# it is about to be sent to a paying user (notifier._maybe_fetch_description).
 _DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN = 50
 
 # 2026-09-26: real gap found live (diagnose-description-coverage-per-source.yaml) — only 6.2%
@@ -579,9 +579,8 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     over one bad fetch.
 
     Returns how many listings were actually enriched (Web Unlocker returned usable data for)."""
-    if not new_ids or not os.environ.get(bright_data_client.API_KEY_ENV_VAR, "").strip():
-        return 0
-    if os.environ.get(_BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR, "").strip().lower() == "true":
+    # 2026-10-05: Gemini only (owner decision) — no longer gated on the Bright Data key/kill-switch.
+    if not new_ids or not gemini_url_detail.is_enabled():
         return 0
 
     table = Listing.__table__
@@ -632,17 +631,12 @@ async def _fetch_and_apply_yad2_detail_updates(
 
     async def _fetch_one(listing_id: int, url: str) -> tuple[int, dict] | None:
         async with semaphore:
-            # 2026-10-04: Gemini's URL-context tool first (free tier, verified accurate — see
-            # todira_common/gemini_url_detail.py); Bright Data Web Unlocker ($0.0015/request) only when
-            # Gemini is off, rate-limited or couldn't read the page.
+            # 2026-10-05: Gemini's URL-context tool ONLY (owner decision: no paid Bright Data fallback for
+            # listing details). gemini_url_detail serialises and spaces its own requests and skips a model that
+            # is out of quota; None just means this listing keeps its search-card fields until somebody views it
+            # (todira_common/listing_enrichment.py fills it in then).
             gemini_updates = await asyncio.to_thread(gemini_url_detail.fetch_yad2_detail_updates, url)
-            if gemini_updates:
-                return (listing_id, gemini_updates)
-            detail = await asyncio.to_thread(fetch_listing_detail_via_web_unlocker, url)
-        if detail is None:
-            return None
-        updates = _compute_detail_updates(detail)
-        return (listing_id, updates) if updates else None
+        return (listing_id, gemini_updates) if gemini_updates else None
 
     results = await asyncio.gather(
         *(_fetch_one(listing_id, url) for listing_id, url in id_url_pairs), return_exceptions=True
@@ -690,9 +684,7 @@ async def _backfill_missing_yad2_descriptions(session) -> int:
     — always safe to call every run regardless of whether Bright Data is configured yet.
 
     Returns how many listings were actually backfilled."""
-    if not os.environ.get(bright_data_client.API_KEY_ENV_VAR, "").strip():
-        return 0
-    if os.environ.get(_BRIGHT_DATA_ENRICHMENT_SUSPENDED_ENV_VAR, "").strip().lower() == "true":
+    if not gemini_url_detail.is_enabled():
         return 0
 
     table = Listing.__table__

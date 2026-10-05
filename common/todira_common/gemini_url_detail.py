@@ -22,15 +22,22 @@ retrieved at ~8/min (3.4s median), and on 19 pages every field matched the DB (f
 balcony/safe-room 100%, description identical up to whitespace); 8 PARALLEL calls gave 2x 503 and 22s median
 latency, so callers should not fan out.
 
-Safety: opt-in via YAD2_DETAIL_VIA_GEMINI=true; callers always fall back to Web Unlocker when this returns
-None. Only public listing URLs are sent (no user data) — relevant because free-tier prompts may be used by
-Google to improve its products. Never raises."""
+Gemini is the ONLY detail fetcher (owner decision 2026-10-05: no paid Bright Data fallback for listing details), so
+the conflicts found live are handled here: (1) calls are SERIALISED per process with a minimum spacing (the free tier
+allows ~10 requests/min per model and 8 parallel calls gave 503s); (2) a model that is out of daily quota is skipped for
+hours so the next one takes over; (3) a page Gemini could not read is remembered for a few hours so a busy page does not
+burn the quota retrying the same listing on every view. When every model is limited this returns None and the caller
+simply shows the listing without extra details until the quota resets.
+
+Safety: opt-in via YAD2_DETAIL_VIA_GEMINI=true. Only public listing URLs are sent (no user data) — relevant because
+free-tier prompts may be used by Google to improve its products. Never raises."""
 from __future__ import annotations
 
 import datetime as dt
 import json
 import logging
 import os
+import threading
 import time
 
 import httpx
@@ -44,6 +51,10 @@ _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generate
 _TIMEOUT_SECONDS = 90.0
 _RATE_LIMIT_PAUSE_SECONDS = 600.0
 _DAILY_QUOTA_PAUSE_SECONDS = 3 * 3600.0
+MIN_SPACING_ENV_VAR = "YAD2_GEMINI_MIN_SPACING_SECONDS"
+_DEFAULT_MIN_SPACING_SECONDS = 7.0  # between request STARTS (~8.5/min, under the ~10/min free-tier limit)
+_UNREADABLE_RETRY_SECONDS = 6 * 3600.0
+_UNREADABLE_CACHE_MAX = 5000
 _MAX_DESCRIPTION_CHARS = 4000
 
 _PROMPT = (
@@ -57,6 +68,11 @@ _PROMPT = (
 
 # model -> monotonic deadline until which that model is skipped after a 429
 _paused_until: dict[str, float] = {}
+# url -> monotonic deadline until which a page Gemini could not read is not asked about again
+_unreadable_until: dict[str, float] = {}
+# one Gemini request at a time per process, spaced out (see the module docstring)
+_call_lock = threading.Lock()
+_last_call_at = 0.0
 
 
 def is_enabled() -> bool:
@@ -114,47 +130,73 @@ def _models() -> list[str]:
     return [m.strip() for m in raw.split(",") if m.strip()]
 
 
+def _min_spacing() -> float:
+    raw = os.environ.get(MIN_SPACING_ENV_VAR, "").strip()
+    try:
+        return max(0.0, float(raw)) if raw else _DEFAULT_MIN_SPACING_SECONDS
+    except ValueError:
+        return _DEFAULT_MIN_SPACING_SECONDS
+
+
+def _remember_unreadable(url: str) -> None:
+    if len(_unreadable_until) >= _UNREADABLE_CACHE_MAX:
+        _unreadable_until.clear()
+    _unreadable_until[url] = time.monotonic() + _UNREADABLE_RETRY_SECONDS
+
+
 def fetch_yad2_detail_updates(url: str) -> dict | None:
     """Column->value updates for a Listing row, or None (not enabled, every model limited, page not
     retrieved, unparseable, nothing usable). Only fields the page actually states are included."""
+    global _last_call_at
     if not is_enabled():
+        return None
+    if time.monotonic() < _unreadable_until.get(url, 0.0):
         return None
     body = {
         "contents": [{"parts": [{"text": f"{_PROMPT}\n\nURL: {url}"}]}],
         "tools": [{"url_context": {}}],
         "generationConfig": {"temperature": 0},
     }
-    for model in _models():
-        if time.monotonic() < _paused_until.get(model, 0.0):
-            continue
-        try:
-            response = httpx.post(
-                _URL.format(model=model),
-                headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"].strip(), "Content-Type": "application/json"},
-                json=body,
-                timeout=_TIMEOUT_SECONDS,
-            )
-        except httpx.HTTPError:
-            logger.warning("Gemini URL-context request failed (network) for %s", url)
-            return None
-        if response.status_code == 429:
-            daily = "PerDay" in (getattr(response, "text", "") or "")
-            pause = _DAILY_QUOTA_PAUSE_SECONDS if daily else _RATE_LIMIT_PAUSE_SECONDS
-            _paused_until[model] = time.monotonic() + pause
-            logger.warning(
-                "Gemini %s quota hit (%s) — skipping that model for %.0f min",
-                model, "daily" if daily else "rate", pause / 60,
-            )
-            continue
-        if response.status_code == 503:
-            logger.warning("Gemini %s overloaded (503) for %s — trying the next model", model, url)
-            continue
-        if response.status_code != 200:
-            logger.warning("Gemini URL-context returned HTTP %s for %s", response.status_code, url)
-            return None
-        try:
-            return _parse_updates(response.json(), dt.date.today())
-        except (ValueError, AttributeError, TypeError):
-            logger.warning("Gemini URL-context response unparseable for %s", url)
-            return None
+    with _call_lock:
+        for model in _models():
+            if time.monotonic() < _paused_until.get(model, 0.0):
+                continue
+            wait = _last_call_at + _min_spacing() - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            _last_call_at = time.monotonic()
+            try:
+                response = httpx.post(
+                    _URL.format(model=model),
+                    headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"].strip(), "Content-Type": "application/json"},
+                    json=body,
+                    timeout=_TIMEOUT_SECONDS,
+                )
+            except httpx.HTTPError:
+                logger.warning("Gemini URL-context request failed (network) for %s", url)
+                return None
+            if response.status_code == 429:
+                daily = "PerDay" in (getattr(response, "text", "") or "")
+                pause = _DAILY_QUOTA_PAUSE_SECONDS if daily else _RATE_LIMIT_PAUSE_SECONDS
+                _paused_until[model] = time.monotonic() + pause
+                logger.warning(
+                    "Gemini %s quota hit (%s) — skipping that model for %.0f min",
+                    model, "daily" if daily else "rate", pause / 60,
+                )
+                continue
+            if response.status_code == 503:
+                logger.warning("Gemini %s overloaded (503) for %s — trying the next model", model, url)
+                continue
+            if response.status_code != 200:
+                logger.warning("Gemini URL-context returned HTTP %s for %s", response.status_code, url)
+                return None
+            try:
+                updates = _parse_updates(response.json(), dt.date.today())
+            except (ValueError, AttributeError, TypeError):
+                logger.warning("Gemini URL-context response unparseable for %s", url)
+                _remember_unreadable(url)
+                return None
+            if updates is None:
+                _remember_unreadable(url)
+            return updates
     return None

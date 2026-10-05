@@ -29,7 +29,7 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from todira_common import bright_data_client, gemini_url_detail, whatsapp_client, whatsapp_guard
+from todira_common import gemini_url_detail, whatsapp_client, whatsapp_guard
 from todira_common.access import has_full_access
 from todira_common.bot_strings import bot_text
 from todira_common.cards import (
@@ -45,8 +45,6 @@ from todira_common.uid_token import signed_login_query
 from todira_common.whatsapp_window import window_open
 from todira_common.wid_token import generate_wid_token
 
-from normalize import _compute_detail_updates
-from yad2_client import fetch_listing_detail_via_web_unlocker
 
 logger = logging.getLogger(__name__)
 
@@ -213,18 +211,14 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
     Telegram with none."""
     if listing.description:
         return
-    if not (gemini_url_detail.is_enabled() or bright_data_client.web_unlocker_configured()):
+    if not gemini_url_detail.is_enabled():
         return
     if listing.source != Source.YAD2:
         return
     if not any(_has_access_for(user) for user in recipients):
         return
-    # 2026-10-04: Gemini's URL-context tool first (free tier, see todira_common/gemini_url_detail.py),
-    # Bright Data Web Unlocker only as the fallback.
+    # 2026-10-05: Gemini's URL-context tool ONLY (owner decision: no paid Bright Data fallback).
     updates = await asyncio.to_thread(gemini_url_detail.fetch_yad2_detail_updates, listing.url)
-    if not updates and bright_data_client.web_unlocker_configured():
-        detail = await asyncio.to_thread(fetch_listing_detail_via_web_unlocker, listing.url)
-        updates = _compute_detail_updates(detail) if detail else None
     if updates:
         # 2026-10-02: the full detail record (move-in, amenities, floor, real photos, description),
         # not just the description. Safety net behind scraper/main.py's eager per-new-listing
