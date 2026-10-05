@@ -28,5 +28,7 @@ jobs:
             echo "=== $POD ($(kubectl get pod $POD -n todira -o jsonpath='{.status.phase} started {.status.startTime}'))"
             LOG=$(kubectl logs -n todira "$POD" 2>&1)
             echo "$LOG" | grep "Scraper run summary" | sed -E 's/[0-9]{6,}/<n>/g' | cut -c1-600
-            echo "gemini 429: $(echo "$LOG" | grep -c 'Gemini .*429\|HTTP 429')  503: $(echo "$LOG" | grep -c 'overloaded (503)')  unparseable: $(echo "$LOG" | grep -c 'unparseable')  network: $(echo "$LOG" | grep -c 'failed (network)')  other-http: $(echo "$LOG" | grep -c 'Gemini URL-context returned HTTP')"
+            echo "gemini quota-daily: $(echo "$LOG" | grep -c 'quota hit (daily)')  quota-rate: $(echo "$LOG" | grep -c 'quota hit (rate)')  503: $(echo "$LOG" | grep -c 'overloaded (503)')  unparseable: $(echo "$LOG" | grep -c 'unparseable')  network: $(echo "$LOG" | grep -c 'failed (network)')  other-http: $(echo "$LOG" | grep -c 'Gemini URL-context returned HTTP')"
+            echo "--- most common WARNING/ERROR line types (urls, ids and numbers masked) ---"
+            echo "$LOG" | grep -E " (WARNING|ERROR) " | sed -E 's/^[0-9-]+ [0-9:,]+ //; s/https?:[^ ]+/<url>/g; s/[0-9]+/<n>/g' | cut -c1-140 | sort | uniq -c | sort -rn | head -8
           done
