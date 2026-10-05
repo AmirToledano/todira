@@ -1,0 +1,35 @@
+name: "Diagnose: Telegram bot unresponsive (read-only, ids masked)"
+
+# Owner report: /filter in the Telegram bot gets no reply. Read-only: pod status/restarts and the bot
+# log's error lines only. Every run of 6+ digits is masked so no Telegram id / phone number can reach
+# the (public) Actions log.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Bot deployment and pods
+        run: |
+          kubectl get deployment todira-bot -n todira -o wide || true
+          kubectl get pods -n todira -l app=todira-bot -o wide || true
+          kubectl get pods -n todira -l app=todira-bot -o jsonpath='{range .items[*]}{.metadata.name}{" restarts="}{.status.containerStatuses[0].restartCount}{" lastState="}{.status.containerStatuses[0].lastState.terminated.reason}{"\n"}{end}' || true
+
+      - name: Bot log - errors and the last lines (digits masked)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          [ -z "$POD" ] && { echo "no bot pod"; exit 0; }
+          echo "=== error-ish lines (last 1500) ==="
+          kubectl logs -n todira "$POD" --tail=1500 | grep -i -E "error|exception|traceback|conflict|timed out|forbidden|unauthorized|retry" | sed -E 's/[0-9]{6,}/<n>/g' | tail -40 || true
+          echo "=== last 25 lines ==="
+          kubectl logs -n todira "$POD" --tail=25 | sed -E 's/[0-9]{6,}/<n>/g' | cut -c1-220
