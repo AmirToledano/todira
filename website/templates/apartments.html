@@ -222,7 +222,8 @@
        above), since the modal body is built dynamically and has no server-rendered listing yet. #}
     <div class="apt-listing-modal-body apt-detail-body" id="apt-listing-modal-body"
          data-description-heading="{{ t('apartments.detail_description_heading') }}"
-         data-posted-on-template="{{ t('apartments.detail_posted_on', date='__DATE__') }}"></div>
+         data-posted-on-template="{{ t('apartments.detail_posted_on', date='__DATE__') }}"
+         data-also-on-label="{{ t('apartments.detail_also_on') }}"></div>
   </div>
 </div>
 
@@ -529,6 +530,31 @@
           postedLine.textContent = template.replace('__DATE__', formattedDate);
           footer.after(postedLine);
         }
+      }
+      // 2026-10-05 real owner request (matching dorin.app): "also posted on ..." — the other sites the
+      // same apartment appeared on, from the card's data-also-on (main.py's _attach_also_on). Links go
+      // through /go/<id>, never a raw source URL.
+      if (footer && card.dataset.alsoOn) {
+        try {
+          var alsoOn = JSON.parse(card.dataset.alsoOn);
+          if (alsoOn.length) {
+            var alsoLine = document.createElement('div');
+            alsoLine.className = 'apt-modal-also-on';
+            alsoLine.appendChild(document.createTextNode((modalBody.dataset.alsoOnLabel || '') + ' '));
+            alsoOn.forEach(function (entry, i) {
+              if (i > 0) { alsoLine.appendChild(document.createTextNode(', ')); }
+              var a = document.createElement('a');
+              a.href = entry.u;
+              a.target = '_blank';
+              a.rel = 'noopener';
+              a.textContent = entry.n;
+              alsoLine.appendChild(a);
+            });
+            var anchorEl = footer.nextElementSibling && footer.nextElementSibling.classList.contains('apt-modal-posted-on')
+              ? footer.nextElementSibling : footer;
+            anchorEl.after(alsoLine);
+          }
+        } catch (e) { /* malformed data — just don't show the line */ }
       }
       return clone;
     }

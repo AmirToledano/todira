@@ -85,7 +85,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
@@ -1143,6 +1143,57 @@ def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
     listing_enrichment.fill_missing_in_background(listings)
 
 
+_SOURCE_DISPLAY_NAMES = {
+    "yad2": {"he": "יד2", "default": "Yad2"},
+    "komo": {"he": "קומו", "default": "Komo"},
+    "homeless": {"he": "הומלס", "default": "Homeless"},
+    "facebook_marketplace": {"he": "פייסבוק", "default": "Facebook"},
+    "facebook_groups": {"he": "פייסבוק", "default": "Facebook"},
+}
+
+
+def _attach_also_on(session, listings, lang: str | None) -> None:
+    """2026-10-05 real owner request (matching dorin.app): the detail view says where ELSE the same
+    apartment was posted. Cross-source duplicates are already detected at scrape time (Listing.
+    duplicate_of_id points a duplicate at its canonical row, see scraper/dedup.py) but only the
+    canonical row is ever shown, so its other sites were invisible. For every listing in `listings`
+    this sets `.also_on` = [{"n": display name, "u": "/go/<id>"}, ...] for the OTHER still-active rows
+    of the same apartment (the canonical row and/or its duplicates, never the listing itself; one entry
+    per source). The link goes through /go/{id} like every other outbound link, so a real source URL
+    never sits in the page HTML. Purely decorative, so it never breaks the page: any failure just
+    leaves the line out."""
+    items = [listing for listing in listings if listing is not None]
+    if not items:
+        return
+    try:
+        canonical_of = {item.id: (item.duplicate_of_id or item.id) for item in items}
+        canon_ids = set(canonical_of.values())
+        rows = session.execute(
+            select(Listing.id, Listing.source, Listing.duplicate_of_id).where(
+                Listing.is_delisted.is_(False),
+                or_(Listing.id.in_(canon_ids), Listing.duplicate_of_id.in_(canon_ids)),
+            )
+        ).all()
+        group: dict[int, list[tuple[int, str]]] = {}
+        for row_id, source, dup_of in rows:
+            group.setdefault(dup_of or row_id, []).append((row_id, source))
+        key = lang if lang == "he" else "default"
+        for item in items:
+            seen = {item.source}
+            entries = []
+            for row_id, source in sorted(group.get(canonical_of[item.id], [])):
+                if row_id == item.id or source in seen:
+                    continue
+                seen.add(source)
+                names = _SOURCE_DISPLAY_NAMES.get(source)
+                if names is None:
+                    continue
+                entries.append({"n": names.get(key, names["default"]), "u": f"/go/{row_id}"})
+            item.also_on = entries
+    except Exception:
+        logger.warning("could not work out the 'also posted on' sites for a listing page", exc_info=True)
+
+
 @app.get("/go/{listing_id}")
 def go_to_listing_source(listing_id: int):
     """2026-09-26: real owner request, matching dorin.app's own contact-paywall popup exactly — its
@@ -1249,6 +1300,7 @@ def apartments(
         # direct-by-id lookup. Still behind the normal has_access gate below (via listing_card's own
         # {% if has_access %} checks) — a deep link doesn't bypass the contact-info paywall.
         deep_link_listing = session.get(Listing, listing) if listing is not None else None
+        _attach_also_on(session, [*page_items, deep_link_listing], lang)
 
     if has_access:
         _fill_missing_descriptions_in_background(page_items)
@@ -1308,6 +1360,7 @@ def liked(request: Request, uid: int | None = None):
         )
         has_access = _effective_access(request, user)
         has_paid_access = _effective_paid_access(request, user)
+        _attach_also_on(session, listings, get_lang(request, user.language))
 
     if has_access:
         _fill_missing_descriptions_in_background(listings)
@@ -1346,6 +1399,7 @@ def hidden(request: Request, uid: int | None = None):
         )
         has_access = _effective_access(request, user)
         has_paid_access = _effective_paid_access(request, user)
+        _attach_also_on(session, listings, get_lang(request, user.language))
 
     return _render(
         request,
