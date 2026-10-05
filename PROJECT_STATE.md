@@ -1,5 +1,21 @@
 # ToDira — Project State Handoff
 
+## ▶ DECISIONS 2026-10-05 (owner) — implemented, read first
+- **Yad2 listing details come ONLY from Gemini** (no Bright Data fallback for details; Web Unlocker stays only as the map-fetch fallback and
+  for Komo). `common/todira_common/gemini_url_detail.py`: model chain (`YAD2_GEMINI_MODEL`, comma separated), calls serialised ~7s apart,
+  daily-quota 429 pauses that model 3h, an unreadable page is not retried for 6h. The free tier has a DAILY cap PER MODEL, so many models
+  = more quota; models the project key can use (probe `diagnose-gemini-models-quota.yaml`, 2026-10-05): gemini-3.5-flash-lite, 3.1-flash-lite,
+  3.6-flash, 3.5-flash, 3.7-flash, 3-flash-preview (+ *-latest aliases); pro/omni models are quota-exhausted. Display-time fill (option A):
+  `common/todira_common/listing_enrichment.py` (background single worker, dedupe, bounded) is called by the website's /apartments and /liked.
+  Scraper eager enrichment stays ON at 50/run (now Gemini-only, ~6 min/run worst case). The bot's "matches now" summaries show only a count
+  + link, so they need nothing.
+- **Takbull FREE flow** (no paid package): set helm `website.takbullPaymentPageUrl` to a hosted page with ONE product (30 days, NIS 49.90)
+  and register `https://todira.app/webhooks/takbull/<TAKBULL_WEBHOOK_SECRET>` as the Hook Address (event "עסקה חדשה") + thank-you redirect
+  `https://todira.app/upgrade/success`. `/upgrade` then redirects to that page with `order_reference` + the user's Google email; the webhook
+  matches by reference, else payer email, else "the only waiting payment of that amount (3h)"; anything else -> Telegram alert to the owner
+  (grant by hand in /admin/users). No auto-renewal: access is 30 days, reminders still to build. Nothing is live until the URL is set.
+- WhatsApp check-in verified live (test sent a listing + the "still looking?" buttons: both delivered, category=service = free).
+
 ## ▶ OPEN ITEMS WAITING FOR THE OWNER (2026-10-03) — come back to these
 Owner asked (2026-10-03) to keep a list of everything he has not answered yet. Answer in Hebrew, short.
 1. **Yad2 detail-fetch cost (biggest open question).** Facts: Bright Data bill Sept = $11.52 (paid 2026-10-01); free tier

@@ -75,6 +75,9 @@ spec:
                       optional: true
                 - name: YAD2_DETAIL_VIA_GEMINI
                   value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
+                # Comma-separated model chain; empty = the code's verified default (gemini_url_detail._DEFAULT_MODELS).
+                - name: YAD2_GEMINI_MODEL
+                  value: {{ .Values.yad2GeminiModels | default "" | quote }}
                 - name: BRIGHT_DATA_API_KEY
                   valueFrom:
                     secretKeyRef:

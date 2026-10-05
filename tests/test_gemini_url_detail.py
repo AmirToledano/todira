@@ -71,6 +71,9 @@ def _enable(monkeypatch):
     monkeypatch.setenv(g.ENABLED_ENV_VAR, "true")
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     monkeypatch.setattr(g, "_paused_until", {})
+    monkeypatch.setattr(g, "_unreadable_until", {})
+    monkeypatch.setattr(g, "_last_call_at", 0.0)
+    monkeypatch.setenv(g.MIN_SPACING_ENV_VAR, "0")
 
 
 def test_success_path_sends_url_context_tool_and_returns_updates(monkeypatch):
@@ -148,3 +151,44 @@ def test_overloaded_503_tries_the_next_model_and_all_limited_returns_none(monkey
 def test_default_chain_tries_flash_lite_first(monkeypatch):
     monkeypatch.delenv(g.MODEL_ENV_VAR, raising=False)
     assert g._models() == ["gemini-3.5-flash-lite", "gemini-3.6-flash"]
+
+
+def test_calls_are_spaced_out_so_a_burst_never_hits_the_per_minute_limit(monkeypatch):
+    _enable(monkeypatch)
+    monkeypatch.setenv(g.MIN_SPACING_ENV_VAR, "5")
+    monkeypatch.setenv(g.MODEL_ENV_VAR, "only-model")
+    sleeps = []
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(g.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(g.time, "sleep", lambda secs: (sleeps.append(secs), clock.__setitem__("now", clock["now"] + secs)))
+    monkeypatch.setattr(
+        g.httpx, "post", lambda *a, **k: types.SimpleNamespace(status_code=200, json=lambda: _payload({"ok": True, "description": "x"}))
+    )
+    g.fetch_yad2_detail_updates(_URL + "1")
+    g.fetch_yad2_detail_updates(_URL + "2")
+    assert sleeps and 4.9 < sleeps[0] <= 5.0  # the second call waited for the 5s spacing
+
+
+def test_a_page_gemini_could_not_read_is_not_asked_about_again_for_hours(monkeypatch):
+    _enable(monkeypatch)
+    monkeypatch.setenv(g.MODEL_ENV_VAR, "only-model")
+    calls = []
+
+    def _post(*a, **k):
+        calls.append(1)
+        return types.SimpleNamespace(status_code=200, json=lambda: _payload({"ok": False}))
+
+    monkeypatch.setattr(g.httpx, "post", _post)
+    assert g.fetch_yad2_detail_updates(_URL) is None
+    assert g.fetch_yad2_detail_updates(_URL) is None
+    assert len(calls) == 1  # the second view did not burn quota on the same unreadable page
+    assert g.fetch_yad2_detail_updates(_URL + "other") is None
+    assert len(calls) == 2
+
+
+def test_a_quota_429_is_not_remembered_as_an_unreadable_page(monkeypatch):
+    _enable(monkeypatch)
+    monkeypatch.setenv(g.MODEL_ENV_VAR, "only-model")
+    monkeypatch.setattr(g.httpx, "post", lambda *a, **k: types.SimpleNamespace(status_code=429, json=lambda: {}))
+    assert g.fetch_yad2_detail_updates(_URL) is None
+    assert _URL not in g._unreadable_until

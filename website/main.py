@@ -51,7 +51,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-from todira_common import bright_data_client, gemini_url_detail
+from todira_common import listing_enrichment
 from todira_common.access import (
     SUBSCRIPTION_PLAN,
     PLAN_PRICES_ILS,
@@ -63,7 +63,6 @@ from todira_common.cards import get_listing_photo_jpeg_bytes
 from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES
 from todira_common.db import get_session
-from todira_common.enums import Source
 from todira_common.google_link import generate_google_link_token
 from todira_common.matching import evaluate
 from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
@@ -86,7 +85,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
@@ -1132,65 +1131,16 @@ def _listing_action_ids(session, user_id: int, action: str) -> set[int]:
 APARTMENTS_PAGE_SIZE = 24
 
 
-def _ensure_description_sync(listing_id: int, url: str) -> None:
-    # 2026-09-26: switched from bright_data_client.fetch_listing_description (the DCA collector,
-    # confirmed a permanent dead end on this account's trial tier — see that function's own
-    # docstring) to fetch_yad2_description_via_web_unlocker, the real working replacement — this
-    # was one of two call sites (the other being scraper/notifier.py's _maybe_fetch_description)
-    # that got missed when scraper/main.py's own enrichment path was migrated 2026-09-17, leaving
-    # this lazy-fill safety net permanently broken and silently no-op'ing on every listing whose
-    # one scrape-time enrichment attempt failed. Found from a real owner screenshot of a listing
-    # with a genuine description on its own Yad2 page reaching Telegram with none.
-    # 2026-10-04: Gemini's URL-context tool first (free tier), Web Unlocker only as the fallback.
-    gemini_updates = gemini_url_detail.fetch_yad2_detail_updates(url)
-    description = (gemini_updates or {}).get("description")
-    if not description:
-        description = bright_data_client.fetch_yad2_description_via_web_unlocker(url)
-    if not description:
-        return
-    with get_session() as session:
-        listing = session.get(Listing, listing_id)
-        # Re-check under a fresh session: another request for the same listing may have already
-        # filled this in while this fetch (up to ~90s, bright_data_client.py's own Web Unlocker
-        # request timeout) was in flight — never overwrite a description that showed up meanwhile.
-        if listing is not None and not listing.description:
-            listing.description = description
-            session.commit()
-
-
 def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
-    """2026-09-07: extends the on-demand Bright Data fetch (originally scraper/notifier.py only,
-    triggered once at the moment a listing first matches a PAYING user) to the website's own
-    /apartments and /liked views — covers a listing whose paying match happened AFTER discovery (a
-    filter edited later, a user who upgraded after the listing was scraped), which the
-    discovery-time trigger alone can never catch since it only ever runs once, right when a listing
-    is first found.
+    """2026-10-05: fills in the details (description, floor, parking, elevator, balcony, safe room, future move-in) of
+    the Yad2 listings shown on THIS page that never got them, in the background so the page never waits — see
+    todira_common/listing_enrichment.py (Gemini URL-context only, serialised, deduplicated, bounded). Callers pass only
+    the listings actually being shown (APARTMENTS_PAGE_SIZE for /apartments, the liked list for /liked). The page renders
+    now with what exists; a filled-in listing shows its details on the NEXT view, by any viewer.
 
-    Fire-and-forget on its own thread per listing (mirrors whatsapp_webhook.py's own
-    _fire_typing_indicator pattern) — a real fetch can take up to ~90s (bright_data_client.py's own
-    Web Unlocker request timeout), so this must never block the page response. The page renders now
-    with whatever descriptions already exist; a still-missing
-    one fills in for the NEXT view of that same listing, by any viewer, once the background fetch
-    finishes and caches it on Listing.description forever. Callers must only pass this the listings
-    actually being shown on THIS page (already capped — APARTMENTS_PAGE_SIZE for /apartments, the
-    liked list itself for /liked) so one page load can't fan out into an unbounded number of
-    concurrent Bright Data fetches.
-
-    2026-09-13: skips any non-Yad2 listing — a real bug found via a real production Telegram send
-    (scraper/notifier.py's own _maybe_fetch_description had the identical gap, fixed the same
-    night): this Bright Data DCA collector is built specifically to parse a YAD2 listing detail
-    page's DOM (see bright_data_client.py's own module docstring), so pointing it at a Komo/
-    Homeless URL gets nonsense, not real enrichment. Komo/Homeless get their own real descriptions
-    from their own scrapers now (komo_client.py/homeless_client.py) — this was never their path to
-    begin with, so narrowing it to Yad2 loses nothing for them."""
-    if not (gemini_url_detail.is_enabled() or bright_data_client.web_unlocker_configured()):
-        return
-    for listing in listings:
-        if listing.description or listing.source != Source.YAD2:
-            continue
-        threading.Thread(
-            target=_ensure_description_sync, args=(listing.id, listing.url), daemon=True
-        ).start()
+    History: 2026-09-07 first version (Bright Data DCA collector, later Web Unlocker, description only); replaced
+    2026-10-05 — the owner decided listing details come only from Gemini (no paid fallback)."""
+    listing_enrichment.fill_missing_in_background(listings)
 
 
 @app.get("/go/{listing_id}")
@@ -1711,6 +1661,7 @@ def upgrade(request: Request, uid: int | None = None):
             # unchanged) never had this exception — this brings /upgrade in line with it.
             "has_active_subscription": user.takbull_subscription_uniqid is not None,
             "recurring_configured": takbull_client.recurring_api_configured(),
+            "hosted_page_configured": takbull_client.hosted_page_configured(),
         },
         known_lang=user.language,
     )
@@ -1801,6 +1752,21 @@ def upgrade_submit(
             session.commit()
             return RedirectResponse(checkout_url, status_code=303)
 
+        if takbull_client.hosted_page_configured():
+            # 2026-10-05: the FREE flow (owner decision: no paid Takbull package for now) — one hosted payment page,
+            # ₪49.90 = 30 days of access, no auto-renewal, confirmed by Takbull's free automation webhook
+            # (POST /webhooks/takbull/<secret>); see takbull_client.hosted_page_configured. The Payment row is pending
+            # until that webhook matches a real charge back to it.
+            payment = Payment(
+                user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway="takbull"
+            )
+            session.add(payment)
+            session.commit()
+            checkout_url = takbull_client.build_hosted_checkout_url(
+                payment_id=payment.id, email=user.google_email
+            )
+            return RedirectResponse(checkout_url, status_code=303)
+
         payment = Payment(
             user_id=user.id, plan=plan, amount_ils=amount, status="pending", gateway=None
         )
@@ -1826,7 +1792,23 @@ def upgrade_success(request: Request, payment_id: int | None = None, uid: int | 
     only ever fires after a real successful charge on their side" — shown as paid immediately
     rather than looked up, since there's nothing to look up."""
     if payment_id is None:
-        return _render(request, "upgrade_success.html", {"uid": uid, "paid": True})
+        # 2026-10-05: when we can tell WHO is looking (a signed session or link), report that user's real latest
+        # Takbull payment instead of assuming — the thank-you page can open a few seconds before the webhook lands,
+        # and upgrade_success.html refreshes itself every 4s until it reads "paid". Unknown visitor: keep the old
+        # behaviour (this redirect only fires after a real charge on Takbull's side; nothing is granted here).
+        with get_session() as session:
+            user = _resolve_user(request, session, uid)
+            if user is None:
+                return _render(request, "upgrade_success.html", {"uid": uid, "paid": True})
+            latest = session.scalar(
+                select(Payment)
+                .where(Payment.user_id == user.id, Payment.gateway == "takbull")
+                .order_by(Payment.id.desc())
+                .limit(1)
+            )
+            paid = latest is None or latest.status == "paid"
+            redirect_uid = user.telegram_user_id
+        return _render(request, "upgrade_success.html", {"uid": redirect_uid, "paid": paid})
     with get_session() as session:
         payment = session.get(Payment, payment_id)
     paid = payment is not None and payment.status == "paid"
@@ -2010,6 +1992,102 @@ async def webhooks_takbull_post(request: Request, secret: str):
     return await _process_takbull_payload(body)
 
 
+_TAKBULL_WAITING_WINDOW = dt.timedelta(hours=3)
+
+
+def _match_takbull_payment(session, body: dict, payment_id: int | None):
+    """Which Payment does this Takbull webhook confirm? Returns (payment, is_renewal) or (None, False).
+
+    A webhook that CARRIES our order_reference (a parseable payments.id) is matched only by it: a pending payment
+    (first charge), or a paid one that owns a Takbull recurring subscription when the payload says
+    IsSubscriptionPayment (a renewal — see the long comment in _process_takbull_payload). Anything else with a
+    reference (a replay, a stray id) is NOT guessed at.
+
+    A webhook WITHOUT any usable reference — what the free hosted payment page may send, since order_reference passing
+    through that page is documented by Takbull but not yet confirmed end to end — is matched, most reliable first:
+    1. the payer's email (CustomerEmail) equals a user's linked Google email -> that user's newest pending Payment;
+    2. exactly ONE pending hosted-page payment of the same amount was started in the last 3 hours -> that one (a real
+       charge of exactly that amount arrived and only one person is waiting). With two or more waiting we refuse to
+       guess and the owner is alerted instead (the unmatched branch of _process_takbull_payload).
+    A transaction id we already recorded is never matched again (a replay cannot credit a newer pending payment).
+    The amount is verified again by the caller against OrderTotalSum before anything is granted."""
+    if payment_id is not None:
+        payment = session.scalar(
+            select(Payment).where(
+                Payment.id == payment_id, Payment.gateway == "takbull", Payment.status == "pending"
+            )
+        )
+        if payment is not None:
+            return payment, False
+        original = session.scalar(
+            select(Payment).where(
+                Payment.id == payment_id,
+                Payment.gateway == "takbull",
+                Payment.status == "paid",
+                Payment.subscription_uniqid.is_not(None),
+            )
+        )
+        if original is not None and bool(body.get("IsSubscriptionPayment")):
+            return original, True
+        return None, False
+
+    transaction_id = str(body.get("uniqId") or body.get("OrderNumber") or "")
+    if transaction_id and session.scalar(
+        select(Payment.id).where(Payment.gateway_transaction_id == transaction_id).limit(1)
+    ) is not None:
+        return None, False
+
+    email = str(body.get("CustomerEmail") or body.get("customerEmail") or "").strip().lower()
+    if email:
+        user = session.scalar(select(User).where(func.lower(User.google_email) == email).limit(1))
+        if user is not None:
+            payment = session.scalar(
+                select(Payment)
+                .where(
+                    Payment.user_id == user.id,
+                    Payment.gateway == "takbull",
+                    Payment.status == "pending",
+                    Payment.subscription_uniqid.is_(None),
+                )
+                .order_by(Payment.id.desc())
+                .limit(1)
+            )
+            if payment is not None:
+                return payment, False
+
+    try:
+        total = Decimal(str(body.get("OrderTotalSum")))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, False
+    waiting = session.scalars(
+        select(Payment).where(
+            Payment.gateway == "takbull",
+            Payment.status == "pending",
+            Payment.subscription_uniqid.is_(None),
+            Payment.amount_ils == total,
+            Payment.created_at >= dt.datetime.now(dt.timezone.utc) - _TAKBULL_WAITING_WINDOW,
+        )
+    ).all()
+    return (waiting[0], False) if len(waiting) == 1 else (None, False)
+
+
+def _alert_owner_unmatched_takbull_payment(body: dict) -> None:
+    """A real-looking Takbull charge arrived that we could not tie to exactly one waiting user: tell the owner (private
+    Telegram) so he can grant access by hand from /admin/users — never silently drop a paid customer."""
+    try:
+        amount = body.get("OrderTotalSum")
+        payer_email = str(body.get("CustomerEmail") or "-")
+        _notify_owner_sync(
+            "Takbull",
+            payer_email,
+            f"תשלום של ₪{amount} התקבל בתקבול ולא הותאם למשתמש אחד (אין התאמה לפי הפניה, אימייל או 'היחיד שממתין'). "
+            "יש לתת גישה ידנית דרך /admin/users.",
+            None,
+        )
+    except Exception:
+        logger.exception("Could not alert the owner about an unmatched Takbull payment")
+
+
 async def _process_takbull_payload(body: dict) -> Response:
     """Shared by both the real GET IPN flow and the defensive POST fallback above — everything
     past secret-checking and payload-shape-normalization was already correct and tested (16 tests
@@ -2019,46 +2097,23 @@ async def _process_takbull_payload(body: dict) -> Response:
     try:
         payment_id = int(order_reference)
     except (TypeError, ValueError):
-        logger.warning(
-            "Takbull webhook had no usable order_reference (got %r) — can't match it to a "
-            "payment; see the raw payload logged above for manual reconciliation",
-            order_reference,
-        )
-        return Response(status_code=200)
+        payment_id = None
 
     with get_session() as session:
-        payment = session.scalar(
-            select(Payment).where(
-                Payment.id == payment_id, Payment.gateway == "takbull", Payment.status == "pending"
-            )
-        )
-        is_renewal = False
+        # Renewals (month 2+ of a Takbull RECURRING subscription — the paid-package flow, dormant until API keys
+        # exist): per Takbull's docs IsSubscriptionPayment=true marks such an event and order_reference still points
+        # at the ORIGINAL (now already "paid") Payment row, since that row IS the subscription from Takbull's point of
+        # view. Genuinely NOT live-verified yet — see takbull_client.py's module docstring.
+        payment, is_renewal = _match_takbull_payment(session, body, payment_id)
         if payment is None:
-            # Not a pending first-time charge — check whether this is Takbull's own recurring
-            # engine firing a RENEWAL charge (month 2+) against a subscription we already created.
-            # Per Takbull's docs, IsSubscriptionPayment=true marks such an event; order_reference
-            # still points at the ORIGINAL (now already "paid") Payment row, since that row IS the
-            # subscription from Takbull's point of view, not a fresh one-time order. Genuinely
-            # NOT live-verified yet (no real renewal has fired through this) — see
-            # takbull_client.py's module docstring.
-            original = session.scalar(
-                select(Payment).where(
-                    Payment.id == payment_id,
-                    Payment.gateway == "takbull",
-                    Payment.status == "paid",
-                    Payment.subscription_uniqid.is_not(None),
-                )
+            logger.warning(
+                "Takbull webhook (order_reference=%r) did not match any pending Takbull payment, user email or "
+                "renewal-eligible subscription — ignoring; see the raw payload logged above for manual reconciliation",
+                order_reference,
             )
-            if original is not None and bool(body.get("IsSubscriptionPayment")):
-                is_renewal = True
-                payment = original
-            else:
-                logger.warning(
-                    "Takbull webhook order_reference=%s did not match any pending Takbull "
-                    "payment (or renewal-eligible subscription) — ignoring",
-                    payment_id,
-                )
-                return Response(status_code=200)
+            if _looks_like_a_successful_takbull_payload(body):
+                await asyncio.to_thread(_alert_owner_unmatched_takbull_payment, body)
+            return Response(status_code=200)
 
         if not _looks_like_a_successful_takbull_payload(body):
             logger.warning(

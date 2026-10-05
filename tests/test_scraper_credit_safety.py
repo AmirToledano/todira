@@ -195,7 +195,7 @@ def test_bright_data_enrich_cap_defaults_when_env_var_unset(monkeypatch):
     assert (
         scraper_main._bright_data_enrich_max_per_run()
         == scraper_main._DEFAULT_BRIGHT_DATA_ENRICH_MAX_PER_RUN
-        == 50  # 2026-10-02: eager enrichment stays on, capped at 50/run (~$31/month ceiling)
+        == 50  # owner: eager enrichment of every new Yad2 listing stays on; Gemini-only since 2026-10-05, a model chain spreads the daily quota
     )
 
 

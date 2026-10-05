@@ -100,12 +100,19 @@ def test_notify_new_matches_passes_has_access_true_for_a_trial_user():
 # recipient about to be notified is a paying user.
 
 
-def test_maybe_fetch_description_skips_when_not_configured():
+def _gemini_patches(updates, enabled=True):
+    return (
+        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: enabled),
+        patch.object(notifier.gemini_url_detail, "fetch_yad2_detail_updates", lambda url: updates),
+    )
+
+
+def test_maybe_fetch_description_skips_when_gemini_is_not_enabled():
     listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     session = SimpleNamespace(commit=lambda: None)
     with (
-        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: False),
-        patch.object(notifier, "fetch_listing_detail_via_web_unlocker") as mock_fetch,
+        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: False),
+        patch.object(notifier.gemini_url_detail, "fetch_yad2_detail_updates") as mock_fetch,
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]))
     mock_fetch.assert_not_called()
@@ -115,8 +122,8 @@ def test_maybe_fetch_description_skips_when_already_cached():
     listing = SimpleNamespace(description="כבר יש תיאור", url="https://yad2.co.il/item/1", source=Source.YAD2)
     session = SimpleNamespace(commit=lambda: None)
     with (
-        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
-        patch.object(notifier, "fetch_listing_detail_via_web_unlocker") as mock_fetch,
+        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: True),
+        patch.object(notifier.gemini_url_detail, "fetch_yad2_detail_updates") as mock_fetch,
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]))
     mock_fetch.assert_not_called()
@@ -127,107 +134,53 @@ def test_maybe_fetch_description_skips_when_no_recipient_is_paying():
     session = SimpleNamespace(commit=lambda: None)
     free_users = [_user(), _user(id=2, telegram_user_id=556)]  # both expired trial, no payment
     with (
-        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
-        patch.object(notifier, "fetch_listing_detail_via_web_unlocker") as mock_fetch,
+        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: True),
+        patch.object(notifier.gemini_url_detail, "fetch_yad2_detail_updates") as mock_fetch,
     ):
         asyncio.run(notifier._maybe_fetch_description(session, listing, free_users))
     mock_fetch.assert_not_called()
 
 
-def test_maybe_fetch_description_fetches_and_caches_when_a_recipient_is_paying():
+def test_maybe_fetch_description_fetches_via_gemini_and_caches_when_a_recipient_is_paying():
     listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     committed = []
     session = SimpleNamespace(commit=lambda: committed.append(True))
     recipients = [_user(), _user(id=2, telegram_user_id=556, trial_ends_at=_NOW + dt.timedelta(days=1))]
-
-    with (
-        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
-        patch.object(notifier, "fetch_listing_detail_via_web_unlocker", lambda url: {"raw": 1}),
-        patch.object(
-            notifier,
-            "_compute_detail_updates",
-            lambda detail: {"description": "תיאור אמיתי", "move_in_note": "מיידי"},
-        ),
-    ):
+    enabled, fetch = _gemini_patches({"description": "מג'מיני", "floor_total": 5})
+    with enabled, fetch:
         asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
-
-    # the whole detail record is applied (not just the description), then committed once
-    assert listing.description == "תיאור אמיתי"
-    assert listing.move_in_note == "מיידי"
-    assert committed == [True]
-
-
-def test_maybe_fetch_description_prefers_gemini_and_skips_web_unlocker_when_it_works():
-    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
-    committed = []
-    session = SimpleNamespace(commit=lambda: committed.append(True))
-    recipients = [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
-
-    with (
-        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: True),
-        patch.object(
-            notifier.gemini_url_detail, "fetch_yad2_detail_updates", lambda url: {"description": "מג'מיני", "floor_total": 5}
-        ),
-        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
-        patch.object(notifier, "fetch_listing_detail_via_web_unlocker") as mock_wu,
-    ):
-        asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
-
-    mock_wu.assert_not_called()
     assert listing.description == "מג'מיני" and listing.floor_total == 5
     assert committed == [True]
 
 
-def test_maybe_fetch_description_falls_back_to_web_unlocker_when_gemini_returns_nothing():
-    listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
-    session = SimpleNamespace(commit=lambda: None)
-    recipients = [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
-
-    with (
-        patch.object(notifier.gemini_url_detail, "is_enabled", lambda: True),
-        patch.object(notifier.gemini_url_detail, "fetch_yad2_detail_updates", lambda url: None),
-        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
-        patch.object(notifier, "fetch_listing_detail_via_web_unlocker", lambda url: {"raw": 1}),
-        patch.object(notifier, "_compute_detail_updates", lambda detail: {"description": "מבריט דאטה"}),
-    ):
-        asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
-
-    assert listing.description == "מבריט דאטה"
+def test_notifier_has_no_paid_detail_fetcher_left():
+    assert not hasattr(notifier, "fetch_listing_detail_via_web_unlocker")
+    assert not hasattr(notifier, "bright_data_client")
 
 
-def test_maybe_fetch_description_does_not_cache_on_fetch_failure():
+def test_maybe_fetch_description_does_not_cache_when_gemini_returns_nothing():
     listing = SimpleNamespace(description=None, url="https://yad2.co.il/item/1", source=Source.YAD2)
     committed = []
     session = SimpleNamespace(commit=lambda: committed.append(True))
     recipients = [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
-
-    with (
-        patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
-        patch.object(notifier, "fetch_listing_detail_via_web_unlocker", lambda url: None),
-    ):
+    enabled, fetch = _gemini_patches(None)
+    with enabled, fetch:
         asyncio.run(notifier._maybe_fetch_description(session, listing, recipients))
-
     assert listing.description is None
     assert committed == []
 
 
-def test_maybe_fetch_description_skips_for_non_yad2_source(monkeypatch):
-    # 2026-09-13: real bug found via a real production Telegram send — this Bright Data DCA
-    # collector is built specifically to parse a YAD2 listing detail page's DOM (see
-    # bright_data_client.py's own module docstring); pointing it at a Komo/Homeless URL gets
-    # nonsense, not real enrichment. scraper/main.py's own _enrich_new_listings_via_bright_data
-    # already had this scoping — this call site was simply missed.
+def test_maybe_fetch_description_skips_for_non_yad2_source():
+    # Gemini's prompt is built for a Yad2 listing page; Komo/Homeless get their details from their own scrapers.
     for source in (Source.KOMO, Source.HOMELESS):
         listing = SimpleNamespace(description=None, url="https://komo.co.il/item/1", source=source)
         session = SimpleNamespace(commit=lambda: None)
         with (
-            patch.object(notifier.bright_data_client, "web_unlocker_configured", lambda: True),
-            patch.object(notifier, "fetch_listing_detail_via_web_unlocker") as mock_fetch,
+            patch.object(notifier.gemini_url_detail, "is_enabled", lambda: True),
+            patch.object(notifier.gemini_url_detail, "fetch_yad2_detail_updates") as mock_fetch,
         ):
             asyncio.run(
-                notifier._maybe_fetch_description(
-                    session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))]
-                )
+                notifier._maybe_fetch_description(session, listing, [_user(trial_ends_at=_NOW + dt.timedelta(days=1))])
             )
         mock_fetch.assert_not_called()
 

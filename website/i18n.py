@@ -2325,6 +2325,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Le prélèvement se renouvelle automatiquement chaque mois jusqu'à l'annulation. 🐾",
         "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
     },
+    "upgrade.payment_hint_takbull_onetime": {
+        "he": "התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. זה תשלום חד-פעמי ל-30 ימי גישה, בלי חידוש אוטומטי — נזכיר לך לפני שהגישה מסתיימת. הגישה נפתחת אוטומטית תוך דקה. 🐾",
+        "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. It is a one-time payment for 30 days of access, with no automatic renewal — we will remind you before your access ends. Access opens automatically within a minute. 🐾",
+        "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Это разовый платёж за 30 дней доступа, без автоматического продления — мы напомним вам до окончания доступа. Доступ открывается автоматически в течение минуты. 🐾",
+        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. C'est un paiement unique pour 30 jours d'accès, sans renouvellement automatique — nous vous rappellerons avant la fin de votre accès. L'accès s'ouvre automatiquement en moins d'une minute. 🐾",
+        "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. هذه دفعة واحدة مقابل 30 يومًا من الوصول، دون تجديد تلقائي — سنذكّرك قبل انتهاء وصولك. يُفتح الوصول تلقائيًا خلال دقيقة. 🐾",
+    },
     "upgrade.payment_hint_manual": {
         "he": "התשלום מתבצע ידנית בביט/PayBox — אחרי הלחיצה תועבר/י לעמוד עם כל פרטי התשלום. 🐾",
         "en": "Payment is done manually via Bit/PayBox — after clicking you'll be taken to a page with all the payment details. 🐾",

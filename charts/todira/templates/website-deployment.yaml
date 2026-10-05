@@ -140,6 +140,8 @@ spec:
             # fetch_listing_description always returns None, same as before this feature existed.
             - name: YAD2_DETAIL_VIA_GEMINI
               value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
+            - name: YAD2_GEMINI_MODEL
+              value: {{ .Values.yad2GeminiModels | default "" | quote }}
             - name: BRIGHT_DATA_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -164,6 +166,10 @@ spec:
               value: "{{ .Values.website.ownerBitPhone | default "" }}"
             - name: OWNER_PAYBOX_URL
               value: "{{ .Values.website.ownerPayboxUrl | default "" }}"
+            # 2026-10-05: the FREE Takbull flow — the owner's hosted payment page (one product, ₪49.90 = 30 days).
+            # Not secret (a public checkout link); empty = flow off. Needs TAKBULL_WEBHOOK_SECRET below too.
+            - name: TAKBULL_PAYMENT_PAGE_URL
+              value: "{{ .Values.website.takbullPaymentPageUrl | default "" }}"
             # Real recurring-billing webhook secret (website/takbull_client.py) — only takes effect
             # together with TAKBULL_API_KEY/TAKBULL_API_SECRET below (recurring_api_configured()
             # gates every real Takbull call on all three). Optional/unset by default so a deploy
