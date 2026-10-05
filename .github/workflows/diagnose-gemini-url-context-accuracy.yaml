@@ -12,6 +12,10 @@ on:
         description: "Gemini model id to check (free-tier quota is per model)"
         required: false
         default: "gemini-3.6-flash"
+      count:
+        description: "How many recent Yad2 listings to compare"
+        required: false
+        default: "40"
 
 jobs:
   diagnose:
@@ -40,7 +44,7 @@ jobs:
           cur = psycopg2.connect(dsn).cursor()
           cur.execute("""select url, description, floor_total, move_in_date, has_parking, has_elevator, has_balcony, safe_room_type
                          from listings where source='yad2' and description is not null and is_delisted=false
-                         order by first_seen_at desc limit 20""")
+                         order by first_seen_at desc limit %s""", (int(os.environ.get("PROBE_COUNT", "40")),))
           rows = cur.fetchall()
           MODEL = os.environ.get("PROBE_MODEL", "gemini-3.6-flash")
           PROMPT = ('Open the URL with your URL-context tool and read the listing. Return ONLY JSON with keys: '
@@ -113,11 +117,11 @@ jobs:
             namespace: todira
           spec:
             restartPolicy: Never
-            activeDeadlineSeconds: 1200
+            activeDeadlineSeconds: 3000
             containers:
               - name: diag
                 image: python:3.12-slim
-                command: ["python3", "/script/pod.py"]
+                command: ["python3", "-u", "/script/pod.py"]
                 env:
                   - name: DATABASE_URL
                     valueFrom:
@@ -126,6 +130,8 @@ jobs:
                         key: database-url
                   - name: PROBE_MODEL
                     value: "${{ inputs.model }}"
+                  - name: PROBE_COUNT
+                    value: "${{ inputs.count }}"
                   - name: GEMINI_API_KEY
                     valueFrom:
                       secretKeyRef:
@@ -144,7 +150,7 @@ jobs:
       - name: Wait, print results, clean up (always)
         if: always()
         run: |
-          for i in $(seq 1 290); do
+          for i in $(seq 1 1000); do
             PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
             if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
             sleep 3

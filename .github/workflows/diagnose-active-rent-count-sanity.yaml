@@ -1,0 +1,68 @@
+name: "Diagnose - is the active-rent listing count sane? staleness, duplicates, delisting (read-only, aggregates only)"
+
+# Owner question: the bot says ~10,000 listings match "everything for rent" - is that plausible? Read-only aggregates:
+# rent rows per source and state, how long ago each visible row was last seen by the scraper (stale = probably
+# already gone), duplicates (the same flat under different ids), recent delisting. No personal data is printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Aggregates
+        run: |
+          kubectl delete pod diag-rent-count -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-rent-count
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-rent-count
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "=== 1. rent rows by source and state ==="
+                    psql "$CONN" -c "SELECT source, is_delisted, (duplicate_of_id IS NOT NULL) AS is_dup, count(*) FROM listings WHERE deal_type='rent' GROUP BY 1,2,3 ORDER BY 1,2,3;"
+                    echo "=== 2. user-visible rent count (not delisted, not duplicate) ==="
+                    psql "$CONN" -c "SELECT count(*) AS visible FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL;"
+                    echo "=== 3. visible rent by source x last-seen age (scraped_at) ==="
+                    psql "$CONN" -c "SELECT source, CASE WHEN scraped_at > now()-interval '3 hours' THEN '1: <3h' WHEN scraped_at > now()-interval '24 hours' THEN '2: <1d' WHEN scraped_at > now()-interval '3 days' THEN '3: 1-3d' WHEN scraped_at > now()-interval '7 days' THEN '4: 3-7d' WHEN scraped_at > now()-interval '30 days' THEN '5: 7-30d' ELSE '6: >30d' END AS last_seen, count(*) FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL GROUP BY 1,2 ORDER BY 1,2;"
+                    echo "=== 4. visible rent by age since first seen ==="
+                    psql "$CONN" -c "SELECT CASE WHEN first_seen_at > now()-interval '1 day' THEN '1: <1d' WHEN first_seen_at > now()-interval '7 days' THEN '2: 1-7d' WHEN first_seen_at > now()-interval '30 days' THEN '3: 7-30d' WHEN first_seen_at > now()-interval '90 days' THEN '4: 30-90d' ELSE '5: >90d' END AS age, count(*) FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL GROUP BY 1 ORDER BY 1;"
+                    echo "=== 5. possible same-flat duplicates among visible rent (same city+street+price+rooms+size, >1 row) ==="
+                    psql "$CONN" -c "SELECT count(*) AS groups, coalesce(sum(n),0) AS rows_in_groups, coalesce(sum(n-1),0) AS extra_rows FROM (SELECT count(*) AS n FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND street IS NOT NULL AND price IS NOT NULL AND rooms IS NOT NULL AND size_sqm IS NOT NULL GROUP BY city, street, price, rooms, size_sqm HAVING count(*) > 1) g;"
+                    echo "=== 6. same, across DIFFERENT sources only ==="
+                    psql "$CONN" -c "SELECT count(*) AS groups FROM (SELECT 1 FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND street IS NOT NULL AND price IS NOT NULL AND rooms IS NOT NULL AND size_sqm IS NOT NULL GROUP BY city, street, price, rooms, size_sqm HAVING count(DISTINCT source) > 1) g;"
+                    echo "=== 7. delisted (rent): last 24h / 7d / all time ==="
+                    psql "$CONN" -c "SELECT count(*) FILTER (WHERE delisted_at > now()-interval '1 day') AS last_24h, count(*) FILTER (WHERE delisted_at > now()-interval '7 days') AS last_7d, count(*) AS all_time FROM listings WHERE deal_type='rent' AND is_delisted=true;"
+                    echo "=== 8. visible rent rows with no city ==="
+                    psql "$CONN" -c "SELECT count(*) FROM listings WHERE deal_type='rent' AND is_delisted=false AND duplicate_of_id IS NULL AND city IS NULL;"
+          PODYAML
+          for i in $(seq 1 60); do
+            PHASE=$(kubectl get pod diag-rent-count -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          kubectl logs -n todira diag-rent-count 2>&1
+          kubectl delete pod diag-rent-count -n todira --ignore-not-found=true
