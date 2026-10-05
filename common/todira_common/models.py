@@ -99,6 +99,10 @@ class User(Base):
     # this is older than whatsapp_last_inbound_at), near the end of the window, with reply buttons —
     # tapping one reopens a fresh 24h window. See scraper/whatsapp_checkin.py.
     whatsapp_checkin_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # The paid_until value a "your access ends soon" reminder was last sent for (scraper/
+    # renewal_reminder.py). Comparing against the CURRENT paid_until means a renewal (new paid_until)
+    # re-arms the reminder automatically and a user is never reminded twice for the same period.
+    renewal_reminder_for: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # In-progress WhatsApp onboarding state across stateless webhook calls — see migration
     # 0003_whatsapp_users. None once no onboarding is in progress (not started, or completed).
     pending_onboarding_state: Mapped[dict | None] = mapped_column(JSONB)

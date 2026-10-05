@@ -394,6 +394,13 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "🔒 שדרוג לצפייה", "en": "🔒 Upgrade to view", "ru": "🔒 Улучшить план",
         "fr": "🔒 Passer à Premium", "ar": "🔒 الترقية للعرض",
     },
+    "renewal.reminder": {
+        "he": "היי! הגישה שלך לטודירה מסתיימת ב-{date} ⏰ כדי להמשיך לקבל דירות ולראות פרטים אפשר לחדש כאן: {url}",
+        "en": "Hi! Your Todira access ends on {date} ⏰ To keep getting listings and details, renew here: {url}",
+        "ru": "Привет! Ваш доступ к Todira заканчивается {date} ⏰ Чтобы продолжать получать объявления и детали, продлите здесь: {url}",
+        "fr": "Salut ! Ton accès à Todira se termine le {date} ⏰ Pour continuer à recevoir les annonces et les détails, renouvelle ici : {url}",
+        "ar": "مرحباً! ينتهي وصولك إلى Todira في {date} ⏰ لمتابعة تلقي الإعلانات والتفاصيل جدّد من هنا: {url}",
+    },
     "whatsapp.checkin_body": {
         "he": "היי! עדיין מחפש דירה? 🏠 לחץ על אחד הכפתורים כדי שאמשיך לשלוח לך דירות חדשות.",
         "en": "Hi! Still looking for an apartment? 🏠 Tap a button so I keep sending you new listings.",

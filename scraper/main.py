@@ -36,6 +36,7 @@ from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import normalize
 from notifier import run_notifications
 from whatsapp_checkin import run_whatsapp_checkins
+from renewal_reminder import run_renewal_reminders
 from whatsapp_cost_guard import run_cost_guard
 from yad2_client import (
     REGION_SLUGS,
@@ -1674,6 +1675,10 @@ def run_once() -> dict[str, int]:
                     summary.update(run_whatsapp_checkins(session))
                 except Exception:
                     logger.exception("WhatsApp check-in step failed")
+                try:
+                    summary.update(run_renewal_reminders(session))
+                except Exception:
+                    logger.exception("renewal reminder step failed")
 
     return summary
 
