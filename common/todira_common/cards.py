@@ -140,8 +140,10 @@ _MASCOT_PATH = _DACHSHUND_DIR / "todi_detective.jpg"
 # On the website (website/templates/_listing_card.html + .no-image-caption in style.css) this same
 # notice is a full-width bold banner directly under the cover photo — impossible to miss. Telegram
 # captions can't do background colors or font-size, so the closest equivalent is BOLD (not italic
-# — italic reads as an aside, easy to skim past) and placed FIRST, before the listing's own details,
-# instead of tacked on at the very end where a real user reported missing it entirely (2026-09-03).
+# — italic reads as an aside, easy to skim past). 2026-09-03 it was placed FIRST because a real user
+# missed it at the end; 2026-10-05 it moved to the END on the owner's request: a Telegram push shows only
+# the START of the caption, and a banner there replaced the details that decide whether to open the
+# notification (location, price, rooms — dorin.app shows those first too).
 # See bot_strings.py's "card.no_photos_banner" — sent as plain text in send_listing_card itself,
 # same as every other line in this file (see _build_body_lines' own module comment for why this
 # file no longer adds any bidi marks at all).
@@ -622,7 +624,7 @@ async def send_listing_card(
                 )
         if photo is None:
             banner_text = bot_text("card.no_photos_banner", lang).rstrip("\n")
-            banner = f"{banner_text}\n\n"
+            banner = f"\n\n{banner_text}"
             # 2026-09-28 real bug found via a fresh code-review pass: a raw [:CAPTION_LIMIT]
             # character slice can cut anywhere at all — including mid-HTML-tag, straight through
             # the footer's <a href="...">...</a> link, exactly the bug class _fit_to_limit exists
@@ -633,7 +635,7 @@ async def send_listing_card(
             # drop the banner entirely rather than risk truncating caption's own content. Losing a
             # friendly "no photos, try asking" note costs far less than losing the whole
             # notification to a send that Telegram rejects outright.
-            no_photo_caption = banner + caption if len(banner) + len(caption) <= CAPTION_LIMIT else caption
+            no_photo_caption = caption + banner if len(banner) + len(caption) <= CAPTION_LIMIT else caption
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=_dachshund_photo_path(),
