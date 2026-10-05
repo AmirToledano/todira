@@ -74,6 +74,16 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: owner-telegram-user-id
                       optional: true
+                # Signs the "?t="/"?wid=" login links the scraper puts in notification links and WhatsApp magic links (todira_common/uid_token.py, wid_token.py).
+                # MUST be the same secret the website verifies with (website-deployment.yaml) — until
+                # 2026-10-05 only the website had it, so this job signed with the dev-only fallback key and
+                # every link opened logged-out ("open a personal link from the Telegram bot").
+                - name: SESSION_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: session-secret-key
+                      optional: true
                 - name: WEBSITE_URL
                   value: "https://{{ .Values.website.domain }}"
                 # The dedicated scraping account's real session cookie — see

@@ -77,6 +77,16 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: owner-telegram-user-id
                   optional: true
+            # Signs the "?t=" login links the bot puts in every website link (todira_common/uid_token.py).
+            # MUST be the same secret the website verifies with (website-deployment.yaml) — until
+            # 2026-10-05 only the website had it, so the bot signed with the dev-only fallback key and
+            # every link opened logged-out ("open a personal link from the Telegram bot").
+            - name: SESSION_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: session-secret-key
+                  optional: true
           volumeMounts:
             - name: bot-data
               mountPath: /data
