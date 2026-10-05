@@ -12,9 +12,12 @@ import datetime as dt
 WINDOW = dt.timedelta(hours=24)
 # Safety margin: a send takes seconds, clocks differ slightly, and Meta measures from ITS receipt time.
 SAFE_WINDOW = dt.timedelta(hours=23, minutes=30)
-# The "still looking?" check-in goes out once the window has been open this long (i.e. when the last
-# ~4 hours of it remain), leaving margin for the hourly scraper cadence.
-CHECKIN_AFTER = dt.timedelta(hours=20)
+# The "still looking?" check-in goes out once the window has been open this long. 2026-10-05: was 20h, which could MISS
+# users entirely: the scraper only runs 09:00-22:00 Israel time (helm scraper.schedule "0 9-22 * * *"), a 10-hour
+# night gap, so a user whose 20h mark fell inside that gap had no run left before the window closed (23.5h) and never
+# got the message. 12h guarantees at least one run lands in [12h, 23.5h] for ANY last-message time (an 11.5h span vs a
+# 10h gap) — tests/test_whatsapp_zero_cost.py checks this against the real schedule.
+CHECKIN_AFTER = dt.timedelta(hours=12)
 
 
 def _now() -> dt.datetime:

@@ -71,6 +71,22 @@ def test_checkin_not_repeated_within_the_same_window():
     assert whatsapp_window.checkin_due(last_inbound, _ago(hours=1), _NOW) is False
 
 
+def test_every_last_message_time_gets_a_checkin_run_before_the_window_closes():
+    """The scraper runs hourly 09:00-22:00 Israel time only (helm scraper.schedule "0 9-22 * * *"). For a user whose last
+    message arrived at ANY minute of the day there must be a run in the check-in window — the 2026-10-05 bug was a user
+    whose 20h mark fell in the overnight gap and who therefore never got the message."""
+    import datetime as dt_
+    from zoneinfo import ZoneInfo
+
+    il = ZoneInfo("Asia/Jerusalem")
+    day = dt_.datetime(2026, 10, 6, 0, 0, tzinfo=il)
+    runs = [day + dt_.timedelta(days=d, hours=h) for d in range(-1, 3) for h in range(9, 23)]
+    for minute in range(0, 24 * 60, 7):
+        last = day + dt_.timedelta(minutes=minute)
+        due_runs = [r for r in runs if whatsapp_window.checkin_due(last, None, r)]
+        assert due_runs, f"no check-in run for a last message at {last.time()}"
+
+
 def test_checkin_due_again_after_a_new_window_opened():
     assert whatsapp_window.checkin_due(_ago(hours=21), _ago(hours=40), _NOW) is True
 
