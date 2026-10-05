@@ -1,6 +1,9 @@
 # ToDira — Project State Handoff
 
 ## ▶ DECISIONS 2026-10-05 (owner) — implemented, read first
+- **WhatsApp check-in always sent** (2026-10-05): the scraper only runs 09:00-22:00 Israel, so a check-in due at 20h could have no run left
+  before the free window closes (23.5h). `CHECKIN_AFTER` is now 12h (always >=1 run in [12h, 23.5h]; test covers every minute of the day), and the
+  cost guard + check-in step in `scraper/main.py` run in a `finally`, so a failing notification step can't skip them.
 - **Yad2 listing details come ONLY from Gemini** (no Bright Data fallback for details; Web Unlocker stays only as the map-fetch fallback and
   for Komo). `common/todira_common/gemini_url_detail.py`: model chain (`YAD2_GEMINI_MODEL`, comma separated), calls serialised ~7s apart,
   daily-quota 429 pauses that model 3h, an unreadable page is not retried for 6h. The free tier has a DAILY cap PER MODEL, so many models

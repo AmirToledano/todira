@@ -1606,69 +1606,74 @@ def run_once() -> dict[str, int]:
             "delisted": delisted_count,
             "errors": errors,
         }
-        if not (new_listings or price_change_events):
-            summary.update(
-                {"matched": 0, "notifications_sent": 0, "price_change_notifications_sent": 0}
-            )
-        elif _notifications_suspended():
-            owner_telegram_user_id = os.environ.get("OWNER_TELEGRAM_USER_ID", "").strip() or None
-            if owner_telegram_user_id is None:
-                # Can't restrict-to-owner without an owner id to restrict to — falls back to a
-                # full skip rather than risk accidentally notifying everyone (only_telegram_user_id
-                # =None in run_notifications means "no restriction at all", the opposite of intent
-                # here).
-                logger.warning(
-                    "%s is set but OWNER_TELEGRAM_USER_ID is not — falling back to a full "
-                    "notification skip for %d new listing(s)/%d price change(s) this run (can't "
-                    "restrict to the owner with no owner id configured).",
-                    _NOTIFICATIONS_SUSPENDED_ENV_VAR, len(new_listings), len(price_change_events),
-                )
+        try:
+            if not (new_listings or price_change_events):
                 summary.update(
-                    {
-                        "matched": 0,
-                        "notifications_sent": 0,
-                        "price_change_notifications_sent": 0,
-                        "notifications_suspended": True,
-                    }
+                    {"matched": 0, "notifications_sent": 0, "price_change_notifications_sent": 0}
                 )
-            else:
-                logger.warning(
-                    "%s is set — restricting notifications to the owner only (telegram_user_id="
-                    "%s) for %d new listing(s)/%d price change(s) this run; every other user is "
-                    "skipped (still upserted/delisted normally, and will get their real "
-                    "notification once this is lifted).",
-                    _NOTIFICATIONS_SUSPENDED_ENV_VAR, owner_telegram_user_id,
-                    len(new_listings), len(price_change_events),
-                )
-                summary.update(
-                    asyncio.run(
-                        run_notifications(
-                            session,
-                            new_listings,
-                            price_change_events,
-                            only_telegram_user_id=owner_telegram_user_id,
+            elif _notifications_suspended():
+                owner_telegram_user_id = os.environ.get("OWNER_TELEGRAM_USER_ID", "").strip() or None
+                if owner_telegram_user_id is None:
+                    # Can't restrict-to-owner without an owner id to restrict to — falls back to a
+                    # full skip rather than risk accidentally notifying everyone (only_telegram_user_id
+                    # =None in run_notifications means "no restriction at all", the opposite of intent
+                    # here).
+                    logger.warning(
+                        "%s is set but OWNER_TELEGRAM_USER_ID is not — falling back to a full "
+                        "notification skip for %d new listing(s)/%d price change(s) this run (can't "
+                        "restrict to the owner with no owner id configured).",
+                        _NOTIFICATIONS_SUSPENDED_ENV_VAR, len(new_listings), len(price_change_events),
+                    )
+                    summary.update(
+                        {
+                            "matched": 0,
+                            "notifications_sent": 0,
+                            "price_change_notifications_sent": 0,
+                            "notifications_suspended": True,
+                        }
+                    )
+                else:
+                    logger.warning(
+                        "%s is set — restricting notifications to the owner only (telegram_user_id="
+                        "%s) for %d new listing(s)/%d price change(s) this run; every other user is "
+                        "skipped (still upserted/delisted normally, and will get their real "
+                        "notification once this is lifted).",
+                        _NOTIFICATIONS_SUSPENDED_ENV_VAR, owner_telegram_user_id,
+                        len(new_listings), len(price_change_events),
+                    )
+                    summary.update(
+                        asyncio.run(
+                            run_notifications(
+                                session,
+                                new_listings,
+                                price_change_events,
+                                only_telegram_user_id=owner_telegram_user_id,
+                            )
                         )
                     )
+                    summary["notifications_suspended"] = True
+            else:
+                summary.update(
+                    asyncio.run(run_notifications(session, new_listings, price_change_events))
                 )
-                summary["notifications_suspended"] = True
-        else:
-            summary.update(
-                asyncio.run(run_notifications(session, new_listings, price_change_events))
-            )
-        # Every run, independent of whether anything new was found: keeps users' free 24h WhatsApp
-        # windows open (see whatsapp_checkin.py). Fail-soft — never takes the scraper run down.
-        # Only on the main scraper (SCRAPE_SOURCES unset): the Facebook CronJob also runs this
-        # function, and two jobs must not both ask the same user.
-        if not os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip():
-            try:
-                # Cost backstop FIRST: if it trips, the check-ins below see the pause flag.
-                summary.update(run_cost_guard(session))
-            except Exception:
-                logger.exception("WhatsApp cost guard step failed")
-            try:
-                summary.update(run_whatsapp_checkins(session))
-            except Exception:
-                logger.exception("WhatsApp check-in step failed")
+        finally:
+            # Runs even when the notification step above raised (the exception still propagates
+            # afterwards): a failed notification run must not also swallow the check-in that keeps
+            # users' free 24h WhatsApp windows open.
+            # Every run, independent of whether anything new was found: keeps users' free 24h WhatsApp
+            # windows open (see whatsapp_checkin.py). Fail-soft — never takes the scraper run down.
+            # Only on the main scraper (SCRAPE_SOURCES unset): the Facebook CronJob also runs this
+            # function, and two jobs must not both ask the same user.
+            if not os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip():
+                try:
+                    # Cost backstop FIRST: if it trips, the check-ins below see the pause flag.
+                    summary.update(run_cost_guard(session))
+                except Exception:
+                    logger.exception("WhatsApp cost guard step failed")
+                try:
+                    summary.update(run_whatsapp_checkins(session))
+                except Exception:
+                    logger.exception("WhatsApp check-in step failed")
 
     return summary
 
