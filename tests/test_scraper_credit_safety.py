@@ -29,6 +29,16 @@ scraper_main = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(scraper_main)
 
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_komo_failed_memory_db(monkeypatch):
+    """The Komo failed-detail memory (2026-10-06) lives in the database; these tests run without one."""
+    monkeypatch.setattr(scraper_main, "_load_komo_failed_ids", lambda: {})
+    monkeypatch.setattr(scraper_main, "_save_komo_failed_ids", lambda failed: None)
+
+
 # --- env var parsing helpers ---------------------------------------------------------------------
 
 
