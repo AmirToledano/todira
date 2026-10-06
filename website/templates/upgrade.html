@@ -39,6 +39,7 @@
    name/value is the plan. The paid amount, not the clicked card, finally decides the days granted (main.py webhook). #}
 <form method="post" action="/upgrade" class="upgrade-passes reveal">
   {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+  <p class="upgrade-pass-notice" role="note">{{ t('upgrade.pass_pick_again_hint') }}</p>
   <div class="upgrade-passes-grid">
     {% for card in pass_plans %}
     <div class="upgrade-plan-card upgrade-pass-card{{ ' upgrade-pass-best' if card.best else '' }}">
@@ -62,7 +63,6 @@
     <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
   </label>
   <p class="upgrade-plan-disclaimer">{{ t('upgrade.pass_onetime_hint') }}</p>
-  <p class="upgrade-plan-disclaimer">{{ t('upgrade.pass_pick_again_hint') }}</p>
 </form>
 {% else %}
 <div class="upgrade-plan-card reveal">

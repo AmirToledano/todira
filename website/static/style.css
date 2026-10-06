@@ -2098,6 +2098,11 @@ body.apt-modal-open { overflow: hidden; }
   gap: 16px;
   align-items: stretch;
 }
+.upgrade-pass-notice {
+  text-align: center; font-size: 1.1rem; font-weight: 700; color: var(--heading);
+  background: var(--teal-tint); border: 2px solid var(--gold); border-radius: var(--radius-md);
+  padding: 12px 16px; margin: 0 auto 18px; max-width: 640px;
+}
 .upgrade-pass-card { margin: 0; }
 .upgrade-pass-card .btn { margin-top: auto; }
 .upgrade-pass-best { box-shadow: 0 0 0 2px var(--gold, #d4a93c), var(--shadow-md, 0 8px 24px rgba(0,0,0,.12)); }

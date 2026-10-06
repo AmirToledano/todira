@@ -2439,11 +2439,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": 'دفعة واحدة، بدون تجديد تلقائي وبدون التزام. سنذكّرك قبل انتهاء الوصول.',
     },
     "upgrade.pass_pick_again_hint": {
-        "he": 'בעמוד התשלום המאובטח של תקבול תתבקש לסמן שוב את אותה חבילה שבחרת כאן, ובכל מקרה הימים נקבעים לפי הסכום ששילמת בפועל.',
-        "en": "On Takbull's secure payment page you'll be asked to tick the same pass again; either way, the days you get are set by the amount you actually paid.",
-        "ru": 'На защищённой странице оплаты Takbull нужно будет ещё раз отметить тот же тариф; в любом случае срок определяется фактически оплаченной суммой.',
-        "fr": "Sur la page de paiement sécurisée de Takbull, il vous sera demandé de cocher à nouveau le même pass ; dans tous les cas, la durée dépend du montant réellement payé.",
-        "ar": 'في صفحة الدفع الآمنة لدى Takbull سيُطلب منك تحديد الباقة نفسها مرة أخرى؛ وفي كل الأحوال تُحدَّد الأيام بحسب المبلغ الذي دفعته فعلًا.',
+        "he": 'בעמוד הבא תתבקשו לסמן שוב את אותה החבילה שבחרתם כאן',
+        "en": "On the next page you'll be asked to select the same pass you chose here again",
+        "ru": 'На следующей странице вас попросят ещё раз выбрать тот же тариф, что и здесь',
+        "fr": "Sur la page suivante, il vous sera demandé de sélectionner à nouveau le même pass que celui choisi ici",
+        "ar": 'في الصفحة التالية سيُطلب منكم تحديد الباقة نفسها التي اخترتموها هنا مرة أخرى',
     },
     "upgrade.faq_q1_onetime": {
         "he": 'האם זה מתחדש אוטומטית?',
