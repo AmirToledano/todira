@@ -1,0 +1,159 @@
+name: "Diagnose - can Gemini url_context read Homeless (search pages + detail pages) instead of paid ZenRows? (read-only)"
+
+# Homeless is the last source that needs a paid proxy (ZenRows): direct fetches get a Cloudflare 403. Gemini's
+# url_context tool fetches pages from Google's own network (it already reads Yad2 listing pages for free), so
+# this checks, with the existing free key, whether it can (a) list the cards on /rent/ and /sale/ and (b) return
+# the description of recent Homeless listings. Prints only counts, per-field matches against our DB and the kind of
+# any difference - never listing text or the key.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Gemini model id"
+        required: false
+        default: "gemini-3.5-flash-lite"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the probe in a throwaway pod
+        run: |
+          POD_NAME="homeless-gem-diag-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import json, os, re, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "requests", "psycopg2-binary"])
+          import requests, psycopg2
+
+          key = os.environ["GEMINI_API_KEY"]
+          MODEL = os.environ.get("PROBE_MODEL", "gemini-3.5-flash-lite")
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+
+          def gem(prompt, timeout=150):
+              body = {"contents": [{"parts": [{"text": prompt}]}], "tools": [{"url_context": {}}],
+                      "generationConfig": {"temperature": 0}}
+              for attempt in range(3):
+                  try:
+                      r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
+                                        headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body, timeout=timeout)
+                  except requests.exceptions.RequestException as e:
+                      print("== request error", type(e).__name__); time.sleep(8); continue
+                  if r.status_code in (429, 500, 503):
+                      print(f"== http={r.status_code}" + (" quota=" + ("daily" if "PerDay" in r.text else "rate") if r.status_code == 429 else ""))
+                      time.sleep(12 * (attempt + 1)); continue
+                  if r.status_code != 200:
+                      print("== http", r.status_code); return None
+                  d = r.json()
+                  meta = (d.get("candidates") or [{}])[0].get("urlContextMetadata", {}).get("urlMetadata", [])
+                  print("== retrieval", [m.get("urlRetrievalStatus") for m in meta], "prompt_tokens", d.get("usageMetadata", {}).get("promptTokenCount"))
+                  try:
+                      text = d["candidates"][0]["content"]["parts"][0]["text"]
+                  except Exception:
+                      print("== no text"); return None
+                  return text
+              return None
+
+          def parse_json(text):
+              if not text: return None
+              t = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
+              try: return json.loads(t)
+              except Exception: return None
+
+          # ---- (a) search pages
+          LIST_PROMPT = ('Open the URL with your URL-context tool. It is a Hebrew real-estate search results page. Return ONLY JSON: '
+                         '{"ok": true, "ads": [{"id": <number from the ad id / viewad,<id> link>, "price": <integer ILS or null>, '
+                         '"rooms": <number or null>, "sqm": <integer or null>, "floor": <integer or null>}]} listing EVERY ad card on the page. '
+                         'If you could not open the page return {"ok": false}. Never guess.')
+          for label, url in (("rent", "https://www.homeless.co.il/rent/"), ("sale", "https://www.homeless.co.il/sale/")):
+              out = parse_json(gem(LIST_PROMPT + "\n\nURL: " + url))
+              if not out or not out.get("ok"):
+                  print(f"== search {label}: could not read"); continue
+              ads = out.get("ads") or []
+              ids = [str(a.get("id")) for a in ads if a.get("id")]
+              known = 0
+              if ids:
+                  cur.execute("select count(*) from listings where source='homeless' and external_id = any(%s)", (ids,))
+                  known = cur.fetchone()[0]
+              with_price = sum(1 for a in ads if a.get("price"))
+              print(f"== search {label}: ads={len(ads)} ids_known_in_db={known} with_price={with_price}")
+              time.sleep(8)
+
+          # ---- (b) detail pages
+          cur.execute("""select url, description from listings where source='homeless' and description is not null
+                         and is_delisted=false order by first_seen_at desc limit 6""")
+          rows = cur.fetchall()
+          DETAIL_PROMPT = ('Open the URL with your URL-context tool. Return ONLY JSON: {"ok": true, "description": "<the ad free-text description, verbatim>"}. '
+                           'If you could not open the page return {"ok": false}. Never guess.')
+          norm = lambda s: re.sub(r"\s+", " ", (s or "")).strip()
+          ok = same = 0
+          for url, desc in rows:
+              out = parse_json(gem(DETAIL_PROMPT + "\n\nURL: " + url))
+              if not out or not out.get("ok"):
+                  print("== detail: could not read"); time.sleep(8); continue
+              ok += 1
+              g = norm(out.get("description")); d = norm(desc)
+              eq = g == d or (d and (d in g or g in d))
+              same += 1 if eq else 0
+              print(f"== detail: db_len={len(d)} gem_len={len(g)} equal_or_contained={eq}")
+              time.sleep(8)
+          print(f"== detail summary: read={ok}/{len(rows)} matching_db={same}/{ok}")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 1500
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: PROBE_MODEL
+                    value: "${{ inputs.model }}"
+                  - name: GEMINI_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: gemini-api-key
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 520); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|Traceback|Error" || echo "(no logs captured)"
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
