@@ -1,0 +1,63 @@
+name: "Diagnose - why the WhatsApp circuit breaker is paused (read-only)"
+
+# Read-only, manual-only. The owner reports the automatic WhatsApp check-in is not sent. The aggregate diagnostic showed
+# app_flags.whatsapp_paused is set (08:15 UTC on 2026-10-06), which blocks every proactive send. This prints ONLY the stored
+# reason text (written by todira_common/whatsapp_guard.pause - never contains a phone number) and counts of the matching
+# website/scraper log lines. Nothing here changes or pays anything.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Stored pause reason
+        run: |
+          kubectl delete pod diag-wa-pause -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-wa-pause
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-wa-pause
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -c "SELECT key, value, updated_at FROM app_flags WHERE key = 'whatsapp_paused';"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-wa-pause -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-wa-pause || true
+          kubectl delete pod diag-wa-pause -n todira --ignore-not-found
+
+      - name: Matching website log lines (counts and the reason lines only)
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl logs -n todira "$POD" --since=48h > /tmp/web.log 2>&1 || true
+            echo "billable-status lines: $(grep -c 'billable' /tmp/web.log)"
+            grep 'WhatsApp proactive sends PAUSED' /tmp/web.log | cut -c1-400 | tail -3 || true
+          done
