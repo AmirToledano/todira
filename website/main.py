@@ -2175,6 +2175,21 @@ def _alert_owner_unmatched_takbull_payment(body: dict) -> None:
         logger.exception("Could not alert the owner about an unmatched Takbull payment")
 
 
+def _alert_owner_pending_takbull_payment(body: dict, reason: str) -> None:
+    """A successful Takbull charge matched a waiting payment but was NOT credited (amount is no pass, or no amount at
+    all): tell the owner so a paying customer is never left without access unnoticed. Aggregate facts only."""
+    try:
+        amount = body.get("OrderTotalSum")
+        _notify_owner_sync(
+            "Takbull",
+            str(body.get("CustomerEmail") or "-"),
+            f"תשלום של ₪{amount} התקבל בתקבול אבל לא זוכה אוטומטית ({reason}). אם זה לקוח אמיתי - לתת גישה ידנית דרך /admin/users.",
+            None,
+        )
+    except Exception:
+        logger.exception("Could not alert the owner about a pending Takbull payment")
+
+
 async def _process_takbull_payload(body: dict) -> Response:
     """Shared by both the real GET IPN flow and the defensive POST fallback above — everything
     past secret-checking and payload-shape-normalization was already correct and tested (16 tests
@@ -2244,6 +2259,7 @@ async def _process_takbull_payload(body: dict) -> Response:
                 "for ₪%s — leaving pending rather than guessing which plan to grant",
                 payment.id, order_total, payment.amount_ils,
             )
+            await asyncio.to_thread(_alert_owner_pending_takbull_payment, body, "הסכום אינו תואם לאף חבילה")
             return Response(status_code=200)
         if order_total is None:
             # Takbull's own documented order-success payload always includes OrderTotalSum (see
@@ -2255,6 +2271,7 @@ async def _process_takbull_payload(body: dict) -> Response:
                 "rather than trusting our own pre-recorded amount unconditionally",
                 payment.id,
             )
+            await asyncio.to_thread(_alert_owner_pending_takbull_payment, body, "לא נשלח סכום")
             return Response(status_code=200)
 
         user = session.get(User, payment.user_id)
