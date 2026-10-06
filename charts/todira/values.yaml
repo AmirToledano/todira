@@ -104,6 +104,8 @@ website:
   # The webhook decides the days from the AMOUNT paid; an amount that matches no pass is left pending. Also needs the GitHub secret TAKBULL_WEBHOOK_SECRET and the same secret
   # in the "Hook Address" path registered in Takbull (https://<domain>/webhooks/takbull/<secret>, event "עסקה חדשה").
   takbullPaymentPageUrl: "https://paypage.takbull.co.il/4BPyx"
+  # TEMPORARY: set to "1" while the owner pays NIS 1 to test the full flow (grants 1 day), then back to "".
+  takbullTestAmountIls: "1"
   takbullPaymentPageUrlPass7: ""
   takbullPaymentPageUrlPass14: ""
   takbullPaymentPageUrlPass30: ""

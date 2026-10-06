@@ -170,6 +170,9 @@ spec:
             # Not secret (a public checkout link); empty = flow off. Needs TAKBULL_WEBHOOK_SECRET below too.
             - name: TAKBULL_PAYMENT_PAGE_URL
               value: "{{ .Values.website.takbullPaymentPageUrl | default "" }}"
+            # TEMPORARY end-to-end test (empty = off): an amount equal to this grants one day instead of staying pending.
+            - name: TAKBULL_TEST_AMOUNT_ILS
+              value: "{{ .Values.website.takbullTestAmountIls | default "" }}"
             # Optional: one hosted page per pass (a copy of the page with a single product). Unset = the generic
             # page above is used and the amount paid decides the days (todira_common.access.plan_for_amount).
             - name: TAKBULL_PAYMENT_PAGE_URL_PASS_7

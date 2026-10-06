@@ -11,7 +11,8 @@ website/notifier all call it rather than re-deriving the rule themselves.
 from __future__ import annotations
 
 import datetime as dt
-from decimal import Decimal
+import os
+from decimal import Decimal, InvalidOperation
 
 from todira_common.models import User
 
@@ -20,6 +21,10 @@ SUBSCRIPTION_PLAN = "monthly_subscription"
 # 2026-10-06: the FREE Takbull flow sells one-time access passes (no auto-renewal), like dorin.app: 7 / 14 / 30 days.
 # The paid recurring SUBSCRIPTION_PLAN above stays for when Takbull's API package is ever bought.
 PASS_PLANS = ("pass_7", "pass_14", "pass_30")
+# TEMPORARY end-to-end test pass (owner's NIS 1 payment): grants one day, and ONLY while the helm value
+# website.takbullTestAmountIls is set (env TAKBULL_TEST_AMOUNT_ILS). Empty by default, so in normal operation an amount that
+# is no pass still stays pending. Deliberately NOT in PASS_PLANS, so it is never shown on /upgrade.
+TEST_PASS_PLAN = "pass_test"
 
 PLAN_DURATIONS: dict[str, dt.timedelta] = {
     # Kept for historical Payment rows only — no longer offered on /upgrade (2026-09-21).
@@ -30,6 +35,7 @@ PLAN_DURATIONS: dict[str, dt.timedelta] = {
     "pass_7": dt.timedelta(days=7),
     "pass_14": dt.timedelta(days=14),
     "pass_30": dt.timedelta(days=30),
+    TEST_PASS_PLAN: dt.timedelta(days=1),
 }
 PLAN_PRICES_ILS: dict[str, Decimal] = {
     # Kept for historical Payment rows only — no longer offered on /upgrade (2026-09-21).
@@ -41,16 +47,31 @@ PLAN_PRICES_ILS: dict[str, Decimal] = {
     "pass_7": Decimal("19.90"),
     "pass_14": Decimal("29.90"),
     "pass_30": Decimal("49.90"),
+    TEST_PASS_PLAN: Decimal("1.00"),
 }
 
 
-def plan_for_amount(amount: Decimal) -> str | None:
+def test_amount_from_env() -> Decimal | None:
+    """The temporary test amount (see TEST_PASS_PLAN), or None when the test mode is off / the value is unusable."""
+    raw = os.environ.get("TAKBULL_TEST_AMOUNT_ILS", "").strip()
+    if not raw:
+        return None
+    try:
+        value = Decimal(raw)
+    except InvalidOperation:
+        return None
+    return value if value > 0 else None
+
+
+def plan_for_amount(amount: Decimal, test_amount: Decimal | None = None) -> str | None:
     """Which one-time access pass an amount paid on the Takbull hosted page buys, or None when it matches no pass
     (e.g. the owner's NIS 1 test payment, or a stale price). The paid amount - Takbull's own record - decides how many
     days are granted, never the plan the customer happened to click on our site first."""
     for plan in PASS_PLANS:
         if PLAN_PRICES_ILS[plan] == amount:
             return plan
+    if test_amount is not None and amount == test_amount:
+        return TEST_PASS_PLAN
     return None
 
 
