@@ -95,23 +95,38 @@ _DEAL_TYPE_RECURRING = 4
 # exact confusion this question came from.
 
 
+# Optional per-plan hosted pages (a copy of the page per pass, one product each). When one is not set the generic
+# TAKBULL_PAYMENT_PAGE_URL page is used (the customer then picks the item on Takbull's page; the amount they pay decides
+# the days they get, see todira_common.access.plan_for_amount).
+_PASS_PAGE_URL_ENV_VARS = {
+    "pass_7": "TAKBULL_PAYMENT_PAGE_URL_PASS_7",
+    "pass_14": "TAKBULL_PAYMENT_PAGE_URL_PASS_14",
+    "pass_30": "TAKBULL_PAYMENT_PAGE_URL_PASS_30",
+}
+
+
+def _page_url_for(plan: str | None) -> str:
+    specific = os.environ.get(_PASS_PAGE_URL_ENV_VARS.get(plan or "", ""), "").strip() if plan else ""
+    return specific or os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
+
+
 def hosted_page_configured() -> bool:
     """The FREE flow (2026-10-05, owner decision: no paid Takbull package for now): the customer pays on the owner's own
-    hosted payment page (one product, ₪49.90 = 30 days of access, no auto-renewal) and Takbull's free "automation"
+    hosted payment page (one-time passes: ₪19.90 = 7 days, ₪29.90 = 14 days, ₪49.90 = 30 days; no auto-renewal) and Takbull's free "automation"
     webhook tells us about it. Needs the page URL and the webhook secret (the secret is the only thing protecting
     /webhooks/takbull/<secret>, which has no signature scheme of its own); NO API key — those are paywalled."""
-    return bool(
-        os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
-        and os.environ.get(WEBHOOK_SECRET_ENV_VAR, "").strip()
+    any_page = os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip() or any(
+        os.environ.get(name, "").strip() for name in _PASS_PAGE_URL_ENV_VARS.values()
     )
+    return bool(any_page and os.environ.get(WEBHOOK_SECRET_ENV_VAR, "").strip())
 
 
-def build_hosted_checkout_url(*, payment_id: int, email: str | None) -> str | None:
+def build_hosted_checkout_url(*, payment_id: int, email: str | None, plan: str | None = None) -> str | None:
     """The owner's hosted payment page with `order_reference` (our payments.id) and, when we know it, the customer's
     email pre-filled (that query parameter was confirmed live to pre-fill the checkout form on 2026-09-06;
     order_reference carrying through to the webhook is documented by Takbull but NOT yet confirmed end to end — which
     is why /webhooks/takbull also matches by email and by "the only user waiting"). Pure string building: no network."""
-    base_url = os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
+    base_url = _page_url_for(plan)
     if not base_url:
         return None
     params = {"order_reference": str(payment_id)}

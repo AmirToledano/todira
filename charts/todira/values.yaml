@@ -99,12 +99,14 @@ website:
   # option explicitly refuses to verify a subdomain of a shared free service like DuckDNS, only a
   # root domain)
   domain: todira.app
-  # 2026-10-05: the owner's Takbull hosted payment page for the FREE flow (one product: "30 days of access", ₪49.90;
+  # 2026-10-05: the owner's Takbull hosted payment page for the FREE flow (three one-time passes: ₪19.90 = 7 days, ₪29.90 = 14, ₪49.90 = 30;
   # see website/takbull_client.py hosted_page_configured). Empty = flow off (/upgrade keeps its current behaviour).
-  # Set it only AFTER the page's product list was changed to that single product, otherwise the webhook's amount
-  # check leaves every payment pending. Also needs the GitHub secret TAKBULL_WEBHOOK_SECRET and the same secret
+  # The webhook decides the days from the AMOUNT paid; an amount that matches no pass is left pending. Also needs the GitHub secret TAKBULL_WEBHOOK_SECRET and the same secret
   # in the "Hook Address" path registered in Takbull (https://<domain>/webhooks/takbull/<secret>, event "עסקה חדשה").
   takbullPaymentPageUrl: ""
+  takbullPaymentPageUrlPass7: ""
+  takbullPaymentPageUrlPass14: ""
+  takbullPaymentPageUrlPass30: ""
   # E.164 digits (no leading '+') of the actual WhatsApp number people message — builds the
   # /account page's wa.me channel-linking deep link. Not secret. Leave empty to hide that option
   # until it's known (it's a display value, not an API credential, so it's not the same as the

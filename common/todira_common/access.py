@@ -17,12 +17,19 @@ from todira_common.models import User
 
 SUBSCRIPTION_PLAN = "monthly_subscription"
 
+# 2026-10-06: the FREE Takbull flow sells one-time access passes (no auto-renewal), like dorin.app: 7 / 14 / 30 days.
+# The paid recurring SUBSCRIPTION_PLAN above stays for when Takbull's API package is ever bought.
+PASS_PLANS = ("pass_7", "pass_14", "pass_30")
+
 PLAN_DURATIONS: dict[str, dt.timedelta] = {
     # Kept for historical Payment rows only — no longer offered on /upgrade (2026-09-21).
     "weekly": dt.timedelta(days=7),
     "biweekly": dt.timedelta(days=14),
     "monthly": dt.timedelta(days=30),
     SUBSCRIPTION_PLAN: dt.timedelta(days=30),
+    "pass_7": dt.timedelta(days=7),
+    "pass_14": dt.timedelta(days=14),
+    "pass_30": dt.timedelta(days=30),
 }
 PLAN_PRICES_ILS: dict[str, Decimal] = {
     # Kept for historical Payment rows only — no longer offered on /upgrade (2026-09-21).
@@ -31,7 +38,20 @@ PLAN_PRICES_ILS: dict[str, Decimal] = {
     "monthly": Decimal("40"),
     # The only plan /upgrade actually offers now — single recurring monthly subscription.
     SUBSCRIPTION_PLAN: Decimal("49.90"),
+    "pass_7": Decimal("19.90"),
+    "pass_14": Decimal("29.90"),
+    "pass_30": Decimal("49.90"),
 }
+
+
+def plan_for_amount(amount: Decimal) -> str | None:
+    """Which one-time access pass an amount paid on the Takbull hosted page buys, or None when it matches no pass
+    (e.g. the owner's NIS 1 test payment, or a stale price). The paid amount - Takbull's own record - decides how many
+    days are granted, never the plan the customer happened to click on our site first."""
+    for plan in PASS_PLANS:
+        if PLAN_PRICES_ILS[plan] == amount:
+            return plan
+    return None
 
 
 def has_full_access(user: User, *, is_owner: bool = False) -> bool:

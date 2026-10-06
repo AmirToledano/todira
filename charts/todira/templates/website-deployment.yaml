@@ -170,6 +170,14 @@ spec:
             # Not secret (a public checkout link); empty = flow off. Needs TAKBULL_WEBHOOK_SECRET below too.
             - name: TAKBULL_PAYMENT_PAGE_URL
               value: "{{ .Values.website.takbullPaymentPageUrl | default "" }}"
+            # Optional: one hosted page per pass (a copy of the page with a single product). Unset = the generic
+            # page above is used and the amount paid decides the days (todira_common.access.plan_for_amount).
+            - name: TAKBULL_PAYMENT_PAGE_URL_PASS_7
+              value: "{{ .Values.website.takbullPaymentPageUrlPass7 | default "" }}"
+            - name: TAKBULL_PAYMENT_PAGE_URL_PASS_14
+              value: "{{ .Values.website.takbullPaymentPageUrlPass14 | default "" }}"
+            - name: TAKBULL_PAYMENT_PAGE_URL_PASS_30
+              value: "{{ .Values.website.takbullPaymentPageUrlPass30 | default "" }}"
             # Real recurring-billing webhook secret (website/takbull_client.py) — only takes effect
             # together with TAKBULL_API_KEY/TAKBULL_API_SECRET below (recurring_api_configured()
             # gates every real Takbull call on all three). Optional/unset by default so a deploy
