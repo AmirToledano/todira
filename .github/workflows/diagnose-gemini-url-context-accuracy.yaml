@@ -70,7 +70,7 @@ jobs:
               tot["n"] += 1
               r, tries = call(url)
               if r.status_code != 200:
-                  tot["http_fail"] += 1; print(f"http={r.status_code}"); time.sleep(5); continue
+                  tot["http_fail"] += 1; print(f"http={r.status_code}" + (" quota=" + ("daily" if "PerDay" in r.text else "rate") if r.status_code == 429 else "")); time.sleep(5); continue
               d = r.json(); cand = (d.get("candidates") or [{}])[0]
               st = [m.get("urlRetrievalStatus") for m in cand.get("urlContextMetadata", {}).get("urlMetadata", [])]
               tokens.append((d.get("usageMetadata") or {}).get("promptTokenCount"))
