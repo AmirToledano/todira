@@ -58,6 +58,7 @@ from todira_common.access import (
     PLAN_DURATIONS,
     PLAN_PRICES_ILS,
     plan_for_amount,
+    test_amount_from_env,
     extend_paid_until,
     has_full_access,
     has_paid_access,
@@ -2239,7 +2240,7 @@ async def _process_takbull_payload(body: dict) -> Response:
             # they clicked on our site. An amount that is no pass (a test payment, a stale price) falls through to
             # the mismatch handling below and is left pending.
             try:
-                paid_plan = plan_for_amount(Decimal(str(order_total)))
+                paid_plan = plan_for_amount(Decimal(str(order_total)), test_amount_from_env())
             except (InvalidOperation, TypeError, ValueError):
                 paid_plan = None
             if paid_plan is not None:
