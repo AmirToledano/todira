@@ -2438,6 +2438,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": 'Paiement unique, sans renouvellement automatique ni engagement. Nous vous rappellerons avant la fin de votre accès.',
         "ar": 'دفعة واحدة، بدون تجديد تلقائي وبدون التزام. سنذكّرك قبل انتهاء الوصول.',
     },
+    "upgrade.pass_pick_again_hint": {
+        "he": 'בעמוד התשלום המאובטח של תקבול תתבקש לסמן שוב את אותה חבילה שבחרת כאן, ובכל מקרה הימים נקבעים לפי הסכום ששילמת בפועל.',
+        "en": "On Takbull's secure payment page you'll be asked to tick the same pass again; either way, the days you get are set by the amount you actually paid.",
+        "ru": 'На защищённой странице оплаты Takbull нужно будет ещё раз отметить тот же тариф; в любом случае срок определяется фактически оплаченной суммой.',
+        "fr": "Sur la page de paiement sécurisée de Takbull, il vous sera demandé de cocher à nouveau le même pass ; dans tous les cas, la durée dépend du montant réellement payé.",
+        "ar": 'في صفحة الدفع الآمنة لدى Takbull سيُطلب منك تحديد الباقة نفسها مرة أخرى؛ وفي كل الأحوال تُحدَّد الأيام بحسب المبلغ الذي دفعته فعلًا.',
+    },
     "upgrade.faq_q1_onetime": {
         "he": 'האם זה מתחדש אוטומטית?',
         "en": 'Does it renew automatically?',

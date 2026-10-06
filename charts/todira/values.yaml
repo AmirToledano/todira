@@ -103,7 +103,7 @@ website:
   # see website/takbull_client.py hosted_page_configured). Empty = flow off (/upgrade keeps its current behaviour).
   # The webhook decides the days from the AMOUNT paid; an amount that matches no pass is left pending. Also needs the GitHub secret TAKBULL_WEBHOOK_SECRET and the same secret
   # in the "Hook Address" path registered in Takbull (https://<domain>/webhooks/takbull/<secret>, event "עסקה חדשה").
-  takbullPaymentPageUrl: ""
+  takbullPaymentPageUrl: "https://paypage.takbull.co.il/4BPyx"
   takbullPaymentPageUrlPass7: ""
   takbullPaymentPageUrlPass14: ""
   takbullPaymentPageUrlPass30: ""
