@@ -33,6 +33,37 @@
    disclaimer). Explicit owner call: match the VISUAL structure only, not dorin's one-time
    week/2-week/month pricing model — Todira has exactly one plan (the recurring monthly
    subscription), so this renders ONE card, not a 3-tier row. #}
+{% if one_time_mode %}
+{# 2026-10-06 (owner decision): the free Takbull flow sells three ONE-TIME access passes, like dorin.app (7 / 14 / 30 days,
+   no auto-renewal). One shared form: a single terms checkbox and three submit buttons - the clicked button's
+   name/value is the plan. The paid amount, not the clicked card, finally decides the days granted (main.py webhook). #}
+<form method="post" action="/upgrade" class="upgrade-passes reveal">
+  {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
+  <div class="upgrade-passes-grid">
+    {% for card in pass_plans %}
+    <div class="upgrade-plan-card upgrade-pass-card{{ ' upgrade-pass-best' if card.best else '' }}">
+      {% if card.best %}<div class="upgrade-plan-badge">{{ t('upgrade.pass_best_value') }}</div>{% endif %}
+      <h2 class="upgrade-plan-name">{{ t('upgrade.pass_name_' ~ card.days) }}</h2>
+      <p class="upgrade-plan-subtitle">{{ t('upgrade.pass_days', days=card.days) }}</p>
+      <p class="upgrade-plan-price">₪{{ card.price }}</p>
+      <p class="upgrade-pass-perday">{{ t('upgrade.pass_per_day', price=card.per_day) }}</p>
+      <ul class="upgrade-plan-checklist">
+        <li>{{ t('upgrade.checklist_scan') }}</li>
+        <li>{{ t('upgrade.checklist_alert') }}</li>
+        <li>{{ t('upgrade.checklist_filtered') }}</li>
+        <li>{{ t('upgrade.checklist_contact') }}</li>
+      </ul>
+      <button type="submit" name="plan" value="{{ card.plan }}" class="btn gold block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.pass_name_' ~ card.days)) }}</button>
+    </div>
+    {% endfor %}
+  </div>
+  <label class="check-chip upgrade-passes-terms" style="text-align:start;display:flex;gap:6px;margin:14px auto 0;max-width:560px">
+    <input type="checkbox" name="terms_agreed" required>
+    <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
+  </label>
+  <p class="upgrade-plan-disclaimer">{{ t('upgrade.pass_onetime_hint') }}</p>
+</form>
+{% else %}
 <div class="upgrade-plan-card reveal">
   <div class="upgrade-plan-badge">{{ t('upgrade.plan_badge_label') }}</div>
   <div class="upgrade-plan-icon" aria-hidden="true">👑</div>
@@ -61,6 +92,8 @@
   <p class="upgrade-plan-disclaimer">{{ t('upgrade.cancel_anytime_hint') }}</p>
 </div>
 
+{% endif %}
+
 <p class="upgrade-payment-hint reveal">
   {% if recurring_configured %}{{ t('upgrade.payment_hint_takbull_recurring') }}
   {% elif hosted_page_configured %}{{ t('upgrade.payment_hint_takbull_onetime') }}
@@ -78,16 +111,16 @@
 <div class="upgrade-faq reveal">
   <h2 class="upgrade-faq-title">{{ t('upgrade.faq_title') }}</h2>
   <details class="upgrade-faq-item">
-    <summary>{{ t('upgrade.faq_q1') }}</summary>
-    <p>{{ t('upgrade.faq_a1') }}</p>
+    <summary>{{ t('upgrade.faq_q1_onetime') if one_time_mode else t('upgrade.faq_q1') }}</summary>
+    <p>{{ t('upgrade.faq_a1_onetime') if one_time_mode else t('upgrade.faq_a1') }}</p>
   </details>
   <details class="upgrade-faq-item">
     <summary>{{ t('upgrade.faq_q2') }}</summary>
     <p>{{ t('upgrade.faq_a2') }}</p>
   </details>
   <details class="upgrade-faq-item">
-    <summary>{{ t('upgrade.faq_q3') }}</summary>
-    <p>{{ t('upgrade.faq_a3') }}</p>
+    <summary>{{ t('upgrade.faq_q3_onetime') if one_time_mode else t('upgrade.faq_q3') }}</summary>
+    <p>{{ t('upgrade.faq_a3_onetime') if one_time_mode else t('upgrade.faq_a3') }}</p>
   </details>
 </div>
 {% endif %}

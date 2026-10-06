@@ -54,7 +54,10 @@ import httpx
 from todira_common import listing_enrichment
 from todira_common.access import (
     SUBSCRIPTION_PLAN,
+    PASS_PLANS,
+    PLAN_DURATIONS,
     PLAN_PRICES_ILS,
+    plan_for_amount,
     extend_paid_until,
     has_full_access,
     has_paid_access,
@@ -1716,9 +1719,33 @@ def upgrade(request: Request, uid: int | None = None):
             "has_active_subscription": user.takbull_subscription_uniqid is not None,
             "recurring_configured": takbull_client.recurring_api_configured(),
             "hosted_page_configured": takbull_client.hosted_page_configured(),
+            # 2026-10-06: the free hosted-page flow sells three one-time passes (no auto-renewal) - see upgrade.html.
+            "one_time_mode": (
+                takbull_client.hosted_page_configured() and not takbull_client.recurring_api_configured()
+            ),
+            "pass_plans": _pass_plan_cards(),
         },
         known_lang=user.language,
     )
+
+
+def _pass_plan_cards() -> list[dict]:
+    """The one-time access passes shown on /upgrade, cheapest first: plan key, days, price and price per day. The
+    longest pass is flagged as the best value."""
+    cards = []
+    for plan in PASS_PLANS:
+        days = PLAN_DURATIONS[plan].days
+        price = PLAN_PRICES_ILS[plan]
+        cards.append(
+            {
+                "plan": plan,
+                "days": days,
+                "price": price,
+                "per_day": (price / days).quantize(Decimal("0.01")),
+                "best": plan == PASS_PLANS[-1],
+            }
+        )
+    return cards
 
 
 @app.post("/upgrade")
@@ -1751,7 +1778,11 @@ def upgrade_submit(
     checkout, not just a passive footer link. The HTML5 `required` attribute already blocks a
     normal browser submission without it; this is the server-side backstop for a tampered/
     non-browser request, same "don't trust the client alone" pattern as the plan check below."""
-    if plan != SUBSCRIPTION_PLAN or not terms_agreed:
+    one_time_mode = takbull_client.hosted_page_configured() and not takbull_client.recurring_api_configured()
+    if one_time_mode and plan == SUBSCRIPTION_PLAN:
+        plan = PASS_PLANS[-1]  # an old page / bookmark still posting the monthly plan: the 30-day pass
+    allowed_plans = PASS_PLANS if one_time_mode else (SUBSCRIPTION_PLAN,)
+    if plan not in allowed_plans or not terms_agreed:
         return _render(request, "auth_error.html", {}, status_code=400)
 
     amount = PLAN_PRICES_ILS[plan]
@@ -1817,8 +1848,10 @@ def upgrade_submit(
             session.add(payment)
             session.commit()
             checkout_url = takbull_client.build_hosted_checkout_url(
-                payment_id=payment.id, email=user.google_email
+                payment_id=payment.id, email=user.google_email, plan=plan
             )
+            if checkout_url is None:
+                return _render(request, "auth_error.html", {}, status_code=502)
             return RedirectResponse(checkout_url, status_code=303)
 
         payment = Payment(
@@ -2185,6 +2218,18 @@ async def _process_takbull_payload(body: dict) -> Response:
         # manual reconciliation via /admin/users, same conservative stance as an unrecognized
         # payload above.
         order_total = body.get("OrderTotalSum")
+        if not is_renewal and not payment.subscription_uniqid and order_total is not None:
+            # One-time hosted-page payment (2026-10-06 passes): the AMOUNT Takbull actually charged decides the pass -
+            # 19.90 = 7 days, 29.90 = 14, 49.90 = 30 - even if the customer picked a different item than the plan
+            # they clicked on our site. An amount that is no pass (a test payment, a stale price) falls through to
+            # the mismatch handling below and is left pending.
+            try:
+                paid_plan = plan_for_amount(Decimal(str(order_total)))
+            except (InvalidOperation, TypeError, ValueError):
+                paid_plan = None
+            if paid_plan is not None:
+                payment.plan = paid_plan
+                payment.amount_ils = PLAN_PRICES_ILS[paid_plan]
         try:
             # Decimal, not int (2026-09-21) — the recurring plan's ₪49.90 isn't a whole number, so
             # OrderTotalSum arrives as e.g. "49.90"; int("49.90") raises ValueError, which used to

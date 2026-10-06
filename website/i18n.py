@@ -761,11 +761,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Combien ça coûte ?", "ar": "كم تكلفته؟",
     },
     "home.faq3_a": {
-        "he": "יש תקופת ניסיון של 3 ימים, ואז מנוי חודשי של 49.90 ₪ שמתחדש אוטומטית — אפשר לבטל בכל רגע.",
-        "en": "There's a 3-day trial period, then a ₪49.90/month subscription that auto-renews — cancel anytime.",
-        "ru": "Есть 3-дневный пробный период, затем подписка за 49.90 ₪ в месяц с автопродлением — отменить можно в любой момент.",
-        "fr": "Il y a une période d'essai de 3 jours, puis un abonnement à 49,90 ₪/mois avec renouvellement automatique — annulez à tout moment.",
-        "ar": "هناك فترة تجريبية مدتها 3 أيام، ثم اشتراك شهري بقيمة 49.90 ₪ يتجدد تلقائيًا — يمكن الإلغاء في أي وقت.",
+        "he": 'יש תקופת ניסיון של 3 ימים, ואז תשלום חד-פעמי: 19.90 ₪ לשבוע, 29.90 ₪ לשבועיים או 49.90 ₪ לחודש — בלי חידוש אוטומטי.',
+        "en": "There's a 3-day trial period, then a one-time payment: ₪19.90 for a week, ₪29.90 for two weeks or ₪49.90 for a month — no automatic renewal.",
+        "ru": 'Есть 3-дневный пробный период, затем разовый платёж: 19.90 ₪ за неделю, 29.90 ₪ за две недели или 49.90 ₪ за месяц — без автопродления.',
+        "fr": "Il y a une période d'essai de 3 jours, puis un paiement unique : 19,90 ₪ pour une semaine, 29,90 ₪ pour deux semaines ou 49,90 ₪ pour un mois — sans renouvellement automatique.",
+        "ar": 'هناك فترة تجريبية مدتها 3 أيام، ثم دفعة واحدة: 19.90 ₪ للأسبوع، أو 29.90 ₪ لأسبوعين، أو 49.90 ₪ للشهر — بدون تجديد تلقائي.',
     },
     "home.faq4_q": {
         "he": "אפשר לשנות את הסינון אחרי שהגדרתי אותו?",
@@ -1904,8 +1904,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "terms.updated": {"he": "עודכן לאחרונה: ספטמבר 2026", "en": "Last updated: September 2026"},
     "terms.s1_title": {"he": "1. מה זה טודירה", "en": "1. What Todira is"},
     "terms.s1_body": {
-        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך במנוי חודשי בתשלום בסך ₪49.90 לחודש, המתחדש אוטומטית מדי חודש עד לביטולו, כמפורט בעמוד השדרוג באתר. ניתן לבטל את המנוי בכל עת מעמוד החשבון באתר. הביטול מונע חיובים עתידיים, והגישה לשירות נשארת פעילה עד תום התקופה ששולמה. הודעות בוואטסאפ נשלחות רק בתוך 24 שעות מההודעה האחרונה שלך אל הבוט; כדי להמשיך לקבל הודעות יש להגיב מדי פעם להודעת הבדיקה האוטומטית ("עדיין מחפש?"), וניתן להפסיק את ההודעות בכל עת בלחיצה על "עצרו הודעות".',
-        "en": "Todira is a personal service (a Telegram bot, a WhatsApp bot and a companion website) that automatically scans apartment listings from external sources on the web (various real-estate sites and listing boards) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a paid monthly subscription of ₪49.90 per month, which renews automatically every month until cancelled, as detailed on the site's upgrade page. You can cancel the subscription at any time from your account page on the site; cancelling prevents any future charges, and access to the service stays active until the end of the period already paid for. WhatsApp messages are sent only within 24 hours of your last message to the bot; to keep receiving messages you need to reply now and then to the automatic check-in message (“Still looking?”), and you can stop the messages at any time by tapping “Stop messages”.",
+        "he": 'טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך בתשלום חד-פעמי לתקופת גישה לבחירתך: ₪19.90 לשבוע (7 ימים), ₪29.90 לשבועיים (14 ימים) או ₪49.90 לחודש (30 ימים), כמפורט בעמוד השדרוג באתר. אין חידוש אוטומטי ולא יבוצעו חיובים נוספים; נשלח תזכורת לפני סיום תקופת הגישה. הודעות בוואטסאפ נשלחות רק בתוך 24 שעות מההודעה האחרונה שלך אל הבוט; כדי להמשיך לקבל הודעות יש להגיב מדי פעם להודעת הבדיקה האוטומטית ("עדיין מחפש?"), וניתן להפסיק את ההודעות בכל עת בלחיצה על "עצרו הודעות".',
+        "en": "Todira is a personal service (a Telegram bot, a WhatsApp bot and a companion website) that automatically scans apartment listings from external sources on the web (various real-estate sites and listing boards) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a one-time payment for an access period of your choice: ₪19.90 for a week (7 days), ₪29.90 for two weeks (14 days) or ₪49.90 for a month (30 days), as detailed on the site's upgrade page. There is no automatic renewal and no further charges; we will send a reminder before your access period ends. WhatsApp messages are sent only within 24 hours of your last message to the bot; to keep receiving messages you need to reply now and then to the automatic check-in message (“Still looking?”), and you can stop the messages at any time by tapping “Stop messages”.",
     },
     "terms.s2_title": {"he": "2. אין אחריות על תוכן המודעות", "en": "2. No warranty on listing content"},
     "terms.s2_body": {
@@ -1949,8 +1949,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "terms.s10_title": {"he": "10. ביטול עסקה והחזרים", "en": "10. Cancellation and refunds"},
     "terms.s10_body": {
-        "he": 'מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר\' סעיף 1). בהתאם לחוק הגנת הצרכן, התשמ"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. במקרה של ביטול כאמור נחזיר את התשלום לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול, בניכוי דמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש"ח, לפי הנמוך מביניהם, כמתיר החוק. ניתן גם לבטל את המנוי המתחדש בכל עת וללא עלות: הביטול עוצר חיובים עתידיים, והמנוי נשאר פעיל עד תום התקופה ששולמה. בנוסף, נבחן בתום לב כל פנייה לביטול או להחזר, לרבות במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.',
-        "en": "This is a digital service delivered immediately and automatically upon payment confirmation. Every user gets a free 3-day trial before any payment (see section 1). In accordance with Israel's Consumer Protection Law, 5741-1981, a distance transaction may be cancelled within 14 days of the transaction (or of receiving the written confirmation, whichever is later) by notifying us through the contact page or the Telegram bot. On such a cancellation we will refund the payment to the original payment method within 14 days of the cancellation notice, less a cancellation fee of 5% of the transaction price or NIS 100, whichever is lower, as the law permits. You may also cancel the renewing subscription at any time at no cost: cancelling stops future charges, and the subscription stays active until the end of the period already paid for. In addition, we will review in good faith any request for cancellation or a refund, including a material technical fault that prevented use of the service, a duplicate charge, or a payment error.",
+        "he": 'מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר\' סעיף 1). בהתאם לחוק הגנת הצרכן, התשמ"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. במקרה של ביטול כאמור נחזיר את התשלום לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול, בניכוי דמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש"ח, לפי הנמוך מביניהם, כמתיר החוק. הגישה נמכרת בתשלום חד-פעמי לתקופה שנבחרה (7, 14 או 30 ימים), ללא חידוש אוטומטי, ולכן אין מנוי שצריך לבטל. בנוסף, נבחן בתום לב כל פנייה לביטול או להחזר, לרבות במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.',
+        "en": "This is a digital service delivered immediately and automatically upon payment confirmation. Every user gets a free 3-day trial before any payment (see section 1). In accordance with Israel's Consumer Protection Law, 5741-1981, a distance transaction may be cancelled within 14 days of the transaction (or of receiving the written confirmation, whichever is later) by notifying us through the contact page or the Telegram bot. On such a cancellation we will refund the payment to the original payment method within 14 days of the cancellation notice, less a cancellation fee of 5% of the transaction price or NIS 100, whichever is lower, as the law permits. Access is sold as a one-time payment for the period chosen (7, 14 or 30 days), with no automatic renewal, so there is no subscription to cancel. In addition, we will review in good faith any request for cancellation or a refund, including a material technical fault that prevented use of the service, a duplicate charge, or a payment error.",
     },
     "terms.s11_title": {"he": "11. פרטי מפעיל השירות", "en": "11. Service operator details"},
     "terms.s11_body": {
@@ -2331,11 +2331,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
     },
     "upgrade.payment_hint_takbull_onetime": {
-        "he": "התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. זה תשלום חד-פעמי ל-30 ימי גישה, בלי חידוש אוטומטי — נזכיר לך לפני שהגישה מסתיימת. הגישה נפתחת אוטומטית תוך דקה. 🐾",
-        "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. It is a one-time payment for 30 days of access, with no automatic renewal — we will remind you before your access ends. Access opens automatically within a minute. 🐾",
-        "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Это разовый платёж за 30 дней доступа, без автоматического продления — мы напомним вам до окончания доступа. Доступ открывается автоматически в течение минуты. 🐾",
-        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. C'est un paiement unique pour 30 jours d'accès, sans renouvellement automatique — nous vous rappellerons avant la fin de votre accès. L'accès s'ouvre automatiquement en moins d'une minute. 🐾",
-        "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. هذه دفعة واحدة مقابل 30 يومًا من الوصول، دون تجديد تلقائي — سنذكّرك قبل انتهاء وصولك. يُفتح الوصول تلقائيًا خلال دقيقة. 🐾",
+        "he": 'התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. זה תשלום חד-פעמי, בלי חידוש אוטומטי — נזכיר לך לפני שהגישה מסתיימת. הגישה נפתחת אוטומטית תוך דקה. 🐾',
+        "en": 'Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. It is a one-time payment with no automatic renewal — we will remind you before your access ends. Access opens automatically within a minute. 🐾',
+        "ru": 'Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Это разовый платёж без автопродления — мы напомним вам до окончания доступа. Доступ открывается автоматически в течение минуты. 🐾',
+        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte bancaire. C'est un paiement unique, sans renouvellement automatique — nous vous rappellerons avant la fin de votre accès. L'accès s'ouvre automatiquement en une minute. 🐾",
+        "ar": 'الدفع آمن عبر Takbull — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. هذه دفعة واحدة بدون تجديد تلقائي — سنذكّرك قبل انتهاء الوصول. يُفتح الوصول تلقائيًا خلال دقيقة. 🐾',
     },
     "upgrade.payment_hint_manual": {
         "he": "התשלום מתבצע ידנית בביט/PayBox — אחרי הלחיצה תועבר/י לעמוד עם כל פרטי התשלום. 🐾",
@@ -2363,11 +2363,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "49.90 ₪ شهريًا؟ تقريبًا سعر قهوة ومعجنات.",
     },
     "upgrade.value_anchor_body": {
-        "he": "עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי בחודש, ואפשר לבטל בכל רגע.",
-        "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token monthly amount, and you can cancel anytime.",
-        "ru": "Комиссия риелтора обычно составляет тысячи шекелей, один раз. У нас это символическая сумма в месяц, и вы можете отменить подписку в любой момент.",
-        "fr": "Les frais d'agence coûtent généralement des milliers de shekels, une seule fois. Chez nous, c'est une somme mensuelle symbolique, et vous pouvez annuler à tout moment.",
-        "ar": "عمولة الوسيط عادة ما تكلف آلاف الشواقل، مرة واحدة. عندنا هو مبلغ شهري رمزي، ويمكن الإلغاء في أي وقت.",
+        "he": 'עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי, בלי חידוש אוטומטי ובלי התחייבות.',
+        "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token amount, with no automatic renewal and no commitment.",
+        "ru": 'Комиссия брокера обычно стоит тысячи шекелей. У нас — символическая сумма, без автопродления и обязательств.',
+        "fr": "Les frais d'un agent coûtent souvent des milliers de shekels. Chez nous, c'est un montant symbolique, sans renouvellement automatique ni engagement.",
+        "ar": 'عمولة الوسيط تكلّف عادةً آلاف الشواقل. عندنا مبلغ رمزي، بدون تجديد تلقائي وبدون التزام.',
     },
     # Required terms-agreement checkbox on each plan's own form (2026-09-17, added per the
     # payment processor's own compliance requirement — active, explicit consent to the terms,
@@ -2389,6 +2389,83 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # disclaimer) and FAQ accordion below the card. Owner's explicit call: match the VISUAL
     # structure only — Todira stays a recurring monthly subscription (unlike dorin's one-time
     # week/2-week/month passes), so copy below describes OUR real plan and mechanics, not dorin's.
+    "upgrade.pass_name_7": {
+        "he": 'שבוע',
+        "en": '1 week',
+        "ru": '1 неделя',
+        "fr": '1 semaine',
+        "ar": 'أسبوع',
+    },
+    "upgrade.pass_name_14": {
+        "he": 'שבועיים',
+        "en": '2 weeks',
+        "ru": '2 недели',
+        "fr": '2 semaines',
+        "ar": 'أسبوعان',
+    },
+    "upgrade.pass_name_30": {
+        "he": 'חודש',
+        "en": '1 month',
+        "ru": '1 месяц',
+        "fr": '1 mois',
+        "ar": 'شهر',
+    },
+    "upgrade.pass_days": {
+        "he": '{days} ימי גישה',
+        "en": '{days} days of access',
+        "ru": '{days} дн. доступа',
+        "fr": "{days} jours d'accès",
+        "ar": '{days} يومًا من الوصول',
+    },
+    "upgrade.pass_per_day": {
+        "he": '≈ ₪{price} ליום',
+        "en": '≈ ₪{price} per day',
+        "ru": '≈ {price} ₪ в день',
+        "fr": '≈ {price} ₪ par jour',
+        "ar": '≈ {price} ₪ يوميًا',
+    },
+    "upgrade.pass_best_value": {
+        "he": 'הכי משתלם',
+        "en": 'Best value',
+        "ru": 'Самый выгодный',
+        "fr": 'Meilleur rapport',
+        "ar": 'الأوفر',
+    },
+    "upgrade.pass_onetime_hint": {
+        "he": 'תשלום חד-פעמי, בלי חידוש אוטומטי ובלי התחייבות. נזכיר לך לפני שהגישה מסתיימת.',
+        "en": "One-time payment, no automatic renewal and no commitment. We'll remind you before your access ends.",
+        "ru": 'Разовый платёж, без автопродления и обязательств. Мы напомним вам до окончания доступа.',
+        "fr": 'Paiement unique, sans renouvellement automatique ni engagement. Nous vous rappellerons avant la fin de votre accès.',
+        "ar": 'دفعة واحدة، بدون تجديد تلقائي وبدون التزام. سنذكّرك قبل انتهاء الوصول.',
+    },
+    "upgrade.faq_q1_onetime": {
+        "he": 'האם זה מתחדש אוטומטית?',
+        "en": 'Does it renew automatically?',
+        "ru": 'Продлевается ли доступ автоматически?',
+        "fr": 'Est-ce que ça se renouvelle automatiquement ?',
+        "ar": 'هل يتجدد تلقائيًا؟',
+    },
+    "upgrade.faq_a1_onetime": {
+        "he": 'לא. זה תשלום חד-פעמי לתקופה שבחרת (7, 14 או 30 ימים). לפני שהגישה מסתיימת נשלח לך תזכורת, ואם תרצה להמשיך אפשר לבחור שוב.',
+        "en": "No. It's a one-time payment for the period you choose (7, 14 or 30 days). We'll send you a reminder before your access ends, and if you want to continue you can choose again.",
+        "ru": 'Нет. Это разовый платёж за выбранный период (7, 14 или 30 дней). Перед окончанием доступа мы пришлём напоминание, и вы сможете выбрать снова.',
+        "fr": "Non. C'est un paiement unique pour la période choisie (7, 14 ou 30 jours). Nous vous enverrons un rappel avant la fin de votre accès, et vous pourrez choisir à nouveau.",
+        "ar": 'لا. هذه دفعة واحدة للفترة التي تختارها (7 أو 14 أو 30 يومًا). سنرسل لك تذكيرًا قبل انتهاء الوصول، ويمكنك الاختيار من جديد إن أردت المتابعة.',
+    },
+    "upgrade.faq_q3_onetime": {
+        "he": 'מה קורה כשהתקופה נגמרת?',
+        "en": 'What happens when the period ends?',
+        "ru": 'Что происходит, когда период заканчивается?',
+        "fr": 'Que se passe-t-il à la fin de la période ?',
+        "ar": 'ماذا يحدث عند انتهاء الفترة؟',
+    },
+    "upgrade.faq_a3_onetime": {
+        "he": 'הגישה המלאה מסתיימת ולא תחויב/י שוב. אפשר לחדש בכל רגע מעמוד זה.',
+        "en": 'Full access ends and you are not charged again. You can renew at any time from this page.',
+        "ru": 'Полный доступ заканчивается, повторных списаний нет. Продлить можно в любой момент на этой странице.',
+        "fr": "L'accès complet se termine et vous n'êtes plus débité. Vous pouvez renouveler à tout moment depuis cette page.",
+        "ar": 'ينتهي الوصول الكامل ولن يتم خصم أي مبلغ مرة أخرى. يمكنك التجديد في أي وقت من هذه الصفحة.',
+    },
     "upgrade.plan_badge_label": {
         "he": "הבחירה המומלצת", "en": "Recommended choice", "ru": "Рекомендуемый выбор",
         "fr": "Choix recommandé", "ar": "الخيار الموصى به",
