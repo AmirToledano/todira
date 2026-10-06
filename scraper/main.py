@@ -4,6 +4,7 @@ CronJob (see charts/todira), or manually via `docker compose run --rm scraper` l
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -18,6 +19,7 @@ from dedup import find_duplicate_listing
 from todira_common import gemini_url_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
+from todira_common import whatsapp_guard
 from todira_common.models import Listing, SentNotification
 import facebook_client
 from facebook_client import FacebookFetchError
@@ -1038,6 +1040,38 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
+# 2026-10-06: about 270 Komo listings per run have a detail page with no price (or that fails to load). They
+# are never stored, so every run saw them as "new" again, refetched all of them, and they ate ~270 of the
+# 300 new-detail slots (KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN) so genuinely new Komo listings crept in ~30
+# per run. A failed id is now remembered (an AppFlag, JSON {id: unix time of the failure}) and not retried
+# for _KOMO_FAILED_RETRY_AFTER; entries older than _KOMO_FAILED_FORGET_AFTER, or for ids no longer on Komo,
+# are dropped so the list cannot grow forever. A failure is retried daily, so a page that only failed
+# temporarily is still picked up.
+_KOMO_FAILED_IDS_FLAG = "komo_failed_detail_ids"
+_KOMO_FAILED_RETRY_AFTER_SECONDS = 24 * 3600
+_KOMO_FAILED_FORGET_AFTER_SECONDS = 14 * 24 * 3600
+
+
+def _load_komo_failed_ids() -> dict[str, float]:
+    try:
+        with get_session() as session:
+            raw = whatsapp_guard.get_flag(session, _KOMO_FAILED_IDS_FLAG)
+        data = json.loads(raw) if raw else {}
+        return {str(k): float(v) for k, v in data.items()}
+    except Exception:
+        logger.exception("Could not read the Komo failed-detail list - treating it as empty")
+        return {}
+
+
+def _save_komo_failed_ids(failed: dict[str, float]) -> None:
+    try:
+        with get_session() as session:
+            whatsapp_guard.set_flag(session, _KOMO_FAILED_IDS_FLAG, json.dumps(failed))
+    except Exception:
+        logger.exception("Could not save the Komo failed-detail list")
+
+
+
 def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
     shape as _scrape_yad2 — see that function and run_once() for how it's used.
@@ -1136,6 +1170,19 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
         processed_this_run.add(modaa_num)
         new_ids_to_fetch.append(modaa_num)
 
+    now_ts = time.time()
+    failed_ids = _load_komo_failed_ids()
+    recently_failed = {
+        modaa for modaa, ts in failed_ids.items() if now_ts - ts < _KOMO_FAILED_RETRY_AFTER_SECONDS
+    }
+    skipped_recently_failed = sum(1 for modaa in new_ids_to_fetch if modaa in recently_failed)
+    new_ids_to_fetch = [modaa for modaa in new_ids_to_fetch if modaa not in recently_failed]
+    if skipped_recently_failed:
+        logger.info(
+            "Komo: skipping %d id(s) whose detail page failed within the last %d h (retried daily)",
+            skipped_recently_failed, _KOMO_FAILED_RETRY_AFTER_SECONDS // 3600,
+        )
+
     ids_to_fetch = new_ids_to_fetch[:max_new_detail_fetches]
     if len(new_ids_to_fetch) > max_new_detail_fetches:
         logger.warning(
@@ -1149,9 +1196,11 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     details = asyncio.run(
         _fetch_concurrently(ids_to_fetch, fetch_komo_listing_detail, _KOMO_DETAIL_FETCH_CONCURRENCY)
     )
+    newly_failed: set[str] = set()
     for modaa_num, detail in zip(ids_to_fetch, details):
         if detail is None:
             errors += 1
+            newly_failed.add(modaa_num)
             continue
         deal_type = DealType.SALE if modaa_num in sale_ids else DealType.RENT
         coords = coords_by_id.get(modaa_num)
@@ -1162,6 +1211,18 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
             normalized_items.append(normalized)
         else:
             errors += 1
+            newly_failed.add(modaa_num)
+
+    # Remember this run's failures; keep earlier ones that are still recent and still on Komo.
+    if newly_failed or failed_ids:
+        updated = {
+            modaa: ts
+            for modaa, ts in failed_ids.items()
+            if modaa in seen_external_ids and now_ts - ts < _KOMO_FAILED_FORGET_AFTER_SECONDS
+        }
+        updated.update({modaa: now_ts for modaa in newly_failed})
+        if updated != failed_ids:
+            _save_komo_failed_ids(updated)
 
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
