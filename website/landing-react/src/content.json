@@ -849,8 +849,8 @@
     "en": "Privacy Policy"
   },
   "privacy.updated": {
-    "he": "עודכן לאחרונה: ספטמבר 2026",
-    "en": "Last updated: September 2026"
+    "he": "עודכן לאחרונה: אוקטובר 2026",
+    "en": "Last updated: October 2026"
   },
   "privacy.s1_title": {
     "he": "1. אילו נתונים נאספים",
@@ -861,8 +861,8 @@
     "en": "Your Telegram user ID and the username shown by Telegram, if you registered via the bot."
   },
   "privacy.s1_item2": {
-    "he": "מספר הטלפון שלך בוואטסאפ, תוכן ההודעות שהוחלפו עם הבוט ומועד ההודעה האחרונה ששלחת (לצורך ניהול חלון ההתקשרות של וואטסאפ), אם נרשמת/השתמשת בשירות דרך וואטסאפ.",
-    "en": "Your WhatsApp phone number, the content of messages exchanged with the bot and the time of your last message (used to manage WhatsApp's messaging window), if you registered/used the service via WhatsApp."
+    "he": "מספר הטלפון שלך בוואטסאפ, תוכן ההודעות שהוחלפו עם הבוט ומועד ההודעה האחרונה ששלחת, אם נרשמת/השתמשת בשירות דרך וואטסאפ בעבר. ערוץ וואטסאפ אינו פעיל כרגע, ומידע שנשמר ממנו יימחק לפי בקשה.",
+    "en": "Your WhatsApp phone number, the content of messages exchanged with the bot and the time of the last message you sent, if you registered/used the service through WhatsApp in the past. The WhatsApp channel is not active at the moment, and data stored from it will be deleted on request."
   },
   "privacy.s1_item3": {
     "he": "כתובת האימייל ושם התצוגה שלך מחשבון Google, אם התחברת עם Google.",
@@ -901,16 +901,16 @@
     "en": "2. How the data is used"
   },
   "privacy.s2_body": {
-    "he": "המידע משמש אך ורק להפעלת השירות עצמו: התאמת דירות לסינון שלך, שליחת התראות, עיבוד תשלומים עבור מנוי, ושמירת ההעדפות שלך בין ביקורים. המידע אינו נמכר ואינו מועבר לצדדים שלישיים לצורכי שיווק.",
-    "en": "Data is used solely to operate the service itself: matching apartments to your filter, sending alerts, processing subscription payments, and remembering your preferences between visits. Data is not sold and is not shared with third parties for marketing purposes."
+    "he": "המידע משמש להפעלת השירות עצמו: התאמת דירות לסינון שלך, שליחת התראות והודעות שירות (כגון תזכורת לפני סיום תקופת הגישה), עיבוד תשלומים, שמירת ההעדפות שלך בין ביקורים, ואבטחה ומניעת שימוש לרעה. מסירת המידע נעשית מרצונך, אך בלי חלקו (למשל מזהה הערוץ שדרכו נשלחות ההתראות) לא נוכל לספק את השירות. המידע אינו נמכר ואינו מועבר לצדדים שלישיים לצורכי שיווק. המודעות עצמן נאספות ממקורות פומביים ברשת, ואיננו שומרים את מספר הטלפון של המפרסם.",
+    "en": "Data is used to operate the service itself: matching apartments to your filter, sending alerts and service messages (such as a reminder before your access period ends), processing payments, remembering your preferences between visits, and security and abuse prevention. Providing the data is voluntary, but without part of it (for example the channel identifier through which alerts are sent) we cannot provide the service. Data is not sold and is not shared with third parties for marketing purposes. The listings themselves are collected from public sources on the web, and we do not store the advertiser's phone number."
   },
   "privacy.s3_title": {
     "he": "3. ספקים חיצוניים",
     "en": "3. Third-party providers"
   },
   "privacy.s3_intro": {
-    "he": "לצורך הפעלת השירות נעשה שימוש בספקים חיצוניים הבאים, שכל אחד מהם מעבד את הנתונים הרלוונטיים לפעולתו בלבד, בכפוף למדיניות הפרטיות שלו:",
-    "en": "Running the service relies on the following external providers, each processing only the data relevant to its own function, subject to its own privacy policy:"
+    "he": "לצורך הפעלת השירות נעשה שימוש בספקים חיצוניים הבאים, שכל אחד מהם מעבד את הנתונים הרלוונטיים לפעולתו בלבד, בכפוף למדיניות הפרטיות שלו. חלק מהספקים ממוקמים מחוץ לישראל, ולכן מידע עשוי להיות מעובד ומאוחסן מחוץ לישראל:",
+    "en": "To operate the service we use the following external providers, each of which processes only the data relevant to its function, subject to its own privacy policy. Some providers are located outside Israel, so data may be processed and stored outside Israel:"
   },
   "privacy.s3_item1_label": {
     "he": "Telegram",
@@ -925,16 +925,16 @@
     "en": "WhatsApp Cloud API (by Meta)"
   },
   "privacy.s3_item2_body": {
-    "he": " — שליחת וקבלת הודעות דרך וואטסאפ.",
-    "en": " — sending/receiving WhatsApp messages."
+    "he": " — ערוץ וואטסאפ אינו פעיל כרגע; הספק שימש בעבר לשליחה וקבלה של הודעות.",
+    "en": " — the WhatsApp channel is not active at the moment; the provider was used in the past to send and receive messages."
   },
   "privacy.s3_item3_label": {
     "he": "Google",
     "en": "Google"
   },
   "privacy.s3_item3_body": {
-    "he": " — התחברות עם חשבון Google (Sign in with Google), ו-Gemini API לפענוח הודעות טקסט חופשי.",
-    "en": " — Sign in with Google, and the Gemini API for parsing free-text messages."
+    "he": " — התחברות עם חשבון Google (Sign in with Google), ו-Gemini API לפענוח הודעות טקסט חופשי ולחילוץ פרטים ממודעות. הודעות הטקסט החופשי שאתה שולח לבוט מועברות ל-Gemini לצורך כך.",
+    "en": " — signing in with a Google account (Sign in with Google), and the Gemini API to interpret free-text messages and extract details from listings. The free-text messages you send to the bot are passed to Gemini for this purpose."
   },
   "privacy.s3_item4_label": {
     "he": "Takbull (דרך UPAY)",
@@ -945,20 +945,20 @@
     "en": " — payment processing for paid subscriptions. Your card details are entered directly on the processor's own secure checkout page and never pass through Todira's servers."
   },
   "privacy.s3_item5_label": {
-    "he": "ZenRows ו-Bright Data",
-    "en": "ZenRows and Bright Data"
+    "he": "ZenRows, Bright Data ו-Amazon Web Services (AWS)",
+    "en": "ZenRows, Bright Data and Amazon Web Services (AWS)"
   },
   "privacy.s3_item5_body": {
-    "he": " — תשתית טכנית לאיסוף מודעות דירות ממקורות חיצוניים ברשת (אינם מקבלים מידע אישי עליך).",
-    "en": " — technical infrastructure for collecting listings from external sources on the web (they do not receive any personal data about you)."
+    "he": " — תשתית טכנית: איסוף מודעות דירות ממקורות חיצוניים ברשת (ZenRows ו-Bright Data, שאינם מקבלים מידע אישי עליך), ואחסון ענן שבו רצים השירות ומסד הנתונים (AWS).",
+    "en": " — technical infrastructure: collecting apartment listings from external sources on the web (ZenRows and Bright Data, which receive no personal information about you), and the cloud hosting on which the service and its database run (AWS)."
   },
   "privacy.s4_title": {
     "he": "4. עוגיות (Cookies)",
     "en": "4. Cookies"
   },
   "privacy.s4_body": {
-    "he": "האתר משתמש בשתי עוגיות פונקציונליות בלבד: עוגיית התחברות (session) הנחוצה כדי לזהות אותך כמחובר בין דפים, ועוגיית שמירת שפת התצוגה שבחרת. שתיהן טכניות בלבד — לא עוגיות פרסום, מעקב אחר גלישה או פרסונליזציה שיווקית.",
-    "en": "The website uses exactly two functional cookies: a login (session) cookie needed to recognize you as signed in across pages, and a cookie remembering your chosen display language. Both are strictly technical — not advertising, browsing-tracking, or marketing-personalization cookies."
+    "he": "האתר משתמש בעוגיות פונקציונליות בלבד: עוגיית התחברות (session) הנחוצה כדי לזהות אותך כמחובר בין דפים, ועוגיית שמירת שפת התצוגה שבחרת. בנוסף נשמרות בדפדפן העדפות התצוגה שבחרת (כגון מצב כהה והגדרות נגישות). כל אלה טכניות בלבד — לא עוגיות פרסום, מעקב אחר גלישה או פרסונליזציה שיווקית. שרתי האתר רושמים נתונים טכניים של הגלישה (כגון כתובת IP וסוג הדפדפן) לצורכי אבטחה ותפעול.",
+    "en": "The website uses functional cookies only: a login (session) cookie needed to recognize you as signed in between pages, and a cookie that remembers the display language you chose. Display preferences you choose (such as dark mode and accessibility settings) are also kept in your browser. All of these are technical only — not advertising cookies, browsing tracking or marketing personalization. The website's servers record technical browsing data (such as IP address and browser type) for security and operational purposes."
   },
   "privacy.s5_title": {
     "he": "5. שמירת מידע ומחיקתו",
@@ -969,24 +969,24 @@
     "en": "You can request full deletion of your stored data at any time by contacting us through the Telegram bot or the "
   },
   "privacy.s5_post": {
-    "he": ". שים לב: רשומות תשלום עשויות להישמר לתקופה נוספת בהתאם לדרישות חשבונאיות/מיסוי כדין, גם לאחר בקשת מחיקה.",
-    "en": ". Note: payment records may be retained for an additional period as required by applicable accounting/tax law, even after a deletion request."
+    "he": ". נטפל בבקשה בתוך זמן סביר ולכל היותר 30 ימים. המידע נשמר כל עוד החשבון פעיל ולצורך מתן השירות. שים לב: רשומות תשלום נשמרות לתקופה נוספת (בדרך כלל עד 7 שנים) בהתאם לדרישות חשבונאיות/מיסוי כדין, גם לאחר בקשת מחיקה.",
+    "en": ". We will handle the request within a reasonable time and in any case within 30 days. Data is kept as long as the account is active and as needed to provide the service. Note: payment records are retained for an additional period (usually up to 7 years) as required by applicable accounting/tax law, even after a deletion request."
   },
   "privacy.s6_title": {
     "he": "6. זכויותיך",
     "en": "6. Your rights"
   },
   "privacy.s6_body": {
-    "he": "בהתאם לחוק הגנת הפרטיות, התשמ\"א-1981, זכותך לעיין במידע שנאסף עליך ולבקש את תיקונו או מחיקתו.",
-    "en": "Under Israel's Protection of Privacy Law, 5741-1981, you have the right to review the data collected about you and to request its correction or deletion."
+    "he": "בהתאם לחוק הגנת הפרטיות, התשמ\"א-1981, זכותך לעיין במידע שנאסף עליך, לבקש את תיקונו או מחיקתו ולהתנגד לעיבודו. לשם מימוש הזכויות ניתן לפנות אלינו בדרכים המפורטות בסעיף 10. אם אינך מרוצה מהטיפול בפנייתך, ניתן לפנות גם לרשות להגנת הפרטיות.",
+    "en": "Under Israel's Protection of Privacy Law, 5741-1981, you have the right to review the data collected about you, to request its correction or deletion, and to object to its processing. To exercise these rights, contact us as set out in section 10. If you are not satisfied with how your request was handled, you may also contact the Privacy Protection Authority."
   },
   "privacy.s7_title": {
     "he": "7. אבטחת מידע",
     "en": "7. Data security"
   },
   "privacy.s7_body": {
-    "he": "אנו נוקטים אמצעים סבירים להגנה על המידע, אך אין באפשרותנו להבטיח הגנה מוחלטת מפני כל גישה בלתי מורשית.",
-    "en": "We take reasonable measures to protect your data, but cannot guarantee absolute protection against any unauthorized access."
+    "he": "אנו נוקטים אמצעים סבירים להגנה על המידע, ובהם חיבור מוצפן (HTTPS), קישורי התחברות חתומים והגבלת הגישה למידע לגורמים מורשים בלבד, אך אין באפשרותנו להבטיח הגנה מוחלטת מפני כל גישה בלתי מורשית. אם יתגלה אירוע אבטחה מהותי הפוגע במידע האישי שלך, נפעל בהתאם לדין.",
+    "en": "We take reasonable measures to protect the data, including an encrypted connection (HTTPS), signed login links and restricting access to the data to authorized parties only, but we cannot guarantee absolute protection against any unauthorized access. If a material security incident affecting your personal data is discovered, we will act as the law requires."
   },
   "privacy.s8_title": {
     "he": "8. קטינים",
@@ -1001,8 +1001,8 @@
     "en": "9. Changes to this policy"
   },
   "privacy.s9_body": {
-    "he": "מדיניות זו עשויה להתעדכן מעת לעת. המשך השימוש בשירות לאחר עדכון מהווה הסכמה למדיניות המעודכנת.",
-    "en": "This policy may be updated from time to time. Continued use of the service after an update constitutes acceptance of the updated policy."
+    "he": "מדיניות זו עשויה להתעדכן מעת לעת. שינוי מהותי יפורסם בעמוד זה, והמשך השימוש בשירות לאחר עדכון מהווה הסכמה למדיניות המעודכנת.",
+    "en": "This policy may be updated from time to time. A material change will be published on this page, and continued use of the service after an update constitutes agreement to the updated policy."
   },
   "privacy.s10_title": {
     "he": "10. יצירת קשר",
@@ -1021,24 +1021,24 @@
     "en": "Terms of Use"
   },
   "terms.updated": {
-    "he": "עודכן לאחרונה: ספטמבר 2026",
-    "en": "Last updated: September 2026"
+    "he": "עודכן לאחרונה: אוקטובר 2026",
+    "en": "Last updated: October 2026"
   },
   "terms.s1_title": {
     "he": "1. מה זה טודירה",
     "en": "1. What Todira is"
   },
   "terms.s1_body": {
-    "he": "טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל\"ן ולוחות מודעות שונים), ומתריע למשתמש כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. לאחר תקופת ניסיון בת 3 ימים, המשך השימוש בשירות כרוך בתשלום חד-פעמי לתקופת גישה לבחירתך: ₪19.90 לשבוע (7 ימים), ₪29.90 לשבועיים (14 ימים) או ₪49.90 לחודש (30 ימים), כמפורט בעמוד השדרוג באתר. אין חידוש אוטומטי ולא יבוצעו חיובים נוספים; נשלח תזכורת לפני סיום תקופת הגישה. הודעות בוואטסאפ נשלחות רק בתוך 24 שעות מההודעה האחרונה שלך אל הבוט; כדי להמשיך לקבל הודעות יש להגיב מדי פעם להודעת הבדיקה האוטומטית (\"עדיין מחפש?\"), וניתן להפסיק את ההודעות בכל עת בלחיצה על \"עצרו הודעות\".",
-    "en": "Todira is a personal service (a Telegram bot, a WhatsApp bot and a companion website) that automatically scans apartment listings from external sources on the web (various real-estate sites and listing boards) and alerts you when a listing matching your filter is published. After a 3-day trial period, continued use of the service requires a one-time payment for an access period of your choice: ₪19.90 for a week (7 days), ₪29.90 for two weeks (14 days) or ₪49.90 for a month (30 days), as detailed on the site's upgrade page. There is no automatic renewal and no further charges; we will send a reminder before your access period ends. WhatsApp messages are sent only within 24 hours of your last message to the bot; to keep receiving messages you need to reply now and then to the automatic check-in message (“Still looking?”), and you can stop the messages at any time by tapping “Stop messages”."
+    "he": "טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל\"ן ולוחות מודעות שונים), ומתריע למשתמש בטלגרם כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. האתר מאפשר לצפות במודעות, לערוך את הסינון ולנהל את החשבון. לכל משתמש חדש ניתנת תקופת ניסיון חינמית בת 3 ימים. לאחריה, המשך השימוש כרוך בתשלום חד-פעמי לתקופת גישה לבחירתך: ₪19.90 לשבוע (7 ימים), ₪29.90 לשבועיים (14 ימים) או ₪49.90 לחודש (30 ימים), כמפורט בעמוד השדרוג באתר. אין חידוש אוטומטי ולא יבוצעו חיובים נוספים; נשלח תזכורת לפני סיום תקופת הגישה. ערוץ וואטסאפ אינו פעיל כרגע.",
+    "en": "Todira is a personal service (a Telegram bot and a companion website) that automatically scans apartment listings from external sources on the web (real-estate sites and listing boards) and alerts the user on Telegram when a listing matching their filter is published. The website lets you view listings, edit your filter and manage your account. Every new user gets a free 3-day trial. After it, continued use requires a one-time payment for an access period of your choice: NIS 19.90 for a week (7 days), NIS 29.90 for two weeks (14 days) or NIS 49.90 for a month (30 days), as detailed on the website's upgrade page. There is no automatic renewal and no further charges will be made; we will send a reminder before your access period ends. The WhatsApp channel is not active at the moment."
   },
   "terms.s2_title": {
     "he": "2. אין אחריות על תוכן המודעות",
     "en": "2. No warranty on listing content"
   },
   "terms.s2_body": {
-    "he": "כל המודעות המוצגות בטודירה נאספות ממקורות חיצוניים שאינם בשליטת טודירה. טודירה אינו מפרסם, יוצר, מאמת או ערב לדיוק, לעדכניות או לזמינות של אף מודעה — מחיר, תמונות, זמינות, תיאור הנכס וכל פרט אחר עשויים להיות שגויים, מיושנים או שהנכס כבר הושכר/נמכר. יש לבדוק כל מודעה מול המקור המקורי ומול המפרסם לפני כל החלטה.",
-    "en": "Every listing shown in Todira is collected from external sources not controlled by Todira. Todira does not publish, create, verify, or guarantee the accuracy, timeliness, or availability of any listing — price, photos, availability, description, and any other detail may be incorrect, outdated, or the property may already be rented or sold. Always verify a listing against its original source and the advertiser before making any decision."
+    "he": "כל המודעות המוצגות בטודירה נאספות ממקורות חיצוניים שאינם בשליטת טודירה. טודירה אינו מפרסם, יוצר, מאמת או ערב לדיוק, לעדכניות או לזמינות של אף מודעה — מחיר, תמונות, זמינות, תיאור הנכס וכל פרט אחר עשויים להיות שגויים, מיושנים או שהנכס כבר הושכר/נמכר. יש לבדוק כל מודעה מול המקור המקורי ומול המפרסם לפני כל החלטה. המודעות מוצגות לנוחות המשתמש תוך הפניה למקור; פרטי הקשר של המפרסם (לרבות מספר טלפון) נמצאים באתר המקור בלבד, ואינם נשמרים אצלנו. מפרסם המבקש להסיר מודעה מהשירות מוזמן לפנות אלינו (סעיף 12) ונטפל בבקשה בהקדם.",
+    "en": "All listings shown in Todira are collected from external sources outside Todira's control. Todira does not publish, create, verify or vouch for the accuracy, freshness or availability of any listing — price, photos, availability, the property description and any other detail may be wrong, outdated, or the property may already be rented/sold. Check every listing with the original source and the advertiser before any decision. Listings are shown for the user's convenience with a reference to the source; the advertiser's contact details (including a phone number) are found on the source site only and are not stored by us. An advertiser who wants a listing removed from the service is welcome to contact us (section 12) and we will handle the request promptly."
   },
   "terms.s3_title": {
     "he": "3. טודירה אינו צד לעסקה",
@@ -1053,8 +1053,8 @@
     "en": "4. Use of AI"
   },
   "terms.s4_body": {
-    "he": "השירות משתמש במודל שפה (Gemini מבית Google) כדי לפרש הודעות טקסט חופשי ולבנות מהן פרופיל חיפוש. הפירוש עלול לפעמים להיות שגוי — ניתן תמיד לתקן את הסינון ידנית דרך הבוט (/filter) או דרך האתר.",
-    "en": "The service uses a language model (Google's Gemini) to parse free-text messages and build a search profile from them. That interpretation can occasionally be wrong — you can always correct your filter manually via the bot (/filter) or the website."
+    "he": "השירות משתמש במודל שפה (Gemini מבית Google) כדי לפרש הודעות טקסט חופשי ולבנות מהן פרופיל חיפוש, וכדי לעזור לחלץ פרטים ממודעות. הפירוש והחילוץ עלולים לפעמים להיות שגויים — ניתן תמיד לתקן את הסינון ידנית דרך הבוט (/filter) או דרך האתר, ויש לאמת כל פרט מול המודעה המקורית.",
+    "en": "The service uses a language model (Google's Gemini) to interpret free-text messages and build a search profile from them, and to help extract details from listings. The interpretation and extraction may sometimes be wrong — you can always correct the filter manually through the bot (/filter) or the website, and every detail should be verified against the original listing."
   },
   "terms.s5_title": {
     "he": "5. הגבלת אחריות",
@@ -1069,16 +1069,16 @@
     "en": "6. Changes to the service"
   },
   "terms.s6_body": {
-    "he": "טודירה רשאי לשנות, להשעות או להפסיק את השירות (כולו או חלקו), בכל עת וללא הודעה מוקדמת.",
-    "en": "Todira may change, suspend, or discontinue the service (in whole or in part) at any time, without prior notice."
+    "he": "טודירה רשאי לשנות, להשעות או להפסיק את השירות (כולו או חלקו), בכל עת וללא הודעה מוקדמת. שינויים מהותיים בתנאים אלה יפורסמו בעמוד זה. ייתכנו גם הפסקות או שינויים בשירות עקב שינויים אצל מקורות המודעות או אצל ספקים חיצוניים, שאינם בשליטתנו. ככל שהופסק השירות מצדנו לפני תום תקופת גישה ששולמה, נבחן בתום לב החזר יחסי.",
+    "en": "Todira may change, suspend or discontinue the service (in whole or in part) at any time without prior notice. Material changes to these terms will be published on this page. The service may also be interrupted or changed because of changes at the listing sources or at external providers, which are outside our control. If we discontinue the service before a paid access period ends, we will consider a pro-rata refund in good faith."
   },
   "terms.s7_title": {
     "he": "7. קניין רוחני",
     "en": "7. Intellectual property"
   },
   "terms.s7_body": {
-    "he": "עיצוב האתר, המיתוג והקוד של טודירה הם קניינו של מפעיל השירות. תוכן המודעות עצמו שייך למקורות המקוריים שממנו נאסף.",
-    "en": "The website's design, branding, and code belong to the service's operator. Listing content itself belongs to the original sources it was collected from."
+    "he": "עיצוב האתר, המיתוג והקוד של טודירה הם קניינו של מפעיל השירות. תוכן המודעות עצמו שייך למקורות המקוריים שממנו נאסף. אין להעתיק, לסרוק (scraping), לאסוף באופן אוטומטי, למכור מחדש או להפיץ את תוכן השירות או את הנתונים בו, ואין לנסות לעקוף את מנגנוני הגישה או האבטחה שלו. הגישה לשירות אישית ואינה ניתנת להעברה לאחר. מפעיל השירות רשאי לחסום גישה למשתמש שהפר הוראות אלה.",
+    "en": "The website's design, branding, and code belong to the service's operator. Listing content itself belongs to the original sources it was collected from. You may not copy, scrape, automatically harvest, resell or distribute the service's content or data, or try to bypass its access or security mechanisms. Access to the service is personal and not transferable. The operator may block access for a user who violates these provisions."
   },
   "terms.s8_title": {
     "he": "8. דין וסמכות שיפוט",
@@ -1093,24 +1093,24 @@
     "en": "9. Service delivery"
   },
   "terms.s9_body": {
-    "he": "השירות ניתן במלואו באופן דיגיטלי, ואינו כרוך במשלוח פיזי של מוצר כלשהו. עם אישור תשלום עבור מנוי בתשלום, הגישה למנוי מופעלת באופן אוטומטי ומיידי (בדרך כלל תוך דקות ספורות ממועד אישור העסקה), ישירות דרך הבוט בטלגרם, הבוט בוואטסאפ ו/או האתר, ללא צורך בפעולה נוספת מצד המשתמש.",
-    "en": "The service is provided entirely digitally and does not involve physical shipping of any product. Upon confirmation of payment for a paid subscription, access is activated automatically and immediately (typically within a few minutes of transaction confirmation), directly through the Telegram bot, the WhatsApp bot and/or the website, with no further action required from the user."
+    "he": "השירות ניתן במלואו באופן דיגיטלי, ואינו כרוך במשלוח פיזי של מוצר כלשהו. עם אישור התשלום עבור תקופת גישה, הגישה מופעלת באופן אוטומטי ומיידי (בדרך כלל תוך דקות ספורות ממועד אישור העסקה), דרך הבוט בטלגרם והאתר, ללא צורך בפעולה נוספת מצד המשתמש. אם הגישה לא נפתחה תוך זמן סביר, יש לפנות אלינו (סעיף 12).",
+    "en": "The service is provided entirely digitally and does not involve physical shipping of any product. Once payment for an access period is confirmed, access is activated automatically and immediately (typically within a few minutes of the transaction confirmation) through the Telegram bot and the website, with no further action required from the user. If access has not opened within a reasonable time, please contact us (section 12)."
   },
   "terms.s10_title": {
     "he": "10. ביטול עסקה והחזרים",
     "en": "10. Cancellation and refunds"
   },
   "terms.s10_body": {
-    "he": "מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר' סעיף 1). בהתאם לחוק הגנת הצרכן, התשמ\"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. במקרה של ביטול כאמור נחזיר את התשלום לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול, בניכוי דמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש\"ח, לפי הנמוך מביניהם, כמתיר החוק. הגישה נמכרת בתשלום חד-פעמי לתקופה שנבחרה (7, 14 או 30 ימים), ללא חידוש אוטומטי, ולכן אין מנוי שצריך לבטל. בנוסף, נבחן בתום לב כל פנייה לביטול או להחזר, לרבות במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.",
-    "en": "This is a digital service delivered immediately and automatically upon payment confirmation. Every user gets a free 3-day trial before any payment (see section 1). In accordance with Israel's Consumer Protection Law, 5741-1981, a distance transaction may be cancelled within 14 days of the transaction (or of receiving the written confirmation, whichever is later) by notifying us through the contact page or the Telegram bot. On such a cancellation we will refund the payment to the original payment method within 14 days of the cancellation notice, less a cancellation fee of 5% of the transaction price or NIS 100, whichever is lower, as the law permits. Access is sold as a one-time payment for the period chosen (7, 14 or 30 days), with no automatic renewal, so there is no subscription to cancel. In addition, we will review in good faith any request for cancellation or a refund, including a material technical fault that prevented use of the service, a duplicate charge, or a payment error."
+    "he": "מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר' סעיף 1). בהתאם לחוק הגנת הצרכן, התשמ\"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. במקרה של ביטול כאמור נחזיר את התשלום לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול, בניכוי דמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש\"ח, לפי הנמוך מביניהם, כמתיר החוק. ההחזר מבוצע באמצעות ספק הסליקה, ומועד הופעתו בחשבונך תלוי בנהלי חברת האשראי. הגישה נמכרת בתשלום חד-פעמי לתקופה שנבחרה (7, 14 או 30 ימים), ללא חידוש אוטומטי, ולכן אין מנוי שצריך לבטל. בנוסף, נבחן בתום לב כל פנייה לביטול או להחזר, לרבות במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.",
+    "en": "This is a digital service delivered immediately and automatically upon payment confirmation. Every user gets a free 3-day trial before any payment (see section 1). In accordance with Israel's Consumer Protection Law, 5741-1981, a distance transaction may be cancelled within 14 days of the transaction (or of receiving the written confirmation, whichever is later) by notifying us through the contact page or the Telegram bot. On such a cancellation we will refund the payment to the original payment method within 14 days of the cancellation notice, less a cancellation fee of 5% of the transaction price or NIS 100, whichever is lower, as the law permits. The refund is processed through the payment provider, and when it appears in your account depends on the card company's procedures. Access is sold as a one-time payment for the period chosen (7, 14 or 30 days), with no automatic renewal, so there is no subscription to cancel. In addition, we will review in good faith any request for cancellation or a refund, including a material technical fault that prevented use of the service, a duplicate charge, or a payment error."
   },
   "terms.s11_title": {
     "he": "11. פרטי מפעיל השירות",
     "en": "11. Service operator details"
   },
   "terms.s11_body": {
-    "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563.",
-    "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563."
+    "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. המחירים באתר הם המחירים הסופיים: מפעיל השירות עוסק פטור ואינו גובה מע\"מ.",
+    "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. The prices on the website are final: the operator is an exempt dealer and does not charge VAT."
   },
   "terms.s12_title": {
     "he": "12. יצירת קשר",
