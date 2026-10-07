@@ -28,7 +28,7 @@ export const register: Register = on => {
     })
     await $.command.register({
       name: 'usage-footer',
-      description: 'Toggle the usage line Claude adds at the end of replies where no screen draws the row (on by default)',
+      description: 'Toggle the usage line Claude adds at the end of replies where no screen draws the row (off by default)',
     })
     try {
       const u = await $.session.usage()
@@ -58,7 +58,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'usage-footer' }, async $ => {
-    const isOn = (await $.store.get(FOOTER_KEY)) !== false
+    const isOn = (await $.store.get(FOOTER_KEY)) === true
     await $.store.set(FOOTER_KEY, !isOn)
 
     return { text: isOn ? 'Usage footer is off.' : 'Usage footer is on.' }
@@ -70,7 +70,7 @@ export const register: Register = on => {
   // itself, nothing is attached.
   on('prompt.submit', async ($, e, next) => {
     try {
-      if ((await $.store.get(FOOTER_KEY)) === false) return next(e)
+      if ((await $.store.get(FOOTER_KEY)) !== true) return next(e)
       if ((await $.session.surfaces()).length > 0) return next(e)
       const u = await $.session.usage()
       const line = textLine(
