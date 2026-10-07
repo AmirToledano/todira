@@ -411,11 +411,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # 2026-09-08 fix (owner's own report): used to say "via Telegram" specifically, which
         # became inaccurate once WhatsApp shipped as an equal channel (see the WhatsApp CTA
         # button right below this) — channel-neutral now instead of naming just one.
-        "he": "דירות בזמן אמת · טלגרם + ווטסאפ 👑",
-        "en": "Real-time apartments · Telegram + WhatsApp 👑",
-        "ru": "Квартиры в реальном времени · Telegram + WhatsApp 👑",
-        "fr": "Appartements en temps réel · Telegram + WhatsApp 👑",
-        "ar": "شقق في الوقت الفعلي · تيليجرام + واتساب 👑",
+        "he": "דירות בזמן אמת · בטלגרם 👑",
+        "en": "Real-time apartments · on Telegram 👑",
+        "ru": "Квартиры в реальном времени · в Telegram 👑",
+        "fr": "Appartements en temps réel · sur Telegram 👑",
+        "ar": "شقق في الوقت الفعلي · على تيليجرام 👑",
     },
     "home.h1": {
         "he": "הדירה שלך מוצאת אותך",
@@ -1701,7 +1701,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # real-content-only behavior rather than fabricating three new translations here.
     "about.h1": {"he": "אודות טודירה", "en": "About Todira"},
     "about.body_intro": {
-        "he": 'טודירה הוא שירות אישי (בוט בטלגרם, בוט בוואטסאפ ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
+        "he": 'טודירה הוא שירות אישי (בוט בטלגרם ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
         "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (real-estate sites and listing boards), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published.",
     },
     "about.body_disclaimer": {
@@ -2492,11 +2492,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "فحص تلقائي كل ساعتين من جميع المصادر",
     },
     "upgrade.checklist_alert": {
-        "he": "התראה מיידית בטלגרם וב-WhatsApp ברגע שיש התאמה",
-        "en": "Instant Telegram and WhatsApp alert the moment there's a match",
-        "ru": "Мгновенное уведомление в Telegram и WhatsApp при совпадении",
-        "fr": "Alerte Telegram et WhatsApp instantanée dès qu'il y a une correspondance",
-        "ar": "تنبيه فوري على تيليجرام وواتساب فور وجود تطابق",
+        "he": "התראה מיידית בטלגרם ברגע שיש התאמה",
+        "en": "Instant Telegram alert the moment there's a match",
+        "ru": "Мгновенное уведомление в Telegram при совпадении",
+        "fr": "Alerte Telegram instantanée dès qu'il y a une correspondance",
+        "ar": "تنبيه فوري على تيليجرام فور وجود تطابق",
     },
     "upgrade.checklist_filtered": {
         "he": "רק דירות שבאמת עומדות בסינון שלך",
