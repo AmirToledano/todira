@@ -261,7 +261,14 @@ def location_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
         # city's own name instead makes removal idempotent/robust to exactly that, and every real
         # Israeli city/town name is far short of callback_data's 64-byte limit (the bundled list's
         # own longest, "מודיעין מכבים רעות", is 34 bytes; this prefix adds 10).
-        rows.append([InlineKeyboardButton(f"🗑️ {city}", callback_data=f"f:loc:rmc:{city}")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    # 2026-10-07 real owner report: a bare trash icon did not say "tap to remove".
+                    bot_text("kb.remove_city", lang, city=city), callback_data=f"f:loc:rmc:{city}"
+                )
+            ]
+        )
     rows.append([_back_button(lang)])
     return InlineKeyboardMarkup(rows)
 

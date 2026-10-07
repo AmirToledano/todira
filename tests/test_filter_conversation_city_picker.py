@@ -294,4 +294,23 @@ def test_location_keyboard_lists_chosen_cities_alphabetically():
     removals = [
         b.text for row in markup.inline_keyboard for b in row if b.callback_data.startswith("f:loc:rmc:")
     ]
-    assert [t.split(" ", 1)[1] for t in removals] == ["אשדוד", "חיפה", "ירושלים"]
+    assert [t.split(": ", 1)[1] for t in removals] == ["אשדוד", "חיפה", "ירושלים"]
+
+
+def test_selected_cities_say_remove_not_just_a_trash_icon():
+    """2026-10-07 real owner report: the per-city button was a bare trash icon with no hint that tapping removes the city."""
+    draft = _default_draft()
+    draft["cities"] = ["הר גילה", "ירושלים"]
+    markup = kb.location_keyboard(draft, "he")
+    labels = {b.callback_data: b.text for row in markup.inline_keyboard for b in row}
+    assert labels["f:loc:rmc:הר גילה"] == "❌ הסר: הר גילה"
+    assert labels["f:loc:rmc:ירושלים"] == "❌ הסר: ירושלים"
+
+
+def test_location_screen_explains_that_tapping_a_city_removes_it():
+    draft = _default_draft()
+    draft["cities"] = ["ירושלים"]
+    title, _markup = filter_conversation._category_view(draft, "loc", "he")
+    assert "לחיצה על עיר מסירה אותה" in title
+    empty_title, _ = filter_conversation._category_view(_default_draft(), "loc", "he")
+    assert "לחיצה על עיר מסירה אותה" not in empty_title
