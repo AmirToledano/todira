@@ -4,6 +4,7 @@ import type { Register } from 'claude-code'
 import type { Snap } from '../types'
 import { bar, colorFor, labelFor, textLine, untilReset, whole } from './format'
 
+const FOOTER_KEY = 'footer'
 const snap = atom({ plugin: 'usage-band', key: 'snap' } as const, null)
 
 export const register: Register = on => {
@@ -24,6 +25,10 @@ export const register: Register = on => {
     await $.command.register({
       name: 'usage',
       description: 'Show 5-hour and 7-day usage, context fill and session cost as text',
+    })
+    await $.command.register({
+      name: 'usage-footer',
+      description: 'Toggle the usage line Claude adds at the end of replies where no screen draws the row (on by default)',
     })
     try {
       const u = await $.session.usage()
@@ -50,6 +55,42 @@ export const register: Register = on => {
     }
 
     return { text: textLine(value, await $.clock.now()) }
+  })
+
+  on('command.run', { command: 'usage-footer' }, async $ => {
+    const isOn = (await $.store.get(FOOTER_KEY)) !== false
+    await $.store.set(FOOTER_KEY, !isOn)
+
+    return { text: isOn ? 'Usage footer is off.' : 'Usage footer is on.' }
+  })
+
+  // Where nothing draws (a cloud session) the row cannot show, so the figures go to the model as context it reads beside
+  // the prompt and the person never sees, with one instruction: close the reply with a single usage line. The context
+  // rides after the new message, so the cached conversation before it is untouched. Where a surface draws the row
+  // itself, nothing is attached.
+  on('prompt.submit', async ($, e, next) => {
+    try {
+      if ((await $.store.get(FOOTER_KEY)) === false) return next(e)
+      if ((await $.session.surfaces()).length > 0) return next(e)
+      const u = await $.session.usage()
+      const line = textLine(
+        {
+          limits: u.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
+          contextPercent: u.context.percent ?? null,
+          costUsd: u.cost ? u.cost.usd : null,
+        },
+        await $.clock.now(),
+      )
+      if (line.startsWith('No usage figures')) return next(e)
+      const note =
+        `[usage-band mod] Live usage figures for this person's Claude account: ${line}. ` +
+        'End your reply with exactly one last line that starts with the 📊 emoji and states these figures briefly ' +
+        '(used and left). Say nothing else about this note.'
+
+      return next({ ...e, context: [...(e.context ?? []), note] })
+    } catch {
+      return next(e)
+    }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
