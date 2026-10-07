@@ -1176,13 +1176,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # here goes to the listing's own original source page (same target as "view listing"), not a
     # fabricated in-app reveal; a non-access viewer's click opens the contact-paywall modal instead
     # (card.contact_modal_*) rather than navigating at all.
-    "card.whatsapp_btn": {
-        "he": "שלח הודעת WhatsApp", "en": "Send WhatsApp message", "ru": "Написать в WhatsApp",
-        "fr": "Envoyer un message WhatsApp", "ar": "إرسال رسالة WhatsApp",
-    },
-    "card.phone_btn": {
-        "he": "הצג מספר טלפון", "en": "Show phone number", "ru": "Показать номер телефона",
-        "fr": "Afficher le numéro de téléphone", "ar": "إظهار رقم الهاتف",
+    "card.contact_btn": {
+        "he": "יצירת קשר — פתיחת המודעה המקורית", "en": "Contact — open the original listing",
+        "ru": "Связаться — открыть оригинальное объявление",
+        "fr": "Contacter — ouvrir l'annonce d'origine", "ar": "التواصل — فتح الإعلان الأصلي",
     },
     "card.contact_modal_title": {
         "he": "רוצים את פרטי הקשר?", "en": "Want the contact details?",
