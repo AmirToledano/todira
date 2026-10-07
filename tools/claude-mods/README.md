@@ -18,3 +18,8 @@ Three small mods for Claude Code, kept here so one install covers every session 
 ```
 
 Choose the **user** scope when asked: the mods then load in every session and every project on that machine.
+
+## Cloud sessions of this repo
+
+`.claude/settings.json` at the repo root enables all three for any Claude Code session opened on this repository, local or
+cloud. Other repositories need the same file (or the user-scope install above on the machine that runs the session).
