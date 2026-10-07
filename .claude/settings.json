@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "todira-mods": { "source": { "source": "github", "repo": "AmirToledano/todira" } }
+  },
+  "enabledPlugins": {
+    "usage-band@todira-mods": true,
+    "rtl-messages@todira-mods": true,
+    "hide-replies@todira-mods": true
+  }
+}
