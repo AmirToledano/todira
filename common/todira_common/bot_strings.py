@@ -1010,6 +1010,17 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "🌍 Tout effacer — toutes les villes, sans limite",
         "ar": "🌍 مسح الكل — كل المدن، بلا حدود",
     },
+    "kb.remove_city": {
+        "he": "❌ הסר: {city}", "en": "❌ Remove: {city}", "ru": "❌ Убрать: {city}",
+        "fr": "❌ Retirer : {city}", "ar": "❌ إزالة: {city}",
+    },
+    "filter.remove_city_hint": {
+        "he": "\n\nהערים שבחרת מופיעות למטה. לחיצה על עיר מסירה אותה מהסינון.",
+        "en": "\n\nYour cities are listed below. Tap a city to remove it from the filter.",
+        "ru": "\n\nВыбранные города ниже. Нажмите на город, чтобы убрать его из фильтра.",
+        "fr": "\n\nVos villes sont listées ci-dessous. Touchez une ville pour la retirer du filtre.",
+        "ar": "\n\nالمدن التي اخترتها أدناه. اضغط على مدينة لإزالتها من الفلتر.",
+    },
     "kb.search_by_typing": {
         "he": "🔍 חיפוש לפי הקלדה", "en": "🔍 Search by typing", "ru": "🔍 Поиск по вводу",
         "fr": "🔍 Rechercher en tapant", "ar": "🔍 البحث بالكتابة",

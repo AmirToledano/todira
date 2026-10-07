@@ -142,7 +142,11 @@ def _category_view(draft: dict, category: str, lang: str):
         # part of. A user staring at an empty list otherwise has no way to tell "no cities chosen
         # yet" apart from "deliberately unconstrained," which is exactly the ambiguity that led to
         # manually selecting all 42 bundled cities instead (a strictly narrower, worse state).
-        note = bot_text("filter.all_cities_note", lang) if not draft["cities"] else ""
+        note = (
+            bot_text("filter.all_cities_note", lang)
+            if not draft["cities"]
+            else bot_text("filter.remove_city_hint", lang)
+        )
         return titles["loc"] + note, kb.location_keyboard(draft, lang)
     if category == "locpick":
         return titles["locpick"], kb.city_picker_keyboard(draft, lang)
