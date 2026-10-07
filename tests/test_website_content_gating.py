@@ -482,9 +482,7 @@ def test_apartments_contact_buttons_are_locked_for_a_trial_user(client):
         resp = client.get("/apartments", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' in resp.text
     assert 'class="contact-btn contact-btn-phone contact-locked-btn"' in resp.text
-    assert 'class="contact-btn contact-btn-whatsapp" href="https://yad2.co.il/item/secret999"' not in resp.text
     assert 'class="contact-btn contact-btn-phone" href="https://yad2.co.il/item/secret999"' not in resp.text
 
 
@@ -522,9 +520,7 @@ def test_apartments_contact_buttons_are_real_links_for_a_genuinely_paid_user(cli
         resp = client.get("/apartments", params={"uid": 222})
 
     assert resp.status_code == 200
-    assert 'class="contact-btn contact-btn-whatsapp" href="https://yad2.co.il/item/secret999"' in resp.text
     assert 'class="contact-btn contact-btn-phone" href="https://yad2.co.il/item/secret999"' in resp.text
-    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' not in resp.text
     assert 'class="contact-btn contact-btn-phone contact-locked-btn"' not in resp.text
 
 
@@ -541,7 +537,6 @@ def test_apartments_contact_buttons_are_locked_for_an_expired_user(client):
 
     assert resp.status_code == 200
     assert "secret999" not in resp.text  # no real link leaked anywhere, including these buttons
-    assert 'class="contact-btn contact-btn-whatsapp contact-locked-btn"' in resp.text
     assert 'class="contact-btn contact-btn-phone contact-locked-btn"' in resp.text
     # 2026-09-26 follow-up: real owner decision to add a working "view original listing" escape
     # hatch to the paywall modal even for this exact expired-user case — it has to point at the

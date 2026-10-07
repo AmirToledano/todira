@@ -188,11 +188,13 @@
        trial, same as before. #}
     <div class="contact-actions detail-only" data-listing-go-url="/go/{{ l.id }}">
       {% if has_paid_access %}
-      <a class="contact-btn contact-btn-whatsapp" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.whatsapp_btn') }}</a>
-      <a class="contact-btn contact-btn-phone" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.phone_btn') }}</a>
+      {# 2026-10-07: ONE honest button. The old pair ("Send WhatsApp message" / "Show phone number") both just opened the
+         source page, because none of the sources hands out the poster's phone in the page we fetch (verified live
+         2026-09-26: Yad2 uses virtual numbers behind its own API, Komo reveals the number on a click, Homeless shows only a
+         first name), so the labels promised something this page cannot do. #}
+      <a class="contact-btn contact-btn-phone" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.contact_btn') }}</a>
       {% else %}
-      <button type="button" class="contact-btn contact-btn-whatsapp contact-locked-btn">{{ t('card.whatsapp_btn') }}</button>
-      <button type="button" class="contact-btn contact-btn-phone contact-locked-btn">{{ t('card.phone_btn') }}</button>
+      <button type="button" class="contact-btn contact-btn-phone contact-locked-btn">{{ t('card.contact_btn') }}</button>
       {% endif %}
     </div>
     <div class="listing-footer">

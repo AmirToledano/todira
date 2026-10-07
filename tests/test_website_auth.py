@@ -243,9 +243,15 @@ def test_resolve_user_accepts_a_valid_signed_token_and_signs_the_session_in():
 def test_resolve_user_rejects_a_forged_or_tampered_token():
     from todira_common.uid_token import generate_uid_token
 
+    # Tamper with the FIRST character of the signature: the last characters of a base64 value can carry unused bits, so
+    # altering only those left the signature valid about one run in sixteen (a flaky failure seen 2026-10-07).
+    token = generate_uid_token(555)
+    head, _, signature = token.rpartition(".")
+    tampered = f"{head}.{'A' if signature[0] != 'A' else 'B'}{signature[1:]}"
+
     class _FakeRequest:
         session: dict = {}
-        query_params = {"t": generate_uid_token(555)[:-2] + "xx"}
+        query_params = {"t": tampered}
 
     uid_user = _FakeUser(id=99, telegram_user_id=555)
     fake_session = _FakeSession(users_by_telegram_id={555: uid_user}, users_by_pk={})
