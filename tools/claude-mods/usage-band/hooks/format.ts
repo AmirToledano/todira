@@ -40,3 +40,23 @@ export function labelFor(kind: string): string {
 export function whole(percent: number): number {
   return Math.round(percent)
 }
+
+type LimitIn = { kind: string; percentUsed: number; resetsAt?: string }
+type SnapIn = { limits: LimitIn[]; contextPercent: number | null; costUsd: number | null }
+
+/** One plain line for where nothing draws: "5h used 62% (left 38%, resets 2h13m) | 7d ... | ctx ... | cost $0.42". */
+export function textLine(s: SnapIn, nowMs: number): string {
+  const parts: string[] = []
+  for (const l of s.limits) {
+    const used = whole(l.percentUsed)
+    const reset = untilReset(l.resetsAt, nowMs)
+    parts.push(`${labelFor(l.kind)} used ${used}% (left ${Math.max(0, 100 - used)}%${reset ? `, resets ${reset}` : ''})`)
+  }
+  if (s.contextPercent !== null) {
+    const used = whole(s.contextPercent)
+    parts.push(`ctx ${used}% full (${Math.max(0, 100 - used)}% left)`)
+  }
+  if (s.costUsd !== null) parts.push(`cost $${s.costUsd.toFixed(2)}`)
+
+  return parts.length > 0 ? parts.join(' | ') : 'No usage figures yet (they appear after the first reply).'
+}
