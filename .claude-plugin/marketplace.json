@@ -1,0 +1,10 @@
+{
+  "name": "todira-mods",
+  "owner": { "name": "AmirToledano" },
+  "description": "Small Claude Code mods: a usage row above the prompt, right-to-left messages, and a hide-replies button.",
+  "plugins": [
+    { "name": "usage-band", "source": "./tools/claude-mods/usage-band", "description": "A live row above the prompt: 5-hour and 7-day usage (used and left), context fill and session cost." },
+    { "name": "rtl-messages", "source": "./tools/claude-mods/rtl-messages", "description": "Draws Hebrew and Arabic messages right-to-left, yours and Claude's. /rtl toggles it." },
+    { "name": "hide-replies", "source": "./tools/claude-mods/hide-replies", "description": "A button in the row above the prompt that collapses Claude's replies to one dim line each." }
+  ]
+}

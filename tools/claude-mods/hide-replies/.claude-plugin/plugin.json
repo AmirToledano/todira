@@ -1,0 +1,6 @@
+{
+  "name": "hide-replies",
+  "version": "0.1.0",
+  "description": "A button in the row above the prompt that collapses Claude's replies to one dim line each, and shows them again.",
+  "types": "./types/index.d.ts"
+}

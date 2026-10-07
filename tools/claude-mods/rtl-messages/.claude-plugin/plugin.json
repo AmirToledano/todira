@@ -1,0 +1,5 @@
+{
+  "name": "rtl-messages",
+  "version": "0.1.0",
+  "description": "Draws Hebrew and Arabic messages right-to-left, both the ones you send and Claude's replies. /rtl toggles it."
+}
