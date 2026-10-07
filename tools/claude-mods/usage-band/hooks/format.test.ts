@@ -1,6 +1,6 @@
 import { test, expect } from 'claude-code/testing'
 
-import { bar, colorFor, untilReset, labelFor, whole } from './format'
+import { bar, colorFor, untilReset, labelFor, whole, textLine } from './format'
 
 test('bar fills in proportion and clamps', () => {
   expect(bar(0)).toBe('░░░░░░░░░░')
@@ -31,4 +31,14 @@ test('labels and rounding', () => {
   expect(labelFor('seven_day')).toBe('7d')
   expect(labelFor('weird')).toBe('weird')
   expect(whole(23.5)).toBe(24)
+})
+
+test('text line for where nothing draws', () => {
+  const now = Date.parse('2026-10-07T10:00:00Z')
+  const line = textLine(
+    { limits: [{ kind: 'five_hour', percentUsed: 62.4, resetsAt: '2026-10-07T12:13:00Z' }], contextPercent: 20, costUsd: 0.4 },
+    now,
+  )
+  expect(line).toBe('5h used 62% (left 38%, resets 2h13m) | ctx 20% full (80% left) | cost $0.40')
+  expect(textLine({ limits: [], contextPercent: null, costUsd: null }, now)).toContain('No usage figures yet')
 })

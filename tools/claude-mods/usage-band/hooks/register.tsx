@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Snap } from '../types'
-import { bar, colorFor, labelFor, untilReset, whole } from './format'
+import { bar, colorFor, labelFor, textLine, untilReset, whole } from './format'
 
 const snap = atom({ plugin: 'usage-band', key: 'snap' } as const, null)
 
@@ -21,6 +21,10 @@ export const register: Register = on => {
 
   // A fresh start (or reload) has no measurement yet: read the same figures once so the row is not empty.
   on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'usage',
+      description: 'Show 5-hour and 7-day usage, context fill and session cost as text',
+    })
     try {
       const u = await $.session.usage()
       const value: Snap = {
@@ -34,6 +38,18 @@ export const register: Register = on => {
     }
 
     return next(e)
+  })
+
+  // Where nothing draws (a cloud session), the row cannot show; this answers the same figures as one line of text.
+  on('command.run', { command: 'usage' }, async $ => {
+    const u = await $.session.usage()
+    const value: Snap = {
+      limits: u.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
+      contextPercent: u.context.percent ?? null,
+      costUsd: u.cost ? u.cost.usd : null,
+    }
+
+    return { text: textLine(value, await $.clock.now()) }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
