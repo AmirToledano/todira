@@ -110,3 +110,15 @@ def test_home_page_has_valid_organization_and_website_json_ld(client):
     assert types == {"Organization", "WebSite"}
     for node in data["@graph"]:
         assert node["url"] == "http://testserver/"
+
+
+def test_home_server_renders_crawlable_content(client):
+    """2026-10-07 SEO: the home page's content used to exist only after the React bundle ran, so a crawler that does
+    not execute JS saw no <h1> at all. The same text is now server-rendered inside #root (React replaces it on mount)."""
+    resp = client.get("/")
+
+    assert resp.status_code == 200
+    assert resp.text.count("<h1>") == 1
+    assert website_i18n.TRANSLATIONS["home.h1"]["he"] in resp.text
+    assert website_i18n.TRANSLATIONS["home.feature1_title"]["he"] in resp.text
+    assert website_i18n.TRANSLATIONS["home.faq1_q"]["he"] in resp.text

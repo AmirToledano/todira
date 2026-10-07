@@ -51,7 +51,29 @@
    2026-09-25: renamed from window.__TODIRA_HOME__ to this page-agnostic name when a second React
    island (about.html) was added — every React page injects the same shape here rather than each
    page needing its own differently-named global. #}
-<div id="root"></div>
+<div id="root">
+{# 2026-10-07 SEO: the page's real content used to exist only after the React bundle ran, so a crawler that does not
+   execute JS (many do not; Google renders it later and less reliably) saw an empty page with no <h1>. This is the same
+   text, server-rendered from the same i18n keys; React's createRoot().render() replaces everything inside #root the moment
+   it mounts, so a visitor with JS never sees both. #}
+  <div class="seo-fallback" style="max-width:760px;margin:40px auto;padding:0 20px">
+    <h1>{{ t('home.h1') }}</h1>
+    <p>{{ t('home.lead') }}</p>
+    {% for n in (1, 2, 3) %}
+    <h2>{{ t('home.feature' ~ n ~ '_title') }}</h2>
+    <p>{{ t('home.feature' ~ n ~ '_body') }}</p>
+    {% endfor %}
+    <h2>{{ t('home.how_title') }}</h2>
+    <ol>
+      {% for n in (1, 2, 3) %}<li><strong>{{ t('home.step' ~ n ~ '_title') }}</strong> {{ t('home.step' ~ n ~ '_body') }}</li>{% endfor %}
+    </ol>
+    <h2>{{ t('home.faq_title') }}</h2>
+    {% for n in (1, 2, 3, 4) %}
+    <h3>{{ t('home.faq' ~ n ~ '_q') }}</h3>
+    <p>{{ t('home.faq' ~ n ~ '_a') }}</p>
+    {% endfor %}
+  </div>
+</div>
 <script>
   window.__TODIRA_PAGE__ = {
     lang: "{{ lang }}",
