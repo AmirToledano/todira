@@ -28,4 +28,4 @@ cloud. Other repositories need the same file (or the user-scope install above on
 
 The row, the button and the right-to-left drawing are rendered by a surface: the terminal, the desktop app or VS Code
 running a **local** session. A cloud session has no attached surface (the engine log says `nothing attached draws`), so
-those three cannot show there. Two text fallbacks exist: `/usage` prints the figures on demand, and in a session where no screen draws, `usage-band` hands Claude the live figures as hidden context with the instruction to close each reply with one 📊 line (`/usage-footer` toggles it; it adds nothing where a surface draws the row itself). To see the mods in the desktop app, run the session locally.
+those three cannot show there. Two text fallbacks exist: `/usage` prints the figures on demand, and in a session where no screen draws, `usage-band` hands Claude the live figures as hidden context with the instruction to close each reply with one 📊 line (off by default; `/usage-footer` turns it on; it adds nothing where a surface draws the row itself). To see the mods in the desktop app, run the session locally.
