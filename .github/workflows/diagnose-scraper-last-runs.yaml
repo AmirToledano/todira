@@ -1,0 +1,30 @@
+name: "Diagnose - last scraper runs: summary, Yad2 tile sweep, seed policy, OOM (read-only, counts only)"
+
+# Read-only, manual-only. Prints, for the last 3 scraper pods: the pod's phase and any OOMKilled/termination reason, and the log
+# lines that matter after the Yad2 tile sweep went live (2026-10-08): the sweep's own line, the seed-run line, the run summary,
+# delisting skips, and errors. Counts and statuses only - no listing content.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Last scraper runs
+        run: |
+          date -u
+          kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp \
+            -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,REASON:.status.containerStatuses[0].state.terminated.reason,EXIT:.status.containerStatuses[0].state.terminated.exitCode,START:.status.startTime | tail -5
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -3); do
+            echo "== $POD"
+            kubectl logs -n todira "$POD" 2>/dev/null | grep -E "tile sweep|seed run|Scraper run summary|Skipping delisting|aborted|ERROR|Traceback|Killed" | cut -c1-420 | tail -12 || true
+          done
