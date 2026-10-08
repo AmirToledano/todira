@@ -233,9 +233,10 @@ scraper:
   # requests, ~7 minutes, 0 failed tiles and sees ~22,200 distinct Yad2 rentals (we held ~2,300 active).
   yad2TileSweep: true
   yad2TileMaxRequests: 1500
-  # 2026-10-08: the same piece-by-piece sweep for Yad2 FOR-SALE (723 active sale ads held vs thousands live). OFF until a dry run
-  # on the production IP is clean and the rent sweep's first (seed) run has finished; its own seed flag keeps the first run quiet.
-  yad2SaleTileSweep: false
+  # 2026-10-08: the same piece-by-piece sweep for Yad2 FOR-SALE (723 active sale ads held vs 33,214 live). Its own seed flag
+  # keeps the first run quiet.
+  # ON 2026-10-08 after a clean dry run (528 requests, 499 s, 0 failed tiles, 33,214 ads) and a clean first live rent-sweep run.
+  yad2SaleTileSweep: true
   # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
   # common/todira_common/gemini_url_detail.py.
@@ -385,8 +386,9 @@ resources:
     limits: { cpu: "250m", memory: "256Mi" }
   scraper:
     requests: { cpu: "100m", memory: "256Mi" }
-    # 2026-10-08: 512Mi -> 1Gi, the tile sweep holds ~22k ads in memory at once (a limit only; the request stays 256Mi).
-    limits: { cpu: "500m", memory: "1Gi" }
+    # 2026-10-08: 512Mi -> 1Gi for the rent tile sweep (~22k ads in memory at once; first live run fine), then 1536Mi because the
+    # for-sale sweep adds ~33k more in the same process (a limit only; the request stays 256Mi).
+    limits: { cpu: "500m", memory: "1536Mi" }
   postgres:
     requests: { cpu: "100m", memory: "256Mi" }
     limits: { cpu: "500m", memory: "512Mi" }

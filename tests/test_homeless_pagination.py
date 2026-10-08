@@ -169,15 +169,16 @@ def test_older_ads_found_only_by_a_rolling_page_are_stored_quietly():
     scraper_main._HOMELESS_ROLLING_ONLY_IDS.clear()
     scraper_main._HOMELESS_ROLLING_ONLY_IDS.update({"old-1"})
     session = _FakeSession([(1, "old-1"), (2, "fresh-1")])
-    assert scraper_main._quiet_homeless_backlog(session, [1, 2]) == [2]
+    assert scraper_main._quiet_backlog(session, [1, 2]) == [2]
     assert session.updates == 1
     scraper_main._HOMELESS_ROLLING_ONLY_IDS.clear()
 
 
 def test_nothing_is_quieted_when_no_rolling_ads_were_found():
     scraper_main._HOMELESS_ROLLING_ONLY_IDS.clear()
+    scraper_main._KOMO_BACKLOG_IDS.clear()
     session = _FakeSession([(1, "x")])
-    assert scraper_main._quiet_homeless_backlog(session, [1]) == [1]
+    assert scraper_main._quiet_backlog(session, [1]) == [1]
     assert session.updates == 0
 
 
@@ -204,3 +205,28 @@ def test_homeless_is_a_partial_view_source_only_while_pagination_is_on(monkeypat
 
 async def _noop_coro():
     return []
+
+
+# --- Komo catch-up backlog (2026-10-08) ------------------------------------------------------------------------------------
+
+
+def test_komo_ads_far_below_the_newest_known_id_are_backlog():
+    known = {"4941000", "4940900", "100"}
+    backlog = scraper_main._komo_backlog_ids(["4941050", "4939000", "4912000", "4940000"], known)
+    # newest known 4941000: gap 1500 allowed, 4939000 (2000 below) and 4912000 are old, 4941050 and 4940000 (1000 below) are not
+    assert backlog == {"4939000", "4912000"}
+
+
+def test_komo_has_no_backlog_rule_without_a_reference_id():
+    assert scraper_main._komo_backlog_ids(["1", "2"], set()) == set()
+    assert scraper_main._komo_backlog_ids(["1", "2"], {"not-a-number"}) == set()
+
+
+def test_komo_backlog_ads_are_stored_quietly_and_fresh_ones_still_announced():
+    scraper_main._HOMELESS_ROLLING_ONLY_IDS.clear()
+    scraper_main._KOMO_BACKLOG_IDS.clear()
+    scraper_main._KOMO_BACKLOG_IDS.update({"old-komo"})
+    session = _FakeSession([(1, "old-komo"), (2, "fresh-komo")])
+    assert scraper_main._quiet_backlog(session, [1, 2]) == [2]
+    assert session.updates == 1
+    scraper_main._KOMO_BACKLOG_IDS.clear()
