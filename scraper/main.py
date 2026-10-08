@@ -981,15 +981,77 @@ def _apply_tile_seed_policy(session, new_ids: list[int]) -> list[int]:
     return [listing_id for listing_id in new_ids if listing_id not in all_backlog]
 
 
+# --- Streaming the sweep into the database (2026-10-08) -----------------------------------------------------------------
+# The 18:00 UTC run (rent + for-sale sweeps, ~58k ads) died ~25 minutes in. The cluster is ONE node with 1.9 GiB of memory shared by
+# Postgres, the website, the bot and the scraper (node pressure, not the container limit, is what bites), and holding every swept ad
+# in memory until one giant upsert at the end both raises the scraper's peak and makes each run re-write ~58k rows. So the sweep now
+# writes in chunks while it goes: ads whose row already exists with the same price only get scraped_at refreshed (one bulk UPDATE per
+# chunk - "still there", which is all the delisting grace needs); new ads and price changes take the normal upsert. What the
+# post-processing in run_once needs (new ids, price changes, cities) is collected here and merged there.
+_SWEEP_FLUSH_CHUNK = 1000
+_STREAMED_NEW_IDS: list[int] = []
+_STREAMED_PRICE_PAIRS: list[tuple[int, int]] = []
+_STREAMED_CITIES: set[str] = set()
+
+
+def _reset_streamed_sweep_state() -> None:
+    _STREAMED_NEW_IDS.clear()
+    _STREAMED_PRICE_PAIRS.clear()
+    _STREAMED_CITIES.clear()
+
+
+def _flush_sweep_chunk(items: list) -> None:
+    """Writes one chunk of swept Yad2 ads. Raises on a database error (the caller treats the sweep as incomplete)."""
+    if not items:
+        return
+    table = Listing.__table__
+    with get_session() as session:
+        rows = session.execute(
+            select(table.c.id, table.c.external_id, table.c.price).where(
+                table.c.source == Source.YAD2, table.c.external_id.in_([item.external_id for item in items])
+            )
+        ).all()
+        existing = {row[1]: (row[0], row[2]) for row in rows}
+        to_upsert: list = []
+        unchanged_ids: list[int] = []
+        for item in items:
+            known = existing.get(item.external_id)
+            if known is not None and known[1] == item.price:
+                unchanged_ids.append(known[0])
+            else:
+                to_upsert.append(item)
+        if unchanged_ids:
+            session.execute(table.update().where(table.c.id.in_(unchanged_ids)).values(scraped_at=func.now()))
+            session.commit()
+        if to_upsert:
+            new_ids, price_pairs = _upsert_listings(session, to_upsert)
+            _STREAMED_NEW_IDS.extend(new_ids)
+            _STREAMED_PRICE_PAIRS.extend(price_pairs)
+    _STREAMED_CITIES.update(item.city for item in items if item.city)
+
+
 def _run_yad2_tile_sweep(
     kind: str, deal_type: DealType, normalized_items: list, seen_external_ids: set[str]
 ) -> tuple[int, int, bool]:
-    """Sweeps one Yad2 map in pieces (see yad2_client's "Tile sweep" comment), appends what is new to `normalized_items` and
-    `seen_external_ids`, and records the ids only the sweep found. Returns (ads added, parse errors, sweep complete)."""
+    """Sweeps one Yad2 map in pieces (see yad2_client's "Tile sweep" comment), writes what it finds to the database in chunks (see
+    the streaming comment above; `normalized_items` is no longer appended to), adds the ids to `seen_external_ids`, and records the
+    ids only the sweep found. Returns (ads added, parse errors, sweep complete)."""
     tile_stats = TileSweepStats(max_requests=tile_max_requests(), max_seconds=tile_max_seconds())
     only_ids = _YAD2_TILE_ONLY_IDS[kind]
     only_ids.clear()
     fetched = errors = 0
+    buffer: list = []
+    write_failed = False
+
+    def _flush() -> None:
+        nonlocal buffer, write_failed
+        chunk, buffer = buffer, []
+        try:
+            _flush_sweep_chunk(chunk)
+        except Exception:
+            logger.exception("Yad2 tile sweep (%s): writing a chunk of %d ads failed", kind, len(chunk))
+            write_failed = True
+
     for region in REGION_SLUGS:
         if region not in REGIONS_ON_MAP_API or tile_stats.aborted or tile_stats.budget_hit:
             continue
@@ -1002,9 +1064,12 @@ def _run_yad2_tile_sweep(
             if normalized is None:
                 errors += 1
                 continue
-            normalized_items.append(normalized)
+            buffer.append(normalized)
             seen_external_ids.add(normalized.external_id)
             only_ids.add(normalized.external_id)
+            if len(buffer) >= _SWEEP_FLUSH_CHUNK:
+                _flush()
+    _flush()
     logger.info(
         "Yad2 tile sweep (%s): requests=%d extra_ads=%d failed_tiles=%d capped_leaves=%d bbox_ignored=%d "
         "aborted=%s budget_hit=%s seconds=%d",
@@ -1012,8 +1077,9 @@ def _run_yad2_tile_sweep(
         tile_stats.bbox_ignored, tile_stats.aborted, tile_stats.budget_hit,
         int(time.monotonic() - tile_stats.started_at) if tile_stats.started_at is not None else 0,
     )
-    _YAD2_TILE_STATE[kind].update(ran=True, complete=not tile_stats.incomplete)
-    return fetched, errors, not tile_stats.incomplete
+    complete = not tile_stats.incomplete and not write_failed
+    _YAD2_TILE_STATE[kind].update(ran=True, complete=complete)
+    return fetched, errors, complete
 
 
 def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
@@ -1104,6 +1170,7 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     for kind in _YAD2_TILE_KINDS:
         _YAD2_TILE_ONLY_IDS[kind].clear()
         _YAD2_TILE_STATE[kind].update(ran=False, complete=False)
+    _reset_streamed_sweep_state()
     if tile_sweep_enabled():
         swept, sweep_errors, sweep_complete = _run_yad2_tile_sweep(
             "rent", DealType.RENT, normalized_items, seen_external_ids
@@ -1122,8 +1189,13 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     # existed. Shares known_ids with the rent loop above (a Yad2 token is globally unique regardless
     # of deal type, so no cross-deal-type collision risk) — a listing seen in EITHER loop this run
     # counts as seen for delisting purposes.
-    logger.info("Scraping %d Yad2 forsale regions this run: %s", len(REGION_SLUGS), ", ".join(REGION_SLUGS))
-    for region in REGION_SLUGS:
+    # With the for-sale map sweep on, the search-page loop below (about 50 ads per district, paid Web Unlocker, and failing for every
+    # district on 2026-10-08 - which also made every Yad2 run "incomplete" and blocked its delisting) is redundant: the sweep sees every
+    # for-sale ad, and an incomplete sweep already blocks delisting on its own.
+    forsale_regions = [] if sale_tile_sweep_enabled() else list(REGION_SLUGS)
+    if forsale_regions:
+        logger.info("Scraping %d Yad2 forsale regions this run: %s", len(forsale_regions), ", ".join(forsale_regions))
+    for region in forsale_regions:
         region_succeeded = False
         for attempt in range(1, _YAD2_MAX_FETCH_ATTEMPTS + 1):
             try:
@@ -1999,10 +2071,14 @@ def run_once() -> dict[str, int]:
         errors += source_errors
         all_normalized_items.extend(normalized_items)
         scraped_city_names = {item.city for item in normalized_items if item.city}
+        if source == Source.YAD2:
+            scraped_city_names |= _STREAMED_CITIES
         per_source_delisting_input[source] = (seen_external_ids, scraped_city_names, all_succeeded)
 
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, all_normalized_items)
+        new_ids = new_ids + _STREAMED_NEW_IDS
+        price_change_pairs = price_change_pairs + _STREAMED_PRICE_PAIRS
         new_ids = _apply_tile_seed_policy(session, new_ids)
         new_ids = _quiet_backlog(session, new_ids)
 

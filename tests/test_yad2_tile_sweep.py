@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 import yad2_client as yc
+from todira_common.schemas import NormalizedListing
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 _SCRAPER_DIR = Path(__file__).resolve().parent.parent / "scraper"
@@ -267,3 +268,117 @@ def test_an_incomplete_sale_sweep_does_not_mark_the_sale_seed_done(monkeypatch):
     assert announced == []  # still quiet: the backlog must not be announced later either
     assert "yad2_sale_tiles_seeded" not in flags
     _reset_tile_state()
+
+
+def test_the_paid_forsale_search_page_loop_is_skipped_when_the_sale_sweep_is_on(monkeypatch):
+    """The sweep sees every for-sale ad, so the ~50-ads-per-district paid Web Unlocker loop (failing for every district on
+    2026-10-08, which also kept every Yad2 run 'incomplete') must not run - and must still run when the sale sweep is off."""
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["tel-aviv-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {})
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_REGION_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "_MAP_API_REGION_PACING_SECONDS", 0)
+    monkeypatch.setattr(scraper_main, "fetch_region_pages", lambda region, known_ids, **kw: iter([]))
+    monkeypatch.setattr(
+        scraper_main, "_run_yad2_tile_sweep", lambda kind, deal_type, items, seen: (0, 0, True)
+    )
+    calls: list[str] = []
+
+    def _forsale(region):
+        calls.append(region)
+        return iter([])
+
+    monkeypatch.setattr(scraper_main, "fetch_forsale_region", _forsale)
+
+    monkeypatch.setattr(scraper_main, "sale_tile_sweep_enabled", lambda: True)
+    scraper_main._scrape_yad2()
+    assert calls == []
+
+    monkeypatch.setattr(scraper_main, "sale_tile_sweep_enabled", lambda: False)
+    scraper_main._scrape_yad2()
+    assert calls == ["tel-aviv-area"]
+
+
+# --- Streaming the sweep into the database in chunks (2026-10-08) ---------------------------------------------------------------
+
+
+class _FlushSession:
+    """Just enough session for _flush_sweep_chunk: a SELECT returns `rows`, an UPDATE is recorded."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.updates = 0
+        self.commits = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, statement):
+        class _Result:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def all(self):
+                return self._rows
+
+        if statement.__class__.__name__ == "Update":
+            self.updates += 1
+            return _Result([])
+        return _Result(self.rows)
+
+    def commit(self):
+        self.commits += 1
+
+
+def _swept(external_id: str, price: int | None, city: str = "תל אביב יפו"):
+    return NormalizedListing(
+        source=scraper_main.Source.YAD2, external_id=external_id, url=f"https://www.yad2.co.il/item/{external_id}",
+        price=price, city=city, deal_type=scraper_main.DealType.RENT,
+    )
+
+
+def test_an_ad_we_already_hold_at_the_same_price_is_only_touched_not_rewritten(monkeypatch):
+    scraper_main._reset_streamed_sweep_state()
+    session = _FlushSession([(11, "same", 5000)])
+    monkeypatch.setattr(scraper_main, "get_session", lambda: session)
+    upserted: list = []
+    monkeypatch.setattr(scraper_main, "_upsert_listings", lambda s, items: (upserted.extend(items) or ([], [])))
+    scraper_main._flush_sweep_chunk([_swept("same", 5000)])
+    assert upserted == [] and session.updates == 1  # one bulk UPDATE of scraped_at
+    assert scraper_main._STREAMED_CITIES == {"תל אביב יפו"}
+
+
+def test_new_ads_and_price_changes_take_the_normal_upsert_and_are_collected(monkeypatch):
+    scraper_main._reset_streamed_sweep_state()
+    session = _FlushSession([(11, "same", 5000), (12, "cheaper", 4000)])
+    monkeypatch.setattr(scraper_main, "get_session", lambda: session)
+    seen: list[str] = []
+
+    def fake_upsert(_session, items):
+        seen.extend(item.external_id for item in items)
+        return [901], [(12, 4000)]
+
+    monkeypatch.setattr(scraper_main, "_upsert_listings", fake_upsert)
+    scraper_main._flush_sweep_chunk([_swept("same", 5000), _swept("cheaper", 3800), _swept("brand-new", 7000)])
+    assert seen == ["cheaper", "brand-new"]
+    assert scraper_main._STREAMED_NEW_IDS == [901] and scraper_main._STREAMED_PRICE_PAIRS == [(12, 4000)]
+
+
+def test_a_failed_chunk_write_makes_the_sweep_incomplete_so_nothing_is_delisted(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["jerusalem-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"jerusalem-area": [{}]})
+    monkeypatch.setattr(
+        scraper_main, "fetch_region_tiles",
+        lambda region, stats, kind="rent": iter([{"id": "a1", "url": "u", "price": 1, "city": "ירושלים"}]),
+    )
+    monkeypatch.setattr(scraper_main, "_flush_sweep_chunk", lambda chunk: (_ for _ in ()).throw(RuntimeError("db down")))
+    items: list = []
+    seen: set[str] = set()
+    swept, errors, complete = scraper_main._run_yad2_tile_sweep("rent", scraper_main.DealType.RENT, items, seen)
+    assert swept == 1 and complete is False and items == []  # nothing is accumulated in memory any more
+    assert seen == {"a1"}
+    scraper_main._YAD2_TILE_STATE["rent"].update(ran=False, complete=False)
+    scraper_main._YAD2_TILE_ONLY_IDS["rent"].clear()

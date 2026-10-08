@@ -235,10 +235,13 @@ scraper:
   yad2TileMaxRequests: 1500
   # 2026-10-08: the same piece-by-piece sweep for Yad2 FOR-SALE (723 active sale ads held vs 33,214 live). Its own seed flag
   # keeps the first run quiet.
-  # Switched on 18:00 UTC 2026-10-08 and the run died ~25 min in (job BackoffLimitExceeded after the container restarted; almost
-  # certainly out of memory: rent + sale hold ~58k ads in one process, the rent-only run with 25k fitted). OFF again until the
-  # memory use is measured and cut; see PROJECT_STATE.
-  yad2SaleTileSweep: false
+  # Switched on at 18:00 UTC 2026-10-08 and that run died ~25 min in (Job BackoffLimitExceeded after the container restarted). The
+  # cluster is ONE node with 1.9 GiB of memory shared by Postgres, website, bot and scraper, and the sweep held ~58k ads in memory
+  # until one giant upsert. Turned off, then the sweep was changed to write to the database in chunks of 1,000 while it goes (ads
+  # already held at the same price only get scraped_at refreshed), the paid for-sale search-page loop is skipped when this is on,
+  # and restartPolicy is Never so a crashed pod keeps its logs. Measured scrape-phase peak before streaming: 362 MB; chunked flush
+  # tested on a local Postgres (3,000 ads: 11 s to insert, 0.2 s when unchanged). ON again: watch the 06:00 UTC run.
+  yad2SaleTileSweep: true
   # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
   # common/todira_common/gemini_url_detail.py.
