@@ -1,4 +1,4 @@
-name: Diagnose Yad2 - the small enumerated marker fields (adType, priority, tags, promotions), counts only
+name: Diagnose Yad2 - the small enumerated marker fields (clusters and gray markers in the map response), counts only
 
 # Read-only, manual-only. Every map marker carries `orderId`. If it grows with posting time (like Komo's id) it can tell a truly new ad
 # from an old one a sweep happened to miss before. This fetches a few rent pieces on the free route, joins the markers with the rows
@@ -37,27 +37,33 @@ jobs:
               "beer-sheva-a": (2, "31.230000,34.770000,31.290000,34.830000", 14),
           }
           import collections
-          tags = collections.Counter(); adtypes = collections.Counter(); prios = collections.Counter(); promos = collections.Counter()
-          total = 0
-          for name, (region, bbox, zoom) in BOXES.items():
-              url = f"https://gw.yad2.co.il/realestate-feed/rent/map?region={region}&bBox={bbox}&zoom={zoom}"
-              r = cr.get(url, headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
-              if r.status_code != 200:
-                  print(f"== {name}: status {r.status_code}", flush=True); continue
-              for m in (r.json().get("data") or {}).get("markers") or []:
-                  total += 1
-                  adtypes[str(m.get("adType"))] += 1
-                  prios[str(m.get("priority"))] += 1
-                  for t in m.get("tags") or []:
-                      tags[f"{t.get('id')}:{t.get('name')}"] += 1
-                  for p in ((m.get("additionalDetails") or {}).get("promotions") or []):
-                      promos[str(p)[:40]] += 1
-              time.sleep(1.5)
-          print(f"== markers: {total}", flush=True)
-          print(f"== adType values: {dict(adtypes)}", flush=True)
-          print(f"== priority values: {dict(prios.most_common(12))}", flush=True)
-          print(f"== tags (id:name -> count): {dict(tags.most_common(20))}", flush=True)
-          print(f"== additionalDetails.promotions values: {dict(promos.most_common(8))}", flush=True)
+          CASES = [
+              ("south-district zoom 8", 2, "29.490631,33.476480,31.904124,36.268220", 8),
+              ("beer-sheva wide zoom 11", 2, "31.150000,34.650000,31.350000,34.950000", 11),
+              ("beer-sheva mid zoom 13", 2, "31.230000,34.770000,31.290000,34.830000", 13),
+              ("beer-sheva small zoom 14", 2, "31.250000,34.780000,31.270000,34.800000", 14),
+              ("tel-aviv-district zoom 11", 3, "31.987679,34.732856,32.146966,34.857736", 11),
+          ]
+          for name, region, bbox, zoom in CASES:
+              for kind in ("rent",):
+                  url = f"https://gw.yad2.co.il/realestate-feed/{kind}/map?region={region}&bBox={bbox}&zoom={zoom}"
+                  r = cr.get(url, headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+                  if r.status_code != 200:
+                      print(f"== {name}: status {r.status_code}", flush=True); continue
+                  d = r.json().get("data") or {}
+                  sizes = {k: (len(v) if isinstance(v, (list, dict)) else v) for k, v in d.items()}
+                  print(f"== {name}: list sizes {sizes}", flush=True)
+                  cl = d.get("clusters")
+                  if isinstance(cl, list) and cl and isinstance(cl[0], dict):
+                      print(f"==   cluster keys: {sorted(cl[0].keys())}; cluster counts (first 8): {[c.get('count') or c.get('markersCount') or c.get('total') for c in cl[:8]]}", flush=True)
+                  gm = d.get("grayMarkers")
+                  if isinstance(gm, list) and gm and isinstance(gm[0], dict):
+                      print(f"==   grayMarker keys: {sorted(gm[0].keys())}", flush=True)
+                  mk = d.get("markers") or []
+                  toks = {m.get("token") for m in mk if isinstance(m, dict)}
+                  gtoks = {m.get("token") for m in (gm or []) if isinstance(m, dict)}
+                  print(f"==   marker tokens={len(toks)} grayMarker tokens={len(gtoks)} overlap={len(toks & gtoks)}", flush=True)
+                  time.sleep(1.5)
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
