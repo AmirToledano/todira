@@ -33,17 +33,17 @@ jobs:
               print(f"== {title}")
               for row in cur.fetchall():
                   print("==   " + " | ".join(str(c) for c in row))
-          q("Yad2 rent: rows by hour of first_seen_at over the last 6 hours (all, then only those NOT pushed back by the seed policy)",
-            """select date_trunc('hour', first_seen_at) h, count(*) all_rows,
-                      count(*) filter (where first_seen_at > now() - interval '7 days') as announced_rows
-               from listings where source = 'yad2' and deal_type = 'rent' and first_seen_at > now() - interval '6 hours'
-               group by 1 order by 1""")
-          q("Yad2 rent rows announced as new in the last 40 minutes (this run only), by whether the ad is still active",
-            "select is_delisted, count(*) from listings where source='yad2' and deal_type='rent' and first_seen_at > now() - interval '40 minutes' group by 1")
-          q("Komo rows announced in the last 6h, by hour",
-            "select date_trunc('hour', first_seen_at) h, deal_type, count(*) from listings where source='komo' and first_seen_at > now() - interval '6 hours' group by 1, 2 order by 1, 2")
-          q("Yad2 rent: how many rows were backdated by the seed policy this run (first_seen_at older than 7 days but inserted recently = highest ids)",
-            "select count(*) from listings where source='yad2' and deal_type='rent' and first_seen_at < now() - interval '7 days' and id > (select max(id) - 30000 from listings)")
+          q("Komo: how far below the highest known id are ads first seen in the last 24h (rent, steady trickle)? gap = max_id - id",
+            """with m as (select max(external_id::bigint) mx from listings where source='komo' and external_id ~ '^[0-9]+$')
+               select deal_type, count(*), min(mx - external_id::bigint), percentile_cont(0.5) within group (order by mx - external_id::bigint),
+                      percentile_cont(0.9) within group (order by mx - external_id::bigint), max(mx - external_id::bigint)
+               from listings, m where source='komo' and external_id ~ '^[0-9]+$' and first_seen_at > now() - interval '24 hours' group by 1""")
+          q("Komo: id range of all held rows and of rows first seen before today (to see the id growth over time)",
+            """select deal_type, min(external_id::bigint), max(external_id::bigint), count(*) from listings
+               where source='komo' and external_id ~ '^[0-9]+$' group by 1""")
+          q("Komo rent: for ads first seen on each of the last 4 days, the max id seen that day",
+            """select date_trunc('day', first_seen_at) d, count(*), max(external_id::bigint) from listings
+               where source='komo' and deal_type='rent' and external_id ~ '^[0-9]+$' and first_seen_at > now() - interval '4 days' group by 1 order by 1""")
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
