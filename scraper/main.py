@@ -1451,6 +1451,9 @@ _HOMELESS_ROLLING_PAGES_PER_RUN = 2
 _HOMELESS_MAX_PAGE = 200
 _HOMELESS_END_NEW_CARDS = 3  # a rolling page adding this few unseen cards (or fewer) is past the end of the list
 _HOMELESS_CURSOR_FLAG = "homeless_rolling_cursor"
+# The scraper used to read only the ~8 promoted cards of a Homeless page; the regular table rows (~42 more per page) are read from
+# 2026-10-08. The first run that reads them finds a pile of ads that were always there, so it stores them quietly and sets this flag.
+_HOMELESS_ROWS_SEEDED_FLAG = "homeless_table_rows_seeded"
 _HOMELESS_STALE_DAYS = 6
 _HOMELESS_LAP_HEALTHY_DAYS = 5
 _HOMELESS_PAGE_PAUSE_SECONDS = 1.5
@@ -1506,6 +1509,23 @@ def _homeless_read_category(
         page += 1
         next_cursor = page
     return list(cards.values()), rolling_only, next_cursor, errors, wrapped
+
+
+def _homeless_rows_seeded() -> bool:
+    try:
+        with get_session() as session:
+            return bool(whatsapp_guard.get_flag(session, _HOMELESS_ROWS_SEEDED_FLAG))
+    except Exception:
+        logger.exception("Could not read the Homeless table-rows seed flag - treating the run as already seeded")
+        return True  # never risk a flood of alerts because of a read error
+
+
+def _mark_homeless_rows_seeded() -> None:
+    try:
+        with get_session() as session:
+            whatsapp_guard.set_flag(session, _HOMELESS_ROWS_SEEDED_FLAG, dt.datetime.now(dt.timezone.utc).isoformat())
+    except Exception:
+        logger.exception("Could not save the Homeless table-rows seed flag")
 
 
 def _load_homeless_cursor() -> dict[str, dict]:
@@ -1699,6 +1719,9 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
                 "wrapped_at": now_iso if wrapped else entry.get("wrapped_at"),
             }
         _save_homeless_cursor(cursor_state)
+        if not _homeless_rows_seeded():
+            _HOMELESS_ROLLING_ONLY_IDS.update(card["id"] for card in raw_items)  # first run with the table rows: all quiet
+            _mark_homeless_rows_seeded()
         _HOMELESS_CURSOR_STATE.clear()
         _HOMELESS_CURSOR_STATE.update(cursor_state)
         logger.info(
