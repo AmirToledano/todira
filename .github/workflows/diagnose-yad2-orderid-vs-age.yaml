@@ -1,4 +1,4 @@
-name: Diagnose Yad2 - the small enumerated marker fields: adType, priority, tags, promotions (read-only, counts only)
+name: Diagnose Yad2 - the small enumerated marker fields (adType, priority, tags, promotions), counts only
 
 # Read-only, manual-only. Every map marker carries `orderId`. If it grows with posting time (like Komo's id) it can tell a truly new ad
 # from an old one a sweep happened to miss before. This fetches a few rent pieces on the free route, joins the markers with the rows
