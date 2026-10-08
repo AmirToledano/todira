@@ -1,0 +1,92 @@
+name: "Diagnose - why a Yad2 Mevaseret Zion listing reached a competitor's bot but not ours (read-only, aggregate)"
+
+# Read-only, manual-only. The owner's competitor bot sent a Yad2 listing (Mevaseret Zion, 3 rooms, NIS 4,800, price drop
+# from 5,500, posted ~10:22 on 2026-10-08) that our bot did not. This checks, without guessing: (1) is a listing with those
+# public facts in our DB at all, and when did we first see it; (2) how many Yad2 Mevaseret rentals we hold and how fresh they
+# are; (3) how many price drops we detected overall; (4) what the last scraper runs reported. Prints only counts, public
+# listing facts (city, price, rooms, size, floor, timestamps) and booleans - no street, no ids of people, no filters' values.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Database checks
+        run: |
+          kubectl delete pod diag-missing-yad2 -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-missing-yad2
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- (1) candidate rows: Yad2, Mevaseret, rent, 3 rooms, price 4800 now or 5500 before ---"
+                    psql "$CONN" -c "
+                      SELECT id, price, previous_price, price_changed_at, rooms, size_sqm, floor,
+                             first_seen_at, scraped_at, posted_at, is_delisted, (duplicate_of_id IS NOT NULL) AS is_duplicate,
+                             deal_type, property_type, move_in_date
+                      FROM listings
+                      WHERE source = 'yad2' AND city ILIKE '%מבשרת%' AND rooms = 3
+                        AND (price = 4800 OR previous_price = 5500 OR price = 5500)
+                      ORDER BY first_seen_at DESC LIMIT 5;"
+                    echo "--- (2) Yad2 Mevaseret rentals we hold ---"
+                    psql "$CONN" -c "
+                      SELECT count(*) FILTER (WHERE NOT is_delisted) AS active,
+                             count(*) FILTER (WHERE is_delisted) AS delisted,
+                             count(*) FILTER (WHERE first_seen_at > now() - interval '24 hours') AS first_seen_last_24h,
+                             count(*) FILTER (WHERE first_seen_at > now() - interval '7 days') AS first_seen_last_7d,
+                             max(scraped_at) AS newest_scraped_at
+                      FROM listings WHERE source = 'yad2' AND city ILIKE '%מבשרת%' AND deal_type = 'rent';"
+                    echo "--- (3) price drops detected, all Yad2 rentals ---"
+                    psql "$CONN" -c "
+                      SELECT count(*) FILTER (WHERE previous_price IS NOT NULL) AS rows_with_previous_price,
+                             count(*) FILTER (WHERE price_changed_at > now() - interval '24 hours') AS changed_last_24h,
+                             count(*) FILTER (WHERE price_changed_at > now() - interval '24 hours' AND price < previous_price) AS drops_last_24h
+                      FROM listings WHERE source = 'yad2' AND deal_type = 'rent';"
+                    echo "--- (4) Yad2 rentals per freshness bucket (how recently each active row was scraped) ---"
+                    psql "$CONN" -c "
+                      SELECT CASE WHEN scraped_at > now() - interval '3 hours' THEN 'a_under_3h'
+                                  WHEN scraped_at > now() - interval '12 hours' THEN 'b_3_12h'
+                                  WHEN scraped_at > now() - interval '48 hours' THEN 'c_12_48h'
+                                  ELSE 'd_older' END AS last_scraped, count(*)
+                      FROM listings WHERE source = 'yad2' AND deal_type = 'rent' AND NOT is_delisted GROUP BY 1 ORDER BY 1;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-missing-yad2 -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "poll $i: phase=$PHASE"
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-missing-yad2 || true
+          kubectl delete pod diag-missing-yad2 -n todira --ignore-not-found
+
+      - name: Last scraper run summaries (counts only)
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -3); do
+            echo "== pod run"
+            kubectl logs -n todira "$POD" 2>/dev/null | grep -E "Scraper run summary|Yad2.*(fetched|markers|region|pages)|yad2.*(markers|region|pages)" | cut -c1-600 | tail -8 || true
+          done
