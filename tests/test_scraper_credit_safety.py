@@ -1000,3 +1000,63 @@ def test_scrape_yad2_map_api_region_retries_on_yad2_map_fetch_error(monkeypatch)
     assert all_succeeded is True
     assert seen_external_ids == {"1"}
     assert errors == 0
+
+
+# --- _scrape_facebook: city-centre feeds (2026-10-08) ------------------------------------------
+
+
+def test_facebook_city_feeds_are_off_unless_switched_on(monkeypatch):
+    monkeypatch.delenv(scraper_main._FACEBOOK_MARKETPLACE_POINTS_ENV_VAR, raising=False)
+    assert scraper_main._facebook_marketplace_feeds() == list(scraper_main._FACEBOOK_MARKETPLACE_CATEGORIES)
+
+
+def test_facebook_city_feeds_add_rent_for_every_point_and_sale_for_the_big_cities(monkeypatch):
+    monkeypatch.setenv(scraper_main._FACEBOOK_MARKETPLACE_POINTS_ENV_VAR, "true")
+    feeds = scraper_main._facebook_marketplace_feeds()
+    base = list(scraper_main._FACEBOOK_MARKETPLACE_CATEGORIES)
+    assert feeds[:2] == base
+    extra = feeds[2:]
+    n_points = len(scraper_main._FACEBOOK_MARKETPLACE_POINTS)
+    assert sum(1 for _p, deal in extra if deal == scraper_main.DealType.RENT) == n_points
+    assert sum(1 for _p, deal in extra if deal == scraper_main.DealType.SALE) == len(scraper_main._FACEBOOK_SALE_POINT_NAMES)
+    assert all("latitude=" in p and "longitude=" in p and "radius=40" in p for p, _d in extra)
+
+
+def test_facebook_city_feeds_stop_after_two_failures_in_a_row(monkeypatch):
+    monkeypatch.setenv(scraper_main._FACEBOOK_MARKETPLACE_POINTS_ENV_VAR, "true")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_PAGE_PACING_SECONDS_RANGE", (0, 0))
+    calls = []
+
+    def _fail_points(url_path):
+        calls.append(url_path)
+        if "?" in url_path:
+            raise scraper_main.FacebookFetchError("blocked")
+        return iter([])
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_results", _fail_points)
+    _items, _seen, _fetched, errors, all_succeeded = scraper_main._scrape_facebook()
+
+    assert sum(1 for c in calls if "?" in c) == 2  # the base feeds ran, then two city feeds failed and the rest were skipped
+    assert errors == 2 and all_succeeded is False
+
+
+def test_facebook_city_feeds_dedupe_by_listing_id(monkeypatch):
+    monkeypatch.setenv(scraper_main._FACEBOOK_MARKETPLACE_POINTS_ENV_VAR, "true")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_PAGE_PACING_SECONDS_RANGE", (0, 0))
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
+    monkeypatch.setattr(
+        scraper_main, "fetch_facebook_results", lambda url_path: iter([_fake_facebook_item("same-ad")])
+    )
+    detail_calls = []
+
+    def _detail(external_id):
+        detail_calls.append(external_id)
+        return {"city": "תל אביב", "description": None}
+
+    monkeypatch.setattr(scraper_main, "fetch_facebook_listing_detail", _detail)
+    items, seen, _fetched, _errors, _ok = scraper_main._scrape_facebook()
+    assert seen == {"same-ad"}
+    assert detail_calls == ["same-ad"]  # one detail fetch on the dedicated account, not one per overlapping city feed
+    assert len(items) == 1

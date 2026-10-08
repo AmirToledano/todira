@@ -1481,6 +1481,43 @@ _FACEBOOK_MARKETPLACE_CATEGORIES: tuple[tuple[str, str], ...] = (
     ("category/propertyforsale/", DealType.SALE),
 )
 
+# 2026-10-08: Marketplace's feed is local to a map point, and the default point returned only 3 rentals. Asking the same category
+# for 13 city centres (radius 40 km) returned 20 distinct rentals in one probe (diagnose-facebook-marketplace-coverage, run on the
+# scraper's own egress IP), so with this switch on each run also reads the feed around the points below. Off by default; the
+# dedicated account is the sensitive part, so the extra page loads are paced (5-12 s apart), counted, and stop after two failures
+# in a row (an expired cookie or a block must not be hammered). New ads still share the one per-run detail-fetch cap.
+_FACEBOOK_MARKETPLACE_POINTS_ENV_VAR = "FACEBOOK_MARKETPLACE_POINTS"
+_FACEBOOK_POINT_RADIUS_KM = 40
+_FACEBOOK_PAGE_PACING_SECONDS_RANGE = (5.0, 12.0)
+_FACEBOOK_POINT_MAX_CONSECUTIVE_FAILURES = 2
+_FACEBOOK_MARKETPLACE_POINTS: tuple[tuple[str, float, float], ...] = (
+    ("tel-aviv", 32.0853, 34.7818),
+    ("jerusalem", 31.7683, 35.2137),
+    ("haifa", 32.7940, 34.9896),
+    ("beer-sheva", 31.2530, 34.7915),
+    ("netanya", 32.3215, 34.8532),
+    ("rishon", 31.9730, 34.7925),
+    ("ashdod", 31.8044, 34.6553),
+    ("modiin", 31.8969, 35.0104),
+    ("tiberias", 32.7959, 35.5310),
+    ("kiryat-shmona", 33.2075, 35.5700),
+    ("eilat", 29.5577, 34.9519),
+)
+_FACEBOOK_SALE_POINT_NAMES = frozenset({"tel-aviv", "jerusalem", "haifa", "beer-sheva", "netanya"})
+
+
+def _facebook_marketplace_feeds() -> list[tuple[str, str]]:
+    """The base rent + for-sale feeds, plus (when FACEBOOK_MARKETPLACE_POINTS=true) the same categories around each city centre."""
+    feeds = list(_FACEBOOK_MARKETPLACE_CATEGORIES)
+    if os.environ.get(_FACEBOOK_MARKETPLACE_POINTS_ENV_VAR, "").strip().lower() != "true":
+        return feeds
+    for name, lat, lon in _FACEBOOK_MARKETPLACE_POINTS:
+        where = f"?latitude={lat}&longitude={lon}&radius={_FACEBOOK_POINT_RADIUS_KM}&exact=false"
+        feeds.append((f"category/propertyrentals{where}", DealType.RENT))
+        if name in _FACEBOOK_SALE_POINT_NAMES:
+            feeds.append((f"category/propertyforsale{where}", DealType.SALE))
+    return feeds
+
 
 def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
@@ -1518,9 +1555,18 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     new_detail_fetches_this_run = 0
     cap_logged = False
 
-    for url_path, deal_type in _FACEBOOK_MARKETPLACE_CATEGORIES:
+    point_failures_in_a_row = 0
+    for url_path, deal_type in _facebook_marketplace_feeds():
+        is_point_feed = "?" in url_path
+        if is_point_feed:
+            if point_failures_in_a_row >= _FACEBOOK_POINT_MAX_CONSECUTIVE_FAILURES:
+                logger.error("Facebook Marketplace city feeds stopped after %d failures in a row", point_failures_in_a_row)
+                break
+            time.sleep(random.uniform(*_FACEBOOK_PAGE_PACING_SECONDS_RANGE))
         try:
             raw_items = list(fetch_facebook_results(url_path))
+            if is_point_feed:
+                point_failures_in_a_row = 0
         except FacebookFetchError:
             logger.exception(
                 "Failed to fetch Facebook Marketplace search results for url_path=%r — "
@@ -1528,11 +1574,15 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
             )
             errors += 1
             all_succeeded = False
+            if is_point_feed:
+                point_failures_in_a_row += 1
             continue
 
         for raw_item in raw_items:
-            fetched += 1
             external_id = raw_item["id"]
+            if external_id in seen_external_ids:
+                continue  # already handled earlier this run (city-centre feeds overlap) - never a second detail fetch
+            fetched += 1
             seen_external_ids.add(external_id)
 
             if external_id in known_ids:

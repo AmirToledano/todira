@@ -117,6 +117,10 @@ spec:
                 # comment. Same optional-only-if-set pattern as komoMaxNewDetailFetchesPerRun etc.
                 # in scraper-cronjob.yaml, so Python's own conservative default (15) applies when
                 # this is left unset here.
+                # 2026-10-08: also read the Marketplace feed around each city centre (scraper/main.py's
+                # _FACEBOOK_MARKETPLACE_POINTS) - the default point alone returned 3 rentals, 13 points 20.
+                - name: FACEBOOK_MARKETPLACE_POINTS
+                  value: {{ .Values.scraper.facebook.marketplacePoints | default false | quote }}
                 {{- if .Values.scraper.facebook.maxNewDetailFetchesPerRun }}
                 - name: FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN
                   value: {{ .Values.scraper.facebook.maxNewDetailFetchesPerRun | quote }}

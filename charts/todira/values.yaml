@@ -341,6 +341,10 @@ scraper:
     # app=todira-facebook-scraper`) after the first run for anything unexpected — this is genuinely
     # the first time this code touches the live account outside a manual diagnostic fetch.
     suspended: false
+    # 2026-10-08: read the Marketplace rentals/for-sale feed around 11 city centres too, not only the account's default point
+    # (probe on the scraper's egress IP: default point 3 rentals, 13 points 20 distinct). 5-12 s between page loads, stops after
+    # 2 failures in a row. WATCH the dedicated account (checkpoint/login wall) after the first runs; set false to go back.
+    marketplacePoints: true
     # Left unset — scraper/main.py's own Python-side default (15, see
     # _DEFAULT_FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN) applies. Override here only after real,
     # live evidence (several successful runs, no account warnings) supports a higher number.
