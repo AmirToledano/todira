@@ -1,0 +1,109 @@
+name: "Diagnose - dry run of the real Yad2 tile sweep on the production egress IP (read-only, no writes, free route)"
+
+# Read-only, manual-only. Runs the REAL scraper/yad2_client.fetch_region_tiles code (downloaded from main as a tarball, so
+# what is measured is what would ship) for all 7 Yad2 regions in a throwaway pod on the cluster's own egress IP, free
+# browser-TLS route only, and prints ONLY counts: requests spent, failed tiles, unique ads per region, how many we already
+# hold, run time. Writes nothing to the database. Use it to decide whether helm scraper.yad2TileSweep is safe to switch on.
+on:
+  workflow_dispatch:
+    inputs:
+      max_requests:
+        description: "Request budget for the whole sweep"
+        required: false
+        default: "700"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the sweep in a throwaway pod
+        run: |
+          POD_NAME="yad2-sweep-dry-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import io, os, subprocess, sys, tarfile, time, urllib.request
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary", "httpx", "pydantic"])
+          import psycopg2
+
+          data = urllib.request.urlopen("https://codeload.github.com/AmirToledano/todira/tar.gz/refs/heads/main", timeout=120).read()
+          tarfile.open(fileobj=io.BytesIO(data)).extractall("/tmp/repo")
+          root = "/tmp/repo/" + os.listdir("/tmp/repo")[0]
+          sys.path.insert(0, root + "/common"); sys.path.insert(0, root + "/scraper")
+          os.environ["YAD2_FREE_MAP_FETCH"] = "true"
+          import yad2_client as yc
+
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          def known(ids):
+              ids = list(ids)
+              if not ids: return 0
+              cur.execute("select count(*) from listings where source='yad2' and external_id = any(%s)", (ids,))
+              return cur.fetchone()[0]
+
+          stats = yc.TileSweepStats(max_requests=int(os.environ.get("MAX_REQ", "700")))
+          all_ids = set(); started = time.time()
+          for region in yc.REGION_SLUGS:
+              if region not in yc.REGIONS_ON_MAP_API:
+                  continue
+              before = stats.requests; t0 = time.time()
+              ids = {str(item["id"]) for item in yc.fetch_region_tiles(region, stats)}
+              all_ids |= ids
+              print(f"== {region}: requests={stats.requests - before} unique_ads={len(ids)} in_our_db={known(ids)} seconds={int(time.time() - t0)}", flush=True)
+              if stats.aborted or stats.budget_hit:
+                  break
+          print(f"== TOTAL: requests={stats.requests} failed_tiles={stats.failed_tiles} capped_leaves={stats.capped_leaves} aborted={stats.aborted} budget_hit={stats.budget_hit} unique_ads={len(all_ids)} in_our_db={known(all_ids)} seconds={int(time.time() - started)}")
+          cur.execute("select count(*) from listings where source='yad2' and deal_type='rent' and not is_delisted")
+          print(f"== for comparison: active Yad2 rentals in our DB now = {cur.fetchone()[0]}")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 2400
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: MAX_REQ
+                    value: "${{ inputs.max_requests }}"
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 700); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -15
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
