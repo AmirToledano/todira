@@ -1,0 +1,67 @@
+name: Diagnose Homeless - how many /rent/N and /sale/N pages exist, and why some return 422 (read-only, ~40 ZenRows fetches)
+
+# Read-only, manual-only. /rent/2, /rent/3 and /rent/50 each return ~50 NEW ad cards (real pagination), while /rent/10 and /rent/200
+# returned 422 once. This walks the page numbers to find where the list ends and whether 422 is flaky or means "no such page",
+# retrying each 422 once. Prints ONLY counts, statuses and the short ZenRows error code. No ad content or ids. ~40 credits.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Walk page numbers
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import json, os, re, time, urllib.parse, urllib.request
+
+          KEY = os.environ["ZENROWS_API_KEY"]
+
+          def get(url):
+              params = {"apikey": KEY, "url": url, "custom_headers": "true"}
+              req = urllib.request.Request(
+                  "https://api.zenrows.com/v1/?" + urllib.parse.urlencode(params),
+                  headers={
+                      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                      "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as r:
+                      return r.status, r.read().decode("utf-8", "replace"), ""
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode("utf-8", "replace")
+                  try:
+                      code = json.loads(body).get("code", "")
+                  except Exception:
+                      code = body[:40]
+                  return e.code, "", code
+              except Exception as e:
+                  return f"error:{type(e).__name__}", "", ""
+
+          def ids(html):
+              return set(re.findall(r'id="ad_(\d+)"', html))
+
+          def walk(kind, pages):
+              seen = set()
+              for n in pages:
+                  time.sleep(1.5)
+                  url = f"https://www.homeless.co.il/{kind}/" + ("" if n == 1 else str(n))
+                  st, html, code = get(url)
+                  tries = 1
+                  if st != 200:
+                      time.sleep(4)
+                      st2, html2, code2 = get(url)
+                      tries = 2
+                      if st2 == 200:
+                          st, html, code = st2, html2, code2
+                  got = ids(html)
+                  print(f"== {kind}/{n}: status={st} {code} tries={tries} cards={len(got)} new={len(got - seen)}", flush=True)
+                  seen |= got
+              print(f"== {kind}: distinct cards over those pages = {len(seen)}")
+
+          walk("rent", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 20, 30, 40, 60, 80, 100, 150])
+          walk("sale", [1, 2, 3, 5, 10, 20, 40, 80])
+          PYEOF
