@@ -931,7 +931,9 @@ _YAD2_TILE_STATE: dict[str, dict[str, bool]] = {kind: {"ran": False, "complete":
 # run stores them quietly (first_seen_at pushed outside the retry window, no notification) and records this flag; every later
 # run treats newly found ads as new. Until a complete sweep has happened the flag stays unset, so a first attempt that aborted
 # half way does not leave the rest of the backlog to be announced later. Rent and for-sale seed separately.
-_YAD2_TILES_SEEDED_FLAGS = {"rent": "yad2_tiles_seeded", "forsale": "yad2_sale_tiles_seeded"}
+# "_v2" for rent (2026-10-08): the deeper dense-core sweep finds thousands of old ads the first sweeps never reached; that run must be a
+# quiet seed again, so the rent flag is renamed (the old "yad2_tiles_seeded" stays set but is no longer read).
+_YAD2_TILES_SEEDED_FLAGS = {"rent": "yad2_tiles_seeded_v2", "forsale": "yad2_sale_tiles_seeded"}
 _SEED_BACKDATE_DAYS = 8  # one day more than _RETRY_UNNOTIFIED_HOURS (7 days), so the retry sweep skips them
 
 

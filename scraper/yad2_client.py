@@ -1083,14 +1083,16 @@ _SALE_TILE_SWEEP_ENV_VAR = "YAD2_SALE_TILE_SWEEP"
 _TILE_MAX_REQUESTS_ENV_VAR = "YAD2_TILE_MAX_REQUESTS"
 _TILE_MAX_SECONDS_ENV_VAR = "YAD2_TILE_MAX_SECONDS"
 TILE_MARKER_CAP = 190  # a response this full is treated as capped (the API's own limit is 200)
-_TILE_MAX_DEPTH = 6
+_TILE_MAX_DEPTH = 10  # was 6: a 4 km leaf in central Beer Sheva still held more than 200 ads, so each sweep saw a different arbitrary 200
 _TILE_PAUSE_SECONDS = 0.7
 _TILE_MAX_CONSECUTIVE_FAILURES = 5
 _DEFAULT_TILE_MAX_REQUESTS = 1500
 _DEFAULT_TILE_MAX_SECONDS = 1500  # wall-clock cap: a sweep that runs this long stops and counts as incomplete
-# A child piece that is itself full AND holds at least this share of the same ads as its parent means the API is ignoring the
-# bounding box (seen live with `area=` set: every piece returned the same 200 ads) - splitting further only burns requests.
-_TILE_BBOX_IGNORED_OVERLAP = 0.9
+# The API ignores the bounding box when `area=` is sent (seen live: every piece answered with the same 200 ads). A full piece whose markers lie
+# mostly OUTSIDE its own box therefore means splitting cannot narrow it. (An earlier rule - "a full child repeating 90% of its parent's ads" -
+# also stopped on dense city cores, where all 200 of the parent's ads genuinely sit inside one child, and left exactly those cores
+# half-seen; markers carry coordinates, so the box is now checked directly.)
+_TILE_OUTSIDE_SHARE_IGNORED = 0.5
 
 
 def tile_sweep_enabled() -> bool:
@@ -1156,6 +1158,24 @@ def _fetch_tile_markers(url: str) -> list[dict[str, Any]] | None:
     return markers if isinstance(markers, list) else None
 
 
+def _outside_share(markers: list[Any], bbox: str) -> float:
+    """Share of the markers (with coordinates) lying outside `bbox` ("south,west,north,east"), with a margin of a quarter of the box
+    (at least 0.002 degrees) for markers drawn at a street centre just over an edge. 0.0 when no marker has coordinates."""
+    south, west, north, east = (float(part) for part in bbox.split(","))
+    margin_lat = max(0.002, (north - south) * 0.25)
+    margin_lon = max(0.002, (east - west) * 0.25)
+    with_coords = outside = 0
+    for marker in markers:
+        coords = ((marker.get("address") or {}).get("coords") or {}) if isinstance(marker, dict) else {}
+        lat, lon = coords.get("lat"), coords.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        with_coords += 1
+        if not (south - margin_lat <= lat <= north + margin_lat and west - margin_lon <= lon <= east + margin_lon):
+            outside += 1
+    return outside / with_coords if with_coords else 0.0
+
+
 def _split_bbox(bbox: str) -> list[str]:
     south, west, north, east = (float(part) for part in bbox.split(","))
     mid_lat, mid_lon = (south + north) / 2, (west + east) / 2
@@ -1168,8 +1188,7 @@ def _split_bbox(bbox: str) -> list[str]:
 
 def _sweep_tile(
     bbox: str, *, area: int | None, region: int, zoom: int, depth: int, host: str | None,
-    stats: TileSweepStats, sleep=time.sleep, parent_tokens: frozenset[str] | None = None,
-    clock=time.monotonic, kind: str = "rent",
+    stats: TileSweepStats, sleep=time.sleep, clock=time.monotonic, kind: str = "rent",
 ) -> Iterator[dict[str, Any]]:
     if stats.aborted or stats.budget_hit:
         return
@@ -1194,16 +1213,15 @@ def _sweep_tile(
             logger.error("Yad2 tile sweep aborted after %d consecutive failed tiles", stats.consecutive_failures)
         return
     stats.consecutive_failures = 0
-    tokens = frozenset(str(m.get("token")) for m in markers if isinstance(m, dict) and m.get("token"))
     is_full = len(markers) >= TILE_MARKER_CAP
-    if is_full and parent_tokens and tokens and len(tokens & parent_tokens) / len(tokens) >= _TILE_BBOX_IGNORED_OVERLAP:
-        stats.bbox_ignored += 1  # splitting did not narrow the result: stop here instead of burning requests
+    if is_full and _outside_share(markers, bbox) >= _TILE_OUTSIDE_SHARE_IGNORED:
+        stats.bbox_ignored += 1  # the API is not honouring the box: splitting cannot narrow it, stop instead of burning requests
     elif is_full:
         if depth < _TILE_MAX_DEPTH:
             for child in _split_bbox(bbox):
                 yield from _sweep_tile(
                     child, area=area, region=region, zoom=zoom + 1, depth=depth + 1, host=host,
-                    stats=stats, sleep=sleep, parent_tokens=tokens, clock=clock, kind=kind,
+                    stats=stats, sleep=sleep, clock=clock, kind=kind,
                 )
             return
         stats.capped_leaves += 1
