@@ -1,0 +1,83 @@
+name: Diagnose - peak memory of the Yad2 rent + for-sale sweeps in the real scraper image (read-only, writes nothing)
+
+# Read-only, manual-only. The 18:00 UTC scraper run (first with the for-sale sweep on) died ~25 minutes in with the Job failing after the
+# container restarted once; the pod was deleted with its logs. This runs the REAL scraper image (taken from the live CronJob) in a
+# throwaway pod with a 3 GiB limit, calls only main._scrape_yad2() with both sweeps on (no database writes, no notifications, no
+# seed flag), and prints counts, seconds and the process's peak resident memory. If the peak is well under the CronJob's 1536Mi the
+# crash was not the sweep's own memory. Also prints the pod's exit state.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the sweeps in a throwaway pod
+        run: |
+          POD_NAME="sweep-mem-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          IMAGE=$(kubectl get cronjob todira-scraper -n todira -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].image}')
+          echo "image tag in use: ${IMAGE##*:}"
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 2700
+            containers:
+              - name: diag
+                image: $IMAGE
+                command:
+                  - python
+                  - -u
+                  - -c
+                  - |
+                    import os, resource, time
+                    os.environ.update(YAD2_FREE_MAP_FETCH="true", YAD2_TILE_SWEEP="true", YAD2_SALE_TILE_SWEEP="true")
+                    import main
+                    t = time.time()
+                    items, seen, fetched, errors, ok = main._scrape_yad2()
+                    print("== scrape done: items=%d seen=%d fetched=%d errors=%d all_succeeded=%s seconds=%d" % (len(items), len(seen), fetched, errors, ok, time.time() - t), flush=True)
+                    print("== peak resident memory MB: %d" % (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024), flush=True)
+                    import sys, json
+                    print("== size of the normalized list MB (json-ish estimate): %d" % (sum(len(json.dumps(i.model_dump(), default=str)) for i in items[:2000]) / 2000 * len(items) / 1e6), flush=True)
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: TELEGRAM_BOT_TOKEN
+                    value: "unused"
+                  - name: YAD2_TILE_MAX_REQUESTS
+                    value: "1500"
+                resources:
+                  requests: { cpu: "100m", memory: "256Mi" }
+                  limits: { cpu: "500m", memory: "3Gi" }
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 600); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 6
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep -E "^==|Traceback|Error|error" | tail -15
+          kubectl get pod "$POD_NAME" -n todira -o jsonpath='phase={.status.phase} reason={.status.containerStatuses[0].state.terminated.reason} exit={.status.containerStatuses[0].state.terminated.exitCode}{"\n"}' || true
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
