@@ -1,0 +1,128 @@
+name: Diagnose Facebook Marketplace - does the rentals feed change with location, and does it paginate? (read-only)
+
+# Read-only, manual-only. We hold ~11 active Facebook ads. Marketplace's feed is local to a map point, so asking for several
+# cities (latitude/longitude/radius) may return different ads than the account's default point, and the page's embedded data
+# may carry a cursor for more. This runs in a throwaway pod on the cluster's own egress IP (the same IP the real scraper uses, so
+# the dedicated account never sees a second location), with a long pause between requests. Prints ONLY counts: distinct ad ids
+# per point, how many are new compared with the default feed, and whether a next-page marker exists. No ids, no cookie, no text.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Probe in a throwaway pod
+        run: |
+          POD_NAME="fb-cov-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import io, json, os, re, subprocess, sys, tarfile, time, urllib.request
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "httpx"])
+          data = urllib.request.urlopen("https://codeload.github.com/AmirToledano/todira/tar.gz/refs/heads/main", timeout=120).read()
+          tarfile.open(fileobj=io.BytesIO(data)).extractall("/tmp/repo")
+          root = "/tmp/repo/" + os.listdir("/tmp/repo")[0]
+          sys.path.insert(0, root + "/scraper"); sys.path.insert(0, root + "/common")
+          import facebook_client as fb
+
+          def has_next(html):
+              flags = []
+              for block in fb._iter_json_blocks(html):
+                  stack = [block]
+                  while stack:
+                      o = stack.pop()
+                      if isinstance(o, dict):
+                          if o.get("has_next_page") is True and o.get("end_cursor"):
+                              flags.append(True)
+                          stack.extend(o.values())
+                      elif isinstance(o, list):
+                          stack.extend(o)
+              return bool(flags)
+
+          def probe(label, path):
+              try:
+                  html = fb._fetch(fb._MARKETPLACE_BASE + path, context_label=label)
+              except Exception as e:
+                  print(f"== {label}: FAILED {type(e).__name__}", flush=True)
+                  return None
+              ids = set()
+              for block in fb._iter_json_blocks(html):
+                  for story in fb._find_nodes(block, "MarketplaceFeedListingStory"):
+                      parsed = fb._parse_listing_story(story)
+                      if parsed:
+                          ids.add(parsed["id"])
+              return ids, has_next(html)
+
+          base = probe("default", fb.DEFAULT_URL_PATH)
+          base_ids = base[0] if base else set()
+          if base:
+              print(f"== default feed: ads={len(base_ids)} next_page_marker={base[1]}", flush=True)
+          POINTS = {
+              "tel-aviv": (32.0853, 34.7818), "jerusalem": (31.7683, 35.2137), "haifa": (32.7940, 34.9896),
+              "beer-sheva": (31.2530, 34.7915), "netanya": (32.3215, 34.8532), "rishon": (31.9730, 34.7925),
+              "ashdod": (31.8044, 34.6553), "petah-tikva": (32.0840, 34.8878), "eilat": (29.5577, 34.9519),
+              "tiberias": (32.7959, 35.5310), "kiryat-shmona": (33.2075, 35.5700), "modiin": (31.8969, 35.0104),
+          }
+          union = set(base_ids)
+          for name, (lat, lon) in POINTS.items():
+              time.sleep(8)
+              got = probe(name, f"category/propertyrentals?latitude={lat}&longitude={lon}&radius=40&exact=false")
+              if not got:
+                  continue
+              ids, nxt = got
+              new = ids - union
+              union |= ids
+              print(f"== {name}: ads={len(ids)} new_vs_everything_so_far={len(new)} next_page_marker={nxt}", flush=True)
+          print(f"== TOTAL distinct ads across all points: {len(union)} (default alone: {len(base_ids)})")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 900
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: FACEBOOK_COOKIES
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: facebook-cookies
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 300); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -8
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true

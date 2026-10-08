@@ -1,0 +1,81 @@
+name: Diagnose Homeless - how does the site load more than ~53 ads? (read-only, a few ZenRows credits)
+
+# Read-only, manual-only. Homeless /rent/ and /sale/ return only ~53 cards per plain fetch and no pagination link was ever found,
+# so we hold ~90 active Homeless ads. This asks ZenRows to render the page in a real browser and report (1) which background
+# (XHR) requests the page made - that is where a "load more" endpoint would show up - and (2) how many ad cards exist after the
+# page is scrolled down a few times. Prints ONLY counts and public Homeless URL paths. Costs ~5-10 ZenRows credits per call.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Render /rent/ with XHR capture and with scrolling
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import json, os, re, urllib.parse, urllib.request
+
+          KEY = os.environ["ZENROWS_API_KEY"]
+          TARGET = "https://www.homeless.co.il/rent/"
+
+          def call(extra):
+              params = {"apikey": KEY, "url": TARGET, "custom_headers": "true", "js_render": "true", **extra}
+              req = urllib.request.Request(
+                  "https://api.zenrows.com/v1/?" + urllib.parse.urlencode(params),
+                  headers={
+                      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                      "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=150) as r:
+                      return r.status, r.headers.get("X-Request-Cost") or r.headers.get("X-Request-Credits"), r.read().decode("utf-8", "replace")
+              except urllib.error.HTTPError as e:
+                  return e.code, None, e.read().decode("utf-8", "replace")[:300]
+              except Exception as e:
+                  return f"error:{type(e).__name__}", None, ""
+
+          def cards(html):
+              return len(set(re.findall(r'id="ad_(\d+)"', html)))
+
+          # (1) which background requests does the page make?
+          status, cost, body = call({"json_response": "true"})
+          print(f"== (1) json_response: status={status} credits={cost} bytes={len(body)}")
+          try:
+              data = json.loads(body)
+              html = data.get("html", "")
+              print(f"== (1) cards in rendered html = {cards(html)}")
+              xhrs = data.get("xhr") or []
+              print(f"== (1) background requests captured = {len(xhrs)}")
+              seen = set()
+              for x in xhrs:
+                  url = str(x.get("url", ""))
+                  if "homeless.co.il" not in url:
+                      continue
+                  key = (x.get("method"), url.split("?")[0])
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  print(f"==    {x.get('method')} {x.get('status_code')} {url[:200]}")
+          except Exception as e:
+              print(f"== (1) not json: {type(e).__name__}: {body[:200]!r}")
+
+          # (2) does scrolling load more cards?
+          instr = json.dumps([{"scroll_y": 4000}, {"wait": 2000}] * 5)
+          status, cost, html = call({"js_instructions": instr})
+          print(f"== (2) after 5 scrolls: status={status} credits={cost} cards={cards(html) if isinstance(status, int) and status == 200 else 'n/a'}")
+
+          # (3) pagination or load-more hints inside the plain rendered page
+          status, cost, html = call({})
+          if status == 200:
+              for pat in (r"pagenum", r"page=\d", r"pg=\d", r"load[-_ ]?more", r"הצג עוד", r"עוד מודעות", r"viewpage", r"infinite", r"nextPage", r"data-page"):
+                  m = re.findall(pat, html, flags=re.I)
+                  print(f"== (3) hint {pat!r}: {len(m)}")
+              for m in sorted(set(re.findall(r'(?:href|data-url|data-href|action)="([^"]*(?:page|pg|p=)[^"]*)"', html, flags=re.I)))[:12]:
+                  print(f"==    link-ish: {m[:160]}")
+          else:
+              print(f"== (3) plain render status={status}")
+          PYEOF

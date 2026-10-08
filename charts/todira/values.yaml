@@ -217,7 +217,10 @@ scraper:
   #   calls it ONCE (2 credits/run, not 84). The ~260-credits/run and ~6,360-total estimates above
   #   are therefore conservative (real cost is lower) — left as-is rather than recalculated, since
   #   they were already meant as a safety margin, not a tight prediction.
-  komoMaxNewDetailFetchesPerRun: 300
+  # 2026-10-08: raised 300 -> 800. Komo costs nothing per request any more (plain direct requests, no proxy and no ZenRows - see
+  # scraper/komo_client.py), so this cap now only limits how fast we catch up and how hard we hit Komo's site. Measured live:
+  # ~2,550 sale ads and ~170 rent ads were still missing at 300/run. Steady state needs only a handful per run.
+  komoMaxNewDetailFetchesPerRun: 800
   yad2MaxPagesPerRegion: 5
   # 2026-10-02: fetch Yad2's map API for free with a browser TLS fingerprint (curl_cffi) from our own IP,
   # falling back to Bright Data Web Unlocker if Yad2 ever blocks it. See scraper/yad2_client.py's
