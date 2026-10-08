@@ -245,7 +245,13 @@ scraper:
   # page fetch, only for genuinely-new listings; see homeless_client.fetch_listing_description and
   # scraper/main.py's _scrape_homeless), lower expected volume than Komo's nationwide coverage, but
   # still a real per-listing cost that shouldn't go uncapped on a first-ever run.
-  homelessMaxNewDescriptionFetchesPerRun: 50
+  # 2026-10-08: Homeless pagination. ZenRows' free plan has 5,000 credits a month (1,108 used by Oct 8, cycle ends Oct 30, so ~175 a day
+  # left) and every Homeless page costs one. Each run reads pages 1-2 of rent and sale plus 2 rolling pages per category (a lap of
+  # the whole list takes ~3 days); that is ~8 credits a run. Description fetches were cut to fit the same budget: 6 new + 2 backfill
+  # per run (was 50 + 30; the backlog this crawl finds would otherwise burn the whole month in a few days).
+  homelessPagination: true
+  homelessMaxNewDescriptionFetchesPerRun: 6
+  homelessBackfillMaxPerRun: 2
   # 2026-09-18: real incident, not hypothetical — the first real production run after switching
   # Yad2 enrichment to Web Unlocker ran 20+ minutes and never reached the notification-sending
   # step, live-confirmed via check-scraper-job-status.yaml's real pod logs, because a real backlog

@@ -104,6 +104,7 @@ import html
 import logging
 import os
 import re
+import time
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
@@ -402,6 +403,36 @@ def fetch_search_results(url: str = SEARCH_PAGE_URL) -> Iterator[dict[str, Any]]
     every current listing or whether the site paginates beyond it."""
     search_html = _fetch_search_html(url)
     yield from _parse_cards(search_html)
+
+
+# --- Pagination (2026-10-08) -------------------------------------------------------------------------------------------
+# Found live (diagnose-homeless-url-pages / diagnose-homeless-page-depth): the list paginates with /rent/<n> and /sale/<n>. Each
+# page holds ~53 cards, about 22 of them promoted ads that repeat on every page; rent runs to roughly page 75 (page 80 added 2 new
+# cards, 100 added 0), sale is longer. ZenRows answers RESP001 for some pages some of the time, so a failed page is retried
+# before it counts as failed. Each page costs one ZenRows credit, which is why the scraper reads only the first pages on most
+# runs and the whole list about once a day (see scraper/main.py).
+_PAGE_RETRY_PAUSE_SECONDS = 4.0
+_PAGE_MAX_ATTEMPTS = 3
+
+
+def page_url(base_url: str, page: int) -> str:
+    """`base_url` is SEARCH_PAGE_URL or SALE_SEARCH_PAGE_URL (both end with a slash); page 1 is the base URL itself."""
+    return base_url if page <= 1 else f"{base_url}{page}"
+
+
+def fetch_search_page(base_url: str, page: int, *, sleep=time.sleep) -> list[dict[str, Any]]:
+    """The cards of ONE list page. Retries a failed fetch (ZenRows RESP001 is intermittent); raises HomelessFetchError only when
+    every attempt failed, so a caller can tell 'page failed' from 'page is empty'."""
+    last_error: HomelessFetchError | None = None
+    for attempt in range(1, _PAGE_MAX_ATTEMPTS + 1):
+        try:
+            return list(_parse_cards(_fetch_search_html(page_url(base_url, page))))
+        except HomelessFetchError as exc:
+            last_error = exc
+            if attempt < _PAGE_MAX_ATTEMPTS:
+                sleep(_PAGE_RETRY_PAUSE_SECONDS)
+    assert last_error is not None
+    raise last_error
 
 
 def fetch_listing_description(url: str) -> str | None:
