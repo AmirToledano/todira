@@ -345,7 +345,7 @@ def _fetch_search_html(url: str) -> str:
     return _zenrows_get(url, context_label=f"Homeless search page url={url!r}", custom_headers=True)
 
 
-def _parse_cards(search_html: str) -> Iterator[dict[str, Any]]:
+def _parse_div_cards(search_html: str) -> Iterator[dict[str, Any]]:
     for card_match in _CARD_RE.finditer(search_html):
         external_id = card_match.group("id")
         body = card_match.group("body")
@@ -390,6 +390,74 @@ def _parse_cards(search_html: str) -> Iterator[dict[str, Any]]:
             "city": city,
             "images": [image_url] if image_url else [],
         }
+
+
+# --- Table rows (2026-10-08) -------------------------------------------------------------------------------------------
+# Found live (diagnose-homeless-card-parsing): the div cards above are only the PROMOTED listings (8 of ~50 on a page). Every regular
+# listing is still an old-style table row, `<tr id="ad_<n>" type="ad">`, which the 2026-09-24 rewrite never read - so the scraper saw
+# ~8 ads a page and the table showed ~86 active Homeless rentals. A row has 12 cells (13 for a broker's row, which adds the agency
+# name); read from the END so both layouts share one mapping (diagnose-homeless-table-rows, rent and sale):
+#   [-1] details link   [-2] updated   [-3] entry date   [-4] price   [-5] floor   [-6] rooms   [-7] street   [-8] neighborhood
+#   [-9] city           [-10] property type (or the agency on a broker row)
+_ROW_RE = re.compile(r'<tr\b[^>]*\bid="ad_(?P<id>\d+)"[^>]*>(?P<body>.*?)</tr>', re.S)
+_CELL_RE = re.compile(r"<td\b[^>]*>(?P<body>.*?)</td>", re.S)
+_ROW_LINK_RE = re.compile(r'href="(?P<href>/[^"]*?viewad,\d+\.aspx)"')
+_ROW_IMG_RE = re.compile(r'<img[^>]*\bsrc="(?P<src>[^"]*)"[^>]*PictureDisplayOnBoard|<img[^>]*PictureDisplayOnBoard[^>]*\bsrc="(?P<src2>[^"]*)"')
+_ROW_MIN_CELLS = 10
+
+
+def _cell_text(cell: str) -> str:
+    return _clean(_strip_tags(cell))
+
+
+def _parse_table_rows(search_html: str) -> Iterator[dict[str, Any]]:
+    for row_match in _ROW_RE.finditer(search_html):
+        external_id = row_match.group("id")
+        body = row_match.group("body")
+        cells = [match.group("body") for match in _CELL_RE.finditer(body)]
+        if len(cells) < _ROW_MIN_CELLS:
+            continue  # a header or spacer row, not a listing
+        link_match = _ROW_LINK_RE.search(cells[-1]) or _ROW_LINK_RE.search(body)
+        if link_match is None:
+            logger.warning("Skipping Homeless table row id=%s: no details link found in its own markup", external_id)
+            continue
+        city = _cell_text(cells[-9]) or None
+        street = _cell_text(cells[-7]) or None
+        neighborhood = _cell_text(cells[-8]) or None
+        if neighborhood is not None and neighborhood.isdigit():
+            neighborhood = None  # some rows carry a house number in this cell
+        rooms = None
+        rooms_text = _cell_text(cells[-6])
+        if re.fullmatch(r"\d+(?:\.\d+)?", rooms_text):
+            rooms = float(rooms_text)
+        floor_text = _cell_text(cells[-5])
+        floor = 0 if "קרקע" in floor_text else (int(floor_text) if re.fullmatch(r"-?\d+", floor_text) else None)
+        price = _parse_price(_cell_text(cells[-4]))
+        image_match = _ROW_IMG_RE.search(body)
+        image_url = html.unescape((image_match.group("src") or image_match.group("src2") or "") if image_match else "").strip()
+        yield {
+            "id": external_id,
+            "url": urljoin(_DETAIL_PAGE_BASE, html.unescape(link_match.group("href")).strip()),
+            "price": price,
+            "rooms": rooms,
+            "floor": floor,
+            "square_meters": None,  # the table has no area column
+            "street": street,
+            "neighborhood": neighborhood,
+            "city": city,
+            "images": [urljoin(_DETAIL_PAGE_BASE, image_url)] if image_url else [],
+        }
+
+
+def _parse_cards(search_html: str) -> Iterator[dict[str, Any]]:
+    """Every listing on a page: the promoted div cards first, then the regular table rows (an id is never yielded twice)."""
+    seen_ids: set[str] = set()
+    for parse in (_parse_div_cards, _parse_table_rows):
+        for item in parse(search_html):
+            if item["id"] in seen_ids:
+                continue
+            seen_ids.add(item["id"])
+            yield item
 
 
 def fetch_search_results(url: str = SEARCH_PAGE_URL) -> Iterator[dict[str, Any]]:

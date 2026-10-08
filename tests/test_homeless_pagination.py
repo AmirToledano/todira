@@ -187,6 +187,7 @@ def test_homeless_is_a_partial_view_source_only_while_pagination_is_on(monkeypat
     monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
     monkeypatch.setattr(scraper_main, "_load_homeless_cursor", lambda: {})
     monkeypatch.setattr(scraper_main, "_save_homeless_cursor", lambda state: None)
+    monkeypatch.setattr(scraper_main, "_homeless_rows_seeded", lambda: True)
     monkeypatch.setattr(
         scraper_main,
         "_homeless_read_category",
@@ -230,3 +231,93 @@ def test_komo_backlog_ads_are_stored_quietly_and_fresh_ones_still_announced():
     assert scraper_main._quiet_backlog(session, [1, 2]) == [2]
     assert session.updates == 1
     scraper_main._KOMO_BACKLOG_IDS.clear()
+
+
+# --- Table rows: the regular listings (2026-10-08) ------------------------------------------------------------------------------
+
+
+def _row(ad_id, cells, link):
+    tds = "".join(f"<td>{c}</td>" for c in cells)
+    return (
+        f'<tr id="ad_{ad_id}" type="ad" class="light" rel="boldad">'
+        f'<td class="selectionarea"><input type="checkbox" id="chk_{ad_id}" name="chk_{ad_id}" /></td>'
+        f'<td><div><img class="PictureDisplayOnBoard" src="https://uploads.homeless.co.il/rent/x.jpg" alt="" /></div></td>'
+        f"{tds}"
+        f'<td class="details"><a id="d" title="t" href="{link}" target="_blank"><img title="t" src="/Images/i.png" alt="" /></a></td></tr>'
+    )
+
+
+_RENT_ROW = _row("263412", ["פנטהאוז", "תל אביב יפו", "רמת אביב", "האמוראים", "4", "7", "", "מיידי", "08/10/2026"], "/rent/viewad,263412.aspx")
+_SALE_ROW = _row("700001", ["דירה", "רחובות", "10", "משה פורר", "4.5", "7", "2,190,000 ₪", "גמיש", "08/10/2026"], "/sale/viewad,700001.aspx")
+
+
+def test_a_regular_table_row_is_read_with_the_confirmed_column_layout():
+    items = list(hc._parse_table_rows(f"<table>{_RENT_ROW}</table>"))
+    assert items == [
+        {
+            "id": "263412",
+            "url": "https://www.homeless.co.il/rent/viewad,263412.aspx",
+            "price": None,  # the live row had an empty price cell
+            "rooms": 4.0,
+            "floor": 7,
+            "square_meters": None,
+            "street": "האמוראים",
+            "neighborhood": "רמת אביב",
+            "city": "תל אביב יפו",
+            "images": ["https://uploads.homeless.co.il/rent/x.jpg"],
+        }
+    ]
+
+
+def test_a_sale_row_reads_the_price_half_rooms_and_drops_a_numeric_neighborhood():
+    (item,) = list(hc._parse_table_rows(f"<table>{_SALE_ROW}</table>"))
+    assert item["price"] == 2190000 and item["rooms"] == 4.5 and item["city"] == "רחובות"
+    assert item["neighborhood"] is None and item["street"] == "משה פורר"
+    assert item["url"] == "https://www.homeless.co.il/sale/viewad,700001.aspx"
+
+
+def test_a_broker_row_with_the_extra_agency_cell_reads_the_same_fields_from_the_end():
+    row = _row("800002", ["דירה", "שם הסוכנות", "חיפה", "הדר", "הרצל", "3", "קרקע", "4,500 ₪", "מיידי", "08/10/2026"], "/RentTivuch/viewad,800002.aspx")
+    (item,) = list(hc._parse_table_rows(f"<table>{row}</table>"))
+    assert (item["city"], item["street"], item["rooms"], item["floor"], item["price"]) == ("חיפה", "הרצל", 3.0, 0, 4500)
+    assert item["url"].endswith("/RentTivuch/viewad,800002.aspx")
+
+
+def test_header_and_spacer_rows_are_not_listings():
+    html_text = '<table><tr id="ad_1"><td>x</td></tr><tr><th>סימון</th><th>עיר</th></tr></table>'
+    assert list(hc._parse_table_rows(html_text)) == []
+
+
+def test_parse_cards_returns_promoted_cards_and_table_rows_without_duplicates():
+    card = (
+        '<div id="ad_263412" class="image-carousel"><div>'
+        '<a class="R promotedAd" href="/rent/viewad,263412.aspx" title="דירה, 4 חדרים, האמוראים, תל אביב יפו">'
+        '<img src="https://uploads.homeless.co.il/rent/c.jpg" alt=""><div class="price">6,000 ₪</div>'
+        '<h3 class="desc"><span>דירה</span>&nbsp;להשכרה<div class="custom-divider"></div>4 חדרים</h3></a></div></div>'
+    )
+    items = list(hc._parse_cards(f"{card}<table>{_RENT_ROW}{_SALE_ROW}</table>"))
+    assert [i["id"] for i in items] == ["263412", "700001"]  # the promoted card wins; the same id in the table is not repeated
+    assert items[0]["price"] == 6000
+
+
+def test_the_first_run_that_reads_table_rows_stores_everything_quietly_and_sets_the_flag(monkeypatch):
+    monkeypatch.setenv("HOMELESS_PAGINATION", "true")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_load_homeless_cursor", lambda: {})
+    monkeypatch.setattr(scraper_main, "_save_homeless_cursor", lambda state: None)
+    monkeypatch.setattr(scraper_main, "_homeless_rows_seeded", lambda: False)
+    marked = []
+    monkeypatch.setattr(scraper_main, "_mark_homeless_rows_seeded", lambda: marked.append(True))
+    monkeypatch.setattr(
+        scraper_main, "_homeless_read_category",
+        lambda base_url, cursor: ([_card("fresh-1"), _card("fresh-2")], set(), 3, 0, False),
+    )
+    monkeypatch.setattr(scraper_main, "_fetch_concurrently", lambda *a, **k: _noop_coro())
+    monkeypatch.setattr(scraper_main, "_homeless_max_new_description_fetches_per_run", lambda: 0)
+    try:
+        scraper_main._scrape_homeless()
+        assert scraper_main._HOMELESS_ROLLING_ONLY_IDS >= {"fresh-1", "fresh-2"}
+        assert marked == [True]
+    finally:
+        scraper_main._PARTIAL_VIEW_SOURCES.discard(scraper_main.Source.HOMELESS)
+        scraper_main._HOMELESS_ROLLING_ONLY_IDS.clear()
