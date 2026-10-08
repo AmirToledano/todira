@@ -1,0 +1,74 @@
+name: Diagnose Homeless - how the search form and "more ads" link work (read-only, 1 ZenRows fetch)
+
+# Read-only, manual-only. A rendered Homeless page shows only ~53 ads, makes no background requests and has no pagination link
+# (diagnose-homeless-more-listings). The remaining way to reach more ads is the search form itself (city / area / price filters)
+# or a "more ads" link. This fetches /rent/ once the same way the scraper does (custom headers, plain tier) and prints the
+# public page structure only: the form's action and method, each field's name with its first few option values, how many links
+# of each URL shape the page has (digits replaced by N), the text around "more ads", and short snippets of the page's own
+# ajax/fetch code. Nothing about any listing is printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch /rent/ and describe the form
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import collections, os, re, urllib.parse, urllib.request
+
+          params = {"apikey": os.environ["ZENROWS_API_KEY"], "url": "https://www.homeless.co.il/rent/", "custom_headers": "true"}
+          req = urllib.request.Request(
+              "https://api.zenrows.com/v1/?" + urllib.parse.urlencode(params),
+              headers={
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                  "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8",
+              },
+          )
+          html = urllib.request.urlopen(req, timeout=120).read().decode("utf-8", "replace")
+          print(f"== page bytes={len(html)} cards={len(set(re.findall(r'id=\"ad_(\\d+)\"', html)))}")
+
+          for m in re.finditer(r"<form\b[^>]*>", html, flags=re.I):
+              tag = re.sub(r"\s+", " ", m.group(0))[:260]
+              print(f"== FORM {tag}")
+
+          fields = collections.OrderedDict()
+          for m in re.finditer(r"<(input|select|textarea)\b([^>]*)>", html, flags=re.I):
+              attrs = m.group(2)
+              name = re.search(r'name="([^"]*)"', attrs)
+              typ = re.search(r'type="([^"]*)"', attrs)
+              if not name or (typ and typ.group(1).lower() in ("checkbox", "hidden") and name.group(1).startswith("chk_")):
+                  continue
+              fields.setdefault(name.group(1), (m.group(1), typ.group(1) if typ else ""))
+          print(f"== distinct named fields: {len(fields)}")
+          for name, (tag, typ) in list(fields.items())[:60]:
+              print(f"==   field {name!r} <{tag} {typ}>")
+
+          for m in re.finditer(r"<select\b[^>]*name=\"([^\"]*)\"[^>]*>(.*?)</select>", html, flags=re.I | re.S):
+              opts = re.findall(r"<option\b[^>]*value=\"([^\"]*)\"[^>]*>([^<]*)", m.group(2), flags=re.I)
+              sample = ", ".join(f"{v}={t.strip()[:14]}" for v, t in opts[:6])
+              print(f"== SELECT {m.group(1)!r}: {len(opts)} options, e.g. {sample}")
+
+          shapes = collections.Counter()
+          for href in re.findall(r'href="([^"#]+)"', html):
+              shapes[re.sub(r"\d+", "N", href)[:110]] += 1
+          print("== link shapes (top 25):")
+          for shape, n in shapes.most_common(25):
+              print(f"==   {n:4d} {shape}")
+
+          for m in re.finditer(r"עוד מודעות", html):
+              ctx = re.sub(r"\s+", " ", html[max(0, m.start() - 220): m.end() + 160])
+              print(f"== more-ads context: {ctx}")
+
+          shown = 0
+          for m in re.finditer(r"\$\.(?:ajax|post|get)\(|fetch\(|XMLHttpRequest|\.load\(", html):
+              snippet = re.sub(r"\s+", " ", html[max(0, m.start() - 80): m.end() + 220])
+              print(f"== js snippet: {snippet}")
+              shown += 1
+              if shown >= 8:
+                  break
+          print(f"== js snippets shown: {shown}")
+          PYEOF
