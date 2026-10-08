@@ -158,3 +158,112 @@ def test_tiles_never_send_the_area_parameter(monkeypatch):
     stats = yc.TileSweepStats()
     list(yc.fetch_region_tiles("tel-aviv-area", stats, sleep=_no_sleep))
     assert "area=" not in seen[0] and "region=3" in seen[0]
+
+
+def test_forsale_tiles_use_the_forsale_map_and_the_same_boxes(monkeypatch):
+    seen = _patch_fetch(monkeypatch, lambda url: [_marker("s1")])
+    stats = yc.TileSweepStats()
+    items = list(yc.fetch_region_tiles("jerusalem-area", stats, sleep=_no_sleep, kind="forsale"))
+    assert [i["id"] for i in items] == ["s1"]
+    assert seen and all("/realestate-feed/forsale/map?" in url for url in seen)
+    assert "area=" not in seen[0]
+    assert "bBox=31.549448,34.818058,31.938335,35.272844" in seen[0]
+
+
+def test_rent_stays_the_default_map(monkeypatch):
+    seen = _patch_fetch(monkeypatch, lambda url: [_marker("r1")])
+    list(yc.fetch_region_tiles("jerusalem-area", yc.TileSweepStats(), sleep=_no_sleep))
+    assert all("/realestate-feed/rent/map?" in url for url in seen)
+
+
+def test_the_east_district_keeps_its_own_host_for_forsale_too(monkeypatch):
+    seen = _patch_fetch(monkeypatch, lambda url: [_marker("e1")])
+    list(yc.fetch_region_tiles("partnership/east", yc.TileSweepStats(), sleep=_no_sleep, kind="forsale"))
+    assert seen[0].startswith("https://gw.yad-il.co.il/realestate-feed/forsale/map?")
+
+
+def test_unknown_map_kind_is_rejected():
+    import pytest
+
+    with pytest.raises(ValueError):
+        yc._build_map_url("1,2,3,4", area=None, region=1, zoom=10, kind="sublet")
+
+
+def test_sale_sweep_needs_its_own_switch_on_top_of_the_rent_ones(monkeypatch):
+    for name in ("YAD2_TILE_SWEEP", "YAD2_FREE_MAP_FETCH", "YAD2_SALE_TILE_SWEEP"):
+        monkeypatch.delenv(name, raising=False)
+    assert not yc.sale_tile_sweep_enabled()
+    monkeypatch.setenv("YAD2_SALE_TILE_SWEEP", "true")
+    assert not yc.sale_tile_sweep_enabled()  # the rent switches are off
+    monkeypatch.setenv("YAD2_TILE_SWEEP", "true")
+    monkeypatch.setenv("YAD2_FREE_MAP_FETCH", "true")
+    assert yc.sale_tile_sweep_enabled()
+    monkeypatch.setenv("YAD2_SALE_TILE_SWEEP", "false")
+    assert not yc.sale_tile_sweep_enabled() and yc.tile_sweep_enabled()
+
+
+class _FakeSession:
+    """Just enough of a SQLAlchemy session for _apply_tile_seed_policy: remembers flags, rows and updates."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.updated = []
+
+    def execute(self, statement):
+        class _Result:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def all(self):
+                return self._rows
+
+        if statement.__class__.__name__ == "Update":
+            self.updated.append(statement)
+            return _Result([])
+        return _Result(self.rows)
+
+    def commit(self):
+        return None
+
+
+def _reset_tile_state():
+    for kind in scraper_main._YAD2_TILE_KINDS:
+        scraper_main._YAD2_TILE_ONLY_IDS[kind].clear()
+        scraper_main._YAD2_TILE_STATE[kind].update(ran=False, complete=False)
+
+
+def test_each_map_seeds_on_its_own_flag(monkeypatch):
+    _reset_tile_state()
+    flags: dict[str, str] = {}
+    monkeypatch.setattr(scraper_main.whatsapp_guard, "get_flag", lambda session, name: flags.get(name))
+    monkeypatch.setattr(scraper_main.whatsapp_guard, "set_flag", lambda session, name, value: flags.__setitem__(name, value))
+    # rent already seeded earlier; for-sale never swept yet
+    flags["yad2_tiles_seeded"] = "done"
+    scraper_main._YAD2_TILE_STATE["rent"].update(ran=True, complete=True)
+    scraper_main._YAD2_TILE_ONLY_IDS["rent"].update({"r-tile"})
+    scraper_main._YAD2_TILE_STATE["forsale"].update(ran=True, complete=True)
+    scraper_main._YAD2_TILE_ONLY_IDS["forsale"].update({"s-tile"})
+    session = _FakeSession([(1, "r-tile"), (2, "s-tile"), (3, "s-plain")])
+
+    announced = scraper_main._apply_tile_seed_policy(session, [1, 2, 3])
+
+    assert announced == [1, 3]  # the new rent ad is announced, the for-sale backlog ad (2) is stored quietly
+    assert len(session.updated) == 1
+    assert flags.get("yad2_sale_tiles_seeded") and flags["yad2_tiles_seeded"] == "done"
+    _reset_tile_state()
+
+
+def test_an_incomplete_sale_sweep_does_not_mark_the_sale_seed_done(monkeypatch):
+    _reset_tile_state()
+    flags: dict[str, str] = {}
+    monkeypatch.setattr(scraper_main.whatsapp_guard, "get_flag", lambda session, name: flags.get(name))
+    monkeypatch.setattr(scraper_main.whatsapp_guard, "set_flag", lambda session, name, value: flags.__setitem__(name, value))
+    scraper_main._YAD2_TILE_STATE["forsale"].update(ran=True, complete=False)
+    scraper_main._YAD2_TILE_ONLY_IDS["forsale"].update({"s-tile"})
+    session = _FakeSession([(5, "s-tile")])
+
+    announced = scraper_main._apply_tile_seed_policy(session, [5])
+
+    assert announced == []  # still quiet: the backlog must not be announced later either
+    assert "yad2_sale_tiles_seeded" not in flags
+    _reset_tile_state()

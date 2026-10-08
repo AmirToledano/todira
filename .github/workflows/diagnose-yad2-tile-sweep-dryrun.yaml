@@ -11,6 +11,10 @@ on:
         description: "Request budget for the whole sweep"
         required: false
         default: "700"
+      kind:
+        description: "Which map: rent or forsale"
+        required: false
+        default: "rent"
 
 jobs:
   diagnose:
@@ -48,20 +52,21 @@ jobs:
               cur.execute("select count(*) from listings where source='yad2' and external_id = any(%s)", (ids,))
               return cur.fetchone()[0]
 
+          KIND = os.environ.get("KIND", "rent")
           stats = yc.TileSweepStats(max_requests=int(os.environ.get("MAX_REQ", "700")))
           all_ids = set(); started = time.time()
           for region in yc.REGION_SLUGS:
               if region not in yc.REGIONS_ON_MAP_API:
                   continue
               before = stats.requests; t0 = time.time()
-              ids = {str(item["id"]) for item in yc.fetch_region_tiles(region, stats)}
+              ids = {str(item["id"]) for item in yc.fetch_region_tiles(region, stats, kind=KIND)}
               all_ids |= ids
               print(f"== {region}: requests={stats.requests - before} unique_ads={len(ids)} in_our_db={known(ids)} seconds={int(time.time() - t0)}", flush=True)
               if stats.aborted or stats.budget_hit:
                   break
           print(f"== TOTAL: requests={stats.requests} failed_tiles={stats.failed_tiles} capped_leaves={stats.capped_leaves} aborted={stats.aborted} budget_hit={stats.budget_hit} unique_ads={len(all_ids)} in_our_db={known(all_ids)} seconds={int(time.time() - started)}")
-          cur.execute("select count(*) from listings where source='yad2' and deal_type='rent' and not is_delisted")
-          print(f"== for comparison: active Yad2 rentals in our DB now = {cur.fetchone()[0]}")
+          cur.execute("select count(*) from listings where source='yad2' and deal_type=%s and not is_delisted", ("sale" if KIND == "forsale" else "rent",))
+          print(f"== for comparison: active Yad2 {KIND} ads in our DB now = {cur.fetchone()[0]}")
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
@@ -85,6 +90,8 @@ jobs:
                         key: database-url
                   - name: MAX_REQ
                     value: "${{ inputs.max_requests }}"
+                  - name: KIND
+                    value: "${{ inputs.kind }}"
                 volumeMounts:
                   - name: script
                     mountPath: /script
