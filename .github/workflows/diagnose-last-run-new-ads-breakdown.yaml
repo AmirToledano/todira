@@ -1,0 +1,89 @@
+name: Diagnose - what the last scraper runs counted as new, by source (read-only, counts only)
+
+# Read-only, manual-only. After the Yad2 tile sweep's first live run the summary said new=778 and 365 notifications (usually ~300 and
+# ~30). This counts, per source and deal type, the listings first seen in the last 3 hours, how many of them were stored quietly
+# (first_seen_at pushed back by the seed policy), and how many Yad2 rows changed price. Counts only, nothing about any listing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Count in a throwaway pod
+        run: |
+          POD_NAME="newads-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import subprocess, sys
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "psycopg2-binary"])
+          import os, psycopg2
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          def q(title, sql):
+              cur.execute(sql)
+              print(f"== {title}")
+              for row in cur.fetchall():
+                  print("==   " + " | ".join(str(c) for c in row))
+          q("rows inserted in the last 3h, by source / deal type (created = scraped_at at insert is not stored; using first_seen_at as written)",
+            """select source, deal_type,
+                      count(*) filter (where first_seen_at > now() - interval '3 hours') as announced_window,
+                      count(*) filter (where first_seen_at < now() - interval '7 days' and scraped_at > now() - interval '3 hours' and id > (select max(id) - 40000 from listings)) as quiet_backdated_recent_ids
+               from listings where scraped_at > now() - interval '3 hours' group by 1, 2 order by 1, 2""")
+          q("first_seen_at in the last 3h, by source",
+            "select source, count(*) from listings where first_seen_at > now() - interval '3 hours' group by 1 order by 2 desc")
+          q("price changed in the last 3h, by source / is_delisted_now",
+            "select source, is_delisted, count(*) from listings where price_changed_at > now() - interval '3 hours' group by 1, 2 order by 3 desc")
+          q("of those, rows that were delisted before this run (delisted_at older than 3h) and are back",
+            "select source, count(*) from listings where price_changed_at > now() - interval '3 hours' and is_delisted = false and first_seen_at < now() - interval '3 hours' group by 1")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 300
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 100); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
