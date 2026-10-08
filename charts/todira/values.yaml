@@ -226,8 +226,9 @@ scraper:
   # 2026-10-08: cover each Yad2 district in map pieces instead of ONE request that Yad2 caps at 200 ads (measured live: a grid
   # saw 963 Jerusalem-area ads vs 200; for Mevaseret Zion 71 vs 6). Free route only, bounded requests, aborts on repeated
   # failures; needs yad2FreeMapFetch. See scraper/yad2_client.py "Tile sweep". The first complete sweep stores the long-standing
-  # backlog quietly (no alert flood). Start OFF, switch on after the dry-run diagnostic.
-  yad2TileSweep: false
+  # backlog quietly (no alert flood). ON since 2026-10-08 after two dry runs on the production IP: the full sweep is ~440
+  # requests, ~7 minutes, 0 failed tiles and sees ~22,200 distinct Yad2 rentals (we held ~2,300 active).
+  yad2TileSweep: true
   yad2TileMaxRequests: 1500
   # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
@@ -368,7 +369,8 @@ resources:
     limits: { cpu: "250m", memory: "256Mi" }
   scraper:
     requests: { cpu: "100m", memory: "256Mi" }
-    limits: { cpu: "500m", memory: "512Mi" }
+    # 2026-10-08: 512Mi -> 1Gi, the tile sweep holds ~22k ads in memory at once (a limit only; the request stays 256Mi).
+    limits: { cpu: "500m", memory: "1Gi" }
   postgres:
     requests: { cpu: "100m", memory: "256Mi" }
     limits: { cpu: "500m", memory: "512Mi" }
