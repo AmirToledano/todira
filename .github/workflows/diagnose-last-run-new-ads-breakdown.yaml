@@ -33,17 +33,15 @@ jobs:
               print(f"== {title}")
               for row in cur.fetchall():
                   print("==   " + " | ".join(str(c) for c in row))
-          q("Komo: how far below the highest known id are ads first seen in the last 24h (rent, steady trickle)? gap = max_id - id",
-            """with m as (select max(external_id::bigint) mx from listings where source='komo' and external_id ~ '^[0-9]+$')
-               select deal_type, count(*), min(mx - external_id::bigint), percentile_cont(0.5) within group (order by mx - external_id::bigint),
-                      percentile_cont(0.9) within group (order by mx - external_id::bigint), max(mx - external_id::bigint)
-               from listings, m where source='komo' and external_id ~ '^[0-9]+$' and first_seen_at > now() - interval '24 hours' group by 1""")
-          q("Komo: id range of all held rows and of rows first seen before today (to see the id growth over time)",
-            """select deal_type, min(external_id::bigint), max(external_id::bigint), count(*) from listings
-               where source='komo' and external_id ~ '^[0-9]+$' group by 1""")
-          q("Komo rent: for ads first seen on each of the last 4 days, the max id seen that day",
-            """select date_trunc('day', first_seen_at) d, count(*), max(external_id::bigint) from listings
-               where source='komo' and deal_type='rent' and external_id ~ '^[0-9]+$' and first_seen_at > now() - interval '4 days' group by 1 order by 1""")
+          q("rows announced as new in the last 50 minutes (the 19:00 run), by source / deal type; duplicates (never notified) shown separately",
+            """select source, deal_type, count(*) filter (where duplicate_of_id is null) as announceable, count(*) filter (where duplicate_of_id is not null) as duplicates
+               from listings where first_seen_at > now() - interval '50 minutes' group by 1, 2 order by 1, 2""")
+          q("Yad2 rent rows announced in the last 50 minutes: how many are still active, and what share changed price since",
+            "select is_delisted, count(*), count(*) filter (where previous_price is not null) from listings where source='yad2' and deal_type='rent' and first_seen_at > now() - interval '50 minutes' group by 1")
+          q("Yad2 rent announceable rows by city (top 8) - to see whether one area explains the burst",
+            "select city, count(*) from listings where source='yad2' and deal_type='rent' and duplicate_of_id is null and first_seen_at > now() - interval '50 minutes' group by 1 order by 2 desc limit 8")
+          q("Yad2 rent rows first seen per run-hour over the last 10 hours, announceable only (the normal rate before the sweeps was ~25/hour)",
+            "select date_trunc('hour', first_seen_at) h, count(*) filter (where first_seen_at > now() - interval '7 days') from listings where source='yad2' and deal_type='rent' and duplicate_of_id is null and first_seen_at > now() - interval '10 hours' group by 1 order by 1")
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
