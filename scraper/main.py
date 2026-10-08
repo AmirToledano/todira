@@ -1324,6 +1324,11 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
             _KOMO_MAX_NEW_DETAIL_FETCHES_ENV_VAR, max_new_detail_fetches,
         )
 
+    _KOMO_BACKLOG_IDS.clear()
+    _KOMO_BACKLOG_IDS.update(_komo_backlog_ids(ids_to_fetch, known_ids))
+    if _KOMO_BACKLOG_IDS:
+        logger.info("Komo: %d of %d ad(s) fetched this run are older backlog (stored quietly)", len(_KOMO_BACKLOG_IDS), len(ids_to_fetch))
+
     fetched = len(ids_to_fetch)
     details = asyncio.run(
         _fetch_concurrently(ids_to_fetch, fetch_komo_listing_detail, _KOMO_DETAIL_FETCH_CONCURRENCY)
@@ -1497,15 +1502,41 @@ def _delist_stale_homeless(session, seen_external_ids: set[str], healthy_deal_ty
     return delisted
 
 
-def _quiet_homeless_backlog(session, new_ids: list[int]) -> list[int]:
-    """Stores the new Homeless ads that only a rolling page found without announcing them (first_seen_at pushed outside the
-    retry window); returns the ids that should still be announced."""
-    if not new_ids or not _HOMELESS_ROLLING_ONLY_IDS:
+# 2026-10-08: Komo catch-up. Raising the per-run detail cap (300 -> 800) made the old sale backlog arrive as hundreds of "new" ads
+# per run (728 in one run, 365 notifications). A Komo ad id grows with time (about 1,200 a day; measured: ads first seen in the last
+# 24 hours sit within ~250 of the highest id we hold, the backlog up to ~29,000 below it), so an ad whose id is more than
+# _KOMO_BACKLOG_ID_GAP below the highest known id is old by definition and is stored quietly, like the other backlogs.
+_KOMO_BACKLOG_ID_GAP = 1500
+_KOMO_BACKLOG_IDS: set[str] = set()
+
+
+def _komo_backlog_ids(candidate_ids: list[str], known_ids: set[str]) -> set[str]:
+    """The candidates whose numeric id is far below the highest id we already hold (see the comment above). Empty when nothing
+    numeric is known yet (the very first run has no reference point)."""
+    known_numeric = [int(i) for i in known_ids if i.isdigit()]
+    if not known_numeric:
+        return set()
+    newest_known = max(known_numeric)
+    return {i for i in candidate_ids if i.isdigit() and newest_known - int(i) > _KOMO_BACKLOG_ID_GAP}
+
+
+def _quiet_backlog(session, new_ids: list[int]) -> list[int]:
+    """Stores the new ads that are old by definition without announcing them (first_seen_at pushed outside the retry window):
+    Homeless ads only a rolling page found, and Komo ads far below the newest known id. Returns the ids still to be announced."""
+    if not new_ids:
         return new_ids
-    rows = session.execute(
-        select(Listing.id, Listing.external_id).where(Listing.id.in_(new_ids), Listing.source == Source.HOMELESS)
-    ).all()
-    backlog = {row[0] for row in rows if row[1] in _HOMELESS_ROLLING_ONLY_IDS}
+    quiet_by_source = ((Source.HOMELESS, _HOMELESS_ROLLING_ONLY_IDS), (Source.KOMO, _KOMO_BACKLOG_IDS))
+    backlog: set[int] = set()
+    for source, quiet_ids in quiet_by_source:
+        if not quiet_ids:
+            continue
+        rows = session.execute(
+            select(Listing.id, Listing.external_id).where(Listing.id.in_(new_ids), Listing.source == source)
+        ).all()
+        found = {row[0] for row in rows if row[1] in quiet_ids}
+        if found:
+            logger.info("%s backlog: stored %d older ad(s) quietly (no alerts)", source, len(found))
+        backlog |= found
     if backlog:
         table = Listing.__table__
         session.execute(
@@ -1514,7 +1545,6 @@ def _quiet_homeless_backlog(session, new_ids: list[int]) -> list[int]:
             .values(first_seen_at=func.now() - func.make_interval(0, 0, 0, _SEED_BACKDATE_DAYS))
         )
         session.commit()
-        logger.info("Homeless rolling crawl: stored %d older ad(s) quietly (no alerts)", len(backlog))
     return [listing_id for listing_id in new_ids if listing_id not in backlog]
 
 
@@ -1974,7 +2004,7 @@ def run_once() -> dict[str, int]:
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, all_normalized_items)
         new_ids = _apply_tile_seed_policy(session, new_ids)
-        new_ids = _quiet_homeless_backlog(session, new_ids)
+        new_ids = _quiet_backlog(session, new_ids)
 
         # Before anything reads the new listings back out (delisting check doesn't touch them, but
         # the notification step below does) — enriching first means notifications already carry
