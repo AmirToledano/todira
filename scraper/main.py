@@ -1359,6 +1359,165 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, all_succeeded
 
 
+# --- Homeless pagination (2026-10-08) -------------------------------------------------------------------------------------
+# Homeless lists ~53 cards per page and paginates with /rent/<n> and /sale/<n> (rent ends near page 75, sale is longer); we only ever
+# read page 1, so ~90 active Homeless ads were held. Every page costs one ZenRows credit and the free plan has 5,000 a month
+# (about 175 a day left in the cycle), so a full crawl every run is out of reach. Instead each run reads
+#   * the first pages of each category (where every new ad appears), and
+#   * a few "rolling" pages from a stored cursor that walks the whole list over about three days, then starts again.
+# An ad found only by a rolling page is old by definition (the first pages are re-read every hour), so it is stored quietly and
+# never announced. Because a run sees only part of the list, the usual "not seen = gone" delisting is off for Homeless; instead an
+# ad not seen for _HOMELESS_STALE_DAYS is delisted, but only for a deal type whose cursor completed a lap recently.
+_HOMELESS_PAGINATION_ENV_VAR = "HOMELESS_PAGINATION"
+_HOMELESS_FRESH_PAGES = 2
+_HOMELESS_ROLLING_PAGES_PER_RUN = 2
+_HOMELESS_MAX_PAGE = 200
+_HOMELESS_END_NEW_CARDS = 3  # a rolling page adding this few unseen cards (or fewer) is past the end of the list
+_HOMELESS_CURSOR_FLAG = "homeless_rolling_cursor"
+_HOMELESS_STALE_DAYS = 6
+_HOMELESS_LAP_HEALTHY_DAYS = 5
+_HOMELESS_PAGE_PAUSE_SECONDS = 1.5
+_HOMELESS_ROLLING_ONLY_IDS: set[str] = set()
+_HOMELESS_CURSOR_STATE: dict[str, dict] = {}
+# Sources whose run sees only part of the list on purpose: run_once skips the "not seen = gone" delisting for them.
+_PARTIAL_VIEW_SOURCES: set[str] = set()
+
+
+def _homeless_pagination_enabled() -> bool:
+    return os.environ.get(_HOMELESS_PAGINATION_ENV_VAR, "").strip().lower() == "true"
+
+
+def _homeless_read_category(
+    base_url: str, cursor: int, *, fetch_page=None, sleep=time.sleep
+) -> tuple[list[dict], set[str], int, int, bool]:
+    """Reads the first pages plus this run's rolling pages of one Homeless category.
+    Returns (cards, ids found only by rolling pages, next cursor, failed page count, completed a lap)."""
+    fetch_page = fetch_page or homeless_client.fetch_search_page
+    cards: dict[str, dict] = {}
+    errors = 0
+    for page in range(1, _HOMELESS_FRESH_PAGES + 1):
+        if page > 1:
+            sleep(_HOMELESS_PAGE_PAUSE_SECONDS)
+        try:
+            for card in fetch_page(base_url, page):
+                cards.setdefault(card["id"], card)
+        except HomelessFetchError:
+            logger.exception("Homeless page %d failed (%s)", page, base_url)
+            errors += 1
+    rolling_only: set[str] = set()
+    next_cursor = max(cursor, _HOMELESS_FRESH_PAGES + 1)
+    page = next_cursor
+    wrapped = False
+    for _ in range(_HOMELESS_ROLLING_PAGES_PER_RUN):
+        sleep(_HOMELESS_PAGE_PAUSE_SECONDS)
+        try:
+            page_cards = fetch_page(base_url, page)
+        except HomelessFetchError:
+            logger.exception("Homeless rolling page %d failed (%s)", page, base_url)
+            errors += 1
+            page += 1
+            next_cursor = page
+            continue
+        unseen = [card for card in page_cards if card["id"] not in cards]
+        if len(unseen) <= _HOMELESS_END_NEW_CARDS or page > _HOMELESS_MAX_PAGE:
+            next_cursor = _HOMELESS_FRESH_PAGES + 1
+            wrapped = True
+            break
+        for card in unseen:
+            cards[card["id"]] = card
+            rolling_only.add(card["id"])
+        page += 1
+        next_cursor = page
+    return list(cards.values()), rolling_only, next_cursor, errors, wrapped
+
+
+def _load_homeless_cursor() -> dict[str, dict]:
+    try:
+        with get_session() as session:
+            raw = whatsapp_guard.get_flag(session, _HOMELESS_CURSOR_FLAG)
+        data = json.loads(raw) if raw else {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        logger.exception("Could not read the Homeless rolling cursor - starting the lap over")
+        return {}
+
+
+def _save_homeless_cursor(state: dict[str, dict]) -> None:
+    try:
+        with get_session() as session:
+            whatsapp_guard.set_flag(session, _HOMELESS_CURSOR_FLAG, json.dumps(state))
+    except Exception:
+        logger.exception("Could not save the Homeless rolling cursor")
+
+
+def _homeless_healthy_deal_types(state: dict[str, dict], now: dt.datetime | None = None) -> set[str]:
+    """Deal types whose rolling cursor completed a lap recently enough to trust 'not seen for a few days' as 'gone'."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    healthy: set[str] = set()
+    for deal_type, entry in state.items():
+        try:
+            wrapped_at = dt.datetime.fromisoformat(entry["wrapped_at"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if now - wrapped_at <= dt.timedelta(days=_HOMELESS_LAP_HEALTHY_DAYS):
+            healthy.add(deal_type)
+    return healthy
+
+
+def _delist_stale_homeless(session, seen_external_ids: set[str], healthy_deal_types: set[str]) -> int:
+    """Delists Homeless ads not seen for _HOMELESS_STALE_DAYS (only for deal types with a recent completed lap) and un-delists any
+    that reappeared. See the comment above for why this replaces the usual per-run delisting for Homeless."""
+    table = Listing.__table__
+    delisted = 0
+    if healthy_deal_types:
+        delisted = len(
+            session.execute(
+                table.update()
+                .where(
+                    table.c.source == Source.HOMELESS,
+                    table.c.is_delisted.is_(False),
+                    table.c.deal_type.in_(healthy_deal_types),
+                    table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, _HOMELESS_STALE_DAYS),
+                )
+                .values(is_delisted=True, delisted_at=func.now())
+                .returning(table.c.id)
+            ).fetchall()
+        )
+    if seen_external_ids:
+        session.execute(
+            table.update()
+            .where(
+                table.c.source == Source.HOMELESS,
+                table.c.is_delisted.is_(True),
+                table.c.external_id.in_(seen_external_ids),
+            )
+            .values(is_delisted=False, delisted_at=None)
+        )
+    session.commit()
+    return delisted
+
+
+def _quiet_homeless_backlog(session, new_ids: list[int]) -> list[int]:
+    """Stores the new Homeless ads that only a rolling page found without announcing them (first_seen_at pushed outside the
+    retry window); returns the ids that should still be announced."""
+    if not new_ids or not _HOMELESS_ROLLING_ONLY_IDS:
+        return new_ids
+    rows = session.execute(
+        select(Listing.id, Listing.external_id).where(Listing.id.in_(new_ids), Listing.source == Source.HOMELESS)
+    ).all()
+    backlog = {row[0] for row in rows if row[1] in _HOMELESS_ROLLING_ONLY_IDS}
+    if backlog:
+        table = Listing.__table__
+        session.execute(
+            table.update()
+            .where(table.c.id.in_(backlog))
+            .values(first_seen_at=func.now() - func.make_interval(0, 0, 0, _SEED_BACKDATE_DAYS))
+        )
+        session.commit()
+        logger.info("Homeless rolling crawl: stored %d older ad(s) quietly (no alerts)", len(backlog))
+    return [listing_id for listing_id in new_ids if listing_id not in backlog]
+
+
 def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     """Returns the same (normalized_items, seen_external_ids, fetched, errors, all_succeeded)
     shape as _scrape_yad2. Unlike Yad2/Komo, Homeless doesn't need a `known_ids` set for its core
@@ -1412,31 +1571,64 @@ def _scrape_homeless() -> tuple[list, set[str], int, int, bool]:
     max_new_description_fetches = _homeless_max_new_description_fetches_per_run()
 
     raw_items: list[dict] = []
-    for url, deal_type in (
+    _HOMELESS_ROLLING_ONLY_IDS.clear()
+    _PARTIAL_VIEW_SOURCES.discard(Source.HOMELESS)
+    categories = (
         (homeless_client.SEARCH_PAGE_URL, DealType.RENT),
         (homeless_client.SALE_SEARCH_PAGE_URL, DealType.SALE),
-    ):
-        logger.info("Fetching Homeless listings (deal_type=%s)", deal_type)
-        try:
-            for raw_item in fetch_homeless_results(url):
-                raw_item["_deal_type"] = deal_type
-                raw_items.append(raw_item)
-        except HomelessFetchError:
-            # A partial list (whatever was already yielded before the failure) is still processed
-            # below, same as before this change — a mid-iteration failure never discarded what had
-            # already been fetched, and a failed category doesn't discard the other's results.
-            logger.exception(
-                "Failed to fetch Homeless listings (deal_type=%s) — skipping the rest of this "
-                "category", deal_type,
+    )
+    if _homeless_pagination_enabled():
+        _PARTIAL_VIEW_SOURCES.add(Source.HOMELESS)
+        cursor_state = _load_homeless_cursor()
+        now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+        for url, deal_type in categories:
+            entry = cursor_state.get(deal_type) or {}
+            logger.info("Fetching Homeless listings (deal_type=%s, rolling page %s)", deal_type, entry.get("page", 3))
+            cards, rolling_only, next_cursor, failed_pages, wrapped = _homeless_read_category(
+                url, int(entry.get("page", _HOMELESS_FRESH_PAGES + 1))
             )
-            errors += 1
-            all_succeeded = False
+            for card in cards:
+                card["_deal_type"] = deal_type
+                raw_items.append(card)
+            _HOMELESS_ROLLING_ONLY_IDS.update(rolling_only)
+            errors += failed_pages
+            cursor_state[deal_type] = {
+                "page": next_cursor,
+                "wrapped_at": now_iso if wrapped else entry.get("wrapped_at"),
+            }
+        _save_homeless_cursor(cursor_state)
+        _HOMELESS_CURSOR_STATE.clear()
+        _HOMELESS_CURSOR_STATE.update(cursor_state)
+        logger.info(
+            "Homeless rolling crawl: cards=%d rolling_only=%d failed_pages=%d cursor=%s",
+            len(raw_items), len(_HOMELESS_ROLLING_ONLY_IDS), errors,
+            {key: value.get("page") for key, value in cursor_state.items()},
+        )
+    else:
+        for url, deal_type in categories:
+            logger.info("Fetching Homeless listings (deal_type=%s)", deal_type)
+            try:
+                for raw_item in fetch_homeless_results(url):
+                    raw_item["_deal_type"] = deal_type
+                    raw_items.append(raw_item)
+            except HomelessFetchError:
+                # A partial list (whatever was already yielded before the failure) is still processed
+                # below, same as before this change — a mid-iteration failure never discarded what had
+                # already been fetched, and a failed category doesn't discard the other's results.
+                logger.exception(
+                    "Failed to fetch Homeless listings (deal_type=%s) — skipping the rest of this "
+                    "category", deal_type,
+                )
+                errors += 1
+                all_succeeded = False
 
     fetched = len(raw_items)
     for raw_item in raw_items:
         seen_external_ids.add(raw_item["id"])
 
-    new_items = [item for item in raw_items if item["id"] not in known_ids]
+    new_items = [
+        item for item in raw_items if item["id"] not in known_ids and item["id"] not in _HOMELESS_ROLLING_ONLY_IDS
+    ]
     items_to_fetch = new_items[:max_new_description_fetches]
     if len(new_items) > max_new_description_fetches:
         logger.warning(
@@ -1782,6 +1974,7 @@ def run_once() -> dict[str, int]:
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, all_normalized_items)
         new_ids = _apply_tile_seed_policy(session, new_ids)
+        new_ids = _quiet_homeless_backlog(session, new_ids)
 
         # Before anything reads the new listings back out (delisting check doesn't touch them, but
         # the notification step below does) — enriching first means notifications already carry
@@ -1803,6 +1996,12 @@ def run_once() -> dict[str, int]:
         for source, (seen_external_ids, scraped_city_names, all_succeeded) in (
             per_source_delisting_input.items()
         ):
+            if source in _PARTIAL_VIEW_SOURCES:
+                if source == Source.HOMELESS:
+                    delisted_count += _delist_stale_homeless(
+                        session, seen_external_ids, _homeless_healthy_deal_types(_HOMELESS_CURSOR_STATE)
+                    )
+                continue  # this source's run sees only part of its list on purpose - no "not seen = gone" delisting
             if all_succeeded and seen_external_ids:
                 delisted_count += _mark_delisted(session, source, seen_external_ids, scraped_city_names)
             elif not all_succeeded:
