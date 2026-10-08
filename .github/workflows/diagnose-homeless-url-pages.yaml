@@ -1,0 +1,69 @@
+name: Diagnose Homeless - do /rent/N, /rent/city=..., /rent/inumber1=N list more ads? (read-only, a few ZenRows fetches)
+
+# Read-only, manual-only. The page's own links include /rent/<number> (10 links), /rent/city=<name> and /rent/inumber1=<n>. This
+# fetches a handful of them the same way the scraper does (1 ZenRows request each) and prints ONLY counts: how many ad cards each
+# page has and how many are new compared with the first page, plus the numbers found in the /rent/N and inumber1 links. No ad
+# content, ids or text are printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch several Homeless list URLs and compare
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import os, re, time, urllib.parse, urllib.request
+
+          KEY = os.environ["ZENROWS_API_KEY"]
+
+          def get(url):
+              params = {"apikey": KEY, "url": url, "custom_headers": "true"}
+              req = urllib.request.Request(
+                  "https://api.zenrows.com/v1/?" + urllib.parse.urlencode(params),
+                  headers={
+                      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                      "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as r:
+                      return r.status, r.read().decode("utf-8", "replace")
+              except urllib.error.HTTPError as e:
+                  return e.code, ""
+              except Exception as e:
+                  return f"error:{type(e).__name__}", ""
+
+          def ids(html):
+              return set(re.findall(r'id="ad_(\d+)"', html))
+
+          st, first = get("https://www.homeless.co.il/rent/")
+          base = ids(first)
+          print(f"== /rent/: status={st} cards={len(base)}")
+          nums = sorted({int(n) for n in re.findall(r'href="/rent/(\d+)"', first)})
+          print(f"== numbers in /rent/N links: {nums}")
+          inum = sorted(set(re.findall(r'href="/rent/inumber1=(\d+)', first)))
+          print(f"== values in /rent/inumber1=N links: {inum}")
+          cities = sorted(set(urllib.parse.unquote(c) for c in re.findall(r'href="/rent/city=([^"]+)"', first)))
+          print(f"== cities in /rent/city= links: {len(cities)}")
+
+          seen = set(base)
+          targets = ["https://www.homeless.co.il/rent/2", "https://www.homeless.co.il/rent/3", "https://www.homeless.co.il/rent/10",
+                     "https://www.homeless.co.il/rent/50", "https://www.homeless.co.il/rent/200",
+                     "https://www.homeless.co.il/rent/city=" + urllib.parse.quote("תל אביב"),
+                     "https://www.homeless.co.il/rent/city=" + urllib.parse.quote("ירושלים"),
+                     "https://www.homeless.co.il/sale/2", "https://www.homeless.co.il/sale/10"]
+          if inum:
+              targets.append(f"https://www.homeless.co.il/rent/inumber1={inum[0]}")
+          for url in targets:
+              time.sleep(2)
+              st, html = get(url)
+              got = ids(html)
+              label = urllib.parse.unquote(url).replace("https://www.homeless.co.il", "")
+              print(f"== {label}: status={st} cards={len(got)} new_vs_all_so_far={len(got - seen)} overlap_with_first_page={len(got & base)}")
+              seen |= got
+          print(f"== distinct cards across everything fetched: {len(seen)}")
+          PYEOF
