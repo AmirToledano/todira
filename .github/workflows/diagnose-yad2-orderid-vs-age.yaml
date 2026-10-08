@@ -1,0 +1,108 @@
+name: Diagnose Yad2 - does a marker's orderId grow with the ad's age? (read-only, numbers only)
+
+# Read-only, manual-only. Every map marker carries `orderId`. If it grows with posting time (like Komo's id) it can tell a truly new ad
+# from an old one a sweep happened to miss before. This fetches a few rent pieces on the free route, joins the markers with the rows
+# we hold (by token) that we first saw LIVE (first_seen_at inside the last 7 days, i.e. not backdated by a seed), and prints, for those,
+# how first_seen_at relates to the orderId rank. Numbers only - no tokens, no content.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch pieces, join with the database, print the relation
+        run: |
+          POD_NAME="orderid-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import os, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary"])
+          import psycopg2
+          from curl_cffi import requests as cr
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          BOXES = {
+              "jerusalem-a": (6, "31.700000,35.150000,31.800000,35.250000", 13),
+              "tel-aviv-a": (3, "32.050000,34.760000,32.100000,34.810000", 14),
+              "haifa-a": (5, "32.780000,34.950000,32.830000,35.020000", 14),
+              "beer-sheva-a": (2, "31.230000,34.770000,31.290000,34.830000", 14),
+          }
+          markers = {}
+          for name, (region, bbox, zoom) in BOXES.items():
+              url = f"https://gw.yad2.co.il/realestate-feed/rent/map?region={region}&bBox={bbox}&zoom={zoom}"
+              r = cr.get(url, headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+              if r.status_code != 200:
+                  print(f"== {name}: status {r.status_code}", flush=True); continue
+              for m in (r.json().get("data") or {}).get("markers") or []:
+                  if isinstance(m, dict) and m.get("token") and isinstance(m.get("orderId"), int):
+                      markers[str(m["token"])] = m["orderId"]
+              time.sleep(1.5)
+          print(f"== markers with orderId: {len(markers)}", flush=True)
+          ids = sorted(markers.values())
+          print(f"== orderId min={ids[0]} max={ids[-1]} spread={ids[-1]-ids[0]}", flush=True)
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          cur.execute("select external_id, extract(epoch from (now() - first_seen_at))/3600.0 from listings where source='yad2' and deal_type='rent' and external_id = any(%s) and first_seen_at > now() - interval '7 days'", (list(markers),))
+          rows = [(markers[t], h) for t, h in cur.fetchall()]
+          print(f"== held rows first seen live in the last 7 days: {len(rows)}", flush=True)
+          rows.sort()
+          n = len(rows)
+          if n >= 10:
+              step = max(1, n // 10)
+              for i in range(0, n, step):
+                  chunk = rows[i:i + step]
+                  hrs = sorted(h for _o, h in chunk)
+                  print(f"== orderId rank {i}-{i+len(chunk)-1} of {n}: orderId {chunk[0][0]}..{chunk[-1][0]}  hours since WE first saw them: min={hrs[0]:.1f} median={hrs[len(hrs)//2]:.1f} max={hrs[-1]:.1f}", flush=True)
+          cur.execute("select count(*) from listings where source='yad2' and deal_type='rent' and external_id = any(%s)", (list(markers),))
+          print(f"== markers whose token we hold at all: {cur.fetchone()[0]} of {len(markers)}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 300
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 100); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
