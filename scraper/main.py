@@ -4,6 +4,7 @@ CronJob (see charts/todira), or manually via `docker compose run --rm scraper` l
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import os
@@ -45,9 +46,13 @@ from yad2_client import (
     REGIONS_ON_MAP_API,
     Yad2FetchError,
     Yad2MapFetchError,
+    TileSweepStats,
     fetch_forsale_region,
     fetch_region_pages,
+    fetch_region_tiles,
     fetch_region_via_map_api,
+    tile_max_requests,
+    tile_sweep_enabled,
 )
 
 # 2026-09-12: how many fetch_listing_detail_via_web_unlocker calls run concurrently when enriching
@@ -912,6 +917,55 @@ def _fetch_known_external_ids(source: str) -> set[str]:
         return set(session.scalars(select(table.c.external_id).where(table.c.source == source)))
 
 
+# 2026-10-08 tile sweep (see yad2_client.py's "Tile sweep" comment): which Yad2 ids this run found ONLY through the
+# sweep (not through the district-wide request), and how the sweep ended. Module-level because _scrape_yad2's return shape is
+# shared by every source; a scraper process lives for exactly one run, so nothing can leak between runs.
+_YAD2_TILE_ONLY_IDS: set[str] = set()
+_YAD2_TILE_STATE: dict[str, bool] = {"ran": False, "complete": False}
+# The very first complete sweep suddenly finds thousands of ads that were always on Yad2 and merely never in our 200-per-region
+# sample. Alerting every matching user about each of them as if it had just been posted would be a flood of old ads, so that
+# run stores them quietly (first_seen_at pushed outside the retry window, no notification) and records this flag; every later
+# run treats newly found ads as new. Until a complete sweep has happened the flag stays unset, so a first attempt that aborted
+# half way does not leave the rest of the backlog to be announced later.
+_YAD2_TILES_SEEDED_FLAG = "yad2_tiles_seeded"
+_SEED_BACKDATE_DAYS = 8  # one day more than _RETRY_UNNOTIFIED_HOURS (7 days), so the retry sweep skips them
+
+
+def _split_seed_backlog(new_rows: list[tuple[int, str]], tile_only_ids: set[str]) -> set[int]:
+    """Listing ids (of this run's newly inserted Yad2 rows) that only the tile sweep found - the seed run's backlog."""
+    return {listing_id for listing_id, external_id in new_rows if external_id in tile_only_ids}
+
+
+def _apply_tile_seed_policy(session, new_ids: list[int]) -> list[int]:
+    """Returns the ids that should still be announced as new. See _YAD2_TILES_SEEDED_FLAG's comment."""
+    if not _YAD2_TILE_STATE["ran"]:
+        return new_ids
+    if whatsapp_guard.get_flag(session, _YAD2_TILES_SEEDED_FLAG):
+        return new_ids
+    backlog: set[int] = set()
+    if new_ids and _YAD2_TILE_ONLY_IDS:
+        rows = session.execute(
+            select(Listing.id, Listing.external_id).where(
+                Listing.id.in_(new_ids), Listing.source == Source.YAD2
+            )
+        ).all()
+        backlog = _split_seed_backlog([(row[0], row[1]) for row in rows], _YAD2_TILE_ONLY_IDS)
+        if backlog:
+            table = Listing.__table__
+            session.execute(
+                table.update()
+                .where(table.c.id.in_(backlog))
+                .values(first_seen_at=func.now() - func.make_interval(0, 0, 0, _SEED_BACKDATE_DAYS))
+            )
+            session.commit()
+            logger.info(
+                "Yad2 tile sweep seed run: stored %d previously unseen ad(s) quietly (no alerts)", len(backlog)
+            )
+    if _YAD2_TILE_STATE["complete"]:
+        whatsapp_guard.set_flag(session, _YAD2_TILES_SEEDED_FLAG, dt.datetime.now(dt.timezone.utc).isoformat())
+    return [listing_id for listing_id in new_ids if listing_id not in backlog]
+
+
 def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     """Returns (normalized_items, seen_external_ids, fetched_count, error_count, all_succeeded) —
     same shape every _scrape_* function returns, so run_once() can treat all three sources
@@ -993,6 +1047,38 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
             # after the LAST region too; harmless, just a few seconds of otherwise-idle time before
             # this function returns).
             time.sleep(_MAP_API_REGION_PACING_SECONDS)
+
+    # 2026-10-08: the loop above asks each district ONCE and Yad2 caps a response at 200 ads, so most of a busy district was
+    # never seen (measured live: a 5x5 grid over Jerusalem-area saw 963 ads vs 200, our DB held 508 of them). The sweep asks
+    # for the same map in smaller pieces, free route only, and never replaces the baseline above.
+    _YAD2_TILE_ONLY_IDS.clear()
+    _YAD2_TILE_STATE.update(ran=False, complete=False)
+    if tile_sweep_enabled():
+        tile_stats = TileSweepStats(max_requests=tile_max_requests())
+        for region in REGION_SLUGS:
+            if region not in REGIONS_ON_MAP_API or tile_stats.aborted or tile_stats.budget_hit:
+                continue
+            for raw_item in fetch_region_tiles(region, tile_stats):
+                external_id = str(raw_item.get("id"))
+                if external_id in seen_external_ids:
+                    continue
+                normalized = normalize(raw_item, source=Source.YAD2, deal_type=DealType.RENT)
+                fetched += 1
+                if normalized is None:
+                    errors += 1
+                    continue
+                normalized_items.append(normalized)
+                seen_external_ids.add(normalized.external_id)
+                _YAD2_TILE_ONLY_IDS.add(normalized.external_id)
+        logger.info(
+            "Yad2 tile sweep: requests=%d extra_ads=%d failed_tiles=%d capped_leaves=%d aborted=%s budget_hit=%s",
+            tile_stats.requests, len(_YAD2_TILE_ONLY_IDS), tile_stats.failed_tiles, tile_stats.capped_leaves,
+            tile_stats.aborted, tile_stats.budget_hit,
+        )
+        _YAD2_TILE_STATE.update(ran=True, complete=not tile_stats.incomplete)
+        if tile_stats.incomplete:
+            # Same rule as a failed region: part of the map may be missing, so "not seen" must not delist anything.
+            all_succeeded = False
 
     # 2026-09-22: task #1/#2 — forsale, confirmed live for all 7 REGION_SLUGS via the search-page +
     # Web Unlocker mechanism (see fetch_forsale_region's own docstring). No map-API fast path here
@@ -1599,6 +1685,7 @@ def run_once() -> dict[str, int]:
 
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, all_normalized_items)
+        new_ids = _apply_tile_seed_policy(session, new_ids)
 
         # Before anything reads the new listings back out (delisting check doesn't touch them, but
         # the notification step below does) — enriching first means notifications already carry

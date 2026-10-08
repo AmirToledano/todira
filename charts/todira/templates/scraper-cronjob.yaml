@@ -162,6 +162,12 @@ spec:
                 {{- end }}
                 - name: YAD2_FREE_MAP_FETCH
                   value: {{ .Values.scraper.yad2FreeMapFetch | default false | quote }}
+                - name: YAD2_TILE_SWEEP
+                  value: {{ .Values.scraper.yad2TileSweep | default false | quote }}
+                {{- if .Values.scraper.yad2TileMaxRequests }}
+                - name: YAD2_TILE_MAX_REQUESTS
+                  value: {{ .Values.scraper.yad2TileMaxRequests | quote }}
+                {{- end }}
                 {{- if .Values.scraper.yad2MaxPagesPerRegion }}
                 - name: YAD2_MAX_PAGES_PER_REGION
                   value: {{ .Values.scraper.yad2MaxPagesPerRegion | quote }}

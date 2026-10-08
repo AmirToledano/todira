@@ -103,6 +103,8 @@ import json
 import logging
 import os
 import re
+import time
+from dataclasses import dataclass
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
@@ -1060,6 +1062,142 @@ def fetch_forsale_region(region: str) -> Iterator[dict[str, Any]]:
             f"page for region={region!r}"
         )
     yield from _parse_cards(html)
+
+
+# --- Tile sweep (2026-10-08) -------------------------------------------------------------------------------------
+# Found live (diagnose-yad2-map-coverage-tiles.yaml, run on the production egress IP): the district-wide request above
+# returns EXACTLY 200 markers - Yad2's per-response cap - out of a district that really holds far more. A 5x5 grid over the
+# same Jerusalem-area box saw 963 distinct ads (two tiles were still capped, so even that undercounts) against 200, only 508 of
+# the 963 were in our DB, and for Mevaseret Zion the single request saw 6 of 71 ads. The owner's competitor bot sent a
+# Mevaseret ad that our bot never held, which is how it showed. The fix is to ask for the same map in smaller pieces: a
+# quadtree that splits any piece that comes back at/near the cap, until each piece fits. Every piece is requested with the
+# FREE browser-TLS route only (no Web Unlocker fallback: hundreds of paid requests per run would be real money), the zoom grows
+# by one per level (a level halves the box, exactly what one map zoom step is), and a run of consecutive failures stops the
+# sweep instead of hammering a site that has started blocking us. The district-wide request stays as the baseline, so a
+# failed or aborted sweep is never worse than before.
+_TILE_SWEEP_ENV_VAR = "YAD2_TILE_SWEEP"
+_TILE_MAX_REQUESTS_ENV_VAR = "YAD2_TILE_MAX_REQUESTS"
+TILE_MARKER_CAP = 190  # a response this full is treated as capped (the API's own limit is 200)
+_TILE_MAX_DEPTH = 6
+_TILE_PAUSE_SECONDS = 0.7
+_TILE_MAX_CONSECUTIVE_FAILURES = 5
+_DEFAULT_TILE_MAX_REQUESTS = 700
+
+
+def tile_sweep_enabled() -> bool:
+    """On only when asked for AND the free map route is on (the sweep never uses the paid fallback)."""
+    return (
+        os.environ.get(_TILE_SWEEP_ENV_VAR, "").strip().lower() == "true"
+        and os.environ.get(_FREE_MAP_FETCH_ENV_VAR, "").strip().lower() == "true"
+    )
+
+
+def tile_max_requests() -> int:
+    try:
+        return max(1, int(os.environ.get(_TILE_MAX_REQUESTS_ENV_VAR, "") or _DEFAULT_TILE_MAX_REQUESTS))
+    except ValueError:
+        return _DEFAULT_TILE_MAX_REQUESTS
+
+
+@dataclass
+class TileSweepStats:
+    """What a sweep did. `incomplete` means some part of the map may be missing from what it returned, so a caller must
+    not conclude 'not seen = gone' from it (the same rule a failed region already follows)."""
+
+    requests: int = 0
+    max_requests: int = _DEFAULT_TILE_MAX_REQUESTS
+    capped_leaves: int = 0  # pieces still full at the deepest level (a warning, not an incompleteness)
+    failed_tiles: int = 0
+    consecutive_failures: int = 0
+    aborted: bool = False
+    budget_hit: bool = False
+
+    @property
+    def incomplete(self) -> bool:
+        return self.aborted or self.budget_hit or self.failed_tiles > 0
+
+
+def _fetch_tile_markers(url: str) -> list[dict[str, Any]] | None:
+    """One tile over the FREE route only. None = failed (not enabled / blocked / not JSON / unexpected shape)."""
+    body = _fetch_json_with_browser_tls(url)
+    if body is None:
+        return None
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    markers = data.get("markers") if isinstance(data, dict) else None
+    return markers if isinstance(markers, list) else None
+
+
+def _split_bbox(bbox: str) -> list[str]:
+    south, west, north, east = (float(part) for part in bbox.split(","))
+    mid_lat, mid_lon = (south + north) / 2, (west + east) / 2
+    return [
+        f"{lo_lat:.6f},{lo_lon:.6f},{hi_lat:.6f},{hi_lon:.6f}"
+        for lo_lat, hi_lat in ((south, mid_lat), (mid_lat, north))
+        for lo_lon, hi_lon in ((west, mid_lon), (mid_lon, east))
+    ]
+
+
+def _sweep_tile(
+    bbox: str, *, area: int | None, region: int, zoom: int, depth: int, host: str | None,
+    stats: TileSweepStats, sleep=time.sleep,
+) -> Iterator[dict[str, Any]]:
+    if stats.aborted or stats.budget_hit:
+        return
+    if stats.requests >= stats.max_requests:
+        stats.budget_hit = True
+        return
+    url = _build_map_url(bbox, area=area, region=region, zoom=zoom, host=host)
+    stats.requests += 1
+    markers = _fetch_tile_markers(url)
+    if markers is None:  # one more try after a pause: a single hiccup should not cost a whole tile
+        sleep(_TILE_PAUSE_SECONDS * 4)
+        stats.requests += 1
+        markers = _fetch_tile_markers(url)
+    sleep(_TILE_PAUSE_SECONDS)
+    if markers is None:
+        stats.failed_tiles += 1
+        stats.consecutive_failures += 1
+        if stats.consecutive_failures >= _TILE_MAX_CONSECUTIVE_FAILURES:
+            stats.aborted = True
+            logger.error("Yad2 tile sweep aborted after %d consecutive failed tiles", stats.consecutive_failures)
+        return
+    stats.consecutive_failures = 0
+    if len(markers) >= TILE_MARKER_CAP:
+        if depth < _TILE_MAX_DEPTH:
+            for child in _split_bbox(bbox):
+                yield from _sweep_tile(
+                    child, area=area, region=region, zoom=zoom + 1, depth=depth + 1, host=host,
+                    stats=stats, sleep=sleep,
+                )
+            return
+        stats.capped_leaves += 1
+    for marker in markers:
+        if isinstance(marker, dict):
+            item = _marker_to_raw_item(marker)
+            if item is not None:
+                yield item
+
+
+def fetch_region_tiles(region: str, stats: TileSweepStats, *, sleep=time.sleep) -> Iterator[dict[str, Any]]:
+    """Yields raw listing dicts for every piece of one region's map, splitting any piece that comes back full. May yield an
+    ad more than once (pieces share edges); the caller de-duplicates by id. See the module comment above."""
+    for params in REGIONS_ON_MAP_API[region]:
+        area = params.get("area")
+        host = params.get("host")
+        yield from _sweep_tile(
+            str(params["bbox"]),
+            area=int(area) if area is not None else None,
+            region=int(params["region"]),
+            zoom=int(params.get("zoom", 11)),
+            depth=0,
+            host=str(host) if host is not None else None,
+            stats=stats,
+            sleep=sleep,
+        )
 
 
 def fetch_region_via_map_api(region: str) -> Iterator[dict[str, Any]]:

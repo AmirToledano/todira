@@ -223,6 +223,12 @@ scraper:
   # falling back to Bright Data Web Unlocker if Yad2 ever blocks it. See scraper/yad2_client.py's
   # _fetch_json_with_browser_tls. Saves ~100 paid requests/day.
   yad2FreeMapFetch: true
+  # 2026-10-08: cover each Yad2 district in map pieces instead of ONE request that Yad2 caps at 200 ads (measured live: a grid
+  # saw 963 Jerusalem-area ads vs 200; for Mevaseret Zion 71 vs 6). Free route only, bounded requests, aborts on repeated
+  # failures; needs yad2FreeMapFetch. See scraper/yad2_client.py "Tile sweep". The first complete sweep stores the long-standing
+  # backlog quietly (no alert flood). Start OFF, switch on after the dry-run diagnostic.
+  yad2TileSweep: false
+  yad2TileMaxRequests: 700
   # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
   # common/todira_common/gemini_url_detail.py.
