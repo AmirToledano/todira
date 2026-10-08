@@ -1,0 +1,46 @@
+name: Diagnose Homeless - the column layout of the regular (table-row) listings (read-only, 2 ZenRows fetches)
+
+# Read-only, manual-only. diagnose-homeless-card-parsing showed the scraper reads only the 8 promoted div cards of a page; the other ~42
+# listings are old-style table rows (<tr id="ad_<n>" type="ad">). This prints the table's header cells and, for three rows per page
+# (rent and sale), each cell's index and its text cut to 24 characters (any run of 7+ digits is masked), plus the detail link's path,
+# so a parser can be written against the real layout. Public listing fields only; no contact details.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pages and print the row layout
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          pip install -q httpx
+          cd scraper && PYTHONPATH=.. python3 - << 'PYEOF'
+          import html as H, re, sys
+          sys.path.insert(0, "../common")
+          import homeless_client as hc
+
+          def clean(fragment):
+              text = re.sub(r"<[^>]+>", " ", fragment)
+              text = re.sub(r"\s+", " ", H.unescape(text)).strip()
+              text = re.sub(r"\d{7,}", "#######", text)
+              return text[:24]
+
+          for path in ("rent/2", "sale/3"):
+              page = hc._fetch_search_html("https://www.homeless.co.il/" + path)
+              heads = [clean(h) for h in re.findall(r"<th\b[^>]*>(.*?)</th>", page, flags=re.S)]
+              print(f"== {path}: header cells ({len(heads)}): {heads[:20]}")
+              rows = re.findall(r'<tr\b[^>]*id="ad_\d+"[^>]*type="ad"[^>]*>(.*?)</tr>', page, flags=re.S)
+              print(f"== {path}: table rows = {len(rows)}")
+              for n, row in enumerate(rows[:3]):
+                  cells = re.findall(r"<td\b[^>]*>(.*?)</td>", row, flags=re.S)
+                  print(f"==   row {n}: {len(cells)} cells")
+                  for i, cell in enumerate(cells):
+                      text = clean(cell)
+                      href = re.search(r'href="([^"]+)"', cell)
+                      img = "img" if "<img" in cell else ""
+                      extra = f" href={re.sub(r'[0-9]+', 'N', href.group(1))[:50]}" if href else ""
+                      print(f"==     td[{i}] {text!r} {img}{extra}")
+          PYEOF
