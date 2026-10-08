@@ -45,7 +45,7 @@ spec:
           labels:
             app: {{ .Release.Name }}-facebook-scraper
         spec:
-          restartPolicy: OnFailure
+          restartPolicy: Never
           containers:
             - name: facebook-scraper
               image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
