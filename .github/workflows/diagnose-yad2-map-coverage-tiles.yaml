@@ -1,0 +1,154 @@
+name: "Diagnose - how many Yad2 Jerusalem-area rentals a single district request misses vs a tiled grid (read-only, free route)"
+
+# Read-only, manual-only. Our scraper asks Yad2's map API ONCE per district (a huge bounding box) and the API returns at most
+# ~200 markers per response, so most of a busy district is never seen. This measures it, from a throwaway pod on the real
+# cluster egress IP using the same free browser-TLS route the scraper already uses (no paid unblocker, no cost): one
+# district-wide request versus a 5x5 grid of tiles over the same box, 2.5s apart (about 26 requests). Prints ONLY counts and
+# booleans: markers per request, how many unique ads each approach sees, how many of those our DB already holds, and
+# whether the specific Mevaseret Zion ad the owner's competitor sent (3 rooms, NIS 4,800) is in the API at all.
+on:
+  workflow_dispatch:
+    inputs:
+      zoom:
+        description: "Zoom for the tiles"
+        required: false
+        default: "12"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the probe in a throwaway pod
+        run: |
+          POD_NAME="yad2-tiles-diag-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import json, os, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary"])
+          import psycopg2
+          from curl_cffi import requests as cr
+
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          BASE = "https://gw.yad2.co.il/realestate-feed/rent/map"
+          HEADERS = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          S, W, N, E = 31.549448, 34.818058, 31.938335, 35.272844  # the jerusalem-area box the scraper uses
+          TILE_ZOOM = os.environ.get("TILE_ZOOM", "12")
+
+          def get(bbox, zoom):
+              url = f"{BASE}?region=6&bBox={bbox}&zoom={zoom}"
+              try:
+                  r = cr.get(url, headers=HEADERS, impersonate="chrome", timeout=30, allow_redirects=False)
+              except Exception as e:
+                  return None, f"error:{type(e).__name__}", 0
+              if r.status_code != 200:
+                  return None, f"http{r.status_code}", 0
+              try:
+                  markers = (r.json().get("data") or {}).get("markers")
+              except Exception:
+                  return None, "notjson", 0
+              if not isinstance(markers, list):
+                  return None, "noMarkers", 0
+              return markers, "ok", len(markers)
+
+          def tok(m):
+              return str(m.get("token")) if isinstance(m, dict) and m.get("token") else None
+
+          def city(m):
+              a = m.get("address") or {}
+              c = (a.get("city") or {}).get("text") if isinstance(a.get("city"), dict) else None
+              return c or ""
+
+          # 1) the single district-wide request the scraper makes today
+          single, status, n = get(f"{S},{W},{N},{E}", 10)
+          single_tokens = {tok(m) for m in (single or []) if tok(m)}
+          print(f"== single district request: status={status} markers={n} unique_ads={len(single_tokens)}")
+          time.sleep(2.5)
+
+          # 2) a 5x5 grid over the same box
+          GRID = 5
+          union, capped, bad = {}, 0, {}
+          for i in range(GRID):
+              for j in range(GRID):
+                  s = S + (N - S) * i / GRID; n_ = S + (N - S) * (i + 1) / GRID
+                  w = W + (E - W) * j / GRID; e = W + (E - W) * (j + 1) / GRID
+                  markers, st, cnt = get(f"{s:.6f},{w:.6f},{n_:.6f},{e:.6f}", TILE_ZOOM)
+                  if markers is None:
+                      bad[st] = bad.get(st, 0) + 1
+                  else:
+                      if cnt >= 190:
+                          capped += 1
+                      for m in markers:
+                          t = tok(m)
+                          if t:
+                              union[t] = m
+                  time.sleep(2.5)
+          print(f"== grid {GRID}x{GRID} at zoom {TILE_ZOOM}: tiles_failed={bad or 0} tiles_at_or_above_190_markers={capped} unique_ads={len(union)}")
+
+          def known(tokens):
+              tokens = list(tokens)
+              if not tokens: return 0
+              cur.execute("select count(*) from listings where source='yad2' and external_id = any(%s)", (tokens,))
+              return cur.fetchone()[0]
+
+          print(f"== in our DB: single={known(single_tokens)}/{len(single_tokens)}  grid={known(union.keys())}/{len(union)}")
+          only_grid = set(union) - single_tokens
+          print(f"== ads the grid sees that the single request does not: {len(only_grid)}; of those already in our DB: {known(only_grid)}")
+
+          mev = {t: m for t, m in union.items() if "מבשרת" in city(m)}
+          print(f"== Mevaseret ads in the grid: {len(mev)}; in the single request: {len(set(mev) & single_tokens)}; in our DB: {known(mev.keys())}")
+          target = [m for m in mev.values() if m.get("price") == 4800 and (m.get('additionalDetails') or {}).get('roomsCount') == 3]
+          print(f"== the competitor's ad (Mevaseret, 3 rooms, 4800) present in the API grid: {bool(target)}; in the single request: {any(tok(m) in single_tokens for m in target)}; in our DB: {known([tok(m) for m in target])}")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 900
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: TILE_ZOOM
+                    value: "${{ inputs.zoom }}"
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 120); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || echo "(no result lines captured)"
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
