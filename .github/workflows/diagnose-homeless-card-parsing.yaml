@@ -1,0 +1,51 @@
+name: Diagnose Homeless - how many cards on a page does the scraper's parser actually read? (read-only, 2 ZenRows fetches)
+
+# Read-only, manual-only. The first live Homeless pagination run read only 39 cards from 8 pages (expected ~400). This fetches /rent/2 and
+# /sale/3 like the scraper does and compares the number of `id="ad_<n>"` blocks on the page with the number the real parser
+# (homeless_client._parse_cards, downloaded from main) returns, and prints the text-free tag skeleton of up to two blocks it did NOT
+# read. Prints only counts and markup skeletons (tags/classes, all text removed).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pages and run the real parser
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          pip install -q httpx
+          cd scraper && PYTHONPATH=.. python3 - << 'PYEOF'
+          import re, sys
+          sys.path.insert(0, "../common")
+          import homeless_client as hc
+
+          def skeleton(markup):
+              markup = re.sub(r">[^<]+<", "><", markup)
+              markup = re.sub(r'(src|href|title|alt|data-[a-z-]+|id|value)="[^"]*"', r'\1=".."', markup)
+              return re.sub(r"\s+", " ", markup)[:700]
+
+          for path in ("rent/2", "sale/3", "rent/"):
+              url = "https://www.homeless.co.il/" + path
+              try:
+                  html = hc._fetch_search_html(url)
+              except Exception as e:
+                  print(f"== {path}: fetch failed {type(e).__name__}")
+                  continue
+              blocks = re.findall(r'<div id="ad_(\d+)"', html)
+              any_blocks = re.findall(r'id="ad_(\d+)"', html)
+              parsed = list(hc._parse_cards(html))
+              parsed_ids = {c["id"] for c in parsed}
+              print(f"== {path}: bytes={len(html)} div-blocks={len(set(blocks))} any-id-blocks={len(set(any_blocks))} parsed={len(parsed_ids)}")
+              missing = [i for i in dict.fromkeys(any_blocks) if i not in parsed_ids]
+              print(f"==   not parsed: {len(missing)}")
+              for i in missing[:2]:
+                  m = re.search(r'id="ad_%s".{0,1500}' % i, html, flags=re.S)
+                  print("==   skeleton:", skeleton(m.group(0)) if m else "?")
+              ok = parsed[:1]
+              if ok:
+                  m = re.search(r'id="ad_%s".{0,1500}' % ok[0]["id"], html, flags=re.S)
+                  print("==   parsed example skeleton:", skeleton(m.group(0)) if m else "?")
+          PYEOF
