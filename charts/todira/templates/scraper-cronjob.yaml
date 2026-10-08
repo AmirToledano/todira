@@ -28,7 +28,10 @@ spec:
           labels:
             app: {{ .Release.Name }}-scraper
         spec:
-          restartPolicy: OnFailure
+          # Never (was OnFailure): with backoffLimit 0 a crash makes the Job fail either way, but OnFailure restarts the container in
+          # place and the Job controller then DELETES the pod, taking its logs and OOMKilled state with it (the 18:00 UTC run on
+          # 2026-10-08 died ~25 min in and left nothing to read). With Never the failed pod stays for inspection.
+          restartPolicy: Never
           containers:
             - name: scraper
               image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
