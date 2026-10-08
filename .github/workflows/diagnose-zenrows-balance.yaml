@@ -1,0 +1,39 @@
+name: Diagnose ZenRows - credits left on the account (read-only, prints numbers only)
+
+# Read-only, manual-only. Asks ZenRows' account endpoint how many API credits the plan has and how many are used, and prints only
+# those numbers (plan name, credits limit, credits used, period end). No key, no email, no personal data is printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read the subscription numbers
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import json, os, urllib.request
+
+          key = os.environ["ZENROWS_API_KEY"]
+          for url in ("https://api.zenrows.com/v1/subscriptions/self/details", "https://api.zenrows.com/v1/usage"):
+              req = urllib.request.Request(url, headers={"X-API-Key": key})
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      data = json.loads(r.read().decode())
+              except Exception as e:
+                  print(f"== {url.rsplit('/', 2)[-2]}/{url.rsplit('/', 1)[-1]}: failed {type(e).__name__} {getattr(e, 'code', '')}")
+                  continue
+              def walk(o, prefix=""):
+                  if isinstance(o, dict):
+                      for k, v in o.items():
+                          kl = str(k).lower()
+                          if any(w in kl for w in ("email", "name", "key", "token", "id", "address")) and "plan" not in kl:
+                              continue
+                          walk(v, f"{prefix}{k}.")
+                  elif isinstance(o, (int, float, bool)) or (isinstance(o, str) and len(o) < 40):
+                      print(f"== {prefix[:-1]} = {o}")
+              print(f"== source {url.rsplit('/', 1)[-1]}")
+              walk(data)
+          PYEOF
