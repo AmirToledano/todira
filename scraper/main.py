@@ -52,6 +52,7 @@ from yad2_client import (
     fetch_region_tiles,
     fetch_region_via_map_api,
     tile_max_requests,
+    tile_max_seconds,
     tile_sweep_enabled,
 )
 
@@ -1054,7 +1055,7 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
     _YAD2_TILE_ONLY_IDS.clear()
     _YAD2_TILE_STATE.update(ran=False, complete=False)
     if tile_sweep_enabled():
-        tile_stats = TileSweepStats(max_requests=tile_max_requests())
+        tile_stats = TileSweepStats(max_requests=tile_max_requests(), max_seconds=tile_max_seconds())
         for region in REGION_SLUGS:
             if region not in REGIONS_ON_MAP_API or tile_stats.aborted or tile_stats.budget_hit:
                 continue
@@ -1071,9 +1072,10 @@ def _scrape_yad2() -> tuple[list, set[str], int, int, bool]:
                 seen_external_ids.add(normalized.external_id)
                 _YAD2_TILE_ONLY_IDS.add(normalized.external_id)
         logger.info(
-            "Yad2 tile sweep: requests=%d extra_ads=%d failed_tiles=%d capped_leaves=%d aborted=%s budget_hit=%s",
+            "Yad2 tile sweep: requests=%d extra_ads=%d failed_tiles=%d capped_leaves=%d bbox_ignored=%d "
+            "aborted=%s budget_hit=%s",
             tile_stats.requests, len(_YAD2_TILE_ONLY_IDS), tile_stats.failed_tiles, tile_stats.capped_leaves,
-            tile_stats.aborted, tile_stats.budget_hit,
+            tile_stats.bbox_ignored, tile_stats.aborted, tile_stats.budget_hit,
         )
         _YAD2_TILE_STATE.update(ran=True, complete=not tile_stats.incomplete)
         if tile_stats.incomplete:
