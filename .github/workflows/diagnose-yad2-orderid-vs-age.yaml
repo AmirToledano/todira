@@ -1,4 +1,4 @@
-name: Diagnose Yad2 - does a marker's orderId grow with the ad's age? (read-only, numbers only)
+name: Diagnose Yad2 - the small enumerated marker fields: adType, priority, tags, promotions (read-only, counts only)
 
 # Read-only, manual-only. Every map marker carries `orderId`. If it grows with posting time (like Komo's id) it can tell a truly new ad
 # from an old one a sweep happened to miss before. This fetches a few rent pieces on the free route, joins the markers with the rows
@@ -36,33 +36,28 @@ jobs:
               "haifa-a": (5, "32.780000,34.950000,32.830000,35.020000", 14),
               "beer-sheva-a": (2, "31.230000,34.770000,31.290000,34.830000", 14),
           }
-          markers = {}
+          import collections
+          tags = collections.Counter(); adtypes = collections.Counter(); prios = collections.Counter(); promos = collections.Counter()
+          total = 0
           for name, (region, bbox, zoom) in BOXES.items():
               url = f"https://gw.yad2.co.il/realestate-feed/rent/map?region={region}&bBox={bbox}&zoom={zoom}"
               r = cr.get(url, headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
               if r.status_code != 200:
                   print(f"== {name}: status {r.status_code}", flush=True); continue
               for m in (r.json().get("data") or {}).get("markers") or []:
-                  if isinstance(m, dict) and m.get("token") and isinstance(m.get("orderId"), int):
-                      markers[str(m["token"])] = m["orderId"]
+                  total += 1
+                  adtypes[str(m.get("adType"))] += 1
+                  prios[str(m.get("priority"))] += 1
+                  for t in m.get("tags") or []:
+                      tags[f"{t.get('id')}:{t.get('name')}"] += 1
+                  for p in ((m.get("additionalDetails") or {}).get("promotions") or []):
+                      promos[str(p)[:40]] += 1
               time.sleep(1.5)
-          print(f"== markers with orderId: {len(markers)}", flush=True)
-          ids = sorted(markers.values())
-          print(f"== orderId min={ids[0]} max={ids[-1]} spread={ids[-1]-ids[0]}", flush=True)
-          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
-          cur.execute("select external_id, extract(epoch from (now() - first_seen_at))/3600.0 from listings where source='yad2' and deal_type='rent' and external_id = any(%s) and first_seen_at > now() - interval '7 days'", (list(markers),))
-          rows = [(markers[t], h) for t, h in cur.fetchall()]
-          print(f"== held rows first seen live in the last 7 days: {len(rows)}", flush=True)
-          rows.sort()
-          n = len(rows)
-          if n >= 10:
-              step = max(1, n // 10)
-              for i in range(0, n, step):
-                  chunk = rows[i:i + step]
-                  hrs = sorted(h for _o, h in chunk)
-                  print(f"== orderId rank {i}-{i+len(chunk)-1} of {n}: orderId {chunk[0][0]}..{chunk[-1][0]}  hours since WE first saw them: min={hrs[0]:.1f} median={hrs[len(hrs)//2]:.1f} max={hrs[-1]:.1f}", flush=True)
-          cur.execute("select count(*) from listings where source='yad2' and deal_type='rent' and external_id = any(%s)", (list(markers),))
-          print(f"== markers whose token we hold at all: {cur.fetchone()[0]} of {len(markers)}", flush=True)
+          print(f"== markers: {total}", flush=True)
+          print(f"== adType values: {dict(adtypes)}", flush=True)
+          print(f"== priority values: {dict(prios.most_common(12))}", flush=True)
+          print(f"== tags (id:name -> count): {dict(tags.most_common(20))}", flush=True)
+          print(f"== additionalDetails.promotions values: {dict(promos.most_common(8))}", flush=True)
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
