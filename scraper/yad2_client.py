@@ -737,15 +737,18 @@ class Yad2MapFetchError(RuntimeError):
 
 
 def _build_map_url(
-    bbox: str, *, area: int | None, region: int, zoom: int, host: str | None = None
+    bbox: str, *, area: int | None, region: int, zoom: int, host: str | None = None, kind: str = "rent"
 ) -> str:
     """`host` overrides the default gw.yad2.co.il domain — confirmed live 2026-09-14 that Yad2
     routes at least one region (partnership/east — יהודה ושומרון, plausibly a real legal/
     geopolitical reason) through an entirely different domain, gw.yad-il.co.il, not gw.yad2.co.il
     (see REGIONS_ON_MAP_API's own comment). `area` is optional — a district-level ("מחוז") request
     can omit it entirely; confirmed live for both center-and-sharon and partnership/east (plain
-    region=<id>&bBox=...&zoom=... with no area param at all)."""
-    base = f"https://{host}/realestate-feed/rent/map" if host else MAP_API_URL
+    region=<id>&bBox=...&zoom=... with no area param at all). `kind` is "rent" or "forsale" (2026-10-08: the for-sale map
+    answers on the same free browser-TLS route, same markers, same 200 cap)."""
+    if kind not in ("rent", "forsale"):
+        raise ValueError(f"unknown Yad2 map kind: {kind!r}")
+    base = f"https://{host}/realestate-feed/{kind}/map" if host else MAP_API_URL.replace("/rent/", f"/{kind}/")
     area_param = f"area={area}&" if area is not None else ""
     return f"{base}?{area_param}region={region}&bBox={bbox}&zoom={zoom}"
 
@@ -1076,6 +1079,7 @@ def fetch_forsale_region(region: str) -> Iterator[dict[str, Any]]:
 # sweep instead of hammering a site that has started blocking us. The district-wide request stays as the baseline, so a
 # failed or aborted sweep is never worse than before.
 _TILE_SWEEP_ENV_VAR = "YAD2_TILE_SWEEP"
+_SALE_TILE_SWEEP_ENV_VAR = "YAD2_SALE_TILE_SWEEP"
 _TILE_MAX_REQUESTS_ENV_VAR = "YAD2_TILE_MAX_REQUESTS"
 _TILE_MAX_SECONDS_ENV_VAR = "YAD2_TILE_MAX_SECONDS"
 TILE_MARKER_CAP = 190  # a response this full is treated as capped (the API's own limit is 200)
@@ -1095,6 +1099,12 @@ def tile_sweep_enabled() -> bool:
         os.environ.get(_TILE_SWEEP_ENV_VAR, "").strip().lower() == "true"
         and os.environ.get(_FREE_MAP_FETCH_ENV_VAR, "").strip().lower() == "true"
     )
+
+
+def sale_tile_sweep_enabled() -> bool:
+    """The for-sale map is swept only when the rent sweep switches are on AND this one is (a separate switch so for-sale can be
+    turned on, or back off, on its own - its first run seeds a large backlog of old ads)."""
+    return tile_sweep_enabled() and os.environ.get(_SALE_TILE_SWEEP_ENV_VAR, "").strip().lower() == "true"
 
 
 def tile_max_requests() -> int:
@@ -1159,7 +1169,7 @@ def _split_bbox(bbox: str) -> list[str]:
 def _sweep_tile(
     bbox: str, *, area: int | None, region: int, zoom: int, depth: int, host: str | None,
     stats: TileSweepStats, sleep=time.sleep, parent_tokens: frozenset[str] | None = None,
-    clock=time.monotonic,
+    clock=time.monotonic, kind: str = "rent",
 ) -> Iterator[dict[str, Any]]:
     if stats.aborted or stats.budget_hit:
         return
@@ -1168,7 +1178,7 @@ def _sweep_tile(
     if stats.requests >= stats.max_requests or clock() - stats.started_at > stats.max_seconds:
         stats.budget_hit = True
         return
-    url = _build_map_url(bbox, area=area, region=region, zoom=zoom, host=host)
+    url = _build_map_url(bbox, area=area, region=region, zoom=zoom, host=host, kind=kind)
     stats.requests += 1
     markers = _fetch_tile_markers(url)
     if markers is None:  # one more try after a pause: a single hiccup should not cost a whole tile
@@ -1193,7 +1203,7 @@ def _sweep_tile(
             for child in _split_bbox(bbox):
                 yield from _sweep_tile(
                     child, area=area, region=region, zoom=zoom + 1, depth=depth + 1, host=host,
-                    stats=stats, sleep=sleep, parent_tokens=tokens, clock=clock,
+                    stats=stats, sleep=sleep, parent_tokens=tokens, clock=clock, kind=kind,
                 )
             return
         stats.capped_leaves += 1
@@ -1204,13 +1214,17 @@ def _sweep_tile(
                 yield item
 
 
-def fetch_region_tiles(region: str, stats: TileSweepStats, *, sleep=time.sleep) -> Iterator[dict[str, Any]]:
+def fetch_region_tiles(
+    region: str, stats: TileSweepStats, *, sleep=time.sleep, kind: str = "rent"
+) -> Iterator[dict[str, Any]]:
     """Yields raw listing dicts for every piece of one region's map, splitting any piece that comes back full. May yield an
     ad more than once (pieces share edges); the caller de-duplicates by id. See the module comment above.
 
     `area` is deliberately NOT sent for the pieces: with it set (tel-aviv-area) the API ignored the box and answered every piece
     with the same 200 ads (live dry run: 551 requests, 330 distinct ads); the district-level form (region + box only) is what
-    already works for the other regions (center-and-sharon: 149 requests, 6,972 distinct ads)."""
+    already works for the other regions (center-and-sharon: 149 requests, 6,972 distinct ads).
+
+    `kind="forsale"` sweeps the for-sale map with the same boxes (the district boxes and region ids are shared by both maps)."""
     for params in REGIONS_ON_MAP_API[region]:
         host = params.get("host")
         yield from _sweep_tile(
@@ -1222,6 +1236,7 @@ def fetch_region_tiles(region: str, stats: TileSweepStats, *, sleep=time.sleep) 
             host=str(host) if host is not None else None,
             stats=stats,
             sleep=sleep,
+            kind=kind,
         )
 
 
