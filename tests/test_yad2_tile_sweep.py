@@ -21,8 +21,9 @@ scraper_main = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(scraper_main)
 
 
-def _marker(token: str) -> dict:
-    return {"token": token, "price": 5000, "address": {}, "additionalDetails": {}, "metaData": {}}
+def _marker(token: str, lat: float | None = None, lon: float | None = None) -> dict:
+    address: dict = {} if lat is None else {"coords": {"lat": lat, "lon": lon}}
+    return {"token": token, "price": 5000, "address": address, "additionalDetails": {}, "metaData": {}}
 
 
 def _no_sleep(_seconds: float) -> None:
@@ -135,13 +136,37 @@ def test_seed_backlog_is_only_the_ads_the_sweep_alone_found():
     assert scraper_main._split_seed_backlog(rows, set()) == set()
 
 
-def test_a_box_the_api_ignores_stops_after_one_split_instead_of_burning_the_budget(monkeypatch):
-    same = [_marker(f"x{i}") for i in range(yc.TILE_MARKER_CAP)]
-    seen = _patch_fetch(monkeypatch, lambda url: same)  # every piece answers with the SAME full set
+def test_a_box_the_api_ignores_is_detected_from_the_marker_coordinates_and_not_split_further(monkeypatch):
+    # every piece answers with the same 190 ads, scattered far outside the requested box: the API is not honouring the box
+    far = [_marker(f"x{i}", 33.0 + i * 0.001, 36.0) for i in range(yc.TILE_MARKER_CAP)]
+    seen = _patch_fetch(monkeypatch, lambda url: far)
     stats = yc.TileSweepStats(max_requests=500)
     list(yc._sweep_tile("31,34,32,35", area=None, region=6, zoom=10, depth=0, host=None, stats=stats, sleep=_no_sleep))
-    assert len(seen) == 5  # the root and its four quarters, then it stops
-    assert stats.bbox_ignored == 4 and not stats.budget_hit
+    assert len(seen) == 1 and stats.bbox_ignored == 1 and not stats.budget_hit
+
+
+def test_a_dense_core_whose_ads_all_sit_inside_one_child_keeps_being_split(monkeypatch):
+    """The old rule ('a full child repeating 90% of its parent's ads = box ignored') stopped here and left city cores half-seen."""
+    def answer(url):
+        south, west, north, east = (float(v) for v in url.split("bBox=")[1].split("&")[0].split(","))
+        lat, lon = (south + north) / 2, (west + east) / 2
+        # every box, however small, is genuinely full of ads that really are inside it (the same tokens each time)
+        return [_marker(f"d{i}", lat + (i % 10) * 1e-6, lon) for i in range(yc.TILE_MARKER_CAP)]
+
+    seen = _patch_fetch(monkeypatch, answer)
+    stats = yc.TileSweepStats(max_requests=60)
+    list(yc._sweep_tile("31.4,34.4,31.6,34.6", area=None, region=6, zoom=10, depth=0, host=None, stats=stats, sleep=_no_sleep))
+    assert stats.bbox_ignored == 0
+    assert len(seen) > 5  # it went on splitting (the budget, not a wrong guess, ended it)
+
+
+def test_outside_share_ignores_markers_without_coordinates_and_allows_a_margin_at_the_edge():
+    inside = [_marker("a", 31.5, 34.5), _marker("b", 31.5001, 34.5001)]
+    edge = [_marker("c", 32.0 + 0.001, 35.0)]  # a hair over the north edge, within the margin
+    nocoords = [_marker("d")]
+    assert yc._outside_share(inside + edge + nocoords, "31,34,32,35") == 0.0
+    assert yc._outside_share([_marker("e", 40.0, 40.0), _marker("f", 31.5, 34.5)], "31,34,32,35") == 0.5
+    assert yc._outside_share(nocoords, "31,34,32,35") == 0.0
 
 
 def test_the_wall_clock_cap_ends_the_sweep_as_incomplete(monkeypatch):

@@ -15,6 +15,10 @@ on:
         description: "Which map: rent or forsale"
         required: false
         default: "rent"
+      code_ref:
+        description: "Branch of the repo whose sweep code to run (default main)"
+        required: false
+        default: "main"
 
 jobs:
   diagnose:
@@ -38,7 +42,7 @@ jobs:
           subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary", "httpx", "pydantic"])
           import psycopg2
 
-          data = urllib.request.urlopen("https://codeload.github.com/AmirToledano/todira/tar.gz/refs/heads/main", timeout=120).read()
+          data = urllib.request.urlopen("https://codeload.github.com/AmirToledano/todira/tar.gz/refs/heads/" + os.environ.get("CODE_REF", "main") + "", timeout=120).read()
           tarfile.open(fileobj=io.BytesIO(data)).extractall("/tmp/repo")
           root = "/tmp/repo/" + os.listdir("/tmp/repo")[0]
           sys.path.insert(0, root + "/common"); sys.path.insert(0, root + "/scraper")
@@ -92,6 +96,8 @@ jobs:
                     value: "${{ inputs.max_requests }}"
                   - name: KIND
                     value: "${{ inputs.kind }}"
+                  - name: CODE_REF
+                    value: "${{ inputs.code_ref }}"
                 volumeMounts:
                   - name: script
                     mountPath: /script
