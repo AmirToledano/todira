@@ -264,7 +264,7 @@ def test_each_map_seeds_on_its_own_flag(monkeypatch):
     monkeypatch.setattr(scraper_main.whatsapp_guard, "get_flag", lambda session, name: flags.get(name))
     monkeypatch.setattr(scraper_main.whatsapp_guard, "set_flag", lambda session, name, value: flags.__setitem__(name, value))
     # rent already seeded earlier; for-sale never swept yet
-    flags["yad2_tiles_seeded"] = "done"
+    flags["yad2_tiles_seeded_v2"] = "done"
     scraper_main._YAD2_TILE_STATE["rent"].update(ran=True, complete=True)
     scraper_main._YAD2_TILE_ONLY_IDS["rent"].update({"r-tile"})
     scraper_main._YAD2_TILE_STATE["forsale"].update(ran=True, complete=True)
@@ -275,7 +275,7 @@ def test_each_map_seeds_on_its_own_flag(monkeypatch):
 
     assert announced == [1, 3]  # the new rent ad is announced, the for-sale backlog ad (2) is stored quietly
     assert len(session.updated) == 1
-    assert flags.get("yad2_sale_tiles_seeded") and flags["yad2_tiles_seeded"] == "done"
+    assert flags.get("yad2_sale_tiles_seeded") and flags["yad2_tiles_seeded_v2"] == "done"
     _reset_tile_state()
 
 
