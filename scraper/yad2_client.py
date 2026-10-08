@@ -1077,11 +1077,16 @@ def fetch_forsale_region(region: str) -> Iterator[dict[str, Any]]:
 # failed or aborted sweep is never worse than before.
 _TILE_SWEEP_ENV_VAR = "YAD2_TILE_SWEEP"
 _TILE_MAX_REQUESTS_ENV_VAR = "YAD2_TILE_MAX_REQUESTS"
+_TILE_MAX_SECONDS_ENV_VAR = "YAD2_TILE_MAX_SECONDS"
 TILE_MARKER_CAP = 190  # a response this full is treated as capped (the API's own limit is 200)
 _TILE_MAX_DEPTH = 6
 _TILE_PAUSE_SECONDS = 0.7
 _TILE_MAX_CONSECUTIVE_FAILURES = 5
-_DEFAULT_TILE_MAX_REQUESTS = 700
+_DEFAULT_TILE_MAX_REQUESTS = 1500
+_DEFAULT_TILE_MAX_SECONDS = 1500  # wall-clock cap: a sweep that runs this long stops and counts as incomplete
+# A child piece that is itself full AND holds at least this share of the same ads as its parent means the API is ignoring the
+# bounding box (seen live with `area=` set: every piece returned the same 200 ads) - splitting further only burns requests.
+_TILE_BBOX_IGNORED_OVERLAP = 0.9
 
 
 def tile_sweep_enabled() -> bool:
@@ -1099,6 +1104,13 @@ def tile_max_requests() -> int:
         return _DEFAULT_TILE_MAX_REQUESTS
 
 
+def tile_max_seconds() -> int:
+    try:
+        return max(30, int(os.environ.get(_TILE_MAX_SECONDS_ENV_VAR, "") or _DEFAULT_TILE_MAX_SECONDS))
+    except ValueError:
+        return _DEFAULT_TILE_MAX_SECONDS
+
+
 @dataclass
 class TileSweepStats:
     """What a sweep did. `incomplete` means some part of the map may be missing from what it returned, so a caller must
@@ -1106,6 +1118,9 @@ class TileSweepStats:
 
     requests: int = 0
     max_requests: int = _DEFAULT_TILE_MAX_REQUESTS
+    max_seconds: float = _DEFAULT_TILE_MAX_SECONDS
+    started_at: float | None = None
+    bbox_ignored: int = 0  # pieces where splitting changed nothing (the API ignored the box); a warning
     capped_leaves: int = 0  # pieces still full at the deepest level (a warning, not an incompleteness)
     failed_tiles: int = 0
     consecutive_failures: int = 0
@@ -1143,11 +1158,14 @@ def _split_bbox(bbox: str) -> list[str]:
 
 def _sweep_tile(
     bbox: str, *, area: int | None, region: int, zoom: int, depth: int, host: str | None,
-    stats: TileSweepStats, sleep=time.sleep,
+    stats: TileSweepStats, sleep=time.sleep, parent_tokens: frozenset[str] | None = None,
+    clock=time.monotonic,
 ) -> Iterator[dict[str, Any]]:
     if stats.aborted or stats.budget_hit:
         return
-    if stats.requests >= stats.max_requests:
+    if stats.started_at is None:
+        stats.started_at = clock()
+    if stats.requests >= stats.max_requests or clock() - stats.started_at > stats.max_seconds:
         stats.budget_hit = True
         return
     url = _build_map_url(bbox, area=area, region=region, zoom=zoom, host=host)
@@ -1166,12 +1184,16 @@ def _sweep_tile(
             logger.error("Yad2 tile sweep aborted after %d consecutive failed tiles", stats.consecutive_failures)
         return
     stats.consecutive_failures = 0
-    if len(markers) >= TILE_MARKER_CAP:
+    tokens = frozenset(str(m.get("token")) for m in markers if isinstance(m, dict) and m.get("token"))
+    is_full = len(markers) >= TILE_MARKER_CAP
+    if is_full and parent_tokens and tokens and len(tokens & parent_tokens) / len(tokens) >= _TILE_BBOX_IGNORED_OVERLAP:
+        stats.bbox_ignored += 1  # splitting did not narrow the result: stop here instead of burning requests
+    elif is_full:
         if depth < _TILE_MAX_DEPTH:
             for child in _split_bbox(bbox):
                 yield from _sweep_tile(
                     child, area=area, region=region, zoom=zoom + 1, depth=depth + 1, host=host,
-                    stats=stats, sleep=sleep,
+                    stats=stats, sleep=sleep, parent_tokens=tokens, clock=clock,
                 )
             return
         stats.capped_leaves += 1
@@ -1184,13 +1206,16 @@ def _sweep_tile(
 
 def fetch_region_tiles(region: str, stats: TileSweepStats, *, sleep=time.sleep) -> Iterator[dict[str, Any]]:
     """Yields raw listing dicts for every piece of one region's map, splitting any piece that comes back full. May yield an
-    ad more than once (pieces share edges); the caller de-duplicates by id. See the module comment above."""
+    ad more than once (pieces share edges); the caller de-duplicates by id. See the module comment above.
+
+    `area` is deliberately NOT sent for the pieces: with it set (tel-aviv-area) the API ignored the box and answered every piece
+    with the same 200 ads (live dry run: 551 requests, 330 distinct ads); the district-level form (region + box only) is what
+    already works for the other regions (center-and-sharon: 149 requests, 6,972 distinct ads)."""
     for params in REGIONS_ON_MAP_API[region]:
-        area = params.get("area")
         host = params.get("host")
         yield from _sweep_tile(
             str(params["bbox"]),
-            area=int(area) if area is not None else None,
+            area=None,
             region=int(params["region"]),
             zoom=int(params.get("zoom", 11)),
             depth=0,

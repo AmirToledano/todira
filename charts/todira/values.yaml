@@ -228,7 +228,7 @@ scraper:
   # failures; needs yad2FreeMapFetch. See scraper/yad2_client.py "Tile sweep". The first complete sweep stores the long-standing
   # backlog quietly (no alert flood). Start OFF, switch on after the dry-run diagnostic.
   yad2TileSweep: false
-  yad2TileMaxRequests: 700
+  yad2TileMaxRequests: 1500
   # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
   # common/todira_common/gemini_url_detail.py.

@@ -82,12 +82,13 @@ def test_the_request_budget_stops_the_sweep_and_marks_it_incomplete(monkeypatch)
 
 
 def test_repeated_failures_abort_instead_of_hammering_the_site(monkeypatch):
-    full = [_marker(f"x{i}") for i in range(yc.TILE_MARKER_CAP)]
+    root = [_marker(f"r{i}") for i in range(yc.TILE_MARKER_CAP)]
+    first_quarter = [_marker(f"q{i}") for i in range(yc.TILE_MARKER_CAP)]  # full, but different ads, so it splits further
     calls = {"n": 0}
 
-    def responses(url):  # the root and its first quarter answer (full), then the site starts blocking
+    def responses(url):  # the root and its first quarter answer, then the site starts blocking
         calls["n"] += 1
-        return full if calls["n"] <= 2 else None
+        return root if calls["n"] == 1 else first_quarter if calls["n"] == 2 else None
 
     seen = _patch_fetch(monkeypatch, responses)
     stats = yc.TileSweepStats(max_requests=500)
@@ -131,3 +132,29 @@ def test_seed_backlog_is_only_the_ads_the_sweep_alone_found():
     rows = [(1, "a"), (2, "b"), (3, "c")]
     assert scraper_main._split_seed_backlog(rows, {"b", "c", "zzz"}) == {2, 3}
     assert scraper_main._split_seed_backlog(rows, set()) == set()
+
+
+def test_a_box_the_api_ignores_stops_after_one_split_instead_of_burning_the_budget(monkeypatch):
+    same = [_marker(f"x{i}") for i in range(yc.TILE_MARKER_CAP)]
+    seen = _patch_fetch(monkeypatch, lambda url: same)  # every piece answers with the SAME full set
+    stats = yc.TileSweepStats(max_requests=500)
+    list(yc._sweep_tile("31,34,32,35", area=None, region=6, zoom=10, depth=0, host=None, stats=stats, sleep=_no_sleep))
+    assert len(seen) == 5  # the root and its four quarters, then it stops
+    assert stats.bbox_ignored == 4 and not stats.budget_hit
+
+
+def test_the_wall_clock_cap_ends_the_sweep_as_incomplete(monkeypatch):
+    full = [_marker(f"x{i}") for i in range(yc.TILE_MARKER_CAP)]
+    ticks = iter(range(0, 10_000, 100))
+    _patch_fetch(monkeypatch, lambda url: full)
+    stats = yc.TileSweepStats(max_requests=500, max_seconds=250)
+    list(yc._sweep_tile("31,34,32,35", area=None, region=6, zoom=10, depth=0, host=None, stats=stats,
+                        sleep=_no_sleep, clock=lambda: next(ticks)))
+    assert stats.budget_hit and stats.incomplete
+
+
+def test_tiles_never_send_the_area_parameter(monkeypatch):
+    seen = _patch_fetch(monkeypatch, lambda url: [_marker("e")])
+    stats = yc.TileSweepStats()
+    list(yc.fetch_region_tiles("tel-aviv-area", stats, sleep=_no_sleep))
+    assert "area=" not in seen[0] and "region=3" in seen[0]
