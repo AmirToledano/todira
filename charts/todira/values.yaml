@@ -235,8 +235,10 @@ scraper:
   yad2TileMaxRequests: 1500
   # 2026-10-08: the same piece-by-piece sweep for Yad2 FOR-SALE (723 active sale ads held vs 33,214 live). Its own seed flag
   # keeps the first run quiet.
-  # ON 2026-10-08 after a clean dry run (528 requests, 499 s, 0 failed tiles, 33,214 ads) and a clean first live rent-sweep run.
-  yad2SaleTileSweep: true
+  # Switched on 18:00 UTC 2026-10-08 and the run died ~25 min in (job BackoffLimitExceeded after the container restarted; almost
+  # certainly out of memory: rent + sale hold ~58k ads in one process, the rent-only run with 25k fitted). OFF again until the
+  # memory use is measured and cut; see PROJECT_STATE.
+  yad2SaleTileSweep: false
   # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
   # common/todira_common/gemini_url_detail.py.
