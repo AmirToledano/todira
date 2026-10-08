@@ -1,0 +1,98 @@
+name: Diagnose Yad2 - which fields a map marker carries (key names only, read-only, free route)
+
+# Read-only, manual-only. After the rent sweep started, every run announces ~500 "new" ads, because each sweep misses a different ~10% of
+# the country and the ads it misses one time and finds the next look new. To tell a truly new ad from an old one we need a date-like field. This asks
+# the free map route for one small piece of the rent map and one of the for-sale map and prints ONLY the set of field paths (names, up to
+# depth 4) with the value type and how many of the markers have it - no values, nothing about any ad.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Fetch two small map pieces in a throwaway pod and list the field paths
+        run: |
+          POD_NAME="marker-keys-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import collections, json, subprocess, sys
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi"])
+          from curl_cffi import requests as cr
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          BOX = "32.060000,34.760000,32.090000,34.800000"
+          def paths(o, prefix, depth, out):
+              if isinstance(o, dict):
+                  for k, v in o.items():
+                      paths(v, f"{prefix}.{k}" if prefix else k, depth + 1, out)
+              elif isinstance(o, list):
+                  out[prefix + "[]"] += 1
+                  for v in o[:1]:
+                      if depth < 4:
+                          paths(v, prefix + "[]", depth + 1, out)
+              else:
+                  out[f"{prefix} ({type(o).__name__})"] += 1
+          for kind in ("rent", "forsale"):
+              url = f"https://gw.yad2.co.il/realestate-feed/{kind}/map?region=3&bBox={BOX}&zoom=14"
+              r = cr.get(url, headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+              print(f"== {kind}: status={r.status_code}", flush=True)
+              if r.status_code != 200:
+                  continue
+              data = (r.json().get("data") or {})
+              print(f"== {kind}: top-level data keys: {sorted(data.keys())}", flush=True)
+              markers = data.get("markers") or []
+              print(f"== {kind}: markers={len(markers)}", flush=True)
+              out = collections.Counter()
+              for m in markers:
+                  seen = collections.Counter()
+                  paths(m, "", 0, seen)
+                  for p in seen:
+                      out[p] += 1
+              for p, n in sorted(out.items()):
+                  print(f"==   {p}  in {n}/{len(markers)}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 300
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 100); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
