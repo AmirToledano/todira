@@ -26,5 +26,15 @@ jobs:
             -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,REASON:.status.containerStatuses[0].state.terminated.reason,EXIT:.status.containerStatuses[0].state.terminated.exitCode,START:.status.startTime | tail -5
           for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -3); do
             echo "== $POD"
-            kubectl logs -n todira "$POD" 2>/dev/null | grep -E "tile sweep|seed run|Scraper run summary|Skipping delisting|aborted|ERROR|Traceback|Killed" | cut -c1-420 | tail -12 || true
+            kubectl logs -n todira "$POD" 2>/dev/null | grep -E "tile sweep|seed run|rolling crawl|backlog|Scraper run summary|Skipping delisting|aborted|Killed|city feeds|safety cap" | cut -c1-420 | tail -14 || true
+            kubectl logs -n todira "$POD" 2>/dev/null | grep -c "ERROR" | sed "s/^/   ERROR lines: /"
           done
+
+      - name: Facebook scraper pods (counts and statuses only)
+        run: |
+          kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp \
+            -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,REASON:.status.containerStatuses[0].state.terminated.reason,START:.status.startTime | tail -3
+          POD=$(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
+          echo "== $POD"
+          kubectl logs -n todira "$POD" 2>/dev/null | grep -E "Scraper run summary|city feeds|safety cap|checkpoint|login|http_status" | cut -c1-300 | tail -8 || true
+          kubectl logs -n todira "$POD" 2>/dev/null | grep -c "ERROR" | sed "s/^/   ERROR lines: /"
