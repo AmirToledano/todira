@@ -1,0 +1,35 @@
+name: Diagnose - node memory, restarts and recent events around the failed 18:00 UTC scraper run (read-only)
+
+# Read-only, manual-only. The 18:00 UTC scraper Job failed (BackoffLimitExceeded) about 25 minutes in and its pod was deleted. This
+# reads cluster facts only: node capacity and allocated resources and pressure conditions, every pod's restart count and last
+# termination reason in the todira namespace, and the namespace events of the last two hours that are not routine. No secrets, no logs.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Read cluster facts
+        run: |
+          date -u
+          echo "--- node conditions + allocatable ---"
+          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"  memory-allocatable="}{.status.allocatable.memory}{"  cpu="}{.status.allocatable.cpu}{"\n"}{range .status.conditions[*]}{"    "}{.type}{"="}{.status}{" ("}{.reason}{")\n"}{end}{end}'
+          echo "--- allocated resources on the node ---"
+          kubectl describe node | sed -n '/Allocated resources/,/Events/p' | head -14
+          echo "--- pods: restarts and last termination reason ---"
+          kubectl get pods -n todira -o custom-columns='NAME:.metadata.name,RESTARTS:.status.containerStatuses[*].restartCount,LAST:.status.containerStatuses[*].lastState.terminated.reason,AGE:.metadata.creationTimestamp'
+          echo "--- non-routine events, newest last (last 60) ---"
+          kubectl get events -n todira --sort-by=.lastTimestamp | grep -v -E "SuccessfulCreate|Scheduled|Pulled|Pulling|Created |Started|SawCompletedJob|Completed" | tail -60
+          echo "--- kernel OOM hints from node events ---"
+          kubectl get events -A --field-selector reason=OOMKilling 2>/dev/null | tail -10 || true
+          kubectl get events -A | grep -i -E "oom|evict|memory|pressure" | tail -10 || true
