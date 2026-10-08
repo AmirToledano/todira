@@ -33,17 +33,17 @@ jobs:
               print(f"== {title}")
               for row in cur.fetchall():
                   print("==   " + " | ".join(str(c) for c in row))
-          q("rows inserted in the last 3h, by source / deal type (created = scraped_at at insert is not stored; using first_seen_at as written)",
-            """select source, deal_type,
-                      count(*) filter (where first_seen_at > now() - interval '3 hours') as announced_window,
-                      count(*) filter (where first_seen_at < now() - interval '7 days' and scraped_at > now() - interval '3 hours' and id > (select max(id) - 40000 from listings)) as quiet_backdated_recent_ids
-               from listings where scraped_at > now() - interval '3 hours' group by 1, 2 order by 1, 2""")
-          q("first_seen_at in the last 3h, by source",
-            "select source, count(*) from listings where first_seen_at > now() - interval '3 hours' group by 1 order by 2 desc")
-          q("price changed in the last 3h, by source / is_delisted_now",
-            "select source, is_delisted, count(*) from listings where price_changed_at > now() - interval '3 hours' group by 1, 2 order by 3 desc")
-          q("of those, rows that were delisted before this run (delisted_at older than 3h) and are back",
-            "select source, count(*) from listings where price_changed_at > now() - interval '3 hours' and is_delisted = false and first_seen_at < now() - interval '3 hours' group by 1")
+          q("Yad2 rent: rows by hour of first_seen_at over the last 6 hours (all, then only those NOT pushed back by the seed policy)",
+            """select date_trunc('hour', first_seen_at) h, count(*) all_rows,
+                      count(*) filter (where first_seen_at > now() - interval '7 days') as announced_rows
+               from listings where source = 'yad2' and deal_type = 'rent' and first_seen_at > now() - interval '6 hours'
+               group by 1 order by 1""")
+          q("Yad2 rent rows announced as new in the last 40 minutes (this run only), by whether the ad is still active",
+            "select is_delisted, count(*) from listings where source='yad2' and deal_type='rent' and first_seen_at > now() - interval '40 minutes' group by 1")
+          q("Komo rows announced in the last 6h, by hour",
+            "select date_trunc('hour', first_seen_at) h, deal_type, count(*) from listings where source='komo' and first_seen_at > now() - interval '6 hours' group by 1, 2 order by 1, 2")
+          q("Yad2 rent: how many rows were backdated by the seed policy this run (first_seen_at older than 7 days but inserted recently = highest ids)",
+            "select count(*) from listings where source='yad2' and deal_type='rent' and first_seen_at < now() - interval '7 days' and id > (select max(id) - 30000 from listings)")
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
