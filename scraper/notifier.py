@@ -199,7 +199,13 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
     rule is that every card is complete (the description is shown to every viewer regardless of subscription; only the
     original-listing link is gated). `listing.details_fetched_at` is the "already asked" marker: a listing is fetched at
     most once successfully, however many users it matches. Komo / Homeless / Facebook cards get their details from their
-    own scrapers. `recipients` is kept for the existing call sites and is no longer consulted."""
+    own scrapers.
+
+    Only when there is somebody to send to: run_notifications walks EVERY retry candidate (~13,500 active listings a run,
+    mostly sale ads that match nobody) through here, and the first version fetched for all of them — ~700 wasted reads in one
+    run (found in the 16:00 UTC run: the notification phase ran 13 minutes and the catch-up never got its turn)."""
+    if not recipients:
+        return
     if not yad2_detail.is_enabled():
         return
     if listing.source != Source.YAD2 or listing.details_fetched_at is not None:
