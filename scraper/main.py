@@ -1081,15 +1081,32 @@ def _flush_sweep_chunk(items: list, *, quiet: bool = False) -> None:
     _STREAMED_CITIES.update(item.city for item in items if item.city)
 
 
+# The for-sale map keeps being "new" for a while after its first complete sweep: 62,409 sale rows sat in the database by 08:00 UTC although
+# every sweep sees only ~40,000, because a response carries ~20 rotating promoted markers and the union of sweeps keeps growing (5,363 new
+# at the third sweep, 311 at the second, decaying). Until that settles, sale ads found by the sweep stay quiet for this many hours after the
+# seed flag was first set (rent settled at once and needs none).
+_TILE_SEED_QUIET_HOURS = {"rent": 0, "forsale": 24}
+
+
 def _tile_seeded(kind: str) -> bool:
-    """True once a complete sweep of this map has happened (its seed flag). A read error counts as NOT seeded: the worst case is one run
-    that stays quiet, never a flood."""
+    """True once this map's seed is over: its flag is set and, for the for-sale map, was set more than _TILE_SEED_QUIET_HOURS ago. A read
+    error counts as NOT seeded: the worst case is one run that stays quiet, never a flood."""
     try:
         with get_session() as session:
-            return bool(whatsapp_guard.get_flag(session, _YAD2_TILES_SEEDED_FLAGS[kind]))
+            raw = whatsapp_guard.get_flag(session, _YAD2_TILES_SEEDED_FLAGS[kind])
     except Exception:
         logger.exception("Could not read the %s seed flag - treating the sweep as a quiet seed run", kind)
         return False
+    if not raw:
+        return False
+    quiet_hours = _TILE_SEED_QUIET_HOURS.get(kind, 0)
+    if not quiet_hours:
+        return True
+    try:
+        set_at = dt.datetime.fromisoformat(raw)
+    except ValueError:
+        return True
+    return dt.datetime.now(dt.timezone.utc) - set_at >= dt.timedelta(hours=quiet_hours)
 
 
 def _run_yad2_tile_sweep(
