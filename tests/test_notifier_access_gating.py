@@ -180,7 +180,7 @@ def test_maybe_fetch_description_fetches_a_listing_that_has_a_description_but_wa
     session = SimpleNamespace(commit=lambda: None)
     enabled, fetch = _detail_patches({"floor_total": 3, "has_parking": True})
     with enabled, fetch:
-        asyncio.run(notifier._maybe_fetch_description(session, listing, []))
+        asyncio.run(notifier._maybe_fetch_description(session, listing, [_user()]))
     assert listing.floor_total == 3 and listing.has_parking is True
 
 
@@ -191,9 +191,34 @@ def test_maybe_fetch_description_marks_an_empty_answer_as_read():
     session = SimpleNamespace(commit=lambda: committed.append(True))
     enabled, fetch = _detail_patches({})
     with enabled, fetch:
-        asyncio.run(notifier._maybe_fetch_description(session, listing, []))
+        asyncio.run(notifier._maybe_fetch_description(session, listing, [_user()]))
     assert listing.details_fetched_at is not None
     assert committed == [True]
+
+
+def test_maybe_fetch_description_does_nothing_when_there_is_nobody_to_send_to():
+    """run_notifications walks ~13,500 retry candidates a run, almost all matching nobody - fetching for them wasted ~700 reads."""
+    listing = _yad2_listing()
+    session = SimpleNamespace(commit=lambda: None)
+    with (
+        patch.object(notifier.yad2_detail, "is_enabled", lambda: True),
+        patch.object(notifier.yad2_detail, "fetch_updates") as mock_fetch,
+    ):
+        asyncio.run(notifier._maybe_fetch_description(session, listing, []))
+    mock_fetch.assert_not_called()
+    assert listing.details_fetched_at is None
+
+
+def test_notify_new_matches_makes_no_fetch_for_a_listing_nobody_matches():
+    listing = SimpleNamespace(id=10, price=5000, description=None)
+    session = SimpleNamespace(get=lambda model, pk: None, add=lambda obj: None, commit=lambda: None)
+    with (
+        patch.object(notifier, "_candidate_filters", return_value=[]),
+        patch.object(notifier.yad2_detail, "is_enabled", lambda: True),
+        patch.object(notifier.yad2_detail, "fetch_updates") as mock_fetch,
+    ):
+        asyncio.run(notifier._notify_new_matches(SimpleNamespace(), session, listing))
+    mock_fetch.assert_not_called()
 
 
 def test_notifier_has_no_paid_detail_fetcher_left():
