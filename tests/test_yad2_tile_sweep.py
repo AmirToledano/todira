@@ -492,3 +492,35 @@ def test_the_sweep_is_quiet_while_its_map_is_unseeded_and_a_flag_read_error_also
     monkeypatch.undo()
     monkeypatch.setattr(scraper_main, "get_session", boom)
     assert scraper_main._tile_seeded("rent") is False
+
+
+def test_delisting_uses_one_array_parameter_so_a_huge_seen_set_cannot_exceed_the_65535_parameter_limit():
+    """2026-10-09 07:00 UTC: 'number of parameters must be between 0 and 65535' killed the run at the delisting query the first time the
+    for-sale sweep completed (~67,000 seen ids). The ids must travel as ONE array parameter."""
+
+    class _Capture:
+        statements: list = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+
+            class _R:
+                def fetchall(self):
+                    return []
+
+            return _R()
+
+        def commit(self):
+            return None
+
+    capture = _Capture()
+    capture.statements = []
+    seen = {f"id{i}" for i in range(70_000)}
+    scraper_main._mark_delisted(capture, "yad2", seen, {"חיפה"})
+    assert len(capture.statements) == 2
+    for statement in capture.statements:
+        compiled = statement.compile()
+        # the seen ids are a single bound parameter, whatever their number
+        big = [v for v in compiled.params.values() if isinstance(v, list) and len(v) == 70_000]
+        assert len(big) == 1
+        assert len(compiled.params) < 20

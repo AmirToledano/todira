@@ -13,7 +13,8 @@ import sys
 import time
 from typing import Callable
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, all_, any_, bindparam, func, select
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing
@@ -431,6 +432,12 @@ def _notifications_suspended() -> bool:
     return os.environ.get(_NOTIFICATIONS_SUSPENDED_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
 
 
+def _col_in(column, values) -> object:
+    """`column IN (values)` as ONE array parameter (`column = ANY(:array)`): a plain IN list binds one parameter per value, and Postgres/psycopg
+    refuse a statement with more than 65,535 of them (hit on 2026-10-09 by the delisting query; the seed passes can be as large)."""
+    return column == any_(bindparam(None, list(values), type_=ARRAY(column.type)))
+
+
 def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[int, int]]]:
     """For each normalized item: insert if the (source, external_id) pair is new, otherwise
     update the existing row and check whether its price just changed.
@@ -828,13 +835,17 @@ def _mark_delisted(
     source, not just Yad2 — Komo/Homeless share the same call, and there's no real downside to a
     few extra hours of grace before delisting anywhere."""
     table = Listing.__table__
+    # One array parameter, not one bound parameter per id: Postgres/psycopg accept at most 65,535 parameters in a statement, and the Yad2
+    # sweeps see ~65,000 ads a run (2026-10-09 07:00 UTC: "number of parameters must be between 0 and 65535" killed the run at this
+    # very query the first time the for-sale sweep completed).
+    seen_array = bindparam("seen_ids", list(seen_external_ids), type_=ARRAY(Text))
     newly_delisted = session.execute(
         table.update()
         .where(
             table.c.source == source,
             table.c.is_delisted.is_(False),
             table.c.city.in_(scraped_city_names),
-            table.c.external_id.notin_(seen_external_ids),
+            table.c.external_id != all_(seen_array),
             table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, 0, min_hours_before_delist),
         )
         .values(is_delisted=True, delisted_at=func.now())
@@ -846,7 +857,7 @@ def _mark_delisted(
             table.c.source == source,
             table.c.is_delisted.is_(True),
             table.c.city.in_(scraped_city_names),
-            table.c.external_id.in_(seen_external_ids),
+            table.c.external_id == any_(seen_array),
         )
         .values(is_delisted=False, delisted_at=None)
     )
@@ -964,7 +975,7 @@ def _apply_tile_seed_policy(session, new_ids: list[int]) -> list[int]:
                     (row[0], row[1])
                     for row in session.execute(
                         select(Listing.id, Listing.external_id).where(
-                            Listing.id.in_(new_ids), Listing.source == Source.YAD2
+                            _col_in(Listing.id, new_ids), Listing.source == Source.YAD2
                         )
                     ).all()
                 ]
@@ -973,7 +984,7 @@ def _apply_tile_seed_policy(session, new_ids: list[int]) -> list[int]:
                 table = Listing.__table__
                 session.execute(
                     table.update()
-                    .where(table.c.id.in_(backlog))
+                    .where(_col_in(table.c.id, backlog))
                     .values(first_seen_at=func.now() - func.make_interval(0, 0, 0, _SEED_BACKDATE_DAYS))
                 )
                 session.commit()
@@ -1675,7 +1686,7 @@ def _quiet_backlog(session, new_ids: list[int]) -> list[int]:
         if not quiet_ids:
             continue
         rows = session.execute(
-            select(Listing.id, Listing.external_id).where(Listing.id.in_(new_ids), Listing.source == source)
+            select(Listing.id, Listing.external_id).where(_col_in(Listing.id, new_ids), Listing.source == source)
         ).all()
         found = {row[0] for row in rows if row[1] in quiet_ids}
         if found:
@@ -1685,7 +1696,7 @@ def _quiet_backlog(session, new_ids: list[int]) -> list[int]:
         table = Listing.__table__
         session.execute(
             table.update()
-            .where(table.c.id.in_(backlog))
+            .where(_col_in(table.c.id, backlog))
             .values(first_seen_at=func.now() - func.make_interval(0, 0, 0, _SEED_BACKDATE_DAYS))
         )
         session.commit()
@@ -2194,7 +2205,7 @@ def run_once() -> dict[str, int]:
                 )
 
         new_listings = (
-            list(session.scalars(select(Listing).where(Listing.id.in_(new_ids))))
+            list(session.scalars(select(Listing).where(_col_in(Listing.id, new_ids))))
             if new_ids
             else []
         )
@@ -2209,7 +2220,7 @@ def run_once() -> dict[str, int]:
         listings_by_id = {
             listing.id: listing
             for listing in (
-                session.scalars(select(Listing).where(Listing.id.in_(price_change_ids)))
+                session.scalars(select(Listing).where(_col_in(Listing.id, price_change_ids)))
                 if price_change_ids
                 else []
             )
