@@ -45,18 +45,16 @@ jobs:
               print(f"== {title}")
               for row in cur.fetchall():
                   print("==   " + " | ".join(str(c) for c in row))
-          q("notifications sent in the last 100 minutes, by reason / source / deal type / listing age at send time",
-            """select s.reason, l.source, l.deal_type,
-                      case when s.sent_at - l.first_seen_at < interval '3 hours' then 'a: under 3h'
-                           when s.sent_at - l.first_seen_at < interval '24 hours' then 'b: 3-24h'
-                           else 'c: older than 1 day' end as age, count(*)
+          q("the 'new' notifications of the last 100 minutes whose listing was first seen more than a day earlier, by how much older (days)",
+            """select width_bucket(extract(epoch from (s.sent_at - l.first_seen_at))/86400.0, array[1,2,3,4,5,6,7,8]) as days_old_bucket, count(*)
                from sent_notifications s join listings l on l.id = s.listing_id
-               where s.sent_at > now() - interval '100 minutes' group by 1, 2, 3, 4 order by 1, 2, 3, 4""")
-          q("how many distinct users received something, and the most any single user received",
-            """select count(distinct user_id), max(c), percentile_cont(0.5) within group (order by c) from
-               (select user_id, count(*) c from sent_notifications where sent_at > now() - interval '100 minutes' group by user_id) t""")
-          q("sent in the last 100 minutes by minute-bucket of 10 (to see which run sent them)",
-            "select date_trunc('hour', sent_at) + (extract(minute from sent_at)::int / 10) * interval '10 minutes' b, count(*) from sent_notifications where sent_at > now() - interval '100 minutes' group by 1 order by 1")
+               where s.sent_at > now() - interval '100 minutes' and s.reason = 'new' and s.sent_at - l.first_seen_at >= interval '1 day' group by 1 order by 1""")
+          q("when was each filter last changed (filters.updated_at), newest first - times only, no ids",
+            "select updated_at from filters order by updated_at desc limit 3")
+          q("how many cities / property types does the newest filter cover (counts only)",
+            "select coalesce(array_length(cities,1),0), coalesce(array_length(property_types,1),0), deal_type from filters order by updated_at desc limit 1")
+          q("users in total, and how many have a filter",
+            "select (select count(*) from users), (select count(*) from filters)")
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
