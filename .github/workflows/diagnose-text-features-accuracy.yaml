@@ -66,6 +66,26 @@ jobs:
                           agree[col] += 1
                       else:
                           differ[col] += 1
+              # floor and property type: where does the text disagree with the structured value?
+              import re
+              diffs = collections.Counter(); single_agree = collections.Counter(); ptypes = collections.Counter()
+              for row in rows:
+                  text, structured = row[0], dict(zip(COLS, row[1:]))
+                  got = features_from_text(text)
+                  if "floor" in got and structured["floor"] is not None:
+                      mentions = set(re.findall(r"קומ[הת]\s*(\d{1,2})(?!\d)", text))
+                      diffs[got["floor"] - structured["floor"]] += 1
+                      single_agree["one mention, agrees" if len(mentions) <= 1 and got["floor"] == structured["floor"] else
+                                   "one mention, disagrees" if len(mentions) <= 1 else
+                                   "several different floors mentioned, agrees" if got["floor"] == structured["floor"] else
+                                   "several different floors mentioned, disagrees"] += 1
+                  if "property_type" in got and structured["property_type"] is not None:
+                      ptypes[(got["property_type"], structured["property_type"])] += 1
+              if diffs:
+                  print(f"==   [{source}] floor: text minus structured, most common differences: {diffs.most_common(6)}", flush=True)
+                  print(f"==   [{source}] floor: {dict(single_agree)}", flush=True)
+              if ptypes:
+                  print(f"==   [{source}] property_type (text, structured) pairs: {ptypes.most_common(8)}", flush=True)
               print(f"== {source}: ads sampled={len(rows)}", flush=True)
               for col in COLS:
                   if found[col]:
