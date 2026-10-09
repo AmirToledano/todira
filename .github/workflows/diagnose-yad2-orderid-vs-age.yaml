@@ -1,4 +1,4 @@
-name: Diagnose Yad2 - the small enumerated marker fields (clusters and gray markers in the map response), counts only
+name: Diagnose Yad2 - the small enumerated marker fields (token stability of for-sale markers between two requests), counts only
 
 # Read-only, manual-only. Every map marker carries `orderId`. If it grows with posting time (like Komo's id) it can tell a truly new ad
 # from an old one a sweep happened to miss before. This fetches a few rent pieces on the free route, joins the markers with the rows
@@ -36,34 +36,29 @@ jobs:
               "haifa-a": (5, "32.780000,34.950000,32.830000,35.020000", 14),
               "beer-sheva-a": (2, "31.230000,34.770000,31.290000,34.830000", 14),
           }
-          import collections
+          import psycopg2
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
           CASES = [
-              ("south-district zoom 8", 2, "29.490631,33.476480,31.904124,36.268220", 8),
-              ("beer-sheva wide zoom 11", 2, "31.150000,34.650000,31.350000,34.950000", 11),
-              ("beer-sheva mid zoom 13", 2, "31.230000,34.770000,31.290000,34.830000", 13),
-              ("beer-sheva small zoom 14", 2, "31.250000,34.780000,31.270000,34.800000", 14),
-              ("tel-aviv-district zoom 11", 3, "31.987679,34.732856,32.146966,34.857736", 11),
+              ("tel-aviv small", 3, "32.060000,34.770000,32.075000,34.790000", 15),
+              ("jerusalem small", 6, "31.770000,35.200000,31.785000,35.220000", 15),
+              ("haifa small", 5, "32.790000,34.980000,32.805000,35.000000", 15),
+              ("raanana small", 1, "32.180000,34.860000,32.195000,34.880000", 15),
           ]
+          def tokens(region, bbox, zoom):
+              url = f"https://gw.yad2.co.il/realestate-feed/forsale/map?region={region}&bBox={bbox}&zoom={zoom}"
+              r = cr.get(url, headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+              if r.status_code != 200:
+                  return None
+              return {str(m.get("token")) for m in ((r.json().get("data") or {}).get("markers") or []) if isinstance(m, dict) and m.get("token")}
           for name, region, bbox, zoom in CASES:
-              for kind in ("rent",):
-                  url = f"https://gw.yad2.co.il/realestate-feed/{kind}/map?region={region}&bBox={bbox}&zoom={zoom}"
-                  r = cr.get(url, headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
-                  if r.status_code != 200:
-                      print(f"== {name}: status {r.status_code}", flush=True); continue
-                  d = r.json().get("data") or {}
-                  sizes = {k: (len(v) if isinstance(v, (list, dict)) else v) for k, v in d.items()}
-                  print(f"== {name}: list sizes {sizes}", flush=True)
-                  cl = d.get("clusters")
-                  if isinstance(cl, list) and cl and isinstance(cl[0], dict):
-                      print(f"==   cluster keys: {sorted(cl[0].keys())}; cluster counts (first 8): {[c.get('count') or c.get('markersCount') or c.get('total') for c in cl[:8]]}", flush=True)
-                  gm = d.get("grayMarkers")
-                  if isinstance(gm, list) and gm and isinstance(gm[0], dict):
-                      print(f"==   grayMarker keys: {sorted(gm[0].keys())}", flush=True)
-                  mk = d.get("markers") or []
-                  toks = {m.get("token") for m in mk if isinstance(m, dict)}
-                  gtoks = {m.get("token") for m in (gm or []) if isinstance(m, dict)}
-                  print(f"==   marker tokens={len(toks)} grayMarker tokens={len(gtoks)} overlap={len(toks & gtoks)}", flush=True)
-                  time.sleep(1.5)
+              first = tokens(region, bbox, zoom); time.sleep(20)
+              second = tokens(region, bbox, zoom)
+              if first is None or second is None:
+                  print(f"== {name}: fetch failed", flush=True); continue
+              union = first | second
+              cur.execute("select count(*) from listings where source='yad2' and deal_type='sale' and external_id = any(%s)", (list(union),))
+              held = cur.fetchone()[0]
+              print(f"== {name}: first={len(first)} second={len(second)} same_in_both={len(first & second)} union={len(union)} held_in_db={held}", flush=True)
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
