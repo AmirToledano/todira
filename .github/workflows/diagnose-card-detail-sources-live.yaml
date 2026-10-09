@@ -1,0 +1,121 @@
+name: Diagnose card details - the real item-API mapping on live ads, and whether Homeless answers a browser-fingerprint request (read-only)
+
+# Read-only, manual-only. Part 1 runs the REAL code from main (todira_common/yad2_item_api.py) on ~40 live Yad2 ads from a few map pieces
+# (incl. the Mevaseret Zion area) and prints only COUNTS of which card fields came out (description, total floors, entry date or note,
+# features, ...). Part 2 asks Homeless (the one source that still needs ZenRows credits) for a search page and one detail page with the same
+# free browser-TLS route the Yad2 map uses, and prints only status codes, sizes and card counts. No ad text, no ids, no personal data.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Probe in a throwaway pod
+        run: |
+          POD_NAME="card-src-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import collections, io, os, re, subprocess, sys, tarfile, time, urllib.request
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi"])
+          data = urllib.request.urlopen("https://codeload.github.com/AmirToledano/todira/tar.gz/refs/heads/main", timeout=120).read()
+          tarfile.open(fileobj=io.BytesIO(data)).extractall("/tmp/repo")
+          root = "/tmp/repo/" + os.listdir("/tmp/repo")[0]
+          sys.path.insert(0, root + "/common")
+          os.environ["YAD2_ITEM_API"] = "true"
+          os.environ["YAD2_ITEM_API_MIN_SPACING_SECONDS"] = "0.4"
+          from todira_common import yad2_item_api as api
+          from curl_cffi import requests as cr
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+
+          print(f"== item api enabled: {api.is_enabled()}", flush=True)
+          tokens = []
+          for name, box in (("mevaseret", "31.770000,35.120000,31.830000,35.200000"), ("tel-aviv", "32.060000,34.760000,32.090000,34.800000"),
+                            ("beer-sheva", "31.240000,34.770000,31.270000,34.820000")):
+              r = cr.get(f"https://gw.yad2.co.il/realestate-feed/rent/map?region=3&bBox={box}&zoom=14", headers=H, impersonate="chrome", timeout=30)
+              got = [m.get("token") for m in ((r.json().get("data") or {}).get("markers") or []) if m.get("token")] if r.status_code == 200 else []
+              print(f"== map piece {name}: status={r.status_code} tokens={len(got)}", flush=True)
+              tokens += got[:14]
+          tokens = list(dict.fromkeys(tokens))
+
+          counts = collections.Counter()
+          n = 0
+          for t in tokens:
+              updates = api.fetch_yad2_detail_updates(f"https://www.yad2.co.il/item/{t}")
+              if updates is None:
+                  counts["no_answer"] += 1
+                  continue
+              n += 1
+              counts["answered"] += 1
+              for key in ("description", "floor_total", "move_in_date", "move_in_note", "image_urls", "property_type", "safe_room_type", "furniture"):
+                  if updates.get(key):
+                      counts[key] += 1
+              feats = [k for k in ("has_parking", "has_elevator", "has_balcony", "pets_allowed", "is_renovated", "is_roommate_friendly") if updates.get(k) is True]
+              if feats or updates.get("safe_room_type") in ("safe_room", "building_shelter") or updates.get("furniture") == "furnished":
+                  counts["at_least_one_feature_shown_on_card"] += 1
+              if updates.get("description") and (updates.get("floor_total") is not None) and (updates.get("move_in_date") or updates.get("move_in_note")):
+                  counts["description_and_total_floors_and_entry"] += 1
+          print(f"== PART 1: ads asked={len(tokens)} {dict(counts)}", flush=True)
+
+          print("== PART 2: Homeless with a browser TLS fingerprint (no ZenRows)", flush=True)
+          for label, url in (("rent search", "https://www.homeless.co.il/rent/"), ("sale search", "https://www.homeless.co.il/sale/")):
+              try:
+                  resp = cr.get(url, headers=H, impersonate="chrome", timeout=40)
+                  body = resp.text or ""
+                  ids = set(re.findall(r'id="ad_(\d+)"', body))
+                  print(f"==   {label}: status={resp.status_code} bytes={len(body)} cards={len(ids)} challenge={any(w in body.lower() for w in ('captcha', 'cf-chl', 'just a moment', 'access denied'))}", flush=True)
+                  if label == "rent search" and ids:
+                      one = sorted(ids)[0]
+                      time.sleep(3)
+                      for pattern in (f"https://www.homeless.co.il/rent/viewad,{one}.aspx", f"https://www.homeless.co.il/rent/viewad,{one}"):
+                          d = cr.get(pattern, headers=H, impersonate="chrome", timeout=40)
+                          dbody = d.text or ""
+                          print(f"==   detail page: status={d.status_code} bytes={len(dbody)} has_description_block={'viewad' in dbody.lower() or 'תיאור' in dbody}", flush=True)
+              except Exception as e:
+                  print(f"==   {label}: ERROR {type(e).__name__}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 600
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 200); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
