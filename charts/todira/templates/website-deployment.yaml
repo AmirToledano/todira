@@ -140,6 +140,8 @@ spec:
             # fetch_listing_description always returns None, same as before this feature existed.
             - name: YAD2_DETAIL_VIA_GEMINI
               value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
+            - name: YAD2_ITEM_API
+              value: {{ .Values.scraper.yad2ItemApi | default false | quote }}
             - name: YAD2_GEMINI_MODEL
               value: {{ .Values.yad2GeminiModels | default "" | quote }}
             - name: BRIGHT_DATA_API_KEY

@@ -4,6 +4,8 @@ The module's own docstring promises it "never raises" - a malformed/missing fiel
 degrade to None rather than aborting a scrape run over one bad item. That defensive contract is
 exactly what's worth locking down with tests, since scraper/main.py relies on it silently.
 """
+import datetime as dt
+
 from todira_common.enums import DealType, Source
 
 from normalize import normalize
@@ -221,7 +223,7 @@ _REAL_DETAIL = {
     "price": 16000,
     "adType": "commercial",
     "additionalDetails": {
-        "entranceDate": "2026-08-11T00:00:00",
+        "entranceDate": (dt.date.today() + dt.timedelta(days=45)).isoformat() + "T00:00:00",
         "roomsCount": 4,
         "property": {"id": 6, "text": "גג/ פנטהאוז", "textEng": "penthouse"},
         "propertyCondition": {"id": 3, "text": "במצב שמור"},
@@ -249,6 +251,9 @@ def _base_item():
     return normalize({"id": "1", "price": 16000})
 
 
+_FUTURE_ENTRANCE = dt.date.today() + dt.timedelta(days=45)
+
+
 def test_enrich_fills_property_type_from_confirmed_mapping():
     result = enrich_from_detail(_base_item(), _REAL_DETAIL)
     assert result.property_type == "penthouse"
@@ -274,8 +279,17 @@ def test_enrich_maps_security_room_to_safe_room_type():
 def test_enrich_fills_floor_total_and_move_in_date():
     result = enrich_from_detail(_base_item(), _REAL_DETAIL)
     assert result.floor_total == 3
-    assert result.move_in_date is not None
-    assert result.move_in_date.isoformat() == "2026-08-11"
+    assert result.move_in_date == _FUTURE_ENTRANCE
+
+
+def test_enrich_a_past_entrance_date_becomes_the_immediate_note_not_a_date():
+    """2026-10-09: Yad2 keeps the original entrance date on an ad that has been up for a while. A date that has passed is
+    stored as the note "מיידית" (never as move_in_date, which matching.py would compare against a filter's earliest date)."""
+    past = dict(_REAL_DETAIL)
+    past["additionalDetails"] = {**_REAL_DETAIL["additionalDetails"], "entranceDate": "2026-08-11T00:00:00"}
+    result = enrich_from_detail(_base_item(), past)
+    assert result.move_in_date is None
+    assert result.move_in_note == "מיידית"
 
 
 def test_enrich_fills_description_and_real_images():
@@ -371,7 +385,8 @@ def test_enrich_from_detail_consumes_a_real_bright_data_record_unchanged():
     assert result.floor_total == 4
     assert result.has_elevator is True
     assert result.has_parking is False
-    assert result.move_in_date.isoformat() == "2026-08-26"
+    # entranceDate 2026-08-26 has passed: stored as the immediate note, not as a date (see yad2_item_api).
+    assert result.move_in_date is None and result.move_in_note == "מיידית"
     assert result.image_urls == ["https://img.yad2.co.il/Pic/1.jpeg"]
     # "sublet" isn't in _PROPERTY_TYPE_MAP (only "penthouse" is confirmed so far) — correctly
     # stays None rather than guessed, same benefit-of-the-doubt policy as everywhere else.

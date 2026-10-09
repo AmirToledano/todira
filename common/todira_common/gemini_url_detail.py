@@ -184,6 +184,13 @@ def fetch_yad2_detail_updates(url: str) -> dict | None:
                     model, "daily" if daily else "rate", pause / 60,
                 )
                 continue
+            if response.status_code == 402:
+                # 2026-10-09: HTTP 402 RESOURCE_EXHAUSTED on EVERY model = the project's prepaid balance is spent. Skip
+                # the model for hours (like a daily quota) instead of returning None and waiting out the spacing on every call.
+                _paused_until[model] = time.monotonic() + _DAILY_QUOTA_PAUSE_SECONDS
+                logger.warning("Gemini %s answered 402 (prepaid balance spent) — skipping that model for %.0f min",
+                               model, _DAILY_QUOTA_PAUSE_SECONDS / 60)
+                continue
             if response.status_code == 503:
                 logger.warning("Gemini %s overloaded (503) for %s — trying the next model", model, url)
                 continue

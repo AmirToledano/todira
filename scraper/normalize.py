@@ -15,6 +15,7 @@ from typing import Any
 from todira_common import cities
 from todira_common.enums import DealType, Source
 from todira_common.schemas import NormalizedListing
+from todira_common.yad2_item_api import HEBREW_PROPERTY_TYPE_MAP, detail_updates_from_item
 
 logger = logging.getLogger(__name__)
 
@@ -88,16 +89,7 @@ _FEED_TAG_TO_FIELD: dict[str, tuple[str, Any]] = {
     'ממ"ד': ("safe_room_type", "safe_room"),
 }
 
-# Yad2's own free-text `additionalDetails.property.text` (Hebrew, no `textEng` on feed records —
-# unlike the single-listing detail page) -> this project's PropertyType literal. Only values
-# actually confirmed live are mapped; an unmapped value falls through to None (matching.py already
-# gives that the benefit of the doubt).
-_HEBREW_PROPERTY_TYPE_MAP = {
-    "דירה": "apartment",
-    "דירת גן": "garden_apartment",
-    "גג/ פנטהאוז": "penthouse",
-    "בית בודד": "private_house",
-}
+# (Yad2's Hebrew `additionalDetails.property.text` -> property type map lives in todira_common.yad2_item_api.)
 
 
 def _enrich_from_feed_record(item: NormalizedListing, record: dict[str, Any]) -> NormalizedListing:
@@ -126,8 +118,8 @@ def _enrich_from_feed_record(item: NormalizedListing, record: dict[str, Any]) ->
     property_text = (
         (property_field.get("text") or "").strip() if isinstance(property_field, dict) else ""
     )
-    if property_text in _HEBREW_PROPERTY_TYPE_MAP:
-        updates["property_type"] = _HEBREW_PROPERTY_TYPE_MAP[property_text]
+    if property_text in HEBREW_PROPERTY_TYPE_MAP:
+        updates["property_type"] = HEBREW_PROPERTY_TYPE_MAP[property_text]
 
     tags = record.get("tags")
     if isinstance(tags, list):
@@ -240,83 +232,11 @@ def normalize(
     return item
 
 
-# Yad2's own `property.textEng` -> this project's PropertyType literal (schemas.py). Only values
-# actually confirmed against a real fetched listing (see fetch_listing_detail's module comment in
-# yad2_client.py) are mapped — an unmapped/never-seen value deliberately falls through to None
-# (matching.py already gives that the benefit of the doubt) rather than guessing at a mapping this
-# project hasn't verified. Extend as more values are confirmed live.
-_PROPERTY_TYPE_MAP = {
-    "penthouse": "penthouse",
-}
-
-
 def _compute_detail_updates(detail: dict[str, Any]) -> dict[str, Any]:
-    """The actual field-extraction logic behind enrich_from_detail, split out (2026-09-12) so
-    scraper/main.py can apply the same updates straight onto an ORM `Listing` row (via
-    `Listing.__table__.update().values(**updates)`) without a wasteful round-trip through a
-    NormalizedListing built from the ORM row's own current values — this function's output never
-    actually depends on `item`'s existing fields (see enrich_from_detail's own note below), only on
-    `detail`, so there was nothing for that round-trip to buy. Returns {} when `detail` yields
-    nothing usable, same "purely additive" contract as before."""
-    updates: dict[str, Any] = {}
-
-    additional = detail.get("additionalDetails")
-    additional = additional if isinstance(additional, dict) else {}
-    in_property = detail.get("inProperty")
-    in_property = in_property if isinstance(in_property, dict) else {}
-    meta = detail.get("metaData")
-    meta = meta if isinstance(meta, dict) else {}
-    customer = detail.get("customer")
-    customer = customer if isinstance(customer, dict) else {}
-
-    property_field = additional.get("property")
-    property_type_eng = (
-        (property_field.get("textEng") or "").strip() if isinstance(property_field, dict) else ""
-    )
-    if property_type_eng in _PROPERTY_TYPE_MAP:
-        updates["property_type"] = _PROPERTY_TYPE_MAP[property_type_eng]
-
-    if isinstance(in_property.get("includeParking"), bool):
-        updates["has_parking"] = in_property["includeParking"]
-    if isinstance(in_property.get("includeElevator"), bool):
-        updates["has_elevator"] = in_property["includeElevator"]
-    if isinstance(in_property.get("includeBalcony"), bool):
-        updates["has_balcony"] = in_property["includeBalcony"]
-    if isinstance(in_property.get("includeSecurityRoom"), bool):
-        updates["safe_room_type"] = (
-            "safe_room" if in_property["includeSecurityRoom"] else "none"
-        )
-
-    floor_total = additional.get("buildingTopFloor")
-    if isinstance(floor_total, int):
-        updates["floor_total"] = floor_total
-
-    entrance_date = _parse_datetime(additional.get("entranceDate"))
-    if entrance_date is not None:
-        updates["move_in_date"] = entrance_date.date()
-
-    # searchText added 2026-09-12 as a fallback (not the primary source — metaData.description is
-    # the cleaner, human-written text; searchText is a different, real field too, more like a
-    # search-indexing concatenation of facts — see PROJECT_STATE.md's 2026-09-11/12 entries for how
-    # both were confirmed live, distinct, on the same real listings).
-    description = meta.get("description") or detail.get("searchText")
-    if isinstance(description, str) and description.strip():
-        updates["description"] = description.strip()
-
-    images = meta.get("images")
-    if isinstance(images, list):
-        real_images = [u for u in images if isinstance(u, str) and u.strip()]
-        if real_images:
-            updates["image_urls"] = real_images
-
-    # An agency NAME is a confident positive signal ("definitely a broker listing"); its absence
-    # is NOT confident evidence of the opposite (a private listing might still carry some customer
-    # record) — so this only ever sets True, matching the benefit-of-the-doubt policy the rest of
-    # this field already gets in matching.py (an unset/None value stays untouched here).
-    if customer.get("agencyName"):
-        updates["is_broker_listing"] = True
-
-    return updates
+    """The field-extraction logic behind enrich_from_detail. Lives in todira_common.yad2_item_api now (2026-10-09) so the
+    scraper, the notifier and the website share ONE mapping from a Yad2 ad record to Listing columns; this wrapper stays
+    for the callers and tests that use the old name. Returns {} when `detail` yields nothing usable."""
+    return detail_updates_from_item(detail)
 
 
 def enrich_from_detail(item: NormalizedListing, detail: dict[str, Any]) -> NormalizedListing:

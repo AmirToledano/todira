@@ -246,6 +246,37 @@ def test_update_never_erases_an_existing_description_with_a_missing_one():
     assert "description" not in update_stmt.compile().params
 
 
+def test_update_never_erases_detail_only_fields_with_missing_ones():
+    """2026-10-09 real bug, found by measuring live: a sweep/search item has None for everything only a listing's DETAIL
+    record carries (total floors, entry date, amenities, safe room, furniture, property type, broker status), and the
+    blind UPDATE wrote those Nones over whatever an earlier fetch stored — so enrichment vanished within the hour (of
+    2,445 Yad2 rentals sent in 24h none still had total floors; 52 of 24,897 active ones did). Those columns must be
+    absent from the UPDATE's values whenever the fresh item does not have them."""
+    existing_item = _make_item("existing-1", "https://example.com/existing-1", price=5000)
+    session = _QueueSession([_CannedResult((42, 5000)), _CannedResult(None)])
+
+    _upsert_listings(session, [existing_item])
+
+    params = session.executed_stmts[-1].compile().params
+    for column in scraper_main._DETAIL_ONLY_COLUMNS:
+        assert column not in params, column
+    assert "image_urls" not in params  # an empty photo list does not wipe real photos either
+    assert params["price"] == 5000  # ordinary fields are still refreshed
+
+
+def test_update_still_writes_a_detail_field_the_fresh_item_actually_has():
+    existing_item = _make_item(
+        "existing-1", "https://example.com/existing-1", price=5000, **{"elevator": True, "floor_total": 6}
+    )
+    existing_item = existing_item.model_copy(update={"has_elevator": True, "floor_total": 6})
+    session = _QueueSession([_CannedResult((42, 5000)), _CannedResult(None)])
+
+    _upsert_listings(session, [existing_item])
+
+    params = session.executed_stmts[-1].compile().params
+    assert params["has_elevator"] is True and params["floor_total"] == 6
+
+
 def test_update_still_overwrites_description_when_the_fresh_item_actually_has_one():
     existing_item = _make_item(
         "existing-1", "https://example.com/existing-1", price=5000, description="דירה משופצת"

@@ -14,7 +14,7 @@ from telegram import Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
 from config import WEBSITE_URL
-from todira_common.access import has_full_access
+from todira_common.access import ACCESS_FULL, access_state
 from todira_common.bot_strings import bot_text
 from todira_common.cards import format_caption, send_listing_card
 from todira_common.db import get_session
@@ -33,15 +33,15 @@ HIDDEN_LIMIT = 10
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
 
 
-def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[bool, list[Listing], str]:
-    """(has_access, listings, lang) — has_access (todira_common.access.has_full_access) decides
-    whether format_caption below shows the full card or the locked/teaser one, see that module's
-    2026-09-05 comment."""
+def _load_by_action_sync(tg_user, db_action: str, limit: int) -> tuple[str, list[Listing], str]:
+    """(access_state, listings, lang) — todira_common.access.access_state decides whether format_caption below shows
+    the full card or the locked one, and for a locked one WHICH notice (trial ended / subscription expired), see that
+    module's 2026-10-09 comment."""
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
         lang = user.language or DEFAULT_LANG
         is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(tg_user.id) == str(OWNER_TELEGRAM_USER_ID)
-        access = has_full_access(user, is_owner=is_owner)
+        access = access_state(user, is_owner=is_owner)
         stmt = (
             select(Listing)
             .join(UserListingAction, UserListingAction.listing_id == Listing.id)
@@ -63,7 +63,7 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    has_access, results, lang = await asyncio.to_thread(
+    state, results, lang = await asyncio.to_thread(
         _load_by_action_sync, update.effective_user, "liked", LIKED_LIMIT
     )
 
@@ -77,7 +77,13 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             context.bot,
             update.effective_chat.id,
             listing,
-            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url, lang=lang),
+            format_caption(
+                listing,
+                has_access=state == ACCESS_FULL,
+                upgrade_url=upgrade_url,
+                lang=lang,
+                access_state=state,
+            ),
             lang,
         )
 
@@ -88,7 +94,7 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # was no way to ever see a hidden listing again to change your mind. Mirrors /liked exactly,
     # just for action="hidden" — same toggle-capable ❤️/🙈 buttons on each card (see
     # _apply_reaction_sync below), so pressing 🙈 here un-hides it.
-    has_access, results, lang = await asyncio.to_thread(
+    state, results, lang = await asyncio.to_thread(
         _load_by_action_sync, update.effective_user, "hidden", HIDDEN_LIMIT
     )
 
@@ -102,7 +108,13 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             context.bot,
             update.effective_chat.id,
             listing,
-            format_caption(listing, has_access=has_access, upgrade_url=upgrade_url, lang=lang),
+            format_caption(
+                listing,
+                has_access=state == ACCESS_FULL,
+                upgrade_url=upgrade_url,
+                lang=lang,
+                access_state=state,
+            ),
             lang,
         )
 

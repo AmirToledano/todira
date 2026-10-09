@@ -1,5 +1,6 @@
-"""todira_common.listing_enrichment (2026-10-05): display-time, background, Gemini-only fill of Yad2 listings that
-are missing their details; and the website wiring that calls it from /apartments and /liked."""
+"""todira_common.listing_enrichment (2026-10-05): display-time, background fill of Yad2 listings that are missing their
+details; and the website wiring that calls it from /apartments and /liked. 2026-10-09: the fetch goes through
+todira_common.yad2_detail (Yad2's own item JSON, Gemini as backup) and `details_fetched_at` marks a listing as read."""
 from __future__ import annotations
 
 import importlib.util
@@ -10,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from todira_common import gemini_url_detail, listing_enrichment as le
+from todira_common import gemini_url_detail, listing_enrichment as le, yad2_detail
 from todira_common.enums import Source
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
@@ -24,8 +25,11 @@ _spec.loader.exec_module(website_main)
 
 
 class _L:
-    def __init__(self, id, description=None, source=Source.YAD2, url="https://yad2.co.il/item/x", **cols):
+    def __init__(
+        self, id, description=None, source=Source.YAD2, url="https://yad2.co.il/item/x", details_fetched_at=None, **cols
+    ):
         self.id, self.description, self.source, self.url = id, description, source, url
+        self.details_fetched_at = details_fetched_at
         self.floor_total = cols.get("floor_total")
         self.has_parking = cols.get("has_parking")
         self.has_elevator = cols.get("has_elevator")
@@ -70,10 +74,10 @@ def _clean_state(monkeypatch):
     le._queued.clear()
 
 
-def test_needs_enrichment_only_for_yad2_without_a_description():
+def test_needs_enrichment_only_for_yad2_whose_details_were_never_read():
     assert le.needs_enrichment(_L(1))
-    assert le.needs_enrichment(_L(1, description="   "))
-    assert not le.needs_enrichment(_L(1, description="יש"))
+    assert le.needs_enrichment(_L(1, description="יש"))  # a description alone does not mean total floors / features were read
+    assert not le.needs_enrichment(_L(1, details_fetched_at=object()))
     assert not le.needs_enrichment(_L(1, source=Source.KOMO))
 
 
@@ -92,9 +96,10 @@ def test_enrich_listing_sync_fetches_stores_and_commits(monkeypatch):
     listing = _L(5)
     store = _Store([listing])
     monkeypatch.setattr(le, "get_session", store)
-    with patch.object(gemini_url_detail, "fetch_yad2_detail_updates", lambda url: {"description": "תיאור", "has_elevator": True}):
+    with patch.object(yad2_detail, "fetch_updates", lambda url: {"description": "תיאור", "has_elevator": True}):
         assert le.enrich_listing_sync(5, listing.url) is True
     assert listing.description == "תיאור" and listing.has_elevator is True
+    assert listing.details_fetched_at is not None
     assert store.commits == 1
 
 
@@ -102,14 +107,14 @@ def test_enrich_listing_sync_does_nothing_when_gemini_returns_nothing_and_never_
     listing = _L(5)
     store = _Store([listing])
     monkeypatch.setattr(le, "get_session", store)
-    with patch.object(gemini_url_detail, "fetch_yad2_detail_updates", lambda url: None):
+    with patch.object(yad2_detail, "fetch_updates", lambda url: None):
         assert le.enrich_listing_sync(5, listing.url) is False
     assert listing.description is None and store.commits == 0
 
     def _boom(url):
         raise RuntimeError("x")
 
-    with patch.object(gemini_url_detail, "fetch_yad2_detail_updates", _boom):
+    with patch.object(yad2_detail, "fetch_updates", _boom):
         assert le.enrich_listing_sync(5, listing.url) is False
 
 
@@ -117,15 +122,28 @@ def test_enrich_listing_sync_never_overwrites_a_description_that_appeared_meanwh
     listing = _L(5, description="כבר מולא")
     store = _Store([listing])
     monkeypatch.setattr(le, "get_session", store)
-    with patch.object(gemini_url_detail, "fetch_yad2_detail_updates", lambda url: {"description": "אחר"}):
+    with patch.object(yad2_detail, "fetch_updates", lambda url: {"description": "אחר"}):
         assert le.enrich_listing_sync(5, listing.url) is False
-    assert listing.description == "כבר מולא" and store.commits == 0
+    assert listing.description == "כבר מולא"
+    assert listing.details_fetched_at is not None  # the read still happened, so it is recorded
+    assert store.commits == 1
 
 
-def test_fill_missing_queues_only_yad2_listings_without_a_description(monkeypatch):
+def test_enrich_listing_sync_records_an_empty_answer_as_read(monkeypatch):
+    listing = _L(5)
+    store = _Store([listing])
+    monkeypatch.setattr(le, "get_session", store)
+    with patch.object(yad2_detail, "fetch_updates", lambda url: {}):
+        assert le.enrich_listing_sync(5, listing.url) is False
+    assert listing.details_fetched_at is not None and store.commits == 1
+
+
+def test_fill_missing_queues_only_yad2_listings_that_were_never_read(monkeypatch):
     executor = _RecordingExecutor()
     monkeypatch.setattr(le, "_executor", executor)
-    listings = [_L(1, description="יש"), _L(2), _L(3, source=Source.KOMO), _L(4, url="https://yad2.co.il/item/4")]
+    listings = [
+        _L(1, details_fetched_at=object()), _L(2), _L(3, source=Source.KOMO), _L(4, url="https://yad2.co.il/item/4"),
+    ]
     assert le.fill_missing_in_background(listings) == 2
     assert [args[0] for args in executor.submitted] == [2, 4]
 
@@ -140,8 +158,9 @@ def test_fill_missing_queues_a_listing_only_once_and_the_queue_is_bounded(monkey
     assert len(executor.submitted) == 2
 
 
-def test_fill_missing_does_nothing_when_gemini_is_off(monkeypatch):
+def test_fill_missing_does_nothing_when_no_fetcher_is_on(monkeypatch):
     monkeypatch.delenv(gemini_url_detail.ENABLED_ENV_VAR)
+    monkeypatch.delenv(yad2_detail.yad2_item_api.ENABLED_ENV_VAR, raising=False)
     executor = _RecordingExecutor()
     monkeypatch.setattr(le, "_executor", executor)
     assert le.fill_missing_in_background([_L(1)]) == 0

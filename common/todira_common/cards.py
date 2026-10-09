@@ -5,6 +5,7 @@ listing identically. See plan Section 4 for the card format this implements.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import html
 import io
 import logging
@@ -19,6 +20,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TelegramError
 
+from todira_common.access import ACCESS_SUBSCRIPTION_EXPIRED, ACCESS_TRIAL_ENDED
 from todira_common.bot_strings import bot_text
 from todira_common.language import DEFAULT_LANG
 from todira_common.models import Listing
@@ -238,6 +240,14 @@ def _deal_type_prefix_word(listing: Listing, lang: str) -> str | None:
     return None
 
 
+def _format_rooms(rooms) -> str:
+    """"3" for Decimal('3.0') and "2.5" for Decimal('2.5') — the column is NUMERIC(3,1), so the raw value printed as
+    "3.0" on every card (owner screenshot, 2026-10-09). "?" when the source gave no room count."""
+    if not rooms:
+        return "?"
+    return f"{float(rooms):g}"
+
+
 _MOVE_IN_NOTE_KEYS = {"מיידית": "card.move_in_immediate", "גמיש": "card.move_in_flexible"}
 
 
@@ -283,7 +293,7 @@ def _build_body_lines(
     if listing.price is not None:
         lines.append(f"💰 {bold(bot_text('card.price_label', lang))} {listing.price:,}₪")
 
-    lines.append(f"🛏️ {bold(bot_text('card.rooms_label', lang))} {listing.rooms or '?'}")
+    lines.append(f"🛏️ {bold(bot_text('card.rooms_label', lang))} {_format_rooms(listing.rooms)}")
 
     if listing.size_sqm:
         area_value = bot_text("kb.sqm_value", lang, value=listing.size_sqm)
@@ -297,7 +307,13 @@ def _build_body_lines(
 
     move_in_label = bold(bot_text("card.move_in_label", lang))
     if listing.move_in_date is not None:
-        lines.append(f"📅 {move_in_label} {listing.move_in_date.strftime('%d.%m.%Y')}")
+        if listing.move_in_date <= dt.date.today():
+            # Yad2 keeps the original entrance date on an ad that has been up for a while (2026-10-09: often a
+            # date in the past): an ad whose date has passed is available now, so a stale date is not shown.
+            shown_date = bot_text("card.move_in_immediate", lang)
+        else:
+            shown_date = listing.move_in_date.strftime("%d.%m.%Y")
+        lines.append(f"📅 {move_in_label} {shown_date}")
     elif getattr(listing, "move_in_note", None):
         # A source that gives text, not a date (Komo: "מיידית" / "גמיש"). Known words are translated;
         # anything else is shown as the source wrote it.
@@ -450,6 +466,10 @@ def _fit_to_limit(header: str, body: str, footer: str, limit: int) -> str:
     return header + "\n".join(lines) + footer
 
 
+def _expired_notice_key(state: str) -> str:
+    return "card.trial_ended" if state == ACCESS_TRIAL_ENDED else "card.subscription_expired"
+
+
 def format_caption(
     listing: Listing,
     *,
@@ -458,8 +478,13 @@ def format_caption(
     upgrade_url: str | None = None,
     view_url: str | None = None,
     lang: str = DEFAULT_LANG,
+    access_state: str | None = None,
 ) -> str:
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
+
+    `access_state` (todira_common.access.access_state): for a viewer WITHOUT access, ACCESS_TRIAL_ENDED or
+    ACCESS_SUBSCRIPTION_EXPIRED makes the footer say which one ended; None keeps the generic lock line. Ignored when
+    `has_access` is true.
 
     `has_access` is required, not defaulted. **Policy changed 2026-09-12**: originally (2026-09-05
     request, "אני רוצה שזה יהיה סגור למשתמש... כל האינטרס של מנוי פרימיום זה שהפרטים יהיו מוחבאים
@@ -506,6 +531,14 @@ def format_caption(
         safe_url = html.escape(view_url or listing.url)
         link_text = bot_text("card.full_details_link_html", lang)
         footer_text = f'🔗 <a href="{safe_url}">{link_text}</a>'
+    elif access_state in (ACCESS_TRIAL_ENDED, ACCESS_SUBSCRIPTION_EXPIRED):
+        # 2026-10-09 owner request: tell the person WHY the link is locked — the free trial ended vs. a paid
+        # subscription that ended — instead of the one generic lock line.
+        notice_key = _expired_notice_key(access_state)
+        if upgrade_url:
+            footer_text = f'⚠️ <a href="{upgrade_url}">{bot_text(notice_key + "_link", lang)}</a>'
+        else:
+            footer_text = f"⚠️ {bot_text(notice_key + '_plain', lang)}"
     elif upgrade_url:
         link_text = bot_text("card.upgrade_to_see_link", lang)
         footer_text = f'🔒 <a href="{upgrade_url}">{link_text}</a>'
@@ -535,6 +568,7 @@ def format_caption_whatsapp(
     link_in_body: bool = True,
     limit: int = WHATSAPP_MESSAGE_LIMIT,
     lang: str = DEFAULT_LANG,
+    access_state: str | None = None,
 ) -> str:
     """`view_url`: the link for a user with access (falls back to the raw listing.url).
     `link_in_body=False` drops that link line — for a message that carries the link as its own
@@ -562,6 +596,12 @@ def format_caption_whatsapp(
     if has_access:
         link_text = bot_text("card.full_details_link_plain", lang)
         footer = f"\n\n🔗 {link_text}\n{view_url or listing.url}" if link_in_body else ""
+    elif access_state in (ACCESS_TRIAL_ENDED, ACCESS_SUBSCRIPTION_EXPIRED):
+        notice_key = _expired_notice_key(access_state)
+        if upgrade_url:
+            footer = f"\n\n⚠️ {bot_text(notice_key + '_link', lang)}:\n{upgrade_url}"
+        else:
+            footer = f"\n\n⚠️ {bot_text(notice_key + '_plain', lang)}"
     elif upgrade_url:
         upgrade_text = f"{bot_text('card.upgrade_to_see_link', lang)}:"
         footer = f"\n\n🔒 {upgrade_text}\n{upgrade_url}"
