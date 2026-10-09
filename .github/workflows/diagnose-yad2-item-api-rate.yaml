@@ -1,0 +1,102 @@
+name: Diagnose Yad2 item JSON - how often the bot protection answers a steady stream, by spacing (read-only, counts only)
+
+# Read-only, manual-only. In production the item-JSON fetcher still gets stopped at the end of a scraper run (the catch-up fetched 0 in both
+# runs after the deploy), while 60 of 60 requests passed in an idle probe. This asks for ads at a steady pace, no retries, and prints ONLY
+# a timeline of OK / blocked per 10 requests for two spacings (1.0 s and 2.0 s), so we can see whether the IP gets flagged after a while and
+# how fast it recovers. Tokens come from the database (public ad tokens, never printed). Nothing is written.
+on:
+  workflow_dispatch:
+    inputs:
+      per_spacing:
+        description: "requests per spacing"
+        default: "100"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Probe in a throwaway pod
+        run: |
+          POD_NAME="item-rate-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import os, re, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary"])
+          import psycopg2
+          from curl_cffi import requests as cr
+          N = int(os.environ.get("PER_SPACING", "100"))
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          cur.execute("select url from listings where source='yad2' and not is_delisted and duplicate_of_id is null and details_fetched_at is null order by first_seen_at desc limit %s", (N * 2 + 40,))
+          tokens = [m.group(1) for (u,) in cur.fetchall() for m in [re.search(r"/item/([A-Za-z0-9]+)", u)] if m]
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          def one(t):
+              try:
+                  r = cr.get(f"https://gw.yad2.co.il/realestate-item/{t}", headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+                  j = r.json()
+                  return "o" if isinstance(j, dict) and isinstance(j.get("data"), dict) else "X"
+              except Exception:
+                  return "E"
+          pos = 0
+          for spacing in (1.0, 2.0):
+              seq = []
+              for _ in range(N):
+                  seq.append(one(tokens[pos % len(tokens)])); pos += 1
+                  time.sleep(spacing)
+              line = "".join(seq)
+              chunks = " ".join(line[i:i + 10] for i in range(0, len(line), 10))
+              print(f"== spacing {spacing}s: ok={line.count('o')} blocked={line.count('X')} error={line.count('E')} of {len(line)}", flush=True)
+              print(f"==   timeline (o=ad, X=bot-protection answer, E=error): {chunks}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 900
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: PER_SPACING
+                    value: "${{ github.event.inputs.per_spacing }}"
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 280); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
