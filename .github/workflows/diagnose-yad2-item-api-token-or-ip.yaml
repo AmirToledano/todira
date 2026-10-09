@@ -1,0 +1,107 @@
+name: Diagnose Yad2 item JSON - is the bot-protection answer tied to the ad or to the IP (read-only, counts only)
+
+# Read-only, manual-only. In production the item-JSON fetcher gets "not the ad" answers (JSON with only _event_* keys) about five minutes into the
+# notification phase, while a steady 200-request probe from an idle IP never did, and the gone-ads probe got them only for OLD active ads. This asks
+# for 40 of our oldest active ads; for each that answers "not the ad" it (1) asks the SAME ad again twice, 6 s apart, and (2) immediately asks one known-good fresh ad as a
+# control. Prints ONLY counts. Tokens come from the database (public ad tokens, never printed); nothing is written.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Probe in a throwaway pod
+        run: |
+          POD_NAME="token-or-ip-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import collections, os, re, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary"])
+          import psycopg2
+          from curl_cffi import requests as cr
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          def tokens(sql):
+              cur.execute(sql)
+              return [m.group(1) for (u, d) in cur.fetchall() for m in [re.search(r"/item/([A-Za-z0-9]+)", u)] if m]
+          old = tokens("select url, first_seen_at from listings where source='yad2' and not is_delisted and duplicate_of_id is null order by first_seen_at asc limit 40")
+          fresh = tokens("select url, first_seen_at from listings where source='yad2' and not is_delisted and duplicate_of_id is null and details_fetched_at is null order by first_seen_at desc limit 60")
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          def ok(t):
+              try:
+                  j = cr.get(f"https://gw.yad2.co.il/realestate-item/{t}", headers=H, impersonate="chrome", timeout=30, allow_redirects=False).json()
+                  return isinstance(j, dict) and isinstance(j.get("data"), dict)
+              except Exception:
+                  return False
+          c = collections.Counter()
+          ci = 0
+          for t in old:
+              time.sleep(1.0)
+              if ok(t):
+                  c["old_ad_ok_first_time"] += 1
+                  continue
+              c["old_ad_blocked_first_time"] += 1
+              again = []
+              for _ in range(2):
+                  time.sleep(6.0)
+                  again.append(ok(t))
+              c["same_ad_ok_on_retry" if any(again) else "same_ad_still_blocked_after_2_retries"] += 1
+              time.sleep(1.0)
+              if ok(fresh[ci % len(fresh)]):
+                  c["control_fresh_ad_ok_right_after"] += 1
+              else:
+                  c["control_fresh_ad_ALSO_blocked_right_after"] += 1
+              ci += 1
+          print(f"== old ads asked={len(old)} {dict(c)}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 600
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 200); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
