@@ -1,0 +1,29 @@
+name: Diagnose Facebook job - what its ERROR and WARNING lines are in the last run (read-only, masked)
+
+# Read-only, manual-only. The 12:00 UTC Facebook CronJob run finished (summary errors 0) but logged 30 ERROR lines. This prints the most
+# common ERROR / WARNING line types of the last two Facebook job pods with digits runs, urls and quoted text masked, so nothing about any ad
+# or any account is shown.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Last Facebook job pods
+        run: |
+          PODS=$(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+          for POD in $(echo $PODS | tr ' ' '\n' | tail -2); do
+            echo "=== $POD ($(kubectl get pod $POD -n todira -o jsonpath='{.status.phase} started {.status.startTime}'))"
+            LOG=$(kubectl logs -n todira "$POD" 2>&1)
+            echo "$LOG" | grep -E " (ERROR|WARNING) " | sed -E 's/^[0-9-]+ [0-9:,]+ //; s/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g; s/'"'"'[^'"'"']*'"'"'/<text>/g; s/[0-9]+/<n>/g' | cut -c1-170 | sort | uniq -c | sort -rn | head -12
+          done
