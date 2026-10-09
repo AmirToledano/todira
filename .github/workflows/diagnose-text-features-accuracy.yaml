@@ -1,0 +1,119 @@
+name: Diagnose text features - how often the description parser finds each field and how often it agrees with the structured value (read-only, counts only)
+
+# Read-only, manual-only. todira_common/text_features.py reads floors, features, property type and entry date out of an ad's description text. Before it is
+# wired into the cards this runs it, inside a throwaway pod, over a random sample of active ads that HAVE a description, and prints ONLY counts per source:
+# how many ads the parser found each field in, and - where the ad also has a structured value (Yad2 item JSON, Komo amenity list, cards) - how many agree
+# and how many disagree. No ad text, no ids. `code_ref` = the git ref whose todira_common is tested.
+on:
+  workflow_dispatch:
+    inputs:
+      code_ref:
+        description: "git ref with todira_common/text_features.py"
+        default: "main"
+      sample:
+        description: "ads per source"
+        default: "15000"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run the parser over a sample in a throwaway pod
+        run: |
+          POD_NAME="text-acc-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import collections, io, os, subprocess, sys, tarfile, urllib.request
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "psycopg2-binary"])
+          import psycopg2
+          ref = os.environ["CODE_REF"]
+          data = urllib.request.urlopen(f"https://codeload.github.com/AmirToledano/todira/tar.gz/{ref}", timeout=120).read()
+          tarfile.open(fileobj=io.BytesIO(data)).extractall("/tmp/repo")
+          root = "/tmp/repo/" + os.listdir("/tmp/repo")[0]
+          sys.path.insert(0, root + "/common")
+          from todira_common.text_features import features_from_text
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          COLS = ["floor", "floor_total", "has_parking", "has_elevator", "has_balcony", "pets_allowed", "is_renovated", "is_roommate_friendly",
+                  "safe_room_type", "furniture", "property_type", "move_in_date", "move_in_note"]
+          N = int(os.environ["SAMPLE"])
+          cur.execute("select distinct source from listings where description is not null")
+          for (source,) in cur.fetchall():
+              cur.execute(f"select description, {', '.join(COLS)} from listings where source=%s and description is not null and not is_delisted and duplicate_of_id is null order by random() limit %s", (source, N))
+              rows = cur.fetchall()
+              found = collections.Counter(); agree = collections.Counter(); differ = collections.Counter(); missing_filled = collections.Counter()
+              for row in rows:
+                  text, structured = row[0], dict(zip(COLS, row[1:]))
+                  got = features_from_text(text)
+                  for col, val in got.items():
+                      found[col] += 1
+                      have = structured[col]
+                      if col in ("move_in_date", "move_in_note"):
+                          if structured["move_in_date"] is None and structured["move_in_note"] is None:
+                              missing_filled[col] += 1
+                          continue
+                      if have is None:
+                          missing_filled[col] += 1
+                      elif have == val:
+                          agree[col] += 1
+                      else:
+                          differ[col] += 1
+              print(f"== {source}: ads sampled={len(rows)}", flush=True)
+              for col in COLS:
+                  if found[col]:
+                      print(f"==   {col}: found in {found[col]} | would FILL a missing value in {missing_filled[col]} | agrees with the structured value {agree[col]} | disagrees {differ[col]}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 600
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: CODE_REF
+                    value: "${{ github.event.inputs.code_ref }}"
+                  - name: SAMPLE
+                    value: "${{ github.event.inputs.sample }}"
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 200); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
