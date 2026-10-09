@@ -1,0 +1,100 @@
+name: Diagnose Yad2 details - what the ads marked as read in the last 2 hours look like, with and without a record (read-only, counts only)
+
+# Read-only, manual-only. Production marks an ad as read (details_fetched_at) when the item JSON answers - with the record, or with the "not the ad"
+# answer, which leaves description empty. This counts, for ads marked read in the last 2 hours, how many got a description and how many got none,
+# split by age of the row (first seen), delisted or not, and whether anyone was sent that ad, to profile which ads answer "not the ad" in the real run.
+# Counts only - nothing about any ad.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Count in a throwaway pod
+        run: |
+          POD_NAME="read-profile-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import subprocess, sys
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "psycopg2-binary"])
+          import os, psycopg2
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          def q(title, sql):
+              cur.execute(sql)
+              names = [d[0] for d in cur.description]
+              print(f"== {title}")
+              print("==   " + " | ".join(names))
+              for row in cur.fetchall():
+                  print("==   " + " | ".join(str(c) for c in row))
+          AGE = "case when first_seen_at > now() - interval '1 hour' then '1 under 1h' when first_seen_at > now() - interval '1 day' then '2 under 1d' when first_seen_at > now() - interval '7 days' then '3 under 7d' else '4 over 7d' end"
+          q("yad2 ads marked read in the last 2 hours: with / without a description, by age of the row and deal type",
+            f"""select deal_type, {AGE} as row_age, count(*) as read_total,
+                       count(*) filter (where description is not null) as with_description,
+                       count(*) filter (where description is null) as without_description
+                from listings where source='yad2' and details_fetched_at > now() - interval '2 hours'
+                group by 1, 2 order by 1, 2""")
+          q("same, only ads that were SENT to someone (reason new) in the last 2 hours",
+            f"""select {AGE} as row_age, count(*) as read_and_sent,
+                       count(*) filter (where description is null) as without_description,
+                       count(*) filter (where is_delisted) as delisted
+                from listings l where source='yad2' and details_fetched_at > now() - interval '2 hours'
+                  and exists (select 1 from sent_notifications s where s.listing_id = l.id and s.sent_at > now() - interval '2 hours')
+                group by 1 order by 1""")
+          q("yad2 ads marked read in the last 2 hours WITHOUT a description: delisted or not, and when they were last seen on the map",
+            """select is_delisted, case when scraped_at > now() - interval '1 hour' then 'seen on the map in the last hour' else 'not seen in the last hour' end as last_seen, count(*)
+               from listings where source='yad2' and details_fetched_at > now() - interval '2 hours' and description is null group by 1, 2 order by 1, 2""")
+          q("deal_type values present on yad2 rows",
+            "select deal_type, count(*), count(*) filter (where details_fetched_at is null and not is_delisted and duplicate_of_id is null) as unread_active from listings where source='yad2' group by 1 order by 1")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 300
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 100); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
