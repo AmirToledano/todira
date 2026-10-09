@@ -162,7 +162,9 @@ def fake_http(monkeypatch):
     monkeypatch.setenv(api.MIN_SPACING_ENV_VAR, "0")
     monkeypatch.setattr(api, "_consecutive_failures", 0)
     monkeypatch.setattr(api, "_blocked_until", 0.0)
-    return types.SimpleNamespace(calls=calls, responses=responses)
+    sleeps = []
+    monkeypatch.setattr(api.time, "sleep", lambda seconds: sleeps.append(seconds))
+    return types.SimpleNamespace(calls=calls, responses=responses, sleeps=sleeps)
 
 
 def test_disabled_without_the_env_flag(monkeypatch):
@@ -197,31 +199,55 @@ def test_a_gone_ad_is_a_definitive_empty_answer(fake_http):
     assert api.fetch_yad2_detail_updates(_URL) == {}
 
 
-def test_failures_return_none_and_five_in_a_row_pause_the_fetcher(fake_http, monkeypatch):
-    fake_http.responses.extend([_Response(403)] * 5)
-    for _ in range(5):
+_WAF_EVENT = {"_event_clientip": "x", "_event_clientport": 1, "_event_transid": "y"}
+
+
+def test_a_request_that_keeps_failing_is_retried_twice_then_returns_none(fake_http):
+    fake_http.responses.extend([_Response(403)] * 3)
+    assert api.fetch_yad2_detail_updates(_URL) is None
+    assert len(fake_http.calls) == 3
+    assert fake_http.sleeps == [8.0, 20.0]  # the back-off between attempts
+
+
+def test_three_failed_requests_in_a_row_pause_the_fetcher(fake_http):
+    fake_http.responses.extend([_Response(403)] * 9)
+    for _ in range(3):
         assert api.fetch_yad2_detail_updates(_URL) is None
-    assert len(fake_http.calls) == 5
-    assert api.fetch_yad2_detail_updates(_URL) is None  # paused: no sixth request
-    assert len(fake_http.calls) == 5
+    assert len(fake_http.calls) == 9
+    assert api.fetch_yad2_detail_updates(_URL) is None  # paused: no tenth request
+    assert len(fake_http.calls) == 9
 
 
-def test_a_success_resets_the_failure_count(fake_http):
-    fake_http.responses.extend([_Response(403)] * 4 + [_Response(200, {"data": _record()})] + [_Response(403)] * 4)
-    for _ in range(4):
-        assert api.fetch_yad2_detail_updates(_URL) is None
-    assert api.fetch_yad2_detail_updates(_URL) is not None
-    for _ in range(4):
-        assert api.fetch_yad2_detail_updates(_URL) is None
-    assert api.fetch_yad2_detail_updates(_URL) is not None  # still not paused: never five in a row
+def test_a_bot_protection_event_json_is_retried_and_then_read(fake_http):
+    """Found in the first production run: HTTP 200 + {"_event_clientip": ...} is a rate-limit answer, not a missing ad."""
+    fake_http.responses.extend([_Response(200, _WAF_EVENT), _Response(200, _WAF_EVENT)])
+    updates = api.fetch_yad2_detail_updates(_URL)  # third attempt returns the default good record
+    assert updates["description"] == "דירה יפה ומוארת"
+    assert len(fake_http.calls) == 3
 
 
-def test_network_errors_and_bad_bodies_return_none(fake_http):
+def test_one_good_answer_after_retries_resets_the_failure_streak(fake_http):
+    fake_http.responses.extend([_Response(403)] * 6 + [_Response(200, {"data": _record()})])
+    assert api.fetch_yad2_detail_updates(_URL) is None
+    assert api.fetch_yad2_detail_updates(_URL) is None
+    assert api.fetch_yad2_detail_updates(_URL) is not None  # streak was 2 of 3: not paused, and now back to 0
+    fake_http.responses.extend([_Response(403)] * 6)
+    assert api.fetch_yad2_detail_updates(_URL) is None
+    assert api.fetch_yad2_detail_updates(_URL) is None
+    assert api._blocked_until == 0.0  # only two failures since the success: still not paused
+
+
+def test_network_errors_and_bad_bodies_are_retried_too(fake_http):
     fake_http.responses.extend(
-        [ConnectionError("boom"), _Response(200, json_error=True), _Response(200, {"message": "no data"}), _Response(200, [1])]
+        [ConnectionError("boom"), _Response(200, json_error=True), _Response(200, {"message": "no data"})]
     )
-    for _ in range(4):
-        assert api.fetch_yad2_detail_updates(_URL) is None
+    assert api.fetch_yad2_detail_updates(_URL) is None
+    assert len(fake_http.calls) == 3
+
+
+def test_the_default_spacing_between_requests_is_one_second(monkeypatch):
+    monkeypatch.delenv(api.MIN_SPACING_ENV_VAR, raising=False)
+    assert api._min_spacing() == 1.0
 
 
 # --- the combined entry point ------------------------------------------------------------------------------------

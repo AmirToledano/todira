@@ -14,8 +14,13 @@ below is the single place that turns it into Listing columns (scraper/normalize.
 
 Contract: `fetch_yad2_detail_updates(url)` returns a dict of column updates (possibly EMPTY: the ad exists but states
 nothing usable, or it is gone — both definitive, nothing to retry) or None (disabled, blocked, network/HTTP error —
-retry later). Never raises. Requests are serialised per process with a small minimum spacing, and five failures in a row
-pause the fetcher for 15 minutes so a Radware tightening cannot turn into a hammering loop.
+retry later). Never raises. Requests are serialised per process, one second apart.
+
+Bot protection (found in the first production run, 2026-10-09): now and then Yad2's WAF answers HTTP 200 with a JSON body
+that is NOT the ad — `{"_event_clientip": ..., "_event_clientport": ..., "_event_transid": ...}` — about 3 in 15 at 0.5 s spacing
+from the cluster IP (60 in a row at 0.65 s passed in the earlier probe). That is a rate-limit signal, not a missing ad: such an
+answer is retried after 8 s and again after 20 s, and only a request that still fails after the retries counts as a failure;
+three failed requests in a row pause the fetcher for 15 minutes so it can never turn into a hammering loop.
 
 Opt-in via YAD2_ITEM_API=true (helm scraper/website `yad2ItemApi`)."""
 from __future__ import annotations
@@ -32,11 +37,12 @@ logger = logging.getLogger(__name__)
 
 ENABLED_ENV_VAR = "YAD2_ITEM_API"
 MIN_SPACING_ENV_VAR = "YAD2_ITEM_API_MIN_SPACING_SECONDS"
-_DEFAULT_MIN_SPACING_SECONDS = 0.4
+_DEFAULT_MIN_SPACING_SECONDS = 1.0
 _ITEM_URL = "https://gw.yad2.co.il/realestate-item/{token}"
 _TOKEN_RE = re.compile(r"/item/([A-Za-z0-9]+)")
 _TIMEOUT_SECONDS = 25
-_BLOCK_AFTER_FAILURES = 5
+_BLOCK_AFTER_FAILURES = 3
+_RETRY_WAITS_SECONDS = (8.0, 20.0)
 _BLOCK_SECONDS = 900.0
 _MAX_DESCRIPTION_CHARS = 4000
 
@@ -87,51 +93,61 @@ def _record_failure(url: str, reason: str) -> None:
         _blocked_until = time.monotonic() + _BLOCK_SECONDS
         _consecutive_failures = 0
         logger.warning(
-            "Yad2 item API failed %d times in a row — pausing it for %.0f min", _BLOCK_AFTER_FAILURES, _BLOCK_SECONDS / 60
+            "Yad2 item API failed %d requests in a row — pausing it for %.0f min", _BLOCK_AFTER_FAILURES, _BLOCK_SECONDS / 60
         )
 
 
-def fetch_item(token: str) -> dict | None:
-    """The ad record (`data`), `{}` when Yad2 says the ad is gone (404/410), or None on any failure."""
-    global _last_request_at, _consecutive_failures
+def _request_once(token: str) -> tuple[str, Any]:
+    """One HTTP attempt: ("ok", data) / ("gone", {}) / ("retry", reason). Caller holds the lock."""
+    global _last_request_at
     from curl_cffi import requests as curl_requests
 
+    wait = _last_request_at + _min_spacing() - time.monotonic()
+    if wait > 0:
+        time.sleep(wait)
+    _last_request_at = time.monotonic()
+    try:
+        response = curl_requests.get(
+            _ITEM_URL.format(token=token),
+            headers={"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"},
+            impersonate="chrome",
+            timeout=_TIMEOUT_SECONDS,
+            allow_redirects=False,
+        )
+    except Exception:
+        return "retry", "request failed (network)"
+    if response.status_code in (404, 410):
+        return "gone", {}
+    if response.status_code != 200:
+        return "retry", f"answered HTTP {response.status_code}"
+    try:
+        payload = response.json()
+    except ValueError:
+        return "retry", "answered non-JSON (challenge page?)"
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return "retry", "answered JSON that is not the ad (bot-protection event / rate limit)"
+    return "ok", data
+
+
+def fetch_item(token: str) -> dict | None:
+    """The ad record (`data`), `{}` when Yad2 says the ad is gone (404/410), or None when it could not be read right now."""
+    global _consecutive_failures
     url = _ITEM_URL.format(token=token)
     with _lock:
         if time.monotonic() < _blocked_until:
             return None
-        wait = _last_request_at + _min_spacing() - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        _last_request_at = time.monotonic()
-        try:
-            response = curl_requests.get(
-                url,
-                headers={"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"},
-                impersonate="chrome",
-                timeout=_TIMEOUT_SECONDS,
-                allow_redirects=False,
-            )
-        except Exception:
-            _record_failure(url, "request failed (network)")
-            return None
-        if response.status_code in (404, 410):
-            _consecutive_failures = 0
-            return {}
-        if response.status_code != 200:
-            _record_failure(url, f"answered HTTP {response.status_code}")
-            return None
-        try:
-            payload = response.json()
-        except ValueError:
-            _record_failure(url, "answered non-JSON (challenge page?)")
-            return None
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(data, dict):
-        _record_failure(url, "answered JSON without a data record")
+        reason = ""
+        for attempt in range(len(_RETRY_WAITS_SECONDS) + 1):
+            if attempt:
+                time.sleep(_RETRY_WAITS_SECONDS[attempt - 1])
+            outcome, value = _request_once(token)
+            if outcome != "retry":
+                _consecutive_failures = 0
+                return value
+            reason = value
+        _record_failure(url, reason + f" (after {len(_RETRY_WAITS_SECONDS) + 1} attempts)")
         return None
-    _consecutive_failures = 0
-    return data
 
 
 def _dict(value: Any) -> dict:
