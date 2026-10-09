@@ -1566,7 +1566,8 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
 # ad not seen for _HOMELESS_STALE_DAYS is delisted, but only for a deal type whose cursor completed a lap recently.
 _HOMELESS_PAGINATION_ENV_VAR = "HOMELESS_PAGINATION"
 _HOMELESS_FRESH_PAGES = 2
-_HOMELESS_ROLLING_PAGES_PER_RUN = 2
+_HOMELESS_ROLLING_PAGES_ENV_VAR = "HOMELESS_ROLLING_PAGES_PER_RUN"
+_DEFAULT_HOMELESS_ROLLING_PAGES_PER_RUN = 2
 _HOMELESS_MAX_PAGE = 200
 _HOMELESS_END_NEW_CARDS = 3  # a rolling page adding this few unseen cards (or fewer) is past the end of the list
 _HOMELESS_CURSOR_FLAG = "homeless_rolling_cursor"
@@ -1584,6 +1585,16 @@ _PARTIAL_VIEW_SOURCES: set[str] = set()
 
 def _homeless_pagination_enabled() -> bool:
     return os.environ.get(_HOMELESS_PAGINATION_ENV_VAR, "").strip().lower() == "true"
+
+
+def _homeless_rolling_pages_per_run() -> int:
+    """How many extra list pages per category each run reads on top of the first two (the rolling crawl). 2 while every page cost a ZenRows
+    credit; the free fetch route (homeless_client.FREE_FETCH_ENV_VAR) lets the chart raise it."""
+    raw = os.environ.get(_HOMELESS_ROLLING_PAGES_ENV_VAR, "").strip()
+    try:
+        return max(0, min(int(raw), 20)) if raw else _DEFAULT_HOMELESS_ROLLING_PAGES_PER_RUN
+    except ValueError:
+        return _DEFAULT_HOMELESS_ROLLING_PAGES_PER_RUN
 
 
 def _homeless_read_category(
@@ -1607,7 +1618,7 @@ def _homeless_read_category(
     next_cursor = max(cursor, _HOMELESS_FRESH_PAGES + 1)
     page = next_cursor
     wrapped = False
-    for _ in range(_HOMELESS_ROLLING_PAGES_PER_RUN):
+    for _ in range(_homeless_rolling_pages_per_run()):
         sleep(_HOMELESS_PAGE_PAUSE_SECONDS)
         try:
             page_cards = fetch_page(base_url, page)

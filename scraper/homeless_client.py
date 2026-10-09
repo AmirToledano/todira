@@ -104,6 +104,7 @@ import html
 import logging
 import os
 import re
+import threading
 import time
 from typing import Any, Iterator
 from urllib.parse import urljoin
@@ -300,11 +301,93 @@ _REAL_BROWSER_HEADERS = {
 }
 
 
+# 2026-10-09: Homeless answers a plain request that carries a real Chrome TLS fingerprint (curl_cffi impersonate="chrome") from the
+# cluster's own IP - verified live (diagnose-card-detail-sources-live.yaml: rent search 200 / 51 cards, sale search 200 / 47 cards, a
+# detail page 200), the same free route the Yad2 map and item JSON use. ZenRows credits (5,000 free a month) were what capped Homeless at
+# a handful of description fetches and two rolling pages a run, so the free route is tried FIRST and ZenRows is only the fallback,
+# limited to ZENROWS_FALLBACK_MAX_PER_RUN credits per process so a blocked free route can never burn the monthly allowance.
+FREE_FETCH_ENV_VAR = "HOMELESS_FREE_FETCH"
+ZENROWS_FALLBACK_MAX_ENV_VAR = "HOMELESS_ZENROWS_MAX_PER_RUN"
+_DEFAULT_ZENROWS_FALLBACK_MAX_PER_RUN = 10
+_FREE_FETCH_TIMEOUT_S = 40
+_FREE_BLOCK_AFTER_FAILURES = 4
+_FREE_MIN_SPACING_SECONDS = 0.6  # between request STARTS, shared by the parallel description fetches
+_free_consecutive_failures = 0
+_free_route_blocked = False
+_free_spacing_lock = threading.Lock()
+_free_last_request_at = 0.0
+_zenrows_requests_this_process = 0
+
+
+def _free_fetch_enabled() -> bool:
+    return os.environ.get(FREE_FETCH_ENV_VAR, "").strip().lower() == "true" and not _free_route_blocked
+
+
+def _zenrows_fallback_max() -> int:
+    raw = os.environ.get(ZENROWS_FALLBACK_MAX_ENV_VAR, "").strip()
+    try:
+        return max(0, int(raw)) if raw else _DEFAULT_ZENROWS_FALLBACK_MAX_PER_RUN
+    except ValueError:
+        return _DEFAULT_ZENROWS_FALLBACK_MAX_PER_RUN
+
+
+def _free_get(url: str) -> str | None:
+    """The page's HTML through the free browser-fingerprint route, or None (not enabled, curl_cffi missing, network error, non-200, or a
+    challenge page). Four failures in a row switch the route off for the rest of the process."""
+    global _free_consecutive_failures, _free_route_blocked, _free_last_request_at
+    if not _free_fetch_enabled():
+        return None
+    try:
+        from curl_cffi import requests as curl_requests
+    except ImportError:
+        return None
+    with _free_spacing_lock:
+        wait = _free_last_request_at + _FREE_MIN_SPACING_SECONDS - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _free_last_request_at = time.monotonic()
+    body = None
+    try:
+        response = curl_requests.get(
+            url,
+            headers={"Accept-Language": _REAL_BROWSER_HEADERS["Accept-Language"]},
+            impersonate="chrome",
+            timeout=_FREE_FETCH_TIMEOUT_S,
+            allow_redirects=True,
+        )
+        text = response.text or ""
+        lowered = text[:6000].lower()
+        if response.status_code == 200 and len(text) > 5000 and not any(
+            marker in lowered for marker in ("just a moment", "cf-chl", "access denied", "captcha")
+        ):
+            body = text
+    except Exception:
+        body = None
+    if body is None:
+        _free_consecutive_failures += 1
+        logger.warning("Homeless free fetch failed for %s", url)
+        if _free_consecutive_failures >= _FREE_BLOCK_AFTER_FAILURES:
+            _free_route_blocked = True
+            logger.warning("Homeless free fetch failed %d times in a row - using ZenRows (capped) for the rest of this run", _FREE_BLOCK_AFTER_FAILURES)
+        return None
+    _free_consecutive_failures = 0
+    return body
+
+
 def _zenrows_get(url: str, *, context_label: str, custom_headers: bool = False) -> str:
-    """Shared fetch-through-ZenRows mechanics. custom_headers=True sends _REAL_BROWSER_HEADERS
-    through ZenRows to the target site — required for the search page since the 2026-09-24
+    """Shared fetch mechanics: the free browser-fingerprint route first (see FREE_FETCH_ENV_VAR), then ZenRows. custom_headers=True sends
+    _REAL_BROWSER_HEADERS through ZenRows to the target site — required for the search page since the 2026-09-24
     redesign (see module docstring, point 1), at the SAME cost as the plain tier (1 credit) —
     js_render=true was tested live and confirmed NOT required."""
+    global _zenrows_requests_this_process
+    free_body = _free_get(url)
+    if free_body is not None:
+        return free_body
+    if _zenrows_requests_this_process >= _zenrows_fallback_max():
+        raise HomelessFetchError(
+            f"ZenRows credit cap for this run reached ({_zenrows_fallback_max()}) - skipping {context_label}"
+        )
+    _zenrows_requests_this_process += 1
     api_key = _get_zenrows_api_key()
 
     params = {"apikey": api_key, "url": url}

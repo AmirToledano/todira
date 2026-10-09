@@ -182,6 +182,13 @@ spec:
                 # 2026-10-08: read Homeless's /rent/<n> and /sale/<n> pages (first pages every run + a rolling cursor over the rest).
                 - name: HOMELESS_PAGINATION
                   value: {{ .Values.scraper.homelessPagination | default false | quote }}
+                # 2026-10-09: free browser-fingerprint fetch for Homeless (ZenRows only as a capped fallback), see values.yaml.
+                - name: HOMELESS_FREE_FETCH
+                  value: {{ .Values.scraper.homelessFreeFetch | default false | quote }}
+                - name: HOMELESS_ZENROWS_MAX_PER_RUN
+                  value: {{ .Values.scraper.homelessZenrowsMaxPerRun | default 10 | quote }}
+                - name: HOMELESS_ROLLING_PAGES_PER_RUN
+                  value: {{ .Values.scraper.homelessRollingPagesPerRun | default 2 | quote }}
                 {{- if .Values.scraper.homelessBackfillMaxPerRun }}
                 - name: HOMELESS_BACKFILL_MAX_PER_RUN
                   value: {{ .Values.scraper.homelessBackfillMaxPerRun | quote }}
