@@ -21,7 +21,7 @@ from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TelegramError
 
 from todira_common.access import ACCESS_SUBSCRIPTION_EXPIRED, ACCESS_TRIAL_ENDED
-from todira_common.bot_strings import bot_text
+from todira_common.bot_strings import BOT_STRINGS, bot_text
 from todira_common.language import DEFAULT_LANG
 from todira_common.models import Listing
 
@@ -321,6 +321,10 @@ def _build_body_lines(
         note_key = _MOVE_IN_NOTE_KEYS.get(note)
         shown = bot_text(note_key, lang) if note_key else escape(note)
         lines.append(f"📅 {move_in_label} {shown}")
+
+    property_type = getattr(listing, "property_type", None)
+    if property_type and property_type != "apartment" and f"card.type_{property_type}" in BOT_STRINGS:
+        lines.append(f"🏠 {bold(bot_text('card.type_label', lang))} {bot_text(f'card.type_{property_type}', lang)}")
 
     features = feature_list(listing, lang)
     if features:

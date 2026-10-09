@@ -1124,3 +1124,26 @@ def test_the_expiry_notice_never_crowds_out_the_card_footer_when_the_description
     )
     assert len(caption) <= CAPTION_LIMIT
     assert "תקופת הניסיון הסתיימה" in caption
+
+
+# --- 2026-10-09: the property type line -------------------------------------------------------------------------------
+
+
+def test_property_type_line_is_shown_for_anything_that_is_not_a_plain_apartment():
+    for ptype, label in (
+        ("garden_apartment", "דירת גן"), ("penthouse", "פנטהאוז"), ("private_house", "בית פרטי"),
+        ("studio", "סטודיו"), ("housing_unit", "יחידת דיור"),
+    ):
+        caption = format_caption(make_listing(property_type=ptype), has_access=True)
+        assert f"🏠 {_b('סוג:')} {label}" in caption or f"🏠 {_b('סוג:')} {label} / דירת גג" in caption, ptype
+
+
+def test_no_property_type_line_for_apartment_or_unknown():
+    assert "סוג:" not in format_caption(make_listing(property_type="apartment"), has_access=True)
+    assert "סוג:" not in format_caption(make_listing(property_type=None), has_access=True)
+    assert "סוג:" not in format_caption(make_listing(), has_access=True)  # a listing object without the attribute at all
+
+
+def test_property_type_line_is_translated():
+    caption = format_caption(make_listing(property_type="private_house"), has_access=True, lang="en")
+    assert "Type:" in caption and "Private house" in caption

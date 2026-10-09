@@ -240,3 +240,11 @@ def test_a_move_in_note_is_not_offered_when_the_listing_has_a_date_or_a_note():
 def test_a_floor_from_the_text_never_contradicts_a_total_the_listing_has():
     listing = _listing(description="קומה 8", floor_total=4)
     assert "floor" not in missing_updates(listing, today=TODAY)
+
+
+def test_several_different_floors_mean_no_floor_is_read():
+    """Measured: one clear mention agrees with the structured floor ~90% of the time; two different floors do not."""
+    assert "floor" not in f("קומה 2 וקומה 3 בבניין")
+    assert f("קומה 2, בקומה 2")["floor"] == 2  # the same floor twice is one floor
+    assert f("קומה 3 מתוך 5, קומה 4")["floor_total"] == 5  # the stated total survives, the ambiguous floor does not
+    assert "floor" not in f("קומה 3 מתוך 5, קומה 4")

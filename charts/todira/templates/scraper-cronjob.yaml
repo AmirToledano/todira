@@ -90,6 +90,10 @@ spec:
                   value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
                 - name: YAD2_ITEM_API
                   value: {{ .Values.scraper.yad2ItemApi | default false | quote }}
+                {{- if .Values.scraper.textFeaturesMaxPerRun }}
+                - name: TEXT_FEATURES_MAX_PER_RUN
+                  value: {{ .Values.scraper.textFeaturesMaxPerRun | quote }}
+                {{- end }}
                 # Comma-separated model chain; empty = the code's verified default (gemini_url_detail._DEFAULT_MODELS).
                 - name: YAD2_GEMINI_MODEL
                   value: {{ .Values.yad2GeminiModels | default "" | quote }}

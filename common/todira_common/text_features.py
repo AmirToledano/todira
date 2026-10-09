@@ -121,24 +121,32 @@ _BUILDING_HEIGHT_RE = re.compile(r"(?:בניין|בנין|בית|מבנה)\s*(?:
 _TOTAL_AFTER_FLOOR_WORDS_RE = re.compile(r"מתוך\s*(\d{1,2})\s*קומות")
 
 
+def _floor_mentions(text: str) -> tuple[set[int], int | None]:
+    """Every distinct floor the text names (digits, ordinal words, Hebrew letters, ground) and the total of the first
+    "N מתוך M" form. Several different floors mean the text is not about one floor: the caller then reads none."""
+    floors: set[int] = set()
+    total: int | None = None
+    if _FLOOR_GROUND_RE.search(text):
+        floors.add(0)
+    for match in _FLOOR_NUMBER_RE.finditer(text):
+        floors.add(int(match.group(1)))
+        if total is None and match.group(2):
+            total = int(match.group(2))
+    for match in _FLOOR_ORDINAL_RE.finditer(text):
+        floors.add(_ORDINAL_FLOORS[match.group(1)])
+    for match in _FLOOR_LETTER_RE.finditer(text):
+        floors.add(_LETTER_FLOORS[match.group(1)])
+    return floors, total
+
+
 def _floors(text: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    ground = _FLOOR_GROUND_RE.search(text)
-    number = _FLOOR_NUMBER_RE.search(text)
-    ordinal = _FLOOR_ORDINAL_RE.search(text)
-    letter = _FLOOR_LETTER_RE.search(text)
+    floors, total = _floor_mentions(text)
     floor: int | None = None
-    total: int | None = None
-    if ground:
-        floor = 0
-    elif number:
-        floor = int(number.group(1))
-        if number.group(2):
-            total = int(number.group(2))
-    elif ordinal:
-        floor = _ORDINAL_FLOORS[ordinal.group(1)]
-    elif letter:
-        floor = _LETTER_FLOORS[letter.group(1)]
+    if len(floors) == 1:
+        floor = next(iter(floors))
+        # Measured against the structured floor (Yad2 / Komo): one clear mention agrees about 90% of the time, so a floor is
+        # only ever offered for a listing that has none (missing_updates) — never over a structured value.
     if total is None:
         height = _BUILDING_HEIGHT_RE.search(text) or _TOTAL_AFTER_FLOOR_WORDS_RE.search(text)
         if height:
@@ -301,7 +309,7 @@ def _features(text: str, today: dt.date) -> dict[str, Any]:
     return out
 
 
-_COLUMNS = (
+COLUMNS = (
     "floor", "floor_total", "has_parking", "has_elevator", "has_balcony", "pets_allowed", "is_renovated",
     "is_roommate_friendly", "safe_room_type", "furniture", "property_type", "move_in_date", "move_in_note",
 )

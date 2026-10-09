@@ -251,6 +251,11 @@ scraper:
   # went out with no description / total floors / entry date / features; this is now the first source for listing details and
   # Gemini only the backup. See common/todira_common/yad2_item_api.py.
   yad2ItemApi: true
+  # 2026-10-09 (owner): floors, parking / elevator / balcony / safe room, pets, property type and entry date that an ad states only in its
+  # description are read out of the text (todira_common/text_features.py, plain pattern rules, no model) and stored on the EMPTY columns of up
+  # to this many never-read listings per run (CPU only, ~10 s per 20,000). Measured against Yad2's structured values: parking / elevator /
+  # balcony / renovated / furniture agree 99%+.
+  textFeaturesMaxPerRun: 25000
   # How many still-unread active Yad2 listings the end of each run catches up on (rentals first, newest first; after the
   # notifications, so it never delays an alert). ~0.5 s each.
   brightDataBackfillMaxPerRun: 600

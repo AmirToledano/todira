@@ -212,3 +212,48 @@ def test_backfill_one_listing_raising_does_not_abort_the_batch():
         result = asyncio.run(_backfill(session))
     assert result == 1
     assert session.committed is True
+
+
+# --- 2026-10-09: the end-of-run catch-up that reads descriptions for floors / amenities / property type / entry date --------
+
+from types import SimpleNamespace  # noqa: E402
+
+_fill_from_text = scraper_main._fill_missing_fields_from_descriptions
+
+
+class _TextResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+def _text_row(row_id, description, **cols):
+    base = {name: None for name in scraper_main.text_features.COLUMNS}
+    base.update(cols)
+    return SimpleNamespace(id=row_id, description=description, **base)
+
+
+def test_text_catch_up_is_off_when_its_cap_is_zero(monkeypatch):
+    monkeypatch.setenv(scraper_main._TEXT_FEATURES_MAX_ENV_VAR, "0")
+    session = _QueueSession([])
+    assert _fill_from_text(session) == 0
+    assert session.executed_stmts == []
+
+
+def test_text_catch_up_fills_only_empty_columns_and_marks_every_row_read(monkeypatch):
+    monkeypatch.setenv(scraper_main._TEXT_FEATURES_MAX_ENV_VAR, "100")
+    rows = [
+        _text_row(1, "קומה 2 מתוך 5, חניה, מעלית", has_parking=False),  # parking is already known: the text must not touch it
+        _text_row(2, "דירה יפה ומוארת"),  # nothing stated: still marked read
+    ]
+    session = _QueueSession([_TextResult(rows), None, None])
+    filled = _fill_from_text(session)
+    first = session.executed_stmts[1].compile().params
+    second = session.executed_stmts[2].compile().params
+    assert filled == 3  # floor, floor_total, has_elevator for row 1 (parking is already known); nothing for row 2
+    assert "has_parking" not in first and first["floor_total"] == 5 and first["has_elevator"] is True
+    assert "text_parsed_at" in str(session.executed_stmts[1]) and "text_parsed_at" in str(session.executed_stmts[2])
+    assert "floor" not in second
+    assert session.committed is True

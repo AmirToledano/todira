@@ -11,6 +11,7 @@ import os
 import random
 import sys
 import time
+import types
 from typing import Callable
 
 from sqlalchemy import Text, all_, any_, bindparam, case, func, select
@@ -18,7 +19,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing
-from todira_common import yad2_detail
+from todira_common import text_features, yad2_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common import whatsapp_guard
@@ -759,6 +760,53 @@ async def _backfill_missing_yad2_descriptions(session) -> int:
         return 0
 
     return await _fetch_and_apply_yad2_detail_updates(session, id_url_pairs, log_context="backfill")
+
+
+_TEXT_FEATURES_MAX_ENV_VAR = "TEXT_FEATURES_MAX_PER_RUN"
+_DEFAULT_TEXT_FEATURES_MAX_PER_RUN = 0
+
+
+def _text_features_max_per_run() -> int:
+    raw = os.environ.get(_TEXT_FEATURES_MAX_ENV_VAR, "").strip()
+    try:
+        return max(0, int(raw)) if raw else _DEFAULT_TEXT_FEATURES_MAX_PER_RUN
+    except ValueError:
+        return _DEFAULT_TEXT_FEATURES_MAX_PER_RUN
+
+
+def _fill_missing_fields_from_descriptions(session) -> int:
+    """2026-10-09 owner request: floors, total floors, parking / elevator / balcony / safe room / pets / renovated / furniture /
+    roommates, property type and entry date that an ad states only in its description text (Komo, Facebook, Homeless and many Yad2
+    ads) are read out of the text (todira_common/text_features.py — plain pattern rules, no model) and stored on the listing's EMPTY
+    columns; a structured value always wins. Picks up to TEXT_FEATURES_MAX_PER_RUN active listings that have a description and were
+    never read (text_parsed_at IS NULL), newest first, and marks each as read whether or not anything was found. Returns how many
+    columns were filled. Pure CPU plus one UPDATE per listing — no network."""
+    max_per_run = _text_features_max_per_run()
+    if max_per_run <= 0:
+        return 0
+    table = Listing.__table__
+    columns = [table.c[name] for name in text_features.COLUMNS]
+    rows = session.execute(
+        select(table.c.id, table.c.description, *columns)
+        .where(
+            table.c.description.is_not(None),
+            table.c.text_parsed_at.is_(None),
+            table.c.is_delisted.is_(False),
+            table.c.duplicate_of_id.is_(None),
+        )
+        .order_by(table.c.first_seen_at.desc())
+        .limit(max_per_run)
+    ).all()
+    filled = 0
+    for row in rows:
+        listing_like = types.SimpleNamespace(description=row.description, **{name: getattr(row, name) for name in text_features.COLUMNS})
+        updates = text_features.missing_updates(listing_like)
+        session.execute(
+            table.update().where(table.c.id == row.id).values(**updates, text_parsed_at=func.now())
+        )
+        filled += len(updates)
+    session.commit()
+    return filled
 
 
 async def _backfill_missing_homeless_descriptions(session) -> int:
@@ -2361,6 +2409,10 @@ def run_once() -> dict[str, int]:
                 summary["bright_data_backfilled"] = asyncio.run(_backfill_missing_yad2_descriptions(session))
             except Exception:
                 logger.exception("Yad2 details backfill step failed")
+            try:
+                summary["text_features_filled"] = _fill_missing_fields_from_descriptions(session)
+            except Exception:
+                logger.exception("Description text features step failed")
             # Runs even when the notification step above raised (the exception still propagates
             # afterwards): a failed notification run must not also swallow the check-in that keeps
             # users' free 24h WhatsApp windows open.

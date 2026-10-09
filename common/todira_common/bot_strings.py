@@ -1216,6 +1216,29 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "פיצ'רים:", "en": "Features:", "ru": "Особенности:",
         "fr": "Caractéristiques :", "ar": "المميزات:",
     },
+    # 2026-10-09: the property type line (shown for anything that is not a plain apartment), read from the source or from the ad text.
+    "card.type_label": {
+        "he": "סוג:", "en": "Type:", "ru": "Тип:", "fr": "Type :", "ar": "النوع:",
+    },
+    "card.type_garden_apartment": {
+        "he": "דירת גן", "en": "Garden apartment", "ru": "Квартира с садом", "fr": "Appartement avec jardin", "ar": "شقة حديقة",
+    },
+    "card.type_penthouse": {
+        "he": "פנטהאוז / דירת גג", "en": "Penthouse", "ru": "Пентхаус", "fr": "Penthouse", "ar": "بنتهاوس",
+    },
+    "card.type_private_house": {
+        "he": "בית פרטי", "en": "Private house", "ru": "Частный дом", "fr": "Maison individuelle", "ar": "بيت خاص",
+    },
+    "card.type_studio": {
+        "he": "סטודיו", "en": "Studio", "ru": "Студия", "fr": "Studio", "ar": "ستوديو",
+    },
+    "card.type_housing_unit": {
+        "he": "יחידת דיור", "en": "Housing unit", "ru": "Жилая единица", "fr": "Unité de logement", "ar": "وحدة سكنية",
+    },
+    "card.type_shared_room": {
+        "he": "חדר בדירת שותפים", "en": "Room in a shared flat", "ru": "Комната в общей квартире",
+        "fr": "Chambre en colocation", "ar": "غرفة في شقة مشتركة",
+    },
     "card.price_dropped": {
         "he": "ירידת מחיר!", "en": "Price drop!", "ru": "Снижение цены!",
         "fr": "Baisse de prix !", "ar": "انخفاض السعر!",
