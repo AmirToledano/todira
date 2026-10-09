@@ -16,11 +16,15 @@ Contract: `fetch_yad2_detail_updates(url)` returns a dict of column updates (pos
 nothing usable, or it is gone — both definitive, nothing to retry) or None (disabled, blocked, network/HTTP error —
 retry later). Never raises. Requests are serialised per process, one second apart.
 
-Bot protection (found in the first production run, 2026-10-09): now and then Yad2's WAF answers HTTP 200 with a JSON body
-that is NOT the ad — `{"_event_clientip": ..., "_event_clientport": ..., "_event_transid": ...}` — about 3 in 15 at 0.5 s spacing
-from the cluster IP (60 in a row at 0.65 s passed in the earlier probe). That is a rate-limit signal, not a missing ad: such an
-answer is retried after 8 s and again after 20 s, and only a request that still fails after the retries counts as a failure;
-three failed requests in a row pause the fetcher for 15 minutes so it can never turn into a hammering loop.
+"Not the ad" answers (found in the first production runs, 2026-10-09): now and then Yad2 answers HTTP 200 with a JSON body that
+is NOT the ad — `{"_event_clientip": ..., "_event_clientport": ..., "_event_transid": ...}`. Measured on the production IP
+(diagnose-yad2-item-api-token-or-ip.yaml): 4 of the 40 oldest active ads answered that way, asking the SAME ad again twice 6 s later
+gave the same answer every time, and a fresh ad asked right after each one was read normally 4 of 4 — so it is tied to the AD (one
+that cannot be served), not to the IP or the pace (200 of 200 fresh ads passed at both 1 s and 2 s spacing). Such an ad is therefore
+a definitive "nothing to read" (`{}`, never retried, and details_fetched_at stops it being asked about again). Only five in a row
+look like a block of the IP: the fetcher then pauses for 5 minutes and answers None (retry later) instead of marking more ads.
+Real failures (network error, HTTP 403/429/5xx, a non-JSON body) are retried after 8 s and 20 s; three failed requests in a row
+pause the fetcher for 15 minutes, so it can never turn into a hammering loop.
 
 Opt-in via YAD2_ITEM_API=true (helm scraper/website `yad2ItemApi`)."""
 from __future__ import annotations
@@ -44,6 +48,8 @@ _TIMEOUT_SECONDS = 25
 _BLOCK_AFTER_FAILURES = 3
 _RETRY_WAITS_SECONDS = (8.0, 20.0)
 _BLOCK_SECONDS = 900.0
+_EVENT_BLOCK_AFTER = 5
+_EVENT_BLOCK_SECONDS = 300.0
 _MAX_DESCRIPTION_CHARS = 4000
 
 # Yad2's `additionalDetails.property.textEng` / `.text` -> this project's property type. Only values confirmed live are
@@ -59,6 +65,7 @@ HEBREW_PROPERTY_TYPE_MAP = {
 _lock = threading.Lock()
 _last_request_at = 0.0
 _consecutive_failures = 0
+_consecutive_events = 0
 _blocked_until = 0.0
 
 
@@ -98,7 +105,7 @@ def _record_failure(url: str, reason: str) -> None:
 
 
 def _request_once(token: str) -> tuple[str, Any]:
-    """One HTTP attempt: ("ok", data) / ("gone", {}) / ("retry", reason). Caller holds the lock."""
+    """One HTTP attempt: ("ok", data) / ("gone", {}) / ("event", None) / ("retry", reason). Caller holds the lock."""
     global _last_request_at
     from curl_cffi import requests as curl_requests
 
@@ -126,13 +133,16 @@ def _request_once(token: str) -> tuple[str, Any]:
         return "retry", "answered non-JSON (challenge page?)"
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
-        return "retry", "answered JSON that is not the ad (bot-protection event / rate limit)"
+        if isinstance(payload, dict) and any(str(key).startswith("_event_") for key in payload):
+            return "event", None
+        return "retry", "answered JSON without a data record"
     return "ok", data
 
 
 def fetch_item(token: str) -> dict | None:
-    """The ad record (`data`), `{}` when Yad2 says the ad is gone (404/410), or None when it could not be read right now."""
-    global _consecutive_failures
+    """The ad record (`data`), `{}` when there is nothing to read for this ad (404/410, or Yad2's "not the ad" answer — see the
+    module docstring), or None when it could not be read right now."""
+    global _consecutive_failures, _consecutive_events, _blocked_until
     url = _ITEM_URL.format(token=token)
     with _lock:
         if time.monotonic() < _blocked_until:
@@ -142,8 +152,22 @@ def fetch_item(token: str) -> dict | None:
             if attempt:
                 time.sleep(_RETRY_WAITS_SECONDS[attempt - 1])
             outcome, value = _request_once(token)
+            if outcome == "event":
+                _consecutive_failures = 0
+                _consecutive_events += 1
+                if _consecutive_events >= _EVENT_BLOCK_AFTER:
+                    _consecutive_events = 0
+                    _blocked_until = time.monotonic() + _EVENT_BLOCK_SECONDS
+                    logger.warning(
+                        "Yad2 item API answered %d ads in a row with a bot-protection event — pausing it for %.0f min",
+                        _EVENT_BLOCK_AFTER, _EVENT_BLOCK_SECONDS / 60,
+                    )
+                    return None
+                logger.info("Yad2 item API has no record to read for %s (bot-protection event for this ad)", url)
+                return {}
             if outcome != "retry":
                 _consecutive_failures = 0
+                _consecutive_events = 0
                 return value
             reason = value
         _record_failure(url, reason + f" (after {len(_RETRY_WAITS_SECONDS) + 1} attempts)")
