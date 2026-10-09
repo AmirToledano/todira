@@ -1026,7 +1026,25 @@ def _flush_sweep_chunk(items: list) -> None:
             session.execute(table.update().where(table.c.id.in_(unchanged_ids)).values(scraped_at=func.now()))
             session.commit()
         if to_upsert:
-            new_ids, price_pairs = _upsert_listings(session, to_upsert)
+            try:
+                new_ids, price_pairs = _upsert_listings(session, to_upsert)
+            except Exception:
+                # One bad row must not sink the other 999: undo the failed batch and write the rows one at a time, skipping (and
+                # counting) only those that still fail. The 2026-10-09 morning run lost three whole chunks to a single out-of-range
+                # number before the schema learned to null such values.
+                logger.exception("Yad2 sweep chunk of %d failed - retrying row by row", len(to_upsert))
+                session.rollback()
+                new_ids, price_pairs, skipped = [], [], 0
+                for item in to_upsert:
+                    try:
+                        one_new, one_pairs = _upsert_listings(session, [item])
+                        new_ids.extend(one_new)
+                        price_pairs.extend(one_pairs)
+                    except Exception:
+                        session.rollback()
+                        skipped += 1
+                if skipped:
+                    logger.warning("Yad2 sweep chunk: %d row(s) could not be stored and were skipped", skipped)
             _STREAMED_NEW_IDS.extend(new_ids)
             _STREAMED_PRICE_PAIRS.extend(price_pairs)
     _STREAMED_CITIES.update(item.city for item in items if item.city)

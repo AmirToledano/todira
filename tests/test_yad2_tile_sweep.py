@@ -407,3 +407,41 @@ def test_a_failed_chunk_write_makes_the_sweep_incomplete_so_nothing_is_delisted(
     assert seen == {"a1"}
     scraper_main._YAD2_TILE_STATE["rent"].update(ran=False, complete=False)
     scraper_main._YAD2_TILE_ONLY_IDS["rent"].clear()
+
+
+def test_a_nonsense_number_is_nulled_instead_of_sinking_the_batch():
+    item = NormalizedListing(
+        source="yad2", external_id="x", url="u", deal_type="sale",
+        price=99_999_999_999, floor=5000, floor_total=-50, size_sqm=9_000_000, rooms=250.0, city="חיפה",
+    )
+    assert (item.price, item.floor, item.floor_total, item.size_sqm, item.rooms) == (None, None, None, None, None)
+    assert item.city == "חיפה"
+
+
+def test_believable_numbers_are_kept():
+    item = NormalizedListing(
+        source="yad2", external_id="x", url="u", deal_type="sale",
+        price=3_550_000, floor=0, floor_total=12, size_sqm=140, rooms=4.5,
+    )
+    assert (item.price, item.floor, item.floor_total, item.size_sqm, item.rooms) == (3_550_000, 0, 12, 140, 4.5)
+
+
+def test_a_failing_chunk_is_retried_row_by_row_and_only_the_bad_row_is_skipped(monkeypatch):
+    scraper_main._reset_streamed_sweep_state()
+    session = _FlushSession([])
+    session.rollbacks = 0
+    session.rollback = lambda: setattr(session, "rollbacks", session.rollbacks + 1)
+    monkeypatch.setattr(scraper_main, "get_session", lambda: session)
+    calls: list[list[str]] = []
+
+    def fake_upsert(_session, items):
+        calls.append([i.external_id for i in items])
+        if len(items) > 1 or items[0].external_id == "bad":
+            raise RuntimeError("integer out of range")
+        return [len(calls)], []
+
+    monkeypatch.setattr(scraper_main, "_upsert_listings", fake_upsert)
+    scraper_main._flush_sweep_chunk([_swept("ok1", 1), _swept("bad", 2), _swept("ok2", 3)])
+    assert calls[0] == ["ok1", "bad", "ok2"] and calls[1:] == [["ok1"], ["bad"], ["ok2"]]
+    assert len(scraper_main._STREAMED_NEW_IDS) == 2  # the two good rows made it
+    assert session.rollbacks >= 2

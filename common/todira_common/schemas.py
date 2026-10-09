@@ -152,3 +152,27 @@ class NormalizedListing(BaseModel):
 
     posted_at: dt.datetime | None = None
     raw_payload: dict | None = None
+
+    # 2026-10-09: three chunks of 1,000 for-sale ads failed to write with Postgres "integer out of range": a source sometimes carries a
+    # nonsense number (a typo'd price, an area in the millions). One such value used to sink the whole batch it was in. The columns are
+    # int4 (price, floor, floor_total, size_sqm) and Numeric(3,1) (rooms), so a value outside any believable range becomes None - the
+    # listing is still stored, just without that field - exactly the "degrade to NULL, never drop the listing" rule above.
+    @field_validator("price", mode="after")
+    @classmethod
+    def _price_in_believable_range(cls, v: int | None) -> int | None:
+        return v if v is None or 0 <= v <= 1_000_000_000 else None
+
+    @field_validator("floor", "floor_total", mode="after")
+    @classmethod
+    def _floor_in_believable_range(cls, v: int | None) -> int | None:
+        return v if v is None or -10 <= v <= 300 else None
+
+    @field_validator("size_sqm", mode="after")
+    @classmethod
+    def _size_in_believable_range(cls, v: int | None) -> int | None:
+        return v if v is None or 0 <= v <= 100_000 else None
+
+    @field_validator("rooms", mode="after")
+    @classmethod
+    def _rooms_in_believable_range(cls, v: float | None) -> float | None:
+        return v if v is None or 0 <= v <= 99.9 else None
