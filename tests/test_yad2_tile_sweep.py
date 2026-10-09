@@ -399,7 +399,8 @@ def test_a_failed_chunk_write_makes_the_sweep_incomplete_so_nothing_is_delisted(
         scraper_main, "fetch_region_tiles",
         lambda region, stats, kind="rent": iter([{"id": "a1", "url": "u", "price": 1, "city": "ירושלים"}]),
     )
-    monkeypatch.setattr(scraper_main, "_flush_sweep_chunk", lambda chunk: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(scraper_main, "_tile_seeded", lambda kind: True)
+    monkeypatch.setattr(scraper_main, "_flush_sweep_chunk", lambda chunk, **kw: (_ for _ in ()).throw(RuntimeError("db down")))
     items: list = []
     seen: set[str] = set()
     swept, errors, complete = scraper_main._run_yad2_tile_sweep("rent", scraper_main.DealType.RENT, items, seen)
@@ -445,3 +446,49 @@ def test_a_failing_chunk_is_retried_row_by_row_and_only_the_bad_row_is_skipped(m
     assert calls[0] == ["ok1", "bad", "ok2"] and calls[1:] == [["ok1"], ["bad"], ["ok2"]]
     assert len(scraper_main._STREAMED_NEW_IDS) == 2  # the two good rows made it
     assert session.rollbacks >= 2
+
+
+def test_in_a_seed_run_new_rows_are_made_quiet_at_insert_time_and_not_announced(monkeypatch):
+    """A concurrent job's retry pass must never see a to-be-quiet row as a fresh ad (2026-10-09: ~830 old rentals reached the owner)."""
+    scraper_main._reset_streamed_sweep_state()
+    session = _FlushSession([])
+    monkeypatch.setattr(scraper_main, "get_session", lambda: session)
+    monkeypatch.setattr(scraper_main, "_upsert_listings", lambda s, items: ([901, 902], []))
+    scraper_main._flush_sweep_chunk([_swept("a", 1), _swept("b", 2)], quiet=True)
+    assert session.updates == 1  # the backdating UPDATE, right after the insert
+    assert scraper_main._STREAMED_NEW_IDS == [] and scraper_main._STREAMED_QUIET_COUNT[0] == 2
+
+
+def test_after_the_seed_run_new_rows_are_announced_as_before(monkeypatch):
+    scraper_main._reset_streamed_sweep_state()
+    session = _FlushSession([])
+    monkeypatch.setattr(scraper_main, "get_session", lambda: session)
+    monkeypatch.setattr(scraper_main, "_upsert_listings", lambda s, items: ([901], []))
+    scraper_main._flush_sweep_chunk([_swept("a", 1)], quiet=False)
+    assert session.updates == 0 and scraper_main._STREAMED_NEW_IDS == [901]
+
+
+def test_the_sweep_is_quiet_while_its_map_is_unseeded_and_a_flag_read_error_also_means_quiet(monkeypatch):
+    monkeypatch.setattr(scraper_main, "REGION_SLUGS", ["jerusalem-area"])
+    monkeypatch.setattr(scraper_main, "REGIONS_ON_MAP_API", {"jerusalem-area": [{}]})
+    monkeypatch.setattr(
+        scraper_main, "fetch_region_tiles",
+        lambda region, stats, kind="rent": iter([{"id": "a1", "url": "u", "price": 1, "city": "ירושלים"}]),
+    )
+    modes: list[bool] = []
+    monkeypatch.setattr(scraper_main, "_flush_sweep_chunk", lambda chunk, quiet=False: modes.append(quiet))
+    monkeypatch.setattr(scraper_main, "_tile_seeded", lambda kind: False)
+    scraper_main._run_yad2_tile_sweep("rent", scraper_main.DealType.RENT, [], set())
+    monkeypatch.setattr(scraper_main, "_tile_seeded", lambda kind: True)
+    scraper_main._run_yad2_tile_sweep("rent", scraper_main.DealType.RENT, [], set())
+    assert modes == [True, False]
+    scraper_main._YAD2_TILE_STATE["rent"].update(ran=False, complete=False)
+    scraper_main._YAD2_TILE_ONLY_IDS["rent"].clear()
+
+    def boom(*a, **k):
+        raise RuntimeError("no db")
+
+    monkeypatch.setattr(scraper_main, "get_session", boom)
+    monkeypatch.undo()
+    monkeypatch.setattr(scraper_main, "get_session", boom)
+    assert scraper_main._tile_seeded("rent") is False

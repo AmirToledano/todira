@@ -775,6 +775,7 @@ _DEFAULT_MIN_HOURS_BEFORE_DELIST = 3
 # (WhatsApp API down, a stretch of NOTIFICATIONS_SUSPENDED, etc.), small enough that this query
 # stays cheap (bounded by how many listings are scraped in a week, not the whole table).
 _RETRY_UNNOTIFIED_HOURS = 24 * 7
+_RETRY_MIN_AGE_MINUTES = 10
 
 
 def _mark_delisted(
@@ -896,6 +897,9 @@ def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Lis
                 # so it would pass ~never_notified_exists forever and re-send the same apartment.
                 Listing.duplicate_of_id.is_(None),
                 Listing.first_seen_at >= retry_window_cutoff,
+                # Not rows still being written: another job (the Facebook CronJob shares the hourly slot of the 06/12/18 UTC runs) may be
+                # mid-way through inserting a batch whose quiet/announce decision is not final yet.
+                Listing.first_seen_at <= func.now() - func.make_interval(0, 0, 0, 0, 0, _RETRY_MIN_AGE_MINUTES),
                 ~never_notified_exists,
             )
         )
@@ -994,16 +998,23 @@ _SWEEP_FLUSH_CHUNK = 1000
 _STREAMED_NEW_IDS: list[int] = []
 _STREAMED_PRICE_PAIRS: list[tuple[int, int]] = []
 _STREAMED_CITIES: set[str] = set()
+_STREAMED_QUIET_COUNT: list[int] = [0]
 
 
 def _reset_streamed_sweep_state() -> None:
     _STREAMED_NEW_IDS.clear()
     _STREAMED_PRICE_PAIRS.clear()
     _STREAMED_CITIES.clear()
+    _STREAMED_QUIET_COUNT[0] = 0
 
 
-def _flush_sweep_chunk(items: list) -> None:
-    """Writes one chunk of swept Yad2 ads. Raises on a database error (the caller treats the sweep as incomplete)."""
+def _flush_sweep_chunk(items: list, *, quiet: bool = False) -> None:
+    """Writes one chunk of swept Yad2 ads. Raises on a database error (the caller treats the sweep as incomplete).
+
+    `quiet` (the sweep's seed run): the NEW rows are pushed outside the retry window and left out of the announcements right here, in the
+    same breath as their insert. Doing it later (after the whole scrape, as _apply_tile_seed_policy still does as a safety net) left a
+    25-minute gap in which a concurrent job's retry pass saw them as fresh, never-notified ads: the 2026-10-09 06:00 UTC Facebook job
+    sent the owner ~830 old rentals that way."""
     if not items:
         return
     table = Listing.__table__
@@ -1045,9 +1056,29 @@ def _flush_sweep_chunk(items: list) -> None:
                         skipped += 1
                 if skipped:
                     logger.warning("Yad2 sweep chunk: %d row(s) could not be stored and were skipped", skipped)
-            _STREAMED_NEW_IDS.extend(new_ids)
+            if quiet and new_ids:
+                session.execute(
+                    table.update()
+                    .where(table.c.id.in_(new_ids))
+                    .values(first_seen_at=func.now() - func.make_interval(0, 0, 0, _SEED_BACKDATE_DAYS))
+                )
+                session.commit()
+                _STREAMED_QUIET_COUNT[0] += len(new_ids)
+            else:
+                _STREAMED_NEW_IDS.extend(new_ids)
             _STREAMED_PRICE_PAIRS.extend(price_pairs)
     _STREAMED_CITIES.update(item.city for item in items if item.city)
+
+
+def _tile_seeded(kind: str) -> bool:
+    """True once a complete sweep of this map has happened (its seed flag). A read error counts as NOT seeded: the worst case is one run
+    that stays quiet, never a flood."""
+    try:
+        with get_session() as session:
+            return bool(whatsapp_guard.get_flag(session, _YAD2_TILES_SEEDED_FLAGS[kind]))
+    except Exception:
+        logger.exception("Could not read the %s seed flag - treating the sweep as a quiet seed run", kind)
+        return False
 
 
 def _run_yad2_tile_sweep(
@@ -1062,12 +1093,13 @@ def _run_yad2_tile_sweep(
     fetched = errors = 0
     buffer: list = []
     write_failed = False
+    quiet = not _tile_seeded(kind)  # an unseeded map is in its seed run: every new row it finds is stored quietly
 
     def _flush() -> None:
         nonlocal buffer, write_failed
         chunk, buffer = buffer, []
         try:
-            _flush_sweep_chunk(chunk)
+            _flush_sweep_chunk(chunk, quiet=quiet)
         except Exception:
             logger.exception("Yad2 tile sweep (%s): writing a chunk of %d ads failed", kind, len(chunk))
             write_failed = True
