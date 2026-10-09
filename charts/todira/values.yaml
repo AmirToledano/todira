@@ -253,7 +253,7 @@ scraper:
   yad2ItemApi: true
   # How many still-unread active Yad2 listings the end of each run catches up on (rentals first, newest first; after the
   # notifications, so it never delays an alert). ~0.5 s each.
-  brightDataBackfillMaxPerRun: 800
+  brightDataBackfillMaxPerRun: 600
   # 2026-09-13: same real-money-per-fetch reasoning as komoMaxNewDetailFetchesPerRun above, one
   # order of magnitude smaller — Homeless is added description enrichment (a per-listing detail-
   # page fetch, only for genuinely-new listings; see homeless_client.fetch_listing_description and
