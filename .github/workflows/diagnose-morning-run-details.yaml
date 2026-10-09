@@ -1,0 +1,102 @@
+name: Diagnose - why 3 for-sale chunk writes failed and who got the 740 Facebook-job notifications (read-only, counts only)
+
+# Read-only, manual-only. After the 06:00 UTC run: (1) three chunks of the for-sale sweep failed to write - print the error lines of that
+# scraper pod (exception class and first 300 characters of each error line only); (2) the Facebook job's run reported 740 notifications -
+# print aggregate counts of the notifications sent in the last 100 minutes by listing source / deal type / age bucket at send time, and
+# the largest number any single user received (a number, no ids). Nothing about any listing or user is printed.
+on:
+  workflow_dispatch:
+    inputs:
+      job_name:
+        description: "Scraper Job whose pod log to scan (e.g. todira-scraper-29858760)"
+        required: true
+        default: "todira-scraper-29858760"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Error lines of the scraper pod
+        run: |
+          POD=$(kubectl get pods -n todira -l job-name="${{ inputs.job_name }}" -o jsonpath='{.items[0].metadata.name}')
+          echo "pod: $POD"
+          kubectl logs -n todira "$POD" 2>/dev/null | grep -n -E "writing a chunk|Error|error:|exc\.|psycopg|Traceback|Timeout|timeout|deadlock|too many|statement" | cut -c1-300 | head -40
+
+      - name: Notification breakdown in a throwaway pod
+        run: |
+          POD_NAME="notifs-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import subprocess, sys
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "psycopg2-binary"])
+          import os, psycopg2
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          def q(title, sql):
+              cur.execute(sql)
+              print(f"== {title}")
+              for row in cur.fetchall():
+                  print("==   " + " | ".join(str(c) for c in row))
+          q("notifications sent in the last 100 minutes, by reason / source / deal type / listing age at send time",
+            """select s.reason, l.source, l.deal_type,
+                      case when s.sent_at - l.first_seen_at < interval '3 hours' then 'a: under 3h'
+                           when s.sent_at - l.first_seen_at < interval '24 hours' then 'b: 3-24h'
+                           else 'c: older than 1 day' end as age, count(*)
+               from sent_notifications s join listings l on l.id = s.listing_id
+               where s.sent_at > now() - interval '100 minutes' group by 1, 2, 3, 4 order by 1, 2, 3, 4""")
+          q("how many distinct users received something, and the most any single user received",
+            """select count(distinct user_id), max(c), percentile_cont(0.5) within group (order by c) from
+               (select user_id, count(*) c from sent_notifications where sent_at > now() - interval '100 minutes' group by user_id) t""")
+          q("sent in the last 100 minutes by minute-bucket of 10 (to see which run sent them)",
+            "select date_trunc('hour', sent_at) + (extract(minute from sent_at)::int / 10) * interval '10 minutes' b, count(*) from sent_notifications where sent_at > now() - interval '100 minutes' group by 1 order by 1")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 300
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 100); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
