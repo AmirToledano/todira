@@ -73,3 +73,14 @@ def _sign_legacy_uid_requests(request, monkeypatch):
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "no_uid_shim: do not add the signed ?t= token to requests that name a uid")
+
+
+@pytest.fixture(autouse=True)
+def _reset_homeless_fetch_counters(monkeypatch):
+    """homeless_client keeps per-PROCESS counters (ZenRows fallback credits used, free-route failure streak); a test run is one
+    process, so every test starts from a clean slate instead of inheriting the previous test's count."""
+    import homeless_client
+
+    monkeypatch.setattr(homeless_client, "_zenrows_requests_this_process", 0)
+    monkeypatch.setattr(homeless_client, "_free_consecutive_failures", 0)
+    monkeypatch.setattr(homeless_client, "_free_route_blocked", False)

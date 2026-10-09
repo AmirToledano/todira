@@ -264,8 +264,15 @@ scraper:
   # the whole list takes ~3 days); that is ~8 credits a run. Description fetches were cut to fit the same budget: 6 new + 2 backfill
   # per run (was 50 + 30; the backlog this crawl finds would otherwise burn the whole month in a few days).
   homelessPagination: true
-  homelessMaxNewDescriptionFetchesPerRun: 6
-  homelessBackfillMaxPerRun: 2
+  # 2026-10-09: Homeless answers a plain request with a real Chrome TLS fingerprint from the cluster IP (curl_cffi, the same free route the
+  # Yad2 map uses; live probe: search pages 200 with 51 / 47 cards, detail page 200), so pages and descriptions no longer cost ZenRows
+  # credits: free fetch ON, 60 new + 40 backfilled descriptions a run, 6 rolling pages per category (a lap of the list in about a day).
+  # ZenRows stays only as the fallback when the free route is blocked, limited to homelessZenrowsMaxPerRun credits a run.
+  homelessFreeFetch: true
+  homelessZenrowsMaxPerRun: 10
+  homelessRollingPagesPerRun: 6
+  homelessMaxNewDescriptionFetchesPerRun: 60
+  homelessBackfillMaxPerRun: 40
   # 2026-09-18: real incident, not hypothetical — the first real production run after switching
   # Yad2 enrichment to Web Unlocker ran 20+ minutes and never reached the notification-sending
   # step, live-confirmed via check-scraper-job-status.yaml's real pod logs, because a real backlog
