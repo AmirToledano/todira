@@ -321,6 +321,9 @@ class Listing(Base):
     # When the full detail record (description, total floors, entrance date, amenities) was last read from the source
     # (migration 0023). NULL = never; see todira_common/yad2_detail.py and scraper/main.py's backfill.
     details_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the description text was last read for floors / amenities / property type / entry date (migration 0025,
+    # todira_common/text_features.py). NULL = not read yet.
+    text_parsed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     is_delisted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     delisted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))

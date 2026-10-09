@@ -566,3 +566,59 @@ def test_notify_new_matches_sends_no_whatsapp_when_the_circuit_breaker_is_paused
 
 def test_notifier_has_no_way_to_send_a_template_even_through_the_client():
     assert not hasattr(notifier.whatsapp_client, "send_template_message")
+
+
+# --- 2026-10-09: the card is completed from the description text just before it is sent -----------------------------------
+
+
+def _text_listing(**overrides):
+    fields = dict(
+        description="קומה 2 מתוך 4, חניה, מעלית", text_parsed_at=None, source=Source.KOMO, details_fetched_at=None,
+        floor=None, floor_total=None, has_parking=None, has_elevator=None, has_balcony=None, pets_allowed=None,
+        is_renovated=None, is_roommate_friendly=None, safe_room_type=None, furniture=None, property_type=None,
+        move_in_date=None, move_in_note=None,
+    )
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+def test_complete_card_fields_fills_the_empty_columns_from_the_text_and_marks_it_read():
+    listing = _text_listing()
+    committed = []
+    session = SimpleNamespace(commit=lambda: committed.append(True))
+    asyncio.run(notifier._complete_card_fields(session, listing, [_user()]))
+    assert listing.floor == 2 and listing.floor_total == 4
+    assert listing.has_parking is True and listing.has_elevator is True
+    assert listing.text_parsed_at is not None
+    assert committed == [True]
+
+
+def test_complete_card_fields_never_overwrites_a_structured_value():
+    listing = _text_listing(has_parking=False, floor=3)
+    session = SimpleNamespace(commit=lambda: None)
+    asyncio.run(notifier._complete_card_fields(session, listing, [_user()]))
+    assert listing.has_parking is False and listing.floor == 3
+    assert listing.floor_total == 4  # only the empty column is filled
+
+
+def test_complete_card_fields_does_nothing_without_recipients_or_when_already_read_or_without_text():
+    for listing, recipients in (
+        (_text_listing(), []),
+        (_text_listing(text_parsed_at=_NOW), [_user()]),
+        (_text_listing(description=None), [_user()]),
+    ):
+        committed = []
+        session = SimpleNamespace(commit=lambda: committed.append(True))
+        asyncio.run(notifier._complete_card_fields(session, listing, recipients))
+        assert committed == []
+        assert listing.floor is None
+
+
+def test_complete_card_fields_runs_the_yad2_detail_fetch_first_then_the_text():
+    listing = _text_listing(source=Source.YAD2, description=None, url="https://www.yad2.co.il/item/x")
+    session = SimpleNamespace(commit=lambda: None)
+    enabled, fetch = _detail_patches({"description": "קומה 1 מתוך 3, מרפסת", "has_parking": True})
+    with enabled, fetch:
+        asyncio.run(notifier._complete_card_fields(session, listing, [_user()]))
+    assert listing.has_parking is True  # from the structured record
+    assert listing.floor == 1 and listing.floor_total == 3 and listing.has_balcony is True  # from the description text

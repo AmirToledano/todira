@@ -30,7 +30,7 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from todira_common import whatsapp_client, whatsapp_guard, yad2_detail
+from todira_common import text_features, whatsapp_client, whatsapp_guard, yad2_detail
 from todira_common.access import access_state, has_full_access
 from todira_common.bot_strings import bot_text
 from todira_common.cards import (
@@ -219,6 +219,21 @@ async def _maybe_fetch_description(session: Session, listing: Listing, recipient
     session.commit()
 
 
+async def _complete_card_fields(session: Session, listing: Listing, recipients: list[User]) -> None:
+    """Everything a card needs that the scrape itself did not carry, right before it is sent: Yad2's detail record (see
+    _maybe_fetch_description), then whatever the description text states for the columns still empty — floors, parking /
+    elevator / balcony / safe room, pets, property type, entry date (todira_common/text_features.py; a structured value always
+    wins). Nothing happens when there is nobody to send to."""
+    if not recipients:
+        return
+    await _maybe_fetch_description(session, listing, recipients)
+    if not getattr(listing, "description", None) or getattr(listing, "text_parsed_at", None) is not None:
+        return
+    text_features.apply_missing(listing)
+    listing.text_parsed_at = dt.datetime.now(dt.timezone.utc)
+    session.commit()
+
+
 async def _notify_new_matches(
     bot: Bot,
     session: Session,
@@ -283,7 +298,7 @@ async def _notify_new_matches(
             continue
         to_notify.append((filter_row, user))
 
-    await _maybe_fetch_description(session, listing, [user for _f, user in to_notify])
+    await _complete_card_fields(session, listing, [user for _f, user in to_notify])
 
     for filter_row, user in to_notify:
         sent_on_any_channel = False
@@ -398,7 +413,7 @@ async def _notify_price_change(
             continue
         to_notify.append(user)
 
-    await _maybe_fetch_description(session, listing, to_notify)
+    await _complete_card_fields(session, listing, to_notify)
 
     for user in to_notify:
         user_lang = user.language or DEFAULT_LANG
