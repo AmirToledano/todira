@@ -1,0 +1,107 @@
+name: Diagnose Yad2 item JSON - which of our active ads answer "not the ad", by group (read-only, counts only)
+
+# Read-only, manual-only. The first production backfill runs hit many "not the ad" answers (JSON with only _event_* keys) on the unread active rentals,
+# although 200 fresh ads in a row were read fine from an idle pod. This asks for random samples of 50 ads per group and prints ONLY how many answered
+# with the ad vs "not the ad" per group: unread rent seeded quietly (first seen over 7 days ago), unread rent seen in the last 2 days, unread sale, and
+# already-read rent as a control. Tokens come from the database (public ad tokens, never printed); nothing is written.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Probe in a throwaway pod
+        run: |
+          POD_NAME="event-groups-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import os, re, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary"])
+          import psycopg2
+          from curl_cffi import requests as cr
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          base = "source='yad2' and not is_delisted and duplicate_of_id is null"
+          groups = {
+              "unread rent, first seen over 7 days ago (quiet seed)": f"{base} and deal_type='rent' and details_fetched_at is null and first_seen_at < now() - interval '7 days'",
+              "unread rent, first seen in the last 2 days": f"{base} and deal_type='rent' and details_fetched_at is null and first_seen_at > now() - interval '2 days'",
+              "unread sale (any age)": f"{base} and deal_type='forsale' and details_fetched_at is null",
+              "already-read rent (control)": f"{base} and deal_type='rent' and details_fetched_at is not null",
+          }
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          def kind(t):
+              try:
+                  r = cr.get(f"https://gw.yad2.co.il/realestate-item/{t}", headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+                  if r.status_code in (404, 410):
+                      return "gone404"
+                  j = r.json()
+                  if isinstance(j, dict) and isinstance(j.get("data"), dict):
+                      return "ad"
+                  if isinstance(j, dict) and any(str(k).startswith("_event_") for k in j):
+                      return "not_the_ad"
+                  return "other"
+              except Exception:
+                  return "error"
+          for label, where in groups.items():
+              cur.execute(f"select count(*) from listings where {where}")
+              total = cur.fetchone()[0]
+              cur.execute(f"select url from listings where {where} order by random() limit 50")
+              toks = [m.group(1) for (u,) in cur.fetchall() for m in [re.search(r"/item/([A-Za-z0-9]+)", u)] if m]
+              counts = {}
+              for t in toks:
+                  time.sleep(1.0)
+                  k = kind(t)
+                  counts[k] = counts.get(k, 0) + 1
+              print(f"== {label}: rows in group={total} sampled={len(toks)} {counts}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 600
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 200); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
