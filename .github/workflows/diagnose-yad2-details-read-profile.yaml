@@ -53,6 +53,11 @@ jobs:
           q("yad2 ads marked read in the last 2 hours WITHOUT a description: delisted or not, and when they were last seen on the map",
             """select is_delisted, case when scraped_at > now() - interval '1 hour' then 'seen on the map in the last hour' else 'not seen in the last hour' end as last_seen, count(*)
                from listings where source='yad2' and details_fetched_at > now() - interval '2 hours' and description is null group by 1, 2 order by 1, 2""")
+          q("when the ads were marked read, per 10 minutes (UTC), by deal type and with / without a description - tells the scraper run's phases from the website's view-time fill",
+            """select to_char(date_trunc('hour', details_fetched_at) + floor(extract(minute from details_fetched_at)/10)*interval '10 minutes', 'HH24:MI') as bucket,
+                      deal_type, count(*) as read_total, count(*) filter (where description is null) as without_description
+               from listings where source='yad2' and details_fetched_at > now() - interval '3 hours'
+               group by 1, 2 order by 1, 2""")
           q("deal_type values present on yad2 rows",
             "select deal_type, count(*), count(*) filter (where details_fetched_at is null and not is_delisted and duplicate_of_id is null) as unread_active from listings where source='yad2' group by 1 order by 1")
           PYEOF
