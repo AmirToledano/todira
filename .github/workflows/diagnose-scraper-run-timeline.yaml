@@ -1,0 +1,30 @@
+name: Diagnose scraper - timeline of the last runs, when the Yad2 item API warnings happened (read-only, times only)
+
+# Read-only, manual-only. Prints, for the last 2 main scraper pods, the clock time of: each phase line (tile sweeps, Homeless crawl, backlog, run
+# summary) and each "Yad2 item API" warning with its URL masked, so we can see in which phase the bot-protection answers happen (while the sweep is
+# running, during the notifications, or in the catch-up). Times and masked message types only.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Timeline of the last two runs
+        run: |
+          PODS=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+          for POD in $(echo $PODS | tr ' ' '\n' | tail -2); do
+            echo "=== $POD ($(kubectl get pod $POD -n todira -o jsonpath='{.status.phase} started {.status.startTime}'))"
+            kubectl logs -n todira "$POD" 2>&1 \
+              | grep -E "tile sweep|Homeless rolling|backlog:|Scraper run summary|Yad2 item API|Scraping .* source|older backlog|Sending|notif" \
+              | sed -E 's/^[0-9-]+ ([0-9:]+),[0-9]+ /\1 /; s/https?:[^ ]+/<url>/g; s/\{.*\}/{summary}/' | cut -c1-190 | head -60
+          done
