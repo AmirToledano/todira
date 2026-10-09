@@ -41,10 +41,17 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    # 2026-10-09: an ALTER TABLE (even ADD COLUMN) needs an ACCESS EXCLUSIVE lock, and it queues behind a long-running scraper
+    # transaction — while it waits, EVERY new query on that table (website, bot) queues behind IT, so the site hung for minutes
+    # during the migration deploy that landed in the middle of a scraper run (the helm pre-upgrade hook then timed out). A short
+    # lock_timeout makes the attempt fail fast and release the queue; the migrations Job's own retry loop (30 attempts, 5 s apart)
+    # tries again once the scraper's transaction is gone.
+    connect_args = {"options": "-c lock_timeout=8000"} if database_url.startswith("postgresql") else {}
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
