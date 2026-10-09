@@ -524,3 +524,26 @@ def test_delisting_uses_one_array_parameter_so_a_huge_seen_set_cannot_exceed_the
         big = [v for v in compiled.params.values() if isinstance(v, list) and len(v) == 70_000]
         assert len(big) == 1
         assert len(compiled.params) < 20
+
+
+def test_the_for_sale_seed_stays_quiet_for_24_hours_after_its_flag_was_first_set(monkeypatch):
+    import datetime as dt
+
+    now = dt.datetime.now(dt.timezone.utc)
+    flags = {"yad2_sale_tiles_seeded": (now - dt.timedelta(hours=2)).isoformat(), "yad2_tiles_seeded_v2": now.isoformat()}
+    monkeypatch.setattr(scraper_main.whatsapp_guard, "get_flag", lambda session, name: flags.get(name))
+
+    class _S:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(scraper_main, "get_session", lambda: _S())
+    assert scraper_main._tile_seeded("forsale") is False  # 2 h in: still quiet
+    assert scraper_main._tile_seeded("rent") is True  # rent needs no extra quiet period
+    flags["yad2_sale_tiles_seeded"] = (now - dt.timedelta(hours=30)).isoformat()
+    assert scraper_main._tile_seeded("forsale") is True
+    flags["yad2_sale_tiles_seeded"] = None
+    assert scraper_main._tile_seeded("forsale") is False
