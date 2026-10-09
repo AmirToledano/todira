@@ -8,6 +8,7 @@ since format_caption/format_caption_whatsapp only ever read attributes off whate
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 
 from todira_common.cards import (
@@ -139,9 +140,22 @@ def test_floor_line_includes_total_when_known():
 def test_move_in_date_is_day_month_year_not_iso():
     import datetime
 
-    caption = format_caption(make_listing(move_in_date=datetime.date(2026, 9, 21)), has_access=True)
-    assert f"📅 {_b('כניסה:')} 21.09.2026" in caption
-    assert "2026-09-21" not in caption
+    future = datetime.date.today() + datetime.timedelta(days=40)
+    caption = format_caption(make_listing(move_in_date=future), has_access=True)
+    assert f"📅 {_b('כניסה:')} {future.strftime('%d.%m.%Y')}" in caption
+    assert future.isoformat() not in caption
+
+
+def test_a_move_in_date_that_has_passed_reads_immediate():
+    """2026-10-09: Yad2 keeps an ad's original entrance date after it has passed — such an ad is available now."""
+    import datetime
+
+    past = datetime.date.today() - datetime.timedelta(days=20)
+    caption = format_caption(make_listing(move_in_date=past), has_access=True)
+    assert f"📅 {_b('כניסה:')} מיידית" in caption
+    assert past.strftime("%d.%m.%Y") not in caption
+    today = format_caption(make_listing(move_in_date=datetime.date.today()), has_access=True)
+    assert f"📅 {_b('כניסה:')} מיידית" in today
 
 
 def test_no_features_line_when_nothing_is_known():
@@ -1029,3 +1043,84 @@ def test_send_listing_card_no_images_puts_the_banner_after_the_details():
     sent = bot.send_photo.await_args.kwargs["caption"]
     assert sent.startswith("DETAILS-FIRST")
     assert sent.endswith(bot_text("card.no_photos_banner", "he").rstrip("\n"))
+
+
+# --- 2026-10-09: rooms formatting and the expiry notices (owner request after comparing a card with the reference bot's) ---
+
+
+def test_rooms_print_without_a_trailing_zero():
+    """rooms is NUMERIC(3,1), so the raw Decimal printed as "3.0" on every card."""
+    assert f"🛏️ {_b('חדרים:')} 3\n" in format_caption(make_listing(rooms=Decimal("3.0")), has_access=True)
+    assert f"🛏️ {_b('חדרים:')} 2.5\n" in format_caption(make_listing(rooms=Decimal("2.5")), has_access=True)
+    assert f"🛏️ {_b('חדרים:')} 4\n" in format_caption(make_listing(rooms=4), has_access=True)
+    assert f"🛏️ {_b('חדרים:')} ?\n" in format_caption(make_listing(rooms=None), has_access=True)
+    assert "3.0" not in format_caption_whatsapp(make_listing(rooms=Decimal("3.0")), has_access=True)
+
+
+def test_trial_ended_notice_replaces_the_generic_lock_line():
+    caption = format_caption(
+        make_listing(), has_access=False, upgrade_url="https://todira.app/upgrade?t=x", access_state="trial_ended"
+    )
+    assert "תקופת הניסיון הסתיימה" in caption
+    assert 'href="https://todira.app/upgrade?t=x"' in caption  # the notice is the upgrade link
+    assert "🔒" not in caption
+    assert "המנוי הסתיים" not in caption
+
+
+def test_subscription_expired_notice_is_different_from_the_trial_one():
+    caption = format_caption(
+        make_listing(), has_access=False, upgrade_url="https://todira.app/upgrade?t=x", access_state="subscription_expired"
+    )
+    assert "תוקף המנוי הסתיים" in caption
+    assert "תקופת הניסיון" not in caption
+    assert 'href="https://todira.app/upgrade?t=x"' in caption
+
+
+def test_expiry_notice_without_an_upgrade_url_is_plain_text():
+    trial = format_caption(make_listing(), has_access=False, access_state="trial_ended")
+    sub = format_caption(make_listing(), has_access=False, access_state="subscription_expired")
+    assert "תקופת הניסיון הסתיימה" in trial and "<a" not in trial.split("\n\n")[-1]
+    assert "תוקף המנוי הסתיים" in sub
+
+
+def test_expiry_notice_is_translated():
+    trial_en = format_caption(
+        make_listing(), has_access=False, upgrade_url="https://x/u", access_state="trial_ended", lang="en"
+    )
+    sub_en = format_caption(
+        make_listing(), has_access=False, upgrade_url="https://x/u", access_state="subscription_expired", lang="en"
+    )
+    assert "free trial has ended" in trial_en
+    assert "subscription has expired" in sub_en
+
+
+def test_unknown_access_state_keeps_the_generic_lock_line():
+    caption = format_caption(make_listing(), has_access=False, upgrade_url="https://x/u", access_state=None)
+    assert "🔒" in caption and "תקופת הניסיון" not in caption
+
+
+def test_a_user_with_access_never_sees_an_expiry_notice():
+    caption = format_caption(
+        make_listing(), has_access=True, upgrade_url="https://x/u", access_state="trial_ended"
+    )
+    assert "⚠️" not in caption and "תקופת הניסיון" not in caption
+    assert "לפרטי הדירה המלאים" in caption
+
+
+def test_whatsapp_expiry_notices():
+    trial = format_caption_whatsapp(
+        make_listing(), has_access=False, upgrade_url="https://x/u", access_state="trial_ended"
+    )
+    assert "⚠️" in trial and "תקופת הניסיון הסתיימה" in trial and "https://x/u" in trial
+    sub = format_caption_whatsapp(
+        make_listing(), has_access=False, upgrade_url="https://x/u", access_state="subscription_expired"
+    )
+    assert "תוקף המנוי הסתיים" in sub and "תקופת הניסיון" not in sub
+
+
+def test_the_expiry_notice_never_crowds_out_the_card_footer_when_the_description_is_long():
+    caption = format_caption(
+        make_listing(description="מלל " * 600), has_access=False, upgrade_url="https://x/u", access_state="trial_ended"
+    )
+    assert len(caption) <= CAPTION_LIMIT
+    assert "תקופת הניסיון הסתיימה" in caption

@@ -246,6 +246,14 @@ scraper:
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
   # common/todira_common/gemini_url_detail.py.
   yad2DetailViaGemini: true
+  # 2026-10-09: Yad2's OWN per-listing JSON (gw.yad2.co.il/realestate-item/<token>) - free, with a browser TLS fingerprint from the
+  # cluster IP (60 of 60 answered in the live probe). Gemini answered HTTP 402 (prepaid balance spent) on every model, so cards
+  # went out with no description / total floors / entry date / features; this is now the first source for listing details and
+  # Gemini only the backup. See common/todira_common/yad2_item_api.py.
+  yad2ItemApi: true
+  # How many still-unread active Yad2 listings the end of each run catches up on (rentals first, newest first; after the
+  # notifications, so it never delays an alert). ~0.5 s each.
+  brightDataBackfillMaxPerRun: 800
   # 2026-09-13: same real-money-per-fetch reasoning as komoMaxNewDetailFetchesPerRun above, one
   # order of magnitude smaller — Homeless is added description enrichment (a per-listing detail-
   # page fetch, only for genuinely-new listings; see homeless_client.fetch_listing_description and
@@ -267,7 +275,8 @@ scraper:
   # 2026-10-02: 50 per run (owner: keep eager enrichment of all new Yad2 listings on). Real volume
   # ~400-600 new/day over 14 runs (~43/run); ceiling ~$31/month at $1.50/1,000 requests, realistic
   # ~$20. Overflow is still fetched on demand at notification time (scraper/notifier.py).
-  brightDataEnrichMaxNewListingsPerRun: 50
+  # 2026-10-09: 400 - details now come from Yad2's own free JSON (~0.5 s each), so the cap only bounds the run time.
+  brightDataEnrichMaxNewListingsPerRun: 400
   # 2026-09-15 EMERGENCY SUSPEND, real root cause confirmed live, not guessed: production's Bright
   # Data DCA enrichment (scraper/main.py's _enrich_new_listings_via_bright_data, used only for
   # extra Yad2 listing detail — description/property type/amenities/etc., never required for a

@@ -20,6 +20,7 @@ cover increases 2026-09-02 per an explicit request that both directions get a re
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 import os
 
@@ -29,8 +30,8 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from todira_common import gemini_url_detail, whatsapp_client, whatsapp_guard
-from todira_common.access import has_full_access
+from todira_common import whatsapp_client, whatsapp_guard, yad2_detail
+from todira_common.access import access_state, has_full_access
 from todira_common.bot_strings import bot_text
 from todira_common.cards import (
     format_caption,
@@ -67,6 +68,15 @@ def _has_access_for(user: User) -> bool:
         OWNER_TELEGRAM_USER_ID
     )
     return has_full_access(user, is_owner=is_owner)
+
+
+def _access_state_for(user: User) -> str:
+    """todira_common.access.access_state with the same owner override as _has_access_for — lets a card tell a user
+    whose free trial ended from one whose paid subscription ended."""
+    is_owner = bool(OWNER_TELEGRAM_USER_ID) and str(user.telegram_user_id) == str(
+        OWNER_TELEGRAM_USER_ID
+    )
+    return access_state(user, is_owner=is_owner)
 
 # Telegram's ~30 msgs/sec is a GLOBAL cap across different chats, not the same-chat limit that
 # actually matters here: one user matching several listings in a row (routine — a burst of new
@@ -155,6 +165,7 @@ def _send_whatsapp_match_message(user: User, listing: Listing) -> bool:
         link_in_body=False,
         limit=WHATSAPP_INTERACTIVE_BODY_LIMIT,
         lang=lang,
+        access_state=_access_state_for(user),
     )
     # Meta needs the header photo as a public link, so the website serves the listing's photo/collage
     # (website/main.py's /media/listing/{id}.jpg). Requesting it here first builds and caches it, so
@@ -178,55 +189,28 @@ def _send_whatsapp_match_message(user: User, listing: Listing) -> bool:
 
 
 async def _maybe_fetch_description(session: Session, listing: Listing, recipients: list[User]) -> None:
-    """Bright Data on-demand enrichment (2026-09-05, common/todira_common/bright_data_client.py) —
-    fetches and caches the listing's real description, but ONLY when it's worth the cost: this is
-    called after matching is already done, with the actual list of users about to be notified, and
-    does nothing unless at least one of them is a PAYING user (has_access) who would actually see
-    the result (format_caption strips the description entirely for anyone else). This is the exact
-    sequencing difference the owner asked for — match first, then decide whether to spend a fetch —
-    not fetching speculatively for every scraped listing regardless of who it matches. website/
-    main.py's _fill_missing_descriptions_in_background (2026-09-07) covers the complementary case
-    this discovery-time-only trigger can't: a listing whose paying match happens AFTER discovery.
+    """Just-in-time detail fetch (kept under its old name): called after matching is done and right before the cards go
+    out, so a Yad2 listing whose details were never read (over the eager per-run cap, the earlier attempt failed, or it
+    reached the retry pass) still carries its description, total floors, entry date and features on the card.
 
-    2026-09-13: scoped to Source.YAD2 ONLY — a real bug found via a real production Telegram send,
-    where a matching Komo/Homeless listing's own URL got passed to this SAME Bright Data DCA
-    collector, which is built specifically to parse a Yad2 listing detail page's DOM (see
-    bright_data_client.py's own module docstring). scraper/main.py's own
-    _enrich_new_listings_via_bright_data already had this exact scoping (added 2026-09-13 once
-    Komo/Homeless started sharing this project's new_ids path) — this call site was simply missed
-    when that fix went in, since it lives in a different module (notifier.py, not main.py) and
-    isn't called from the same place. Komo/Homeless get their own real descriptions from their own
-    scrapers now (see komo_client.py's _DESCRIPTION_RE and homeless_client.py's
-    fetch_listing_description) — this function was never their path to begin with, so narrowing it
-    to Yad2 loses nothing for them.
-
-    2026-09-26: switched from bright_data_client.fetch_listing_description (the DCA collector,
-    confirmed a permanent dead end on this account's trial tier — see that function's own
-    docstring) to bright_data_client.fetch_yad2_description_via_web_unlocker, the real working
-    replacement — this call site was one of two (the other being website/main.py's
-    _ensure_description_sync) that got missed when scraper/main.py's own enrichment path was
-    migrated 2026-09-17, leaving this "second chance" safety net permanently broken and silently
-    no-op'ing on every listing whose one scrape-time enrichment attempt failed. Found from a real
-    owner screenshot of a listing with a genuine description on its own Yad2 page reaching
-    Telegram with none."""
-    if listing.description:
+    2026-10-09: no longer limited to listings a paying user will see, and no longer Gemini-only. Details come from
+    Yad2's own item JSON (free, todira_common/yad2_item_api.py) with Gemini as the backup — see todira_common/
+    yad2_detail.py — so the old cost reason for fetching only when a paying recipient existed is gone, and the owner's
+    rule is that every card is complete (the description is shown to every viewer regardless of subscription; only the
+    original-listing link is gated). `listing.details_fetched_at` is the "already asked" marker: a listing is fetched at
+    most once successfully, however many users it matches. Komo / Homeless / Facebook cards get their details from their
+    own scrapers. `recipients` is kept for the existing call sites and is no longer consulted."""
+    if not yad2_detail.is_enabled():
         return
-    if not gemini_url_detail.is_enabled():
+    if listing.source != Source.YAD2 or listing.details_fetched_at is not None:
         return
-    if listing.source != Source.YAD2:
+    updates = await asyncio.to_thread(yad2_detail.fetch_updates, listing.url)
+    if updates is None:
         return
-    if not any(_has_access_for(user) for user in recipients):
-        return
-    # 2026-10-05: Gemini's URL-context tool ONLY (owner decision: no paid Bright Data fallback).
-    updates = await asyncio.to_thread(gemini_url_detail.fetch_yad2_detail_updates, listing.url)
-    if updates:
-        # 2026-10-02: the full detail record (move-in, amenities, floor, real photos, description),
-        # not just the description. Safety net behind scraper/main.py's eager per-new-listing
-        # enrichment (capped per run, so overflow listings and ones whose eager fetch failed land
-        # here): one Web Unlocker request, only for a listing a paying/trial user is about to be sent.
-        for column, value in updates.items():
-            setattr(listing, column, value)
-        session.commit()
+    for column, value in updates.items():
+        setattr(listing, column, value)
+    listing.details_fetched_at = dt.datetime.now(dt.timezone.utc)
+    session.commit()
 
 
 async def _notify_new_matches(
@@ -305,6 +289,7 @@ async def _notify_new_matches(
                 upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
                 view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
                 lang=user_lang,
+                access_state=_access_state_for(user),
             )
             if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
                 sent_on_any_channel = True
@@ -418,6 +403,7 @@ async def _notify_price_change(
             upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
             view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
             lang=user_lang,
+            access_state=_access_state_for(user),
         )
         if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
             session.add(

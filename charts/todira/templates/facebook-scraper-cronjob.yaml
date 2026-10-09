@@ -50,6 +50,10 @@ spec:
             - name: facebook-scraper
               image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
               env:
+                # 2026-10-09: the retry pass of this job can announce a Yad2 listing, and its card is completed from Yad2's own
+                # item JSON just before it is sent (scraper/notifier.py _maybe_fetch_description).
+                - name: YAD2_ITEM_API
+                  value: {{ .Values.scraper.yad2ItemApi | default false | quote }}
                 # Fixed (not a secret) — see scraper/main.py's _active_source_scrapers: this is
                 # the actual opt-in that makes this CronJob's own run touch Facebook at all.
                 # 2026-09-22: facebook_groups added — genuinely inert on its own even once

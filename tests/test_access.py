@@ -8,7 +8,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from todira_common.access import PLAN_DURATIONS, extend_paid_until, has_full_access, has_paid_access
+from todira_common.access import (
+    ACCESS_FULL,
+    ACCESS_SUBSCRIPTION_EXPIRED,
+    ACCESS_TRIAL_ENDED,
+    PLAN_DURATIONS,
+    access_state,
+    extend_paid_until,
+    has_full_access,
+    has_paid_access,
+)
 
 NOW = dt.datetime.now(dt.timezone.utc)
 PAST = NOW - dt.timedelta(days=1)
@@ -126,3 +135,31 @@ def test_paid_access_true_when_paid_until_is_in_the_future():
 def test_paid_access_false_when_everything_expired():
     user = make_user(trial_ends_at=PAST, paid_until=PAST)
     assert has_paid_access(user) is False
+
+
+# --- access_state (2026-10-09): why a card shows the original-listing link or not ---------------------------------------
+
+
+def test_access_state_full_for_owner_free_grant_trial_and_paid():
+    assert access_state(make_user(trial_ends_at=PAST), is_owner=True) == ACCESS_FULL
+    assert access_state(make_user(trial_ends_at=PAST, free_access_granted=True)) == ACCESS_FULL
+    assert access_state(make_user(trial_ends_at=FUTURE)) == ACCESS_FULL
+    assert access_state(make_user(trial_ends_at=PAST, paid_until=FUTURE)) == ACCESS_FULL
+
+
+def test_access_state_trial_ended_when_never_paid():
+    assert access_state(make_user(trial_ends_at=PAST)) == ACCESS_TRIAL_ENDED
+
+
+def test_access_state_subscription_expired_when_a_paid_period_ended():
+    assert access_state(make_user(trial_ends_at=PAST, paid_until=PAST)) == ACCESS_SUBSCRIPTION_EXPIRED
+    # a user who paid during their trial and whose paid period then ended is "subscription expired" too
+    assert access_state(make_user(trial_ends_at=FUTURE, paid_until=PAST)) == ACCESS_FULL
+
+
+def test_access_state_never_disagrees_with_has_full_access():
+    for trial in (PAST, FUTURE):
+        for paid in (None, PAST, FUTURE):
+            for free in (False, True):
+                user = make_user(trial_ends_at=trial, paid_until=paid, free_access_granted=free)
+                assert (access_state(user) == ACCESS_FULL) == has_full_access(user)

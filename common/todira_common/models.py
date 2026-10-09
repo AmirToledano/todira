@@ -318,6 +318,10 @@ class Listing(Base):
 
     # set when a full scrape run no longer sees this listing on the source site — see
     # scraper/main.py's _mark_delisted. /apartments and /liked filter these out.
+    # When the full detail record (description, total floors, entrance date, amenities) was last read from the source
+    # (migration 0023). NULL = never; see todira_common/yad2_detail.py and scraper/main.py's backfill.
+    details_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
     is_delisted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     delisted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -105,6 +105,23 @@ def has_paid_access(user: User, *, is_owner: bool = False) -> bool:
     return False
 
 
+ACCESS_FULL = "full"
+ACCESS_TRIAL_ENDED = "trial_ended"
+ACCESS_SUBSCRIPTION_EXPIRED = "subscription_expired"
+
+
+def access_state(user: User, *, is_owner: bool = False) -> str:
+    """Why a card shows (or doesn't show) the original-listing link (2026-10-09, owner request): one of
+    ACCESS_FULL (has_full_access), ACCESS_SUBSCRIPTION_EXPIRED (a paid period existed and has ended — a user who
+    once paid, even if their trial also ended) or ACCESS_TRIAL_ENDED (never paid; the free trial is over). Computed
+    from the same fields has_full_access reads, so the card's notice can never disagree with the gate."""
+    if has_full_access(user, is_owner=is_owner):
+        return ACCESS_FULL
+    if user.paid_until is not None:
+        return ACCESS_SUBSCRIPTION_EXPIRED
+    return ACCESS_TRIAL_ENDED
+
+
 def extend_paid_until(user: User, plan: str) -> None:
     """Extends from the LATER of "now" or the user's current paid_until — paying again before the
     previous period expires stacks the new period on top instead of wasting the remaining time,

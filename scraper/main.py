@@ -13,12 +13,12 @@ import sys
 import time
 from typing import Callable
 
-from sqlalchemy import Text, all_, any_, bindparam, func, select
+from sqlalchemy import Text, all_, any_, bindparam, case, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing
-from todira_common import gemini_url_detail
+from todira_common import yad2_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common import whatsapp_guard
@@ -70,7 +70,7 @@ from yad2_client import (
 # this routes through Web Unlocker instead — a single stateless POST per listing, no shared
 # trigger/poll job id at all, so that race is structurally impossible here. Revisit (higher, or
 # lower if Bright Data's own rate limits complain) only with real evidence, not preemptively.
-_BRIGHT_DATA_ENRICH_CONCURRENCY = 1  # 2026-10-05: Gemini calls are serialised anyway (see gemini_url_detail)
+_BRIGHT_DATA_ENRICH_CONCURRENCY = 1  # the detail fetchers serialise and space their own requests (see yad2_detail)
 
 # 2026-09-15: real, confirmed kill-switch — see charts/todira/values.yaml's own comment on
 # scraper.brightDataEnrichmentSuspended for the live diagnostic (.github/workflows/
@@ -438,6 +438,25 @@ def _col_in(column, values) -> object:
     return column == any_(bindparam(None, list(values), type_=ARRAY(column.type)))
 
 
+# Listing columns that only a listing's detail record fills in (see _upsert_listings' 2026-10-09 comment): an UPDATE from a
+# search/sweep item, which carries None for all of them, must never erase what an earlier fetch stored.
+_DETAIL_ONLY_COLUMNS = (
+    "property_type",
+    "floor_total",
+    "has_parking",
+    "has_elevator",
+    "has_balcony",
+    "pets_allowed",
+    "is_renovated",
+    "is_roommate_friendly",
+    "safe_room_type",
+    "furniture",
+    "is_broker_listing",
+    "move_in_date",
+    "move_in_note",
+)
+
+
 def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[int, int]]]:
     """For each normalized item: insert if the (source, external_id) pair is new, otherwise
     update the existing row and check whether its price just changed.
@@ -523,6 +542,17 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
         # touched here since (unlike description) they're normally re-supplied by every scrape.
         if item.description is None:
             update_values.pop("description", None)
+        # 2026-10-09, the same bug for every other field that only a listing's DETAIL record carries: a sweep/search
+        # item has None for total floors, entry date, the amenity flags, safe room, furniture, property type and broker
+        # status, so this blind UPDATE erased them again on the very next hourly sweep. Measured live: of 2,445 Yad2
+        # rentals sent in 24 hours none still had total floors or a feature, and only 52 of 24,897 active rentals had
+        # total floors — whatever enrichment had fetched was wiped within the hour. A null in the new scrape means "this
+        # source did not say", never "it is no longer true", so an existing value stays.
+        for column in _DETAIL_ONLY_COLUMNS:
+            if update_values.get(column) is None:
+                update_values.pop(column, None)
+        if not update_values.get("image_urls"):
+            update_values.pop("image_urls", None)
         if item.price is not None and old_price is not None and item.price != old_price:
             price_change_events.append((existing_id, old_price))
             # 2026-09-24: persist the change itself (previous_price/price_changed_at), not just
@@ -597,7 +627,7 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
 
     Returns how many listings were actually enriched (Web Unlocker returned usable data for)."""
     # 2026-10-05: Gemini only (owner decision) — no longer gated on the Bright Data key/kill-switch.
-    if not new_ids or not gemini_url_detail.is_enabled():
+    if not new_ids or not yad2_detail.is_enabled():
         return 0
 
     table = Listing.__table__
@@ -607,10 +637,12 @@ async def _enrich_new_listings_via_bright_data(session, new_ids: list[int]) -> i
     # later `select(Listing)` for the same ids, silently undoing this whole function's work. Same
     # reason _upsert_listings/_mark_delisted already operate at the Core `table` level instead of
     # through the ORM.
+    # Newest first_seen_at first: rows stored quietly by the seed policy are backdated, so the per-run cap below is spent
+    # on the ads that are about to be announced before it reaches the quiet ones.
     id_url_pairs = session.execute(
-        select(table.c.id, table.c.url).where(
-            table.c.id.in_(new_ids), table.c.source == Source.YAD2
-        )
+        select(table.c.id, table.c.url)
+        .where(_col_in(table.c.id, new_ids), table.c.source == Source.YAD2)
+        .order_by(table.c.first_seen_at.desc())
     ).all()
 
     max_per_run = _bright_data_enrich_max_per_run()
@@ -648,12 +680,11 @@ async def _fetch_and_apply_yad2_detail_updates(
 
     async def _fetch_one(listing_id: int, url: str) -> tuple[int, dict] | None:
         async with semaphore:
-            # 2026-10-05: Gemini's URL-context tool ONLY (owner decision: no paid Bright Data fallback for
-            # listing details). gemini_url_detail serialises and spaces its own requests and skips a model that
-            # is out of quota; None just means this listing keeps its search-card fields until somebody views it
-            # (todira_common/listing_enrichment.py fills it in then).
-            gemini_updates = await asyncio.to_thread(gemini_url_detail.fetch_yad2_detail_updates, url)
-        return (listing_id, gemini_updates) if gemini_updates else None
+            # 2026-10-09: Yad2's own item JSON first (free, todira_common/yad2_item_api.py), Gemini's URL-context tool as
+            # the backup. A dict (even an empty one) is a definitive answer; None = no answer, so the listing is asked
+            # about again later (next backfill run, the notifier just before sending, or when somebody views it).
+            updates = await asyncio.to_thread(yad2_detail.fetch_updates, url)
+        return (listing_id, updates) if updates is not None else None
 
     results = await asyncio.gather(
         *(_fetch_one(listing_id, url) for listing_id, url in id_url_pairs), return_exceptions=True
@@ -663,15 +694,18 @@ async def _fetch_and_apply_yad2_detail_updates(
     for (listing_id, url), result in zip(id_url_pairs, results):
         if isinstance(result, BaseException):
             logger.exception(
-                "Bright Data %s failed for listing id=%s url=%s", log_context, listing_id, url,
+                "Yad2 detail %s failed for listing id=%s url=%s", log_context, listing_id, url,
                 exc_info=result,
             )
             continue
         if result is None:
             continue
         _listing_id, updates = result
-        session.execute(table.update().where(table.c.id == listing_id).values(**updates))
-        applied_count += 1
+        session.execute(
+            table.update().where(table.c.id == listing_id).values(**updates, details_fetched_at=func.now())
+        )
+        if updates:
+            applied_count += 1
 
     session.commit()
     return applied_count
@@ -701,19 +735,24 @@ async def _backfill_missing_yad2_descriptions(session) -> int:
     — always safe to call every run regardless of whether Bright Data is configured yet.
 
     Returns how many listings were actually backfilled."""
-    if not gemini_url_detail.is_enabled():
+    if not yad2_detail.is_enabled():
         return 0
 
     table = Listing.__table__
     max_per_run = _bright_data_backfill_max_per_run()
+    if max_per_run <= 0:
+        return 0
+    # Active, visible Yad2 listings whose details were never read. Rentals before sales, newest first: an ad that was
+    # posted recently is the one most likely to still be there when somebody opens it.
     id_url_pairs = session.execute(
         select(table.c.id, table.c.url)
         .where(
             table.c.source == Source.YAD2,
             table.c.is_delisted.is_(False),
-            table.c.description.is_(None),
+            table.c.duplicate_of_id.is_(None),
+            table.c.details_fetched_at.is_(None),
         )
-        .order_by(table.c.scraped_at.desc())
+        .order_by(case((table.c.deal_type == "rent", 0), else_=1), table.c.first_seen_at.desc())
         .limit(max_per_run)
     ).all()
     if not id_url_pairs:
@@ -2191,12 +2230,6 @@ def run_once() -> dict[str, int]:
         # fast, if Bright Data isn't configured yet, or for any Komo/Homeless-sourced new_ids (see
         # that function's own docstring — it filters to source == Source.YAD2 internally).
         enriched_count = asyncio.run(_enrich_new_listings_via_bright_data(session, new_ids))
-        # Independent of this run's own new_ids — catches up on the accumulated backlog of older
-        # Yad2 listings that never got a description at all (see this function's own docstring for
-        # the real, live-confirmed 6.2%-coverage gap this closes). Not on the notification-critical
-        # path (these listings were already notified, if at all, long before this run), so it runs
-        # after enrichment rather than before.
-        backfilled_count = asyncio.run(_backfill_missing_yad2_descriptions(session))
         # Same real gap, same catch-up pattern, Homeless's own source — see this function's own
         # docstring for the live-confirmed 28.6%-coverage number this closes.
         homeless_backfilled_count = asyncio.run(_backfill_missing_homeless_descriptions(session))
@@ -2253,7 +2286,7 @@ def run_once() -> dict[str, int]:
             "new": len(new_ids),
             "retried_unnotified": retried_unnotified_count,
             "bright_data_enriched": enriched_count,
-            "bright_data_backfilled": backfilled_count,
+            "bright_data_backfilled": 0,
             "homeless_backfilled": homeless_backfilled_count,
             "price_changes": len(price_change_events),
             "delisted": delisted_count,
@@ -2310,6 +2343,13 @@ def run_once() -> dict[str, int]:
                     asyncio.run(run_notifications(session, new_listings, price_change_events))
                 )
         finally:
+            # 2026-10-09: the catch-up on older Yad2 listings whose details were never read (up to
+            # BRIGHT_DATA_BACKFILL_MAX_PER_RUN per run, rentals first) runs AFTER the notifications, so a long backlog
+            # never delays an alert. Fail-soft: a problem here must not take the run down.
+            try:
+                summary["bright_data_backfilled"] = asyncio.run(_backfill_missing_yad2_descriptions(session))
+            except Exception:
+                logger.exception("Yad2 details backfill step failed")
             # Runs even when the notification step above raised (the exception still propagates
             # afterwards): a failed notification run must not also swallow the check-in that keeps
             # users' free 24h WhatsApp windows open.

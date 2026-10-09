@@ -88,6 +88,8 @@ spec:
                       optional: true
                 - name: YAD2_DETAIL_VIA_GEMINI
                   value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
+                - name: YAD2_ITEM_API
+                  value: {{ .Values.scraper.yad2ItemApi | default false | quote }}
                 # Comma-separated model chain; empty = the code's verified default (gemini_url_detail._DEFAULT_MODELS).
                 - name: YAD2_GEMINI_MODEL
                   value: {{ .Values.yad2GeminiModels | default "" | quote }}
@@ -187,6 +189,10 @@ spec:
                 {{- if .Values.scraper.homelessMaxNewDescriptionFetchesPerRun }}
                 - name: HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
                   value: {{ .Values.scraper.homelessMaxNewDescriptionFetchesPerRun | quote }}
+                {{- end }}
+                {{- if .Values.scraper.brightDataBackfillMaxPerRun }}
+                - name: BRIGHT_DATA_BACKFILL_MAX_PER_RUN
+                  value: {{ .Values.scraper.brightDataBackfillMaxPerRun | quote }}
                 {{- end }}
                 {{- if .Values.scraper.brightDataEnrichMaxNewListingsPerRun }}
                 - name: BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN

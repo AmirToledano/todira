@@ -1253,6 +1253,37 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Passe à l'abonnement premium pour voir le lien de l'annonce originale",
         "ar": "قم بترقية اشتراكك لرؤية رابط الإعلان الأصلي",
     },
+    # 2026-10-09: what a card says instead of the generic lock line to a user whose access has ended, so the person knows
+    # WHY the original-listing link is missing. Two situations, two texts (owner request): the free trial ran out vs. a
+    # paid subscription/pass that ended. `_link` goes inside the upgrade hyperlink, `_plain` is used when there is no URL.
+    "card.trial_ended_link": {
+        "he": "תקופת הניסיון הסתיימה — לקישור למודעה המקורית שדרג/י את המנוי",
+        "en": "Your free trial has ended — upgrade to see the original listing link",
+        "ru": "Пробный период закончился — обновите подписку, чтобы увидеть ссылку на объявление",
+        "fr": "Ta période d'essai est terminée — passe à l'abonnement pour voir le lien de l'annonce",
+        "ar": "انتهت الفترة التجريبية — رقّ اشتراكك لرؤية رابط الإعلان الأصلي",
+    },
+    "card.trial_ended_plain": {
+        "he": "תקופת הניסיון הסתיימה — לקישור למודעה המקורית יש לשדרג את המנוי",
+        "en": "Your free trial has ended — upgrade your subscription to see the original listing link",
+        "ru": "Пробный период закончился — обновите подписку, чтобы увидеть ссылку на объявление",
+        "fr": "Ta période d'essai est terminée — passe à l'abonnement pour voir le lien de l'annonce",
+        "ar": "انتهت الفترة التجريبية — رقّ اشتراكك لرؤية رابط الإعلان الأصلي",
+    },
+    "card.subscription_expired_link": {
+        "he": "תוקף המנוי הסתיים — לקישור למודעה המקורית חדש/י את המנוי",
+        "en": "Your subscription has expired — renew it to see the original listing link",
+        "ru": "Срок подписки истёк — продлите её, чтобы увидеть ссылку на объявление",
+        "fr": "Ton abonnement a expiré — renouvelle-le pour voir le lien de l'annonce",
+        "ar": "انتهى اشتراكك — جدّده لرؤية رابط الإعلان الأصلي",
+    },
+    "card.subscription_expired_plain": {
+        "he": "תוקף המנוי הסתיים — לקישור למודעה המקורית יש לחדש את המנוי",
+        "en": "Your subscription has expired — renew it to see the original listing link",
+        "ru": "Срок подписки истёк — продлите её, чтобы увидеть ссылку на объявление",
+        "fr": "Ton abonnement a expiré — renouvelle-le pour voir le lien de l'annonce",
+        "ar": "انتهى اشتراكك — جدّده لرؤية رابط الإعلان الأصلي",
+    },
     "card.no_photos_banner": {
         "he": "🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>\n\n",
         "en": "🕵️ <b>This listing has no photos, but it may still be worth asking the poster for "

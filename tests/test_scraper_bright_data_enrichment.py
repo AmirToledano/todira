@@ -1,7 +1,7 @@
 """Tests for _enrich_new_listings_via_bright_data / _backfill_missing_yad2_descriptions (scraper/main.py).
 
-2026-10-05: the (historically named) Bright Data enrichment now fetches listing details ONLY through Gemini's
-URL-context tool (todira_common/gemini_url_detail.py) — the owner's decision: no paid fallback. These tests keep the
+2026-10-05: the (historically named) Bright Data enrichment fetches listing details with no paid fallback (owner decision).
+2026-10-09: through todira_common/yad2_detail.py — Yad2's own item JSON first, Gemini as backup. These tests keep the
 original regression guard: the fake session has NO `scalars()` method, only `execute()`. This project's session factory
 is `expire_on_commit=False` (todira_common/db.py), so loading ORM `Listing` objects here, updating via Core
 `table.update()` and then having run_once() re-query the same ids would silently hand back STALE pre-enrichment objects
@@ -29,7 +29,7 @@ _spec.loader.exec_module(scraper_main)
 
 _enrich = scraper_main._enrich_new_listings_via_bright_data
 _backfill = scraper_main._backfill_missing_yad2_descriptions
-_gemini = scraper_main.gemini_url_detail
+_detail = scraper_main.yad2_detail
 
 _UPDATES = {"description": "דירה יפה ומוארת", "floor_total": 4}
 
@@ -59,26 +59,33 @@ class _QueueSession:
 
 
 @pytest.fixture(autouse=True)
-def _gemini_on(monkeypatch):
+def _detail_on(monkeypatch):
     monkeypatch.setenv(scraper_main._BRIGHT_DATA_ENRICH_MAX_PER_RUN_ENV_VAR, "15")
-    monkeypatch.setenv(_gemini.ENABLED_ENV_VAR, "true")
-    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.setenv(scraper_main._BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR, "15")
+    monkeypatch.setattr(_detail, "is_enabled", lambda: True)
 
 
 def _fetch_returning(value):
-    return patch.object(_gemini, "fetch_yad2_detail_updates", lambda url: value)
+    return patch.object(_detail, "fetch_updates", lambda url: value)
 
 
-def test_gemini_disabled_is_a_pure_noop(monkeypatch):
-    monkeypatch.delenv(_gemini.ENABLED_ENV_VAR)
+def test_detail_fetching_disabled_is_a_pure_noop(monkeypatch):
+    monkeypatch.setattr(_detail, "is_enabled", lambda: False)
     session = _QueueSession([])  # would raise IndexError if execute() were ever called
     assert asyncio.run(_enrich(session, [1, 2, 3])) == 0
     assert asyncio.run(_backfill(session)) == 0
     assert session.executed_stmts == []
 
 
+def test_backfill_is_off_when_its_cap_is_zero(monkeypatch):
+    monkeypatch.setenv(scraper_main._BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR, "0")
+    session = _QueueSession([])
+    assert asyncio.run(_backfill(session)) == 0
+    assert session.executed_stmts == []
+
+
 def test_does_not_need_the_bright_data_key(monkeypatch):
-    """Gemini-only: the Bright Data API key and kill-switch no longer gate this path."""
+    """The Bright Data API key and kill-switch no longer gate this path."""
     monkeypatch.delenv("BRIGHT_DATA_API_KEY", raising=False)
     monkeypatch.setenv("BRIGHT_DATA_ENRICHMENT_SUSPENDED", "true")
     session = _QueueSession([_Result([(101, "https://yad2.co.il/item/101")]), None])
@@ -103,13 +110,30 @@ def test_enriches_a_new_listing_and_applies_updates():
     assert params["floor_total"] == 4
 
 
-def test_gemini_returning_nothing_is_not_counted_and_never_falls_back_to_a_paid_fetch():
+def test_no_answer_is_not_counted_and_never_falls_back_to_a_paid_fetch():
     session = _QueueSession([_Result([(101, "https://yad2.co.il/item/101")])])  # an UPDATE would raise IndexError
     assert not hasattr(scraper_main, "fetch_listing_detail_via_web_unlocker")  # no paid fetcher is even imported
     with _fetch_returning(None):
         result = asyncio.run(_enrich(session, [101]))
     assert result == 0
     assert len(session.executed_stmts) == 1
+
+
+def test_an_empty_answer_marks_the_listing_as_read_but_is_not_counted():
+    """{} = Yad2 answered and states nothing usable (or the ad is gone): nothing to retry, so details_fetched_at is set."""
+    session = _QueueSession([_Result([(101, "https://yad2.co.il/item/101")]), None])
+    with _fetch_returning({}):
+        result = asyncio.run(_enrich(session, [101]))
+    assert result == 0
+    assert len(session.executed_stmts) == 2
+    assert "details_fetched_at" in str(session.executed_stmts[1])
+
+
+def test_an_answer_sets_details_fetched_at_next_to_the_fields():
+    session = _QueueSession([_Result([(101, "https://yad2.co.il/item/101")]), None])
+    with _fetch_returning(_UPDATES):
+        asyncio.run(_enrich(session, [101]))
+    assert "details_fetched_at" in str(session.executed_stmts[1])
 
 
 def test_one_listing_raising_does_not_abort_the_batch():
@@ -122,7 +146,7 @@ def test_one_listing_raising_does_not_abort_the_batch():
             raise ConnectionError("boom")
         return _UPDATES
 
-    with patch.object(_gemini, "fetch_yad2_detail_updates", _flaky):
+    with patch.object(_detail, "fetch_updates", _flaky):
         result = asyncio.run(_enrich(session, [101, 102]))
     assert result == 1
     assert session.committed is True
@@ -144,7 +168,7 @@ def test_enrichment_respects_the_per_run_cap():
         return _UPDATES
 
     with (
-        patch.object(_gemini, "fetch_yad2_detail_updates", _tracking),
+        patch.object(_detail, "fetch_updates", _tracking),
         patch.object(scraper_main, "_bright_data_enrich_max_per_run", lambda: 2),
     ):
         result = asyncio.run(_enrich(session, [101, 102, 103]))
@@ -184,7 +208,7 @@ def test_backfill_one_listing_raising_does_not_abort_the_batch():
             raise ConnectionError("boom")
         return _UPDATES
 
-    with patch.object(_gemini, "fetch_yad2_detail_updates", _flaky):
+    with patch.object(_detail, "fetch_updates", _flaky):
         result = asyncio.run(_backfill(session))
     assert result == 1
     assert session.committed is True
