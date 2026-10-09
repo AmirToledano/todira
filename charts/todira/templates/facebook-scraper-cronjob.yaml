@@ -54,6 +54,11 @@ spec:
                 # item JSON just before it is sent (scraper/notifier.py _maybe_fetch_description).
                 - name: YAD2_ITEM_API
                   value: {{ .Values.scraper.yad2ItemApi | default false | quote }}
+                # 2026-10-09: this job only scrapes Facebook, but run_once() also ends with the Homeless description catch-up, which here had no
+                # cap setting and used its default of 30 per run - 13 and 30 "Failed to fetch Homeless listing detail page" errors in the 06:00 and
+                # 12:00 UTC runs, each a wasted ZenRows credit. The main scraper job owns that catch-up.
+                - name: HOMELESS_BACKFILL_MAX_PER_RUN
+                  value: "0"
                 # Fixed (not a secret) — see scraper/main.py's _active_source_scrapers: this is
                 # the actual opt-in that makes this CronJob's own run touch Facebook at all.
                 # 2026-09-22: facebook_groups added — genuinely inert on its own even once

@@ -127,3 +127,12 @@ def test_rolling_pages_per_run_setting(monkeypatch):
     assert scraper_main._homeless_rolling_pages_per_run() == 20
     monkeypatch.setenv(scraper_main._HOMELESS_ROLLING_PAGES_ENV_VAR, "abc")
     assert scraper_main._homeless_rolling_pages_per_run() == 2
+
+
+def test_homeless_backfill_cap_can_be_set_to_zero_for_the_facebook_job(monkeypatch):
+    """The Facebook CronJob sets HOMELESS_BACKFILL_MAX_PER_RUN=0: it only scrapes Facebook, and the Homeless description catch-up it
+    inherited at the default of 30 wasted ZenRows credits (13 and 30 errors in the 06:00 and 12:00 UTC runs)."""
+    monkeypatch.setenv(scraper_main._HOMELESS_BACKFILL_MAX_PER_RUN_ENV_VAR, "0")
+    assert scraper_main._homeless_backfill_max_per_run() == 0
+    chart = (Path(__file__).resolve().parent.parent / "charts/todira/templates/facebook-scraper-cronjob.yaml").read_text()
+    assert 'name: HOMELESS_BACKFILL_MAX_PER_RUN\n                  value: "0"' in chart
