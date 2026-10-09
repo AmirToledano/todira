@@ -161,6 +161,7 @@ def fake_http(monkeypatch):
     monkeypatch.setenv(api.ENABLED_ENV_VAR, "true")
     monkeypatch.setenv(api.MIN_SPACING_ENV_VAR, "0")
     monkeypatch.setattr(api, "_consecutive_failures", 0)
+    monkeypatch.setattr(api, "_consecutive_events", 0)
     monkeypatch.setattr(api, "_blocked_until", 0.0)
     sleeps = []
     monkeypatch.setattr(api.time, "sleep", lambda seconds: sleeps.append(seconds))
@@ -218,12 +219,40 @@ def test_three_failed_requests_in_a_row_pause_the_fetcher(fake_http):
     assert len(fake_http.calls) == 9
 
 
-def test_a_bot_protection_event_json_is_retried_and_then_read(fake_http):
-    """Found in the first production run: HTTP 200 + {"_event_clientip": ...} is a rate-limit answer, not a missing ad."""
-    fake_http.responses.extend([_Response(200, _WAF_EVENT), _Response(200, _WAF_EVENT)])
-    updates = api.fetch_yad2_detail_updates(_URL)  # third attempt returns the default good record
-    assert updates["description"] == "דירה יפה ומוארת"
-    assert len(fake_http.calls) == 3
+def test_a_not_the_ad_event_answer_is_a_definitive_empty_result_for_that_ad(fake_http):
+    """Measured on the production IP: 4 of the 40 oldest active ads answer HTTP 200 with only _event_* keys, the SAME ad stays that
+    way on retries and a fresh ad right after is read normally - so it is tied to the ad, never retried and never a failure."""
+    fake_http.responses.append(_Response(200, _WAF_EVENT))
+    assert api.fetch_yad2_detail_updates(_URL) == {}
+    assert len(fake_http.calls) == 1 and fake_http.sleeps == []
+    assert api._consecutive_failures == 0
+
+
+def test_an_event_answer_does_not_stop_the_next_ads_from_being_read(fake_http):
+    fake_http.responses.extend([_Response(200, _WAF_EVENT), _Response(200, {"data": _record()})])
+    assert api.fetch_yad2_detail_updates(_URL) == {}
+    assert api.fetch_yad2_detail_updates(_URL)["description"] == "דירה יפה ומוארת"
+
+
+def test_five_event_answers_in_a_row_look_like_an_ip_block_and_pause_the_fetcher(fake_http):
+    fake_http.responses.extend([_Response(200, _WAF_EVENT)] * 5)
+    for _ in range(4):
+        assert api.fetch_yad2_detail_updates(_URL) == {}
+    assert api.fetch_yad2_detail_updates(_URL) is None  # the fifth: nothing is marked, the fetcher pauses
+    assert len(fake_http.calls) == 5
+    assert api.fetch_yad2_detail_updates(_URL) is None  # paused: no sixth request
+    assert len(fake_http.calls) == 5
+
+
+def test_a_good_answer_resets_the_event_streak(fake_http):
+    fake_http.responses.extend(
+        [_Response(200, _WAF_EVENT)] * 4 + [_Response(200, {"data": _record()})] + [_Response(200, _WAF_EVENT)] * 4
+    )
+    for _ in range(4):
+        assert api.fetch_yad2_detail_updates(_URL) == {}
+    assert api.fetch_yad2_detail_updates(_URL) is not None
+    for _ in range(4):
+        assert api.fetch_yad2_detail_updates(_URL) == {}  # streak restarted: still under five
 
 
 def test_one_good_answer_after_retries_resets_the_failure_streak(fake_http):
@@ -240,7 +269,7 @@ def test_one_good_answer_after_retries_resets_the_failure_streak(fake_http):
 def test_network_errors_and_bad_bodies_are_retried_too(fake_http):
     fake_http.responses.extend(
         [ConnectionError("boom"), _Response(200, json_error=True), _Response(200, {"message": "no data"})]
-    )
+    )  # a JSON with neither a data record nor the _event_ keys is an unknown answer: retried like any failure
     assert api.fetch_yad2_detail_updates(_URL) is None
     assert len(fake_http.calls) == 3
 
