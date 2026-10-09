@@ -1,0 +1,115 @@
+name: Diagnose - enrichment coverage per source and who is on trial or expired (read-only, counts only)
+
+# Read-only, manual-only. The owner compared one Mevaseret card with the reference bot's: ours had no entry date, no features, no
+# description and no total floors. This measures how common that is: per source, among active listings, among listings first seen in
+# the last 24 hours, and among listings actually sent to someone in the last 24 hours - how many have a description, total floors, an
+# entry date or note, and at least one feature. Also counts users by access state (trial running, trial ended, paid running, paid
+# ended, free grant). Counts only - nothing about any listing or any person.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Count in a throwaway pod
+        run: |
+          POD_NAME="enrich-cov-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import subprocess, sys
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "psycopg2-binary"])
+          import os, psycopg2
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          FEATURE = ("(has_parking is true or has_elevator is true or has_balcony is true or pets_allowed is true or is_renovated is true "
+                     "or is_roommate_friendly is true or safe_room_type in ('safe_room','building_shelter') or furniture = 'furnished')")
+          COLS = (
+              "count(*) as total, "
+              "count(*) filter (where description is not null and description <> '') as with_desc, "
+              "count(*) filter (where floor is not null) as with_floor, "
+              "count(*) filter (where floor_total is not null) as with_floor_total, "
+              "count(*) filter (where move_in_date is not null or move_in_note is not null) as with_move_in, "
+              f"count(*) filter (where {FEATURE}) as with_feature, "
+              "count(*) filter (where has_parking is not null or has_elevator is not null or has_balcony is not null) as feature_known"
+          )
+          def q(title, sql):
+              cur.execute(sql)
+              names = [d[0] for d in cur.description]
+              print(f"== {title}")
+              print("==   " + " | ".join(names))
+              for row in cur.fetchall():
+                  print("==   " + " | ".join(str(c) for c in row))
+          q("ACTIVE listings (not delisted, not duplicates) by source / deal type",
+            f"select source, deal_type, {COLS} from listings where is_delisted = false and duplicate_of_id is null group by 1, 2 order by 1, 2")
+          q("listings FIRST SEEN in the last 24 hours (not duplicates) by source",
+            f"select source, {COLS} from listings where first_seen_at > now() - interval '24 hours' and duplicate_of_id is null group by 1 order by 1")
+          q("listings actually SENT to someone in the last 24 hours (reason new) by source",
+            f"select source, {COLS} from listings where id in (select listing_id from sent_notifications where sent_at > now() - interval '24 hours' and reason = 'new') group by 1 order by 1")
+          q("Yad2 rent sent in the last 24 hours: the age of the listing row when it was sent (minutes between first seen and sent), buckets",
+            """select case when m < 10 then '<10m' when m < 60 then '10-60m' when m < 180 then '1-3h' else '>3h' end as bucket, count(*)
+               from (select extract(epoch from (min(s.sent_at) - l.first_seen_at))/60 as m
+                     from sent_notifications s join listings l on l.id = s.listing_id
+                     where s.sent_at > now() - interval '24 hours' and s.reason = 'new' and l.source = 'yad2' and l.deal_type = 'rent'
+                     group by l.id, l.first_seen_at) t group by 1 order by 1""")
+          q("users by access state right now (active users only)",
+            """select
+                 count(*) as users,
+                 count(*) filter (where free_access_granted) as free_grant,
+                 count(*) filter (where not free_access_granted and paid_until > now()) as paid_running,
+                 count(*) filter (where not free_access_granted and paid_until is not null and paid_until <= now()) as paid_ended,
+                 count(*) filter (where not free_access_granted and paid_until is null and trial_ends_at > now()) as trial_running,
+                 count(*) filter (where not free_access_granted and paid_until is null and trial_ends_at <= now()) as trial_ended_never_paid,
+                 count(*) filter (where not free_access_granted and (paid_until is null or paid_until <= now()) and trial_ends_at <= now()) as no_access_total
+               from users where is_active""")
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 300
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 100); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
