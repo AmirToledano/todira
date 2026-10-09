@@ -1,0 +1,119 @@
+name: Diagnose Yad2 - does a free item JSON endpoint return a listing's details from the cluster IP (read-only)
+
+# Read-only, manual-only. Gemini (the only listing-detail fetcher) answers HTTP 402 on every model, so Yad2 cards go out without a
+# description, total floors, entry date or features. The map API works for free with a browser TLS fingerprint; this checks whether the
+# per-listing JSON endpoint that Yad2's own pages use works the same way. It takes a handful of tokens from one small map piece, asks a few
+# candidate endpoints for each and prints ONLY status codes, content kinds and which field names exist (booleans) - no description text,
+# no values, nothing about any person.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Probe in a throwaway pod
+        run: |
+          POD_NAME="item-json-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import json, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi"])
+          from curl_cffi import requests as cr
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          BOX = "32.060000,34.760000,32.090000,34.800000"
+          r = cr.get(f"https://gw.yad2.co.il/realestate-feed/rent/map?region=3&bBox={BOX}&zoom=14", headers=H, impersonate="chrome", timeout=30)
+          print(f"== map status={r.status_code}", flush=True)
+          tokens = [m.get("token") for m in ((r.json().get("data") or {}).get("markers") or []) if m.get("token")][:6]
+          print(f"== tokens taken: {len(tokens)}", flush=True)
+
+          WANT = ("description", "searchText", "entranceDate", "buildingTopFloor", "inProperty", "includeParking", "includeElevator",
+                  "includeBalcony", "includeSecurityRoom", "additionalDetails", "metaData")
+
+          def names(o, out):
+              if isinstance(o, dict):
+                  for k, v in o.items():
+                      out.add(k)
+                      names(v, out)
+              elif isinstance(o, list):
+                  for v in o[:3]:
+                      names(v, out)
+
+          CANDIDATES = [
+              "https://gw.yad2.co.il/realestate-item/{t}",
+              "https://gw.yad2.co.il/realestate-item/{t}?",
+              "https://gw.yad2.co.il/item/{t}",
+              "https://gw.yad2.co.il/realestate-feed/rent/item/{t}",
+              "https://www.yad2.co.il/realestate/item/{t}",
+              "https://www.yad2.co.il/item/{t}",
+          ]
+          for tmpl in CANDIDATES:
+              label = tmpl.replace("{t}", "<token>")
+              ok = 0
+              for t in tokens[:3]:
+                  time.sleep(3)
+                  try:
+                      resp = cr.get(tmpl.format(t=t), headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+                  except Exception as e:
+                      print(f"== {label}: ERROR {type(e).__name__}", flush=True)
+                      continue
+                  body = resp.text or ""
+                  ctype = (resp.headers.get("content-type") or "").split(";")[0]
+                  info = f"status={resp.status_code} type={ctype} bytes={len(body)}"
+                  try:
+                      data = json.loads(body)
+                      found = set()
+                      names(data, found)
+                      info += " json=yes has=" + ",".join(sorted(w for w in WANT if w in found))
+                      if resp.status_code == 200:
+                          ok += 1
+                  except ValueError:
+                      info += f" json=no next_data={'__NEXT_DATA__' in body} challenge={any(w in body.lower() for w in ('perfdrive', 'radware', 'captcha', 'validate'))}"
+                  print(f"== {label}: {info}", flush=True)
+              print(f"== {label}: JSON 200 answers {ok}/{min(3, len(tokens))}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 300
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 100); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
