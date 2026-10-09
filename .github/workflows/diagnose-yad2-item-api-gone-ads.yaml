@@ -1,0 +1,107 @@
+name: Diagnose Yad2 - what the item JSON endpoint answers for ads that are gone or old (read-only, no ad text)
+
+# Read-only, manual-only. The first production run with the item-JSON detail fetcher logged 43 "answered JSON without a data record" warnings
+# and then paused the fetcher (5 failures in a row), so the catch-up fetched nothing. This asks the endpoint about 15 delisted ads and 15 of our
+# oldest still-active ads and prints ONLY the HTTP status, the top-level key names, the type of `data` and the generic `message` string -
+# no ad text, no ids. Tokens come from the database (public ad tokens, never printed).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Probe in a throwaway pod
+        run: |
+          POD_NAME="gone-ads-$(date +%s)"
+          echo "POD_NAME=$POD_NAME" >> "$GITHUB_ENV"
+          cat > /tmp/pod.py << 'PYEOF'
+          import collections, os, re, subprocess, sys, time
+          subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "curl_cffi", "psycopg2-binary"])
+          import psycopg2
+          from curl_cffi import requests as cr
+          cur = psycopg2.connect("postgresql://" + os.environ["DATABASE_URL"].split("://", 1)[1]).cursor()
+          H = {"Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"}
+          def tokens(where, order):
+              cur.execute(f"select url from listings where source='yad2' and {where} order by {order} limit 15")
+              return [m.group(1) for (u,) in cur.fetchall() for m in [re.search(r"/item/([A-Za-z0-9]+)", u)] if m]
+          groups = {
+              "delisted (most recently delisted)": tokens("is_delisted", "delisted_at desc nulls last"),
+              "active, oldest first_seen": tokens("not is_delisted and duplicate_of_id is null", "first_seen_at asc"),
+              "active, never read, newest": tokens("not is_delisted and duplicate_of_id is null and details_fetched_at is null", "first_seen_at desc"),
+          }
+          for label, toks in groups.items():
+              shapes = collections.Counter()
+              for t in toks:
+                  time.sleep(0.5)
+                  try:
+                      r = cr.get(f"https://gw.yad2.co.il/realestate-item/{t}", headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+                  except Exception as e:
+                      shapes[f"error:{type(e).__name__}"] += 1
+                      continue
+                  try:
+                      j = r.json()
+                  except ValueError:
+                      shapes[f"status={r.status_code} non-json bytes={len(r.text or '')}"] += 1
+                      continue
+                  if isinstance(j, dict):
+                      data = j.get("data")
+                      msg = str(j.get("message"))[:60]
+                      shapes[f"status={r.status_code} keys={sorted(j.keys())} data={type(data).__name__}{'(empty)' if data in ({}, [], None) else ''} message={msg!r}"] += 1
+                  else:
+                      shapes[f"status={r.status_code} json={type(j).__name__}"] += 1
+              print(f"== {label}: asked={len(toks)}", flush=True)
+              for shape, n in shapes.most_common():
+                  print(f"==   {n}x {shape}", flush=True)
+          PYEOF
+          kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
+          cat > /tmp/pod.yaml << EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD_NAME
+            namespace: todira
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 400
+            containers:
+              - name: diag
+                image: python:3.12-slim
+                command: ["python3", "-u", "/script/pod.py"]
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                volumeMounts:
+                  - name: script
+                    mountPath: /script
+            volumes:
+              - name: script
+                configMap:
+                  name: $POD_NAME-script
+          EOF
+          kubectl apply -f /tmp/pod.yaml
+
+      - name: Wait, print results, clean up (always)
+        if: always()
+        run: |
+          for i in $(seq 1 140); do
+            PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 3
+          done
+          echo "--- results ---"
+          kubectl logs -n todira "$POD_NAME" 2>&1 | grep "^==" || kubectl logs -n todira "$POD_NAME" 2>&1 | tail -10
+          kubectl delete pod "$POD_NAME" -n todira --ignore-not-found=true
+          kubectl delete configmap "$POD_NAME-script" -n todira --ignore-not-found=true
