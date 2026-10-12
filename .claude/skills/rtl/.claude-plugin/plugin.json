@@ -1,0 +1,6 @@
+{
+  "name": "rtl",
+  "version": "0.2.1",
+  "description": "Shows Hebrew and Arabic messages right-to-left, both the ones you send and the ones Claude answers. /rtl on|off|toggle.",
+  "types": "./types/index.d.ts"
+}
