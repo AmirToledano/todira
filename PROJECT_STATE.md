@@ -4,8 +4,8 @@
 - Removed: the WhatsApp webhook, client, cost guard, check-in, 24h-window and pause modules, the `?wid=` login, every
   WhatsApp button/link/text on the site and in the bot, its settings on /account, its helm values/secrets/env vars and
   every WhatsApp workflow. Notifications and renewal reminders go out on Telegram only.
-- The database columns go in a follow-up migration (0026) AFTER this deploy, so no running pod ever selects a column that
-  no longer exists. Checked live first: all 4 user rows have Telegram, so no account loses its way in.
+- The database columns were dropped by migration 0026, deployed AFTER the code stopped using them, so no running pod ever
+  selected a column that no longer exists. Checked live first: all 4 user rows have Telegram, so no account lost its way in.
 - Every WhatsApp entry further down this file is history only.
 
 ## ▶ DECISIONS 2026-10-05 (owner) — implemented, read first
