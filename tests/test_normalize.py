@@ -127,7 +127,7 @@ def test_malformed_numeric_value_degrades_to_none_not_exception():
 
 def test_location_fields_and_alternate_keys():
     result = normalize({"id": "1", "cityText": "תל אביב", "neighborhoodText": "פלורנטין", "streetText": "הרכבת"})
-    assert result.city == "תל אביב"
+    assert result.city == "תל אביב יפו"  # 2026-10-13: stored under the one spelling filters use (cities.resolve_locality)
     assert result.neighborhood == "פלורנטין"
     assert result.street == "הרכבת"
 
@@ -331,7 +331,7 @@ def test_enrich_does_not_touch_fields_already_set_from_the_search_card():
     # price/rooms/city come from the search card and are left alone by enrichment
     assert result.price == 5000
     assert result.rooms == 2
-    assert result.city == "תל אביב"
+    assert result.city == "תל אביב יפו"  # 2026-10-13: stored under the one spelling filters use (cities.resolve_locality)
 
 
 def test_enrich_missing_or_malformed_sections_degrade_gracefully_not_raise():
@@ -474,7 +474,7 @@ def test_feed_enrich_does_not_touch_card_derived_fields():
     result = _enrich_from_feed_record(item, _REAL_PRIVATE_FEED_RECORD)
     assert result.price == 5000
     assert result.rooms == 2
-    assert result.city == "תל אביב"
+    assert result.city == "תל אביב יפו"  # 2026-10-13: stored under the one spelling filters use (cities.resolve_locality)
 
 
 def test_feed_enrich_missing_or_malformed_sections_degrade_gracefully():

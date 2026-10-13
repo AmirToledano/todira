@@ -101,6 +101,12 @@ def _fmt_range(lo, hi, lang: str, unit: str = "") -> str:
     return bot_text("kb.range_until", lang, hi=hi, unit=unit)
 
 
+def _cities_text(chosen: list[str]) -> str:
+    """The chosen cities for the summary line - a whole area can be dozens of localities, so past 8: "+N more"."""
+    shown = sorted(chosen)
+    return ", ".join(shown) if len(shown) <= 8 else f"{', '.join(shown[:8])} +{len(shown) - 8}"
+
+
 def render_root_summary(draft: dict, lang: str) -> str:
     titles = category_titles(lang)
     all_label = bot_text("kb.all", lang)
@@ -118,7 +124,7 @@ def render_root_summary(draft: dict, lang: str) -> str:
         + deal_type_labels(lang).get(draft["deal_type"], draft["deal_type"]),
         f"🏠 {bot_text('kb.label.property_type', lang)}: "
         + (", ".join(property_labels[p] for p in draft["property_types"]) or all_label),
-        f"📍 {bot_text('kb.label.cities', lang)}: " + (", ".join(sorted(draft["cities"])) or all_label),
+        f"📍 {bot_text('kb.label.cities', lang)}: " + (_cities_text(draft["cities"]) or all_label),
         f"💰 {bot_text('kb.label.price', lang)}: "
         + _fmt_range(draft["price_min"], draft["price_max"], lang, " ₪"),
         f"🛏️ {bot_text('kb.label.rooms', lang)}: "
@@ -222,6 +228,9 @@ def requirements_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+_MAX_REMOVE_BUTTONS = 40
+
+
 def location_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
     rows = [
         [
@@ -253,7 +262,10 @@ def location_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
                 )
             ]
         )
-    for city in sorted(draft["cities"]):  # alphabetical, not in the order they were picked
+    # 2026-10-13: a whole area can be chosen now ("יהודה ושומרון" alone is 178 localities), and Telegram allows at most 100
+    # buttons in a message - so one remove button per city only up to _MAX_REMOVE_BUTTONS; beyond that "clear all" above.
+    cities_with_button = sorted(draft["cities"]) if len(draft["cities"]) <= _MAX_REMOVE_BUTTONS else []
+    for city in cities_with_button:  # alphabetical, not in the order they were picked
         # 2026-09-25 real bug fix: this used to encode the city's LIST INDEX, which goes stale the
         # instant one is removed — a real double-tap (or any tap racing a slow re-render) on the
         # same rendered button sent the SAME stale index twice, so the second tap silently removed
@@ -261,6 +273,8 @@ def location_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
         # city's own name instead makes removal idempotent/robust to exactly that, and every real
         # Israeli city/town name is far short of callback_data's 64-byte limit (the bundled list's
         # own longest, "מודיעין מכבים רעות", is 34 bytes; this prefix adds 10).
+        if len(f"f:loc:rmc:{city}".encode()) > 64:  # Telegram's callback_data limit (a very long name)
+            continue
         rows.append(
             [
                 InlineKeyboardButton(
@@ -304,10 +318,10 @@ def city_picker_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
 def city_search_results_keyboard(matches: list[str], lang: str) -> InlineKeyboardMarkup:
     """Renders typed-search candidates (from cities.find_matches) as tappable buttons instead of
     silently picking the first match — a user chooses explicitly which city they meant, same as
-    tapping a box in city_picker_keyboard. Uses its own `pickc` action (not the checkbox list's `togc`): after a typed search the user returns to the city summary, not to the 40-city checkbox list (real owner report, 2026-10-05). `matches` are always members of cities.CITIES, so
-    `.index()` never raises."""
+    tapping a box in city_picker_keyboard. Uses its own `pickc` action (not the checkbox list's `togc`): after a typed search the user returns to the city summary, not to the 40-city checkbox list (real owner report, 2026-10-05). `matches` are always members of cities.LOCALITIES (2026-10-13: every
+    locality, not only the major cities), so `.index()` never raises."""
     rows = [
-        [InlineKeyboardButton(f"➕ {city}", callback_data=f"f:loc:pickc:{cities.CITIES.index(city)}")]
+        [InlineKeyboardButton(f"➕ {city}", callback_data=f"f:loc:pickc:{cities.LOCALITIES.index(city)}")]
         for city in matches
     ]
     rows.append([InlineKeyboardButton(bot_text("kb.back", lang), callback_data="f:cat:loc")])

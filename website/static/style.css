@@ -1399,6 +1399,8 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
    same family as the two colors above, just the "this one didn't go through" case they didn't
    need to cover yet. */
 .amc-status-bad { color: #b91c1c; }
+/* 2026-10-13: an area chip in the filter's city picker (selects every locality in it). */
+.region-chip { font: inherit; cursor: pointer; border-style: dashed; background: var(--teal-tint); color: var(--heading); }
 .account-days-left { display: block; margin-top: 4px; font-size: .88rem; font-weight: 600; color: var(--text-muted); }
 /* 2026-10-13 (owner request): the deliberately small "cancel purchase" link on /account (Account.jsx CancelPass) and
    the confirmation box it opens. */

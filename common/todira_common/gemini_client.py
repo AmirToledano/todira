@@ -113,6 +113,19 @@ def reset_pause() -> None:
     _paused_until = None
 
 
+def _known_cities_only(names, known_cities: list[str]) -> list[str]:
+    """The model's cities that are real: on the list it was given, or (2026-10-13) any other known locality under its
+    stored spelling (todira_common.cities.resolve_locality) - the prompt lists only the major cities to stay short."""
+    from todira_common.cities import resolve_locality
+
+    found: list[str] = []
+    for name in names or []:
+        city = name if name in known_cities else resolve_locality(name)
+        if city and city not in found:
+            found.append(city)
+    return found
+
+
 def _get_client() -> genai.Client | None:
     global _client, _client_checked
     if _client_checked:
@@ -213,7 +226,7 @@ def parse_onboarding_message(
         logger.exception("Gemini onboarding parse failed")
         return None
 
-    result["cities"] = [c for c in (result.get("cities") or []) if c in known_cities]
+    result["cities"] = _known_cities_only(result.get("cities"), known_cities)
     if result.get("deal_type") not in ("rent", "sale", "sublet"):
         result["deal_type"] = None
     return result
@@ -332,5 +345,5 @@ def chat_with_existing_user(
         return None
 
     if result.get("filter_changed") and "cities" in result:
-        result["cities"] = [c for c in (result.get("cities") or []) if c in known_cities]
+        result["cities"] = _known_cities_only(result.get("cities"), known_cities)
     return result
