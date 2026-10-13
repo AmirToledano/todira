@@ -110,9 +110,12 @@ class _FakeUser:
 
 
 class _FakeSession:
-    def __init__(self, users_by_telegram_id=None, payments=None, users_by_pk=None):
+    def __init__(self, users_by_telegram_id=None, payments=None, users_by_pk=None, cancellable_payment=None):
         self._by_telegram_id = users_by_telegram_id or {}
         self._payments = payments or []
+        # 2026-10-13: what a select(Payment) scalar() returns - the pass /account may offer to cancel
+        # (main.py's _cancellable_pass_payment). Every other scalar() is still a user lookup.
+        self._cancellable_payment = cancellable_payment
         # 2026-09-26: backs the session_user_id branch of _resolve_user (session.get(User, pk)) —
         # used to test isLoggedInViaSession, when the visitor has a REAL signed session rather than
         # just a ?uid= deep link. Also backs _current_user_summary's own session.execute(...).first()
@@ -122,6 +125,8 @@ class _FakeSession:
         self.committed = False
 
     def scalar(self, stmt):
+        if stmt.column_descriptions[0].get("entity") is website_main.Payment:
+            return self._cancellable_payment
         for user in self._by_telegram_id.values():
             return user
         return None
@@ -163,12 +168,14 @@ def _fake_get_session(session):
 
 class _FakePayment:
     def __init__(self, plan, amount_ils, status, created_at, paid_at=None, subscription_uniqid=None):
+        self.id = 9
         self.plan = plan
         self.amount_ils = amount_ils
         self.status = status
         self.created_at = created_at
         self.paid_at = paid_at
         self.subscription_uniqid = subscription_uniqid
+        self.gateway_transaction_id = "T-1"
 
 
 def test_account_requires_a_resolvable_user(client):
@@ -598,3 +605,75 @@ def test_account_config_reports_a_session_when_opened_via_a_signed_bot_link(clie
 
     config = _account_config(resp.text)
     assert config["isLoggedInViaSession"] is True
+
+
+# --- 2026-10-13: cancelling a one-time pass from /account (terms section 10) ---
+
+
+def _paid_pass(plan="pass_30", amount="49.90", days_ago=9.5):
+    paid_at = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days_ago)
+    return _FakePayment(plan, Decimal(amount), "paid", paid_at, paid_at=paid_at)
+
+
+def test_account_config_offers_cancelling_a_recent_pass_with_the_refund_worked_out(client):
+    payment = _paid_pass()
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=payment.paid_at + dt.timedelta(days=30))
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, cancellable_payment=payment)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        config = _account_config(client.get("/account", params={"uid": 222}).text)
+
+    assert config["cancelPass"] == {
+        "plan": "pass_30", "paidIls": "49.90", "elapsedDays": 10, "coveringIls": "29.90", "feeIls": "2.50",
+        "refundIls": "17.50",
+    }
+    assert config["cancelledRefundIls"] is None
+
+
+def test_account_config_has_no_cancel_link_without_a_cancellable_pass(client):
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=5))
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, cancellable_payment=None)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        config = _account_config(client.get("/account", params={"uid": 222}).text)
+    assert config["cancelPass"] is None
+
+
+def test_cancelling_a_pass_ends_its_days_marks_it_cancelled_and_tells_the_owner(client):
+    payment = _paid_pass()
+    paid_until = payment.paid_at + dt.timedelta(days=30)
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=paid_until, first_name="Dana")
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, cancellable_payment=payment)
+    sent = []
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "_notify_owner_sync", lambda *args: sent.append(args) or True),
+    ):
+        resp = client.post("/account/cancel-pass", data={"uid": 222, "confirm": "yes"})
+        config = _account_config(client.get("/account", params={"uid": 222}).text)
+
+    assert resp.status_code == 303 and resp.headers["location"] == "/account?uid=222"
+    assert payment.status == "cancelled" and fake_session.committed
+    assert user.paid_until <= dt.datetime.now(dt.timezone.utc)  # this pass's 30 days are gone, nothing earlier existed
+    assert len(sent) == 1 and "₪17.50" in sent[0][2] and "T-1" in sent[0][2]
+    assert config["cancelledRefundIls"] == "17.50"  # shown once after the redirect
+
+
+def test_cancelling_keeps_the_time_an_earlier_pass_had_left(client):
+    payment = _paid_pass(plan="pass_7", amount="19.90", days_ago=1)
+    earlier_end = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=4)
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=earlier_end + dt.timedelta(days=7))
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, cancellable_payment=payment)
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "_notify_owner_sync", lambda *args: True),
+    ):
+        client.post("/account/cancel-pass", data={"uid": 222, "confirm": "yes"})
+    assert user.paid_until == earlier_end
+
+
+def test_cancel_without_the_confirm_field_does_nothing(client):
+    payment = _paid_pass()
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=payment.paid_at + dt.timedelta(days=30))
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, cancellable_payment=payment)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.post("/account/cancel-pass", data={"uid": 222})
+    assert resp.status_code == 303 and payment.status == "paid" and not fake_session.committed

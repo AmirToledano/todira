@@ -53,8 +53,11 @@ from urllib.parse import urlencode
 import httpx
 from todira_common import listing_enrichment
 from todira_common.access import (
+    CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
     PASS_PLANS,
+    TEST_PASS_PLAN,
+    cancellation_quote,
     PLAN_DURATIONS,
     PLAN_PRICES_ILS,
     plan_for_amount,
@@ -2403,6 +2406,8 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
                 .limit(10)
             )
         )
+        cancel_pass = _cancel_pass_config(session, user)
+    cancelled_refund_ils = request.session.pop("cancelled_refund_ils", None)
 
     # 2026-09-25: eighth page moved into a React island (website/landing-react/account.html) —
     # same pattern as about()/accessibility()/.../login() above, but unlike those, the 4 POST
@@ -2483,10 +2488,103 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
                 ],
                 "hasActiveSubscription": user.takbull_subscription_uniqid is not None,
                 "cancelAtPeriodEnd": user.cancel_at_period_end,
+                # 2026-10-13 (owner request): the small "cancel purchase" link for a one-time pass still inside the
+                # 14-day window (terms section 10), with the refund already worked out; None hides it.
+                "cancelPass": cancel_pass,
+                # Set for one page view right after a cancellation (see account_cancel_pass).
+                "cancelledRefundIls": cancelled_refund_ils,
             },
         },
         known_lang=user.language,
     )
+
+
+_PASS_NAMES_HE = {"pass_7": "שבוע", "pass_14": "שבועיים", "pass_30": "חודש", TEST_PASS_PLAN: "בדיקה"}
+
+
+def _cancellable_pass_payment(session, user: User, now: dt.datetime) -> Payment | None:
+    """The one-time pass this user can still cancel under terms section 10: their newest paid Takbull pass bought in the
+    last 14 days, while their paid access is still running. None otherwise (a recurring subscription has its own
+    cancel-auto-renewal flow above)."""
+    if user.paid_until is None or user.paid_until <= now:
+        return None
+    return session.scalar(
+        select(Payment)
+        .where(
+            Payment.user_id == user.id,
+            Payment.gateway == "takbull",
+            Payment.status == "paid",
+            Payment.subscription_uniqid.is_(None),
+            Payment.plan.in_((*PASS_PLANS, TEST_PASS_PLAN)),
+            Payment.paid_at.is_not(None),
+            Payment.paid_at >= now - CANCELLATION_WINDOW,
+        )
+        .order_by(Payment.paid_at.desc())
+        .limit(1)
+    )
+
+
+def _cancel_pass_config(session, user: User) -> dict | None:
+    """What /account shows behind its small "cancel purchase" link (Account.jsx): the pass and what cancelling it now
+    refunds. Amounts are strings so 49.90 stays "49.90" in JSON."""
+    now = dt.datetime.now(dt.timezone.utc)
+    payment = _cancellable_pass_payment(session, user, now)
+    if payment is None:
+        return None
+    quote = cancellation_quote(payment.amount_ils, payment.paid_at, now)
+    return {
+        "plan": payment.plan,
+        "paidIls": str(payment.amount_ils),
+        "elapsedDays": quote["elapsed_days"],
+        "coveringIls": str(quote["covering_ils"]),
+        "feeIls": str(quote["fee_ils"]),
+        "refundIls": str(quote["refund_ils"]),
+    }
+
+
+@app.post("/account/cancel-pass")
+def account_cancel_pass(
+    request: Request,
+    uid: int | None = Form(None),
+    wid: str | None = Form(None),
+    confirm: str | None = Form(None),
+):
+    """Cancels a one-time pass under terms section 10 (2026-10-13 owner request). Recomputes everything server-side
+    (nothing from the page is trusted): ends the cancelled pass's access now, marks the payment "cancelled", and tells
+    the owner on Telegram exactly how much to refund by hand in Takbull and for which transaction. Only the days this
+    pass added are taken back, so an earlier pass's or the trial's remaining time is not lost."""
+    with get_session() as session:
+        user = _resolve_user(request, session, uid, wid)
+        if user is None:
+            return _render(request, "need_uid.html", {"target": "account"})
+        now = dt.datetime.now(dt.timezone.utc)
+        payment = _cancellable_pass_payment(session, user, now) if confirm == "yes" else None
+        if payment is None:
+            return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+        quote = cancellation_quote(payment.amount_ils, payment.paid_at, now)
+        remaining = user.paid_until - PLAN_DURATIONS[payment.plan]
+        user.paid_until = remaining if remaining > now else now
+        payment.status = "cancelled"
+        session.commit()
+        logger.info(
+            "Pass cancelled: payment_id=%s plan=%s paid=%s elapsed_days=%s refund=%s",
+            payment.id, payment.plan, payment.amount_ils, quote["elapsed_days"], quote["refund_ils"],
+        )
+        request.session["cancelled_refund_ils"] = str(quote["refund_ils"])
+        covering = _PASS_NAMES_HE.get(quote["covering_plan"], "כל הסכום")
+        lines = [
+            "🔴 ביטול רכישה",
+            f"חבילה: {_PASS_NAMES_HE.get(payment.plan, payment.plan)} (₪{payment.amount_ils}), "
+            f"נרכשה ב-{payment.paid_at.strftime('%d/%m/%Y')}",
+            f"עברו {quote['elapsed_days']} ימים: מקוזז מחיר {covering} ₪{quote['covering_ils']} "
+            f"ודמי ביטול ₪{quote['fee_ils']}",
+            f"להחזיר בתקבול: ₪{quote['refund_ils']}" if quote["refund_ils"] > 0 else "לא מגיע החזר, רק לידיעה.",
+            f"מספר עסקה: {payment.gateway_transaction_id or '-'}",
+        ]
+        name, email, telegram_user_id = user.first_name or "-", user.google_email or "-", user.telegram_user_id
+
+    _notify_owner_sync(name, email, "\n".join(lines), telegram_user_id)
+    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
 
 
 @app.post("/account/cancel-subscription")

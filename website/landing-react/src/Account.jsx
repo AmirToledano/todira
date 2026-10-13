@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { t, pageConfig } from "./i18n";
 
@@ -8,7 +9,51 @@ const PLAN_LABEL_KEYS = {
   biweekly: "upgrade.plan_biweekly",
   monthly: "upgrade.plan_monthly",
   monthly_subscription: "upgrade.plan_subscription",
+  pass_7: "upgrade.pass_name_7",
+  pass_14: "upgrade.pass_name_14",
+  pass_30: "upgrade.pass_name_30",
 };
+
+// 2026-10-13 (owner request): a deliberately small "cancel purchase" link for a one-time pass still inside the 14-day
+// window of terms section 10. The server (main.py's _cancel_pass_config) already worked out the refund; opening the
+// link shows it, and only the confirm button posts. account_cancel_pass recomputes everything before acting.
+function CancelPass({ cancelPass, identityFields }) {
+  const [open, setOpen] = useState(false);
+  const hasRefund = Number(cancelPass.refundIls) > 0;
+  if (!open) {
+    return (
+      <button type="button" className="account-cancel-link" onClick={() => setOpen(true)}>
+        {t("account.cancel_pass_link")}
+      </button>
+    );
+  }
+  return (
+    <div className="account-cancel-box">
+      <p>
+        {hasRefund
+          ? t("account.cancel_pass_refund", { refund: cancelPass.refundIls })
+          : t("account.cancel_pass_no_refund")}
+      </p>
+      <p className="field-hint">
+        {t("account.cancel_pass_breakdown", {
+          paid: cancelPass.paidIls,
+          covering: cancelPass.coveringIls,
+          days: cancelPass.elapsedDays,
+          fee: cancelPass.feeIls,
+        })}{" "}
+        <a href="/terms" target="_blank" rel="noreferrer">{t("account.cancel_pass_policy")}</a>
+      </p>
+      <form method="post" action="/account/cancel-pass" className="account-cancel-actions">
+        {identityFields}
+        <input type="hidden" name="confirm" value="yes" />
+        <button type="submit" className="account-cancel-confirm">{t("account.cancel_pass_confirm")}</button>
+        <button type="button" className="account-cancel-link" onClick={() => setOpen(false)}>
+          {t("account.cancel_pass_keep")}
+        </button>
+      </form>
+    </div>
+  );
+}
 const PAYMENT_STATUS_LABEL_KEYS = {
   paid: "account.payment_status_paid",
   pending: "account.payment_status_pending",
@@ -48,6 +93,8 @@ export default function Account() {
     payments,
     hasActiveSubscription,
     cancelAtPeriodEnd,
+    cancelPass,
+    cancelledRefundIls,
     isLoggedInViaSession,
   } = pageConfig;
 
@@ -127,6 +174,14 @@ export default function Account() {
                   {hasAccess ? t("account.upgrade_cta_renew") : t("account.upgrade_cta_start")}
                 </a>
               )}
+              {cancelledRefundIls != null && (
+                <p className="field-hint account-cancel-done">
+                  {Number(cancelledRefundIls) > 0
+                    ? t("account.cancel_pass_done", { refund: cancelledRefundIls })
+                    : t("account.cancel_pass_done_no_refund")}
+                </p>
+              )}
+              {cancelPass && <CancelPass cancelPass={cancelPass} identityFields={identityFields} />}
             </div>
           )}
 

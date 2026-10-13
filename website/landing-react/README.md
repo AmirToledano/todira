@@ -200,7 +200,8 @@ exact = {
     'meta.title_privacy', 'meta.title_terms', 'meta.title_contact', 'meta.title_login',
     'meta.title_account', 'legal.non_native_notice', 'upgrade.value_anchor_title',
     'upgrade.value_anchor_body', 'upgrade.plan_weekly', 'upgrade.plan_biweekly',
-    'upgrade.plan_monthly', 'upgrade.plan_subscription', 'auth.logout',
+    'upgrade.plan_monthly', 'upgrade.plan_subscription', 'upgrade.pass_name_7', 'upgrade.pass_name_14',
+    'upgrade.pass_name_30', 'auth.logout',
 }
 keys = {k: v for k, v in translations.items() if k.startswith(prefixes) or k in exact}
 with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:
