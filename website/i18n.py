@@ -1957,8 +1957,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # 2026-10-13 (owner decision): a cancellation within the legal 14 days charges the days elapsed since the purchase
     # (used or not) at the price of the shortest pass that covers them (not a pro-rata share of the longer pass), plus the legal 5% / NIS 100 fee.
     "terms.s10_body": {
-        "he": "מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר' סעיף 1). הגישה נמכרת בתשלום חד-פעמי לתקופה שנבחרה (7, 14 או 30 ימים), ללא חידוש אוטומטי, ולכן אין מנוי שצריך לבטל. בהתאם לחוק הגנת הצרכן, התשמ\"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. הגישה לשירות מסתיימת במועד הודעת הביטול. מאחר שהגישה לשירות זמינה במלואה מרגע התשלום, בין אם נעשה בה שימוש ובין אם לא, מהסכום ששולם יקוזזו מחיר החבילה הקצרה ביותר שמכסה את הימים שחלפו ממועד הרכישה (יום שהחל נחשב יום מלא), ודמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש\"ח, לפי הנמוך מביניהם. היתרה, אם נותרה, תוחזר לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול. לדוגמה: מי שרכש גישה לחודש (49.90 ש\"ח) וביטל לאחר 10 ימים — יקוזזו מחיר גישה לשבועיים (29.90 ש\"ח) ודמי ביטול (2.50 ש\"ח), והוא יקבל החזר של 17.50 ש\"ח; מי שרכש גישה לשבוע וביטל לפני תום השבוע לא יקבל החזר, כי מחיר החבילה הקצרה ביותר כבר מכסה את הימים שחלפו. ההחזר מבוצע באמצעות ספק הסליקה, ומועד הופעתו בחשבונך תלוי בנהלי חברת האשראי. לאחר 14 ימים ממועד העסקה לא ניתן לבטלה, ולא יינתן החזר בגין יתרת התקופה. בנוסף, נבחן בתום לב כל פנייה להחזר במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.",
-        "en": "This is a digital service delivered immediately and automatically upon payment confirmation. Every user gets a free 3-day trial before any payment (see section 1). Access is sold as a one-time payment for the period chosen (7, 14 or 30 days), with no automatic renewal, so there is no subscription to cancel. In accordance with Israel's Consumer Protection Law, 5741-1981, a distance transaction may be cancelled within 14 days of the transaction (or of receiving the written confirmation, whichever is later) by notifying us through the contact page or the Telegram bot. Access to the service ends when the cancellation notice is given. Because full access is available from the moment of payment, whether or not it is used, the amount paid is reduced by the price of the shortest pass that covers the days that have passed since the purchase (a day that has started counts as a full day) and by a cancellation fee of 5% of the transaction price or NIS 100, whichever is lower. Any remaining balance is refunded to the original payment method within 14 days of the cancellation notice. For example: someone who bought 1 month (NIS 49.90) and cancelled after 10 days is charged the 2-week price (NIS 29.90) and the cancellation fee (NIS 2.50), and gets a refund of NIS 17.50; someone who bought 1 week and cancelled before the week ended gets no refund, since the price of the shortest pass already covers the days that have passed. The refund is processed through the payment provider, and when it appears in your account depends on the card company's procedures. After 14 days from the transaction it can no longer be cancelled, and no refund is given for the rest of the period. In addition, we will review in good faith any refund request in case of a material technical fault that prevented use of the service, a duplicate charge, or a payment error.",
+        "he": "מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 3 ימים לפני כל תשלום (ר' סעיף 1). הגישה נמכרת בתשלום חד-פעמי לתקופה שנבחרה (7, 14 או 30 ימים), ללא חידוש אוטומטי, ולכן אין מנוי שצריך לבטל. בהתאם לחוק הגנת הצרכן, התשמ\"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בכפתור הביטול באזור האישי באתר, או בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. הגישה לשירות מסתיימת במועד הודעת הביטול. מאחר שהגישה לשירות זמינה במלואה מרגע התשלום, בין אם נעשה בה שימוש ובין אם לא, מהסכום ששולם יקוזזו מחיר החבילה הקצרה ביותר שמכסה את הימים שחלפו ממועד הרכישה (יום שהחל נחשב יום מלא), ודמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש\"ח, לפי הנמוך מביניהם. היתרה, אם נותרה, תוחזר לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול. לדוגמה: מי שרכש גישה לחודש (49.90 ש\"ח) וביטל לאחר 10 ימים — יקוזזו מחיר גישה לשבועיים (29.90 ש\"ח) ודמי ביטול (2.50 ש\"ח), והוא יקבל החזר של 17.50 ש\"ח; מי שרכש גישה לשבוע וביטל לפני תום השבוע לא יקבל החזר, כי מחיר החבילה הקצרה ביותר כבר מכסה את הימים שחלפו. ההחזר מבוצע באמצעות ספק הסליקה, ומועד הופעתו בחשבונך תלוי בנהלי חברת האשראי. לאחר 14 ימים ממועד העסקה לא ניתן לבטלה, ולא יינתן החזר בגין יתרת התקופה. בנוסף, נבחן בתום לב כל פנייה להחזר במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.",
+        "en": "This is a digital service delivered immediately and automatically upon payment confirmation. Every user gets a free 3-day trial before any payment (see section 1). Access is sold as a one-time payment for the period chosen (7, 14 or 30 days), with no automatic renewal, so there is no subscription to cancel. In accordance with Israel's Consumer Protection Law, 5741-1981, a distance transaction may be cancelled within 14 days of the transaction (or of receiving the written confirmation, whichever is later) with the cancel button on your account page, or by notifying us through the contact page or the Telegram bot. Access to the service ends when the cancellation notice is given. Because full access is available from the moment of payment, whether or not it is used, the amount paid is reduced by the price of the shortest pass that covers the days that have passed since the purchase (a day that has started counts as a full day) and by a cancellation fee of 5% of the transaction price or NIS 100, whichever is lower. Any remaining balance is refunded to the original payment method within 14 days of the cancellation notice. For example: someone who bought 1 month (NIS 49.90) and cancelled after 10 days is charged the 2-week price (NIS 29.90) and the cancellation fee (NIS 2.50), and gets a refund of NIS 17.50; someone who bought 1 week and cancelled before the week ended gets no refund, since the price of the shortest pass already covers the days that have passed. The refund is processed through the payment provider, and when it appears in your account depends on the card company's procedures. After 14 days from the transaction it can no longer be cancelled, and no refund is given for the rest of the period. In addition, we will review in good faith any refund request in case of a material technical fault that prevented use of the service, a duplicate charge, or a payment error.",
     },
     "terms.s11_title": {"he": "11. פרטי מפעיל השירות", "en": "11. Service operator details"},
     "terms.s11_body": {
@@ -2038,6 +2038,57 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "account.cancel_subscription_cta": {
         "he": "בטל חידוש אוטומטי", "en": "Cancel auto-renewal", "ru": "Отменить автопродление",
         "fr": "Annuler le renouvellement automatique", "ar": "إلغاء التجديد التلقائي",
+    },
+    # 2026-10-13 (owner request): the small "cancel purchase" link on /account for a one-time pass inside the 14-day
+    # window of terms section 10. {refund}/{paid}/{covering}/{fee} are shekel amounts, {days} the days since purchase.
+    "account.cancel_pass_link": {
+        "he": "ביטול הרכישה", "en": "Cancel purchase", "ru": "Отменить покупку", "fr": "Annuler l'achat",
+        "ar": "إلغاء الشراء",
+    },
+    "account.cancel_pass_refund": {
+        "he": "ביטול עכשיו יסגור את הגישה מיד, ויוחזרו לך ₪{refund} לאמצעי התשלום תוך 14 ימים.",
+        "en": "Cancelling now ends your access right away, and ₪{refund} will be refunded to your payment method within 14 days.",
+        "ru": "Отмена сейчас сразу закроет доступ, а ₪{refund} вернутся на ваш способ оплаты в течение 14 дней.",
+        "fr": "Annuler maintenant met fin à ton accès immédiatement, et ₪{refund} seront remboursés sur ton moyen de paiement sous 14 jours.",
+        "ar": "الإلغاء الآن يُنهي وصولك فورًا، وسيُعاد إليك ₪{refund} إلى وسيلة الدفع خلال 14 يومًا.",
+    },
+    "account.cancel_pass_no_refund": {
+        "he": "ביטול עכשיו יסגור את הגישה מיד. לפי מדיניות הביטול לא מגיע החזר על הרכישה הזו.",
+        "en": "Cancelling now ends your access right away. Under the cancellation policy, no refund is due for this purchase.",
+        "ru": "Отмена сейчас сразу закроет доступ. По правилам отмены за эту покупку возврат не положен.",
+        "fr": "Annuler maintenant met fin à ton accès immédiatement. Selon la politique d'annulation, aucun remboursement n'est dû pour cet achat.",
+        "ar": "الإلغاء الآن يُنهي وصولك فورًا. وفق سياسة الإلغاء لا يُستحق استرداد عن هذا الشراء.",
+    },
+    "account.cancel_pass_breakdown": {
+        "he": "שולם ₪{paid}. מקוזזים ₪{covering} עבור {days} ימים מאז הרכישה ו־₪{fee} דמי ביטול.",
+        "en": "Paid ₪{paid}. Deducted: ₪{covering} for {days} days since the purchase and a ₪{fee} cancellation fee.",
+        "ru": "Оплачено ₪{paid}. Удерживается ₪{covering} за {days} дн. с момента покупки и ₪{fee} за отмену.",
+        "fr": "Payé ₪{paid}. Retenus : ₪{covering} pour {days} jours depuis l'achat et ₪{fee} de frais d'annulation.",
+        "ar": "تم دفع ₪{paid}. يُخصم ₪{covering} مقابل {days} أيام منذ الشراء و₪{fee} رسوم إلغاء.",
+    },
+    "account.cancel_pass_policy": {
+        "he": "מדיניות הביטול", "en": "Cancellation policy", "ru": "Правила отмены",
+        "fr": "Politique d'annulation", "ar": "سياسة الإلغاء",
+    },
+    "account.cancel_pass_confirm": {
+        "he": "אישור הביטול", "en": "Confirm cancellation", "ru": "Подтвердить отмену",
+        "fr": "Confirmer l'annulation", "ar": "تأكيد الإلغاء",
+    },
+    "account.cancel_pass_keep": {
+        "he": "השארת הגישה", "en": "Keep my access", "ru": "Оставить доступ", "fr": "Garder mon accès",
+        "ar": "الإبقاء على الوصول",
+    },
+    "account.cancel_pass_done": {
+        "he": "הביטול התקבל והגישה נסגרה. החזר של ₪{refund} יגיע לאמצעי התשלום תוך 14 ימים.",
+        "en": "Your cancellation was received and access has ended. A refund of ₪{refund} will reach your payment method within 14 days.",
+        "ru": "Отмена принята, доступ закрыт. Возврат ₪{refund} поступит на ваш способ оплаты в течение 14 дней.",
+        "fr": "Annulation reçue, l'accès est terminé. Un remboursement de ₪{refund} arrivera sur ton moyen de paiement sous 14 jours.",
+        "ar": "تم استلام الإلغاء وانتهى الوصول. سيصل استرداد بقيمة ₪{refund} إلى وسيلة الدفع خلال 14 يومًا.",
+    },
+    "account.cancel_pass_done_no_refund": {
+        "he": "הביטול התקבל והגישה נסגרה.", "en": "Your cancellation was received and access has ended.",
+        "ru": "Отмена принята, доступ закрыт.", "fr": "Annulation reçue, l'accès est terminé.",
+        "ar": "تم استلام الإلغاء وانتهى الوصول.",
     },
     "account.resume_subscription_cta": {
         "he": "חדש חידוש אוטומטי", "en": "Resume auto-renewal", "ru": "Возобновить автопродление",

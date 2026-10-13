@@ -237,3 +237,25 @@ def test_the_single_button_is_refused_when_every_pass_has_its_own_page(client, m
     for name, url in _PER_PASS_PAGES.items():
         monkeypatch.setenv(name, url)
     assert _post_upgrade(client, "pass_choice")[0].status_code == 400
+
+
+# --- 2026-10-13: terms section 10, the refund when a pass is cancelled within 14 days ---
+
+
+@pytest.mark.parametrize(
+    "paid,days_after,refund",
+    [
+        ("49.90", 9.5, "17.50"),  # the example written in the terms: month, cancelled on day 10
+        ("49.90", 2.2, "27.50"),  # month, day 3: charged as one week
+        ("19.90", 0.1, "0.00"),  # a started week is never refunded
+        ("29.90", 3, "8.50"),  # two weeks, day 4: charged as one week
+        ("29.90", 8, "0.00"),  # two weeks, day 9: charged as two weeks
+        ("1.00", 0, "0.00"),  # the owner's NIS 1 test payment
+    ],
+)
+def test_cancellation_quote_charges_the_shortest_covering_pass_and_the_legal_fee(paid, days_after, refund):
+    from todira_common.access import cancellation_quote
+
+    bought = dt.datetime(2026, 10, 1, 12, tzinfo=dt.timezone.utc)
+    quote = cancellation_quote(Decimal(paid), bought, bought + dt.timedelta(days=days_after))
+    assert quote["refund_ils"] == Decimal(refund)

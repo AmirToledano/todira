@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from todira_common.models import User
 
@@ -131,3 +131,32 @@ def extend_paid_until(user: User, plan: str) -> None:
     now = dt.datetime.now(dt.timezone.utc)
     base = user.paid_until if (user.paid_until is not None and user.paid_until > now) else now
     user.paid_until = base + PLAN_DURATIONS[plan]
+
+
+# 2026-10-13 (owner decision, terms section 10): a one-time pass can be cancelled within 14 days of the purchase. Access
+# ends at once; the days elapsed since the purchase (used or not, a started day counts as a full day) are charged at the
+# price of the shortest pass that covers them, plus the legal cancellation fee (5% of the price or NIS 100, the lower).
+# The rest is refunded by hand in Takbull (no refund API on the free plan).
+CANCELLATION_WINDOW = dt.timedelta(days=14)
+_CANCELLATION_FEE_RATE = Decimal("0.05")
+_CANCELLATION_FEE_CAP = Decimal("100")
+_CENTS = Decimal("0.01")
+
+
+def cancellation_quote(paid_ils: Decimal, paid_at: dt.datetime, now: dt.datetime | None = None) -> dict:
+    """What cancelling a one-time pass bought for `paid_ils` at `paid_at` returns right now (see the comment above).
+    Keys: elapsed_days, covering_plan (None when no pass is long enough - then the whole price is kept), covering_ils,
+    fee_ils, refund_ils (never below zero)."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    elapsed_days = max(0, (now - paid_at).days) + 1
+    covering_plan = next((p for p in PASS_PLANS if PLAN_DURATIONS[p].days >= elapsed_days), None)
+    covering_ils = min(PLAN_PRICES_ILS[covering_plan], paid_ils) if covering_plan else paid_ils
+    fee_ils = min(paid_ils * _CANCELLATION_FEE_RATE, _CANCELLATION_FEE_CAP).quantize(_CENTS, rounding=ROUND_HALF_UP)
+    refund_ils = max(Decimal("0.00"), paid_ils - covering_ils - fee_ils).quantize(_CENTS)
+    return {
+        "elapsed_days": elapsed_days,
+        "covering_plan": covering_plan,
+        "covering_ils": covering_ils.quantize(_CENTS),
+        "fee_ils": fee_ils,
+        "refund_ils": refund_ils,
+    }

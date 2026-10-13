@@ -1399,6 +1399,24 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
    same family as the two colors above, just the "this one didn't go through" case they didn't
    need to cover yet. */
 .amc-status-bad { color: #b91c1c; }
+/* 2026-10-13 (owner request): the deliberately small "cancel purchase" link on /account (Account.jsx CancelPass) and
+   the confirmation box it opens. */
+.account-cancel-link {
+  background: none; border: 0; padding: 0; margin-top: 12px; font: inherit; font-size: .82rem;
+  color: var(--text-muted); text-decoration: underline; cursor: pointer;
+}
+.account-cancel-box {
+  margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  text-align: start; font-size: .92rem;
+}
+.account-cancel-box p { margin: 0 0 8px; }
+.account-cancel-actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.account-cancel-actions .account-cancel-link { margin-top: 0; }
+.account-cancel-confirm {
+  background: transparent; border: 1.5px solid currentColor; border-radius: 999px; padding: 8px 16px;
+  font: inherit; font-size: .9rem; font-weight: 700; color: #b91c1c; cursor: pointer;
+}
+.account-cancel-done { margin-top: 10px; color: var(--heading); }
 .amc-meta { display: flex; gap: 14px; color: var(--text-muted); font-size: .86rem; margin-bottom: 4px; }
 .amc-body { white-space: pre-wrap; margin: 8px 0 0; line-height: 1.6; }
 
@@ -1605,6 +1623,7 @@ html.a11y-keyboard-nav *:focus {
   html:not([data-theme="light"]) .amc-status-warn { color: #f0b169; }
   html:not([data-theme="light"]) .amc-status-ok { color: #6fd897; }
   html:not([data-theme="light"]) .amc-status-bad { color: #f28b82; }
+  html:not([data-theme="light"]) .account-cancel-confirm { color: #f28b82; }
   html:not([data-theme="light"]) .field-error-banner { background: #3a2222; border-color: #7a3d3d; color: #f0b8b8; }
 }
 html[data-theme="dark"] .notice { background: #3a2f0a; border-color: #5c4a12; color: #f0d585; }
@@ -1612,6 +1631,7 @@ html[data-theme="dark"] .amc-status-warn { color: #f0b169; }
 html[data-theme="dark"] .amc-status-ok { color: #6fd897; }
 html[data-theme="dark"] .field-error-banner { background: #3a2222; border-color: #7a3d3d; color: #f0b8b8; }
 html[data-theme="dark"] .amc-status-bad { color: #f28b82; }
+html[data-theme="dark"] .account-cancel-confirm { color: #f28b82; }
 
 /* Slim single-line toolbar replacing the old big page-banner+filter-bar pair on /apartments only
    (other pages, e.g. /liked, keep their own .page-banner as before) — see apartments.html's own
