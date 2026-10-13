@@ -1,5 +1,5 @@
 """Tests for website/main.py's /login — a dedicated screen (2026-09-05 request) with Google/
-Telegram/WhatsApp shown as three separate, equally prominent options, replacing the header's own
+Telegram shown as separate, equally prominent options, replacing the header's own
 small Google-only button as the primary way an anonymous visitor identifies themselves.
 
 2026-09-25: /login became the site's seventh React island (website/landing-react/login.html) —
@@ -47,14 +47,6 @@ def test_login_page_renders_react_island(client):
     assert 'id="root"' in resp.text
     assert "/static/landing/assets/" in resp.text
     assert "/static/landing/assets/login-" in resp.text  # its OWN entry, not another page's
-
-
-def test_login_page_injects_whatsapp_number_when_configured(client):
-    with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", "972500000000"):
-        resp = client.get("/login")
-
-    assert resp.status_code == 200
-    assert 'whatsappPublicNumber: "972500000000"' in resp.text
 
 
 def test_login_page_redirects_already_logged_in_visitor():
@@ -113,7 +105,7 @@ def test_login_page_injects_null_uid_when_none_given(client):
 def test_login_page_next_is_json_encoded_not_a_raw_hand_written_string(client):
     """2026-09-25: `next` is the first value injected into window.__TODIRA_PAGE__ across any
     converted page that's genuinely attacker-influenceable text, not a fixed-whitelist string
-    (lang/dir), an int (uid), or a trusted env var (whatsappPublicNumber) — _safe_next() only
+    (lang/dir) or an int (uid) — _safe_next() only
     requires it start with a single "/", it doesn't restrict the character set otherwise. A
     hand-written `next: "{{ next }}"` would rely on Jinja's HTML-entity autoescaping alone, which
     is NOT JS-string-safe in general; `| tojson` (see login.html's own comment) is what actually

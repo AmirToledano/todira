@@ -43,8 +43,6 @@ import logging
 import mimetypes
 import os
 import secrets
-import threading
-from collections import OrderedDict
 import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -66,25 +64,13 @@ from todira_common.access import (
     has_full_access,
     has_paid_access,
 )
-from todira_common.cards import get_listing_photo_jpeg_bytes
 from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES, EXTRA_LOCALITIES, LOCALITY_SET, REGIONS
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.matching import evaluate
 from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
-# 2026-09-25 real security bug found via a live code-review pass: ?wid= used to carry the bare
-# WhatsApp phone number, and _resolve_user's wid branch established a FULL logged-in session for
-# ANYONE who presented it — no verification at all. A phone number isn't a secret (contacts,
-# SIM-swap, straightforward E.164-format guessing all know/find it), so this was a real,
-# zero-effort account-takeover: visiting /account?wid=<any real user's number> logged the visitor
-# in as that user outright, no OAuth, no password, nothing. Every ?wid= link this project ever
-# generates (whatsapp_webhook.py's filter-edit/notifications-optin CTAs, generate_wid_token) now
-# carries a signed, time-limited token instead of the raw number. Lives in todira_common.wid_token,
-# not here, so whatsapp_webhook.py can generate one too without a circular import (this module does
-# `from whatsapp_webhook import router` below).
 from todira_common.uid_token import verify_uid_token
-from todira_common.wid_token import generate_wid_token, verify_wid_token as _verify_wid_token  # noqa: F401 (generate_wid_token re-exported for tests, see test_website_filter_whatsapp.py)
 from fastapi import FastAPI, Form, Request
 
 import takbull_client
@@ -110,7 +96,6 @@ from i18n import (
     make_translator,
     relative_time_label,
 )
-from whatsapp_webhook import router as whatsapp_router
 
 # Matches bot/main.py's own logging.basicConfig — without this, INFO-level messages are invisible
 # in pod logs by default (root logger stays at WARNING), which made a real bug (a Telegram push
@@ -234,7 +219,6 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 app = FastAPI(title="טודירה")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-app.include_router(whatsapp_router)
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year — a site-wide preference, not per-session
@@ -259,13 +243,6 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 # (redirect_uri must match EXACTLY, or Google rejects the whole flow).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app")
 
-# Cross-channel linking (2026-09-05, /account below) — the actual displayable WhatsApp number
-# (E.164 digits, no leading '+') to build a `wa.me/<number>?text=ref_xxxxxx` deep link. Distinct
-# from WHATSAPP_PHONE_NUMBER_ID (whatsapp_client.py) — that's the Cloud API's own internal id
-# used to call the Graph API, not something a person can dial or a wa.me link can use. Optional:
-# without it, /account still shows the Telegram linking option, just not the WhatsApp one.
-WHATSAPP_PUBLIC_NUMBER = os.environ.get("WHATSAPP_PUBLIC_NUMBER", "").strip()
-
 # Informal Bit/PayBox payment (2026-09-05 — the owner's click-trust fallback while no real gateway is configured, see
 # /upgrade/pay below) — the owner's own phone number for Bit and, optionally, a PayBox payment
 # link he generates himself from the PayBox app. Deliberately NOT a "click to open the app
@@ -286,7 +263,7 @@ def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: in
     # name/email/message are all attacker-controlled (anyone can submit the /contact form) —
     # escaped before going into an HTML-parsed Telegram message so they can't break the owner
     # notification's formatting or inject a fake link/tag into what the owner reads as trusted
-    # app text. Found live 2026-09-07, same bug class fixed in whatsapp_webhook.py/support.py.
+    # app text. Found live 2026-09-07, same bug class fixed in support.py.
     lines = ["📬 <b>הודעה חדשה מהאתר (טודירה)</b>"]
     if name:
         lines.append(f"שם: {html.escape(name)}")
@@ -362,7 +339,7 @@ def _render(
     not just the ones that already resolve a full user for their own content.
 
     known_lang: pass `user.language` here whenever the caller already resolved a real user (via
-    uid/wid) before calling this — lets an identified visitor's own on-file language preference
+    uid) before calling this — lets an identified visitor's own on-file language preference
     win over a guess from their browser's Accept-Language header, which is often wrong for that
     specific case (e.g. Telegram's in-app browser sends the phone's system language, not the
     language the person actually chose for the bot). Omit it for routes with no resolved user.
@@ -381,7 +358,7 @@ def _render(
             # 2026-09-27 real owner request: base.html's og:title/og:description (and their
             # twitter: mirrors) used to follow `t` — i.e. whatever language THIS request's own
             # Accept-Language resolved to. That's meaningless for a link-preview card specifically:
-            # WhatsApp/Telegram/Facebook fetch the page ONCE with their own crawler's Accept-
+            # Telegram/Facebook fetch the page ONCE with their own crawler's Accept-
             # Language (confirmed live — resolves to English), cache that single result, and show
             # the SAME cached card to every recipient regardless of the sharer's or viewer's own
             # phone language. So `t` was never actually personalizing the preview per-viewer; it
@@ -398,12 +375,6 @@ def _render(
             "is_owner": is_real_owner and not _preview_as_free(request),
             "is_real_owner": is_real_owner,
             "preview_as_free": _preview_as_free(request),
-            # Site-wide (not per-route) so the footer's WhatsApp link (base.html) can show on
-            # every page, not just the ones that already happened to pass this in themselves for
-            # their own hero CTA (home.html, login.html) — found live 2026-09-07 auditing the
-            # footer, which had a Telegram link but no WhatsApp one despite the product having a
-            # WhatsApp bot since 2026-09-06 (same gap home.html's own CTA was fixed for already).
-            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
             # footer.copyright's own {year} placeholder (base.html) — was a hardcoded "© 2026"
             # that would've silently gone stale every January 1st; now resolved fresh on every
             # request instead of needing a manual edit once a year.
@@ -430,11 +401,7 @@ def _get_user_by_uid(session, uid: int) -> User | None:
     return session.scalar(select(User).where(User.telegram_user_id == uid))
 
 
-def _get_user_by_wid(session, wid: str) -> User | None:
-    return session.scalar(select(User).where(User.whatsapp_phone_number == wid))
-
-
-def _resolve_user(request: Request, session, uid: int | None, wid: str | None = None) -> User | None:
+def _resolve_user(request: Request, session, uid: int | None) -> User | None:
     """Prefer the signed session cookie (real login) over the legacy ?uid= query param — the
     query param stays supported unchanged so existing bot deep links keep working.
 
@@ -446,19 +413,7 @@ def _resolve_user(request: Request, session, uid: int | None, wid: str | None = 
     session is established right here, so they don't have to repeat the Google sign-in and don't
     get asked to log in again on the next visit. Only fires when a pending_google_sub genuinely
     exists in THIS session, so a plain uid visit with no prior Google attempt is completely
-    unaffected — still exactly as low-trust/ephemeral as the module docstring describes.
-
-    `wid` (2026-09-06, WhatsApp filter-edit link): keyed on whatsapp_phone_number instead of
-    telegram_user_id — a WhatsApp-only account has no telegram_user_id at all, so it could never
-    resolve via uid. Checked after uid so an existing session/uid match always wins. UNLIKE uid,
-    a successful wid match establishes a real signed session right here (not just for this one
-    request) — a WhatsApp-only account has no stronger auth available at all (no password, no
-    Google link, no Telegram widget), so the magic link IS its login, and the owner specifically
-    asked for the competitor-app behavior of staying signed in across every page once you land
-    from one, not just the single /filter page the link happened to point at. This is also
-    strictly safer than the alternative of threading ?wid=<phone number> through every link on
-    the site (browser history, referrers, screenshots) the way ?uid= already does for a plain
-    numeric Telegram id."""
+    unaffected — still exactly as low-trust/ephemeral as the module docstring describes."""
     # 2026-10-02 SECURITY: a bare ?uid=<telegram id> is NO LONGER trusted (a Telegram id is public
     # knowledge and the repo is public: anyone could open another user's pages, edit their filter, and
     # take the account over via /auth/google/start?uid=). The bot/notifier now link with ?t=<signed
@@ -484,14 +439,6 @@ def _resolve_user(request: Request, session, uid: int | None, wid: str | None = 
         user = session.get(User, session_user_id)
         if user is not None:
             return user
-    if wid:
-        phone_number = _verify_wid_token(wid)
-        if phone_number is None:
-            return None
-        user = _get_user_by_wid(session, phone_number)
-        if user is not None:
-            request.session["user_id"] = user.id
-        return user
     return None
 
 
@@ -536,37 +483,6 @@ def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
     return time.time() - auth_date <= 60 * 60 * 24
 
 
-# 2026-10-02: Meta requires an interactive WhatsApp message's header image as a PUBLIC link (an uploaded
-# media id is rejected), so the scraper's free-form listing messages point at this route. The photo /
-# collage is built once per listing (it downloads up to 4 external photos) and kept in a small in-memory
-# LRU; the scraper requests it once just before sending, so Meta's own fetch is instant. Listing photos
-# are public data already shown on the site.
-_LISTING_PHOTO_CACHE_MAX = 300
-_listing_photo_cache: "OrderedDict[int, bytes]" = OrderedDict()
-_listing_photo_lock = threading.Lock()
-
-
-@app.get("/media/listing/{listing_id}.jpg")
-def listing_photo(listing_id: int) -> Response:
-    with _listing_photo_lock:
-        cached = _listing_photo_cache.get(listing_id)
-        if cached is not None:
-            _listing_photo_cache.move_to_end(listing_id)
-    if cached is None:
-        with get_session() as session:
-            row = session.execute(select(Listing.image_urls).where(Listing.id == listing_id)).first()
-        if row is None:
-            return Response(status_code=404)
-        cached = get_listing_photo_jpeg_bytes(list(row[0] or []))
-        with _listing_photo_lock:
-            _listing_photo_cache[listing_id] = cached
-            while len(_listing_photo_cache) > _LISTING_PHOTO_CACHE_MAX:
-                _listing_photo_cache.popitem(last=False)
-    return Response(
-        content=cached, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"}
-    )
-
-
 @app.get("/healthz")
 def healthz() -> Response:
     """Kubernetes liveness/readiness probe target (see website-deployment.yaml) — added 2026-09-08
@@ -588,17 +504,11 @@ def healthz() -> Response:
 
 @app.get("/")
 def home(request: Request):
-    """2026-09-06: hero/footer CTAs now also offer WhatsApp (when WHATSAPP_PUBLIC_NUMBER is
-    configured) alongside the original Telegram-only button — the product grew a WhatsApp bot and
-    direct website browsing since this page was first written, and a Telegram-only funnel no
-    longer reflects the real entry points, found live by the owner comparing the page to the
-    current product."""
     landing_assets = _landing_react_assets()
     return _render(
         request,
         "home.html",
         {
-            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
             "landing_js_url": landing_assets.get("js", ""),
             "landing_css_urls": landing_assets.get("css", []),
         },
@@ -653,10 +563,10 @@ def sitemap_xml(request: Request) -> Response:
 @app.get("/login")
 def login(request: Request, next: str = "/apartments", uid: int | None = None):
     """A dedicated screen (2026-09-05 request) instead of the header's own small Google-only
-    button — Google/Telegram/WhatsApp shown as three separate, equally prominent "continue with"
+    button — Google/Telegram shown as separate, equally prominent "continue with"
     options, matching the reference product's own login screen. Already-logged-in visitors skip
-    straight past it. Telegram/WhatsApp still just open that platform directly (there's no
-    "sign in with Telegram/WhatsApp" that logs into THIS site without leaving it — Telegram's own
+    straight past it. Telegram still just opens the bot directly (there's no
+    "sign in with Telegram" that logs into THIS site without leaving it — Telegram's own
     Login Widget exists (see _verify_telegram_auth below) but was pulled from the UI after a real
     iOS Safari reliability complaint, see this file's module docstring); the payoff for choosing
     Google here shows up once you're actually signed in with it — see _resolve_user's own comment
@@ -669,7 +579,7 @@ def login(request: Request, next: str = "/apartments", uid: int | None = None):
     — found live: base.html's header only ever links to THIS route when it has no uid at all (see
     its own template), so a visitor with zero context (no uid, no session — the ordinary case for
     "hamburger menu → login") still can't be linked automatically; that part is inherent to how
-    OAuth works, not a bug — Google alone can't tell us which existing Telegram/WhatsApp account
+    OAuth works, not a bug — Google alone can't tell us which existing Telegram account
     it belongs to. See google_pending.html for the recovery path in that case."""
     uid = _trusted_link_uid(request, uid)
     if request.query_params.get("t") and uid is not None:
@@ -694,7 +604,6 @@ def login(request: Request, next: str = "/apartments", uid: int | None = None):
             "landing_css_urls": login_assets.get("css", []),
             "next": _safe_next(next),
             "uid": uid,
-            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
         },
     )
 
@@ -886,7 +795,7 @@ def auth_google_callback(
             session.commit()
         if user is None and link_uid is not None:
             # First time this Google account signs in while viewing a page via the visitor's own
-            # ?uid= deep link — link it to that SAME existing Telegram/WhatsApp-created account so
+            # ?uid= deep link — link it to that SAME existing Telegram-created account so
             # every later "Sign in with Google" resolves straight back to it. Same
             # already-linked-to-someone-else guard as the session_user_id branch right below:
             # without it, anyone who knows/guesses a victim's uid could open this route, sign in
@@ -931,10 +840,10 @@ def auth_google_callback(
         )
 
     if user_pk is None:
-        # A real Google account, but not yet linked to any Telegram/WhatsApp-created user, and no
+        # A real Google account, but not yet linked to any Telegram-created user, and no
         # ?uid= was in flight right now to link it to. Two real possibilities from here, so
         # google_pending.html now offers both explicitly instead of assuming one:
-        #  (a) this person already has a Telegram/WhatsApp-created account, just not reachable
+        #  (a) this person already has a Telegram-created account, just not reachable
         #      from this browser/session right now — they should LINK, not duplicate. The
         #      google_link_token (todira_common/google_link.py) below completes that the instant
         #      they do /start in the bot, entirely server-side, regardless of which browser/app
@@ -965,9 +874,9 @@ def auth_google_create_account(request: Request, next: str = "/apartments"):
     auth_google_callback's own comment on why both options exist). Reads the pending_google_sub
     stashed by the callback — never trusts a client-supplied google_sub, since that would let
     anyone claim an arbitrary Google identity by just POSTing here directly. Creates a real
-    standalone user (no telegram_user_id/whatsapp_phone_number at all — both stay nullable, see
+    standalone user (no telegram_user_id at all — it stays nullable, see
     User's own docstring) with a blank Filter (empty cities/no restrictions at all matches EVERY
-    listing per matching.py's own `if filter_row.cities:` check). Telegram/WhatsApp stay fully
+    listing per matching.py's own `if filter_row.cities:` check). Telegram stays fully
     optional afterward, addable anytime via /account's existing channel-link-code flow for whoever
     wants push notifications there too.
 
@@ -1045,7 +954,6 @@ def contact(request: Request, uid: int | None = None):
             "landing_js_url": contact_assets.get("js", ""),
             "landing_css_urls": contact_assets.get("css", []),
             "uid": uid,
-            "whatsapp_public_number": WHATSAPP_PUBLIC_NUMBER,
         },
     )
 
@@ -1228,13 +1136,12 @@ def go_to_listing_source(listing_id: int):
 def apartments(
     request: Request,
     uid: int | None = None,
-    wid: str | None = None,
     offset: int = 0,
     fragment: bool = False,
     listing: int | None = None,
 ):
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "apartments"})
         # See i18n.get_lang's own docstring: an identified visitor's own on-file language
@@ -1299,7 +1206,7 @@ def apartments(
         has_access = _effective_access(request, user)
         has_paid_access = _effective_paid_access(request, user)
         # 2026-09-27 real owner request, matching dorin.app: the "view apartment" link sent in a
-        # WhatsApp/Telegram match notification should land straight on THAT listing's own detail
+        # Telegram match notification should land straight on THAT listing's own detail
         # view, not just the generic /apartments grid. The listing that matched at send time might
         # no longer be in `matches` by the time it's clicked (filter changed, or it's since fallen
         # off the paginated window — matches is ordered newest-first with no guaranteed position),
@@ -1431,7 +1338,6 @@ def react_toggle(
     listing_id: int = Form(...),
     action: str = Form(...),
     uid: int | None = Form(None),
-    wid: str | None = Form(None),
     next: str = Form("/apartments"),
 ):
     """Website equivalent of the Telegram bot's ❤️/🙈 inline buttons (bot/handlers/liked.py's
@@ -1442,7 +1348,7 @@ def react_toggle(
     db_action = "liked" if action == "like" else "hidden"
 
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "apartments"})
 
@@ -1478,26 +1384,25 @@ def react_toggle(
 
 @app.post("/apartments/no-brokers")
 def toggle_no_brokers(
-    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+    request: Request, uid: int | None = Form(None)
 ):
     """Quick shortcut for Filter.no_brokers — the field already existed (a full checkbox on
     /filter), just had no one-click way to flip it from /apartments itself, unlike the reference
     product's own quick broker-filter link. A plain form POST, matching /account/notifications."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None or user.filter is None:
             return _render(request, "need_uid.html", {"target": "apartments"})
         user.filter.no_brokers = not user.filter.no_brokers
         session.commit()
 
-    return RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)
+    return RedirectResponse(_identity_redirect_url("/apartments", uid), status_code=303)
 
 
 @app.post("/filter/region")
 def filter_set_region(
     request: Request,
     uid: int | None = Form(None),
-    wid: str | None = Form(None),
     kind: str = Form(...),
     sw_lat: float | None = Form(None),
     sw_lng: float | None = Form(None),
@@ -1512,14 +1417,14 @@ def filter_set_region(
     narrows the listing set to that area ON TOP OF the existing city filter (both apply — AND, not
     OR), the same "further narrows, never widens" relationship city/price/rooms already have with
     each other. Persisted on Filter (not session-only) so it survives a reload, and since
-    matching.evaluate() is the SAME matcher /apartments and the bot's proactive WhatsApp/Telegram
+    matching.evaluate() is the SAME matcher /apartments and the bot's proactive Telegram
     notifications both use, a saved region also narrows which NEW listings notify the visitor —
     not just what /apartments shows on load."""
     if kind not in ("rect", "circle", "clear"):
         raise StarletteHTTPException(status_code=400)
 
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None or user.filter is None:
             return _render(request, "need_uid.html", {"target": "apartments"})
 
@@ -1544,7 +1449,7 @@ def filter_set_region(
             f.map_sw_lat = f.map_sw_lng = f.map_ne_lat = f.map_ne_lng = None
         session.commit()
 
-    return RedirectResponse(_identity_redirect_url("/apartments", uid, wid), status_code=303)
+    return RedirectResponse(_identity_redirect_url("/apartments", uid), status_code=303)
 
 
 def _is_owner_id(telegram_user_id: int | None) -> bool:
@@ -1587,8 +1492,7 @@ def _effective_access(request: Request, user: User) -> bool:
 def _effective_paid_access(request: Request, user: User) -> bool:
     """Same preview-override pattern as _effective_access, but backed by has_paid_access — a real
     subscription only, the 3-day trial doesn't count (2026-09-27 owner decision, see that
-    function's own docstring). Used only for the listing card's two contact buttons (WhatsApp
-    message / show phone number); every other access-gated surface keeps using _effective_access
+    function's own docstring). Used only for the listing card's contact button; every other access-gated surface keeps using _effective_access
     above, unchanged."""
     if _preview_as_free(request):
         return False
@@ -1642,9 +1546,9 @@ def _require_owner(request: Request, session) -> User | None:
 @app.get("/admin/users")
 def admin_users(request: Request):
     """Owner-only — lets the owner grant/revoke free access (independent of trial/payment) to any
-    user, from any device, regardless of which channel they signed up through (Telegram/WhatsApp/
-    Google are all just columns on the same `users` row) — a real, explicit request (2026-09-04),
-    not something Google/Telegram/WhatsApp each need their own separate tool for."""
+    user, from any device, regardless of which channel they signed up through (Telegram/Google are
+    both just columns on the same `users` row) — a real, explicit request (2026-09-04), not
+    something Google/Telegram each need their own separate tool for."""
     with get_session() as session:
         if _require_owner(request, session) is None:
             return _render(request, "404.html", {}, status_code=404)
@@ -1654,11 +1558,8 @@ def admin_users(request: Request):
         rows = [
             {
                 "id": u.id,
-                "label": u.first_name
-                or u.telegram_username
-                or u.whatsapp_phone_number
-                or f"#{u.id}",
-                "channel": "טלגרם" if u.telegram_user_id else ("ווצאפ" if u.whatsapp_phone_number else "—"),
+                "label": u.first_name or u.telegram_username or f"#{u.id}",
+                "channel": "טלגרם" if u.telegram_user_id else "—",
                 "has_google": u.google_sub is not None,
                 "free_access_granted": u.free_access_granted,
                 "has_access": has_full_access(u, is_owner=_is_owner_id(u.telegram_user_id)),
@@ -2363,11 +2264,11 @@ async def _process_takbull_payload(body: dict) -> Response:
 
 
 @app.get("/account")
-def account(request: Request, uid: int | None = None, wid: str | None = None):
-    """Cross-channel linking (todira_common/channel_link.py) — same uid/wid/session resolution as
+def account(request: Request, uid: int | None = None):
+    """Cross-channel linking (todira_common/channel_link.py) — same uid/session resolution as
     /apartments, /liked, /upgrade, /filter. Shows which channels are already linked to this user,
-    and — for whichever aren't — a fresh 15-minute link code plus ready-to-use WhatsApp/Telegram
-    deep links to send it from that channel, matching the reference product's own confirmed UX.
+    and — when Telegram isn't — a fresh 15-minute link code plus a ready-to-use Telegram deep link
+    to send it from there, matching the reference product's own confirmed UX.
 
     2026-09-06: also surfaces subscription status, a notifications on/off toggle, and payment
     history — all backed by data that already existed (trial_ends_at/paid_until/
@@ -2375,16 +2276,15 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
     website before tonight, prompted by the owner's own side-by-side look at the reference
     product's fuller account page."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
 
         has_telegram = user.telegram_user_id is not None
-        has_whatsapp = user.whatsapp_phone_number is not None
         has_google = user.google_sub is not None
 
         code = None
-        if not has_telegram or not has_whatsapp:
+        if not has_telegram:
             # 2026-09-27: real bug, live-confirmed — this used to call generate_link_code()
             # unconditionally on every single page load. generate_link_code REPLACES whatever
             # code was already stored (see its own docstring), so simply reloading /account after
@@ -2400,14 +2300,9 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
             )
             code = user.channel_link_code if still_valid else generate_link_code(session, user)
         redirect_uid = user.telegram_user_id
-        # 2026-09-25 security fix: reuse the SAME already-verified token this request came in on —
-        # see filter_view's own identical fix/comment for why re-deriving from
-        # user.whatsapp_phone_number would put the bare phone number back in the rendered page.
-        redirect_wid = wid if redirect_uid is None else None
 
         access = _effective_access(request, user)
         notifications_enabled = user.notifications_enabled
-        whatsapp_notifications_opted_in = user.whatsapp_notifications_opted_in
         payments = list(
             session.scalars(
                 select(Payment)
@@ -2420,14 +2315,14 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
     cancelled_refund_ils = request.session.pop("cancelled_refund_ils", None)
 
     # 2026-09-25: eighth page moved into a React island (website/landing-react/account.html) —
-    # same pattern as about()/accessibility()/.../login() above, but unlike those, the 4 POST
-    # actions below (cancel/resume-subscription, notifications, whatsapp-notifications) are
+    # same pattern as about()/accessibility()/.../login() above, but unlike those, the POST
+    # actions below (cancel/resume-subscription, notifications) are
     # deliberately UNCHANGED — still plain form-encoded POSTs redirecting back to /account, not
     # fetch. A full page reload after a subscription/notification change is completely fine UX
     # (that's exactly what already happens), so there's no reason to widen this into the
     # fetch-based rewrite /contact needed for its own real-time-feeling submit; Account.jsx's own
     # <form>s just reskin the presentation around the exact same native POSTs, with the same
-    # hidden uid/wid fields. Dates are pre-formatted server-side (dd/mm/yyyy, matching the
+    # hidden uid field. Dates are pre-formatted server-side (dd/mm/yyyy, matching the
     # template's own strftime calls exactly) rather than passed as raw datetimes for React to
     # reformat — one less thing that could drift from the original rendering. payment.plan/.status
     # are passed as their raw slugs (not translated here) — Account.jsx does the same
@@ -2442,33 +2337,22 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
             "landing_css_urls": account_assets.get("css", []),
             "account_config": {
                 "uid": redirect_uid,
-                "wid": redirect_wid,
                 # 2026-09-26 real owner report: logged in with Google, then had no way to log out
                 # short of an incognito window — /auth/logout already existed (used by base.html's
                 # own hamburger-menu link) but was never surfaced anywhere on /account itself.
-                # Gated on a REAL signed session (not just a ?uid=/?wid= deep link, which has no
+                # Gated on a REAL signed session (not just a ?uid= deep link, which has no
                 # session to end) — same check apartments()'s own via_session already uses.
                 "isLoggedInViaSession": request.session.get("user_id") == user.id,
                 "hasTelegram": has_telegram,
-                "hasWhatsapp": has_whatsapp,
                 "hasGoogle": has_google,
                 # 2026-09-26 real owner request: show WHICH identity each connected channel is,
                 # not just a bare "connected" checkmark — a user with several channels linked
                 # couldn't tell them apart otherwise. Purely informational display text on the
-                # user's OWN account page (they already know their own phone number/username/
-                # email) — a completely different thing from `redirect_wid` above, which is a
-                # signed, re-usable credential and must never be reconstructed from the raw
-                # phone number (see that field's own comment); this is just read-only text.
+                # user's OWN account page (they already know their own username/email).
                 "telegramUsername": user.telegram_username,
-                "whatsappPhoneNumber": user.whatsapp_phone_number,
                 "googleEmail": user.google_email,
                 "code": code,
                 "telegramLink": f"https://t.me/AmirDirotBot?start={code}" if code else None,
-                "whatsappLink": (
-                    f"https://wa.me/{WHATSAPP_PUBLIC_NUMBER}?text={code}"
-                    if code and WHATSAPP_PUBLIC_NUMBER
-                    else None
-                ),
                 # named displayIsOwner, not isOwner: _render() always overwrites an "is_owner" key
                 # with the real session-based nav-admin-link check, so a route-supplied one would
                 # be silently dropped if it kept that name.
@@ -2479,7 +2363,6 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
                 # 2026-10-13 (owner): how many days of access are left, counting today (None when none is running).
                 "daysLeft": _days_left(max((d for d in (user.paid_until, user.trial_ends_at) if d is not None), default=None)),
                 "notificationsEnabled": notifications_enabled,
-                "whatsappNotificationsOptedIn": whatsapp_notifications_opted_in,
                 "payments": [
                     {
                         "plan": payment.plan,
@@ -2569,7 +2452,6 @@ def _cancel_pass_config(session, user: User) -> dict | None:
 def account_cancel_pass(
     request: Request,
     uid: int | None = Form(None),
-    wid: str | None = Form(None),
     confirm: str | None = Form(None),
 ):
     """Cancels a one-time pass under terms section 10 (2026-10-13 owner request). Recomputes everything server-side
@@ -2577,13 +2459,13 @@ def account_cancel_pass(
     the owner on Telegram exactly how much to refund by hand in Takbull and for which transaction. Only the days this
     pass added are taken back, so an earlier pass's or the trial's remaining time is not lost."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
         now = dt.datetime.now(dt.timezone.utc)
         payment = _cancellable_pass_payment(session, user, now) if confirm == "yes" else None
         if payment is None:
-            return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+            return RedirectResponse(_identity_redirect_url("/account", uid), status_code=303)
         quote = cancellation_quote(payment.amount_ils, payment.paid_at, now)
         remaining = user.paid_until - PLAN_DURATIONS[payment.plan]
         user.paid_until = remaining if remaining > now else now
@@ -2607,12 +2489,12 @@ def account_cancel_pass(
         name, email, telegram_user_id = user.first_name or "-", user.google_email or "-", user.telegram_user_id
 
     _notify_owner_sync(name, email, "\n".join(lines), telegram_user_id)
-    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+    return RedirectResponse(_identity_redirect_url("/account", uid), status_code=303)
 
 
 @app.post("/account/cancel-subscription")
 def account_cancel_subscription(
-    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+    request: Request, uid: int | None = Form(None)
 ):
     """Stops future auto-renewal — the user KEEPS access until paid_until (the period already
     charged for isn't clawed back), same as any standard SaaS cancellation. Deliberately does NOT
@@ -2623,25 +2505,25 @@ def account_cancel_subscription(
     before 2026-10-02 it waited until AFTER, which let one more renewal charge through), so a resume
     clicked before then needs no API call at all and the recurring order keeps working."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
         user.cancel_at_period_end = True
         session.commit()
 
-    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+    return RedirectResponse(_identity_redirect_url("/account", uid), status_code=303)
 
 
 @app.post("/account/resume-subscription")
 def account_resume_subscription(
-    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+    request: Request, uid: int | None = Form(None)
 ):
     """Undoes a cancel-subscription click made before the current period actually ran out. Pure
     local-state flip, no Takbull call needed — see account_cancel_subscription's own comment on
     why the real Takbull-side cancel is deliberately deferred until the period actually ends, so
     there's nothing to "un-cancel" on Takbull's side as long as this is clicked before then."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
         if user.takbull_subscription_uniqid is None:
@@ -2649,75 +2531,51 @@ def account_resume_subscription(
             # subscription_housekeeping.py: it cancels a few days BEFORE paid_until so a renewal can
             # never be charged after the customer cancelled). Takbull has no un-cancel, so there is
             # nothing to resume - the customer keeps access until paid_until and can subscribe again.
-            return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+            return RedirectResponse(_identity_redirect_url("/account", uid), status_code=303)
         user.cancel_at_period_end = False
         session.commit()
 
-    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+    return RedirectResponse(_identity_redirect_url("/account", uid), status_code=303)
 
 
 @app.post("/account/notifications")
 def account_notifications_toggle(
-    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
+    request: Request, uid: int | None = Form(None)
 ):
     """Flips User.notifications_enabled — the field already existed (used by scraper/notifier.py
     to skip a paused user) but had no UI anywhere to change it before tonight. A plain form POST,
     not a JS toggle-switch, matching this site's own mostly-server-rendered pattern elsewhere
     (/preview/toggle, /filter)."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "account"})
         user.notifications_enabled = not user.notifications_enabled
         session.commit()
 
-    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
+    return RedirectResponse(_identity_redirect_url("/account", uid), status_code=303)
 
 
-@app.post("/account/whatsapp-notifications")
-def account_whatsapp_notifications_toggle(
-    request: Request, uid: int | None = Form(None), wid: str | None = Form(None)
-):
-    """Flips User.whatsapp_notifications_opted_in — the explicit opt-in for proactive WhatsApp
-    Message Template pushes (2026-09-08), kept separate from /account/notifications above on
-    purpose (see models.py's own docstring: notifications_enabled has always meant "Telegram
-    push," and Meta's Utility-template review expects a genuine, channel-specific opt-in, not an
-    existing generic flag silently repurposed). account.html only renders this toggle for a user
-    with has_whatsapp True, but this route doesn't re-check that itself — flipping the field on a
-    user with no whatsapp_phone_number is harmless, see scraper/notifier.py's _whatsapp_eligible."""
-    with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
-        if user is None:
-            return _render(request, "need_uid.html", {"target": "account"})
-        user.whatsapp_notifications_opted_in = not user.whatsapp_notifications_opted_in
-        session.commit()
-
-    return RedirectResponse(_identity_redirect_url("/account", uid, wid), status_code=303)
-
-
-def _identity_redirect_url(path: str, uid: int | None, wid: str | None) -> str:
-    """A redirect target back to `path` carrying whichever low-trust identity got the visitor
-    there — uid takes priority exactly like _resolve_user does, wid as the WhatsApp-only fallback.
+def _identity_redirect_url(path: str, uid: int | None) -> str:
+    """A redirect target back to `path` carrying the low-trust uid that got the visitor there.
     Originally /filter-specific; generalized 2026-09-06 for /account's own notifications-toggle
-    redirect rather than duplicating the same three-branch logic a second time."""
+    redirect rather than duplicating the same logic a second time."""
     if uid:
         return f"{path}?uid={uid}"
-    if wid:
-        return f"{path}?wid={wid}"
     return path
 
 
-def _filter_redirect_url(uid: int | None, wid: str | None) -> str:
-    return _identity_redirect_url("/filter", uid, wid)
+def _filter_redirect_url(uid: int | None) -> str:
+    return _identity_redirect_url("/filter", uid)
 
 
 @app.get("/filter")
 def filter_view(
-    request: Request, uid: int | None = None, wid: str | None = None, welcome: bool = False,
+    request: Request, uid: int | None = None, welcome: bool = False,
     error: str | None = None,
 ):
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "filter"})
         # See i18n.get_lang's own docstring: an identified visitor's own on-file language
@@ -2740,12 +2598,6 @@ def filter_view(
                 # filter.html's own cities-error-banner block and filter_update's docstring.
                 "cities_error": error == "cities",
                 "uid": user.telegram_user_id,
-                # 2026-09-25 security fix: reuse the SAME already-verified token this request came
-                # in on — never re-derive from user.whatsapp_phone_number, which would put the bare
-                # phone number back in the rendered page (defeating generate_wid_token entirely,
-                # since the next form POST would carry it right back to _resolve_user, which now
-                # rejects anything that isn't a real signed token).
-                "wid": wid if user.telegram_user_id is None else None,
                 "user": user,
                 # sorted for display only — CITIES itself stays in its original order since other
                 # code (matching, the bot's own city picker) reads it as-is.
@@ -2791,7 +2643,6 @@ def _parse_float_or_none(raw: str) -> float | None:
 def filter_update(
     request: Request,
     uid: int | None = Form(None),
-    wid: str | None = Form(None),
     cities: list[str] = Form([]),
     all_cities: str | None = Form(None),
     price_min: str = Form(""),
@@ -2839,17 +2690,17 @@ def filter_update(
     when set, it always wins over whatever was also submitted in `cities` (checked or not — the
     front end keeps them mutually exclusive, but the server doesn't trust that alone)."""
     with get_session() as session:
-        # session-first (like every other page), uid/wid as the low-trust fallback for a
+        # session-first (like every other page), uid as the low-trust fallback for a
         # bot-deep-link visitor with no real login yet — 2026-09-05 fix: this used to require uid
         # unconditionally (Form(...)), which a session-only Google-standalone account (no
         # telegram_user_id at all) could never satisfy, breaking their own filter form with a 422
-        # on every save. wid (2026-09-06) is the same idea for a WhatsApp-only account.
-        user = _resolve_user(request, session, uid, wid)
+        # on every save.
+        user = _resolve_user(request, session, uid)
         if user is None or user.filter is None:
-            return RedirectResponse(_filter_redirect_url(uid, wid), status_code=303)
+            return RedirectResponse(_filter_redirect_url(uid), status_code=303)
 
         if welcome is not None and all_cities is None and not any(c in LOCALITY_SET for c in cities):
-            error_url = _identity_redirect_url("/filter", uid, wid)
+            error_url = _identity_redirect_url("/filter", uid)
             error_url += ("&" if "?" in error_url else "?") + "welcome=1&error=cities"
             return RedirectResponse(error_url, status_code=303)
 
@@ -2886,11 +2737,11 @@ def filter_update(
     # 2026-09-26: a welcome-flow save continues the onboarding flow (step 2) instead — see this
     # function's own docstring.
     next_path = "/onboarding/notifications" if welcome is not None else "/apartments"
-    return RedirectResponse(_identity_redirect_url(next_path, uid, wid), status_code=303)
+    return RedirectResponse(_identity_redirect_url(next_path, uid), status_code=303)
 
 
 @app.get("/onboarding/notifications")
-def onboarding_notifications(request: Request, uid: int | None = None, wid: str | None = None):
+def onboarding_notifications(request: Request, uid: int | None = None):
     """Step 2 of 3 in the dorin.app-style first-time onboarding flow (real owner request, 33-page
     PDF walkthrough) — reached only via filter_update's own welcome-flow redirect, right after a
     new user saves their first filter. Optional, matching dorin exactly: a real CTA to connect the
@@ -2898,7 +2749,7 @@ def onboarding_notifications(request: Request, uid: int | None = None, wid: str 
     step 3 without connecting anything. Reuses /account's own generate_link_code mechanism (same
     15-minute code, same deep link shape) rather than inventing a second connect flow."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "filter"})
         # Same fix as /account's own identical bug (see that route's own comment): reuse a still-
@@ -2918,7 +2769,6 @@ def onboarding_notifications(request: Request, uid: int | None = None, wid: str 
             "onboarding_notifications.html",
             {
                 "uid": user.telegram_user_id,
-                "wid": wid if user.telegram_user_id is None else None,
                 "already_connected": user.telegram_user_id is not None,
                 "telegram_link": f"https://t.me/AmirDirotBot?start={code}" if code else None,
             },
@@ -2927,7 +2777,7 @@ def onboarding_notifications(request: Request, uid: int | None = None, wid: str 
 
 
 @app.get("/onboarding/trial")
-def onboarding_trial(request: Request, uid: int | None = None, wid: str | None = None):
+def onboarding_trial(request: Request, uid: int | None = None):
     """Step 3 of 3 — the free-trial-activated confirmation screen. No action needed from the user
     and nothing to activate here: every account already gets trial_ends_at = now() + 3 days
     automatically at creation (models.py's own server_default), matching dorin's own "שבוע פרימיום
@@ -2935,7 +2785,7 @@ def onboarding_trial(request: Request, uid: int | None = None, wid: str | None =
     before this onboarding flow existed) — this screen is purely the celebratory confirmation dorin
     itself shows right after its own step 2, using the account's real trial_ends_at date."""
     with get_session() as session:
-        user = _resolve_user(request, session, uid, wid)
+        user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "filter"})
         return _render(
@@ -2943,7 +2793,6 @@ def onboarding_trial(request: Request, uid: int | None = None, wid: str | None =
             "onboarding_trial.html",
             {
                 "uid": user.telegram_user_id,
-                "wid": wid if user.telegram_user_id is None else None,
                 "trial_ends_at": user.trial_ends_at,
             },
             known_lang=user.language,

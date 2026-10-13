@@ -1,11 +1,9 @@
-"""Cross-channel account linking — a short `ref_xxxxxx` code that attaches a NEW channel
-(WhatsApp phone number, Telegram user id) to an EXISTING user, matching the reference product's
-own confirmed UX: the website generates a code for an already-logged-in user, who then sends it
-FROM the channel they want to add (a plain WhatsApp text message, or opens it as a Telegram
-`/start` deep-link payload — `t.me/<bot>?start=ref_xxxxxx`).
+"""Cross-channel account linking — a short `ref_xxxxxx` code that attaches a Telegram account to an
+EXISTING user (e.g. one who signed up with Google on the website), matching the reference product's
+own confirmed UX: the website generates a code for an already-logged-in user, who then opens it as a
+Telegram `/start` deep-link payload — `t.me/<bot>?start=ref_xxxxxx`.
 
-Consumers: website/main.py's /account (generation) and bot/handlers/start.py +
-website/whatsapp_webhook.py (consumption, one each per channel).
+Consumers: website/main.py's /account (generation) and bot/handlers/start.py (consumption).
 """
 from __future__ import annotations
 

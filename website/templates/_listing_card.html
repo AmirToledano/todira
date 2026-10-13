@@ -21,7 +21,6 @@
         <input type="hidden" name="listing_id" value="{{ l.id }}">
         <input type="hidden" name="action" value="like">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
         <input type="hidden" name="next" value="{{ _next }}">
         {# 2026-09-24 real owner report, comparing directly against dorin.app's own card: the
            emoji-only button "looks blurry, not clean/professional" — same bug class the homepage
@@ -42,7 +41,6 @@
         <input type="hidden" name="listing_id" value="{{ l.id }}">
         <input type="hidden" name="action" value="hide">
         {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-        {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
         <input type="hidden" name="next" value="{{ _next }}">
         {# Simple two-curve eye (open) / eye+diagonal-line (hidden) — plain geometry rather than a
            hand-transcribed icon-font path, so there's nothing here that needs verifying against
@@ -167,7 +165,7 @@
        in the detail view (.detail-only, see style.css — hidden on the small grid card, shown once
        cloned into .apt-detail-body), never on the grid card itself. Same has_access gate as the
        footer's own view-btn/locked link just below — this project never stores the poster's real
-       phone/WhatsApp (see this file's own comment further up), so a has_access viewer's tap here
+       phone number (see this file's own comment further up), so a has_access viewer's tap here
        goes to the listing's own original source page, same target as "view listing"; a non-access
        viewer's tap opens the contact-paywall modal (apartments.html) instead of navigating.
        data-listing-go-url (2026-09-26 follow-up, explicit owner call after reviewing dorin.app's
@@ -188,7 +186,7 @@
        trial, same as before. #}
     <div class="contact-actions detail-only" data-listing-go-url="/go/{{ l.id }}">
       {% if has_paid_access %}
-      {# 2026-10-07: ONE honest button. The old pair ("Send WhatsApp message" / "Show phone number") both just opened the
+      {# 2026-10-07: ONE honest button. The old pair ("Send a message" / "Show phone number") both just opened the
          source page, because none of the sources hands out the poster's phone in the page we fetch (verified live
          2026-09-26: Yad2 uses virtual numbers behind its own API, Komo reveals the number on a click, Homeless shows only a
          first name), so the labels promised something this page cannot do. #}

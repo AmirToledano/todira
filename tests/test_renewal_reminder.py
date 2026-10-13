@@ -1,6 +1,5 @@
 """2026-10-05: the "your access ends soon" reminder (scraper/renewal_reminder.py). The owner asked that it
-really works, so this covers who is picked, what is sent on which channel, that nothing is ever sent
-outside the free WhatsApp window, and that a period is reminded about exactly once."""
+really works, so this covers who is picked, what is sent, and that a period is reminded about exactly once."""
 from __future__ import annotations
 
 import asyncio
@@ -40,7 +39,6 @@ class _Session:
 def _user(**kw):
     base = dict(
         id=1, telegram_user_id=111, language="he", paid_until=PAID_UNTIL, renewal_reminder_for=None,
-        whatsapp_phone_number=None, whatsapp_notifications_opted_in=False, whatsapp_last_inbound_at=None,
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -70,9 +68,7 @@ def _reset(monkeypatch):
     _Bot.sent = []
     _Bot.error = None
     monkeypatch.setattr(rr, "Bot", _Bot)
-    monkeypatch.setattr(rr.whatsapp_guard, "is_paused", lambda session: False)
     monkeypatch.setattr(rr, "signed_login_query", lambda uid: "t=TOKEN")
-    monkeypatch.setattr(rr, "generate_wid_token", lambda phone: "WIDTOKEN")
 
 
 def _run(users, session=None):
@@ -110,36 +106,12 @@ def test_other_telegram_failure_is_retried_next_run():
     assert session.commits == 0
 
 
-def test_whatsapp_only_user_is_reminded_only_inside_the_free_window():
-    wa_calls = []
-    with patch.object(rr.whatsapp_client, "send_text_message", lambda to, body: wa_calls.append((to, body)) or True):
-        closed = _user(
-            telegram_user_id=None, whatsapp_phone_number="972500000000", whatsapp_notifications_opted_in=True,
-            whatsapp_last_inbound_at=NOW - dt.timedelta(hours=30),
-        )
-        sent, _ = _run([closed])
-        assert sent == 0 and wa_calls == []  # outside the window: nothing, and not marked
-        assert closed.renewal_reminder_for is None
-
-        open_ = _user(
-            telegram_user_id=None, whatsapp_phone_number="972500000000", whatsapp_notifications_opted_in=True,
-            whatsapp_last_inbound_at=NOW - dt.timedelta(hours=2),
-        )
-        sent, _ = _run([open_])
-        assert sent == 1 and len(wa_calls) == 1
-        assert "wid=WIDTOKEN" in wa_calls[0][1]
-        assert open_.renewal_reminder_for == PAID_UNTIL
-
-
-def test_whatsapp_user_not_opted_in_is_never_messaged():
-    wa_calls = []
-    with patch.object(rr.whatsapp_client, "send_text_message", lambda to, body: wa_calls.append(1) or True):
-        user = _user(
-            telegram_user_id=None, whatsapp_phone_number="972500000000", whatsapp_notifications_opted_in=False,
-            whatsapp_last_inbound_at=NOW,
-        )
-        sent, _ = _run([user])
-    assert sent == 0 and wa_calls == []
+def test_a_user_without_telegram_is_not_messaged_and_is_retried_next_run():
+    user = _user(telegram_user_id=None)
+    sent, session = _run([user])
+    assert sent == 0
+    assert user.renewal_reminder_for is None
+    assert session.commits == 0
 
 
 def test_selection_query_is_valid_sql_and_covers_the_rules():

@@ -1,6 +1,4 @@
-"""Matches listings against active user filters and sends notifications — Telegram always, plus
-(2026-10-02) a free-form WhatsApp message for users who linked WhatsApp, opted in AND whose 24h
-customer-service window is open (see _whatsapp_eligible) — never a paid template. Two notification cases:
+"""Matches listings against active user filters and sends notifications on Telegram. Two notification cases:
 
 1. A brand-new listing (or an existing listing whose price just changed into someone's budget)
    gets the normal "new match" notification, once per user, ever (reason='new').
@@ -24,27 +22,18 @@ import datetime as dt
 import logging
 import os
 
-import httpx
-
 from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from todira_common import text_features, whatsapp_client, whatsapp_guard, yad2_detail
+from todira_common import text_features, yad2_detail
 from todira_common.access import access_state, has_full_access
-from todira_common.bot_strings import bot_text
-from todira_common.cards import (
-    format_caption,
-    format_caption_whatsapp,
-        send_listing_card,
-)
+from todira_common.cards import format_caption, send_listing_card
 from todira_common.enums import NotificationReason, Source
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
 from todira_common.models import Filter, Listing, SentNotification, User
 from todira_common.uid_token import signed_login_query
-from todira_common.whatsapp_window import window_open
-from todira_common.wid_token import generate_wid_token
 
 
 logger = logging.getLogger(__name__)
@@ -54,13 +43,6 @@ logger = logging.getLogger(__name__)
 # bot's own on-demand handlers show (todira_common.cards.format_caption, 2026-09-05).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
 OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID")
-
-# WhatsApp sends aren't subject to Telegram's same-chat flood control (SEND_DELAY_SECONDS exists
-# specifically for that), but a short pause between API calls is still cheap insurance against
-# tripping the Cloud API's own per-number rate limit during a burst of matches.
-WHATSAPP_SEND_DELAY_SECONDS = 0.3
-# A WhatsApp interactive message body is capped at 1024 characters.
-WHATSAPP_INTERACTIVE_BODY_LIMIT = 1024
 
 
 def _has_access_for(user: User) -> bool:
@@ -130,64 +112,6 @@ def _already_notified(session: Session, user_id: int, listing_id: int, reason: s
     )
 
 
-def _whatsapp_eligible(user: User) -> bool:
-    """Whether `user` may be sent a WhatsApp listing RIGHT NOW: a linked number, their own opt-in
-    (see models.py's User.whatsapp_notifications_opted_in), AND an open 24h customer-service window
-    (todira_common/whatsapp_window.py). The last condition is what keeps WhatsApp free: Meta bills
-    template messages sent outside the window, so this project never sends one — a user whose window
-    is closed simply gets nothing until they next reply (the hourly check-in in
-    scraper/whatsapp_checkin.py asks for exactly that), and whatever they missed is summarized in one
-    link by website/whatsapp_webhook.py when they do."""
-    return bool(
-        user.whatsapp_phone_number
-        and user.whatsapp_notifications_opted_in
-        and window_open(user.whatsapp_last_inbound_at)
-    )
-
-
-def _send_whatsapp_match_message(user: User, listing: Listing) -> bool:
-    """The proactive "new match" WhatsApp push: one FREE-FORM message — the listing's real photo,
-    every field format_caption_whatsapp shows, and a button to the listing page (signed ?wid= login
-    link, since a WhatsApp-only user has no other way to land logged in; see website/main.py's
-    _resolve_user). Free-form, so only valid inside the 24h window — callers gate on
-    _whatsapp_eligible. Blocking (downloads/composites a photo, then two HTTP calls): the caller
-    MUST run it via asyncio.to_thread, same contract as get_listing_photo_jpeg_bytes."""
-    lang = user.language or DEFAULT_LANG
-    has_access = _has_access_for(user)
-    wid = generate_wid_token(user.whatsapp_phone_number)
-    view_url = f"{WEBSITE_URL}/apartments?wid={wid}&listing={listing.id}"
-    upgrade_url = f"{WEBSITE_URL}/upgrade?wid={wid}"
-    body = format_caption_whatsapp(
-        listing,
-        has_access=has_access,
-        upgrade_url=upgrade_url,
-        view_url=view_url,
-        link_in_body=False,
-        limit=WHATSAPP_INTERACTIVE_BODY_LIMIT,
-        lang=lang,
-        access_state=_access_state_for(user),
-    )
-    # Meta needs the header photo as a public link, so the website serves the listing's photo/collage
-    # (website/main.py's /media/listing/{id}.jpg). Requesting it here first builds and caches it, so
-    # Meta's own fetch a moment later is instant instead of waiting on the collage download.
-    photo_url = f"{WEBSITE_URL}/media/listing/{listing.id}.jpg"
-    try:
-        warm = httpx.get(photo_url, timeout=45.0)
-        warm.raise_for_status()
-    except httpx.HTTPError:
-        logger.warning("Could not prepare the WhatsApp photo for listing %s — skipping this send", listing.id)
-        return False
-    return whatsapp_client.send_image_cta_message(
-        user.whatsapp_phone_number,
-        image_url=photo_url,
-        body=body,
-        button_text=bot_text(
-            "whatsapp.view_listing_button" if has_access else "whatsapp.upgrade_button", lang
-        ),
-        url=view_url if has_access else upgrade_url,
-    )
-
-
 async def _maybe_fetch_description(session: Session, listing: Listing, recipients: list[User]) -> None:
     """Just-in-time detail fetch (kept under its old name): called after matching is done and right before the cards go
     out, so a Yad2 listing whose details were never read (over the eager per-run cap, the earlier attempt failed, or it
@@ -252,27 +176,11 @@ async def _notify_new_matches(
 
     `only_telegram_user_id`: see run_notifications' own docstring — when set, every OTHER user is
     silently skipped (never marked as notified, so they still get the real notification once this
-    restriction is lifted on a later run).
-
-    2026-09-27 through 2026-09-30: this used to cap WhatsApp to one send per user per run (a
-    shared `whatsapp_sent_user_ids` set threaded through every call in the run), added after a
-    real report that a broad filter flooded WhatsApp with one push per matching listing at once.
-    Real owner report the other direction, 2026-09-30: the cap's own claim that the rest "get
-    picked up on the next run instead" was false whenever the SAME user also had Telegram linked —
-    Telegram sends uncapped and immediately writes the shared, channel-agnostic
-    SentNotification(reason=NEW) row for every matching listing in this run, which is exactly the
-    row `_already_notified` checks to decide whether a listing is even reconsidered on a future
-    run. A user with both channels linked (the common case) never got a "next run" for the
-    listings WhatsApp skipped — they were silently dropped from WhatsApp forever, not deferred.
-    Explicit owner call: WhatsApp should be a full notification channel exactly like Telegram and
-    the website, not a throttled one — cap removed, every match now sends on every eligible
-    channel."""
+    restriction is lifted on a later run)."""
     matched = 0
     sent = 0
     newly_notified_user_ids: set[int] = set()
     to_notify: list[tuple[Filter, User]] = []
-    # Circuit breaker (todira_common/whatsapp_guard.py): fail-closed, read once per listing.
-    wa_paused = whatsapp_guard.is_paused(session)
     for filter_row in _candidate_filters(session, listing):
         if not evaluate(filter_row, listing).matched:
             continue
@@ -286,49 +194,32 @@ async def _notify_new_matches(
             only_telegram_user_id
         ):
             continue
-        if user.telegram_user_id is None and (wa_paused or not _whatsapp_eligible(user)):
-            # No channel to actually push through. A Google-only standalone account (2026-09-05)
-            # legitimately has neither; a WhatsApp-only or -linked account has a channel to send
-            # to but hasn't opted in yet (see _whatsapp_eligible). Either way they can still check
-            # the website manually, or link Telegram / opt in via /account for a push. Skipping
-            # here (rather than letting a send fail on a missing/ineligible destination every
-            # single time) avoids repeated wasted API calls/log noise for the exact same listing
-            # on every future scrape run, since a failed send never writes a SentNotification row
-            # to remember "already tried."
+        if user.telegram_user_id is None:
+            # No channel to push through: a Google-only standalone account (2026-09-05) checks the
+            # website instead, or links Telegram via /account. Skipping here (rather than letting a
+            # send fail every single time) avoids repeated wasted API calls/log noise for the same
+            # listing on every future scrape run, since a failed send never writes a SentNotification
+            # row to remember "already tried."
             continue
         to_notify.append((filter_row, user))
 
     await _complete_card_fields(session, listing, [user for _f, user in to_notify])
 
     for filter_row, user in to_notify:
-        sent_on_any_channel = False
-        if user.telegram_user_id is not None:
-            user_lang = user.language or DEFAULT_LANG
-            caption = format_caption(
-                listing,
-                has_access=_has_access_for(user),
-                upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
-                view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
-                lang=user_lang,
-                access_state=_access_state_for(user),
-            )
-            if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
-                sent_on_any_channel = True
-            await asyncio.sleep(SEND_DELAY_SECONDS)
-        if not wa_paused and _whatsapp_eligible(user):
-            # asyncio.to_thread: _send_whatsapp_match_message downloads/composites a real photo and
-            # makes HTTP calls — genuinely blocking work that must never run directly on this
-            # event loop, same reasoning as send_listing_card's own asyncio.to_thread calls around
-            # _build_collage_sync.
-            if await asyncio.to_thread(_send_whatsapp_match_message, user, listing):
-                sent_on_any_channel = True
-            await asyncio.sleep(WHATSAPP_SEND_DELAY_SECONDS)
-        if sent_on_any_channel:
-            # One row per user per listing regardless of how many channels it went out on — this
-            # only ever means "has this user already been told about this listing," matching
-            # _already_notified's own reason-only (not channel-specific) lookup key. A user linked
-            # on both channels who's opted into WhatsApp alerts gets both pushes the first time a
-            # listing matches, but is never re-notified on a later run either way.
+        user_lang = user.language or DEFAULT_LANG
+        caption = format_caption(
+            listing,
+            has_access=_has_access_for(user),
+            upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
+            view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
+            lang=user_lang,
+            access_state=_access_state_for(user),
+        )
+        sent_ok = await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang)
+        await asyncio.sleep(SEND_DELAY_SECONDS)
+        if sent_ok:
+            # One row per user per listing — "has this user already been told about this listing,"
+            # matching _already_notified's own lookup key, so they're never re-notified on a later run.
             session.add(
                 SentNotification(
                     user_id=filter_row.user_id,
@@ -358,12 +249,6 @@ async def _notify_price_change(
     increase even though its drop notification already went out — and vice versa. One
     notification per user per listing PER DIRECTION in v1 — if the same listing drops twice in a
     row, that's a documented simplification, not a bug (revisit if it matters).
-
-    Telegram-only, deliberately, unlike _notify_new_matches (2026-09-08): a price-change WhatsApp
-    push would need its own separate Meta-approved template — "your saved search matched" and
-    "the price on a listing you were already shown just changed" are different enough content
-    that the same template copy can't honestly cover both. Not built until there's a second
-    approved template to point at; revisit then.
 
     `only_telegram_user_id`: see run_notifications' own docstring.
 
@@ -405,9 +290,7 @@ async def _notify_price_change(
         ):
             continue
         if user.telegram_user_id is None:
-            # Price-change re-notifications are Telegram-only — see this function's own
-            # docstring for why (no WhatsApp template covers this content yet).
-            continue
+            continue  # no Telegram to push to (a website-only account)
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user_id))
         if filter_row is None or not evaluate(filter_row, listing).matched:
             continue

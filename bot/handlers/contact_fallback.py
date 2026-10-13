@@ -15,8 +15,7 @@ Three cases, in order:
    gemini_client.chat_with_existing_user instead of the plain "type /start" redirect below — found
    live by the owner comparing against the reference bot, whose already-onboarded users get real,
    contextual, varied replies (and can edit their filter conversationally) instead of a message
-   that doesn't even acknowledge they're already registered. Mirrors website/whatsapp_webhook.py's
-   identical fix for the same underlying gap on that channel.
+   that doesn't even acknowledge they're already registered.
 3. No filter yet and not a help request — before this fix, such a message silently vanished
    entirely (found 2026-09-01, the owner tried it himself via the website's Telegram-contact link
    and got nothing back); this is the original plain redirect to /start.

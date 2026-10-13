@@ -1,7 +1,7 @@
 """Extracts structured fields (price/rooms/floor/square_meters + a few amenity booleans) out of a
 Facebook Group post's free-text Hebrew description — the ONLY thing every other source
 (Yad2/Komo/Homeless/Marketplace) gets for free from a structured field, a Group post has to be
-guessed at from prose a human typed by hand, same as a WhatsApp message.
+guessed at from prose a human typed by hand, same as a chat message.
 
 2026-09-21: built by regex/keyword rules, matching this whole project's existing style (see
 yad2_client.normalize's own _FEED_TAG_TO_FIELD/_HEBREW_PROPERTY_TYPE_MAP — plain pattern matching,

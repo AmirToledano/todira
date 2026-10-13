@@ -1,10 +1,10 @@
 """Tests for website/main.py's /account — the cross-channel linking page (todira_common/
-channel_link.py): shows which channels (Telegram/WhatsApp/Google) are already linked to the
-resolved user, and generates a fresh code + deep links for whichever aren't.
+channel_link.py): shows which channels (Telegram/Google) are already linked to the
+resolved user, and generates a fresh code + a Telegram deep link when Telegram isn't.
 
 2026-09-25: /account became the site's eighth React island (website/landing-react/account.html).
-Unlike the other converted pages, its 4 POST actions (cancel/resume-subscription, notifications,
-whatsapp-notifications) are DELIBERATELY UNCHANGED — still plain form-encoded POSTs redirecting
+Unlike the other converted pages, its POST actions (cancel/resume-subscription, notifications)
+are DELIBERATELY UNCHANGED — still plain form-encoded POSTs redirecting
 back to /account, not fetch (see account()'s own comment in main.py for why) — so every POST test
 below is untouched from before this conversion. GET tests now extract and assert against the
 `account_config` JSON object main.py injects into window.__TODIRA_PAGE__ (via `| tojson` — see
@@ -18,6 +18,7 @@ website/main.py shares a basename with scraper/main.py so it can't go through a 
 """
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import importlib.util
 import json
@@ -27,7 +28,7 @@ import sys
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -71,13 +72,11 @@ class _FakeUser:
         self,
         id,
         telegram_user_id=None,
-        whatsapp_phone_number=None,
         google_sub=None,
         free_access_granted=False,
         trial_ends_at=None,
         paid_until=None,
         notifications_enabled=True,
-        whatsapp_notifications_opted_in=False,
         takbull_subscription_uniqid=None,
         cancel_at_period_end=False,
         telegram_username=None,
@@ -89,13 +88,11 @@ class _FakeUser:
     ):
         self.id = id
         self.telegram_user_id = telegram_user_id
-        self.whatsapp_phone_number = whatsapp_phone_number
         self.google_sub = google_sub
         self.free_access_granted = free_access_granted
         self.trial_ends_at = trial_ends_at
         self.paid_until = paid_until
         self.notifications_enabled = notifications_enabled
-        self.whatsapp_notifications_opted_in = whatsapp_notifications_opted_in
         self.takbull_subscription_uniqid = takbull_subscription_uniqid
         self.cancel_at_period_end = cancel_at_period_end
         self.telegram_username = telegram_username
@@ -188,7 +185,7 @@ def test_account_requires_a_resolvable_user(client):
 
 
 def test_account_renders_react_island(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
@@ -199,19 +196,32 @@ def test_account_renders_react_island(client):
     assert "/static/landing/assets/account-" in resp.text  # its OWN entry, not another page's
 
 
-def test_account_generates_a_code_when_a_channel_is_missing(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None, google_sub=None)
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
+def _account_for_session_user(user, **patches):
+    """/account for a visitor with a real signed session and no Telegram (a Google-only account) —
+    the only kind of account that still gets a link code. A raw Request, like
+    test_account_config_shows_logged_in_via_session_for_a_real_signed_session below, since the
+    TestClient's session cookie can't be set without a real login round-trip."""
+    from starlette.requests import Request as StarletteRequest
 
-    config = _account_config(resp.text)
+    fake_session = _FakeSession(users_by_pk={user.id: user})
+    scope = {
+        "type": "http", "method": "GET", "path": "/account", "session": {"user_id": user.id},
+        "query_string": b"", "headers": [], "app": website_main.app,
+    }
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        with contextlib.ExitStack() as stack:
+            for name, value in patches.items():
+                stack.enter_context(patch.object(website_main, name, value))
+            resp = website_main.account(StarletteRequest(scope))
+    return _account_config(resp.body.decode())
+
+
+def test_account_generates_a_code_when_telegram_is_missing():
+    user = _FakeUser(id=2, google_sub="g-sub")
+    config = _account_for_session_user(user, generate_link_code=lambda session, u: _FIXED_CODE)
     assert config["code"] == _FIXED_CODE
-    # telegramLink is still built whenever a code exists (WhatsApp is the missing channel here),
-    # but hasTelegram=True means Account.jsx never renders it as a connect button — hasTelegram
-    # takes precedence in its own if/elif, same as the original template's {% if has_telegram %}
-    # ... {% elif telegram_link %} ... branching.
-    assert config["hasTelegram"] is True
+    assert config["hasTelegram"] is False
+    assert config["telegramLink"] == f"https://t.me/AmirDirotBot?start={_FIXED_CODE}"
 
 
 def test_account_reuses_an_existing_still_valid_code_instead_of_regenerating():
@@ -220,137 +230,28 @@ def test_account_reuses_an_existing_still_valid_code_instead_of_regenerating():
     already stored, so simply reloading /account after already sending a code (a completely
     natural thing to do while checking whether the link worked) silently orphaned the code
     already sent — resolve_link_code just treats the now-unmatched code as "not a link code" and
-    falls through, with no error surfaced anywhere. A live diagnostic against the owner's own
-    account confirmed exactly this: the code he'd already sent via WhatsApp no longer matched
-    what /account had moved on to showing. Doesn't use the `client` fixture, which blanket-patches
-    generate_link_code for every other test in this file — this test needs to assert it is NOT
-    called at all."""
+    falls through, with no error surfaced anywhere."""
     user = _FakeUser(
-        id=2, telegram_user_id=222, whatsapp_phone_number=None,
-        channel_link_code="ref_existing",
+        id=2, google_sub="g-sub", channel_link_code="ref_existing",
         channel_link_code_expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10),
     )
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with (
-        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "generate_link_code") as mock_generate,
-    ):
-        client_no_patch = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
-        resp = client_no_patch.get("/account", params={"uid": 222})
-
-    mock_generate.assert_not_called()
-    config = _account_config(resp.text)
+    generate = MagicMock()
+    config = _account_for_session_user(user, generate_link_code=generate)
+    generate.assert_not_called()
     assert config["code"] == "ref_existing"
 
 
 def test_account_regenerates_an_expired_code():
     user = _FakeUser(
-        id=2, telegram_user_id=222, whatsapp_phone_number=None,
-        channel_link_code="ref_old",
+        id=2, google_sub="g-sub", channel_link_code="ref_old",
         channel_link_code_expires_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=1),
     )
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with (
-        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "generate_link_code", lambda session, user: _FIXED_CODE),
-    ):
-        client_no_patch = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
-        resp = client_no_patch.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
+    config = _account_for_session_user(user, generate_link_code=lambda session, u: _FIXED_CODE)
     assert config["code"] == _FIXED_CODE
 
 
-def test_account_config_hides_telegram_connect_button_precedence_matches_original_template(client):
-    """Regression for a test-writing mistake caught while converting this page: telegramLink is
-    ALWAYS built from `code` whenever one exists, regardless of whether Telegram itself is already
-    linked — Account.jsx (like the original template) relies on hasTelegram taking precedence over
-    a non-null telegramLink in its own if/elif, not on telegramLink being null."""
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None)
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["hasTelegram"] is True
-    assert config["telegramLink"] == f"https://t.me/AmirDirotBot?start={_FIXED_CODE}"
-
-
-def test_account_config_carries_the_connected_identity_for_each_linked_channel(client):
-    """2026-09-26 real owner request: a user with several channels linked couldn't tell them
-    apart from a bare "connected" checkmark — /account now also surfaces WHICH Telegram username,
-    WhatsApp number, and Google email each connected channel actually is."""
-    user = _FakeUser(
-        id=2, telegram_user_id=222, whatsapp_phone_number="972501234567",
-        google_sub="g-sub-123", telegram_username="amir_toledano",
-        google_email="owner@example.com",
-    )
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["telegramUsername"] == "amir_toledano"
-    assert config["whatsappPhoneNumber"] == "972501234567"
-    assert config["googleEmail"] == "owner@example.com"
-
-
-def test_account_config_identity_fields_are_null_when_not_set(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None)
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["telegramUsername"] is None
-    assert config["googleEmail"] is None
-
-
-def test_account_shows_whatsapp_link_when_public_number_configured(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None)
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with (
-        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", "972500000000"),
-    ):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["whatsappLink"] == f"https://wa.me/972500000000?text={_FIXED_CODE}"
-
-
-def test_account_hides_whatsapp_link_when_public_number_not_configured(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None)
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with (
-        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", ""),
-    ):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["whatsappLink"] is None
-
-
-def test_account_config_carries_uid_for_the_react_google_link_button(client):
-    """2026-09-05 real bug fix (pre-React): the old server-rendered template hand-wrote
-    '&amp;uid=' inside a Jinja expression, which autoescaping then escaped AGAIN — a browser
-    HTML-decodes that once into the literal string '&amp;uid=123', parsed as a param literally
-    named 'amp;uid', never 'uid', so every Google-link click silently lost its uid. That whole bug
-    class doesn't apply to React (Account.jsx builds the href in JS, setting the DOM attribute
-    directly — see login page's own equivalent test for the same reasoning) — this just confirms
-    the real uid value the React button needs actually reaches the page."""
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", google_sub=None)
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["uid"] == 222
-
-
-def test_account_does_not_generate_a_code_once_telegram_and_whatsapp_are_both_linked(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+def test_account_does_not_generate_a_code_once_telegram_is_linked(client):
+    user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(
         website_main, "generate_link_code"
@@ -362,9 +263,67 @@ def test_account_does_not_generate_a_code_once_telegram_and_whatsapp_are_both_li
     assert config["code"] is None
 
 
+def test_account_config_has_no_telegram_connect_link_once_telegram_is_linked(client):
+    """With Telegram linked there is no link code at all (2026-10-13: Telegram is the only channel
+    a code can attach), so Account.jsx shows the connected state and never a connect button."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["hasTelegram"] is True
+    assert config["telegramLink"] is None
+
+
+def test_account_config_carries_the_connected_identity_for_each_linked_channel(client):
+    """2026-09-26 real owner request: a user with several channels linked couldn't tell them
+    apart from a bare "connected" checkmark — /account now also surfaces WHICH Telegram username
+    and Google email each connected channel actually is."""
+    user = _FakeUser(
+        id=2, telegram_user_id=222, google_sub="g-sub-123", telegram_username="amir_toledano",
+        google_email="owner@example.com",
+    )
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["telegramUsername"] == "amir_toledano"
+    assert config["googleEmail"] == "owner@example.com"
+
+
+def test_account_config_identity_fields_are_null_when_not_set(client):
+    user = _FakeUser(id=2, telegram_user_id=222)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["telegramUsername"] is None
+    assert config["googleEmail"] is None
+
+
+def test_account_config_carries_uid_for_the_react_google_link_button(client):
+    """2026-09-05 real bug fix (pre-React): the old server-rendered template hand-wrote
+    '&amp;uid=' inside a Jinja expression, which autoescaping then escaped AGAIN — a browser
+    HTML-decodes that once into the literal string '&amp;uid=123', parsed as a param literally
+    named 'amp;uid', never 'uid', so every Google-link click silently lost its uid. That whole bug
+    class doesn't apply to React (Account.jsx builds the href in JS, setting the DOM attribute
+    directly — see login page's own equivalent test for the same reasoning) — this just confirms
+    the real uid value the React button needs actually reaches the page."""
+    user = _FakeUser(id=2, telegram_user_id=222, google_sub=None)
+    fake_session = _FakeSession(users_by_telegram_id={222: user})
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert config["uid"] == 222
+
+
 def test_account_shows_active_subscription_status_when_paid_until_is_future(client):
     paid_until = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=10)
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", paid_until=paid_until)
+    user = _FakeUser(id=2, telegram_user_id=222, paid_until=paid_until)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
@@ -376,7 +335,7 @@ def test_account_shows_active_subscription_status_when_paid_until_is_future(clie
 
 def test_account_shows_trial_subscription_status_when_trial_still_open(client):
     trial_ends_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2)
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", trial_ends_at=trial_ends_at)
+    user = _FakeUser(id=2, telegram_user_id=222, trial_ends_at=trial_ends_at)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
@@ -387,7 +346,7 @@ def test_account_shows_trial_subscription_status_when_trial_still_open(client):
 
 
 def test_account_shows_expired_subscription_status_when_no_trial_or_paid(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
@@ -399,7 +358,7 @@ def test_account_shows_expired_subscription_status_when_no_trial_or_paid(client)
 
 
 def test_account_hides_subscription_card_for_the_owner(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
@@ -412,7 +371,7 @@ def test_account_hides_subscription_card_for_the_owner(client):
 
 
 def test_account_notifications_toggle_flips_and_redirects_with_uid(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000", notifications_enabled=True)
+    user = _FakeUser(id=2, telegram_user_id=222, notifications_enabled=True)
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.post("/account/notifications", data={"uid": 222})
@@ -421,24 +380,6 @@ def test_account_notifications_toggle_flips_and_redirects_with_uid(client):
     assert resp.headers["location"] == "/account?uid=222"
     assert user.notifications_enabled is False
     assert fake_session.committed is True
-
-
-def test_account_notifications_toggle_falls_back_to_wid_when_no_uid(client):
-    user = _FakeUser(id=2, whatsapp_phone_number="9725500000", notifications_enabled=False)
-
-    class _WidSession(_FakeSession):
-        def scalar(self, stmt):
-            return None
-
-    fake_session = _WidSession()
-    token = website_main.generate_wid_token("9725500000")
-    with patch.object(website_main, "_get_user_by_wid", lambda session, wid: user):
-        with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-            resp = client.post("/account/notifications", data={"wid": token})
-
-    assert resp.status_code == 303
-    assert resp.headers["location"] == f"/account?wid={token}"
-    assert user.notifications_enabled is True
 
 
 def test_account_config_carries_payment_history_when_payments_exist(client):
@@ -450,7 +391,7 @@ def test_account_config_carries_payment_history_when_payments_exist(client):
     "apartments.txt" symptom as the earlier incident, reported live by the owner testing their own
     real account). Decimal("49.90") here is deliberately the exact value production uses
     (PLAN_PRICES_ILS[SUBSCRIPTION_PLAN] in access.py) — this test would have caught the crash."""
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    user = _FakeUser(id=2, telegram_user_id=222)
     payments = [
         _FakePayment(
             "monthly_subscription", Decimal("49.90"), "paid", dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
@@ -471,7 +412,7 @@ def test_account_config_carries_payment_history_when_payments_exist(client):
 
 
 def test_account_hides_payment_history_section_when_no_payments(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
+    user = _FakeUser(id=2, telegram_user_id=222)
     fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=[])
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/account", params={"uid": 222})
@@ -480,82 +421,9 @@ def test_account_hides_payment_history_section_when_no_payments(client):
     assert config["payments"] == []
 
 
-# --- WhatsApp Message Template notification opt-in (2026-09-08) ---
-
-
-def test_account_config_hides_whatsapp_notifications_toggle_when_whatsapp_not_linked(client):
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number=None)
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["hasWhatsapp"] is False
-
-
-def test_account_config_shows_whatsapp_notifications_toggle_off_by_default_when_whatsapp_linked(client):
-    """Default False on a brand-new whatsapp_phone_number row — see models.py's own docstring on
-    why this can't just inherit notifications_enabled's default-True."""
-    user = _FakeUser(id=2, telegram_user_id=222, whatsapp_phone_number="9725500000")
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["hasWhatsapp"] is True
-    assert config["whatsappNotificationsOptedIn"] is False
-
-
-def test_account_config_shows_whatsapp_notifications_toggle_on_when_opted_in(client):
-    user = _FakeUser(
-        id=2, telegram_user_id=222, whatsapp_phone_number="9725500000",
-        whatsapp_notifications_opted_in=True,
-    )
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/account", params={"uid": 222})
-
-    config = _account_config(resp.text)
-    assert config["whatsappNotificationsOptedIn"] is True
-
-
-def test_account_whatsapp_notifications_toggle_flips_and_redirects_with_uid(client):
-    user = _FakeUser(
-        id=2, telegram_user_id=222, whatsapp_phone_number="9725500000",
-        whatsapp_notifications_opted_in=False,
-    )
-    fake_session = _FakeSession(users_by_telegram_id={222: user})
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.post("/account/whatsapp-notifications", data={"uid": 222})
-
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/account?uid=222"
-    assert user.whatsapp_notifications_opted_in is True
-    assert fake_session.committed is True
-
-
-def test_account_whatsapp_notifications_toggle_falls_back_to_wid_when_no_uid(client):
-    user = _FakeUser(id=2, whatsapp_phone_number="9725500000", whatsapp_notifications_opted_in=True)
-
-    class _WidSession(_FakeSession):
-        def scalar(self, stmt):
-            return None
-
-    fake_session = _WidSession()
-    token = website_main.generate_wid_token("9725500000")
-    with patch.object(website_main, "_get_user_by_wid", lambda session, wid: user):
-        with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-            resp = client.post("/account/whatsapp-notifications", data={"wid": token})
-
-    assert resp.status_code == 303
-    assert resp.headers["location"] == f"/account?wid={token}"
-    assert user.whatsapp_notifications_opted_in is False
-
-
 def test_account_config_matches_requested_language(client):
     user = _FakeUser(
-        id=2, telegram_user_id=222, whatsapp_phone_number="9725500000",
-        trial_ends_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2),
+        id=2, telegram_user_id=222, trial_ends_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2),
     )
     fake_session = _FakeSession(users_by_telegram_id={222: user})
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
@@ -569,7 +437,7 @@ def test_account_config_matches_requested_language(client):
 def test_account_config_shows_logged_in_via_session_for_a_real_signed_session(client):
     """2026-09-26 real owner report: logged in with Google, then had no way to log out short of an
     incognito window — /account now surfaces a logout button, but only when the visitor has a REAL
-    signed session (request.session["user_id"]), not just a ?uid=/?wid= deep link, which has no
+    signed session (request.session["user_id"]), not just a ?uid= deep link, which has no
     session to end. Uses a raw Request (like test_website_auth_google.py's own session-branch
     tests) since the TestClient's session cookie can't be set without a real login round-trip."""
     from starlette.requests import Request as StarletteRequest

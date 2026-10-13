@@ -83,7 +83,7 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: owner-telegram-user-id
                       optional: true
-                # Signs the "?t="/"?wid=" login links the scraper puts in notification links and WhatsApp magic links (todira_common/uid_token.py, wid_token.py).
+                # Signs the "?t=" login links the scraper puts in notification links (todira_common/uid_token.py).
                 # MUST be the same secret the website verifies with (website-deployment.yaml) — until
                 # 2026-10-05 only the website had it, so this job signed with the dev-only fallback key and
                 # every link opened logged-out ("open a personal link from the Telegram bot").
@@ -108,18 +108,6 @@ spec:
                     secretKeyRef:
                       name: {{ .Release.Name }}-bot-secret
                       key: facebook-cookies
-                      optional: true
-                - name: WHATSAPP_ACCESS_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: whatsapp-access-token
-                      optional: true
-                - name: WHATSAPP_PHONE_NUMBER_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: whatsapp-phone-number-id
                       optional: true
                 # Real ACCOUNT-SAFETY cap (not a credit-cost one) on new-listing detail-page
                 # fetches per run — see scraper/main.py's own _FACEBOOK_MAX_NEW_DETAIL_FETCHES_ENV_VAR
@@ -164,7 +152,7 @@ spec:
                 {{- end }}
                 {{- end }}
                 # Same flag/value as the main scraper-cronjob.yaml uses — one shared kill switch
-                # for "no real Telegram/WhatsApp sends this run", not a separate Facebook-only one.
+                # for "no real Telegram sends this run", not a separate Facebook-only one.
                 - name: NOTIFICATIONS_SUSPENDED
                   value: {{ .Values.scraper.notificationsSuspended | default false | quote }}
               resources:

@@ -1,7 +1,7 @@
 name: Diagnose - does a Komo listing page contain move-in date and amenities? (read-only)
 
 # ONE-OFF, READ-ONLY, manual-only (workflow_dispatch) - 2026-10-02. Live data shows Komo listings (about
-# two thirds of everything notified) have NO move-in date and NO features stored, so WhatsApp/Telegram
+# two thirds of everything notified) have NO move-in date and NO features stored, so Telegram
 # cards for them show no move-in date or features. Before changing the scraper, this fetches ONE real
 # recent Komo detail page through the scraper's own proxy path and prints, for each keyword (move-in,
 # elevator, parking, balcony, ...), the surrounding markup - so we can see whether the page has the

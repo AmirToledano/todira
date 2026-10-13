@@ -1,6 +1,6 @@
 """Fetches raw post payloads from a Facebook Group's real estate posts (unlike Marketplace, a
 Group post has no structured price/rooms/city fields at all — everything is free-text, written by
-hand by the poster, same as a WhatsApp message).
+hand by the poster, same as a chat message).
 
 STATUS 2026-09-21: post-detail structure CONFIRMED live via
 .github/workflows/diagnose-facebook-group-post-detail.yaml, run twice against a real post

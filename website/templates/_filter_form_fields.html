@@ -2,7 +2,7 @@
 {# Shared filter form body — used by filter.html's own full-page form AND apartments.html's
    sidebar panel (2026-09-24, dorin.app-style layout the owner asked for), so the two never drift
    apart into two separately-maintained copies of the same ~20 fields. Callers wrap this in their
-   own <form method="post" action="/filter"> (+ uid/wid hidden inputs + submit button) — this
+   own <form method="post" action="/filter"> (+ uid hidden input + submit button) — this
    macro is only the fields themselves. Needs `with context` on import (matches _listing_card.html's
    own convention) since t()/request are read from the caller's context, not passed explicitly.
 

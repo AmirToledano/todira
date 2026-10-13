@@ -2,7 +2,7 @@
 pass has_access through to _listing_card.html, which then replaces the real listing URL with a
 locked "upgrade" button for a lite/expired user. The description itself is shown to everyone as of
 2026-09-12 (reversing the original 2026-09-05 decision to hide it too) — see tests/test_cards.py
-for the equivalent bot-side (Telegram/WhatsApp caption) gating, and
+for the equivalent bot-side (Telegram caption) gating, and
 common/todira_common/cards.py's format_caption docstring for that history.
 
 Same importlib-loading approach as the other website test files (see test_website_paid_access.py's
@@ -175,31 +175,6 @@ def test_apartments_shows_description_and_url_for_a_trial_user(client):
     assert resp.status_code == 200
     assert "תיאור סודי" in resp.text
     assert "secret999" in resp.text
-
-
-def test_apartments_resolves_a_whatsapp_only_user_via_wid(client):
-    """Real bug found live 2026-09-28: /apartments never declared a `wid` param at all (unlike
-    /filter, which already did), so it silently dropped it and fell through to _resolve_user's
-    uid-only branch — every ?wid= link this route ever receives (whatsapp_webhook.py's connect
-    summary, scraper/notifier.py's rich per-listing button, and /filter's own successful-save
-    redirect target, which literally is `/apartments?wid=...`) bounced a real WhatsApp-only user
-    back to a login wall instead of landing them signed in. Fixed by adding the same `wid` param
-    /filter already has and threading it through to _resolve_user, same as every other wid-aware
-    route in this file."""
-    user = _FakeUser(id=2, telegram_user_id=None, filter=SimpleNamespaceFilter(),
-                      trial_ends_at=_NOW + dt.timedelta(days=2))
-    listing = _FakeListing(id=1)
-    fake_session = _FakeSession(user, listings=[listing])
-    token = website_main.generate_wid_token("972501234567")
-
-    with (
-        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
-    ):
-        resp = client.get("/apartments", params={"wid": token})
-
-    assert resp.status_code == 200
-    assert "תיאור סודי" in resp.text  # the real listing rendered — never fell through to the login wall
 
 
 def test_apartments_map_workspace_renders_with_pins_for_listings_that_have_coords(client):
@@ -455,7 +430,7 @@ def test_liked_shows_description_but_hides_url_for_an_expired_user(client):
 
 
 # ---------------------------------------------------------------------------
-# dorin.app-style contact-action buttons (2026-09-26 real owner request) — WhatsApp/phone buttons
+# dorin.app-style contact-action buttons (2026-09-26 real owner request) — contact buttons
 # on the listing detail view. A has_access viewer gets real links straight to the listing's own
 # source (same target as the "view listing" button — this project never stores the poster's real
 # contact info, see _listing_card.html's own comment); a non-access viewer gets locked buttons
@@ -464,7 +439,7 @@ def test_liked_shows_description_but_hides_url_for_an_expired_user(client):
 
 
 def test_apartments_contact_buttons_are_locked_for_a_trial_user(client):
-    """2026-09-27 real owner decision: reaching the poster (WhatsApp message / show phone number)
+    """2026-09-27 real owner decision: reaching the poster (the contact button)
     now needs a REAL paid subscription — the 3-day trial no longer counts for these two buttons
     specifically (todira_common/access.py's has_paid_access, vs. has_access/has_full_access used
     everywhere else). A trial user now sees the same locked/paywall-popup buttons an expired user
@@ -571,7 +546,7 @@ def test_go_to_listing_source_404s_for_a_missing_listing(client):
 
 
 def test_apartments_listing_deep_link_renders_even_when_it_does_not_match_current_filter(client):
-    """2026-09-27 real owner request, matching dorin.app: the WhatsApp/Telegram "view apartment"
+    """2026-09-27 real owner request, matching dorin.app: the Telegram "view apartment"
     link should land straight on that listing's own detail view — see main.py's apartments() own
     comment. Must still render even when the listing no longer matches the viewer's CURRENT filter
     (changed since the notification was sent, e.g.) — this fetches it directly by id, independent

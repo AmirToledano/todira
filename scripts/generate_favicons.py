@@ -71,7 +71,7 @@ ICO_SIZES = [(16, 16), (32, 32), (48, 48)]
 APPLE_TOUCH_ICON_SIZE = 180
 
 # og:image/twitter:image (2026-09-07): base.html used to point these straight at
-# todira-brand.webp itself — the full 1184x1895 PORTRAIT source image. Facebook/WhatsApp/Twitter
+# todira-brand.webp itself — the full 1184x1895 PORTRAIT source image. Facebook/Telegram/Twitter
 # all crop a link preview to a landscape ~1.91:1 box (1200x630 is the standard size every platform
 # documents), so a tall portrait image either got awkwardly cropped to a thin vertical sliver or
 # letterboxed with ugly platform-added bars, depending on the client — found live 2026-09-07

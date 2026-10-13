@@ -255,7 +255,7 @@ def test_callback_unlinked_google_account_with_no_uid_shows_pending_link_page(cl
     end, since the plain header "Sign in with Google" button (shown whenever there's no uid in
     the URL) could then never succeed for a first-time linker. Now it offers BOTH real options:
     create a standalone account right here (test_create_account_* below) or link to an existing
-    Telegram/WhatsApp account via the bot — see test_resolve_user_completes_pending_google_
+    Telegram account via the bot — see test_resolve_user_completes_pending_google_
     link_once_a_real_uid_shows_up below for the other half of the second option."""
     state = _do_start(client)  # no uid — nothing to link to right now
     fake_session = _FakeSession(scalar_results=[None])
@@ -449,7 +449,7 @@ def test_callback_token_exchange_failure_returns_400(client):
 
 # ---------------------------------------------------------------------------
 # /auth/google/create-account — 2026-09-05: the website as a first-class, standalone way in, not
-# just a link target for an existing Telegram/WhatsApp account. See google_pending.html's other
+# just a link target for an existing Telegram account. See google_pending.html's other
 # button and auth_google_callback's own comment on why both options exist now.
 # ---------------------------------------------------------------------------
 
@@ -492,7 +492,6 @@ def test_create_account_makes_a_standalone_user_with_a_blank_filter_and_logs_in(
     assert new_user.first_name == "Amir"
     assert new_user.google_email == "owner@example.com"
     assert new_user.telegram_user_id is None
-    assert new_user.whatsapp_phone_number is None
     assert new_filter.user_id == new_user.id  # both None under the fake session — real FK wiring
     assert request.session.get("user_id") == new_user.id
     assert "pending_google_sub" not in request.session

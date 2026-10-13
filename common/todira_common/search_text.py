@@ -384,7 +384,7 @@ def parse(text: str) -> dict:
     }
 
 
-# --- onboarding state (shared by the Telegram bot and the WhatsApp webhook) ----------------------------------------------
+# --- onboarding state (the Telegram bot) --------------------------------------------------------------------------------
 
 
 def merge_into(state: dict, found: dict) -> None:

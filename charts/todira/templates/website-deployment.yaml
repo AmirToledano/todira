@@ -15,9 +15,9 @@ spec:
         app: {{ .Release.Name }}-website
       annotations:
         # See bot-deployment.yaml's identical annotation for the full explanation — this is the
-        # actual root cause of a real 2026-09-06 incident: this Deployment kept replying to
-        # WhatsApp messages from a stale phone number for 30+ minutes AFTER the underlying
-        # WHATSAPP_PHONE_NUMBER_ID secret was fixed and a CI run reported "success" twice, because
+        # actual root cause of a real 2026-09-06 incident: this Deployment kept using a stale
+        # secret value for 30+ minutes AFTER the underlying secret was fixed and a CI run reported
+        # "success" twice, because
         # neither run changed websiteImage.tag, so Kubernetes had no reason to restart the already
         # -running Pod — it kept serving requests with whatever env vars it read at its ORIGINAL
         # boot time, oblivious to the Secret object changing underneath it.
@@ -72,40 +72,6 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: session-secret-key
                   optional: true
-            # WhatsApp Cloud API webhook (website/whatsapp_webhook.py) — all optional/unset by
-            # default so a deploy before these secrets exist doesn't break; the webhook's own
-            # signature check fails CLOSED (rejects every POST) when whatsapp-app-secret is
-            # missing, so an unset value here is safe, not silently insecure.
-            - name: WHATSAPP_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: whatsapp-access-token
-                  optional: true
-            - name: WHATSAPP_PHONE_NUMBER_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: whatsapp-phone-number-id
-                  optional: true
-            - name: WHATSAPP_WEBHOOK_VERIFY_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: whatsapp-webhook-verify-token
-                  optional: true
-            - name: WHATSAPP_APP_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: whatsapp-app-secret
-                  optional: true
-            # The actual displayable WhatsApp number (not WHATSAPP_PHONE_NUMBER_ID above, which is
-            # the Cloud API's internal id) — builds the wa.me deep link on website/main.py's
-            # /account channel-linking page. Not secret, so a plain value rather than a Secret
-            # ref; empty by default, in which case /account just hides the WhatsApp option.
-            - name: WHATSAPP_PUBLIC_NUMBER
-              value: "{{ .Values.website.whatsappPublicNumber | default "" }}"
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:

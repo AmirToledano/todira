@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { t, telegramBotUrl, whatsappPublicNumber } from "../i18n";
+import { t, telegramBotUrl } from "../i18n";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
@@ -33,16 +33,6 @@ export default function FooterCTA() {
           <a className="tl-btn gold" href={telegramBotUrl} target="_blank" rel="noreferrer">
             {t("home.footer_cta_btn")}
           </a>
-          {whatsappPublicNumber && (
-            <a
-              className="tl-btn whatsapp"
-              href={`https://wa.me/${whatsappPublicNumber}?text=${encodeURIComponent(t("whatsapp.greeting"))}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t("home.footer_cta_whatsapp_btn")}
-            </a>
-          )}
         </div>
       </motion.div>
     </section>

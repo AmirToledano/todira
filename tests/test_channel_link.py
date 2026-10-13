@@ -1,6 +1,6 @@
 """Tests for common/todira_common/channel_link.py — the `ref_xxxxxx` code generation/consumption
 behind cross-channel account linking (see the module's own docstring, and
-bot/handlers/start.py + website/whatsapp_webhook.py for the two consumers)."""
+bot/handlers/start.py for the consumer)."""
 from __future__ import annotations
 
 import datetime as dt

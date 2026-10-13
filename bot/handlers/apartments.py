@@ -1,7 +1,6 @@
 """/apartments — how many of the user's saved filter's current matches exist right now, with a
 link to see them all on the website. `find_matching_listings`/`find_new_matches_to_show` now live
-in todira_common.listing_matches (2026-09-27, no longer bot-only — website/whatsapp_webhook.py
-needs the same query+bookkeeping) and are re-exported here unchanged for this module's own
+in todira_common.listing_matches (2026-09-27) and are re-exported here unchanged for this module's own
 existing callers/tests (filter_conversation.py imports find_new_matches_to_show from here)."""
 from __future__ import annotations
 

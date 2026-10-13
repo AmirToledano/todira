@@ -1,5 +1,13 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-10-13 (owner): WhatsApp is GONE from the project — only Telegram and the website remain
+- Removed: the WhatsApp webhook, client, cost guard, check-in, 24h-window and pause modules, the `?wid=` login, every
+  WhatsApp button/link/text on the site and in the bot, its settings on /account, its helm values/secrets/env vars and
+  every WhatsApp workflow. Notifications and renewal reminders go out on Telegram only.
+- The database columns go in a follow-up migration (0026) AFTER this deploy, so no running pod ever selects a column that
+  no longer exists. Checked live first: all 4 user rows have Telegram, so no account loses its way in.
+- Every WhatsApp entry further down this file is history only.
+
 ## ▶ DECISIONS 2026-10-05 (owner) — implemented, read first
 - **STANDING FACTS (owner, repeated):** ZenRows paid plan is cancelled - only its free 5,000 credits/month are used. Bright Data is pay-as-you-go with a tiny balance. Never propose Takbull/UPAY "questions letters". Answer in Hebrew, short.
 - **Shipped later 2026-10-05:** bot crash-loop fixed (bot requirements lacked `itsdangerous`) + CI `import-check` job (installs ONLY each service's own requirements and imports its modules); website links open logged-in now (bot + scrapers got the website's `SESSION_SECRET_KEY`); Telegram city picker alphabetical with back on top, typed-search pick returns to the city summary; "no photos" note moved to the END of the Telegram caption; detail view shows "המודעה פורסמה גם ב…" (cross-source duplicates via `duplicate_of_id`, links through /go/<id>); renewal reminder 3 days before `paid_until` (`scraper/renewal_reminder.py`, `users.renewal_reminder_for`, migration 0022; Telegram, WhatsApp only inside the free 24h window).

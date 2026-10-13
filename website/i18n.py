@@ -170,21 +170,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "הבוט בטלגרם", "en": "The Telegram bot", "ru": "Бот в Telegram",
         "fr": "Le bot Telegram", "ar": "بوت تيليجرام",
     },
-    "nav.whatsapp": {
-        "he": "הבוט בוואטסאפ", "en": "The WhatsApp bot", "ru": "Бот в WhatsApp",
-        "fr": "Le bot WhatsApp", "ar": "بوت واتساب",
-    },
-    # The opening message pre-filled into a wa.me deep link's own text= param — found live
-    # 2026-09-07: this was hardcoded in Hebrew in 3 separate templates (home.html x2, login.html)
-    # instead of going through t(), so an English/Russian/French/Arabic visitor's WhatsApp CTA
-    # button opened a chat pre-filled with Hebrew text they may not have written themselves.
-    "whatsapp.greeting": {
-        "he": "היי! אני רוצה להתחיל לחפש דירה 🏠",
-        "en": "Hi! I'd like to start looking for an apartment 🏠",
-        "ru": "Привет! Я хочу начать искать квартиру 🏠",
-        "fr": "Salut ! Je voudrais commencer à chercher un appartement 🏠",
-        "ar": "مرحبًا! أريد أن أبدأ البحث عن شقة 🏠",
-    },
     "nav.contact": {
         "he": "צור קשר", "en": "Contact us", "ru": "Связаться с нами",
         "fr": "Nous contacter", "ar": "تواصل معنا",
@@ -408,9 +393,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- home page ----------
     "home.eyebrow": {
-        # 2026-09-08 fix (owner's own report): used to say "via Telegram" specifically, which
-        # became inaccurate once WhatsApp shipped as an equal channel (see the WhatsApp CTA
-        # button right below this) — channel-neutral now instead of naming just one.
         "he": "דירות בזמן אמת · בטלגרם 👑",
         "en": "Real-time apartments · on Telegram 👑",
         "ru": "Квартиры в реальном времени · в Telegram 👑",
@@ -441,11 +423,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "home.cta_how": {
         "he": "איך זה עובד?", "en": "How does it work?", "ru": "Как это работает?",
         "fr": "Comment ça marche ?", "ar": "كيف يعمل؟",
-    },
-    "home.cta_open_whatsapp": {
-        "he": "המשך בווטסאפ", "en": "Continue on WhatsApp",
-        "ru": "Продолжить в WhatsApp", "fr": "Continuer sur WhatsApp",
-        "ar": "تابع عبر واتساب",
     },
     "home.hero_img_alt": {
         "he": "טודי המלך — בוט חיפוש דירות טודירה",
@@ -797,11 +774,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "פתח את הבוט בטלגרם ←", "en": "Open the Telegram bot →",
         "ru": "Открыть бота в Telegram →", "fr": "Ouvrir le bot Telegram →",
         "ar": "افتح البوت على تيليجرام ←",
-    },
-    "home.footer_cta_whatsapp_btn": {
-        "he": "המשך בווטסאפ ←", "en": "Continue on WhatsApp →",
-        "ru": "Продолжить в WhatsApp →", "fr": "Continuer sur WhatsApp →",
-        "ar": "تابع عبر واتساب ←",
     },
     # ---------- apartments page ----------
     "apartments.title": {
@@ -1172,7 +1144,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # 2026-09-26: dorin.app-style contact-action buttons on the listing detail view (real owner
     # request, comparing directly against dorin.app's own "פרטי איש קשר" section). Same has_access
     # gate as card.view_btn/card.locked_btn above — this project never stores the poster's own
-    # phone/WhatsApp (see _listing_card.html's own comment on that), so a has_access viewer's click
+    # phone number (see _listing_card.html's own comment on that), so a has_access viewer's click
     # here goes to the listing's own original source page (same target as "view listing"), not a
     # fabricated in-app reveal; a non-access viewer's click opens the contact-paywall modal instead
     # (card.contact_modal_*) rather than navigating at all.
@@ -1287,7 +1259,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "التعديل الكامل هنا. للأحياء/الشوارع المحددة وتواريخ الانتقال، استخدم /filter في تيليجرام.",
     },
     # 2026-09-06: shown instead of filter.subtitle for a visitor with no telegram_user_id at all
-    # (a WhatsApp-only or Google-only account) — pointing them at "/filter on Telegram" is a dead
+    # (a Google-only account) — pointing them at "/filter on Telegram" is a dead
     # end when they have no Telegram account to run that command from. Just the first sentence of
     # the full subtitle in each language, since that sentence alone is still fully true and
     # actionable regardless of which channel got them here.
@@ -1675,14 +1647,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Telegram — напишите боту напрямую", "fr": "Telegram — écrivez directement au bot",
         "ar": "تيليجرام — راسل البوت مباشرة",
     },
-    # Added 2026-09-07 — /contact only offered a Telegram link under "other ways to reach us"
-    # despite the product having a WhatsApp bot since 2026-09-06 (same gap the footer/home hero
-    # CTA already got fixed for).
-    "contact.whatsapp_way": {
-        "he": "וואטסאפ — כתוב/י ישירות לבוט", "en": "WhatsApp — message the bot directly",
-        "ru": "WhatsApp — напишите боту напрямую", "fr": "WhatsApp — écrivez directement au bot",
-        "ar": "واتساب — راسل البوت مباشرة",
-    },
     # ---------- legal pages ----------
     # Terms/Privacy only have full He+En copy (see terms.html/privacy.html) — legal text is exactly
     # the kind of content where a rushed, unreviewed machine translation is riskier than admitting
@@ -1782,10 +1746,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "מזהה המשתמש בטלגרם (Telegram user ID) ושם המשתמש כפי שמופיע בטלגרם, אם נרשמת דרך הבוט.",
         "en": "Your Telegram user ID and the username shown by Telegram, if you registered via the bot.",
     },
-    "privacy.s1_item2": {
-        "he": "מספר הטלפון שלך בוואטסאפ, תוכן ההודעות שהוחלפו עם הבוט ומועד ההודעה האחרונה ששלחת, אם נרשמת/השתמשת בשירות דרך וואטסאפ בעבר. ערוץ וואטסאפ אינו פעיל כרגע, ומידע שנשמר ממנו יימחק לפי בקשה.",
-        "en": "Your WhatsApp phone number, the content of messages exchanged with the bot and the time of the last message you sent, if you registered/used the service through WhatsApp in the past. The WhatsApp channel is not active at the moment, and data stored from it will be deleted on request.",
-    },
     "privacy.s1_item3": {
         "he": "כתובת האימייל ושם התצוגה שלך מחשבון Google, אם התחברת עם Google.",
         "en": "Your email address and display name from your Google account, if you signed in with Google.",
@@ -1832,14 +1792,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "privacy.s3_item1_body": {
         "he": " — שליחת וקבלת הודעות הבוט.",
         "en": " — sending/receiving bot messages.",
-    },
-    "privacy.s3_item2_label": {
-        "he": "WhatsApp Cloud API (מבית Meta)",
-        "en": "WhatsApp Cloud API (by Meta)",
-    },
-    "privacy.s3_item2_body": {
-        "he": " — ערוץ וואטסאפ אינו פעיל כרגע; הספק שימש בעבר לשליחה וקבלה של הודעות.",
-        "en": " — the WhatsApp channel is not active at the moment; the provider was used in the past to send and receive messages.",
     },
     "privacy.s3_item3_label": {"he": "Google", "en": "Google"},
     "privacy.s3_item3_body": {
@@ -1913,8 +1865,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "terms.s1_title": {"he": "1. מה זה טודירה", "en": "1. What Todira is"},
     "terms.s1_body": {
-        "he": "טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל\"ן ולוחות מודעות שונים), ומתריע למשתמש בטלגרם כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. האתר מאפשר לצפות במודעות, לערוך את הסינון ולנהל את החשבון. לכל משתמש חדש ניתנת תקופת ניסיון חינמית בת 3 ימים. לאחריה, המשך השימוש כרוך בתשלום חד-פעמי לתקופת גישה לבחירתך: ₪19.90 לשבוע (7 ימים), ₪29.90 לשבועיים (14 ימים) או ₪49.90 לחודש (30 ימים), כמפורט בעמוד השדרוג באתר. אין חידוש אוטומטי ולא יבוצעו חיובים נוספים; נשלח תזכורת לפני סיום תקופת הגישה. ערוץ וואטסאפ אינו פעיל כרגע.",
-        "en": "Todira is a personal service (a Telegram bot and a companion website) that automatically scans apartment listings from external sources on the web (real-estate sites and listing boards) and alerts the user on Telegram when a listing matching their filter is published. The website lets you view listings, edit your filter and manage your account. Every new user gets a free 3-day trial. After it, continued use requires a one-time payment for an access period of your choice: NIS 19.90 for a week (7 days), NIS 29.90 for two weeks (14 days) or NIS 49.90 for a month (30 days), as detailed on the website's upgrade page. There is no automatic renewal and no further charges will be made; we will send a reminder before your access period ends. The WhatsApp channel is not active at the moment.",
+        "he": "טודירה הוא שירות אישי (בוט טלגרם ואתר נלווה) שסורק אוטומטית מודעות דירות ממקורות חיצוניים ברשת (אתרי נדל\"ן ולוחות מודעות שונים), ומתריע למשתמש בטלגרם כאשר מתפרסמת מודעה שתואמת לסינון שהגדיר. האתר מאפשר לצפות במודעות, לערוך את הסינון ולנהל את החשבון. לכל משתמש חדש ניתנת תקופת ניסיון חינמית בת 3 ימים. לאחריה, המשך השימוש כרוך בתשלום חד-פעמי לתקופת גישה לבחירתך: ₪19.90 לשבוע (7 ימים), ₪29.90 לשבועיים (14 ימים) או ₪49.90 לחודש (30 ימים), כמפורט בעמוד השדרוג באתר. אין חידוש אוטומטי ולא יבוצעו חיובים נוספים; נשלח תזכורת לפני סיום תקופת הגישה.",
+        "en": "Todira is a personal service (a Telegram bot and a companion website) that automatically scans apartment listings from external sources on the web (real-estate sites and listing boards) and alerts the user on Telegram when a listing matching their filter is published. The website lets you view listings, edit your filter and manage your account. Every new user gets a free 3-day trial. After it, continued use requires a one-time payment for an access period of your choice: NIS 19.90 for a week (7 days), NIS 29.90 for two weeks (14 days) or NIS 49.90 for a month (30 days), as detailed on the website's upgrade page. There is no automatic renewal and no further charges will be made; we will send a reminder before your access period ends.",
     },
     "terms.s2_title": {"he": "2. אין אחריות על תוכן המודעות", "en": "2. No warranty on listing content"},
     "terms.s2_body": {
@@ -1984,18 +1936,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # ---------- account page ----------
     # 2026-09-08 fix: this whole page was hardcoded Hebrew-only (unlike every other customer-
     # facing page), so a non-Hebrew visitor saw a fully-Hebrew /account regardless of their own
-    # language setting — found while auditing the WhatsApp-notifications toggle added tonight,
-    # which just followed the page's own (pre-existing, unrelated to that feature) pattern.
+    # language setting.
     "account.h1": {
         "he": "החשבון שלי 👤", "en": "My Account 👤", "ru": "Мой аккаунт 👤",
         "fr": "Mon compte 👤", "ar": "حسابي 👤",
     },
     "account.subtitle": {
-        "he": "המנוי, ההתראות, היסטוריית התשלומים, וחיבור הערוצים — טלגרם, ווטסאפ וגוגל, כולם אותו חשבון אחד.",
-        "en": "Your subscription, notifications, payment history, and connected channels — Telegram, WhatsApp and Google, all one account.",
-        "ru": "Подписка, уведомления, история платежей и подключённые каналы — Telegram, WhatsApp и Google, всё в одном аккаунте.",
-        "fr": "Votre abonnement, vos notifications, votre historique de paiements et vos canaux connectés — Telegram, WhatsApp et Google, tout dans un seul compte.",
-        "ar": "اشتراكك، إشعاراتك، سجل مدفوعاتك، والقنوات المرتبطة — تيليجرام وواتساب وجوجل، كلها في حساب واحد.",
+        "he": "המנוי, ההתראות, היסטוריית התשלומים, וחיבור הערוצים — טלגרם וגוגל, הכל באותו חשבון אחד.",
+        "en": "Your subscription, notifications, payment history, and connected channels — Telegram and Google, all one account.",
+        "ru": "Подписка, уведомления, история платежей и подключённые каналы — Telegram и Google, всё в одном аккаунте.",
+        "fr": "Votre abonnement, vos notifications, votre historique de paiements et vos canaux connectés — Telegram et Google, tout dans un seul compte.",
+        "ar": "اشتراكك، إشعاراتك، سجل مدفوعاتك، والقنوات المرتبطة — تيليجرام وجوجل، كلها في حساب واحد.",
     },
     "account.subscription_title": {
         "he": "המנוי שלי 👑", "en": "My Subscription 👑", "ru": "Моя подписка 👑",
@@ -2124,27 +2075,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "הפעל התראות", "en": "Turn on notifications", "ru": "Включить уведомления",
         "fr": "Activer les notifications", "ar": "تفعيل الإشعارات",
     },
-    "account.whatsapp_notifications_title": {
-        "he": "התראות בווטסאפ 💬", "en": "WhatsApp Notifications 💬", "ru": "Уведомления в WhatsApp 💬",
-        "fr": "Notifications WhatsApp 💬", "ar": "إشعارات واتساب 💬",
-    },
-    "account.whatsapp_notifications_toggle_off": {
-        "he": "כבה התראות בווטסאפ", "en": "Turn off WhatsApp notifications",
-        "ru": "Выключить уведомления WhatsApp", "fr": "Désactiver les notifications WhatsApp",
-        "ar": "إيقاف إشعارات واتساب",
-    },
-    "account.whatsapp_notifications_toggle_on": {
-        "he": "הפעל התראות בווטסאפ", "en": "Turn on WhatsApp notifications",
-        "ru": "Включить уведомления WhatsApp", "fr": "Activer les notifications WhatsApp",
-        "ar": "تفعيل إشعارات واتساب",
-    },
-    "account.whatsapp_notifications_hint": {
-        "he": "הודעת ווטסאפ ברגע שעולה דירה חדשה שמתאימה לך, בנוסף לאתר/טלגרם.",
-        "en": "A WhatsApp message the moment a new listing matches you, in addition to the website/Telegram.",
-        "ru": "Сообщение в WhatsApp, как только появится подходящее объявление — в дополнение к сайту/Telegram.",
-        "fr": "Un message WhatsApp dès qu'une nouvelle annonce vous correspond, en plus du site/Telegram.",
-        "ar": "رسالة واتساب فور ظهور شقة جديدة تناسبك، بالإضافة إلى الموقع/تيليجرام.",
-    },
     "account.channels_title": {
         "he": "חיבור ערוצים 🔗", "en": "Connected Channels 🔗", "ru": "Подключённые каналы 🔗",
         "fr": "Canaux connectés 🔗", "ar": "القنوات المرتبطة 🔗",
@@ -2168,23 +2098,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "אין קוד חיבור פעיל כרגע", "en": "No active connection code right now",
         "ru": "Сейчас нет активного кода подключения", "fr": "Aucun code de connexion actif pour le moment",
         "ar": "لا يوجد رمز ربط نشط حاليًا",
-    },
-    "account.whatsapp_connect_cta": {
-        "he": "שלח/י הודעה לחיבור", "en": "Send a message to connect",
-        "ru": "Отправьте сообщение для подключения", "fr": "Envoyez un message pour vous connecter",
-        "ar": "أرسل رسالة للربط",
-    },
-    "account.whatsapp_connect_hint": {
-        "he": "ההודעה עם הקוד תישלח אוטומטית — רק צריך ללחוץ שליחה 🎉",
-        "en": "The message with the code will be sent automatically — just tap send 🎉",
-        "ru": "Сообщение с кодом отправится автоматически — просто нажмите «отправить» 🎉",
-        "fr": "Le message avec le code sera envoyé automatiquement — il suffit d'appuyer sur envoyer 🎉",
-        "ar": "ستُرسل الرسالة مع الرمز تلقائيًا — فقط اضغط إرسال 🎉",
-    },
-    "account.whatsapp_connect_unavailable": {
-        "he": "חיבור ווטסאפ עוד לא זמין כרגע", "en": "WhatsApp connection isn't available yet",
-        "ru": "Подключение WhatsApp пока недоступно", "fr": "La connexion WhatsApp n'est pas encore disponible",
-        "ar": "الربط عبر واتساب غير متاح بعد",
     },
     "account.google_connect_cta": {
         "he": "קשר את Google לחשבון", "en": "Link Google to your account",
@@ -2248,11 +2161,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Continuer sur Telegram", "ar": "تابع عبر تيليجرام",
     },
     "login.hint": {
-        "he": "כבר רשום/ה דרך טלגרם או ווטסאפ, אבל עדיין לא קישרת Google? לחיצה על \"{telegram_cta}\" למעלה תפתח את הבוט — שם תמצא/י קישור לחשבון שלך (🔗) שמחזיר אותך לכאן, לאותו דפדפן, מזוהה. משם, החיבור עם Google יעבוד ישר על החשבון הקיים שלך.",
-        "en": "Already registered via Telegram or WhatsApp, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot — you'll find your account link there (🔗) that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
-        "ru": "Уже зарегистрированы через Telegram или WhatsApp, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота — там вы найдёте ссылку на свой аккаунт (🔗), которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
-        "fr": "Déjà inscrit via Telegram ou WhatsApp, mais pas encore lié à Google ? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot — vous y trouverez le lien de votre compte (🔗) qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
-        "ar": "مسجّل بالفعل عبر تيليجرام أو واتساب، لكن لم تربط Google بعد؟ الضغط على \"{telegram_cta}\" أعلاه يفتح البوت — ستجد هناك رابط حسابك (🔗) الذي يعيدك إلى هنا، في نفس المتصفح، معروفًا. من هناك، سيعمل الربط مع Google مباشرة على حسابك الحالي.",
+        "he": "כבר רשום/ה דרך טלגרם, אבל עדיין לא קישרת Google? לחיצה על \"{telegram_cta}\" למעלה תפתח את הבוט — שם תמצא/י קישור לחשבון שלך (🔗) שמחזיר אותך לכאן, לאותו דפדפן, מזוהה. משם, החיבור עם Google יעבוד ישר על החשבון הקיים שלך.",
+        "en": "Already registered via Telegram, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot — you'll find your account link there (🔗) that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
+        "ru": "Уже зарегистрированы через Telegram, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота — там вы найдёте ссылку на свой аккаунт (🔗), которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
+        "fr": "Déjà inscrit via Telegram, mais pas encore lié à Google ? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot — vous y trouverez le lien de votre compte (🔗) qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
+        "ar": "مسجّل بالفعل عبر تيليجرام، لكن لم تربط Google بعد؟ الضغط على \"{telegram_cta}\" أعلاه يفتح البوت — ستجد هناك رابط حسابك (🔗) الذي يعيدك إلى هنا، في نفس المتصفح، معروفًا. من هناك، سيعمل الربط مع Google مباشرة على حسابك الحالي.",
     },
     "google_pending.h1": {
         "he": "ההתחברות עם Google הצליחה", "en": "Google login successful",
@@ -2274,21 +2187,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "هذا حساب جديد — ابدأ مباشرة هنا في الموقع ✨",
     },
     "google_pending.new_account_hint": {
-        "he": "ניצור לך חשבון וסינון פתוח שמתאים לכל הדירות — תוכל/י לצמצם אותו בכל רגע ב\"סינון\". טלגרם וווטסאפ יישארו זמינים תמיד כאופציה נוספת לקבלת התראות, בלי חובה להשתמש בהם.",
-        "en": "We'll create an account for you with an open filter that matches every listing — you can narrow it down anytime in \"Filter\". Telegram and WhatsApp will always stay available as an extra way to get notified, with no obligation to use them.",
-        "ru": "Мы создадим для вас аккаунт с открытым фильтром, который подходит под все объявления — вы можете сузить его в любой момент в разделе «Фильтр». Telegram и WhatsApp всегда будут доступны как дополнительный способ получать уведомления, без обязательства ими пользоваться.",
-        "fr": "Nous créerons pour vous un compte avec un filtre ouvert qui correspond à toutes les annonces — vous pourrez le restreindre à tout moment dans « Filtre ». Telegram et WhatsApp resteront toujours disponibles comme moyen supplémentaire de recevoir des notifications, sans obligation de les utiliser.",
-        "ar": "سننشئ لك حسابًا مع فلتر مفتوح يطابق كل الشقق — يمكنك تضييقه في أي وقت من \"الفلتر\". سيبقى تيليجرام وواتساب متاحين دائمًا كوسيلة إضافية لتلقي الإشعارات، دون إلزام باستخدامهما.",
+        "he": "ניצור לך חשבון וסינון פתוח שמתאים לכל הדירות — תוכל/י לצמצם אותו בכל רגע ב\"סינון\". טלגרם יישאר זמין תמיד כאופציה נוספת לקבלת התראות, בלי חובה להשתמש בו.",
+        "en": "We'll create an account for you with an open filter that matches every listing — you can narrow it down anytime in \"Filter\". Telegram will always stay available as an extra way to get notified, with no obligation to use it.",
+        "ru": "Мы создадим для вас аккаунт с открытым фильтром, который подходит под все объявления — вы можете сузить его в любой момент в разделе «Фильтр». Telegram всегда будет доступен как дополнительный способ получать уведомления, без обязательства им пользоваться.",
+        "fr": "Nous créerons pour vous un compte avec un filtre ouvert qui correspond à toutes les annonces — vous pourrez le restreindre à tout moment dans « Filtre ». Telegram restera toujours disponible comme moyen supplémentaire de recevoir des notifications, sans obligation de l'utiliser.",
+        "ar": "سننشئ لك حسابًا مع فلتر مفتوح يطابق كل الشقق — يمكنك تضييقه في أي وقت من \"الفلتر\". سيبقى تيليجرام متاحًا دائمًا كوسيلة إضافية لتلقي الإشعارات، دون إلزام باستخدامه.",
     },
     "google_pending.divider": {
         "he": "או", "en": "Or", "ru": "Или", "fr": "Ou", "ar": "أو",
     },
     "google_pending.existing_account_prompt": {
-        "he": "כבר יש לך חשבון דרך טלגרם או ווטסאפ?",
-        "en": "Already have an account via Telegram or WhatsApp?",
-        "ru": "У вас уже есть аккаунт через Telegram или WhatsApp?",
-        "fr": "Vous avez déjà un compte via Telegram ou WhatsApp ?",
-        "ar": "هل لديك حساب بالفعل عبر تيليجرام أو واتساب؟",
+        "he": "כבר יש לך חשבון דרך טלגרם?",
+        "en": "Already have an account via Telegram?",
+        "ru": "У вас уже есть аккаунт через Telegram?",
+        "fr": "Vous avez déjà un compte via Telegram ?",
+        "ar": "هل لديك حساب بالفعل عبر تيليجرام؟",
     },
     "google_pending.link_existing_cta": {
         "he": "🔗 קשר לחשבון הקיים שלי", "en": "🔗 Link to my existing account",
@@ -2597,11 +2510,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "فقط الشقق التي تطابق فعلًا فلترك",
     },
     "upgrade.checklist_contact": {
-        "he": "גישה מלאה לפרטי הקשר — טלפון וקישור ישיר לוואטסאפ",
-        "en": "Full access to contact details — phone number and a direct WhatsApp link",
-        "ru": "Полный доступ к контактным данным — номер телефона и прямая ссылка на WhatsApp",
-        "fr": "Accès complet aux coordonnées — numéro de téléphone et lien WhatsApp direct",
-        "ar": "وصول كامل لبيانات التواصل — رقم الهاتف ورابط واتساب مباشر",
+        "he": "גישה מלאה לפרטי הקשר — קישור ישיר למודעה המקורית",
+        "en": "Full access to contact details — a direct link to the original listing",
+        "ru": "Полный доступ к контактным данным — прямая ссылка на оригинальное объявление",
+        "fr": "Accès complet aux coordonnées — lien direct vers l'annonce d'origine",
+        "ar": "وصول كامل لبيانات التواصل — رابط مباشر للإعلان الأصلي",
     },
     "upgrade.checklist_cancel": {
         "he": "ביטול בכל רגע, בלי התחייבות",
@@ -2804,7 +2717,7 @@ def get_lang(request: Request, known_lang: str | None = None) -> str:
     """?lang= wins for this request (and main.py persists it to a cookie on the response);
     otherwise a previously-set cookie (an explicit choice made earlier on this same browser);
     otherwise `known_lang` — the viewer's own language on file (User.language), passed in by a
-    caller that already resolved a real user via uid/wid — otherwise the browser's own
+    caller that already resolved a real user via uid — otherwise the browser's own
     Accept-Language header (its FIRST visit's best guess, not persisted here — a cookie is only
     ever set from an explicit ?lang=, see main.py's _render); otherwise Hebrew.
 

@@ -257,7 +257,7 @@ continuing to sink more time/money into diminishing returns. Revisit only if a f
 different angle emerges (e.g. an official Yad2 data-partner program, or a commercial all-in-one
 "web unlocker" API that handles proxy+fingerprint+captcha as a bundled black box).
 
-## 2026-08-28 — Validating context: a competitor (Yaeli, app.yaeli.ai, a WhatsApp apartment bot)
+## 2026-08-28 — Validating context: a competitor (Yaeli, app.yaeli.ai, an apartment bot)
 ## hits the exact same wall for live outbound clicks to Yad2
 
 The user tested Yaeli's own product: its listing cards show normalized data (price, image,

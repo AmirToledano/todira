@@ -61,7 +61,7 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: owner-telegram-user-id
                       optional: true
-                # Signs the "?t="/"?wid=" login links the scraper puts in notification links and WhatsApp magic links (todira_common/uid_token.py, wid_token.py).
+                # Signs the "?t=" login links the scraper puts in notification links (todira_common/uid_token.py).
                 # MUST be the same secret the website verifies with (website-deployment.yaml) — until
                 # 2026-10-05 only the website had it, so this job signed with the dev-only fallback key and
                 # every link opened logged-out ("open a personal link from the Telegram bot").
@@ -142,24 +142,6 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: bright-data-isp-pass
                       optional: true
-                # Free-form WhatsApp push + check-in (todira_common/whatsapp_client.py,
-                # notifier.py's _whatsapp_eligible/_send_whatsapp_match_message, whatsapp_checkin.py) — same access-token/phone-number-id secret website-deployment.yaml
-                # already uses for the webhook's own replies, both optional here the same way.
-                - name: WHATSAPP_ACCESS_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: whatsapp-access-token
-                      optional: true
-                - name: WHATSAPP_PHONE_NUMBER_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: whatsapp-phone-number-id
-                      optional: true
-                # Not secret. Lets scraper/whatsapp_cost_guard.py read Meta's pricing analytics.
-                - name: WHATSAPP_BUSINESS_ACCOUNT_ID
-                  value: {{ .Values.scraper.whatsappBusinessAccountId | default "" | quote }}
                 # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
                 # scraper.komoMaxNewDetailFetchesPerRun for the real math these exist to protect.
                 # Only set when the value is actually present, so scraper/main.py's own Python-side

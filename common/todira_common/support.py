@@ -1,8 +1,6 @@
 """Channel-agnostic "this message is a support/help request, not apartment criteria" detector.
-Shared by bot/handlers/support.py (Telegram) and website/whatsapp_webhook.py (WhatsApp) so both
-channels recognize the same intent instead of maintaining two copies of the same regex — each
-channel still does its own escalation (owner notification mechanics differ: python-telegram-bot's
-context.bot vs a raw Telegram HTTP call from the website process)."""
+Used by bot/handlers/support.py and the bot's conversation handlers so they all recognize the same
+intent from one regex."""
 from __future__ import annotations
 
 import re

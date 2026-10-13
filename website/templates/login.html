@@ -8,8 +8,8 @@
    template's own comment and main.py's login()/_landing_react_assets(). `next` is sanitized
    server-side (_safe_next) to always start with a single "/" — but that check doesn't restrict
    its character set otherwise, so unlike every other value injected into window.__TODIRA_PAGE__
-   so far (lang/dir are fixed-whitelist strings, uid is int-typed, whatsapp_public_number is a
-   trusted env var — none of them attacker-controlled arbitrary text), `next` genuinely is: a
+   so far (lang/dir are fixed-whitelist strings, uid is int-typed — none of them attacker-controlled
+   arbitrary text), `next` genuinely is: a
    visitor's own query string. `| tojson` (not a hand-written quoted string) is what makes that
    safe here — it JSON-encodes AND escapes `<`/`>` so a `next` value can't break out of this
    <script> block (e.g. via a literal `"` or a `</script>` sequence). The header/nav/footer
@@ -20,8 +20,7 @@
     lang: "{{ lang }}",
     dir: "{{ dir }}",
     next: {{ next | tojson }},
-    uid: {{ uid if uid else 'null' }},
-    whatsappPublicNumber: "{{ whatsapp_public_number }}"
+    uid: {{ uid if uid else 'null' }}
   };
 </script>
 {% if landing_js_url %}

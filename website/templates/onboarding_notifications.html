@@ -2,7 +2,7 @@
 {% block title %}{{ t('meta.title_generic') }}{% endblock %}
 {% block content %}
 {% from "_onboarding_steps.html" import onboarding_steps with context %}
-{% set trial_url = "/onboarding/trial?uid=" ~ uid if uid else ("/onboarding/trial?wid=" ~ wid if wid else "/onboarding/trial") %}
+{% set trial_url = "/onboarding/trial?uid=" ~ uid if uid else "/onboarding/trial" %}
 {{ onboarding_steps(2) }}
 <div class="onboarding-card reveal">
   <div class="glyph" aria-hidden="true">🔔</div>

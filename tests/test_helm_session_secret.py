@@ -1,4 +1,4 @@
-"""Every workload that signs a website login link (?t= / ?wid=) must get the SAME SESSION_SECRET_KEY the
+"""Every workload that signs a website login link (?t=) must get the SAME SESSION_SECRET_KEY the
 website verifies with. Until 2026-10-05 only the website had it: the bot and the scraper signed with the
 dev-only fallback key, so every link they sent opened logged-out."""
 from pathlib import Path

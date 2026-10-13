@@ -90,7 +90,7 @@ def has_full_access(user: User, *, is_owner: bool = False) -> bool:
 
 def has_paid_access(user: User, *, is_owner: bool = False) -> bool:
     """2026-09-27 real owner decision: same as has_full_access, EXCEPT the 3-day trial no longer
-    counts. Reaching a listing's actual poster (WhatsApp message / phone number button) now needs
+    counts. Reaching a listing's actual poster (the contact button) now needs
     a genuine paid subscription (or the owner/free-access-grant equivalents, which still count —
     those represent real access already granted, not a time-limited trial) — a trial user sees the
     upgrade-subscription popup on those two buttons specifically, same as a fully expired user.

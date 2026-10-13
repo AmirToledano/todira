@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       uid:
-        description: "telegram_user_id to test against (must have Telegram but not WhatsApp linked)"
+        description: "telegram_user_id to test against"
         required: true
 
 jobs:

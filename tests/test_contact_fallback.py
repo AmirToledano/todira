@@ -217,8 +217,7 @@ def test_casual_message_reply_mentions_start_not_support():
 # --- 2026-09-06: real chat (+ live filter editing) for already-onboarded users ---
 # Found live by the owner comparing side-by-side against the reference bot: an already-onboarded
 # user's free-text message used to always hit the plain "type /start" redirect above, which
-# doesn't even acknowledge they're already registered. Mirrors website/whatsapp_webhook.py's
-# identical fix for the same gap on that channel.
+# doesn't even acknowledge they're already registered.
 
 
 class _FakeFilterRow:

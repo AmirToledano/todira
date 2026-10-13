@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { t, uid, whatsappPublicNumber, telegramBotUrl } from "./i18n";
+import { t, uid, telegramBotUrl } from "./i18n";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
@@ -146,16 +146,6 @@ export default function Contact() {
         <a className="btn outline" href={telegramBotUrl} target="_blank" rel="noreferrer">
           {t("contact.telegram_way")} 💬
         </a>
-        {whatsappPublicNumber && (
-          <a
-            className="btn outline"
-            href={`https://wa.me/${whatsappPublicNumber}?text=${encodeURIComponent(t("whatsapp.greeting"))}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t("contact.whatsapp_way")} 💬
-          </a>
-        )}
       </motion.div>
     </>
   );

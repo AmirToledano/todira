@@ -34,34 +34,33 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    # Both nullable. Originally a user had exactly one of the two, set once by whichever of
-    # todira_common/users.py's two get_or_create_*_user helpers first created the row — that's
-    # still true for most rows. Channel-linking (channel_link_code below) lets a user end up with
-    # BOTH set: once linked, the SAME row gets a second identifier attached to it rather than a
-    # second row being created.
+    # Nullable: a Google-only standalone account has none. Channel-linking (channel_link_code below)
+    # attaches a Telegram account to an existing row rather than creating a second one.
+    # 2026-10-13: the WhatsApp channel was removed from the project (owner decision). Its old columns
+    # (whatsapp_phone_number, whatsapp_notifications_opted_in, whatsapp_last_inbound_at,
+    # whatsapp_checkin_sent_at, pending_onboarding_state) are still in the database but no code
+    # reads or writes them any more.
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True)
-    whatsapp_phone_number: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(Text)
     first_name: Mapped[str | None] = mapped_column(Text)
-    # A Google account LINKED to an existing Telegram/WhatsApp-created user — not a third
-    # standalone identity like the two above (a Google-only visitor has no filter/account yet,
+    # A Google account LINKED to an existing Telegram-created user — not a second
+    # standalone identity like the one above (a Google-only visitor has no filter/account yet,
     # same restriction the Telegram Login flow already has), just an extra way back into the SAME
     # account for a persistent browser session. Set once via /auth/google/callback's link flow
     # (website/main.py) when a user first signs in with Google while viewing a page via their own
     # ?uid= deep link; every later "Sign in with Google" then resolves straight to this same row.
     google_sub: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
     # 2026-09-26: real owner request — /account shows which channels are linked, but not WHICH
-    # Google/WhatsApp/Telegram identity, so a user with several channels linked couldn't tell them
-    # apart. whatsapp_phone_number/telegram_username above already carry their own identifiers;
+    # Google/Telegram identity, so a user with several channels linked couldn't tell them
+    # apart. telegram_username above already carries its own identifier;
     # google_sub is an opaque OIDC subject id, not human-readable, so this is a separate column
     # (not reusing google_sub), refreshed on every successful Google callback (not just at
     # link/creation time) so it stays correct if the person's Google email ever changes.
     google_email: Mapped[str | None] = mapped_column(Text)
-    # 2026-09-26 real owner request: both bots (Telegram + WhatsApp) were Hebrew-only, including
+    # 2026-09-26 real owner request: the bot was Hebrew-only, including
     # Gemini's own generated replies, not just canned strings — see todira_common/language.py's own
     # docstring for the full reasoning. NULL means "not yet known" (an existing user from before
-    # this column existed, or a brand-new WhatsApp user who hasn't answered the language-picker
-    # yet) — every read site treats NULL as todira_common.language.DEFAULT_LANG ("he"), matching
+    # this column existed) — every read site treats NULL as todira_common.language.DEFAULT_LANG ("he"), matching
     # the bots' actual behavior before this column existed at all. Deliberately a plain code
     # ("he"/"en"/...), not a locale — the bots have exactly 5 supported languages, the same list
     # website/i18n.py's SUPPORTED_LANGS already uses.
@@ -74,38 +73,10 @@ class User(Base):
     notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
-    # Proactive WhatsApp Message Template opt-in (2026-09-08) — deliberately separate from
-    # notifications_enabled above, which has meant "Telegram push" ever since Telegram was the
-    # only channel that could push at all (scraper/notifier.py). A WhatsApp Message Template is
-    # Meta's own mechanism for business-initiated messages outside the 24h customer-service
-    # window, and Meta's Utility-category review expects a genuine, specific opt-in for it —
-    # auto-flipping this on for every existing whatsapp_phone_number row the day this shipped
-    # would be exactly the unconsented enrollment that review looks for, so this defaults to
-    # False regardless of notifications_enabled's own value and is collected explicitly (website's
-    # /account/whatsapp-notifications toggle, offered right after WhatsApp onboarding completes —
-    # see website/whatsapp_webhook.py's _send_notifications_optin_prompt). See
-    # scraper/notifier.py's _whatsapp_eligible for where this is actually checked.
-    whatsapp_notifications_opted_in: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="false"
-    )
-    # Zero-cost WhatsApp (2026-10-02). Meta bills every business-initiated TEMPLATE message, but any
-    # free-form message sent within 24h of the user's own last inbound message (text OR a button
-    # tap) is a free "service" message. So the bot only ever sends listings inside that window:
-    # whatsapp_last_inbound_at is stamped by website/whatsapp_webhook.py on every inbound message,
-    # and todira_common/whatsapp_window.py is the one place that decides whether the window is open.
-    # NULL = never heard from them (or from before this column existed) = window closed.
-    whatsapp_last_inbound_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
-    # When the "still looking?" check-in was last sent. A check-in is sent once per window (only when
-    # this is older than whatsapp_last_inbound_at), near the end of the window, with reply buttons —
-    # tapping one reopens a fresh 24h window. See scraper/whatsapp_checkin.py.
-    whatsapp_checkin_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # The paid_until value a "your access ends soon" reminder was last sent for (scraper/
     # renewal_reminder.py). Comparing against the CURRENT paid_until means a renewal (new paid_until)
     # re-arms the reminder automatically and a user is never reminded twice for the same period.
     renewal_reminder_for: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
-    # In-progress WhatsApp onboarding state across stateless webhook calls — see migration
-    # 0003_whatsapp_users. None once no onboarding is in progress (not started, or completed).
-    pending_onboarding_state: Mapped[dict | None] = mapped_column(JSONB)
 
     # Paid-access fields — 2026-09-04 pricing decision (see common/todira_common/access.py for the
     # actual gate, `has_full_access`). Payment itself is informal/manual for now (a Bit transfer
@@ -134,10 +105,8 @@ class User(Base):
     takbull_subscription_uniqid: Mapped[str | None] = mapped_column(Text)
 
     # Cross-channel account linking (2026-09-05) — a short code generated on the website
-    # (/account) for an already-logged-in user, then sent FROM a new channel (a WhatsApp text
-    # message, or opened as a Telegram /start deep-link payload) to attach that channel to this
-    # SAME row instead of creating a brand-new, disconnected one. Matches the reference product's
-    # own confirmed UX (a `ref_xxxxxx` code sent as a plain WhatsApp message). See
+    # (/account) for an already-logged-in user, then opened as a Telegram /start deep-link payload
+    # to attach Telegram to this SAME row instead of creating a brand-new, disconnected one. See
     # todira_common/channel_link.py for generation/consumption; cleared after a single successful
     # use, and `channel_link_code_expires_at` bounds how long an unused code stays valid.
     channel_link_code: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
@@ -227,7 +196,7 @@ class Filter(Base):
     # directly on /apartments' own map, narrowing the listing set to that area ON TOP OF cities
     # (both apply — AND, not OR). Exactly one of the two shapes is populated at a time (kind picks
     # which); matching.py's evaluate() is the single place that reads these, so a saved region also
-    # narrows proactive WhatsApp/Telegram matches, not just what /apartments shows on load.
+    # narrows proactive Telegram matches, not just what /apartments shows on load.
     map_region_kind: Mapped[str | None] = mapped_column(Text)  # "rect" | "circle" | None
     map_center_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     map_center_lng: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
@@ -426,10 +395,9 @@ class ContactMessage(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger)
     notified_owner: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # "website", "telegram_bot", or "whatsapp_bot" — nullable only because rows written before this
-    # column existed have no value; every new row sets it explicitly (see website/main.py's
-    # contact_submit, bot/handlers/contact_fallback.py's _save_contact_message_sync, and
-    # website/whatsapp_webhook.py's _save_help_request_sync).
+    # "website" or "telegram_bot" (older rows may also say "whatsapp_bot") — nullable only because rows
+    # written before this column existed have no value; every new row sets it explicitly (see
+    # website/main.py's contact_submit and bot/handlers/contact_fallback.py's _save_contact_message_sync).
     source: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -513,9 +481,7 @@ class Payment(Base):
 
 class AppFlag(Base):
     """Tiny key/value store for process-wide switches that must survive restarts and be visible to
-    every pod (website, scraper). First use (2026-10-02): "whatsapp_paused" - the circuit breaker that
-    stops every proactive WhatsApp send the moment anything billable is detected. See
-    todira_common/whatsapp_guard.py."""
+    every pod (website, scraper). See todira_common/app_flags.py."""
 
     __tablename__ = "app_flags"
 

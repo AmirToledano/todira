@@ -8,7 +8,7 @@
 {# 2026-09-25: sixth page moved into a React island, same pattern as terms.html — see that
    template's own comment and main.py's contact()/_landing_react_assets(). Unlike the read-only
    legal pages, this one has a real form: the React form submits via fetch to POST /api/contact
-   (JSON) rather than a native <form> POST, so uid/whatsappPublicNumber are carried in
+   (JSON) rather than a native <form> POST, so uid is carried in
    window.__TODIRA_PAGE__ alongside lang/dir for the React form to read and forward on submit. The
    header/nav/footer (base.html) stay exactly as they were; only this content block became React. #}
 <div id="root"></div>
@@ -16,8 +16,7 @@
   window.__TODIRA_PAGE__ = {
     lang: "{{ lang }}",
     dir: "{{ dir }}",
-    uid: {{ uid if uid else 'null' }},
-    whatsappPublicNumber: "{{ whatsapp_public_number }}"
+    uid: {{ uid if uid else 'null' }}
   };
 </script>
 {% if landing_js_url %}

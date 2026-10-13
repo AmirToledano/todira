@@ -54,8 +54,7 @@ def _haversine_m(lat1, lng1, lat2, lng2) -> float:
 
 
 def safe_range_update(current_min, current_max, proposed_min, proposed_max):
-    """Used by the free-chat filter-editing paths (bot/handlers/contact_fallback.py,
-    website/whatsapp_webhook.py's own equivalent) where Gemini, not a structured menu, decides
+    """Used by the free-chat filter-editing path (bot/handlers/contact_fallback.py) where Gemini, not a structured menu, decides
     which of min/max to change from freeform text — unlike filter_conversation.py's own menu-
     driven edits, there's no FRIENDLY_VALIDATION_MESSAGES-style re-prompt available here (Gemini's
     response_message has already been written by the time this runs), so an inverted range
