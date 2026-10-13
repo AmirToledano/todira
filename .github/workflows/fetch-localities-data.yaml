@@ -1,0 +1,73 @@
+name: "Fetch - the official list of Israeli localities and the localities seen in listings (read-only, public data only)"
+
+# Owner request 2026-10-13: every city, moshav, kibbutz, village and area must be searchable, not only the ~140 bundled
+# in common/todira_common/cities.py. Read-only. Prints (1) the Central Bureau of Statistics localities list from
+# data.gov.il (locality code | name | sub-district | regional council) - unreachable from the coding sandbox, reachable
+# from a runner - and (2) every distinct listings.city value with its listing count. Place names only: nothing about any
+# user or listing contact reaches the (public) log.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CBS localities (data.gov.il)
+        run: |
+          set -e
+          URL="https://data.gov.il/api/3/action/datastore_search?resource_id=5c78e9fa-c2e2-4771-93ff-7f400a12f7ba&limit=5000"
+          curl -sS --retry 3 -m 60 "$URL" -o loc.json || true
+          echo "success=$(jq -r '.success' loc.json 2>/dev/null) records=$(jq -r '.result.records | length' loc.json 2>/dev/null)"
+          echo "fields: $(jq -r '[.result.fields[].id] | join(",")' loc.json 2>/dev/null)"
+          echo "=== LOCALITIES BEGIN ==="
+          jq -r '.result.records[] | [."סמל_ישוב", ."שם_ישוב", ."שם_נפה", ."שם_מועצה"] | map(tostring | gsub("^\\s+|\\s+$"; "")) | join("|")' loc.json || true
+          echo "=== LOCALITIES END ==="
+          if [ "$(jq -r '.success' loc.json 2>/dev/null)" != "true" ]; then
+            echo "--- resource not found: datasets matching the localities search, for the right resource id ---"
+            curl -sS -m 60 "https://data.gov.il/api/3/action/package_search?q=%D7%99%D7%99%D7%A9%D7%95%D7%91%D7%99%D7%9D&rows=10" \
+              | jq -r '.result.results[] | .title as $t | .resources[] | "\($t) | \(.name) | \(.id) | \(.format)"' || true
+          fi
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Localities seen in listings (city | all listings | active listings)
+        run: |
+          kubectl delete pod fetch-listing-cities -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fetch-listing-cities
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: fetch-listing-cities
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "=== LISTING CITIES BEGIN ==="
+                    psql "$CONN" -At -F '|' -c "SELECT city, count(*), count(*) FILTER (WHERE is_delisted = false) FROM listings WHERE city IS NOT NULL AND city <> '' GROUP BY city ORDER BY 2 DESC;"
+                    echo "=== LISTING CITIES END ==="
+          PODYAML
+          for i in $(seq 1 60); do
+            PHASE=$(kubectl get pod fetch-listing-cities -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira fetch-listing-cities || true
+          kubectl delete pod fetch-listing-cities -n todira --ignore-not-found
