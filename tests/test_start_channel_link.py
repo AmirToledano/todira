@@ -232,7 +232,7 @@ def test_start_replies_with_linked_message():
         start_module, "_upsert_or_link_user_sync", lambda tg_user, code: ("linked", start_module.LINKED)
     ):
         asyncio.run(start_module.start(update, _make_context(["ref_abc123"])))
-    update.message.reply_text.assert_called_once_with(start_module.LINKED)
+    update.message.reply_text.assert_called_once_with(start_module.LINKED, parse_mode="HTML")
 
 
 def test_start_replies_with_conflict_message():
@@ -243,7 +243,7 @@ def test_start_replies_with_conflict_message():
         lambda tg_user, code: ("conflict", start_module.LINK_CONFLICT),
     ):
         asyncio.run(start_module.start(update, _make_context(["ref_abc123"])))
-    update.message.reply_text.assert_called_once_with(start_module.LINK_CONFLICT)
+    update.message.reply_text.assert_called_once_with(start_module.LINK_CONFLICT, parse_mode="HTML")
 
 
 def test_start_replies_with_normal_welcome_when_no_args():
@@ -255,7 +255,7 @@ def test_start_replies_with_normal_welcome_when_no_args():
         start_module, "_upsert_or_link_user_sync", lambda tg_user, code: ("normal", welcome)
     ):
         asyncio.run(start_module.start(update, _make_context([])))
-    update.message.reply_text.assert_called_once_with(welcome)
+    update.message.reply_text.assert_called_once_with(welcome, parse_mode="HTML")
 
 
 @pytest.fixture(autouse=True)
@@ -263,3 +263,34 @@ def _fixed_login_token():
     """The signed ?t= token embeds a timestamp, so exact-string assertions on links need it pinned."""
     with patch.object(start_module, "signed_login_query", lambda telegram_user_id: f"t=TOKEN{telegram_user_id}"):
         yield
+
+
+# --- the welcome itself (2026-10-13 owner request: clearer opening, a free-text line, more space above the commands,
+# no WhatsApp) ---
+
+
+def test_the_welcome_is_telegram_html_with_the_name_escaped_and_no_whatsapp():
+    from html.parser import HTMLParser
+
+    from todira_common.bot_strings import BOT_STRINGS
+
+    session = _QueuedScalarSession(results=[None])
+    with patch.object(start_module, "get_session", lambda: session):
+        _outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(first_name="<Dan & Co>"), None)
+    assert "&lt;Dan &amp; Co&gt;" in reply and "<Dan" not in reply
+
+    class _Tags(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tags = []
+
+        def handle_starttag(self, tag, attrs):
+            self.tags.append(tag)
+
+    for lang, text in BOT_STRINGS["start.welcome"].items():
+        filled = text.format(name="X", account_url="https://todira.app/account?t=T")
+        parser = _Tags()
+        parser.feed(filled)
+        assert set(parser.tags) <= {"b", "i", "a"}, lang  # tags Telegram's HTML mode accepts
+        assert "whatsapp" not in filled.lower() and "ווטסאפ" not in filled, lang
+        assert "/filter" in filled and "⠀" in filled, lang

@@ -28,40 +28,62 @@ from __future__ import annotations
 from todira_common.language import DEFAULT_LANG
 
 BOT_STRINGS: dict[str, dict[str, str]] = {
+    # Telegram HTML (handlers/start.py sends /start replies with parse_mode HTML and escapes {name}/{account_url}).
+    # The "⠀" line is a blank line Telegram can't collapse: extra space above the commands (owner request 2026-10-13).
     "start.welcome": {
         "he": (
-            "✨ 🏠 היי {name}! אני בוט חיפוש דירות אישי — סורק את שוק הדירות ומודיע לך כשמופיעה "
-            "דירה שמתאימה לסינון שלך.\n\nפקודות:\n/filter — הגדרת/עדכון הסינון שלך\n/apartments — "
+            "👋 היי {name}!\n"
+            "אני <b>טודירה</b> 🏠 הבוט שמחפש לך דירה.\n"
+            "אני סורק את שוק הדירות כל הזמן, ושולח לך הודעה <b>ברגע</b> שעולה דירה שמתאימה לחיפוש שלך 🔔\n\n"
+            "✍️ <b>אפשר פשוט לכתוב לי מה מחפשים</b>, במילים שלך, ואני אבין לבד.\n"
+            "💬 למשל: <i>\"דירת 3 חדרים בתל אביב עד 8,000 ₪ עם מרפסת\"</i>\n\n⠀\n"
+            "📋 <b>פקודות:</b>\n/filter — הגדרת/עדכון הסינון שלך\n/apartments — "
             "הדירות התואמות האחרונות\n/liked — הדירות ששמרת\n/profile — הפרופיל וההגדרות שלך\n\n"
-            "רוצה גם להתחבר באתר (Google/ווטסאפ)? {account_url} 🔗"
+            "🔗 רוצה גם להתחבר באתר (Google)? <a href=\"{account_url}\">לכניסה לאזור האישי</a>"
         ),
         "en": (
-            "✨ 🏠 Hi {name}! I'm a personal apartment-search bot — I scan the rental market and "
-            "notify you when a listing matches your filter.\n\nCommands:\n/filter — set/update your "
-            "filter\n/apartments — the latest matching listings\n/liked — listings you saved\n"
-            "/profile — your profile and settings\n\nWant to also sign in on the website "
-            "(Google/WhatsApp)? {account_url} 🔗"
+            "👋 Hi {name}!\n"
+            "I'm <b>Todira</b> 🏠, the bot that finds you an apartment.\n"
+            "I scan the housing market around the clock and message you <b>the moment</b> a listing matches your "
+            "search 🔔\n\n"
+            "✍️ <b>Just tell me what you're looking for</b>, in your own words, and I'll understand.\n"
+            "💬 For example: <i>\"3 rooms in Tel Aviv up to ₪8,000 with a balcony\"</i>\n\n⠀\n"
+            "📋 <b>Commands:</b>\n/filter — set/update your filter\n/apartments — the latest matching listings\n"
+            "/liked — listings you saved\n/profile — your profile and settings\n\n"
+            "🔗 Want to also sign in on the website (Google)? <a href=\"{account_url}\">Open my account</a>"
         ),
         "ru": (
-            "✨ 🏠 Привет, {name}! Я персональный бот для поиска квартир — слежу за рынком аренды и "
-            "сообщаю, когда появляется объявление, подходящее под ваш фильтр.\n\nКоманды:\n/filter — "
-            "настроить/изменить фильтр\n/apartments — последние подходящие объявления\n/liked — "
-            "сохранённые объявления\n/profile — ваш профиль и настройки\n\nХотите также войти на "
-            "сайте (Google/WhatsApp)? {account_url} 🔗"
+            "👋 Привет, {name}!\n"
+            "Я <b>Todira</b> 🏠, бот, который ищет для вас квартиру.\n"
+            "Я постоянно слежу за рынком жилья и пишу вам <b>сразу</b>, как появляется объявление под ваш "
+            "поиск 🔔\n\n"
+            "✍️ <b>Просто напишите, что вы ищете</b>, своими словами, и я пойму.\n"
+            "💬 Например: <i>«3 комнаты в Тель-Авиве до 8 000 ₪ с балконом»</i>\n\n⠀\n"
+            "📋 <b>Команды:</b>\n/filter — настроить/изменить фильтр\n/apartments — последние подходящие "
+            "объявления\n/liked — сохранённые объявления\n/profile — ваш профиль и настройки\n\n"
+            "🔗 Хотите также входить на сайте (Google)? <a href=\"{account_url}\">Открыть личный кабинет</a>"
         ),
         "fr": (
-            "✨ 🏠 Salut {name} ! Je suis un bot personnel de recherche d'appartements — je scrute le "
-            "marché locatif et te préviens dès qu'une annonce correspond à ton filtre.\n\n"
-            "Commandes :\n/filter — définir/modifier ton filtre\n/apartments — les dernières "
+            "👋 Salut {name} !\n"
+            "Je suis <b>Todira</b> 🏠, le bot qui te trouve un appartement.\n"
+            "Je scrute le marché immobilier en continu et je te préviens <b>dès qu'une annonce</b> correspond à "
+            "ta recherche 🔔\n\n"
+            "✍️ <b>Écris-moi simplement ce que tu cherches</b>, avec tes propres mots, et je comprendrai.\n"
+            "💬 Par exemple : <i>« 3 pièces à Tel Aviv jusqu'à 8 000 ₪ avec balcon »</i>\n\n⠀\n"
+            "📋 <b>Commandes :</b>\n/filter — définir/modifier ton filtre\n/apartments — les dernières "
             "annonces correspondantes\n/liked — les annonces enregistrées\n/profile — ton profil et "
-            "tes réglages\n\nTu veux aussi te connecter sur le site (Google/WhatsApp) ? "
-            "{account_url} 🔗"
+            "tes réglages\n\n"
+            "🔗 Tu veux aussi te connecter sur le site (Google) ? <a href=\"{account_url}\">Ouvrir mon espace</a>"
         ),
         "ar": (
-            "✨ 🏠 مرحباً {name}! أنا بوت شخصي للبحث عن شقق — أراقب سوق الإيجار وأخبرك عند ظهور إعلان "
-            "يطابق تفضيلاتك.\n\nالأوامر:\n/filter — ضبط/تحديث تفضيلاتك\n/apartments — أحدث الإعلانات "
-            "المطابقة\n/liked — الإعلانات المحفوظة\n/profile — ملفك الشخصي وإعداداتك\n\nهل تريد "
-            "أيضاً تسجيل الدخول عبر الموقع (Google/WhatsApp)؟ {account_url} 🔗"
+            "👋 مرحباً {name}!\n"
+            "أنا <b>Todira</b> 🏠، البوت الذي يبحث لك عن شقة.\n"
+            "أراقب سوق الشقق باستمرار وأرسل لك رسالة <b>فور</b> ظهور شقة تطابق بحثك 🔔\n\n"
+            "✍️ <b>اكتب لي ببساطة ما تبحث عنه</b> بكلماتك الخاصة، وسأفهم.\n"
+            "💬 مثلاً: <i>\"3 غرف في تل أبيب حتى 8,000 ₪ مع شرفة\"</i>\n\n⠀\n"
+            "📋 <b>الأوامر:</b>\n/filter — ضبط/تحديث تفضيلاتك\n/apartments — أحدث الإعلانات "
+            "المطابقة\n/liked — الإعلانات المحفوظة\n/profile — ملفك الشخصي وإعداداتك\n\n"
+            "🔗 هل تريد أيضاً تسجيل الدخول عبر الموقع (Google)؟ <a href=\"{account_url}\">فتح حسابي</a>"
         ),
     },
     "start.linked": {
