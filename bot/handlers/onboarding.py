@@ -117,6 +117,9 @@ async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAUL
 def _save_filter_sync(tg_user, state: dict) -> int:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
+        # 2026-10-13: features with their own filter switch (balcony, parking, elevator...) are saved as that switch, the
+        # same as /filter's buttons set them, not as description keywords.
+        feature_fields, keywords = search_text.split_features(state["keywords"])
         filter_row = Filter(
             user_id=user.id,
             deal_type=state["deal_type"],
@@ -125,7 +128,8 @@ def _save_filter_sync(tg_user, state: dict) -> int:
             rooms_max=state["rooms_max"],
             price_min=int(state["price_min"]) if state["price_min"] is not None else None,
             price_max=int(state["price_max"]) if state["price_max"] is not None else None,
-            keywords=state["keywords"],
+            keywords=keywords,
+            **feature_fields,
         )
         session.add(filter_row)
         session.commit()

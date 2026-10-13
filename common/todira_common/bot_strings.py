@@ -858,6 +858,21 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "🙋 فهمت، أحلت رسالتك إلى الفريق وستصلك إجابة قريباً.\n\nلمتابعة تعديل تفضيلاتك، "
         "يرجى استخدام الأزرار أعلاه 👆",
     },
+    # 2026-10-13: text typed while the /filter menu is open (bot/handlers/filter_conversation.py menu_text_fallback).
+    "filter.typed_applied": {
+        "he": "עדכנתי בחיפוש: {summary} ✍️\nכדי לשמור, לחצו על \"💾 שמור וחפש\" למטה 👇",
+        "en": "Updated your search: {summary} ✍️\nTo keep it, tap \"💾 Save and search\" below 👇",
+        "ru": "Обновил поиск: {summary} ✍️\nЧтобы сохранить, нажмите «💾 Сохранить и искать» ниже 👇",
+        "fr": "Recherche mise à jour : {summary} ✍️\nPour la garder, appuie sur « 💾 Enregistrer et rechercher » ci-dessous 👇",
+        "ar": "حدّثت بحثك: {summary} ✍️\nللحفظ اضغط «💾 حفظ وبحث» في الأسفل 👇",
+    },
+    "filter.use_buttons_below": {
+        "he": "לעריכת החיפוש אפשר לכתוב למשל \"שכירות בחיפה עד 5000\", או להשתמש בכפתורים 👇",
+        "en": "To edit your search, write e.g. \"rent in Haifa up to 5000\", or use the buttons 👇",
+        "ru": "Чтобы изменить поиск, напишите например «аренда в Хайфе до 5000» или используйте кнопки 👇",
+        "fr": "Pour modifier ta recherche, écris par ex. « location à Haïfa jusqu'à 5000 », ou utilise les boutons 👇",
+        "ar": "لتعديل البحث اكتب مثلاً «إيجار في حيفا حتى 5000» أو استخدم الأزرار 👇",
+    },
     "filter.use_buttons_hint": {
         "he": "יש להשתמש בכפתורים שלמעלה כדי לערוך את הסינון 👆",
         "en": "Please use the buttons above to edit your filter 👆",
