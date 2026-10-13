@@ -172,11 +172,11 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     # 2026-10-13 (owner report: Gemini out of credit, every new user got errors): onboarding reads the message with free
     # rules first and asks for what's missing with buttons (bot/handlers/onboarding.py, todira_common/search_text.py).
     "onboarding.understood": {
-        "he": "מעולה, הבנתי: {summary} 👌",
-        "en": "Great, got it: {summary} 👌",
-        "ru": "Отлично, понял: {summary} 👌",
-        "fr": "Super, compris : {summary} 👌",
-        "ar": "رائع، فهمت: {summary} 👌",
+        "he": "🔎 החיפוש שלך פעיל: {summary}",
+        "en": "🔎 Your search is on: {summary}",
+        "ru": "🔎 Ваш поиск активен: {summary}",
+        "fr": "🔎 Ta recherche est active : {summary}",
+        "ar": "🔎 بحثك نشط: {summary}",
     },
     "onboarding.known_so_far": {
         "he": "הבנתי: {summary}.\n",

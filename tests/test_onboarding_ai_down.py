@@ -74,7 +74,7 @@ def test_a_complete_message_is_saved_by_the_rules_alone_without_any_ai_call():
     assert result == ConversationHandler.END
     assert saved[0]["deal_type"] == "rent" and saved[0]["cities"] == ["תל אביב יפו"]
     assert saved[0]["price_max"] == 8500 and saved[0]["rooms_min"] == 3 and saved[0]["keywords"] == ["מרפסת"]
-    assert _texts(update)[0].startswith("מעולה, הבנתי: שכירות · תל אביב יפו · 3–3.5 חדרים · עד ₪8,500 · מרפסת")
+    assert _texts(update)[0] == "🔎 החיפוש שלך פעיל: שכירות · תל אביב יפו · 3–3.5 חדרים · עד ₪8,500 · מרפסת"
 
 
 def test_a_missing_deal_type_is_asked_with_buttons_when_the_ai_is_unavailable():
@@ -142,3 +142,19 @@ def test_each_user_gets_a_limited_number_of_ai_calls_a_day(monkeypatch):
         assert ai_gate.allowed(user_data)
         ai_gate.used(user_data)
     assert not ai_gate.allowed(user_data)
+
+
+def test_the_promo_reels_own_message_is_understood_and_saved_without_any_question():
+    # the exact message the user types in the Instagram reel (promo/reel/content.json "userMsg"): no deal word, so the
+    # budget settles it - and the reply matches the reel's "🔎 החיפוש שלך פעיל"
+    update = _update("היי, אני מחפש דירה בתל אביב עם 3+ חדרים. התקציב שלי עד 8,500₪ ואשמח שתהיה גם מרפסת.")
+    result, saved = _run(update, _context())
+    assert result == ConversationHandler.END
+    assert _texts(update)[0] == "🔎 החיפוש שלך פעיל: שכירות · תל אביב יפו · 3+ חדרים · עד ₪8,500 · מרפסת"
+    assert saved[0]["deal_type"] == "rent" and saved[0]["rooms_min"] == 3 and saved[0]["rooms_max"] is None
+
+
+def test_a_purchase_budget_means_buying():
+    update = _update("דירה ברמת גן עד 2.5 מיליון")
+    _, saved = _run(update, _context())
+    assert saved[0]["deal_type"] == "sale"

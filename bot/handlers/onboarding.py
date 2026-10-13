@@ -173,6 +173,7 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not rules["cities"] and context.user_data.get("onboarding_asked") == "city":
         rules["cities"] = search_text.match_city_reply(text)
     search_text.merge_into(state, rules)
+    search_text.infer_deal_type(state)
     if search_text.is_complete(state):
         await update.message.reply_text(bot_text("onboarding.understood", lang, summary=search_text.summary(state, lang)))
         return await _finish(update, context, state, lang)
