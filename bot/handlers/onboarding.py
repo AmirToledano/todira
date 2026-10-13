@@ -271,7 +271,7 @@ async def _ask_for_missing(update, context, state: dict, lang: str, text: str) -
         suggestions = search_text.suggest_cities(text)
         if suggestions:
             keyboard = InlineKeyboardMarkup(
-                [[InlineKeyboardButton(city, callback_data=f"ob:city:{cities.CITIES.index(city)}")] for city in suggestions]
+                [[InlineKeyboardButton(city, callback_data=f"ob:city:{cities.LOCALITIES.index(city)}")] for city in suggestions]
             )
             await message.reply_text(bot_text("onboarding.city_suggest", lang), reply_markup=keyboard)
         else:
@@ -290,8 +290,8 @@ async def _handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _, kind, value = (query.data.split(":", 2) + ["", ""])[:3]
     if kind == "deal" and value in _DEALS:
         state["deal_type"] = value
-    elif kind == "city" and value.isdigit() and int(value) < len(cities.CITIES):
-        city = cities.CITIES[int(value)]
+    elif kind == "city" and value.isdigit() and int(value) < len(cities.LOCALITIES):
+        city = cities.LOCALITIES[int(value)]
         if city not in state["cities"]:
             state["cities"] = [*state["cities"], city]
     try:

@@ -7,7 +7,7 @@ with plain rules, so most onboarding messages never reach the AI at all. Gemini 
 optional helper for messages these rules can't complete.
 
 parse() returns the same fields gemini_client.parse_onboarding_message fills: deal_type ("rent" / "sale" / "sublet" or
-None), cities (names from todira_common.cities.CITIES only), rooms_min/rooms_max, price_min/price_max and keywords
+None), cities (stored names from todira_common.cities.LOCALITIES: every locality, and every locality of a named area), rooms_min/rooms_max, price_min/price_max and keywords
 (features matched against a listing's description, see todira_common.matching). Anything it isn't sure about is left
 empty rather than guessed: an empty field just means the bot asks for it.
 """
@@ -17,7 +17,16 @@ import difflib
 import re
 
 from todira_common.bot_strings import bot_text
-from todira_common.cities import _ALIASES, CITIES, normalize_spelling
+from todira_common.cities import (
+    _ALIASES,
+    CITIES,
+    EXTRA_LOCALITIES,
+    LOCALITIES,
+    REGIONS,
+    locality_key,
+    normalize_spelling,
+    resolve_locality,
+)
 from todira_common.matching import safe_range_update
 
 # --- deal type ---------------------------------------------------------------------------------------------------------
@@ -90,16 +99,46 @@ _BOUNDARY_BEFORE = r"(?:^|(?<=[\s,.;:!?()\[\]/\-–]))"
 _BOUNDARY_AFTER = r"(?=$|[\s,.;:!?()\[\]/\-–])"
 
 
-def _name_pattern(name: str) -> re.Pattern:
+def _name_pattern(name: str, prefix_required: bool = False) -> re.Pattern:
     words = [re.escape(normalize_spelling(w)) for w in name.split()]
-    return re.compile(_BOUNDARY_BEFORE + _PREFIX + r"[\s\-]+".join(words) + _BOUNDARY_AFTER, re.IGNORECASE)
+    prefix = r"[בלמ]-?" if prefix_required else _PREFIX
+    return re.compile(_BOUNDARY_BEFORE + prefix + r"[\s\-]+".join(words) + _BOUNDARY_AFTER, re.IGNORECASE)
 
 
-def _build_city_patterns() -> list[tuple[re.Pattern, str]]:
-    names: dict[str, str] = {c: c for c in CITIES if c not in _AMBIGUOUS_CITY_WORDS}
-    names.update(_EXTRA_NAMES)
+# Areas (todira_common.cities.REGIONS: regional councils, sub-districts, "גוש דן", "הקריות") picked out of a sentence.
+# Multi-word names always ("גוש עציון", "מטה בנימין", "הגליל העליון" / "גליל עליון"); one-word names only these, since
+# the others are also everyday words or first names ("גזר", "תמר", "יואב").
+_ONE_WORD_REGIONS = {"השרון", "הקריות", "שומרון", "הגלבוע", "משגב", "זבולון", "מנשה", "מגידו", "גולן"}
+
+
+def _region_spellings(region: str) -> set[str]:
+    """"הגליל העליון" is also written "גליל העליון" (after ב: "בגליל העליון") and "גליל עליון"."""
+    words = region.split()
+    drop = [w[1:] if w.startswith("ה") and len(w) > 3 else w for w in words]
+    return {region, " ".join([drop[0], *words[1:]]), " ".join(drop)}
+
+
+def _build_city_patterns() -> list[tuple[re.Pattern, tuple[str, ...]]]:
+    names: dict[str, tuple[str, ...]] = {c: (c,) for c in CITIES if c not in _AMBIGUOUS_CITY_WORDS}
+    names.update({spelling: (city,) for spelling, city in _EXTRA_NAMES.items()})
+    # 2026-10-13: every other locality whose name has two words or more ("גבעת זאב", "כפר ורדים", "בית אריה"). One-word
+    # names are left to the "which city?" reply (match_city_reply): far too many are everyday words ("רחוב", "נווה",
+    # "גפן", "דן") to be picked out of a sentence.
+    for name in EXTRA_LOCALITIES:
+        if len(name.split()) >= 2 and "/" not in name and name not in names:
+            names[name] = (name,)
+    prefix_only: set[str] = set()
+    for region, members in REGIONS.items():
+        if len(region.split()) >= 2 or region in _ONE_WORD_REGIONS:
+            for spelling in _region_spellings(region):
+                names.setdefault(spelling, tuple(members))
+                if " " not in spelling and not spelling.startswith("ה"):
+                    prefix_only.add(spelling)  # "שרון", "גולן" are also first names: only "בשרון", "בגולן"
     # Longest first, so "תל אביב יפו" is taken before "תל אביב" and "קריית אתא" before anything shorter inside it.
-    return [(_name_pattern(n), city) for n, city in sorted(names.items(), key=lambda kv: -len(kv[0]))]
+    return [
+        (_name_pattern(n, prefix_required=n in prefix_only), found)
+        for n, found in sorted(names.items(), key=lambda kv: -len(kv[0]))
+    ]
 
 
 _CITY_PATTERNS = _build_city_patterns()
@@ -111,12 +150,12 @@ def _cities(text: str) -> list[str]:
     normalized = normalize_spelling(text)
     hits: list[tuple[int, str]] = []
     taken: list[tuple[int, int]] = []
-    for pattern, city in _CITY_PATTERNS:
+    for pattern, cities_found in _CITY_PATTERNS:
         for m in pattern.finditer(normalized):
             if any(m.start() < end and start < m.end() for start, end in taken):
                 continue
             taken.append((m.start(), m.end()))
-            hits.append((m.start(), city))
+            hits.extend((m.start(), city) for city in cities_found)
     for m in _ABBREVIATION.finditer(text):
         city = _ALIASES.get("".join(ch for ch in m.group(1) if ch not in _QUOTES))
         if city:
@@ -135,23 +174,28 @@ def match_city_reply(reply: str) -> list[str]:
     found = _cities(reply)
     if found:
         return found
-    stripped = normalize_spelling("".join(ch for ch in reply.strip() if ch not in _QUOTES)).strip(" .!?,")
-    stripped = re.sub(r"^[בלמו]-?(?=\S{3,})", "", stripped) if stripped not in _NORMALIZED_CITIES else stripped
-    if stripped in _NORMALIZED_CITIES:
-        return [_NORMALIZED_CITIES[stripped]]
-    if stripped in _ALIASES:
-        return [_ALIASES[stripped]]
+    # 2026-10-13: the whole reply as any locality (official list, listings spellings) or area, with or without a "ב".
+    stripped = reply.strip().strip(" .!?,")
+    for candidate in (stripped, re.sub(r"^[בלמו]-?(?=\S{3,})", "", stripped)):
+        locality = resolve_locality(candidate)
+        if locality:
+            return [locality]
+        region = _REGIONS_BY_KEY.get(locality_key(candidate))
+        if region:
+            return list(REGIONS[region])
     return []
 
 
 def suggest_cities(reply: str, limit: int = 3) -> list[str]:
-    """Closest bundled city names to a reply that matched none (a typo), for the bot to offer as buttons."""
-    stripped = normalize_spelling(reply.strip())
-    close = difflib.get_close_matches(stripped, list(_NORMALIZED_CITIES), n=limit, cutoff=0.6)
-    return [_NORMALIZED_CITIES[c] for c in close]
+    """Closest locality names to a reply that matched none (a typo), for the bot to offer as buttons - the major cities
+    first when they are as close."""
+    key = locality_key(reply)
+    close = difflib.get_close_matches(key, list(_LOCALITIES_BY_KEY), n=limit, cutoff=0.6)
+    return [_LOCALITIES_BY_KEY[c] for c in close]
 
 
-_NORMALIZED_CITIES = {normalize_spelling(c): c for c in CITIES}
+_LOCALITIES_BY_KEY = {locality_key(c): c for c in reversed(LOCALITIES)}  # reversed: a major city wins a shared key
+_REGIONS_BY_KEY = {locality_key(spelling): region for region in REGIONS for spelling in _region_spellings(region)}
 
 # --- numbers -----------------------------------------------------------------------------------------------------------
 
@@ -401,7 +445,8 @@ def summary(state: dict, lang: str) -> str:
     if state["deal_type"]:
         parts.append(bot_text(f"onboarding.deal_{state['deal_type']}", lang))
     if state["cities"]:
-        parts.append(", ".join(state["cities"]))
+        shown = state["cities"]
+        parts.append(", ".join(shown) if len(shown) <= 4 else f"{', '.join(shown[:3])} +{len(shown) - 3}")
     low, high = state["rooms_min"], state["rooms_max"]
     if low is not None and high is not None:
         rooms = _number(low) if low == high else f"{_number(low)}–{_number(high)}"

@@ -68,7 +68,7 @@ from todira_common.access import (
 )
 from todira_common.cards import get_listing_photo_jpeg_bytes
 from todira_common.channel_link import generate_link_code
-from todira_common.cities import CITIES
+from todira_common.cities import CITIES, EXTRA_LOCALITIES, LOCALITY_SET, REGIONS
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.matching import evaluate
@@ -1338,6 +1338,7 @@ def apartments(
         {
             "f": user.filter,
             "cities_list": sorted(CITIES),
+            **_LOCALITY_PICKER_CONTEXT,
             "property_type_labels": PROPERTY_TYPE_LABELS.get(lang, PROPERTY_TYPE_LABELS[DEFAULT_LANG]),
             "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
             "furniture_labels": FURNITURE_LABELS.get(lang, FURNITURE_LABELS[DEFAULT_LANG]),
@@ -1740,6 +1741,15 @@ def upgrade(request: Request, uid: int | None = None):
 # What the single /upgrade button posts as `plan` when the customer picks the pass on Takbull's shared page. The pending
 # Payment is stored as the longest pass until the webhook rewrites plan and amount from what was actually charged.
 _PASS_PICKED_ON_TAKBULL = "pass_choice"
+
+
+# 2026-10-13 (owner request: every city, moshav, kibbutz, village and area): the filter form's city picker shows the
+# major cities as before; every other locality, and every area (a click selects all its localities), appears when the
+# search box matches it (_filter_form_fields.html). Built once - the lists are static.
+_LOCALITY_PICKER_CONTEXT = {
+    "extra_localities_list": sorted(name for name in EXTRA_LOCALITIES if name not in CITIES),
+    "city_regions_list": sorted(REGIONS.items()),
+}
 
 
 def _pass_plan_cards() -> list[dict]:
@@ -2740,6 +2750,7 @@ def filter_view(
                 # sorted for display only — CITIES itself stays in its original order since other
                 # code (matching, the bot's own city picker) reads it as-is.
                 "cities_list": sorted(CITIES),
+                **_LOCALITY_PICKER_CONTEXT,
                 "property_type_labels": PROPERTY_TYPE_LABELS.get(lang, PROPERTY_TYPE_LABELS[DEFAULT_LANG]),
                 "safe_room_labels": SAFE_ROOM_LABELS.get(lang, SAFE_ROOM_LABELS[DEFAULT_LANG]),
                 "furniture_labels": FURNITURE_LABELS.get(lang, FURNITURE_LABELS[DEFAULT_LANG]),
@@ -2837,13 +2848,13 @@ def filter_update(
         if user is None or user.filter is None:
             return RedirectResponse(_filter_redirect_url(uid, wid), status_code=303)
 
-        if welcome is not None and all_cities is None and not any(c in CITIES for c in cities):
+        if welcome is not None and all_cities is None and not any(c in LOCALITY_SET for c in cities):
             error_url = _identity_redirect_url("/filter", uid, wid)
             error_url += ("&" if "?" in error_url else "?") + "welcome=1&error=cities"
             return RedirectResponse(error_url, status_code=303)
 
         f: Filter = user.filter
-        f.cities = [] if all_cities is not None else [c for c in cities if c in CITIES]
+        f.cities = [] if all_cities is not None else [c for c in cities if c in LOCALITY_SET]
         f.price_min = _parse_int_or_none(price_min)
         f.price_max = _parse_int_or_none(price_max)
         f.rooms_min = _parse_float_or_none(rooms_min)

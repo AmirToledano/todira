@@ -1306,8 +1306,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "ערים", "en": "Cities", "ru": "Города", "fr": "Villes", "ar": "المدن",
     },
     "filter.cities_placeholder": {
-        "he": "חפש/י עיר...", "en": "Search for a city...", "ru": "Поиск города...",
-        "fr": "Rechercher une ville...", "ar": "ابحث عن مدينة...",
+        "he": "חפש/י עיר, יישוב או אזור...", "en": "Search a city, town or area...",
+        "ru": "Поиск города, посёлка или района...", "fr": "Rechercher une ville, une localité ou une région...",
+        "ar": "ابحث عن مدينة أو بلدة أو منطقة...",
     },
     # 2026-09-27: rewritten — checking every individual city box is NOT the same as "all cities"
     # (an exact match against this curated ~42-city whitelist vs. no city filter at all; see
@@ -1316,12 +1317,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # exclude). The old copy ("nothing checked = all cities") described an undiscoverable
     # unchecked-grid convention that the mandatory-city onboarding rule (task #80) also made
     # unreachable during welcome; the explicit toggle replaces both problems at once.
+    # 2026-10-13: every locality in Israel and every area can now be searched (see _filter_form_fields.html).
     "filter.cities_hint": {
-        "he": "\"כל הערים\" כולל גם יישובים שלא ברשימה למטה",
-        "en": '"All cities" also includes towns not listed below',
-        "ru": "«Все города» включает и населённые пункты, которых нет в списке ниже",
-        "fr": '« Toutes les villes » inclut aussi les villes non listées ci-dessous',
-        "ar": "\"كل المدن\" يشمل أيضًا بلدات غير مدرجة أدناه",
+        "he": "אפשר לחפש כל עיר, מושב, קיבוץ או יישוב, וגם אזור שלם כמו השרון או גוש עציון",
+        "en": "Search any city, moshav, kibbutz or town, or a whole area such as the Sharon or Gush Etzion",
+        "ru": "Можно найти любой город, мошав, кибуц или посёлок, а также целый район, например Шарон или Гуш-Эцион",
+        "fr": "Cherche n'importe quelle ville, moshav, kibboutz ou localité, ou toute une région comme le Sharon ou "
+        "le Goush Etzion",
+        "ar": "يمكنك البحث عن أي مدينة أو موشاف أو كيبوتس أو بلدة، أو منطقة كاملة مثل الشارون أو غوش عتصيون",
     },
     "filter.cities_all_label": {
         "he": "כל הערים",

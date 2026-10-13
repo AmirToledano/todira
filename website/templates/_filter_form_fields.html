@@ -57,7 +57,17 @@
           {{ city }}
         </label>
         {% endfor %}
+        {# 2026-10-13: every other locality (official list) and every area. Only the selected ones are rendered here;
+           the rest are created by filterCityChips while the search names them, from the compact list below (rendering
+           all ~1,200 as hidden chips tripled the page size). An area chip selects all its localities. #}
+        {% for city in extra_localities_list or [] %}{% if city in f.cities %}
+        <label class="check-chip extra-locality" data-city-name="{{ city }}">
+          <input type="checkbox" name="cities" value="{{ city }}" checked onchange="if (this.checked) onCityChipChecked()">
+          {{ city }}
+        </label>
+        {% endif %}{% endfor %}
       </div>
+      <script type="application/json" id="f-localities-data">{{ {"extra": extra_localities_list or [], "regions": (city_regions_list or [])|list}|tojson }}</script>
     </div>
     <div class="field-hint">{{ t('filter.cities_hint') }}</div>
   </div>
@@ -191,11 +201,76 @@
    user). Moved inside the macro body so it actually ships with every render. Safe to inline here
    (not deduped/hoisted) because this macro is only ever called once per page. #}
 <script>
+  var localitiesData = null;
+  function _localities() {
+    if (!localitiesData) {
+      var el = document.getElementById('f-localities-data');
+      localitiesData = el ? JSON.parse(el.textContent) : { extra: [], regions: [] };
+    }
+    return localitiesData;
+  }
+  function _cityChip(name, checked) {
+    var label = document.createElement('label');
+    label.className = 'check-chip extra-locality';
+    label.dataset.cityName = name;
+    var input = document.createElement('input');
+    input.type = 'checkbox';
+    input.name = 'cities';
+    input.value = name;
+    input.checked = checked;
+    input.onchange = function () { if (this.checked) onCityChipChecked(); };
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(' ' + name));
+    return label;
+  }
   function filterCityChips(query) {
     var q = query.trim();
-    document.querySelectorAll('.check-chip[data-city-name]').forEach(function (chip) {
-      chip.hidden = q.length > 0 && chip.dataset.cityName.indexOf(q) === -1;
+    var bare = q.replace(/^ה/, '');
+    var grid = document.getElementById('f-cities-grid');
+    // search results from the previous keystroke that weren't selected go away
+    grid.querySelectorAll('.extra-locality, .region-chip').forEach(function (chip) {
+      var input = chip.querySelector('input');
+      if (!input || !input.checked) chip.remove();
     });
+    var shown = {};
+    grid.querySelectorAll('.check-chip[data-city-name]').forEach(function (chip) {
+      shown[chip.dataset.cityName] = true;
+      if (!chip.classList.contains('extra-locality')) chip.hidden = q.length > 0 && chip.dataset.cityName.indexOf(q) === -1;
+    });
+    if (q.length < 2) return;
+    var data = _localities();
+    data.regions.forEach(function (pair) {
+      var name = pair[0];
+      if (name.indexOf(q) === -1 && name.replace(/(^|\s)ה/g, '$1').indexOf(bare) === -1) return;
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'check-chip region-chip';
+      button.textContent = '🗺️ ' + name + ' · ' + pair[1].length;
+      button.onclick = function () { selectRegion(pair[1], button); };
+      grid.insertBefore(button, grid.firstChild);
+    });
+    var added = 0;
+    data.extra.forEach(function (name) {
+      if (added >= 40 || shown[name] || name.indexOf(q) === -1) return;
+      grid.appendChild(_cityChip(name, false));
+      added += 1;
+    });
+  }
+  // An area chip selects every locality in it (each one then shows as a selected chip).
+  function selectRegion(names, button) {
+    var grid = document.getElementById('f-cities-grid');
+    var existing = {};
+    grid.querySelectorAll('input[name=cities]').forEach(function (cb) { existing[cb.value] = cb; });
+    names.forEach(function (name) {
+      if (existing[name]) {
+        existing[name].checked = true;
+        existing[name].closest('.check-chip').hidden = false;
+      } else {
+        grid.appendChild(_cityChip(name, true));
+      }
+    });
+    if (button) button.remove();
+    onCityChipChecked();
   }
   // "All cities" and individual city checkboxes are mutually exclusive — checking one clears the
   // other, so the submitted state is always unambiguous (see filter_update's own comment on why

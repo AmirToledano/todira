@@ -288,11 +288,13 @@ def _apply_toggle(draft: dict, ns: str, value: str) -> None:
 
 
 def _toggle_city(draft: dict, idx: int) -> None:
-    """`idx` indexes todira_common.cities.CITIES (the full bundled list), not draft["cities"]
-    (the user's own selection) — see kb.city_picker_keyboard / kb.city_search_results_keyboard,
-    both of which build their callback_data from CITIES positions for a short, stable
-    callback_data payload rather than encoding the (longer, Hebrew) city string directly."""
-    city = cities.CITIES[idx]
+    """`idx` indexes todira_common.cities.LOCALITIES (every locality; it starts with CITIES unchanged, so the major
+    cities' indexes from older buttons still mean the same city), not draft["cities"] (the user's own selection) — see
+    kb.city_picker_keyboard / kb.city_search_results_keyboard, both of which build their callback_data from these
+    positions for a short, stable callback_data payload rather than encoding the (longer, Hebrew) city string directly."""
+    if not 0 <= idx < len(cities.LOCALITIES):
+        return
+    city = cities.LOCALITIES[idx]
     if city in draft["cities"]:
         draft["cities"].remove(city)
     else:
