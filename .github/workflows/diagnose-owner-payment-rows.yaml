@@ -1,0 +1,72 @@
+name: Diagnose — the owner's payment history rows and every pending checkout (read-only)
+
+# Owner asked (2026-10-13) what the three "ממתין" rows on his /account are. Prints only plan / amount / status /
+# gateway / whether a gateway transaction id exists / timestamps - never a user id, telegram id, email or phone.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Payment rows
+        run: |
+          kubectl delete pod diag-owner-payments -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-owner-payments
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-owner-payments
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "--- the owner's payment rows, newest first ---"
+                    psql "$CONN" -c "
+                      SELECT p.plan, p.amount_ils, p.status, p.gateway,
+                             p.gateway_transaction_id IS NOT NULL AS has_gateway_tx,
+                             p.subscription_uniqid IS NOT NULL AS has_subscription_id,
+                             p.created_at, p.paid_at
+                      FROM payments p JOIN users u ON u.id = p.user_id
+                      WHERE u.telegram_user_id::text = '${OWNER_TELEGRAM_USER_ID}'
+                      ORDER BY p.created_at DESC;"
+                    echo "--- every payment row by status and gateway (all users) ---"
+                    psql "$CONN" -c "
+                      SELECT status, coalesce(gateway, 'none') AS gateway, count(*) AS rows,
+                             min(created_at) AS oldest, max(created_at) AS newest
+                      FROM payments GROUP BY 1, 2 ORDER BY 1, 2;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod diag-owner-payments -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- query output ---"
+          kubectl logs -n todira diag-owner-payments || true
+          kubectl delete pod diag-owner-payments -n todira --ignore-not-found

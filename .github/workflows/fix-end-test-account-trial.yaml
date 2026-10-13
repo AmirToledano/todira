@@ -1,0 +1,90 @@
+name: Fix — end the free trial of the test account just registered (owner's payment test)
+
+# Owner request (2026-10-13): register a fresh account, take its trial days away, then pay on it - to see the whole
+# payment flow exactly as a new customer with no trial and no pass sees it. Touches ONE row only: the single account
+# created in the last `hours` hours that is not the owner's and has no pass and no free access. If there are zero or
+# several such accounts nothing is changed. Prints only counts and timestamps - never an id, name, email or phone.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "end-trial" to really change the row'
+        required: true
+      hours:
+        description: "Look for an account registered in the last N hours"
+        required: true
+        default: "3"
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the inputs
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          HOURS: ${{ inputs.hours }}
+        run: |
+          [ "$CONFIRM" = "end-trial" ] || { echo "confirm must be end-trial - nothing changed"; exit 1; }
+          case "$HOURS" in ''|*[!0-9]*) echo "hours must be a whole number"; exit 1;; esac
+          [ "$HOURS" -ge 1 ] && [ "$HOURS" -le 48 ] || { echo "hours must be 1-48"; exit 1; }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: End the trial of the one new account
+        env:
+          HOURS: ${{ inputs.hours }}
+        run: |
+          kubectl delete pod fix-end-test-trial -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fix-end-test-trial
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: fix-end-test-trial
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                  - name: HOURS
+                    value: "${HOURS}"
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+                    WHERE="created_at > now() - interval '\${HOURS} hours'
+                           AND (telegram_user_id IS NULL OR telegram_user_id::text <> '\${OWNER_TELEGRAM_USER_ID}')
+                           AND paid_until IS NULL AND free_access_granted = false"
+                    N=\$(psql "\$CONN" -Atc "SELECT count(*) FROM users WHERE \$WHERE;")
+                    echo "accounts registered in the last \${HOURS}h (not the owner, no pass, no free access): \$N"
+                    if [ "\$N" != "1" ]; then echo "need exactly one - nothing changed"; exit 0; fi
+                    psql "\$CONN" -c "UPDATE users SET trial_ends_at = now() - interval '1 minute' WHERE \$WHERE
+                                      RETURNING created_at, trial_ends_at, paid_until, (google_sub IS NOT NULL) AS has_google,
+                                                (telegram_user_id IS NOT NULL) AS has_telegram;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod fix-end-test-trial -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- output ---"
+          kubectl logs -n todira fix-end-test-trial || true
+          kubectl delete pod fix-end-test-trial -n todira --ignore-not-found
