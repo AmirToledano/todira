@@ -121,6 +121,15 @@ def hosted_page_configured() -> bool:
     return bool(any_page and os.environ.get(WEBHOOK_SECRET_ENV_VAR, "").strip())
 
 
+def pass_is_picked_on_takbull() -> bool:
+    """True when /upgrade shows ONE button to the shared page, where the customer picks the pass (2026-10-13 owner
+    decision: picking it on our site first and then again on Takbull's page was confusing). False only when every pass
+    has a page of its own (or there is no shared page): then each pass card keeps its own button to its own page."""
+    shared = os.environ.get(PAYMENT_PAGE_URL_ENV_VAR, "").strip()
+    every_pass_has_a_page = all(os.environ.get(name, "").strip() for name in _PASS_PAGE_URL_ENV_VARS.values())
+    return bool(shared) and not every_pass_has_a_page
+
+
 def build_hosted_checkout_url(*, payment_id: int, email: str | None, plan: str | None = None) -> str | None:
     """The owner's hosted payment page with `order_reference` (our payments.id) and, when we know it, the customer's
     email pre-filled (that query parameter was confirmed live to pre-fill the checkout form on 2026-09-06;

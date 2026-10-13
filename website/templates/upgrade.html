@@ -35,11 +35,13 @@
    subscription), so this renders ONE card, not a 3-tier row. #}
 {% if one_time_mode %}
 {# 2026-10-06 (owner decision): the free Takbull flow sells three ONE-TIME access passes, like dorin.app (7 / 14 / 30 days,
-   no auto-renewal). One shared form: a single terms checkbox and three submit buttons - the clicked button's
-   name/value is the plan. The paid amount, not the clicked card, finally decides the days granted (main.py webhook). #}
+   no auto-renewal). One shared form with a single terms checkbox. The paid amount, not anything clicked here, decides
+   the days granted (main.py webhook).
+   2026-10-13 (owner decision): when the pass is picked on Takbull's shared page (pass_picked_on_takbull), the cards only
+   explain the passes and ONE button goes to that page - no more picking it here and then again there. A button per
+   card is left only for when every pass has a Takbull page of its own. #}
 <form method="post" action="/upgrade" class="upgrade-passes reveal">
   {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-  <p class="upgrade-pass-notice" role="note">{{ t('upgrade.pass_pick_again_hint') }}</p>
   <div class="upgrade-passes-grid">
     {% for card in pass_plans %}
     <div class="upgrade-plan-card upgrade-pass-card{{ ' upgrade-pass-best' if card.best else '' }}">
@@ -54,7 +56,9 @@
         <li>{{ t('upgrade.checklist_filtered') }}</li>
         <li>{{ t('upgrade.checklist_contact') }}</li>
       </ul>
+      {% if not pass_picked_on_takbull %}
       <button type="submit" name="plan" value="{{ card.plan }}" class="btn gold block">{{ t('upgrade.choose_plan_cta', plan=t('upgrade.pass_name_' ~ card.days)) }}</button>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
@@ -62,6 +66,12 @@
     <input type="checkbox" name="terms_agreed" required>
     <span>{{ t('upgrade.terms_agree_prefix') }}<a href="/terms" target="_blank">{{ t('footer.terms') }}</a>{{ t('upgrade.terms_agree_suffix') }}</span>
   </label>
+  {% if pass_picked_on_takbull %}
+  <div class="upgrade-pass-checkout">
+    <button type="submit" name="plan" value="{{ pass_choice_value }}" class="btn gold block">{{ t('upgrade.pass_choose_cta') }}</button>
+    <p class="upgrade-pass-checkout-hint">{{ t('upgrade.pass_choose_hint') }}</p>
+  </div>
+  {% endif %}
   <p class="upgrade-plan-disclaimer">{{ t('upgrade.pass_onetime_hint') }}</p>
 </form>
 {% else %}

@@ -148,6 +148,26 @@ def test_two_waiting_payments_are_never_guessed():
     assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "49.90"}, None) == (None, False)
 
 
+def test_the_single_waiting_payment_is_matched_whatever_pass_the_customer_picked_on_takbull():
+    # 2026-10-13: the pass is picked on Takbull's page, so the pending row holds only a placeholder (the 30-day price)
+    p = _payment(amount_ils=Decimal("49.90"))
+    sess = _Sess(scalar_results=[None], waiting=[p])
+    assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "19.90"}, None) == (p, False)
+
+
+def test_with_several_waiting_only_the_one_stored_with_the_charged_amount_is_matched():
+    week, month = _payment(id=5, amount_ils=Decimal("19.90")), _payment(id=6, amount_ils=Decimal("49.90"))
+    sess = _Sess(scalar_results=[None], waiting=[week, month])
+    assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "19.90"}, None) == (week, False)
+    sess = _Sess(scalar_results=[None], waiting=[week, month])
+    assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "29.90"}, None) == (None, False)
+
+
+def test_a_charge_that_is_no_pass_price_is_never_matched_by_waiting_payments():
+    sess = _Sess(scalar_results=[None], waiting=[_payment()])
+    assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "40.00"}, None) == (None, False)
+
+
 def test_a_transaction_id_we_already_recorded_is_never_matched_again():
     sess = _Sess(scalar_results=[123], waiting=[_payment()])  # the "seen already" lookup finds a payment
     assert website_main._match_takbull_payment(sess, {"uniqId": "t1", "OrderTotalSum": "49.90"}, None) == (None, False)

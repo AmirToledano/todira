@@ -2444,12 +2444,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": 'Paiement unique, sans renouvellement automatique ni engagement. Nous vous rappellerons avant la fin de votre accès.',
         "ar": 'دفعة واحدة، بدون تجديد تلقائي وبدون التزام. سنذكّرك قبل انتهاء الوصول.',
     },
-    "upgrade.pass_pick_again_hint": {
-        "he": 'בעמוד הבא תתבקשו לסמן שוב את אותה החבילה שבחרתם כאן',
-        "en": "On the next page you'll be asked to select the same pass you chose here again",
-        "ru": 'На следующей странице вас попросят ещё раз выбрать тот же тариф, что и здесь',
-        "fr": "Sur la page suivante, il vous sera demandé de sélectionner à nouveau le même pass que celui choisi ici",
-        "ar": 'في الصفحة التالية سيُطلب منكم تحديد الباقة نفسها التي اخترتموها هنا مرة أخرى',
+    # 2026-10-13 (owner decision): one button to Takbull's page, where the pass is picked once (replaces the old
+    # "pick the same pass again on the next page" notice).
+    "upgrade.pass_choose_cta": {
+        "he": 'לבחירת חבילה ותשלום מאובטח',
+        "en": 'Choose your pass and pay securely',
+        "ru": 'Выбрать тариф и оплатить',
+        "fr": 'Choisir mon pass et payer',
+        "ar": 'اختيار الباقة والدفع بأمان',
+    },
+    "upgrade.pass_choose_hint": {
+        "he": 'בעמוד הבא בוחרים שבוע, שבועיים או חודש ומשלמים בעמוד המאובטח של תקבול.',
+        "en": "On the next page you pick 1 week, 2 weeks or 1 month and pay on Takbull's secure page.",
+        "ru": 'На следующей странице вы выбираете 1 неделю, 2 недели или 1 месяц и оплачиваете на защищённой странице Takbull.',
+        "fr": 'Sur la page suivante, vous choisissez 1 semaine, 2 semaines ou 1 mois et payez sur la page sécurisée de Takbull.',
+        "ar": 'في الصفحة التالية تختارون أسبوعًا أو أسبوعين أو شهرًا وتدفعون في صفحة Takbull الآمنة.',
     },
     "upgrade.faq_q1_onetime": {
         "he": 'האם זה מתחדש אוטומטית?',
