@@ -18,13 +18,23 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
 import handlers.onboarding as onboarding
+import ai_gate
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _ai_available(monkeypatch):
+    # 2026-10-13: the bot reaches the AI only through bot/ai_gate.py (needs a key, per-user daily limit, pause after a
+    # failure); these tests exercise the AI path itself.
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    ai_gate.reset()
 
 
 def _make_update(text: str):
     user = SimpleNamespace(id=555, first_name="Amir", username="amirt")
     chat = SimpleNamespace(id=555)
     message = SimpleNamespace(text=text, reply_text=AsyncMock())
-    return SimpleNamespace(effective_user=user, effective_chat=chat, message=message)
+    return SimpleNamespace(effective_user=user, effective_chat=chat, message=message, effective_message=message)
 
 
 def _make_context():

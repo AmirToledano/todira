@@ -245,7 +245,11 @@ scraper:
   # 2026-10-04: fetch Yad2 LISTING DETAILS through Gemini's free URL-context tool first (accurate in live
   # tests, ~300 tokens/page, free tier), Bright Data Web Unlocker only as the fallback. See
   # common/todira_common/gemini_url_detail.py.
-  yad2DetailViaGemini: true
+  # 2026-10-13 (owner): OFF. The same Gemini key serves the bot's users, and reading listing pages through the URL-context
+  # tool (thousands of pages, long page text as input) is what emptied its prepaid balance (HTTP 402 since 2026-10-09).
+  # Yad2's own free item API (yad2ItemApi below) is the first source anyway; without Gemini, a listing it can't read
+  # just keeps its search-card fields until a later run.
+  yad2DetailViaGemini: false
   # 2026-10-09: Yad2's OWN per-listing JSON (gw.yad2.co.il/realestate-item/<token>) - free, with a browser TLS fingerprint from the
   # cluster IP (60 of 60 answered in the live probe). Gemini answered HTTP 402 (prepaid balance spent) on every model, so cards
   # went out with no description / total floors / entry date / features; this is now the first source for listing details and

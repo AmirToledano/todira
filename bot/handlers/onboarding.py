@@ -26,8 +26,9 @@ from __future__ import annotations
 
 import asyncio
 
+import ai_gate
 from config import WEBSITE_URL
-from todira_common import cities, gemini_client
+from todira_common import cities, gemini_client, search_text
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
@@ -39,8 +40,9 @@ from handlers.apartments import find_new_matches_to_show
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -157,32 +159,41 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text(bot_text("onboarding.help_request_precheck", lang))
         return AWAIT_FREETEXT
 
-    # Gemini can take a few seconds (or, on a slow node, much longer) — an impatient real user
-    # would otherwise stare at silence and assume the bot is broken/ignoring them.
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    await update.message.reply_text(bot_text("onboarding.checking", lang))
-
     state = context.user_data.setdefault("onboarding", dict(_EMPTY_STATE))
-    # asyncio.to_thread — parse_onboarding_message is a synchronous, blocking Gemini API call
-    # (a real network round-trip that can take seconds, longer under load) that was being awaited
-    # directly on the event loop. With max_concurrent_updates=1 (see start.py/tests/
-    # test_bot_async_db_calls.py's module docstring for the same bug already fixed for blocking DB
-    # calls), that froze every other user's interaction with the bot for the full duration of this
-    # one call — found live 2026-09-07 auditing every gemini_client call site; contact_fallback.py's
-    # equivalent call already did this correctly.
-    result = await asyncio.to_thread(
-        gemini_client.parse_onboarding_message, text, state, cities.CITIES, lang
-    )
 
-    if result is None:
-        # 2026-10-13 (owner report: a brand-new user got only "technical hiccup" after /start): the free-text reader is
-        # Gemini, which can be down for days (prepaid credit spent -> HTTP 402 on every model). Staying in AWAIT_FREETEXT
-        # sent every later message back to the same failing call, so the user only ever saw errors. End onboarding and
-        # point to /filter, the button-driven setup that needs no AI.
-        context.user_data.pop("onboarding", None)
-        await update.message.reply_text(bot_text("onboarding.error", lang))
-        return ConversationHandler.END
+    # 2026-10-13 (owner report: Gemini's balance ran out and every new user got only errors): plain rules first
+    # (todira_common/search_text.py, free and offline) - they read the common shapes of a search message, so most
+    # onboarding never reaches the AI at all. Right after the bot asked "which city?", a short reply is also taken as a
+    # city name even when it is a word parse() would never pick out of a sentence ("מגדל") or a bundled abbreviation.
+    rules = search_text.parse(text)
+    if not rules["cities"] and context.user_data.get("onboarding_asked") == "city":
+        rules["cities"] = search_text.match_city_reply(text)
+    search_text.merge_into(state, rules)
+    if search_text.is_complete(state):
+        await update.message.reply_text(bot_text("onboarding.understood", lang, summary=search_text.summary(state, lang)))
+        return await _finish(update, context, state, lang)
 
+    # The rules couldn't complete it: the AI may help with an unusual phrasing - only while it works and this user still
+    # has AI calls left today (bot/ai_gate.py). Otherwise, or if it fails, ask for exactly what's missing.
+    if ai_gate.allowed(context.user_data):
+        ai_gate.used(context.user_data)
+        # Gemini can take a few seconds - an impatient real user would otherwise stare at silence.
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        await update.message.reply_text(bot_text("onboarding.checking", lang))
+        # asyncio.to_thread - a blocking network call; awaited directly it froze every other user's updates
+        # (max_concurrent_updates=1, found live 2026-09-07).
+        result = await asyncio.to_thread(
+            gemini_client.parse_onboarding_message, text, state, cities.CITIES, lang
+        )
+        if result is None:
+            ai_gate.failed()
+        else:
+            return await _apply_ai_result(update, context, state, result, text, lang)
+
+    return await _ask_for_missing(update, context, state, lang, text)
+
+
+async def _apply_ai_result(update, context, state: dict, result: dict, text: str, lang: str) -> int:
     # rooms_min/rooms_max and price_min/price_max go through safe_range_update, not the plain
     # per-key overwrite every other field uses — found live-code-review 2026-09-22: a multi-turn
     # onboarding conversation ("up to 3000" then later "actually not less than 5000") could merge
@@ -194,7 +205,8 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     for key in _EMPTY_STATE:
         if key in ("rooms_min", "rooms_max", "price_min", "price_max"):
             continue
-        if key in result:
+        # An empty AI field never wipes out what the rules (or an earlier message) already found.
+        if result.get(key):
             state[key] = result[key]
 
     if "rooms_min" in result or "rooms_max" in result:
@@ -218,17 +230,78 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text(bot_text("onboarding.needs_human_help", lang))
         return AWAIT_FREETEXT
 
+    if not search_text.is_complete(state):
+        # Ask with buttons rather than the AI's own free-text question: a button tap can't be misread.
+        return await _ask_for_missing(update, context, state, lang, text)
+
     await update.message.reply_text(
         result.get("response_message") or bot_text("onboarding.default_ack", lang)
     )
+    return await _finish(update, context, state, lang)
 
-    if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
+
+_DEALS = ("rent", "sale", "sublet")
+
+
+async def _ask_for_missing(update, context, state: dict, lang: str, text: str) -> int:
+    message = update.effective_message
+    so_far = search_text.summary(state, lang)
+    known = bot_text("onboarding.known_so_far", lang, summary=so_far) if so_far else ""
+    if not state["deal_type"]:
+        context.user_data["onboarding_asked"] = "deal"
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(bot_text(f"onboarding.btn_{deal}", lang), callback_data=f"ob:deal:{deal}")
+              for deal in _DEALS]]
+        )
+        await message.reply_text(known + bot_text("onboarding.ask_deal", lang), reply_markup=keyboard)
         return AWAIT_FREETEXT
 
+    asked_city_before = context.user_data.get("onboarding_asked") == "city"
+    context.user_data["onboarding_asked"] = "city"
+    if asked_city_before and len(text.split()) <= 3:
+        suggestions = search_text.suggest_cities(text)
+        if suggestions:
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(city, callback_data=f"ob:city:{cities.CITIES.index(city)}")] for city in suggestions]
+            )
+            await message.reply_text(bot_text("onboarding.city_suggest", lang), reply_markup=keyboard)
+        else:
+            await message.reply_text(bot_text("onboarding.city_unknown", lang))
+        return AWAIT_FREETEXT
+    await message.reply_text(known + bot_text("onboarding.ask_city", lang))
+    return AWAIT_FREETEXT
+
+
+async def _handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """The deal-type and city-suggestion buttons _ask_for_missing sends."""
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get("onboarding_lang", DEFAULT_LANG)
+    state = context.user_data.setdefault("onboarding", dict(_EMPTY_STATE))
+    _, kind, value = (query.data.split(":", 2) + ["", ""])[:3]
+    if kind == "deal" and value in _DEALS:
+        state["deal_type"] = value
+    elif kind == "city" and value.isdigit() and int(value) < len(cities.CITIES):
+        city = cities.CITIES[int(value)]
+        if city not in state["cities"]:
+            state["cities"] = [*state["cities"], city]
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:  # an old message can't be edited any more - the tap still counts
+        pass
+    if search_text.is_complete(state):
+        await query.message.reply_text(bot_text("onboarding.understood", lang, summary=search_text.summary(state, lang)))
+        return await _finish(update, context, state, lang)
+    return await _ask_for_missing(update, context, state, lang, "")
+
+
+async def _finish(update, context, state: dict, lang: str) -> int:
+    message = update.effective_message
     total = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
 
     context.user_data.pop("onboarding", None)
-    await update.message.reply_text(bot_text("onboarding.filter_hint", lang))
+    context.user_data.pop("onboarding_asked", None)
+    await message.reply_text(bot_text("onboarding.filter_hint", lang))
 
     # 2026-09-15: used to send every current match as its own Telegram card right here — see
     # filter_conversation.py's _handle_save, which had the exact same pattern and the exact same
@@ -237,11 +310,11 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Now always just points at the website's own /apartments?uid=... view instead, same as there.
     apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
     if total:
-        await update.message.reply_text(
+        await message.reply_text(
             bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)
         )
     else:
-        await update.message.reply_text(
+        await message.reply_text(
             bot_text("onboarding.no_matches_yet", lang, apartments_url=apartments_url)
         )
 
@@ -252,7 +325,10 @@ def build_onboarding_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CommandHandler("start", onboarding_entry)],
         states={
-            AWAIT_FREETEXT: [MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, _handle_freetext)],
+            AWAIT_FREETEXT: [
+                MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, _handle_freetext),
+                CallbackQueryHandler(_handle_button, pattern=r"^ob:"),
+            ],
         },
         fallbacks=[
             CommandHandler("start", onboarding_entry),

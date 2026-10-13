@@ -638,8 +638,9 @@ def test_gemini_failure_sends_hiccup_message():
     ):
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "בלה")
 
+    # 2026-10-13: no dead-end "technical hiccup" any more - the user is asked for what's still missing.
     send_mock.assert_called_once()
-    assert "תקלה טכנית" in send_mock.call_args[0][1]
+    assert send_mock.call_args[0][1] == bot_text("whatsapp.ask_deal", "he")
     assert not session.added
 
 
@@ -662,10 +663,15 @@ def test_incomplete_state_persists_pending_onboarding_without_creating_filter():
     ):
         whatsapp_webhook._handle_incoming_text_sync("9725500000", "Amir", "שכירות")
 
-    send_mock.assert_called_once_with("9725500000", "איזו עיר מעניינת אותך?")
+    # 2026-10-13: the bot's own question (with what it understood so far), not the AI's free-text one.
+    send_mock.assert_called_once_with(
+        "9725500000",
+        bot_text("onboarding.known_so_far", "he", summary="שכירות") + bot_text("onboarding.ask_city", "he"),
+    )
     assert not session.added
     assert session.committed
     assert user.pending_onboarding_state["deal_type"] == "rent"
+    assert user.pending_onboarding_state["asked"] == "city"
 
 
 def test_later_onboarding_turn_assigns_a_new_dict_so_progress_is_actually_saved():
@@ -744,7 +750,12 @@ def test_complete_state_creates_filter_and_clears_pending_state():
     # response_message, the "נרשמת!" confirmation, the prompt's own 2 follow-ups, then (2026-09-27)
     # the current-matches summary.
     assert send_text_mock.call_count == 5
-    assert send_text_mock.call_args_list[0][0] == ("9725500000", "מעולה, קיבלתי הכל!")
+    # 2026-10-13: this message is complete for the free rules (todira_common/search_text.py), so the AI isn't called and
+    # the first reply confirms what was understood.
+    assert send_text_mock.call_args_list[0][0] == (
+        "9725500000",
+        bot_text("onboarding.understood", "he", summary="שכירות · תל אביב יפו · 2–2.5 חדרים · עד ₪7,000"),
+    )
     assert send_text_mock.call_args_list[1][0][0] == "9725500000"
     assert "נרשמת" in send_text_mock.call_args_list[1][0][1]
     assert send_text_mock.call_args_list[2][0][1] == bot_text("whatsapp.filter_edit_followup1", "he")

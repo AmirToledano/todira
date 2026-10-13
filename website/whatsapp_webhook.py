@@ -38,7 +38,7 @@ import time
 from collections import OrderedDict
 
 import httpx
-from todira_common import cities, gemini_client, whatsapp_client, whatsapp_guard
+from todira_common import cities, gemini_client, search_text, whatsapp_client, whatsapp_guard
 from todira_common.bot_strings import bot_text
 from todira_common.channel_link import resolve_link_code
 from todira_common.db import get_session
@@ -466,24 +466,36 @@ def _handle_incoming_text_sync(wa_id: str, profile_name: str | None, text: str) 
         # back is the SAME object to SQLAlchemy (no change detected, no UPDATE) — so every turn
         # after the first silently lost its progress. Found 2026-09-30 in a code-review pass.
         state = dict(user.pending_onboarding_state or _EMPTY_ONBOARDING_STATE)
-        result = gemini_client.parse_onboarding_message(text, state, cities.CITIES, lang)
+        # 2026-10-13 (owner report: Gemini's balance ran out and every new user got only errors): free rules first
+        # (todira_common/search_text.py), the AI only for what they couldn't complete, and a plain question for whatever
+        # is still missing - same as the Telegram bot (bot/handlers/onboarding.py). "asked" remembers that the last
+        # question was "which city?", so a bare city name in the reply is taken as one.
+        rules = search_text.parse(text)
+        if not rules["cities"] and state.get("asked") == "city":
+            rules["cities"] = search_text.match_city_reply(text)
+        search_text.merge_into(state, rules)
+        result = None
+        if not search_text.is_complete(state):
+            result = gemini_client.parse_onboarding_message(text, state, cities.CITIES, lang)
+            if result is not None:
+                ai_found = {key: result.get(key) for key in _EMPTY_ONBOARDING_STATE}
+                search_text.merge_into(state, ai_found)
 
-        if result is None:
-            whatsapp_client.send_text_message(wa_id, bot_text("whatsapp.error", lang))
-            return
-
-        for key in _EMPTY_ONBOARDING_STATE:
-            if key in result:
-                state[key] = result[key]
-
-        whatsapp_client.send_text_message(
-            wa_id, result.get("response_message") or bot_text("whatsapp.onboarding_default_ack", lang)
-        )
-
-        if result.get("missing_required") or not state["deal_type"] or not state["cities"]:
+        if not search_text.is_complete(state):
+            so_far = search_text.summary(state, lang)
+            known = bot_text("onboarding.known_so_far", lang, summary=so_far) if so_far else ""
+            state["asked"] = "deal" if not state["deal_type"] else "city"
+            question = "whatsapp.ask_deal" if not state["deal_type"] else "onboarding.ask_city"
+            whatsapp_client.send_text_message(wa_id, known + bot_text(question, lang))
             user.pending_onboarding_state = state
             session.commit()
             return
+
+        whatsapp_client.send_text_message(
+            wa_id,
+            (result or {}).get("response_message")
+            or bot_text("onboarding.understood", lang, summary=search_text.summary(state, lang)),
+        )
 
         new_filter = Filter(
             user_id=user.id,
