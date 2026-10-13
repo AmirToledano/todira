@@ -8,9 +8,8 @@ this repository is public, so one was visible in old workflow files.
 
 The bot, the scraper notifier and the check-in now put `?t=<this token>` in every link instead. The
 site verifies the signature, establishes the normal signed session cookie, and from then on a bare
-`?uid=` is never trusted. Same mechanism as todira_common/wid_token.py (the WhatsApp equivalent), and
-it lives in todira_common for the same reason: bot, scraper and website all need it, and the website's
-main.py cannot be imported from the others.
+`?uid=` is never trusted. It lives in todira_common because bot, scraper and website all need it, and
+the website's main.py cannot be imported from the others.
 """
 from __future__ import annotations
 
@@ -18,7 +17,7 @@ import os
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-# Same single secret as wid_token.py / website/main.py's SESSION_SECRET_KEY, read independently here to
+# Same single secret as website/main.py's SESSION_SECRET_KEY, read independently here to
 # avoid a circular import.
 _SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "dev-only-insecure-session-key")
 _serializer = URLSafeTimedSerializer(_SESSION_SECRET_KEY, salt="todira-tid-link")

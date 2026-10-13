@@ -9,7 +9,6 @@ const injected = typeof window !== "undefined" ? window.__TODIRA_PAGE__ || {} : 
 
 export const lang = injected.lang || "he";
 export const dir = injected.dir || "rtl";
-export const whatsappPublicNumber = injected.whatsappPublicNumber || "";
 export const telegramBotUrl = "https://t.me/AmirDirotBot";
 // The visitor's Telegram user id, when present in the page's own URL (e.g. `/contact?uid=...` or
 // `/login?uid=...`, both via base.html's nav / a bot deep link) — Contact.jsx forwards it in the

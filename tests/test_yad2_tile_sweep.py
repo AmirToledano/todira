@@ -261,8 +261,8 @@ def _reset_tile_state():
 def test_each_map_seeds_on_its_own_flag(monkeypatch):
     _reset_tile_state()
     flags: dict[str, str] = {}
-    monkeypatch.setattr(scraper_main.whatsapp_guard, "get_flag", lambda session, name: flags.get(name))
-    monkeypatch.setattr(scraper_main.whatsapp_guard, "set_flag", lambda session, name, value: flags.__setitem__(name, value))
+    monkeypatch.setattr(scraper_main.app_flags, "get_flag", lambda session, name: flags.get(name))
+    monkeypatch.setattr(scraper_main.app_flags, "set_flag", lambda session, name, value: flags.__setitem__(name, value))
     # rent already seeded earlier; for-sale never swept yet
     flags["yad2_tiles_seeded_v2"] = "done"
     scraper_main._YAD2_TILE_STATE["rent"].update(ran=True, complete=True)
@@ -282,8 +282,8 @@ def test_each_map_seeds_on_its_own_flag(monkeypatch):
 def test_an_incomplete_sale_sweep_does_not_mark_the_sale_seed_done(monkeypatch):
     _reset_tile_state()
     flags: dict[str, str] = {}
-    monkeypatch.setattr(scraper_main.whatsapp_guard, "get_flag", lambda session, name: flags.get(name))
-    monkeypatch.setattr(scraper_main.whatsapp_guard, "set_flag", lambda session, name, value: flags.__setitem__(name, value))
+    monkeypatch.setattr(scraper_main.app_flags, "get_flag", lambda session, name: flags.get(name))
+    monkeypatch.setattr(scraper_main.app_flags, "set_flag", lambda session, name, value: flags.__setitem__(name, value))
     scraper_main._YAD2_TILE_STATE["forsale"].update(ran=True, complete=False)
     scraper_main._YAD2_TILE_ONLY_IDS["forsale"].update({"s-tile"})
     session = _FakeSession([(5, "s-tile")])
@@ -531,7 +531,7 @@ def test_the_for_sale_seed_stays_quiet_for_24_hours_after_its_flag_was_first_set
 
     now = dt.datetime.now(dt.timezone.utc)
     flags = {"yad2_sale_tiles_seeded": (now - dt.timedelta(hours=2)).isoformat(), "yad2_tiles_seeded_v2": now.isoformat()}
-    monkeypatch.setattr(scraper_main.whatsapp_guard, "get_flag", lambda session, name: flags.get(name))
+    monkeypatch.setattr(scraper_main.app_flags, "get_flag", lambda session, name: flags.get(name))
 
     class _S:
         def __enter__(self):

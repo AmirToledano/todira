@@ -415,16 +415,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 .btn.outline:hover { background: var(--teal-tint); box-shadow: var(--glow-teal); }
 .btn.block { width: 100%; justify-content: center; }
 /* Real brand colors — /login's "continue with X" buttons (2026-09-05), matching the reference
-   product's own login screen: Telegram blue, WhatsApp green, both distinct from the site's own
-   teal/gold so each reads as "this is that platform's button," not a themed variant of ours.
-   Gradients (2026-09-06, matching the reference product's own more vibrant button look) stay
-   inside each brand's own real color range — Telegram's two documented blues, WhatsApp's own
-   light/dark green pairing from its own app icon — not a stylized hue that would read as a
-   different color entirely. */
+   product's own login screen: Telegram blue, distinct from the site's own teal/gold so it reads
+   as "this is that platform's button," not a themed variant of ours. The gradient (2026-09-06)
+   stays inside Telegram's two documented blues. */
 .btn.telegram { background: linear-gradient(135deg, #2AABEE, #229ed9); }
 .btn.telegram:hover { filter: brightness(1.06); }
-.btn.whatsapp { background: linear-gradient(135deg, #25d366, #128C7E); color: #fff !important; }
-.btn.whatsapp:hover { filter: brightness(1.06); }
 .btn.google { background: #fff; color: #3c4043 !important; border: 1.5px solid #dadce0; box-shadow: none; }
 .btn.google:hover { background: #f8f9fa; }
 
@@ -902,7 +897,7 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
 .listing-footer a.view-btn:hover { text-decoration: underline; }
 .listing-footer a.view-btn.locked { color: var(--gold); }
 
-/* 2026-09-26: dorin.app-style "שלח הודעת WhatsApp" / "הצג מספר טלפון" contact-action buttons —
+/* 2026-09-26: dorin.app-style contact-action button —
    real owner request, comparing directly against dorin.app's own "פרטי איש קשר" section. Rendered
    into every card's DOM (_listing_card.html) but only ever visible once cloned into the detail
    view (.apt-detail-body — see apartments.html's buildDetailContent()), never on the small grid
@@ -916,10 +911,6 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
   transition: filter .12s ease, transform .12s ease;
 }
 .contact-btn:hover { transform: translateY(-1px); text-decoration: none; }
-/* Same WhatsApp brand gradient already used for .btn.whatsapp elsewhere on the site (login, hero
-   CTA) — kept consistent rather than inventing a second green here. */
-.contact-btn-whatsapp { background: linear-gradient(135deg, #25d366, #128C7E); color: #fff !important; }
-.contact-btn-whatsapp:hover { filter: brightness(1.06); }
 .contact-btn-phone {
   background: transparent; color: var(--text) !important; border: 1px solid var(--border);
 }
@@ -1199,15 +1190,15 @@ html[data-theme="dark"] .upgrade-plan-checklist li::before { color: #6fd897; }
 .filter-section > :not(summary) { margin-top: 14px; }
 .filter-section .field:last-child, .filter-section .field-row:last-child { margin-bottom: 0; }
 
-/* ---------- /account channel-linking tiles (Telegram/WhatsApp/Google brand badges) ---------- */
+/* ---------- /account channel-linking tiles (Telegram/Google brand badges) ---------- */
 .channel-tile { text-align: center; }
 .channel-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 44px; height: 44px; margin-bottom: 4px;
 }
 .channel-icon svg { display: block; }
-/* Telegram/WhatsApp draw their own colored circle inside the SVG itself; Google's "G" glyph has
-   no background of its own, so it gets one here to match the other two tiles' visual weight. */
+/* Telegram draws its own colored circle inside the SVG itself; Google's "G" glyph has
+   no background of its own, so it gets one here to match the other tile's visual weight. */
 .channel-icon-plain {
   background: var(--card); border: 1.5px solid var(--border); border-radius: 50%;
 }
@@ -2008,7 +1999,7 @@ body.apt-modal-open { overflow: hidden; }
 
 /* 2026-09-26: contact-paywall interstitial (real owner request, matching dorin.app's own "רוצים
    את פרטי הקשר?" popup) — opened by apartments.html's script when a non-access viewer taps the
-   WhatsApp/phone contact-action buttons (see .contact-locked-btn above) instead of letting them
+   contact-action button (see .contact-locked-btn above) instead of letting them
    navigate anywhere. A single shared instance for the whole page (not per-card), same layering
    convention as .apt-listing-modal but its own z-index/classes since the two can never be open at
    the same time (this one is only ever triggered FROM inside an already-open detail view). */

@@ -47,10 +47,9 @@ spec:
                 # -f: curl itself fails (nonzero exit) on a non-2xx response, not just a network
                 # error — a 503 from /healthz's own DB-check failure must trip this exactly like a
                 # connection timeout does. Alerts via a raw sendMessage call, not this project's
-                # own bot code (no Python/dependencies needed for something this small) — mirrors
-                # website/whatsapp_webhook.py's own _notify_owner_of_help_request pattern (a
+                # own bot code (no Python/dependencies needed for something this small) — a
                 # direct api.telegram.org call, best-effort, never allowed to crash the check
-                # itself even if the alert send also fails).
+                # itself even if the alert send also fails.
                 - |
                   if curl -fsS --max-time 10 "$WEBSITE_URL/healthz" > /dev/null; then
                     echo "OK: $WEBSITE_URL/healthz"

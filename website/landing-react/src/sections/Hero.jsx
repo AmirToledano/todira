@@ -1,6 +1,6 @@
 import { useRef, lazy, Suspense } from "react";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
-import { t, whatsappPublicNumber, telegramBotUrl } from "../i18n";
+import { t, telegramBotUrl } from "../i18n";
 import Blob from "../Blob.jsx";
 
 // Three.js + @react-three/fiber + drei add ~250kB gzipped on their own — lazy-loaded into its own
@@ -113,16 +113,6 @@ export default function Hero() {
             <a className="tl-btn gold" href={telegramBotUrl} target="_blank" rel="noreferrer">
               {t("home.cta_open_bot")}
             </a>
-            {whatsappPublicNumber && (
-              <a
-                className="tl-btn whatsapp"
-                href={`https://wa.me/${whatsappPublicNumber}?text=${encodeURIComponent(t("whatsapp.greeting"))}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t("home.cta_open_whatsapp")}
-              </a>
-            )}
             <a className="tl-btn outline" href="#how">{t("home.cta_how")}</a>
           </motion.div>
 

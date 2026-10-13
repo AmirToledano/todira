@@ -1,10 +1,8 @@
-"""Gemini-backed free-text onboarding parser — channel-agnostic, shared by the Telegram bot
-(bot/handlers/onboarding.py) and the WhatsApp webhook (website/whatsapp_webhook.py). Lives in
-todira_common (not bot/) precisely so both can import it identically; moved here 2026-09-01 when
-the WhatsApp integration was added — was bot/gemini_client.py before that, Telegram-only.
+"""Gemini-backed free-text onboarding parser for the Telegram bot (bot/handlers/onboarding.py). Lives
+in todira_common (not bot/) since 2026-09-01 — was bot/gemini_client.py before that.
 
 The user describes what they're looking for in their own words (one messy paragraph, or several
-back-and-forth turns) — mirrors the reference bot's WhatsApp onboarding rather than a rigid
+back-and-forth turns) — mirrors the reference bot's onboarding rather than a rigid
 step-by-step Q&A. Each turn, `parse_onboarding_message` is handed the raw text plus whatever
 fields the caller already collected in earlier turns, and returns the merged, updated state
 plus a natural-language reply (either a clarifying question for whatever's still missing, or a
@@ -39,7 +37,7 @@ _FALLBACK_MODEL = "gemini-3.1-flash-lite"
 
 # 2026-09-06: chat_with_existing_user (below) uses this lighter model instead of _MODEL —
 # found live: the owner reported real, felt latency ("לוקח לו מלא זמן לענות") on every casual
-# WhatsApp/Telegram message now going through Gemini, a cost this feature didn't have before (a
+# Telegram message now going through Gemini, a cost this feature didn't have before (a
 # static canned reply was instant). Flash-Lite is Google's purpose-built low-latency tier
 # (~350 output tokens/sec vs. no published number for 3.6 Flash, and ~3.5x cheaper per token) for
 # exactly this shape of task — short structured extraction + a short reply, not deep reasoning —
@@ -55,7 +53,7 @@ def _model_for_attempt(primary: str, attempt: int) -> str:
     return primary if attempt == 1 else _FALLBACK_MODEL
 
 # 2026-09-06: real production logs (pulled via the diagnose-website-webhook workflow after the
-# owner reported 2 of 3 live WhatsApp messages getting the "technical hiccup" fallback) showed the
+# owner reported 2 of 3 live messages getting the "technical hiccup" fallback) showed the
 # 10s-timeout fix above working exactly as intended — one attempt per message, no more duplicates
 # — but a chunk of those single attempts hitting a genuine `google.genai.errors.ServerError: 503
 # UNAVAILABLE ... This model is currently experiencing high demand` straight from Gemini itself.
@@ -67,9 +65,7 @@ def _model_for_attempt(primary: str, attempt: int) -> str:
 # `requests` is imported directly (not relying on it as google-genai's undeclared transitive
 # dependency — matches this project's own existing convention, see bot/requirements.txt's httpx
 # comment) specifically so `requests.exceptions.Timeout` can be caught by name instead of guessed
-# at. Retrying was NOT safe before the ack-first webhook fix (website/whatsapp_webhook.py) shipped
-# earlier today — back then, every extra second here just made Meta's own webhook redelivery race
-# more likely. Now that Meta is acked before this function is ever called, one bounded retry only
+# at. One bounded retry only
 # affects how long the (already-backgrounded) reply takes to arrive, never whether Meta
 # double-processes the message. Scoped tight — a malformed-response or bad-request error still
 # fails immediately, since retrying those would just fail identically a second time.
@@ -100,7 +96,7 @@ _SCHEMA = {
 
 # 2026-10-13 (owner report: the prepaid balance ran out, HTTP 402 on every model, and each failing call still made the
 # user wait): after a failed call nobody calls Gemini for _PAUSE - a balance problem lasts hours or days. Every caller
-# (Telegram bot, WhatsApp webhook) already handles None by asking the user directly instead.
+# already handles None by asking the user directly instead.
 _PAUSE = dt.timedelta(minutes=15)
 _paused_until: dt.datetime | None = None
 
@@ -157,8 +153,8 @@ def parse_onboarding_message(
         return None
 
     # 2026-09-26: response_message used to be pinned to Hebrew unconditionally — real owner
-    # request, both bots now pass the user's own language (auto-detected on Telegram, asked
-    # explicitly on WhatsApp — see todira_common/language.py). The rest of this prompt (the
+    # request, the bot now passes the user's own language (auto-detected on Telegram — see
+    # todira_common/language.py). The rest of this prompt (the
     # instructions themselves) stays in Hebrew regardless of `lang` — Gemini reads instructions
     # fine in whichever language they're written in; only the actual USER-FACING response_message
     # needs to come out in the visitor's own language.
@@ -195,8 +191,8 @@ def parse_onboarding_message(
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=_SCHEMA,
-                    # 2026-09-05 fix: found live via the WhatsApp webhook — a real onboarding
-                    # reply took ~1 minute (WhatsApp users perceive that as "the bot is broken").
+                    # 2026-09-05 fix: found live — a real onboarding
+                    # reply took ~1 minute (users perceive that as "the bot is broken").
                     # Root cause confirmed from the SDK's own field docs: HttpOptions.retry_options
                     # defaults to up to 5 attempts on 408/429/5xx with exponential backoff up to a
                     # 60s max delay — exactly what a Gemini "high demand" 503 triggers — and this

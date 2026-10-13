@@ -1,10 +1,5 @@
 """Shared "which listings currently match this filter" query + bookkeeping — used by the bot
-(bot/handlers/apartments.py, which re-exports both names below for its own existing callers/tests),
-and by website/whatsapp_webhook.py (2026-09-27) for the WhatsApp-connect "here's what already
-matches" summary. Moved here from bot/handlers/apartments.py because it's no longer bot-only: the
-website's WhatsApp webhook needs the exact same query+evaluate()+SentNotification bookkeeping, and
-website's Docker image doesn't (and shouldn't) copy bot/ — same reasoning as todira_common/cards.py
-and todira_common/whatsapp_client.py's own moves.
+(bot/handlers/apartments.py, which re-exports both names below for its own existing callers/tests).
 """
 from __future__ import annotations
 
@@ -84,10 +79,9 @@ def find_new_matches_to_show(
 ) -> tuple[int, list[Listing]]:
     """Returns (total_current_matches, matches_not_yet_shown_to_this_user) — for the "here's what
     matches right now" summary shown right after saving a filter (filter_conversation.py,
-    onboarding.py) or right after connecting WhatsApp (website/whatsapp_webhook.py), NOT for
+    onboarding.py), NOT for
     /apartments (which should always show everything on demand, see find_matching_listings above).
-    `since` (2026-10-02): only listings FIRST SEEN at/after it are returned and marked shown — used by the
-    WhatsApp "while you were away" summary so it covers the time away, not every older unseen match.
+    `since` (2026-10-02): only listings FIRST SEEN at/after it are returned and marked shown.
     `limit=None` (the default, and what every real call site uses) means `total` is the TRUE
     current match count, not bounded by anything — see find_matching_listings' own 2026-09-15
     comment on why that matters here specifically.
@@ -99,7 +93,7 @@ def find_new_matches_to_show(
     filter always resent every single current match in full, every time — a real user tweaking
     their filter a few times in a row got the same cards over and over, flooding their chat.
     Caller is responsible for committing afterward (matches the existing session-per-call-site
-    pattern in filter_conversation.py/onboarding.py/whatsapp_webhook.py, no session.commit() here).
+    pattern in filter_conversation.py/onboarding.py, no session.commit() here).
     """
     matches = find_matching_listings(session, user_id, filter_row, limit)
     already_shown_ids = set(

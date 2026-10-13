@@ -1,14 +1,12 @@
-"""Shared language handling for the bots (Telegram + WhatsApp) — kept in sync BY HAND with
+"""Shared language handling for the bot — kept in sync BY HAND with
 website/i18n.py's own SUPPORTED_LANGS/DEFAULT_LANG (duplicated, not imported: i18n.py lives under
 website/ with ~250 web-page-specific translation keys the bots have no use for, and importing it
 here would pull the whole website module graph into bot/scraper processes).
 
-2026-09-26 real owner request: both bots were Hebrew-only — not just their own canned strings, but
+2026-09-26 real owner request: the bot was Hebrew-only — not just its own canned strings, but
 Gemini's own generated replies too (the prompt in gemini_client.py explicitly said "write in
 Hebrew"). Telegram already tells us the user's own device language for free on every update
-(telegram.User.language_code) — Google/every real bot platform surfaces this the same way — so
-that channel auto-detects silently. WhatsApp's Cloud API gives no such signal at all, so that
-channel asks explicitly once (see website/whatsapp_webhook.py's own language-picker flow)."""
+(telegram.User.language_code), so the bot auto-detects it silently."""
 from __future__ import annotations
 
 SUPPORTED_LANGS = ["he", "en", "ru", "fr", "ar"]
@@ -19,7 +17,7 @@ DEFAULT_LANG = "he"
 # imported across the website/bot process boundary.
 RTL_LANGS = {"he", "ar"}
 
-# Each language's own name, in itself — used for the WhatsApp language-picker rows and for the
+# Each language's own name, in itself — used for the
 # Gemini prompt instruction (so the model sees "Russian", not just the ambiguous two-letter code).
 LANGUAGE_NAMES = {
     "he": "Hebrew (עברית)",

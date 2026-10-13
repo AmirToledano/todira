@@ -75,8 +75,8 @@ class _FakeSession:
 
     def execute(self, stmt):
         # Backs base.html's header lookup (_current_user_summary) — only actually queried when a
-        # prior request already stamped a real session cookie (e.g. a successful wid resolution
-        # auto-logs a visitor in); harmless to always answer with this same user regardless.
+        # prior request already stamped a real session cookie (e.g. a signed bot link signs a
+        # visitor in); harmless to always answer with this same user regardless.
         class _Result:
             def __init__(self, row):
                 self._row = row
@@ -95,6 +95,12 @@ def _client_for(user: _FakeUser):
         yield fake_session
 
     return patch.object(website_main, "get_session", _fake_get_session)
+
+
+def _signed_in_as(user: _FakeUser):
+    """A visitor with a real signed session and no Telegram (a Google-only account) — the TestClient
+    can't set a session cookie without a real login round-trip, so _resolve_user answers directly."""
+    return patch.object(website_main, "_resolve_user", lambda request, session, uid: user)
 
 
 def _base_form(uid: int, **overrides) -> dict:
@@ -264,11 +270,10 @@ def test_welcome_flow_still_blocked_even_though_all_cities_renders_unchecked():
 
 
 def test_notifications_step_shows_a_real_telegram_connect_link_for_a_non_telegram_user():
-    user = _FakeUser(uid=None)
-    token = website_main.generate_wid_token("972501234567")
-    with _client_for(user):
+    user = _FakeUser(uid=None)  # a Google-only account, signed in with a real session
+    with _client_for(user), _signed_in_as(user):
         client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
-        resp = client.get("/onboarding/notifications", params={"wid": token})
+        resp = client.get("/onboarding/notifications")
     assert resp.status_code == 200
     assert "https://t.me/AmirDirotBot?start=" in resp.text
     assert user.channel_link_code  # a real code was actually generated
@@ -282,10 +287,9 @@ def test_notifications_step_reuses_an_existing_still_valid_code_instead_of_regen
     user = _FakeUser(uid=None)
     user.channel_link_code = "ref_existing"
     user.channel_link_code_expires_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
-    token = website_main.generate_wid_token("972501234567")
-    with _client_for(user):
+    with _client_for(user), _signed_in_as(user):
         client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
-        resp = client.get("/onboarding/notifications", params={"wid": token})
+        resp = client.get("/onboarding/notifications")
     assert resp.status_code == 200
     assert "https://t.me/AmirDirotBot?start=ref_existing" in resp.text
     assert user.channel_link_code == "ref_existing"

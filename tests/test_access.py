@@ -106,7 +106,7 @@ def test_extend_paid_until_rejects_unknown_plan():
 
 
 # --- has_paid_access (2026-09-27) — same as has_full_access, except the 3-day trial no longer
-# counts. Only used to gate the listing card's contact buttons (WhatsApp message / phone number);
+# counts. Only used to gate the listing card's contact button;
 # has_full_access is unchanged and still used everywhere else. ---
 
 

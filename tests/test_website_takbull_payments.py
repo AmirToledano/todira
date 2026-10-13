@@ -39,7 +39,6 @@ class _FakeUser:
     def __init__(self, id, telegram_user_id=None, **overrides):
         self.id = id
         self.telegram_user_id = telegram_user_id
-        self.whatsapp_phone_number = overrides.get("whatsapp_phone_number")
         self.google_sub = overrides.get("google_sub")
         self.first_name = overrides.get("first_name", "Test")
         self.telegram_username = overrides.get("telegram_username")

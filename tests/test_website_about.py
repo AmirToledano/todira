@@ -33,7 +33,7 @@ def client():
 
 
 def test_about_renders_react_island(client):
-    """Mirrors test_home_shows_whatsapp_cta_when_configured's own reasoning: checks what the
+    """Mirrors test_home_mounts_the_react_bundle's own reasoning: checks what the
     server actually still controls (config injection, the correct per-entry bundle reference)
     rather than full DOM content, which is a frontend concern verified separately."""
     resp = client.get("/about")

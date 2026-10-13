@@ -15,7 +15,7 @@ export default function Privacy() {
   const showNotice = lang !== "he" && lang !== "en";
   const tr = (key) => (showHebrew ? t(key) : tEn(key));
 
-  const providers = [1, 2, 3, 4, 5].map((n) => ({
+  const providers = [1, 3, 4, 5].map((n) => ({
     label: tr(`privacy.s3_item${n}_label`),
     body: tr(`privacy.s3_item${n}_body`),
   }));
@@ -43,7 +43,6 @@ export default function Privacy() {
         <h2>{tr("privacy.s1_title")}</h2>
         <ul>
           <li>{tr("privacy.s1_item1")}</li>
-          <li>{tr("privacy.s1_item2")}</li>
           <li>{tr("privacy.s1_item3")}</li>
           <li>{tr("privacy.s1_item4")}</li>
           <li>{tr("privacy.s1_item5")}</li>

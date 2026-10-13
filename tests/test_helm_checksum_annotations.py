@@ -2,7 +2,7 @@
 Kubernetes Deployment's Pod is NOT restarted when only a mounted Secret/ConfigMap's *content*
 changes underneath it (env vars from secretKeyRef/configMapKeyRef are read once at container
 start; the Pod template itself is unchanged, so there's nothing to trigger a rollout) — first for
-WhatsApp secrets (bot/website, 2026-09-06), then for Caddy's Caddyfile (2026-09-07), then found
+the bot/website secrets (2026-09-06), then for Caddy's Caddyfile (2026-09-07), then found
 STILL missing for the postgres secret in all three Deployments that reference it (2026-09-07 audit).
 
 The fix each time is a `checksum/<name>: {{ include (print $.Template.BasePath "/<name>.yaml") . |

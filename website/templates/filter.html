@@ -14,7 +14,7 @@
 <div class="page-banner reveal">
   <div class="pb-text">
     <h1>{{ t('filter.title') }}</h1>
-    {# 2026-09-06: a visitor with no telegram_user_id (WhatsApp-only/Google-only, arrived via wid)
+    {# 2026-09-06: a visitor with no telegram_user_id (a Google-only account)
        has no Telegram account to run /filter from — the full subtitle's Telegram pointer would be
        a dead end for them, so they get just the first sentence instead. #}
     <p>{{ t('filter.subtitle') if user.telegram_user_id else t('filter.subtitle_short') }}</p>
@@ -25,7 +25,6 @@
 <div class="settings-card reveal">
   <form method="post" action="/filter">
     {% if uid %}<input type="hidden" name="uid" value="{{ uid }}">{% endif %}
-    {% if wid %}<input type="hidden" name="wid" value="{{ wid }}">{% endif %}
     {# 2026-09-26 dorin.app-style onboarding (real owner request): only present during the
        first-time welcome flow — filter_update (main.py) reads this to know whether to enforce
        the required-city block and chain into step 2 (/onboarding/notifications) instead of the

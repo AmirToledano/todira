@@ -29,8 +29,6 @@ def _user(**overrides):
         paid_until=None,
         is_active=True,
         notifications_enabled=True,
-        whatsapp_phone_number=None,
-        whatsapp_notifications_opted_in=False,
         language="he",
     )
     defaults.update(overrides)

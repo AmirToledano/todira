@@ -6,12 +6,12 @@
 {% endblock %}
 {% block content %}
 {# 2026-09-25: eighth page moved into a React island, same pattern as login.html — see that
-   template's own comment and main.py's account()/_landing_react_assets(). The 4 POST actions
-   (cancel/resume-subscription, notifications, whatsapp-notifications) are UNCHANGED — still plain
+   template's own comment and main.py's account()/_landing_react_assets(). The POST actions
+   (cancel/resume-subscription, notifications) are UNCHANGED — still plain
    form-encoded POSTs, not fetch — see account()'s own comment on why. account_config carries
    everything the React page needs (subscription/notification/channel state, payment history) as
    ONE object via `| tojson`, not field-by-field like the simpler pages — real DB-derived data
-   (dates, payment amounts, a wid token that's user-supplied on the wid-only login path) has no
+   (dates, payment amounts) has no
    business being hand-interpolated into a <script> block one value at a time; `tojson` is what
    actually makes this safe (real JSON/JS-string escaping, including `<`/`>` so nothing in here —
    even a field this route's own author didn't think to double-check — can break out of the

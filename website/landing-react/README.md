@@ -8,7 +8,7 @@ the accessibility statement (`/accessibility`), the privacy policy
 (`/privacy`), the terms of use (`/terms`), the contact page
 (`/contact`), the login screen (`/login`), and the account page
 (`/account`). Everything else on the site (`/apartments`, payments, admin,
-the WhatsApp/Telegram webhooks, and the header/nav/footer that wrap every
+the payment webhook, and the header/nav/footer that wrap every
 one of these pages) is still the original server-rendered Jinja2 + vanilla
 CSS/JS the rest of `website/` is built on.
 
@@ -68,7 +68,7 @@ rather than being pure presentation:
 - **`uid` still flows through.** When a visitor reaches `/contact?uid=...`
   (a logged-in Telegram user, via `base.html`'s own nav links), `main.py`'s
   `contact()` route injects it into `window.__TODIRA_PAGE__` same as
-  `lang`/`dir`/`whatsappPublicNumber`; `i18n.js` exports it, and
+  `lang`/`dir`; `i18n.js` exports it, and
   `Contact.jsx` forwards it in the fetch body — same message-attribution
   behavior the old hidden form field used to provide.
 - **Fully translated, not he/en-only.** `contact.*` (unlike the legal
@@ -83,7 +83,7 @@ thing worth its own note: **`next` (the post-login redirect target) is the
 first value injected into `window.__TODIRA_PAGE__`, across any converted
 page, that's genuinely attacker-influenceable text.** Every other injected
 value so far is either a fixed-whitelist string (`lang`/`dir`), an int
-(`uid`), or a trusted env var (`whatsappPublicNumber`) — `next` is a
+(`uid`) — `next` is a
 visitor's own query parameter, and `main.py`'s `_safe_next()` only requires
 it start with a single `/`; it doesn't restrict the character set
 otherwise. `login.html` injects it with Jinja's `{{ next | tojson }}`
@@ -99,8 +99,8 @@ Account was the eighth (and last one planned so far) — real subscription/
 notification/channel state and a payment-history table, the heaviest data
 shape of any converted page. Two things worth their own note:
 
-- **Its 4 POST actions (cancel/resume-subscription, notifications,
-  whatsapp-notifications) are deliberately UNCHANGED** — still plain
+- **Its POST actions (cancel/resume-subscription, notifications) are
+  deliberately UNCHANGED** — still plain
   `<form method="post">` submits redirecting back to `/account`, not
   `fetch`. A full page reload after a subscription/notification change is
   exactly what already happens and is completely fine UX for it, so unlike
@@ -108,11 +108,10 @@ shape of any converted page. Two things worth their own note:
   feel instant, with inline success/error state), there's no reason to
   widen `/account`'s blast radius by touching its action routes at all —
   `Account.jsx` only reskins presentation around those same native forms
-  and hidden `uid`/`wid` fields. See `main.py`'s `account()` route comment.
+  and hidden `uid` field. See `main.py`'s `account()` route comment.
 - **The whole `account_config` object goes through `{{ ... | tojson }}`
   as one value**, not field-by-field the way `lang`/`dir`/`uid` etc. are
-  on the simpler pages — real DB-derived data (dates, payment amounts, a
-  `wid` token that's user-supplied on the wid-only login path) has no
+  on the simpler pages — real DB-derived data (dates, payment amounts) has no
   business being hand-interpolated into a `<script>` block one value at a
   time the way `login.html`'s own `next | tojson` finding already showed
   matters. `i18n.js`'s `pageConfig` export is the generic escape hatch for
@@ -145,7 +144,7 @@ shape of any converted page. Two things worth their own note:
   `window.__TODIRA_PAGE__ = {...}` config script (language/direction — the
   exact values `_render()` already resolved for that request, so they can
   never disagree with the server-rendered header around the island — plus
-  whatever else that specific page needs, e.g. home's WhatsApp number) and
+  whatever else that specific page needs, e.g. contact's `uid`) and
   the built `<script type="module">` tag. Each page has its own
   `src/<page>-main.jsx` that mounts its root component into that `#root`.
 - schema.org JSON-LD SEO markup stays server-rendered in `home.html`'s
@@ -154,7 +153,7 @@ shape of any converted page. Two things worth their own note:
 ## Content — real copy only, not invented
 
 `src/content.json` is a **generated** export of `website/i18n.py`'s
-`TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`, `whatsapp.*`,
+`TRANSLATIONS` dict (every `home.*`, `footer.*`, `cookies.*`,
 `about.*`, `accessibility.*`, `privacy.*`, `terms.*`, `contact.*`,
 `login.*`, and `account.*` key, plus a handful of exact keys from elsewhere
 in the file that a React page reuses rather than re-authoring — e.g.
@@ -178,7 +177,7 @@ A translation string never contains raw HTML (no `| safe` anywhere in this
 codebase). Where a sentence needs inline markup — `privacy.s1_item7_pre`/
 `_strong`/`_post` for a bolded phrase mid-sentence, `privacy.s5_pre`/`_post`
 and `terms.s12_pre`/`_post` each wrapping a real `<a href="/contact">` link,
-`privacy.s3_item{1-5}_label`/`_body` for a bolded provider name followed by
+`privacy.s3_item{1,3,4,5}_label`/`_body` for a bolded provider name followed by
 its description — the key is split into separate pieces and the React
 component (`Privacy.jsx`/`Terms.jsx`) composes the actual `<strong>`/`<a>`
 JSX elements around them, rather than ever injecting a string as HTML.
@@ -194,7 +193,7 @@ import json
 ns = {}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
-prefixes = ('home.', 'footer.', 'cookies.', 'whatsapp.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.', 'login.', 'account.')
+prefixes = ('home.', 'footer.', 'cookies.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.', 'login.', 'account.')
 exact = {
     'meta.title_home', 'meta.description', 'meta.title_about', 'meta.title_accessibility',
     'meta.title_privacy', 'meta.title_terms', 'meta.title_contact', 'meta.title_login',

@@ -1,5 +1,4 @@
-"""Translated strings for the bots' conversational flows (Telegram: bot/handlers/*.py; WhatsApp:
-website/whatsapp_webhook.py) — 2026-09-26 real owner request, see todira_common/language.py's own
+"""Translated strings for the bot's conversational flows (bot/handlers/*.py) — 2026-09-26 real owner request, see todira_common/language.py's own
 docstring for the full reasoning.
 
 2026-09-26 follow-up: the owner explicitly asked for FULL coverage, not the originally-bounded
@@ -12,7 +11,7 @@ also covers the two deeper layers a /filter conversation actually renders throug
 key prefix) and todira_common/cards.py (the listing-card caption itself — field labels, features,
 buttons — shared by scraper/notifier.py's push and bot/handlers/liked.py's on-demand cards, under
 the "card.*" prefix). cards.py builds every caption as plain text (no bidi marks at all, see
-its own module comment above _normalize_line_breaks) — Telegram/WhatsApp handle Hebrew/Arabic's
+its own module comment above _normalize_line_breaks) — Telegram handles Hebrew/Arabic's
 right-to-left direction natively, no per-language override needed here.
 
 Translations were produced by this assistant, not reviewed by a native speaker of each language —
@@ -231,13 +230,6 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     "onboarding.price_from": {
         "he": "מ־₪{price}", "en": "from ₪{price}", "ru": "от ₪{price}", "fr": "à partir de ₪{price}", "ar": "من ₪{price}",
     },
-    "whatsapp.ask_deal": {
-        "he": "מה מחפשים: שכירות, קנייה או סאבלט? 🙂",
-        "en": "What are you looking for: rent, buy or sublet? 🙂",
-        "ru": "Что вы ищете: аренду, покупку или субаренду? 🙂",
-        "fr": "Tu cherches quoi : location, achat ou sous-location ? 🙂",
-        "ar": "ماذا تبحث: إيجار أم شراء أم تأجير من الباطن؟ 🙂",
-    },
     "onboarding.ask_city": {
         "he": "באיזו עיר מחפשים? אפשר לכתוב גם כמה ערים 🙂",
         "en": "Which city? You can write several 🙂",
@@ -347,215 +339,12 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "envoie /start.",
         "ar": "مرحباً! 🐶 أنا تودّيرا، بوت البحث عن الشقق. للبدء بالبحث، أرسل /start.",
     },
-    "whatsapp.link_conflict": {
-        "he": "למספר הווטסאפ הזה כבר יש חשבון נפרד אצלי, אז אי אפשר לחבר אותו לחשבון אחר. אם זו "
-        "טעות, אפשר לפנות אלינו דרך האתר.",
-        "en": "This WhatsApp number already has its own separate account with me, so it can't be "
-        "linked to another one. If this is a mistake, you can reach us via the website.",
-        "ru": "У этого номера WhatsApp уже есть отдельный аккаунт у меня, поэтому привязать его к "
-        "другому нельзя. Если это ошибка, вы можете связаться с нами через сайт.",
-        "fr": "Ce numéro WhatsApp a déjà son propre compte séparé chez moi, il ne peut donc pas "
-        "être lié à un autre. Si c'est une erreur, tu peux nous contacter via le site.",
-        "ar": "هذا الرقم على واتساب لديه بالفعل حساب منفصل عندي، لذا لا يمكن ربطه بحساب آخر. إذا "
-        "كان هذا خطأ، يمكنك التواصل معنا عبر الموقع.",
-    },
-    "whatsapp.link_success": {
-        "he": "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת — מעכשיו תקבל עדכונים גם כאן.",
-        "en": "🎉 Connected! You're already registered with me — from now on you'll get updates "
-        "here too.",
-        "ru": "🎉 Подключено! Вы уже зарегистрированы у меня — теперь вы будете получать "
-        "обновления и здесь.",
-        "fr": "🎉 Connecté ! Tu es déjà enregistré chez moi — tu recevras désormais aussi les mises "
-        "à jour ici.",
-        "ar": "🎉 تم الربط! أنت مسجل بالفعل لدي — من الآن ستصلك التحديثات هنا أيضاً.",
-    },
-    "whatsapp.error": {
-        "he": "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע.",
-        "en": "Sorry, I'm having a brief technical hiccup 😅 try sending it again in a moment.",
-        "ru": "Извините, у меня небольшой технический сбой 😅 попробуйте отправить снова через "
-        "минуту.",
-        "fr": "Désolé, j'ai un petit souci technique 😅 réessaie d'envoyer dans un instant.",
-        "ar": "آسف، لدي عطل تقني بسيط 😅 حاول الإرسال مرة أخرى بعد قليل.",
-    },
-    "whatsapp.unsupported_message_type": {
-        "he": "כרגע אני יודע לקרוא רק הודעות טקסט 🙂 אפשר לתאר במילים מה את/ה מחפש/ת?",
-        "en": "Right now I can only read text messages 🙂 Can you describe in words what you're "
-        "looking for?",
-        "ru": "Пока я умею читать только текстовые сообщения 🙂 Можете описать словами, что вы "
-        "ищете?",
-        "fr": "Pour l'instant je ne sais lire que les messages texte 🙂 Peux-tu décrire avec des "
-        "mots ce que tu cherches ?",
-        "ar": "حالياً أستطيع قراءة الرسائل النصية فقط 🙂 هل يمكنك وصف ما تبحث عنه بالكلمات؟",
-    },
-    "whatsapp.onboarding_default_ack": {
-        "he": "רשמתי, תודה!",
-        "en": "Got it, thanks!",
-        "ru": "Записал, спасибо!",
-        "fr": "C'est noté, merci !",
-        "ar": "تم التسجيل، شكراً!",
-    },
-    "whatsapp.chat_default_ack": {
-        "he": "בסדר! 🙂",
-        "en": "Okay! 🙂",
-        "ru": "Хорошо! 🙂",
-        "fr": "D'accord ! 🙂",
-        "ar": "حسناً! 🙂",
-    },
-    "whatsapp.onboarding_complete": {
-        "he": "מעולה, נרשמת! אני כבר עוקב אחרי דירות חדשות שמתאימות לך 🏠",
-        "en": "Great, you're registered! I'm already tracking new apartments that match you 🏠",
-        "ru": "Отлично, вы зарегистрированы! Я уже слежу за новыми квартирами, которые вам "
-        "подходят 🏠",
-        "fr": "Super, tu es inscrit ! Je surveille déjà les nouveaux appartements qui te "
-        "correspondent 🏠",
-        "ar": "رائع، تم تسجيلك! أنا بالفعل أتابع الشقق الجديدة التي تناسبك 🏠",
-    },
-    "whatsapp.filter_edit_button": {
-        "he": "⚙️ עריכת הסינון", "en": "⚙️ Edit filter", "ru": "⚙️ Изменить фильтр",
-        "fr": "⚙️ Modifier le filtre", "ar": "⚙️ تعديل التفضيلات",
-    },
-    "whatsapp.filter_edit_intro": {
-        "he": "כדי לערוך את הסינון, הכי פשוט להיכנס ישירות לדף הסינון שלנו:",
-        "en": "To edit your filter, the easiest way is to go straight to our filter page:",
-        "ru": "Чтобы изменить фильтр, проще всего перейти прямо на страницу фильтра:",
-        "fr": "Pour modifier ton filtre, le plus simple est d'aller directement sur notre page de "
-        "filtre :",
-        "ar": "لتعديل تفضيلاتك، أسهل طريقة هي الدخول مباشرة إلى صفحة التفضيلات لدينا:",
-    },
-    "whatsapp.filter_edit_followup1": {
-        "he": "שם תוכל לשנות בקלות את המחיר, להוסיף או להסיר ערים ושכונות, ולבחור העדפות כמו "
-        "חניה, מעלית, או ממ\"ד. ברגע שתשמור שם את השינויים, אני אעדכן את ההתראות שלך בהתאם! ✨🏠",
-        "en": "There you can easily change the price, add or remove cities and neighborhoods, and "
-        "pick preferences like parking, elevator, or a safe room. Once you save your changes there, "
-        "I'll update your notifications accordingly! ✨🏠",
-        "ru": "Там вы можете легко изменить цену, добавить или убрать города и районы, а также "
-        "выбрать предпочтения — парковку, лифт или бомбоубежище. Как только сохраните изменения, я "
-        "обновлю ваши уведомления! ✨🏠",
-        "fr": "Là-bas tu peux facilement changer le prix, ajouter ou retirer des villes et "
-        "quartiers, et choisir des préférences comme le parking, l'ascenseur, ou un abri. Dès que "
-        "tu enregistres les changements, je mettrai à jour tes notifications en conséquence ! ✨🏠",
-        "ar": "هناك يمكنك بسهولة تغيير السعر، إضافة أو إزالة مدن وأحياء، واختيار تفضيلات مثل "
-        "موقف السيارات أو المصعد أو الغرفة الآمنة. بمجرد حفظ التغييرات هناك، سأحدّث إشعاراتك وفقاً "
-        "لذلك! ✨🏠",
-    },
-    "whatsapp.filter_edit_followup2": {
-        "he": "צריך עזרה עם משהו ספציפי בסינון? 😊",
-        "en": "Need help with something specific in the filter? 😊",
-        "ru": "Нужна помощь с чем-то конкретным в фильтре? 😊",
-        "fr": "Besoin d'aide sur un point précis du filtre ? 😊",
-        "ar": "هل تحتاج مساعدة في شيء محدد بخصوص التفضيلات؟ 😊",
-    },
-    "whatsapp.notifications_optin_body": {
-        "he": "רוצה שאני אשלח לך הודעה כאן בווטסאפ (בנוסף לאתר) ברגע שעולה דירה חדשה שמתאימה "
-        "לך? אפשר להפעיל את זה בעמוד החשבון שלך:",
-        "en": "Want me to send you a message here on WhatsApp (in addition to the website) the "
-        "moment a new matching apartment appears? You can turn this on in your account page:",
-        "ru": "Хотите, чтобы я присылал сообщение сюда, в WhatsApp (в дополнение к сайту), как "
-        "только появится подходящая новая квартира? Это можно включить на странице вашего "
-        "аккаунта:",
-        "fr": "Tu veux que je t'envoie un message ici sur WhatsApp (en plus du site) dès qu'un "
-        "nouvel appartement correspondant apparaît ? Tu peux activer ça sur ta page de compte :",
-        "ar": "هل تريد أن أرسل لك رسالة هنا على واتساب (بالإضافة إلى الموقع) بمجرد ظهور شقة "
-        "جديدة تناسبك؟ يمكنك تفعيل ذلك في صفحة حسابك:",
-    },
-    "whatsapp.notifications_optin_button": {
-        "he": "🔔 הפעלת התראות", "en": "🔔 Turn on notifications", "ru": "🔔 Включить уведомления",
-        "fr": "🔔 Activer les notifications", "ar": "🔔 تفعيل الإشعارات",
-    },
-    # Zero-cost WhatsApp (2026-10-02): "still looking?" check-in + the replies to its buttons. The
-    # button titles are max 20 characters (WhatsApp's own limit) — tests/test_whatsapp_checkin.py
-    # enforces that for every language.
-    "whatsapp.view_listing_button": {
-        "he": "לפרטי הדירה 🔗", "en": "Listing details 🔗", "ru": "О квартире 🔗",
-        "fr": "Voir l'annonce 🔗", "ar": "تفاصيل الشقة 🔗",
-    },
-    "whatsapp.upgrade_button": {
-        "he": "🔒 שדרוג לצפייה", "en": "🔒 Upgrade to view", "ru": "🔒 Улучшить план",
-        "fr": "🔒 Passer à Premium", "ar": "🔒 الترقية للعرض",
-    },
     "renewal.reminder": {
         "he": "היי! הגישה שלך לטודירה מסתיימת ב-{date} ⏰ כדי להמשיך לקבל דירות ולראות פרטים אפשר לחדש כאן: {url}",
         "en": "Hi! Your Todira access ends on {date} ⏰ To keep getting listings and details, renew here: {url}",
         "ru": "Привет! Ваш доступ к Todira заканчивается {date} ⏰ Чтобы продолжать получать объявления и детали, продлите здесь: {url}",
         "fr": "Salut ! Ton accès à Todira se termine le {date} ⏰ Pour continuer à recevoir les annonces et les détails, renouvelle ici : {url}",
         "ar": "مرحباً! ينتهي وصولك إلى Todira في {date} ⏰ لمتابعة تلقي الإعلانات والتفاصيل جدّد من هنا: {url}",
-    },
-    "whatsapp.checkin_body": {
-        "he": "היי! עדיין מחפש דירה? 🏠 לחץ על אחד הכפתורים כדי שאמשיך לשלוח לך דירות חדשות.",
-        "en": "Hi! Still looking for an apartment? 🏠 Tap a button so I keep sending you new listings.",
-        "ru": "Привет! Всё ещё ищете квартиру? 🏠 Нажмите кнопку, чтобы я продолжил присылать новые объявления.",
-        "fr": "Salut ! Tu cherches toujours un appartement ? 🏠 Appuie sur un bouton pour que je continue à t'envoyer les nouvelles annonces.",
-        "ar": "مرحباً! هل ما زلت تبحث عن شقة؟ 🏠 اضغط على زر لأواصل إرسال الإعلانات الجديدة لك.",
-    },
-    "whatsapp.checkin_continue_button": {
-        "he": "כן, תמשיכו 🔎", "en": "Yes, keep going 🔎", "ru": "Да, продолжайте 🔎",
-        "fr": "Oui, continue 🔎", "ar": "نعم، تابعوا 🔎",
-    },
-    "whatsapp.checkin_found_button": {
-        "he": "מצאתי דירה 🎉", "en": "Found one 🎉", "ru": "Нашёл жильё 🎉",
-        "fr": "J'ai trouvé 🎉", "ar": "وجدت شقة 🎉",
-    },
-    "whatsapp.checkin_stop_button": {
-        "he": "עצרו הודעות", "en": "Stop messages", "ru": "Остановить",
-        "fr": "Arrêter", "ar": "أوقفوا الرسائل",
-    },
-    "whatsapp.checkin_continue_ack": {
-        "he": "מעולה, ממשיך לחפש בשבילך 🔎",
-        "en": "Great, I'll keep searching for you 🔎",
-        "ru": "Отлично, продолжаю искать для вас 🔎",
-        "fr": "Super, je continue à chercher pour toi 🔎",
-        "ar": "رائع، سأواصل البحث من أجلك 🔎",
-    },
-    "whatsapp.checkin_found_ack": {
-        "he": "איזה כיף, מזל טוב על הדירה! 🎉 הפסקתי לשלוח הודעות. אם תרצה לחזור לחפש, שלח לי ״המשך״.",
-        "en": "Congratulations on the apartment! 🎉 I've stopped the messages. To start searching again, send me \"continue\".",
-        "ru": "Поздравляю с квартирой! 🎉 Я остановил сообщения. Чтобы снова искать, отправьте «продолжить».",
-        "fr": "Félicitations pour l'appartement ! 🎉 J'ai arrêté les messages. Pour rechercher à nouveau, envoie-moi « continuer ».",
-        "ar": "مبروك على الشقة! 🎉 أوقفت الرسائل. للعودة إلى البحث أرسل لي «متابعة».",
-    },
-    "whatsapp.checkin_stop_ack": {
-        "he": "בסדר, הפסקתי לשלוח הודעות. אם תרצה לחזור לחפש, שלח לי ״המשך״.",
-        "en": "Okay, I've stopped the messages. To start searching again, send me \"continue\".",
-        "ru": "Хорошо, я остановил сообщения. Чтобы снова искать, отправьте «продолжить».",
-        "fr": "D'accord, j'ai arrêté les messages. Pour rechercher à nouveau, envoie-moi « continuer ».",
-        "ar": "حسناً، أوقفت الرسائل. للعودة إلى البحث أرسل لي «متابعة».",
-    },
-    "whatsapp.resume_ack": {
-        "he": "חזרתי לחפש בשבילך! 🔎", "en": "I'm searching for you again! 🔎",
-        "ru": "Снова ищу для вас! 🔎", "fr": "Je recherche de nouveau pour toi ! 🔎",
-        "ar": "عدت إلى البحث من أجلك! 🔎",
-    },
-    "whatsapp.missed_digest": {
-        "he": "בזמן שלא היית כאן נמצאו {total} דירות חדשות שמתאימות לחיפוש שלך 🏠\nכל הדירות כאן: {url}",
-        "en": "While you were away I found {total} new apartments matching your search 🏠\nAll of them here: {url}",
-        "ru": "Пока вас не было, я нашёл {total} новых квартир по вашему запросу 🏠\nВсе здесь: {url}",
-        "fr": "Pendant ton absence, j'ai trouvé {total} nouveaux appartements qui te correspondent 🏠\nTous ici : {url}",
-        "ar": "أثناء غيابك وجدت {total} شقق جديدة تناسب بحثك 🏠\nكلها هنا: {url}",
-    },
-    "whatsapp.help_request_body": {
-        "he": "תודה שכתבת! ההודעה שלך התקבלה ואנחנו נחזור אליך בהקדם 🙏\nאפשר גם לפנות ישירות דרך "
-        "עמוד יצירת הקשר שלנו:",
-        "en": "Thanks for writing! Your message was received and we'll get back to you soon 🙏\n"
-        "You can also reach out directly through our contact page:",
-        "ru": "Спасибо за сообщение! Мы его получили и скоро свяжемся с вами 🙏\nТакже можно "
-        "обратиться напрямую через нашу страницу контактов:",
-        "fr": "Merci pour ton message ! Il a bien été reçu, on te répond bientôt 🙏\nTu peux aussi "
-        "nous contacter directement via notre page de contact :",
-        "ar": "شكراً لكتابتك! تم استلام رسالتك وسنعاود التواصل معك قريباً 🙏\nيمكنك أيضاً "
-        "التواصل مباشرة عبر صفحة الاتصال لدينا:",
-    },
-    "whatsapp.help_request_button": {
-        "he": "✉️ יצירת קשר", "en": "✉️ Contact us", "ru": "✉️ Связаться с нами",
-        "fr": "✉️ Nous contacter", "ar": "✉️ تواصل معنا",
-    },
-    "whatsapp.language_confirmed": {
-        "he": "מעולה! מעכשיו אדבר איתך בעברית. ספר לי מה אתה מחפש 🏠",
-        "en": "Great! I'll speak with you in English from now on. Tell me what you're looking "
-        "for 🏠",
-        "ru": "Отлично! Теперь я буду говорить с вами по-русски. Расскажите, что вы ищете 🏠",
-        "fr": "Super ! Je vais te parler en français à partir de maintenant. Dis-moi ce que tu "
-        "cherches 🏠",
-        "ar": "رائع! سأتحدث معك بالعربية من الآن. أخبرني ماذا تبحث عنه 🏠",
     },
     "profile.header": {
         "he": "👤 <b>הפרופיל שלך</b>", "en": "👤 <b>Your profile</b>",
@@ -1350,11 +1139,6 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Полная информация о квартире &gt;&gt;",
         "fr": "Détails complets de l'annonce &gt;&gt;",
         "ar": "التفاصيل الكاملة للشقة &gt;&gt;",
-    },
-    "card.full_details_link_plain": {
-        "he": "לפרטי הדירה המלאים >>", "en": "Full listing details >>",
-        "ru": "Полная информация о квартире >>", "fr": "Détails complets de l'annonce >>",
-        "ar": "التفاصيل الكاملة للشقة >>",
     },
     "card.upgrade_to_see_link": {
         "he": "לקישור למודעה המקורית — שדרג/י את המנוי",

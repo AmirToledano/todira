@@ -2,7 +2,7 @@
 
 Found live-code-review 2026-09-22: _handle_freetext used to merge each Gemini-extracted field
 independently, with no cross-field validation — unlike filter_conversation.py (Pydantic) and
-contact_fallback.py/whatsapp_webhook.py (safe_range_update), which both already guard the
+contact_fallback.py (safe_range_update), which both already guard the
 identical Gemini-driven merge. A multi-turn onboarding conversation ("up to 3000" then later
 "actually not less than 5000") could merge into price_min=5000, price_max=3000 with nothing
 catching it before _save_filter_sync ever wrote it — an inverted range that hard-fails every

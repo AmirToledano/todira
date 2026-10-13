@@ -101,11 +101,6 @@
   background: transparent; color: var(--teal); border: 1.5px solid var(--teal);
 }
 .tl-btn.outline:hover { background: var(--teal-tint); transform: translateY(-3px); }
-.tl-btn.whatsapp {
-  background: linear-gradient(135deg, #25d366, #128c7e); color: #fff;
-  box-shadow: 0 12px 32px rgba(37, 211, 102, 0.3);
-}
-.tl-btn.whatsapp:hover { transform: translateY(-3px) scale(1.03); filter: brightness(1.05); }
 
 .tl-blob {
   position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0;

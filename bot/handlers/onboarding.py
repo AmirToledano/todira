@@ -1,4 +1,4 @@
-"""Free-text onboarding for brand-new users — mirrors the reference bot's WhatsApp flow: the user
+"""Free-text onboarding for brand-new users — mirrors the reference bot's flow: the user
 describes what they're looking for in their own words (one messy paragraph, or a few back-and-
 forth turns), and Gemini (gemini_client.py) extracts structured filter fields each turn, merging
 with whatever was already collected, until the required minimum (deal_type + at least one city)
@@ -19,7 +19,7 @@ user just gets the plain welcome and the conversation ends immediately. When `/s
 `ref_xxxxxx` channel-linking payload (see todira_common/channel_link.py), start() attaches this
 Telegram account to the existing user the code belongs to BEFORE this function's own
 `_has_filter_sync` check runs — so a linked account that already has a filter (the normal case:
-someone connecting Telegram to a WhatsApp/Google account they already onboarded with elsewhere)
+someone connecting Telegram to a Google account they already onboarded with on the website)
 still ends the conversation immediately instead of re-onboarding them.
 """
 from __future__ import annotations
@@ -208,7 +208,7 @@ async def _apply_ai_result(update, context, state: dict, result: dict, text: str
     # onboarding conversation ("up to 3000" then later "actually not less than 5000") could merge
     # into price_min=5000, price_max=3000 with nothing catching it before _save_filter_sync writes
     # it. Same bug class (and same fix) already caught and applied to the identical Gemini-driven
-    # merge in contact_fallback.py/whatsapp_webhook.py's own filter-editing paths — an inverted
+    # merge in contact_fallback.py's own filter-editing path — an inverted
     # range isn't cosmetic, it hard-fails every listing forever, indistinguishable from "no
     # current matches" (see safe_range_update's own docstring).
     for key in _EMPTY_STATE:

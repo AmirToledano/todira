@@ -8,7 +8,7 @@ React form submits via fetch to POST /api/contact (JSON in/out) instead. The old
 POST /contact endpoint was removed along with it — every test below that used to POST form data to
 /contact now POSTs JSON to /api/contact, and GET /contact's own tests now check what the server
 actually still controls (config injection, the correct per-entry bundle reference), same reasoning
-as test_website_privacy.py's own GET tests — rather than server-rendered form/wa.me markup, which
+as test_website_privacy.py's own GET tests — rather than server-rendered form markup, which
 is a frontend concern verified separately (Playwright, during development).
 
 website/main.py is loaded via importlib under an explicit name rather than `sys.path.insert` +
@@ -98,13 +98,11 @@ def test_contact_get_renders_react_island(client):
     assert "/static/landing/assets/contact-" in resp.text  # its OWN entry, not another page's
 
 
-def test_contact_get_injects_uid_and_whatsapp_number_for_the_react_form(client):
-    with patch.object(website_main, "WHATSAPP_PUBLIC_NUMBER", "972500000000"):
-        resp = client.get("/contact?uid=123456")
+def test_contact_get_injects_uid_for_the_react_form(client):
+    resp = client.get("/contact?uid=123456")
 
     assert resp.status_code == 200
     assert "uid: 123456" in resp.text
-    assert 'whatsappPublicNumber: "972500000000"' in resp.text
 
 
 def test_contact_get_without_uid_injects_null(client):

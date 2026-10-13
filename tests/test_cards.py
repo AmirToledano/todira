@@ -1,10 +1,10 @@
-"""Unit tests for todira_common/cards.py — Telegram/WhatsApp caption rendering for a Listing, plus
+"""Unit tests for todira_common/cards.py — Telegram caption rendering for a Listing, plus
 send_listing_card's send behavior and _build_collage_sync's photo-compositing (both against a fake
 bot / mocked httpx — no real Telegram or network calls).
 
 The format_caption*/make_listing tests are pure string-formatting logic (no I/O, no DB) —
 SimpleNamespace stands in for a real Listing row, same approach test_matching.py already uses,
-since format_caption/format_caption_whatsapp only ever read attributes off whatever's passed in.
+since format_caption only ever reads attributes off whatever's passed in.
 """
 from __future__ import annotations
 
@@ -13,11 +13,9 @@ from types import SimpleNamespace
 
 from todira_common.cards import (
     CAPTION_LIMIT,
-    WHATSAPP_MESSAGE_LIMIT,
     _WIDTH_PAD,
     _fit_to_limit,
     format_caption,
-    format_caption_whatsapp,
 )
 from todira_common.bot_strings import bot_text
 
@@ -215,15 +213,6 @@ def test_long_description_is_truncated_not_dropped_on_telegram():
     assert caption.rstrip().endswith("</a>")  # the footer link is still intact
 
 
-def test_long_description_is_truncated_not_dropped_on_whatsapp():
-    caption = format_caption_whatsapp(
-        make_listing(street="דיזנגוף 10", description="דירה מרווחת ומוארת " * 500), has_access=True
-    )
-    assert len(caption) <= WHATSAPP_MESSAGE_LIMIT
-    assert "📝 דירה מרווחת" in caption
-    assert "…" in caption
-
-
 def test_truncating_a_description_never_splits_an_html_entity():
     # Truncation happens BEFORE escaping, one character at a time - cutting already-escaped text
     # could leave a dangling half-entity like "&am" in front of the ellipsis.
@@ -268,11 +257,6 @@ def test_width_pad_never_pushes_the_caption_past_the_limit():
     assert _with_width_pad_if_short(almost_full, CAPTION_LIMIT) == almost_full
 
 
-def test_width_pad_is_not_applied_to_whatsapp_captions():
-    caption = format_caption_whatsapp(make_listing(street=None, description=None), has_access=True)
-    assert "\u2800" not in caption
-
-
 def test_caption_has_no_bidi_control_characters():
     # 2026-09-30, the actual resolution to a long RTL-alignment saga (see cards.py's own module
     # comment above _normalize_line_breaks for the full history): a real reference bot's own
@@ -300,17 +284,6 @@ def test_multiline_description_keeps_every_physical_line():
     assert "מחסן" in caption
 
 
-def test_whatsapp_multiline_description_keeps_every_physical_line():
-    multiline_description = "דירת 5 חדרים יפיפייה\nחדשה מהקבלן עדיין לא אוכלסה\n2 חניות\nמחסן"
-    caption = format_caption_whatsapp(
-        make_listing(description=multiline_description), has_access=True
-    )
-    assert "📝 דירת 5 חדרים יפיפייה" in caption
-    assert "חדשה מהקבלן עדיין לא אוכלסה" in caption
-    assert "2 חניות" in caption
-    assert "מחסן" in caption
-
-
 def test_carriage_return_only_description_still_splits_into_separate_lines():
     # 2026-09-21: real Homeless listings use a bare "\r" as their line separator, not "\n" —
     # _normalize_line_breaks (splitlines()-based) handles "\r" too.
@@ -324,7 +297,7 @@ def test_carriage_return_only_description_still_splits_into_separate_lines():
 def test_long_single_line_description_is_not_manually_pre_wrapped():
     # 2026-09-30: manual pre-wrapping (this file used to force short lines to keep a client
     # soft-wrap from interacting badly with bidi marks) is gone along with the marks themselves —
-    # Telegram/WhatsApp are left to wrap long lines on their own, same as the real reference bot
+    # Telegram is left to wrap long lines on its own, same as the real reference bot
     # this approach was modeled on.
     long_description = "יחידת דיור משופצת כולל גינה כניסה 20.10.26"
     caption = format_caption(make_listing(description=long_description), has_access=True)
@@ -384,42 +357,6 @@ def test_no_price_change_header_when_old_and_new_price_are_equal():
     caption = format_caption(make_listing(price=16000), price_change_from=16000, has_access=True)
     assert "ירידת מחיר" not in caption
     assert "עליית מחיר" not in caption
-
-
-def test_whatsapp_caption_uses_markdown_not_html():
-    listing = make_listing(has_parking=True)
-    caption = format_caption_whatsapp(listing, has_access=True)
-    assert "<b>" not in caption
-    assert "<i>" not in caption
-    assert "🛏️ *חדרים:* 4" in caption
-    assert "🔑 *פיצ'רים:* 🚗חניה" in caption
-    assert "_" not in caption  # no more italics markdown either
-
-
-def test_whatsapp_street_stays_plain_text_and_has_no_maps_link():
-    # WhatsApp can't make custom text a link (only a raw, very long URL auto-links), and the owner
-    # decided (2026-10-02) not to show a Google Maps URL there at all. Telegram/website keep it.
-    caption = format_caption_whatsapp(make_listing(street="דיזנגוף 10"), has_access=True)
-    assert "📍*ירושלים* - ניות דיזנגוף 10" in caption
-    assert "<a href" not in caption
-    assert "google.com/maps" not in caption
-    assert "🗺️" not in caption
-
-
-def test_whatsapp_price_change_header_is_bold_with_asterisks():
-    caption = format_caption_whatsapp(make_listing(price=16000), price_change_from=18000, has_access=True)
-    assert "*ירידת מחיר!*" in caption
-
-
-def test_whatsapp_caption_includes_the_raw_url_not_an_html_link():
-    caption = format_caption_whatsapp(make_listing(), has_access=True)
-    assert "https://www.yad2.co.il/item/abc123" in caption
-    assert "<a href" not in caption
-
-
-def test_whatsapp_footer_has_no_source_tag():
-    caption = format_caption_whatsapp(make_listing(), has_access=True)
-    assert "🏷️" not in caption
 
 
 def test_fit_to_limit_is_a_noop_when_already_within_budget():
@@ -535,17 +472,6 @@ def test_no_view_url_falls_back_to_the_raw_listing_url():
     assert "secret789" in caption
 
 
-def test_whatsapp_no_access_still_shows_description_but_hides_url_shows_lock_line():
-    listing = make_listing(description="תיאור סודי", url="https://www.yad2.co.il/item/secret456")
-    caption = format_caption_whatsapp(
-        listing, has_access=False, upgrade_url="https://todira.app/upgrade?uid=555"
-    )
-    assert "תיאור סודי" in caption
-    assert "secret456" not in caption
-    assert "🔒" in caption
-    assert "https://todira.app/upgrade?uid=555" in caption
-
-
 def test_telegram_caption_escapes_html_in_scraped_fields():
     # Found live 2026-09-07: city/neighborhood/street/description/url are all scraped from Yad2
     # (and, for description, potentially Bright Data), not written by this project — with
@@ -566,14 +492,6 @@ def test_telegram_caption_escapes_html_in_scraped_fields():
     assert "<i>St</i>" not in caption
     assert "<img" not in caption
     assert '"onmouseover=alert(1)' not in caption
-
-
-def test_whatsapp_caption_does_not_html_escape_plain_text():
-    # WhatsApp captions are plain text, not HTML — raw "&"/"<" must pass through unescaped there.
-    listing = make_listing(city="A & B", neighborhood="C <D>")
-    caption = format_caption_whatsapp(listing, has_access=True)
-    assert "A & B" in caption
-    assert "C <D>" in caption
 
 
 # --- lang (2026-09-26 "full compatibility" follow-up) — every field label/feature/footer now
@@ -623,12 +541,6 @@ def test_format_caption_price_change_header_is_translated():
     )
     assert "Price drop!" in caption
     assert "was 18,000" in caption
-
-
-def test_format_caption_whatsapp_renders_english_labels():
-    caption = format_caption_whatsapp(make_listing(), has_access=True, lang="en")
-    assert "Price:" in caption
-    assert "Full listing details" in caption
 
 
 def test_listing_keyboard_buttons_are_translated():
@@ -963,48 +875,6 @@ def test_build_collage_returns_none_when_every_download_fails(monkeypatch):
     assert _build_collage_sync(["u1", "u2"]) is None
 
 
-# --- get_listing_photo_jpeg_bytes (2026-09-27) — the public, always-returns-bytes wrapper
-# scraper/notifier.py's WhatsApp rich match-template send uses to get ONE image to upload, same
-# collage/first-photo/mascot fallback chain send_listing_card already inlines for Telegram. ---
-
-from todira_common.cards import get_listing_photo_jpeg_bytes  # noqa: E402
-
-
-def test_get_listing_photo_prefers_a_collage_when_2plus_photos(monkeypatch):
-    called = []
-    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: called.append(urls) or b"collage-bytes")
-    assert get_listing_photo_jpeg_bytes(["u1", "u2"]) == b"collage-bytes"
-    assert called == [["u1", "u2"]]
-
-
-def test_get_listing_photo_falls_back_to_first_photo_when_collage_fails(monkeypatch):
-    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: None)
-    monkeypatch.setattr(cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: b"single-photo-bytes")
-    assert get_listing_photo_jpeg_bytes(["u1", "u2"]) == b"single-photo-bytes"
-
-
-def test_get_listing_photo_never_attempts_a_collage_for_a_single_url(monkeypatch):
-    called = []
-    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: called.append(urls) or None)
-    monkeypatch.setattr(cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: b"single-photo-bytes")
-    assert get_listing_photo_jpeg_bytes(["u1"]) == b"single-photo-bytes"
-    assert called == []
-
-
-def test_get_listing_photo_falls_back_to_mascot_when_every_url_fails():
-    assert get_listing_photo_jpeg_bytes([]) == cards_module._MASCOT_PATH.read_bytes()
-
-
-def test_get_listing_photo_never_returns_none(monkeypatch):
-    # Real callers (scraper/notifier.py) rely on this always being real bytes, never None — no
-    # no-photo branch of their own to maintain.
-    monkeypatch.setattr(cards_module, "_build_collage_sync", lambda urls: None)
-    monkeypatch.setattr(cards_module, "_first_downloadable_photo_jpeg_bytes", lambda urls: None)
-    result = get_listing_photo_jpeg_bytes(["u1", "u2"])
-    assert result is not None
-    assert result == cards_module._MASCOT_PATH.read_bytes()
-
-
 def test_move_in_note_is_shown_when_there_is_no_date_and_translated_for_known_words():
     listing = make_listing(move_in_date=None)
     listing.move_in_note = "מיידית"
@@ -1028,12 +898,6 @@ def test_move_in_note_is_html_escaped_and_never_beats_a_real_date():
     assert "01.11.2026" in caption and "מיידית" not in caption
 
 
-def test_whatsapp_caption_also_shows_the_move_in_note():
-    listing = make_listing(move_in_date=None)
-    listing.move_in_note = "מיידית"
-    assert "📅 *כניסה:* מיידית" in format_caption_whatsapp(listing, has_access=True)
-
-
 def test_send_listing_card_no_images_puts_the_banner_after_the_details():
     """2026-10-05 owner request: a push notification shows only the start of the caption, so the
     listing's own details must come first and the "no photos" note last."""
@@ -1048,13 +912,15 @@ def test_send_listing_card_no_images_puts_the_banner_after_the_details():
 # --- 2026-10-09: rooms formatting and the expiry notices (owner request after comparing a card with the reference bot's) ---
 
 
+# --- 2026-10-09: rooms formatting and the expiry notices (owner request after comparing a card with the reference bot's) ---
+
+
 def test_rooms_print_without_a_trailing_zero():
     """rooms is NUMERIC(3,1), so the raw Decimal printed as "3.0" on every card."""
     assert f"🛏️ {_b('חדרים:')} 3\n" in format_caption(make_listing(rooms=Decimal("3.0")), has_access=True)
     assert f"🛏️ {_b('חדרים:')} 2.5\n" in format_caption(make_listing(rooms=Decimal("2.5")), has_access=True)
     assert f"🛏️ {_b('חדרים:')} 4\n" in format_caption(make_listing(rooms=4), has_access=True)
     assert f"🛏️ {_b('חדרים:')} ?\n" in format_caption(make_listing(rooms=None), has_access=True)
-    assert "3.0" not in format_caption_whatsapp(make_listing(rooms=Decimal("3.0")), has_access=True)
 
 
 def test_trial_ended_notice_replaces_the_generic_lock_line():
@@ -1105,17 +971,6 @@ def test_a_user_with_access_never_sees_an_expiry_notice():
     )
     assert "⚠️" not in caption and "תקופת הניסיון" not in caption
     assert "לפרטי הדירה המלאים" in caption
-
-
-def test_whatsapp_expiry_notices():
-    trial = format_caption_whatsapp(
-        make_listing(), has_access=False, upgrade_url="https://x/u", access_state="trial_ended"
-    )
-    assert "⚠️" in trial and "תקופת הניסיון הסתיימה" in trial and "https://x/u" in trial
-    sub = format_caption_whatsapp(
-        make_listing(), has_access=False, upgrade_url="https://x/u", access_state="subscription_expired"
-    )
-    assert "תוקף המנוי הסתיים" in sub and "תקופת הניסיון" not in sub
 
 
 def test_the_expiry_notice_never_crowds_out_the_card_footer_when_the_description_is_long():

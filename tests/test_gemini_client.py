@@ -172,9 +172,7 @@ def test_malformed_json_response_fails_soft_returns_none(monkeypatch):
 
 # --- 2026-09-06: one bounded retry on Gemini's own transient 5xx ("high demand") errors — added
 # after real production logs (pulled via the diagnose-website-webhook workflow) showed exactly
-# this ServerError on 2 of 3 live WhatsApp messages the owner sent back-to-back. Safe to do only
-# because the ack-first webhook fix shipped earlier the same day decouples this function's total
-# runtime from Meta's own webhook redelivery. ---
+# this ServerError on 2 of 3 live messages the owner sent back-to-back. ---
 
 
 def test_server_error_is_retried_and_succeeds_on_second_attempt(monkeypatch):

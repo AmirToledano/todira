@@ -22,7 +22,7 @@ from dedup import find_duplicate_listing
 from todira_common import text_features, yad2_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
-from todira_common import whatsapp_guard
+from todira_common import app_flags
 from todira_common.models import Listing, SentNotification
 import facebook_client
 from facebook_client import FacebookFetchError
@@ -40,9 +40,7 @@ from komo_client import KomoFetchError, fetch_all_coordinate_ids
 from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import normalize
 from notifier import run_notifications
-from whatsapp_checkin import run_whatsapp_checkins
 from renewal_reminder import run_renewal_reminders
-from whatsapp_cost_guard import run_cost_guard
 from yad2_client import (
     REGION_SLUGS,
     REGIONS_ON_MAP_API,
@@ -866,7 +864,7 @@ _DEFAULT_MIN_HOURS_BEFORE_DELIST = 3
 # notification, to retry them alongside this run's genuinely-new listings — see that call site's
 # own comment for the real, silent-permanent-notification-loss bug this closes. 7 days: generous
 # enough to catch a listing whose very first attempt failed during a real multi-hour outage
-# (WhatsApp API down, a stretch of NOTIFICATIONS_SUSPENDED, etc.), small enough that this query
+# (Telegram API down, a stretch of NOTIFICATIONS_SUSPENDED, etc.), small enough that this query
 # stays cheap (bounded by how many listings are scraped in a week, not the whole table).
 _RETRY_UNNOTIFIED_HOURS = 24 * 7
 _RETRY_MIN_AGE_MINUTES = 10
@@ -959,9 +957,9 @@ def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Lis
 
     2026-09-25 real bug fix, found via a live code-review pass: a listing used to be handed to
     run_notifications ONLY on the one run that inserted it (or its own price-change run). If every
-    send for it failed that run (WhatsApp API down, a candidate user's Telegram send hitting
+    send for it failed that run (Telegram API down, a candidate user's send hitting
     RetryAfter twice, NOTIFICATIONS_SUSPENDED covering the whole run, etc.) — no SentNotification
-    row gets written on a failed send (see notifier.py's own sent_on_any_channel gate), so
+    row gets written on a failed send (see notifier.py's own sent_ok gate), so
     _already_notified would correctly allow a retry — but the listing was never reconsidered on any
     LATER run either, since it's no longer "new" and never has a price change. That failure was
     silent and PERMANENT: a user genuinely never got notified about a listing that matched their
@@ -1052,7 +1050,7 @@ def _apply_tile_seed_policy(session, new_ids: list[int]) -> list[int]:
         if not _YAD2_TILE_STATE[kind]["ran"]:
             continue
         flag = _YAD2_TILES_SEEDED_FLAGS[kind]
-        if whatsapp_guard.get_flag(session, flag):
+        if app_flags.get_flag(session, flag):
             continue
         tile_only_ids = _YAD2_TILE_ONLY_IDS[kind]
         backlog: set[int] = set()
@@ -1080,7 +1078,7 @@ def _apply_tile_seed_policy(session, new_ids: list[int]) -> list[int]:
                     kind, len(backlog),
                 )
         if _YAD2_TILE_STATE[kind]["complete"]:
-            whatsapp_guard.set_flag(session, flag, dt.datetime.now(dt.timezone.utc).isoformat())
+            app_flags.set_flag(session, flag, dt.datetime.now(dt.timezone.utc).isoformat())
         all_backlog |= backlog
     return [listing_id for listing_id in new_ids if listing_id not in all_backlog]
 
@@ -1180,7 +1178,7 @@ def _tile_seeded(kind: str) -> bool:
     error counts as NOT seeded: the worst case is one run that stays quiet, never a flood."""
     try:
         with get_session() as session:
-            raw = whatsapp_guard.get_flag(session, _YAD2_TILES_SEEDED_FLAGS[kind])
+            raw = app_flags.get_flag(session, _YAD2_TILES_SEEDED_FLAGS[kind])
     except Exception:
         logger.exception("Could not read the %s seed flag - treating the sweep as a quiet seed run", kind)
         return False
@@ -1426,7 +1424,7 @@ _KOMO_FAILED_FORGET_AFTER_SECONDS = 14 * 24 * 3600
 def _load_komo_failed_ids() -> dict[str, float]:
     try:
         with get_session() as session:
-            raw = whatsapp_guard.get_flag(session, _KOMO_FAILED_IDS_FLAG)
+            raw = app_flags.get_flag(session, _KOMO_FAILED_IDS_FLAG)
         data = json.loads(raw) if raw else {}
         return {str(k): float(v) for k, v in data.items()}
     except Exception:
@@ -1437,7 +1435,7 @@ def _load_komo_failed_ids() -> dict[str, float]:
 def _save_komo_failed_ids(failed: dict[str, float]) -> None:
     try:
         with get_session() as session:
-            whatsapp_guard.set_flag(session, _KOMO_FAILED_IDS_FLAG, json.dumps(failed))
+            app_flags.set_flag(session, _KOMO_FAILED_IDS_FLAG, json.dumps(failed))
     except Exception:
         logger.exception("Could not save the Komo failed-detail list")
 
@@ -1692,7 +1690,7 @@ def _homeless_read_category(
 def _homeless_rows_seeded() -> bool:
     try:
         with get_session() as session:
-            return bool(whatsapp_guard.get_flag(session, _HOMELESS_ROWS_SEEDED_FLAG))
+            return bool(app_flags.get_flag(session, _HOMELESS_ROWS_SEEDED_FLAG))
     except Exception:
         logger.exception("Could not read the Homeless table-rows seed flag - treating the run as already seeded")
         return True  # never risk a flood of alerts because of a read error
@@ -1701,7 +1699,7 @@ def _homeless_rows_seeded() -> bool:
 def _mark_homeless_rows_seeded() -> None:
     try:
         with get_session() as session:
-            whatsapp_guard.set_flag(session, _HOMELESS_ROWS_SEEDED_FLAG, dt.datetime.now(dt.timezone.utc).isoformat())
+            app_flags.set_flag(session, _HOMELESS_ROWS_SEEDED_FLAG, dt.datetime.now(dt.timezone.utc).isoformat())
     except Exception:
         logger.exception("Could not save the Homeless table-rows seed flag")
 
@@ -1709,7 +1707,7 @@ def _mark_homeless_rows_seeded() -> None:
 def _load_homeless_cursor() -> dict[str, dict]:
     try:
         with get_session() as session:
-            raw = whatsapp_guard.get_flag(session, _HOMELESS_CURSOR_FLAG)
+            raw = app_flags.get_flag(session, _HOMELESS_CURSOR_FLAG)
         data = json.loads(raw) if raw else {}
         return data if isinstance(data, dict) else {}
     except Exception:
@@ -1720,7 +1718,7 @@ def _load_homeless_cursor() -> dict[str, dict]:
 def _save_homeless_cursor(state: dict[str, dict]) -> None:
     try:
         with get_session() as session:
-            whatsapp_guard.set_flag(session, _HOMELESS_CURSOR_FLAG, json.dumps(state))
+            app_flags.set_flag(session, _HOMELESS_CURSOR_FLAG, json.dumps(state))
     except Exception:
         logger.exception("Could not save the Homeless rolling cursor")
 
@@ -2414,22 +2412,10 @@ def run_once() -> dict[str, int]:
             except Exception:
                 logger.exception("Description text features step failed")
             # Runs even when the notification step above raised (the exception still propagates
-            # afterwards): a failed notification run must not also swallow the check-in that keeps
-            # users' free 24h WhatsApp windows open.
-            # Every run, independent of whether anything new was found: keeps users' free 24h WhatsApp
-            # windows open (see whatsapp_checkin.py). Fail-soft — never takes the scraper run down.
-            # Only on the main scraper (SCRAPE_SOURCES unset): the Facebook CronJob also runs this
-            # function, and two jobs must not both ask the same user.
+            # afterwards). Fail-soft — never takes the scraper run down. Only on the main scraper
+            # (SCRAPE_SOURCES unset): the Facebook CronJob also runs this function, and two jobs must
+            # not both remind the same user.
             if not os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip():
-                try:
-                    # Cost backstop FIRST: if it trips, the check-ins below see the pause flag.
-                    summary.update(run_cost_guard(session))
-                except Exception:
-                    logger.exception("WhatsApp cost guard step failed")
-                try:
-                    summary.update(run_whatsapp_checkins(session))
-                except Exception:
-                    logger.exception("WhatsApp check-in step failed")
                 try:
                     summary.update(run_renewal_reminders(session))
                 except Exception:

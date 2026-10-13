@@ -50,11 +50,10 @@ jobs:
                 args:
                   - |
                     CONN="postgresql://${DATABASE_URL#*://}"
-                    echo "--- owner telegram_user_id: $OWNER_TELEGRAM_USER_ID ---"
+                    echo "--- owner row ---"
                     psql "$CONN" -c "
-                      SELECT id, telegram_user_id, is_active, notifications_enabled,
-                             whatsapp_phone_number, whatsapp_notifications_opted_in,
-                             trial_ends_at, takbull_subscription_uniqid, cancel_at_period_end
+                      SELECT id, is_active, notifications_enabled,
+                             trial_ends_at, takbull_subscription_uniqid IS NOT NULL AS has_subscription_id, cancel_at_period_end
                       FROM users WHERE telegram_user_id = '$OWNER_TELEGRAM_USER_ID';
                     "
                     echo "--- for comparison: how many OTHER users have notifications_enabled=false or is_active=false right now ---"

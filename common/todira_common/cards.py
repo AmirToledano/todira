@@ -155,28 +155,6 @@ def _dachshund_photo_path() -> Path:
     return _MASCOT_PATH
 
 
-def get_listing_photo_jpeg_bytes(image_urls: list[str]) -> bytes:
-    """Real listing photo(s) as JPEG bytes, for any surface that needs to attach ONE image
-    somewhere other than Telegram's own send_photo (which already inlines this exact fallback
-    chain directly in send_listing_card below, since python-telegram-bot's send_photo also accepts
-    a local Path for the mascot fallback) — currently WhatsApp's rich match-template send
-    (scraper/notifier.py), which needs actual bytes to upload via the Cloud API's /media endpoint.
-
-    A 2+ photo collage when possible, else the first downloadable single photo, else the same
-    Todi-detective mascot image send_listing_card falls back to when a listing has no usable photo
-    at all — always returns real bytes, never None, so callers never need their own no-photo
-    branch. Synchronous/blocking (network downloads + image resizing) — callers MUST run this via
-    asyncio.to_thread, same contract as _build_collage_sync/_first_downloadable_photo_jpeg_bytes."""
-    photo = None
-    if len(image_urls) > 1:
-        photo = _build_collage_sync(image_urls)
-    if photo is None:
-        photo = _first_downloadable_photo_jpeg_bytes(image_urls)
-    if photo is None:
-        photo = _MASCOT_PATH.read_bytes()
-    return photo
-
-
 # 2026-09-03 rewrite: field order/labels/emphasis matching the reference bot 1:1, per a
 # real side-by-side comparison against its own screenshots. Deal-type/broker prefix, then location
 # (city bold, street a clickable Google-Maps link on Telegram — see _google_maps_url), then price/
@@ -186,7 +164,7 @@ def get_listing_photo_jpeg_bytes(image_urls: list[str]) -> bytes:
 # שכירות"/"מכירה") is GONE — replaced by a bold "🏢תיווך"/"🏢סאבלט" prefix shown only when relevant
 # (a plain rent or sale listing gets no prefix line at all; broker status is independent of deal
 # type, so it takes priority over the sublet label if somehow both apply). The old "🏷️ {source}"
-# footer line is also gone — a real request that Telegram/WhatsApp readers don't need to know which
+# footer line is also gone — a real request that Telegram readers don't need to know which
 # source site a listing came from (the website's own card still shows a source badge — see
 # website/templates/_listing_card.html).
 _FEATURE_EMOJI_LABEL_KEYS = (
@@ -203,11 +181,7 @@ def feature_list(listing: Listing, lang: str) -> list[str]:
     """Each feature prefixed with its own emoji — the SAME ones the website's own amenity row
     uses (website/static/style.css's .amenity-row / _listing_card.html) for has_parking through
     furniture, so the two surfaces read consistently. is_roommate_friendly has no website
-    equivalent to match (not shown there today) — 🤝 chosen fresh.
-
-    Public (renamed from _feature_list 2026-09-27) — scraper/notifier.py's WhatsApp rich
-    match-template send needs this same amenity list flattened into one template body parameter,
-    not just this module's own multi-line _build_body_lines."""
+    equivalent to match (not shown there today) — 🤝 chosen fresh."""
     items = [
         f"{emoji}{bot_text(key, lang)}"
         for attr, emoji, key in _FEATURE_EMOJI_LABEL_KEYS
@@ -259,17 +233,12 @@ def _build_body_lines(
     escape: Callable[[str], str],
     lang: str,
 ) -> list[str]:
-    """`bold` wraps label text in each platform's own emphasis syntax (<b> on Telegram, *asterisks*
-    on WhatsApp). `street_link(text, url)` wraps the street name as a tappable link where the
-    platform supports custom link text (Telegram); WhatsApp can't do that (its text messages only
-    auto-link raw URLs, never custom anchor text) — its own caller passes an identity function and
-    appends the raw maps URL as a separate line instead, see format_caption_whatsapp. `escape`
-    is applied to every field that comes from the listing itself (city/neighborhood/street) rather
-    than a hardcoded label — these are scraped from Yad2, not written by this project, so on
-    Telegram (parse_mode=HTML) a city/street name that happens to contain `<`/`&`/`>` would
-    otherwise either break the caption's HTML parsing or, worse, let scraped text inject an
-    arbitrary tag into a message rendered with real formatting. WhatsApp's caller passes an
-    identity function since its captions are plain text, not HTML."""
+    """`bold` wraps label text in Telegram's emphasis syntax (<b>). `street_link(text, url)` wraps the
+    street name as a tappable link. `escape` is applied to every field that comes from the listing
+    itself (city/neighborhood/street) rather than a hardcoded label — these are scraped from Yad2,
+    not written by this project, so on Telegram (parse_mode=HTML) a city/street name that happens to
+    contain `<`/`&`/`>` would otherwise either break the caption's HTML parsing or, worse, let
+    scraped text inject an arbitrary tag into a message rendered with real formatting."""
     lines = []
 
     prefix_word = _deal_type_prefix_word(listing, lang)
@@ -405,7 +374,7 @@ def _with_width_pad_if_short(caption: str, limit: int) -> str:
 
 def _normalize_line_breaks(text: str) -> str:
     """Homeless's own scraped descriptions sometimes use a bare "\\r" as their line separator
-    (found live 2026-09-21, diagnose-homeless-description-raw-chars.yaml) — Telegram/WhatsApp only
+    (found live 2026-09-21, diagnose-homeless-description-raw-chars.yaml) — Telegram only
     treat a literal "\\n" as a line break, so a bare \\r (or \\r\\n) needs normalizing first or it
     renders as no line break at all. splitlines() handles \\r, \\r\\n, \\n and the other
     line-boundary characters Python recognizes."""
@@ -557,65 +526,6 @@ def format_caption(
     )
 
     return _with_width_pad_if_short(_fit_to_limit(header, body, footer, CAPTION_LIMIT), CAPTION_LIMIT)
-
-
-WHATSAPP_MESSAGE_LIMIT = 4096
-
-
-def format_caption_whatsapp(
-    listing: Listing,
-    *,
-    has_access: bool,
-    price_change_from: int | None = None,
-    upgrade_url: str | None = None,
-    view_url: str | None = None,
-    link_in_body: bool = True,
-    limit: int = WHATSAPP_MESSAGE_LIMIT,
-    lang: str = DEFAULT_LANG,
-    access_state: str | None = None,
-) -> str:
-    """`view_url`: the link for a user with access (falls back to the raw listing.url).
-    `link_in_body=False` drops that link line — for a message that carries the link as its own
-    button (whatsapp_client.send_image_cta_message). `limit`: 1024 for an interactive body.
-
-    Same content/order as format_caption, WhatsApp's own markdown (*bold*, no HTML tags — the
-    Cloud API's text messages don't render HTML) and no inline keyboard equivalent; the listing
-    URL at the end is the only action available (WhatsApp's like/hide/found buttons would need
-    interactive "reply button" messages, a separate message type — not built yet, plain text with
-    a link is the MVP). The street can't be a custom-text link the way Telegram's can (WhatsApp
-    only auto-links raw URLs, never arbitrary anchor text) — the plain street name stays inline
-    and the same Google Maps URL is appended as its own tappable line instead.
-
-    `has_access`/`upgrade_url`: see format_caption's own docstring — same gating (description
-    always shown, only the link stays access-gated as of 2026-09-12), same required-not-defaulted
-    argument."""
-    bold = lambda s: f"*{s}*"  # noqa: E731
-    lines = _build_body_lines(
-        listing, bold=bold, street_link=lambda text, url: text, escape=lambda s: s, lang=lang
-    )
-    # 2026-10-02 owner decision: no Google Maps link on WhatsApp. A WhatsApp text can't turn the street
-    # into a link (only a raw, very long URL auto-links), so the full address stays as plain text.
-    body = "\n".join(lines)
-    header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
-    if has_access:
-        link_text = bot_text("card.full_details_link_plain", lang)
-        footer = f"\n\n🔗 {link_text}\n{view_url or listing.url}" if link_in_body else ""
-    elif access_state in (ACCESS_TRIAL_ENDED, ACCESS_SUBSCRIPTION_EXPIRED):
-        notice_key = _expired_notice_key(access_state)
-        if upgrade_url:
-            footer = f"\n\n⚠️ {bot_text(notice_key + '_link', lang)}:\n{upgrade_url}"
-        else:
-            footer = f"\n\n⚠️ {bot_text(notice_key + '_plain', lang)}"
-    elif upgrade_url:
-        upgrade_text = f"{bot_text('card.upgrade_to_see_link', lang)}:"
-        footer = f"\n\n🔒 {upgrade_text}\n{upgrade_url}"
-    else:
-        upgrade_text = bot_text("card.upgrade_required_plain", lang)
-        footer = f"\n\n🔒 {upgrade_text}"
-    remaining = limit - len(header) - len(body) - len(footer)
-    body += _truncated_description_block(listing.description or "", remaining, lambda s: s)
-
-    return _fit_to_limit(header, body, footer, limit)
 
 
 async def send_listing_card(

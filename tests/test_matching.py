@@ -606,7 +606,7 @@ def test_flexible_match_true_still_rejects_two_mandatory_failures():
 
 
 # --- safe_range_update (2026-09-07) — used by the free-chat filter-editing paths
-# (bot/handlers/contact_fallback.py, website/whatsapp_webhook.py) where Gemini decides both sides
+# (bot/handlers/contact_fallback.py) where Gemini decides both sides
 # of a min/max range from freeform text with no structured re-prompt available to catch a garbled
 # range before it's saved.
 

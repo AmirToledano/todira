@@ -229,8 +229,8 @@
 
 {# 2026-09-26: contact-paywall interstitial, real owner request matching dorin.app's own "רוצים את
    פרטי הקשר?" popup — a single shared instance for the whole page (not one per card), opened by
-   the script below when a non-access viewer taps a card's WhatsApp/phone contact-action button
-   (see _listing_card.html's own .contact-locked-btn). The upgrade link's uid/wid query params
+   the script below when a non-access viewer taps a card's contact-action button
+   (see _listing_card.html's own .contact-locked-btn). The upgrade link's uid query param
    match card.locked_btn's own href in _listing_card.html exactly, same reasoning. #}
 <div class="apt-contact-modal" id="apt-contact-modal" hidden>
   <div class="apt-contact-modal-backdrop" id="apt-contact-modal-backdrop"></div>
@@ -600,7 +600,7 @@
     }
     window.__aptOpenListingDetail = openListingDetail; // read by the Leaflet script below, on pin click
 
-    // 2026-09-27: ?listing={id} deep link (WhatsApp/Telegram "view apartment" button) — opens
+    // 2026-09-27: ?listing={id} deep link (Telegram "view apartment" button) — opens
     // straight into that listing's own detail view on load, exactly as if it had been clicked in
     // the grid. The card itself is rendered server-side into #apt-deep-link-card (hidden) above;
     // this just simulates the same click grid.addEventListener('click', ...) further down would
@@ -624,7 +624,7 @@
 
     // 2026-09-26: contact-paywall interstitial (real owner request, matching dorin.app's own
     // "רוצים את פרטי הקשר?" popup) — opened when a non-access viewer taps one of the detail view's
-    // own WhatsApp/phone contact-action buttons (_listing_card.html's .contact-locked-btn, only
+    // own contact-action button (_listing_card.html's .contact-locked-btn, only
     // ever rendered — and only ever visible, see style.css's .contact-actions rules — for a
     // viewer who does NOT have has_access, so no extra check is needed here beyond "this exact
     // button was clicked"). A has_access viewer's equivalent buttons are real <a> links straight to

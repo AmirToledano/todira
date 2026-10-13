@@ -20,19 +20,6 @@
 #                             it, the website falls back to a well-known insecure dev value, which
 #                             means anyone could forge a login session — fine for a first deploy of
 #                             this feature, not for real use.)
-#   whatsappAccessToken      (required for the WhatsApp webhook to send replies — from the Meta
-#                             app dashboard's WhatsApp > API Setup page. The free "temporary" token
-#                             there expires after 24h; a permanent one needs a System User token,
-#                             see PROJECT_STATE.md.)
-#   whatsappPhoneNumberId    (required — same API Setup page, "Phone Number ID".)
-#   whatsappWebhookVerifyToken (required — any string you make up yourself; must match exactly
-#                             what's entered in the Meta app dashboard's webhook config screen.
-#                             Generate with e.g. `python -c "import secrets;
-#                             print(secrets.token_hex(16))"`.)
-#   whatsappAppSecret        (required for the webhook to accept any POST at all — it fails CLOSED
-#                             without this, rejecting every incoming message, rather than accepting
-#                             unverified requests. From the Meta app dashboard: App settings >
-#                             Basic > App Secret > Show.)
 #   googleClientId           (optional — enables real Google Sign-In, website/main.py's
 #                             /auth/google/start + /auth/google/callback. From a Google Cloud OAuth
 #                             Client, application type "Web application" — authorized redirect URI
@@ -95,9 +82,7 @@ website:
   # real HTTPS via Caddy (see caddy-deployment.yaml) — requires the EC2 security group to allow
   # inbound 80+443, and this DNS name to already point at the node's public IP (it does — a real
   # owned root domain via Porkbun as of 2026-09-07, replacing the old todira.duckdns.org
-  # subdomain; the switch was needed because Meta's WhatsApp Business "Domain verification"
-  # option explicitly refuses to verify a subdomain of a shared free service like DuckDNS, only a
-  # root domain)
+  # subdomain)
   domain: todira.app
   # 2026-10-05: the owner's Takbull hosted payment page for the FREE flow (three one-time passes: ₪19.90 = 7 days, ₪29.90 = 14, ₪49.90 = 30;
   # see website/takbull_client.py hosted_page_configured). Empty = flow off (/upgrade keeps its current behaviour).
@@ -109,15 +94,6 @@ website:
   takbullPaymentPageUrlPass7: ""
   takbullPaymentPageUrlPass14: ""
   takbullPaymentPageUrlPass30: ""
-  # E.164 digits (no leading '+') of the actual WhatsApp number people message — builds the
-  # /account page's wa.me channel-linking deep link. Not secret. Leave empty to hide that option
-  # until it's known (it's a display value, not an API credential, so it's not the same as the
-  # whatsappPhoneNumberId secret documented above).
-  # 2026-10-07: EMPTY on purpose - from 2026-10-01 Meta bills free-form WhatsApp messages after the first 1,000 per month
-  # (confirmed in the account's own pricing analytics), and the owner will not pay for customer messages. Empty hides every
-  # "message the bot on WhatsApp" button and link on the site; the webhook itself stays but proactive sends are paused.
-  # Put the number back (972524983967) to bring them all back.
-  whatsappPublicNumber: ""
   # Informal Bit/PayBox payment instructions on /upgrade/pay (2026-09-05) — used only while no
   # real gateway is configured. ownerBitPhone: the owner's own phone number, shown plainly for the customer
   # to Bit-transfer to (no verified "open the app pre-filled" deep link exists for Bit, so this is
@@ -155,7 +131,7 @@ scraper:
   # selection or rotation needed anymore, so citiesPerRun/cities are gone from here; the region
   # list itself lives in yad2_client.py's REGION_SLUGS, not configured per-deploy.
   # 2026-09-03: bumped from once-daily (03:00 UTC) to every 2 hours during the reference bot
-  # the reference bot's own apparent active window (established live via the owner's own WhatsApp
+  # the reference bot's own apparent active window (established live via the owner's own
   # screenshots of it: listings start arriving ~08:00 and continue until ~00:00 Israel time, then
   # stop overnight — presumably deliberate, so a notification doesn't land while people are
   # asleep). 8 runs/day (08:00,10:00,...,22:00 Israel time — scraper-cronjob.yaml's `timeZone`
@@ -352,12 +328,6 @@ scraper:
   # are the actual intended, non-suspended behavior — see scraper/main.py's own
   # _notifications_suspended docstring for what this flag controls when true.
   notificationsSuspended: false
-  # WhatsApp is FREE-FORM ONLY (2026-10-02): no Message Template is ever sent (Meta bills every template
-  # message; 717 of them cost $25.31 in 30 days). Listings go out only inside the 24h window opened by the
-  # user's own last message, kept open by the daily "still looking?" check-in (scraper/whatsapp_checkin.py).
-  # The old whatsappMatchTemplateName / whatsappRichMatchTemplateName values were removed on purpose.
-  # WhatsApp Business Account id (not secret; already in this repo's diagnostics) - read by the cost guard.
-  whatsappBusinessAccountId: "1814744176326509"
   # 2026-09-15: facebook-scraper-cronjob.yaml — a SEPARATE CronJob from the main scraper above,
   # deliberately (see that file's own comment for the full account-safety reasoning: every request
   # runs through the dedicated scraping account's own real, authenticated session from this

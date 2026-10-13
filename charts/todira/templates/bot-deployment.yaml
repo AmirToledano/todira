@@ -34,11 +34,11 @@ spec:
         # the k8s Secret object's data, but Kubernetes has no reason to restart an already-running
         # Pod just because a Secret it references changed underneath it — env vars from
         # secretKeyRef are read once at container start and never live-refreshed. This is the
-        # actual root cause behind a real 2026-09-06 incident: after fixing a stale
-        # WHATSAPP_PHONE_NUMBER_ID secret and re-running the same CI run (same image tag), the
-        # website Deployment (which has the identical bug — see its own copy of this annotation)
-        # kept replying from the OLD number for another 30+ minutes, because its running Pod was
-        # never actually restarted despite Helm reporting success both times.
+        # actual root cause behind a real 2026-09-06 incident: after fixing a stale secret and
+        # re-running the same CI run (same image tag), the website Deployment (which has the
+        # identical bug — see its own copy of this annotation) kept using the OLD value for another
+        # 30+ minutes, because its running Pod was never actually restarted despite Helm reporting
+        # success both times.
         checksum/bot-secret: {{ include (print $.Template.BasePath "/bot-secret.yaml") . | sha256sum }}
         # DATABASE_URL below also comes from a secretKeyRef, but from postgres-secret.yaml, not
         # bot-secret.yaml — the annotation above never covers it, so a rotated postgres password
