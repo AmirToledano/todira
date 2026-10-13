@@ -1,0 +1,36 @@
+name: "Diagnose: why /start ends in an error for a new Telegram user (read-only, counts only)"
+
+# Owner report 2026-10-13: a user whose rows were wiped sends /start in Telegram and gets an error. Read-only. Prints
+# only counts and exception CLASS names from the bot log (never a log line itself), so no name, username, message
+# text or id can reach the (public) Actions log.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Bot log - counts and exception class names only (last 72h)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          [ -z "$POD" ] && { echo "no bot pod"; exit 0; }
+          kubectl get pod "$POD" -n todira -o jsonpath='{"pod started: "}{.status.startTime}{"  restarts: "}{.status.containerStatuses[0].restartCount}{"\n"}' || true
+          kubectl logs -n todira "$POD" --since=72h > /tmp/bot.log 2>/dev/null || true
+          count() { printf '%-55s %s\n' "$1" "$(grep -c -E "$2" /tmp/bot.log || true)"; }
+          count "log lines" "."
+          count "/start invoked" "/start invoked"
+          count "Gemini onboarding parse failed" "Gemini onboarding parse failed"
+          count "Gemini 402 / RESOURCE_EXHAUSTED mentions" "RESOURCE_EXHAUSTED|402 Payment Required"
+          count "Unhandled exception (generic error reply sent)" "Unhandled exception while processing update"
+          echo "--- exception classes at the start of a log line (count, class) ---"
+          grep -o -E '^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception|Exhausted|Conflict|Violation)\b' /tmp/bot.log | sort | uniq -c | sort -rn | head -20 || true
+          rm -f /tmp/bot.log
