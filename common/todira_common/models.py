@@ -36,10 +36,6 @@ class User(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     # Nullable: a Google-only standalone account has none. Channel-linking (channel_link_code below)
     # attaches a Telegram account to an existing row rather than creating a second one.
-    # 2026-10-13: the WhatsApp channel was removed from the project (owner decision). Its old columns
-    # (whatsapp_phone_number, whatsapp_notifications_opted_in, whatsapp_last_inbound_at,
-    # whatsapp_checkin_sent_at, pending_onboarding_state) are still in the database but no code
-    # reads or writes them any more.
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(Text)
     first_name: Mapped[str | None] = mapped_column(Text)
@@ -395,7 +391,7 @@ class ContactMessage(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger)
     notified_owner: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # "website" or "telegram_bot" (older rows may also say "whatsapp_bot") — nullable only because rows
+    # "website" or "telegram_bot" (a few older rows carry a retired channel's value) — nullable only because rows
     # written before this column existed have no value; every new row sets it explicitly (see
     # website/main.py's contact_submit and bot/handlers/contact_fallback.py's _save_contact_message_sync).
     source: Mapped[str | None] = mapped_column(Text)
