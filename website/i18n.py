@@ -2338,13 +2338,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Le prélèvement se renouvelle automatiquement chaque mois jusqu'à l'annulation. 🐾",
         "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
     },
-    "upgrade.payment_hint_takbull_onetime": {
-        "he": 'התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. זה תשלום חד-פעמי, בלי חידוש אוטומטי — נזכיר לך לפני שהגישה מסתיימת. הגישה נפתחת אוטומטית תוך דקה. 🐾',
-        "en": 'Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. It is a one-time payment with no automatic renewal — we will remind you before your access ends. Access opens automatically within a minute. 🐾',
-        "ru": 'Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Это разовый платёж без автопродления — мы напомним вам до окончания доступа. Доступ открывается автоматически в течение минуты. 🐾',
-        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte bancaire. C'est un paiement unique, sans renouvellement automatique — nous vous rappellerons avant la fin de votre accès. L'accès s'ouvre automatiquement en une minute. 🐾",
-        "ar": 'الدفع آمن عبر Takbull — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. هذه دفعة واحدة بدون تجديد تلقائي — سنذكّرك قبل انتهاء الوصول. يُفتح الوصول تلقائيًا خلال دقيقة. 🐾',
-    },
     "upgrade.payment_hint_manual": {
         "he": "התשלום מתבצע ידנית בביט/PayBox — אחרי הלחיצה תועבר/י לעמוד עם כל פרטי התשלום. 🐾",
         "en": "Payment is done manually via Bit/PayBox — after clicking you'll be taken to a page with all the payment details. 🐾",
@@ -2439,13 +2432,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": 'Meilleur rapport',
         "ar": 'الأوفر',
     },
-    "upgrade.pass_onetime_hint": {
-        "he": 'תשלום חד-פעמי, בלי חידוש אוטומטי ובלי התחייבות. נזכיר לך לפני שהגישה מסתיימת.',
-        "en": "One-time payment, no automatic renewal and no commitment. We'll remind you before your access ends.",
-        "ru": 'Разовый платёж, без автопродления и обязательств. Мы напомним вам до окончания доступа.',
-        "fr": 'Paiement unique, sans renouvellement automatique ni engagement. Nous vous rappellerons avant la fin de votre accès.',
-        "ar": 'دفعة واحدة، بدون تجديد تلقائي وبدون التزام. سنذكّرك قبل انتهاء الوصول.',
-    },
     # 2026-10-13 (owner decision): one button to Takbull's page, where the pass is picked once (replaces the old
     # "pick the same pass again on the next page" notice).
     "upgrade.pass_choose_cta": {
@@ -2456,11 +2442,35 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": 'اختيار الباقة والدفع بأمان',
     },
     "upgrade.pass_choose_hint": {
-        "he": 'בעמוד הבא בוחרים שבוע, שבועיים או חודש ומשלמים בצורה מאובטחת.',
-        "en": 'On the next page you pick 1 week, 2 weeks or 1 month and pay securely.',
-        "ru": 'На следующей странице вы выбираете 1 неделю, 2 недели или 1 месяц и безопасно оплачиваете.',
-        "fr": 'Sur la page suivante, vous choisissez 1 semaine, 2 semaines ou 1 mois et payez en toute sécurité.',
-        "ar": 'في الصفحة التالية تختارون أسبوعًا أو أسبوعين أو شهرًا وتدفعون بأمان.',
+        "he": 'בעמוד הבא בוחרים שבוע, שבועיים או חודש ומשלמים.',
+        "en": 'On the next page you pick 1 week, 2 weeks or 1 month and pay.',
+        "ru": 'На следующей странице вы выбираете 1 неделю, 2 недели или 1 месяц и оплачиваете.',
+        "fr": 'Sur la page suivante, vous choisissez 1 semaine, 2 semaines ou 1 mois et payez.',
+        "ar": 'في الصفحة التالية تختارون أسبوعًا أو أسبوعين أو شهرًا وتدفعون.',
+    },
+    # 2026-10-13 (owner request): the three facts under the pass cards, each said once (they replace
+    # upgrade.pass_onetime_hint and upgrade.payment_hint_takbull_onetime, which repeated each other). "No automatic
+    # renewal and no commitment" is left to upgrade.value_anchor_body right below, so it is said once on the page.
+    "upgrade.pass_fact_secure": {
+        "he": 'תשלום מאובטח דרך תקבול: ביט, Apple Pay, Google Pay או כרטיס אשראי',
+        "en": 'Secure payment through Takbull: Bit, Apple Pay, Google Pay or credit card',
+        "ru": 'Защищённая оплата через Takbull: Bit, Apple Pay, Google Pay или банковская карта',
+        "fr": 'Paiement sécurisé via Takbull : Bit, Apple Pay, Google Pay ou carte bancaire',
+        "ar": 'دفع آمن عبر Takbull: Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان',
+    },
+    "upgrade.pass_fact_instant": {
+        "he": 'הגישה נפתחת אוטומטית תוך דקה',
+        "en": 'Access opens automatically within a minute',
+        "ru": 'Доступ открывается автоматически в течение минуты',
+        "fr": "L'accès s'ouvre automatiquement en une minute",
+        "ar": 'يُفتح الوصول تلقائيًا خلال دقيقة',
+    },
+    "upgrade.pass_fact_onetime": {
+        "he": 'תשלום חד-פעמי. נזכיר לך לפני שהגישה מסתיימת',
+        "en": "One-time payment. We'll remind you before your access ends",
+        "ru": 'Разовый платёж. Мы напомним вам до окончания доступа',
+        "fr": "Paiement unique. Nous vous rappellerons avant la fin de votre accès",
+        "ar": 'دفعة واحدة. سنذكّرك قبل انتهاء الوصول',
     },
     "upgrade.faq_q1_onetime": {
         "he": 'האם זה מתחדש אוטומטית?',

@@ -72,7 +72,13 @@
     <p class="upgrade-pass-checkout-hint">{{ t('upgrade.pass_choose_hint') }}</p>
   </div>
   {% endif %}
-  <p class="upgrade-plan-disclaimer">{{ t('upgrade.pass_onetime_hint') }}</p>
+  {# 2026-10-13 (owner request): one short list instead of two paragraphs that repeated "one-time, no renewal, we'll
+     remind you" (the old upgrade.pass_onetime_hint + upgrade.payment_hint_takbull_onetime). #}
+  <ul class="upgrade-pass-facts">
+    <li><span aria-hidden="true">🔒</span>{{ t('upgrade.pass_fact_secure') }}</li>
+    <li><span aria-hidden="true">⚡</span>{{ t('upgrade.pass_fact_instant') }}</li>
+    <li><span aria-hidden="true">🔔</span>{{ t('upgrade.pass_fact_onetime') }}</li>
+  </ul>
 </form>
 {% else %}
 <div class="upgrade-plan-card reveal">
@@ -105,12 +111,13 @@
 
 {% endif %}
 
+{% if not one_time_mode %}
 <p class="upgrade-payment-hint reveal">
   {% if recurring_configured %}{{ t('upgrade.payment_hint_takbull_recurring') }}
-  {% elif hosted_page_configured %}{{ t('upgrade.payment_hint_takbull_onetime') }}
   {% else %}{{ t('upgrade.payment_hint_manual') }}
   {% endif %}
 </p>
+{% endif %}
 {% endif %}
 
 <div class="value-anchor reveal">
