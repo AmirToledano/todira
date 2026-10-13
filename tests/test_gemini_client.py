@@ -42,6 +42,7 @@ class _FakeModels:
 
     def generate_content(self, model, contents, config):
         self.call_count += 1
+        self.models_used = [*getattr(self, "models_used", []), model]
         if self._raise_sequence is not None:
             outcome = self._raise_sequence.pop(0)
             if outcome is not None:
@@ -229,3 +230,13 @@ def test_read_timeout_is_also_retried(monkeypatch):
     assert result["cities"] == ["ירושלים"]
     assert fake.models.call_count == 2
     sleep_mock.assert_called_once_with(gemini_client._RETRY_DELAY_SECONDS)
+
+
+def test_a_busy_model_is_retried_on_the_other_free_tier_model(monkeypatch):
+    # 2026-10-13: on the free-tier key gemini-3.6-flash answered 503 UNAVAILABLE while flash-lite models answered
+    payload = json.dumps({"deal_type": "rent", "cities": ["חיפה"], "missing_required": [], "response_message": "ok"})
+    fake = _install_fake_client(monkeypatch, raise_sequence=[_fake_server_error(), None], response_text=payload)
+    with patch.object(gemini_client.time, "sleep"):
+        gemini_client.parse_onboarding_message("שכירות בחיפה", {}, ["חיפה"])
+    assert fake.models.models_used == [gemini_client._MODEL, gemini_client._FALLBACK_MODEL]
+    assert gemini_client._MODEL != gemini_client._FALLBACK_MODEL
