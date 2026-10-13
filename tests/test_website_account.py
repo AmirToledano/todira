@@ -397,7 +397,7 @@ def test_account_config_carries_payment_history_when_payments_exist(client):
             "monthly_subscription", Decimal("49.90"), "paid", dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
             paid_at=dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
         ),
-        _FakePayment("weekly", Decimal("15.00"), "pending", dt.datetime(2026, 8, 15, tzinfo=dt.timezone.utc)),
+        _FakePayment("weekly", Decimal("15.00"), "failed", dt.datetime(2026, 8, 15, tzinfo=dt.timezone.utc)),
     ]
     fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=payments)
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
@@ -407,8 +407,42 @@ def test_account_config_carries_payment_history_when_payments_exist(client):
     config = _account_config(resp.text)
     assert config["payments"] == [
         {"plan": "monthly_subscription", "amountIls": "49.90", "date": "01/08/2026", "status": "paid"},
-        {"plan": "weekly", "amountIls": "15.00", "date": "15/08/2026", "status": "pending"},
+        {"plan": "weekly", "amountIls": "15.00", "date": "15/08/2026", "status": "failed"},
     ]
+
+
+def test_an_abandoned_checkout_is_not_shown_as_a_pending_payment(client):
+    """2026-10-13 owner report: three "ממתין" rows on /account — checkouts that were opened and never paid (every press
+    of the checkout button records a pending row before Takbull's page opens). A pending row is shown only while it can
+    still be paid (the first hour)."""
+    now = dt.datetime.now(dt.timezone.utc)
+    user = _FakeUser(id=2, telegram_user_id=222)
+    payments = [
+        _FakePayment("pass_30", Decimal("49.90"), "pending", now - dt.timedelta(minutes=5)),
+        _FakePayment("pass_30", Decimal("49.90"), "pending", now - dt.timedelta(hours=3)),
+        _FakePayment("weekly", Decimal("15.00"), "pending", dt.datetime(2026, 9, 6, tzinfo=dt.timezone.utc)),
+        _FakePayment("pass_7", Decimal("19.90"), "paid", now - dt.timedelta(days=2), paid_at=now - dt.timedelta(days=2)),
+    ]
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=payments)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    config = _account_config(resp.text)
+    assert [(p["plan"], p["status"]) for p in config["payments"]] == [("pass_30", "pending"), ("pass_7", "paid")]
+
+
+def test_payment_history_still_shows_at_most_ten_rows(client):
+    now = dt.datetime.now(dt.timezone.utc)
+    user = _FakeUser(id=2, telegram_user_id=222)
+    payments = [
+        _FakePayment("pass_7", Decimal("19.90"), "paid", now - dt.timedelta(days=d), paid_at=now - dt.timedelta(days=d))
+        for d in range(15)
+    ]
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, payments=payments)
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/account", params={"uid": 222})
+
+    assert len(_account_config(resp.text)["payments"]) == 10
 
 
 def test_account_hides_payment_history_section_when_no_payments(client):

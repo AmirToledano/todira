@@ -2263,6 +2263,26 @@ async def _process_takbull_payload(body: dict) -> Response:
     return Response(status_code=200)
 
 
+# 2026-10-13 (owner asked what the "ממתין" rows on /account were): every press of the checkout button records a pending
+# Payment before the visitor reaches Takbull's page, so a checkout that was opened and never paid stayed in the history as
+# "pending" forever. The history now shows a pending row only while that checkout can still be paid.
+_PENDING_PAYMENT_SHOWN_FOR = dt.timedelta(hours=1)
+_PAYMENT_HISTORY_SIZE = 10
+
+
+def _payment_history(payments) -> list:
+    cutoff = dt.datetime.now(dt.timezone.utc) - _PENDING_PAYMENT_SHOWN_FOR
+    shown = []
+    for payment in payments:
+        created_at = payment.created_at
+        if created_at is not None and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=dt.timezone.utc)
+        if payment.status == "pending" and (created_at is None or created_at < cutoff):
+            continue  # an abandoned checkout, not a payment
+        shown.append(payment)
+    return shown[:_PAYMENT_HISTORY_SIZE]
+
+
 @app.get("/account")
 def account(request: Request, uid: int | None = None):
     """Cross-channel linking (todira_common/channel_link.py) — same uid/session resolution as
@@ -2303,12 +2323,12 @@ def account(request: Request, uid: int | None = None):
 
         access = _effective_access(request, user)
         notifications_enabled = user.notifications_enabled
-        payments = list(
+        payments = _payment_history(
             session.scalars(
                 select(Payment)
                 .where(Payment.user_id == user.id)
                 .order_by(Payment.created_at.desc())
-                .limit(10)
+                .limit(30)
             )
         )
         cancel_pass = _cancel_pass_config(session, user)
