@@ -2111,6 +2111,11 @@ body.apt-modal-open { overflow: hidden; }
 .upgrade-pass-checkout { max-width: 420px; margin: 16px auto 0; text-align: center; }
 .upgrade-pass-checkout .btn { font-size: 1.15rem; padding-top: 16px; padding-bottom: 16px; }
 .upgrade-pass-checkout-hint { margin: 10px 0 0; font-size: .9rem; color: var(--text-muted); }
+.upgrade-pass-facts {
+  list-style: none; max-width: 460px; margin: 18px auto 0; padding: 14px 16px 0; display: grid; gap: 8px;
+  border-top: 1px solid var(--border, rgba(0,0,0,.08)); font-size: .9rem; color: var(--text-muted);
+}
+.upgrade-pass-facts li { display: flex; gap: 8px; align-items: baseline; text-align: start; }
 @media (max-width: 760px) {
   .upgrade-passes-grid { grid-template-columns: 1fr; }
 }
