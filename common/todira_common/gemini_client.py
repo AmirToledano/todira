@@ -30,7 +30,12 @@ from todira_common.language import DEFAULT_LANG, LANGUAGE_NAMES
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-3.6-flash"
+# 2026-10-13: the bot's key moved to a free-tier project (the old one's prepaid balance ran out, HTTP 402). Checked live on
+# the new key: gemini-3.5-flash-lite and gemini-3.1-flash-lite answer, gemini-3.6-flash and gemini-3.5-flash return 503
+# UNAVAILABLE (busy on the free tier), Pro models are not free at all. So both calls use flash-lite, and a busy first
+# model is retried once on _FALLBACK_MODEL (see _model_for_attempt).
+_MODEL = "gemini-3.5-flash-lite"
+_FALLBACK_MODEL = "gemini-3.1-flash-lite"
 
 # 2026-09-06: chat_with_existing_user (below) uses this lighter model instead of _MODEL —
 # found live: the owner reported real, felt latency ("לוקח לו מלא זמן לענות") on every casual
@@ -43,6 +48,11 @@ _MODEL = "gemini-3.6-flash"
 # production and untouched by tonight's complaint, so it keeps _MODEL rather than risking a
 # behavior change to something that already works.
 _CHAT_MODEL = "gemini-3.5-flash-lite"
+
+
+def _model_for_attempt(primary: str, attempt: int) -> str:
+    """The first attempt uses `primary`, the retry the other free-tier model (a busy model stays busy for a while)."""
+    return primary if attempt == 1 else _FALLBACK_MODEL
 
 # 2026-09-06: real production logs (pulled via the diagnose-website-webhook workflow after the
 # owner reported 2 of 3 live WhatsApp messages getting the "technical hiccup" fallback) showed the
@@ -180,7 +190,7 @@ def parse_onboarding_message(
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             response = client.models.generate_content(
-                model=_MODEL,
+                model=_model_for_attempt(_MODEL, attempt),
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -311,7 +321,7 @@ def chat_with_existing_user(
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             response = client.models.generate_content(
-                model=_CHAT_MODEL,
+                model=_model_for_attempt(_CHAT_MODEL, attempt),
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
