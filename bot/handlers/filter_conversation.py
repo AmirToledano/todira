@@ -713,9 +713,13 @@ def _apply_typed_search(draft: dict, found: dict) -> bool:
         draft["price_min"] = int(found["price_min"]) if found["price_min"] is not None else None
         draft["price_max"] = int(found["price_max"]) if found["price_max"] is not None else None
         changed = True
-    feature_fields, keywords = search_text.split_features(found["keywords"])
-    if feature_fields or keywords:
-        draft.update(feature_fields)
+    fields, keywords = dict(found.get("fields") or {}), found["keywords"]
+    if "property_types" in fields:
+        fields["property_types"] = [*draft.get("property_types", []), *[
+            t for t in fields["property_types"] if t not in draft.get("property_types", [])
+        ]]
+    if fields or keywords:
+        draft.update(fields)
         draft["keywords"] = [*draft.get("keywords", []), *[k for k in keywords if k not in draft.get("keywords", [])]]
         changed = True
     return changed

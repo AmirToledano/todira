@@ -60,6 +60,9 @@ _EMPTY_STATE = {
     "price_min": None,
     "price_max": None,
     "keywords": [],
+    # 2026-10-13: structured filter switches the free reader found (todira_common/search_text.py) and their labels
+    "fields": {},
+    "labels": [],
 }
 
 
@@ -117,9 +120,10 @@ async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAUL
 def _save_filter_sync(tg_user, state: dict) -> int:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
-        # 2026-10-13: features with their own filter switch (balcony, parking, elevator...) are saved as that switch, the
-        # same as /filter's buttons set them, not as description keywords.
-        feature_fields, keywords = search_text.split_features(state["keywords"])
+        # 2026-10-13: features with their own filter switch (balcony, parking, no brokers, property type, min size...)
+        # are saved as that switch (search_text "fields"), the same as /filter's buttons set them.
+        feature_fields = dict(state.get("fields") or {})
+        keywords = state["keywords"]
         filter_row = Filter(
             user_id=user.id,
             deal_type=state["deal_type"],

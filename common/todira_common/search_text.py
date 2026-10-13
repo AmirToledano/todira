@@ -252,49 +252,72 @@ def _prices(text: str) -> tuple[float | None, float | None]:
 
 # --- features ----------------------------------------------------------------------------------------------------------
 
-# word in the message -> the keyword stored on the filter (matched against a listing's description, any of them).
-_FEATURES = [
-    (r"מרפסת|מרפסות", "מרפסת"),
-    (r"חניה|חנייה|חניות", "חניה"),
-    (r"מעלית", "מעלית"),
-    (r"ממ\"ד|ממ״ד|ממד\b|מרחב מוגן", "ממ\"ד"),
-    (r"מחסן", "מחסן"),
-    (r"גינה|חצר", "גינה"),
-    (r"משופצת|משופץ|שיפוץ", "משופצת"),
-    (r"מרוהטת|מרוהט|ריהוט", "מרוהטת"),
-    (r"בעלי חיים|חיות מחמד|כלב|חתול", "בעלי חיים"),
-    (r"מיזוג|מזגן", "מיזוג"),
-    (r"נגישה|נגישות", "נגישה"),
+# (pattern, label shown back to the user, filter field, value). A field of None means a plain keyword, matched against a
+# listing's description (todira_common.matching: any of them). The others are the same structured switches /filter's
+# buttons set, matched against the listing's own fields. Negative forms come before positive ones ("לא מרוהטת").
+_FEATURES: list[tuple[str, str, str | None, object]] = [
+    (r"מרפסת|מרפסות", "מרפסת", "require_balcony", True),
+    (r"חניה|חנייה|חניות", "חניה", "require_parking", True),
+    (r"מעלית", "מעלית", "require_elevator", True),
+    (r"ממ\"ד|ממ״ד|ממד\b|מרחב מוגן", 'ממ"ד', "safe_room_pref", "safe_room_only"),
+    (r"משופצת|משופץ|אחרי שיפוץ", "משופצת", "require_renovated", True),
+    (r"(?:לא|ללא|בלי)\s+ריהוט|לא\s+מרוהטת|לא\s+מרוהט", "בלי ריהוט", "furniture_pref", "unfurnished"),
+    (r"מרוהטת|מרוהט|עם\s+ריהוט|ריהוט\s+מלא", "מרוהטת", "furniture_pref", "furnished"),
+    (r"בעלי חיים|חיות מחמד|חיית מחמד|כלב|חתול", "בעלי חיים", "require_pets_allowed", True),
+    (r"(?:ללא|בלי|לא\s+דרך|לא\s+דרך\s+ה?|בלי\s+דמי|ללא\s+דמי)\s*(?:תיווך|מתווכ\w*)|מבעלים|ישירות\s+מבעל|מבעל\s+הבית",
+     "ללא תיווך", "no_brokers", True),
+    (r"קומת\s+קרקע|קומה\s+0\b|קומת\s+כניסה", "קומת קרקע", "ground_floor_only", True),
+    (r"שותפים|שותפות|לשותפ", "מתאים לשותפים", "require_roommate_friendly", True),
+    (r"דירת\s+גן|דירות\s+גן", "דירת גן", "property_types", "garden_apartment"),
+    (r"פנטהאוז|פנטהאוס|פנטהאוס|דירת\s+גג|penthouse", "פנטהאוז", "property_types", "penthouse"),
+    (r"יחידת\s+דיור|יח[\"״]ד", "יחידת דיור", "property_types", "housing_unit"),
+    (r"בית\s+פרטי|קוטג|וילה|דו[\s-]?משפחתי|חד[\s-]?משפחתי", "בית פרטי", "property_types", "private_house"),
+    (r"מחסן", "מחסן", None, None),
+    (r"גינה|חצר", "גינה", None, None),
+    (r"מיזוג|מזגן|מזגנים", "מיזוג", None, None),
+    (r"נגישה|נגישות", "נגישה", None, None),
 ]
+# "בלי מעלית", "לא צריך חניה": the feature is not a requirement.
+_NEGATION_BEFORE = re.compile(r"(?:בלי|ללא|לא\s+צריך|לא\s+חייב(?:ת)?|אין\s+צורך\s+ב|לא\s+משנה)\s*-?\s*$")
 
 
-# Features the filter stores as a structured requirement (the same switches /filter's buttons set), matched against the
-# listing's own fields rather than its description text. The rest stay plain keywords.
-FEATURE_FIELDS: dict[str, tuple[str, object]] = {
-    "מרפסת": ("require_balcony", True),
-    "חניה": ("require_parking", True),
-    "מעלית": ("require_elevator", True),
-    "בעלי חיים": ("require_pets_allowed", True),
-    "משופצת": ("require_renovated", True),
-    'ממ"ד': ("safe_room_pref", "safe_room_only"),
-    "מרוהטת": ("furniture_pref", "furnished"),
-}
-
-
-def split_features(keywords: list[str]) -> tuple[dict, list[str]]:
-    """(filter fields to set, keywords left over) for the keywords parse() returned."""
+def _features(text: str) -> tuple[dict, list[str], list[str]]:
+    """(filter fields, labels to show back, plain keywords) for the features a message asks for."""
     fields: dict = {}
-    rest: list[str] = []
-    for keyword in keywords:
-        if keyword in FEATURE_FIELDS:
-            field, value = FEATURE_FIELDS[keyword]
-            fields[field] = value
+    labels: list[str] = []
+    keywords: list[str] = []
+    for pattern, label, field, value in _FEATURES:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if not m:
+            continue
+        negated_feature = field not in ("no_brokers", "furniture_pref")  # these patterns carry their own "without"
+        if negated_feature and _NEGATION_BEFORE.search(text[max(0, m.start() - 14):m.start()]):
+            continue
+        if field is None:
+            keywords.append(label)
+        elif field == "property_types":
+            fields["property_types"] = [*fields.get("property_types", []), value]
+        elif field in fields:
+            continue  # the negative form above already decided it
         else:
-            rest.append(keyword)
-    return fields, rest
-
-def _keywords(text: str) -> list[str]:
-    return [kw for pattern, kw in _FEATURES if re.search(pattern, text)]
+            fields[field] = value
+        if label not in labels and field is not None:
+            labels.append(label)
+    area = re.search(r"(?:לפחות|מעל|מינימום|at least)\s*(\d{2,3})\s*(?:מ\"ר|מ״ר|מטר|מ'|sqm|m2)|(\d{2,3})\s*\+\s*(?:מ\"ר|מ״ר|מטר)|(\d{2,3})\s*(?:מ\"ר|מ״ר|מטר)\s*(?:ומעלה|לפחות|ויותר)", text)
+    if area:
+        sqm = int(next(g for g in area.groups() if g))
+        fields["min_area_sqm"] = sqm
+        labels.append(f'{sqm}+ מ"ר')
+    floor_min = re.search(r"(?:מקומה|לפחות\s+קומה|מעל\s+קומה)\s*(\d{1,2})|קומה\s*(\d{1,2})\s*(?:ומעלה|\+)", text)
+    if floor_min:
+        floor = int(next(g for g in floor_min.groups() if g))
+        fields["floor_min"] = floor
+        labels.append(f"קומה {floor}+")
+    floor_max = re.search(r"עד\s+קומה\s*(\d{1,2})", text)
+    if floor_max:
+        fields["floor_max"] = int(floor_max.group(1))
+        labels.append(f"עד קומה {floor_max.group(1)}")
+    return fields, labels, keywords
 
 
 def parse(text: str) -> dict:
@@ -302,6 +325,7 @@ def parse(text: str) -> dict:
     text = (text or "").strip()
     rooms_min, rooms_max = _rooms(text)
     price_min, price_max = _prices(text)
+    fields, labels, keywords = _features(text)
     return {
         "deal_type": _deal_type(text),
         "cities": _cities(text),
@@ -309,7 +333,10 @@ def parse(text: str) -> dict:
         "rooms_max": rooms_max,
         "price_min": price_min,
         "price_max": price_max,
-        "keywords": _keywords(text),
+        "keywords": keywords,
+        # structured filter fields (balcony, parking, no brokers, property type, min size, floor...) and their labels
+        "fields": fields,
+        "labels": labels,
     }
 
 
@@ -321,7 +348,16 @@ def merge_into(state: dict, found: dict) -> None:
     rooms/price ranges go through safe_range_update so they can never end up inverted)."""
     if found.get("deal_type"):
         state["deal_type"] = found["deal_type"]
-    for key in ("cities", "keywords"):
+    if found.get("fields"):
+        merged = {**(state.get("fields") or {})}
+        for field, value in found["fields"].items():
+            if field == "property_types":
+                merged[field] = [*merged.get(field, []), *[v for v in value if v not in merged.get(field, [])]]
+            else:
+                merged[field] = value
+        state["fields"] = merged
+    for key in ("cities", "keywords", "labels"):
+        state.setdefault(key, [])
         for value in found.get(key) or []:
             if value not in state[key]:
                 state[key] = [*state[key], value]
@@ -381,5 +417,6 @@ def summary(state: dict, lang: str) -> str:
         parts.append(bot_text("onboarding.price_up_to", lang, price=_number(high)))
     elif low is not None:
         parts.append(bot_text("onboarding.price_from", lang, price=_number(low)))
+    parts.extend(state.get("labels") or [])
     parts.extend(state["keywords"])
     return " · ".join(parts)

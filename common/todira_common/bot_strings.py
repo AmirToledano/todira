@@ -122,23 +122,21 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "تفتقد التحديثات عن {cities}؟ ",
     },
     "onboarding.intro_prompt": {
-        "he": "ספר/י לי בכמה מילים מה את/ה מחפש/ת — למשל עיר, שכירות/מכירה/סבלט, תקציב, כמה חדרים, "
+        "he": "ספר/י לי בכמה מילים מה את/ה מחפש/ת — למשל עיר, שכירות/קנייה/סאבלט, תקציב, כמה חדרים, "
         "וכל דבר נוסף שחשוב לך. אפשר לכתוב חופשי, אני אבין 🙂\n"
-        "(או שאפשר לדלג ולהגדיר הכל ידנית עם /filter בכל שלב)",
-        "en": "Tell me in a few words what you're looking for — e.g. city, rent/sale/sublet, "
-        "budget, how many rooms, and anything else that matters to you. Feel free to write "
-        "naturally, I'll understand 🙂\n(or you can skip and set everything up manually with "
-        "/filter at any point)",
-        "ru": "Расскажите в нескольких словах, что вы ищете — например, город, аренда/покупка/"
-        "субаренда, бюджет, сколько комнат, и что ещё для вас важно. Можно писать свободно, я "
-        "пойму 🙂\n(или можно пропустить и настроить всё вручную через /filter в любой момент)",
-        "fr": "Dis-moi en quelques mots ce que tu cherches — par exemple ville, location/vente/"
-        "sous-location, budget, nombre de pièces, et tout ce qui compte pour toi. Écris librement, "
-        "je comprendrai 🙂\n(ou tu peux passer et tout configurer manuellement avec /filter à tout "
-        "moment)",
-        "ar": "أخبرني ببضع كلمات عما تبحث عنه — مثل المدينة، إيجار/بيع/تأجير من الباطن، الميزانية، "
-        "عدد الغرف، وأي شيء آخر يهمك. اكتب بحرية، سأفهم 🙂\n(أو يمكنك التخطي وضبط كل شيء يدوياً عبر "
-        "/filter في أي وقت)",
+        "🎯 לדיוק של 100% אפשר להגדיר הכל בכפתורים עם /filter, בכל שלב.",
+        "en": "Tell me in a few words what you're looking for — e.g. city, rent/buy/sublet, budget, how many rooms, "
+        "and anything else that matters to you. Feel free to write naturally, I'll understand 🙂\n"
+        "🎯 For 100% accuracy, you can set everything with buttons using /filter, at any point.",
+        "ru": "Расскажите в нескольких словах, что вы ищете — например, город, аренда/покупка/субаренда, бюджет, "
+        "сколько комнат, и что ещё для вас важно. Можно писать свободно, я пойму 🙂\n"
+        "🎯 Для 100% точности всё можно настроить кнопками через /filter в любой момент.",
+        "fr": "Dis-moi en quelques mots ce que tu cherches — par exemple ville, location/achat/sous-location, budget, "
+        "nombre de pièces, et tout ce qui compte pour toi. Écris librement, je comprendrai 🙂\n"
+        "🎯 Pour une précision de 100 %, tu peux tout régler avec les boutons via /filter, à tout moment.",
+        "ar": "أخبرني ببضع كلمات عما تبحث عنه — مثل المدينة، إيجار/شراء/تأجير من الباطن، الميزانية، عدد الغرف، "
+        "وأي شيء آخر يهمك. اكتب بحرية، سأفهم 🙂\n"
+        "🎯 لدقة 100٪ يمكنك ضبط كل شيء بالأزرار عبر /filter في أي وقت.",
     },
     "onboarding.cancelled_for_other_command": {
         "he": "ביטלתי את תהליך ההרשמה החופשי — שלח/י שוב את הפקודה כדי להמשיך 👍",

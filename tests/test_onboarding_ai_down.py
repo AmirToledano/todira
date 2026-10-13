@@ -73,7 +73,8 @@ def test_a_complete_message_is_saved_by_the_rules_alone_without_any_ai_call():
     result, saved = _run(update, _context())
     assert result == ConversationHandler.END
     assert saved[0]["deal_type"] == "rent" and saved[0]["cities"] == ["תל אביב יפו"]
-    assert saved[0]["price_max"] == 8500 and saved[0]["rooms_min"] == 3 and saved[0]["keywords"] == ["מרפסת"]
+    assert saved[0]["price_max"] == 8500 and saved[0]["rooms_min"] == 3
+    assert saved[0]["fields"] == {"require_balcony": True} and saved[0]["keywords"] == []
     assert _texts(update)[0] == "🔎 החיפוש שלך פעיל: שכירות · תל אביב יפו · 3–3.5 חדרים · עד ₪8,500 · מרפסת"
 
 
