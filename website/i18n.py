@@ -2454,11 +2454,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": 'اختيار الباقة والدفع بأمان',
     },
     "upgrade.pass_choose_hint": {
-        "he": 'בעמוד הבא בוחרים שבוע, שבועיים או חודש ומשלמים בעמוד המאובטח של תקבול.',
-        "en": "On the next page you pick 1 week, 2 weeks or 1 month and pay on Takbull's secure page.",
-        "ru": 'На следующей странице вы выбираете 1 неделю, 2 недели или 1 месяц и оплачиваете на защищённой странице Takbull.',
-        "fr": 'Sur la page suivante, vous choisissez 1 semaine, 2 semaines ou 1 mois et payez sur la page sécurisée de Takbull.',
-        "ar": 'في الصفحة التالية تختارون أسبوعًا أو أسبوعين أو شهرًا وتدفعون في صفحة Takbull الآمنة.',
+        "he": 'בעמוד הבא בוחרים שבוע, שבועיים או חודש ומשלמים בצורה מאובטחת.',
+        "en": 'On the next page you pick 1 week, 2 weeks or 1 month and pay securely.',
+        "ru": 'На следующей странице вы выбираете 1 неделю, 2 недели или 1 месяц и безопасно оплачиваете.',
+        "fr": 'Sur la page suivante, vous choisissez 1 semaine, 2 semaines ou 1 mois et payez en toute sécurité.',
+        "ar": 'في الصفحة التالية تختارون أسبوعًا أو أسبوعين أو شهرًا وتدفعون بأمان.',
     },
     "upgrade.faq_q1_onetime": {
         "he": 'האם זה מתחדש אוטומטית?',
