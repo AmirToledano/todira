@@ -335,6 +335,22 @@ def merge_into(state: dict, found: dict) -> None:
         )
 
 
+def infer_deal_type(state: dict) -> None:
+    """Onboarding only (2026-10-13): a budget with no deal word ("עד 8,500 ₪", the promo reel's own message) settles it -
+    under NIS 50,000 can only be a monthly rent, NIS 300,000 and up only a purchase. Shown in the summary, so a wrong
+    guess is visible and fixable in /filter. Not used in /filter itself, where an explicit choice must never be
+    overwritten."""
+    if state["deal_type"]:
+        return
+    price = state["price_max"] if state["price_max"] is not None else state["price_min"]
+    if price is None:
+        return
+    if price < 50_000:
+        state["deal_type"] = "rent"
+    elif price >= 300_000:
+        state["deal_type"] = "sale"
+
+
 def is_complete(state: dict) -> bool:
     return state["deal_type"] in ("rent", "sale", "sublet") and bool(state["cities"])
 
