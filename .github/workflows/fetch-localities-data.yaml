@@ -8,6 +8,11 @@ name: "Fetch - the official list of Israeli localities and the localities seen i
 on:
   workflow_dispatch: {}
 
+# Writes the two lists as files on the branch data/localities (a plain data branch, never merged), so a coding session
+# that can't download Actions logs can still read them with git.
+permissions:
+  contents: write
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
@@ -20,7 +25,7 @@ jobs:
           echo "success=$(jq -r '.success' loc.json 2>/dev/null) records=$(jq -r '.result.records | length' loc.json 2>/dev/null)"
           echo "fields: $(jq -r '[.result.fields[].id] | join(",")' loc.json 2>/dev/null)"
           echo "=== LOCALITIES BEGIN ==="
-          jq -r '.result.records[] | [."סמל_ישוב", ."שם_ישוב", ."שם_נפה", ."שם_מועצה"] | map(tostring | gsub("^\\s+|\\s+$"; "")) | join("|")' loc.json || true
+          jq -r '.result.records[] | [."סמל_ישוב", ."שם_ישוב", ."שם_נפה", ."שם_מועצה"] | map(tostring | gsub("^\\s+|\\s+$"; "")) | join("|")' loc.json | tee "$RUNNER_TEMP/localities.tsv" || true
           echo "=== LOCALITIES END ==="
           if [ "$(jq -r '.success' loc.json 2>/dev/null)" != "true" ]; then
             echo "--- resource not found: datasets matching the localities search, for the right resource id ---"
@@ -69,5 +74,18 @@ jobs:
             if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
             sleep 2
           done
-          kubectl logs -n todira fetch-listing-cities || true
+          kubectl logs -n todira fetch-listing-cities | tee "$RUNNER_TEMP/listing_cities_raw.txt" || true
           kubectl delete pod fetch-listing-cities -n todira --ignore-not-found
+          sed -n '/=== LISTING CITIES BEGIN ===/,/=== LISTING CITIES END ===/p' "$RUNNER_TEMP/listing_cities_raw.txt" | sed '1d;$d' > "$RUNNER_TEMP/listing_cities.tsv"
+
+      - name: Save both lists on the data/localities branch
+        run: |
+          mkdir out && cd out
+          git init -q -b data/localities
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$RUNNER_TEMP/localities.tsv" "$RUNNER_TEMP/listing_cities.tsv" .
+          wc -l localities.tsv listing_cities.tsv
+          git add localities.tsv listing_cities.tsv
+          git commit -q -m "Localities data (CBS list from data.gov.il, and listings.city counts)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data/localities
