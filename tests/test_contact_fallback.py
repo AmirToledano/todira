@@ -30,6 +30,16 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 import handlers.contact_fallback as contact_fallback
 import handlers.support as support
 from telegram.error import TelegramError
+import ai_gate
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _ai_available(monkeypatch):
+    # 2026-10-13: the bot reaches the AI only through bot/ai_gate.py (needs a key, per-user daily limit, pause after a
+    # failure); these tests exercise the AI path itself.
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    ai_gate.reset()
 
 
 class _FakeSession:
@@ -60,7 +70,7 @@ def _make_update(text: str, user_id: int = 555, first_name: str = "Amir", userna
 
 
 def _make_context():
-    return SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+    return SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()), user_data={})
 
 
 def _run(coro):
@@ -338,8 +348,10 @@ def test_onboarded_user_gemini_failure_sends_hiccup_message():
         _run(contact_fallback.handle_stray_message(update, context))
 
     update.message.reply_text.assert_called_once()
-    assert "תקלה טכנית" in update.message.reply_text.call_args.args[0]
+    # 2026-10-13: points to /filter and /apartments instead of only "technical hiccup", and pauses the AI for everyone.
+    assert "/filter" in update.message.reply_text.call_args.args[0]
     assert session.committed is False
+    assert not ai_gate.allowed({})
 
 
 def test_onboarded_user_help_request_still_escalates_not_chat(monkeypatch):

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 
+import ai_gate
 from todira_common import cities, gemini_client
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
@@ -102,6 +103,12 @@ async def handle_stray_message(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id, current_filter, lang = await asyncio.to_thread(_load_filter_sync, update.effective_user)
 
     if current_filter is not None:
+        # 2026-10-13: the AI only while it works and this user has AI calls left today (bot/ai_gate.py) - otherwise a
+        # short reply pointing to /filter and /apartments, instead of waiting on a call that can't succeed.
+        if not ai_gate.allowed(context.user_data):
+            await update.message.reply_text(bot_text("contact_fallback.error", lang))
+            return
+        ai_gate.used(context.user_data)
         result = await asyncio.to_thread(
             gemini_client.chat_with_existing_user,
             text,
@@ -111,6 +118,7 @@ async def handle_stray_message(update: Update, context: ContextTypes.DEFAULT_TYP
             lang,
         )
         if result is None:
+            ai_gate.failed()
             await update.message.reply_text(bot_text("contact_fallback.error", lang))
             return
         if result.get("filter_changed"):

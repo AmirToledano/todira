@@ -16,6 +16,7 @@ and stay in the same state rather than crashing or silently losing the user's an
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 import os
@@ -87,6 +88,31 @@ _SCHEMA = {
 }
 
 
+# 2026-10-13 (owner report: the prepaid balance ran out, HTTP 402 on every model, and each failing call still made the
+# user wait): after a failed call nobody calls Gemini for _PAUSE - a balance problem lasts hours or days. Every caller
+# (Telegram bot, WhatsApp webhook) already handles None by asking the user directly instead.
+_PAUSE = dt.timedelta(minutes=15)
+_paused_until: dt.datetime | None = None
+
+
+def available() -> bool:
+    """A key is configured and no recent call failed."""
+    if not os.environ.get("GEMINI_API_KEY", "").strip():
+        return False
+    return _paused_until is None or dt.datetime.now(dt.timezone.utc) >= _paused_until
+
+
+def pause() -> None:
+    global _paused_until
+    _paused_until = dt.datetime.now(dt.timezone.utc) + _PAUSE
+
+
+def reset_pause() -> None:
+    """Tests only."""
+    global _paused_until
+    _paused_until = None
+
+
 def _get_client() -> genai.Client | None:
     global _client, _client_checked
     if _client_checked:
@@ -101,6 +127,8 @@ def _get_client() -> genai.Client | None:
 def parse_onboarding_message(
     text: str, known_state: dict, known_cities: list[str], lang: str = DEFAULT_LANG
 ) -> dict | None:
+    if not available():
+        return None
     client = _get_client()
     if client is None:
         return None
@@ -172,9 +200,11 @@ def parse_onboarding_message(
                 time.sleep(_RETRY_DELAY_SECONDS)
                 continue
             logger.exception("Gemini onboarding parse failed (retry budget exhausted)")
+            pause()
             return None
         except Exception:
             logger.exception("Gemini onboarding parse failed")
+            pause()
             return None
 
     try:
@@ -229,6 +259,8 @@ def chat_with_existing_user(
     structured output here has no clean way to distinguish "didn't mention it" from "wants it
     empty." Rare enough in practice (users add/tighten criteria far more often than they widen
     them) that a future filter_changed reply still leaves /filter as the fallback for that case."""
+    if not available():
+        return None
     client = _get_client()
     if client is None:
         return None
@@ -286,9 +318,11 @@ def chat_with_existing_user(
                 time.sleep(_RETRY_DELAY_SECONDS)
                 continue
             logger.exception("Gemini chat-with-existing-user call failed (retry budget exhausted)")
+            pause()
             return None
         except Exception:
             logger.exception("Gemini chat-with-existing-user call failed")
+            pause()
             return None
 
     try:

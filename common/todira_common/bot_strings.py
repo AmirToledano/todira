@@ -169,13 +169,76 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "🔍 Une seconde, Todira vérifie ce que tu as écrit...",
         "ar": "🔍 لحظة، تودّيرا يتحقق مما كتبته...",
     },
-    "onboarding.error": {
-        "he": "כרגע לא הצלחתי לקרוא את ההודעה 😅 אפשר להגדיר את החיפוש בכמה לחיצות: לחצו על /filter",
-        "en": "I couldn't read that message right now 😅 You can set up your search in a few taps: tap /filter",
-        "ru": "Сейчас не получилось прочитать сообщение 😅 Настроить поиск можно в несколько нажатий: нажмите /filter",
-        "fr": "Je n'ai pas pu lire ce message pour l'instant 😅 Tu peux configurer ta recherche en quelques clics : "
-        "appuie sur /filter",
-        "ar": "لم أتمكن من قراءة الرسالة الآن 😅 يمكنك إعداد البحث ببضع نقرات: اضغط على /filter",
+    # 2026-10-13 (owner report: Gemini out of credit, every new user got errors): onboarding reads the message with free
+    # rules first and asks for what's missing with buttons (bot/handlers/onboarding.py, todira_common/search_text.py).
+    "onboarding.understood": {
+        "he": "מעולה, הבנתי: {summary} 👌",
+        "en": "Great, got it: {summary} 👌",
+        "ru": "Отлично, понял: {summary} 👌",
+        "fr": "Super, compris : {summary} 👌",
+        "ar": "رائع، فهمت: {summary} 👌",
+    },
+    "onboarding.known_so_far": {
+        "he": "הבנתי: {summary}.\n",
+        "en": "Got it: {summary}.\n",
+        "ru": "Понял: {summary}.\n",
+        "fr": "Compris : {summary}.\n",
+        "ar": "فهمت: {summary}.\n",
+    },
+    "onboarding.ask_deal": {
+        "he": "מה מחפשים? 👇",
+        "en": "What are you looking for? 👇",
+        "ru": "Что вы ищете? 👇",
+        "fr": "Tu cherches quoi ? 👇",
+        "ar": "ماذا تبحث؟ 👇",
+    },
+    "onboarding.btn_rent": {"he": "🏠 שכירות", "en": "🏠 Rent", "ru": "🏠 Аренда", "fr": "🏠 Location", "ar": "🏠 إيجار"},
+    "onboarding.btn_sale": {"he": "🔑 קנייה", "en": "🔑 Buy", "ru": "🔑 Покупка", "fr": "🔑 Achat", "ar": "🔑 شراء"},
+    "onboarding.btn_sublet": {
+        "he": "🛏️ סאבלט", "en": "🛏️ Sublet", "ru": "🛏️ Субаренда", "fr": "🛏️ Sous-location", "ar": "🛏️ تأجير من الباطن",
+    },
+    "onboarding.deal_rent": {"he": "שכירות", "en": "rent", "ru": "аренда", "fr": "location", "ar": "إيجار"},
+    "onboarding.deal_sale": {"he": "קנייה", "en": "buy", "ru": "покупка", "fr": "achat", "ar": "شراء"},
+    "onboarding.deal_sublet": {"he": "סאבלט", "en": "sublet", "ru": "субаренда", "fr": "sous-location", "ar": "تأجير من الباطن"},
+    "onboarding.rooms": {"he": "{rooms} חדרים", "en": "{rooms} rooms", "ru": "комнат: {rooms}", "fr": "{rooms} pièces", "ar": "{rooms} غرف"},
+    "onboarding.rooms_up_to": {
+        "he": "עד {rooms} חדרים", "en": "up to {rooms} rooms", "ru": "до {rooms} комнат", "fr": "jusqu'à {rooms} pièces",
+        "ar": "حتى {rooms} غرف",
+    },
+    "onboarding.price_up_to": {
+        "he": "עד ₪{price}", "en": "up to ₪{price}", "ru": "до ₪{price}", "fr": "jusqu'à ₪{price}", "ar": "حتى ₪{price}",
+    },
+    "onboarding.price_from": {
+        "he": "מ־₪{price}", "en": "from ₪{price}", "ru": "от ₪{price}", "fr": "à partir de ₪{price}", "ar": "من ₪{price}",
+    },
+    "whatsapp.ask_deal": {
+        "he": "מה מחפשים: שכירות, קנייה או סאבלט? 🙂",
+        "en": "What are you looking for: rent, buy or sublet? 🙂",
+        "ru": "Что вы ищете: аренду, покупку или субаренду? 🙂",
+        "fr": "Tu cherches quoi : location, achat ou sous-location ? 🙂",
+        "ar": "ماذا تبحث: إيجار أم شراء أم تأجير من الباطن؟ 🙂",
+    },
+    "onboarding.ask_city": {
+        "he": "באיזו עיר מחפשים? אפשר לכתוב גם כמה ערים 🙂",
+        "en": "Which city? You can write several 🙂",
+        "ru": "В каком городе? Можно указать несколько 🙂",
+        "fr": "Dans quelle ville ? Tu peux en écrire plusieurs 🙂",
+        "ar": "في أي مدينة؟ يمكنك كتابة عدة مدن 🙂",
+    },
+    "onboarding.city_suggest": {
+        "he": "לא מצאתי עיר בשם הזה. התכוונת לאחת מאלה? 👇",
+        "en": "I couldn't find that city. Did you mean one of these? 👇",
+        "ru": "Не нашёл такой город. Может, один из этих? 👇",
+        "fr": "Je n'ai pas trouvé cette ville. Tu voulais dire l'une de celles-ci ? 👇",
+        "ar": "لم أجد هذه المدينة. هل تقصد إحدى هذه؟ 👇",
+    },
+    "onboarding.city_unknown": {
+        "he": "לא מצאתי את העיר הזו ברשימה שלנו 🤔 אפשר לכתוב עיר אחרת, או לבחור מהרשימה המלאה ב-/filter",
+        "en": "I couldn't find that city in our list 🤔 Try another city, or pick from the full list with /filter",
+        "ru": "Не нашёл этот город в нашем списке 🤔 Напишите другой город или выберите из полного списка через /filter",
+        "fr": "Je n'ai pas trouvé cette ville dans notre liste 🤔 Écris une autre ville, ou choisis dans la liste complète "
+        "avec /filter",
+        "ar": "لم أجد هذه المدينة في قائمتنا 🤔 اكتب مدينة أخرى، أو اختر من القائمة الكاملة عبر /filter",
     },
     "onboarding.needs_human_help": {
         "he": "🙋 קיבלתי, זה נשמע כמו משהו שכדאי שבן אדם אמיתי יענה עליו — העברתי את ההודעה שלך "
@@ -231,12 +294,12 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "{apartments_url}",
     },
     "contact_fallback.error": {
-        "he": "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע.",
-        "en": "Sorry, I'm having a brief technical hiccup 😅 try sending it again in a moment.",
-        "ru": "Извините, у меня небольшой технический сбой 😅 попробуйте отправить снова через "
-        "минуту.",
-        "fr": "Désolé, j'ai un petit souci technique 😅 réessaie d'envoyer dans un instant.",
-        "ar": "آسف، لدي عطل تقني بسيط 😅 حاول الإرسال مرة أخرى بعد قليل.",
+        "he": "כרגע לא הצלחתי לקרוא את ההודעה 😅 לשינוי החיפוש: /filter, ולדירות שנמצאו: /apartments",
+        "en": "I couldn't read that message right now 😅 To change your search: /filter. To see what was found: /apartments",
+        "ru": "Сейчас не получилось прочитать сообщение 😅 Изменить поиск: /filter. Найденные квартиры: /apartments",
+        "fr": "Je n'ai pas pu lire ce message pour l'instant 😅 Pour changer ta recherche : /filter. Pour voir ce qui a été "
+        "trouvé : /apartments",
+        "ar": "لم أتمكن من قراءة الرسالة الآن 😅 لتغيير البحث: /filter. لرؤية ما وُجد: /apartments",
     },
     "contact_fallback.default_ack": {
         "he": "בסדר! 🙂",

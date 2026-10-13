@@ -9,6 +9,7 @@ never raises" contract on API errors or malformed responses.
 import json
 from unittest.mock import patch
 
+import pytest
 import requests
 from google.genai import errors
 
@@ -59,7 +60,25 @@ class _FakeClient:
 def _install_fake_client(monkeypatch, response_text=None, raise_exc=None, raise_sequence=None):
     fake = _FakeClient(response_text=response_text, raise_exc=raise_exc, raise_sequence=raise_sequence)
     monkeypatch.setattr(gemini_client, "_get_client", lambda: fake)
+    # 2026-10-13: calls are made only while gemini_client.available() (a key is set and no recent call failed).
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_pause_between_tests():
+    gemini_client.reset_pause()
+    yield
+    gemini_client.reset_pause()
+
+
+def test_a_failed_call_pauses_every_later_call_until_the_pause_ends(monkeypatch):
+    fake = _install_fake_client(monkeypatch, raise_exc=RuntimeError("402 RESOURCE_EXHAUSTED"))
+    assert gemini_client.parse_onboarding_message("שלום", {}, ["תל אביב"]) is None
+    assert not gemini_client.available()
+    calls_before = fake.models.call_count
+    assert gemini_client.parse_onboarding_message("שלום", {}, ["תל אביב"]) is None
+    assert fake.models.call_count == calls_before  # no new network call while paused
 
 
 def test_returns_none_when_no_client_configured(monkeypatch):
