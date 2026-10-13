@@ -88,6 +88,7 @@ export default function Account() {
     hasAccess,
     trialEndsAt,
     paidUntil,
+    daysLeft,
     notificationsEnabled,
     whatsappNotificationsOptedIn,
     payments,
@@ -145,6 +146,11 @@ export default function Account() {
                     : trialEndsAt
                       ? t("account.subscription_trial", { date: trialEndsAt })
                       : null}
+                  {daysLeft != null && (
+                    <span className="account-days-left">
+                      {daysLeft > 1 ? t("account.days_left", { days: daysLeft }) : t("account.last_day")}
+                    </span>
+                  )}
                 </p>
               ) : (
                 <p className="amc-status amc-status-warn" style={{ fontSize: ".95rem", fontWeight: 600 }}>

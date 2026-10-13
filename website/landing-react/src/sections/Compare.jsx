@@ -74,7 +74,7 @@ export default function Compare() {
       </div>
 
       {/* Reuses the real value-anchor copy already published on /upgrade (upgrade.value_anchor_*)
-          rather than inventing new pricing copy here — same honest ₪49.90/month-vs-coffee framing
+          rather than inventing new pricing copy here — same honest "a whole month for ₪49.90"-vs-coffee framing
           the product already uses where someone's actually deciding whether to pay, now given a
           preview here too so cost isn't a surprise later. Owner feedback, live screenshot review:
           this replaces what used to be a second near-duplicate "example listing" showing almost

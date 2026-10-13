@@ -677,3 +677,13 @@ def test_cancel_without_the_confirm_field_does_nothing(client):
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.post("/account/cancel-pass", data={"uid": 222})
     assert resp.status_code == 303 and payment.status == "paid" and not fake_session.committed
+
+
+def test_account_config_counts_the_days_of_access_left(client):
+    now = dt.datetime.now(dt.timezone.utc)
+    for ends_in, expected in ((dt.timedelta(days=19, hours=5), 20), (dt.timedelta(hours=3), 1), (-dt.timedelta(days=1), None)):
+        user = _FakeUser(id=2, telegram_user_id=222, paid_until=now + ends_in)
+        fake_session = _FakeSession(users_by_telegram_id={222: user})
+        with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+            config = _account_config(client.get("/account", params={"uid": 222}).text)
+        assert config["daysLeft"] == expected
