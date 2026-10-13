@@ -175,8 +175,13 @@ async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
     if result is None:
+        # 2026-10-13 (owner report: a brand-new user got only "technical hiccup" after /start): the free-text reader is
+        # Gemini, which can be down for days (prepaid credit spent -> HTTP 402 on every model). Staying in AWAIT_FREETEXT
+        # sent every later message back to the same failing call, so the user only ever saw errors. End onboarding and
+        # point to /filter, the button-driven setup that needs no AI.
+        context.user_data.pop("onboarding", None)
         await update.message.reply_text(bot_text("onboarding.error", lang))
-        return AWAIT_FREETEXT
+        return ConversationHandler.END
 
     # rooms_min/rooms_max and price_min/price_max go through safe_range_update, not the plain
     # per-key overwrite every other field uses — found live-code-review 2026-09-22: a multi-turn

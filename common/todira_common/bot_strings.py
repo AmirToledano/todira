@@ -170,16 +170,12 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "🔍 لحظة، تودّيرا يتحقق مما كتبته...",
     },
     "onboarding.error": {
-        "he": "מצטער, יש לי תקלה טכנית רגעית 😅 נסה/י לשלוח שוב בעוד רגע, או תמיד אפשר להגדיר ידנית "
-        "עם /filter.",
-        "en": "Sorry, I'm having a brief technical hiccup 😅 try sending it again in a moment, or "
-        "you can always set things up manually with /filter.",
-        "ru": "Извините, у меня небольшой технический сбой 😅 попробуйте отправить снова через "
-        "минуту, либо всегда можно настроить всё вручную через /filter.",
-        "fr": "Désolé, j'ai un petit souci technique 😅 réessaie d'envoyer dans un instant, ou tu "
-        "peux toujours tout configurer manuellement avec /filter.",
-        "ar": "آسف، لدي عطل تقني بسيط 😅 حاول الإرسال مرة أخرى بعد قليل، أو يمكنك دائماً الإعداد "
-        "يدوياً عبر /filter.",
+        "he": "כרגע לא הצלחתי לקרוא את ההודעה 😅 אפשר להגדיר את החיפוש בכמה לחיצות: לחצו על /filter",
+        "en": "I couldn't read that message right now 😅 You can set up your search in a few taps: tap /filter",
+        "ru": "Сейчас не получилось прочитать сообщение 😅 Настроить поиск можно в несколько нажатий: нажмите /filter",
+        "fr": "Je n'ai pas pu lire ce message pour l'instant 😅 Tu peux configurer ta recherche en quelques clics : "
+        "appuie sur /filter",
+        "ar": "لم أتمكن من قراءة الرسالة الآن 😅 يمكنك إعداد البحث ببضع نقرات: اضغط على /filter",
     },
     "onboarding.needs_human_help": {
         "he": "🙋 קיבלתי, זה נשמע כמו משהו שכדאי שבן אדם אמיתי יענה עליו — העברתי את ההודעה שלך "
