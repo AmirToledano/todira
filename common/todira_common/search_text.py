@@ -268,6 +268,31 @@ _FEATURES = [
 ]
 
 
+# Features the filter stores as a structured requirement (the same switches /filter's buttons set), matched against the
+# listing's own fields rather than its description text. The rest stay plain keywords.
+FEATURE_FIELDS: dict[str, tuple[str, object]] = {
+    "מרפסת": ("require_balcony", True),
+    "חניה": ("require_parking", True),
+    "מעלית": ("require_elevator", True),
+    "בעלי חיים": ("require_pets_allowed", True),
+    "משופצת": ("require_renovated", True),
+    'ממ"ד': ("safe_room_pref", "safe_room_only"),
+    "מרוהטת": ("furniture_pref", "furnished"),
+}
+
+
+def split_features(keywords: list[str]) -> tuple[dict, list[str]]:
+    """(filter fields to set, keywords left over) for the keywords parse() returned."""
+    fields: dict = {}
+    rest: list[str] = []
+    for keyword in keywords:
+        if keyword in FEATURE_FIELDS:
+            field, value = FEATURE_FIELDS[keyword]
+            fields[field] = value
+        else:
+            rest.append(keyword)
+    return fields, rest
+
 def _keywords(text: str) -> list[str]:
     return [kw for pattern, kw in _FEATURES if re.search(pattern, text)]
 

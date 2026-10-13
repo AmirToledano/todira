@@ -23,7 +23,7 @@ import math
 
 import keyboards as kb
 from config import WEBSITE_URL
-from todira_common import cities
+from todira_common import cities, search_text
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
@@ -677,9 +677,48 @@ async def menu_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if looks_like_help_request(raw):
         await escalate_to_owner(update, context, raw)
         await update.message.reply_text(bot_text("filter.menu_help_escalated", lang))
+        return MENU
+    # 2026-10-13 (owner report): "use the buttons above" pointed at a menu scrolled far up the chat, so a user who typed
+    # "דירה 3.5 חדרים עד 8 אלף" saw no buttons at all. Now what the free rules (todira_common/search_text.py) read in
+    # the text goes straight into the draft, and the menu is sent again right below, so saving is one tap away.
+    draft = context.user_data.setdefault("draft", _default_draft())
+    found = search_text.parse(raw)
+    if _apply_typed_search(draft, found):
+        note = bot_text("filter.typed_applied", lang, summary=search_text.summary(found, lang))
     else:
-        await update.message.reply_text(bot_text("filter.use_buttons_hint", lang))
+        note = bot_text("filter.use_buttons_below", lang)
+    await update.message.reply_text(note)
+    await _clear_previous_menu_keyboard(context, update.message.chat_id)
+    sent = await update.message.reply_text(
+        kb.render_root_summary(draft, lang), reply_markup=kb.root_keyboard(lang), parse_mode=ParseMode.HTML
+    )
+    context.user_data["menu_message_id"] = sent.message_id
     return MENU
+
+
+def _apply_typed_search(draft: dict, found: dict) -> bool:
+    """Writes what a typed search message stated into the draft (cities, rooms and price replace what was there, since
+    the user just restated them; features switch on). Returns whether anything was found."""
+    changed = False
+    if found["deal_type"]:
+        draft["deal_type"] = found["deal_type"]
+        changed = True
+    if found["cities"]:
+        draft["cities"] = list(found["cities"])
+        changed = True
+    if found["rooms_min"] is not None or found["rooms_max"] is not None:
+        draft["rooms_min"], draft["rooms_max"] = found["rooms_min"], found["rooms_max"]
+        changed = True
+    if found["price_min"] is not None or found["price_max"] is not None:
+        draft["price_min"] = int(found["price_min"]) if found["price_min"] is not None else None
+        draft["price_max"] = int(found["price_max"]) if found["price_max"] is not None else None
+        changed = True
+    feature_fields, keywords = search_text.split_features(found["keywords"])
+    if feature_fields or keywords:
+        draft.update(feature_fields)
+        draft["keywords"] = [*draft.get("keywords", []), *[k for k in keywords if k not in draft.get("keywords", [])]]
+        changed = True
+    return changed
 
 
 async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
