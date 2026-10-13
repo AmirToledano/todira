@@ -2466,6 +2466,8 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
                 "hasAccess": access,
                 "trialEndsAt": user.trial_ends_at.strftime("%d/%m/%Y") if user.trial_ends_at else None,
                 "paidUntil": user.paid_until.strftime("%d/%m/%Y") if user.paid_until else None,
+                # 2026-10-13 (owner): how many days of access are left, counting today (None when none is running).
+                "daysLeft": _days_left(max((d for d in (user.paid_until, user.trial_ends_at) if d is not None), default=None)),
                 "notificationsEnabled": notifications_enabled,
                 "whatsappNotificationsOptedIn": whatsapp_notifications_opted_in,
                 "payments": [
@@ -2497,6 +2499,17 @@ def account(request: Request, uid: int | None = None, wid: str | None = None):
         },
         known_lang=user.language,
     )
+
+
+def _days_left(ends_at: dt.datetime | None) -> int | None:
+    """Days of access left for /account's "N days left" line, counting a started day as a whole one; None when nothing
+    is running."""
+    if ends_at is None:
+        return None
+    remaining = ends_at - dt.datetime.now(dt.timezone.utc)
+    if remaining.total_seconds() <= 0:
+        return None
+    return remaining.days + (1 if remaining.seconds or remaining.microseconds else 0)
 
 
 _PASS_NAMES_HE = {"pass_7": "שבוע", "pass_14": "שבועיים", "pass_30": "חודש", TEST_PASS_PLAN: "בדיקה"}

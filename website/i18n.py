@@ -2003,6 +2003,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "✅ Активна, действует до {date}", "fr": "✅ Actif, valable jusqu'au {date}",
         "ar": "✅ نشط، ساري حتى {date}",
     },
+    # 2026-10-13 (owner): a live "days left" under the access status on /account ({days} >= 2; the last day has its own text).
+    "account.days_left": {
+        "he": "נשארו {days} ימים", "en": "{days} days left", "ru": "Осталось дней: {days}",
+        "fr": "Encore {days} jours", "ar": "متبقٍ {days} أيام",
+    },
+    "account.last_day": {
+        "he": "זה היום האחרון", "en": "This is the last day", "ru": "Сегодня последний день",
+        "fr": "C'est le dernier jour", "ar": "هذا هو اليوم الأخير",
+    },
     "account.subscription_trial": {
         "he": "⏳ תקופת ניסיון, עד {date}", "en": "⏳ Trial period, until {date}",
         "ru": "⏳ Пробный период, до {date}", "fr": "⏳ Période d'essai, jusqu'au {date}",
@@ -2407,12 +2416,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # the comparison read as backwards/misleading rather than reassuring. Reframed as roughly
     # EQUAL to one coffee-and-pastry outing (owner's own suggested framing) — a comparison that's
     # actually true at this price point, not just a nice-sounding line.
+    # 2026-10-13 (owner): no "a month?" - access is a one-time pass (week / two weeks / month), not a monthly charge.
     "upgrade.value_anchor_title": {
-        "he": "49.90 ₪ לחודש? בערך המחיר של קפה ומאפה.",
-        "en": "₪49.90 a month? About the price of a coffee and a pastry.",
-        "ru": "49.90 ₪ в месяц? Примерно цена кофе с выпечкой.",
-        "fr": "49,90 ₪ par mois ? À peu près le prix d'un café et d'une pâtisserie.",
-        "ar": "49.90 ₪ شهريًا؟ تقريبًا سعر قهوة ومعجنات.",
+        "he": "חודש שלם ב־49.90 ₪? בערך המחיר של קפה ומאפה.",
+        "en": "A whole month for ₪49.90? About the price of a coffee and a pastry.",
+        "ru": "Целый месяц за 49.90 ₪? Примерно цена кофе с выпечкой.",
+        "fr": "Un mois entier pour 49,90 ₪ ? À peu près le prix d'un café et d'une pâtisserie.",
+        "ar": "شهر كامل مقابل 49.90 ₪؟ تقريبًا سعر قهوة ومعجنات.",
     },
     "upgrade.value_anchor_body": {
         "he": 'עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי, בלי חידוש אוטומטי ובלי התחייבות.',
