@@ -168,7 +168,14 @@ def test_an_amount_that_is_no_pass_grants_nothing_and_stays_pending(client):
     assert resp.status_code == 200 and payment.status == "pending" and user.paid_until is None and not sess.committed
 
 
-def test_upgrade_page_shows_three_passes_with_prices_when_the_free_flow_is_on(client):
+_PER_PASS_PAGES = {
+    "TAKBULL_PAYMENT_PAGE_URL_PASS_7": "https://paypage.takbull.co.il/week",
+    "TAKBULL_PAYMENT_PAGE_URL_PASS_14": "https://paypage.takbull.co.il/two-weeks",
+    "TAKBULL_PAYMENT_PAGE_URL_PASS_30": "https://paypage.takbull.co.il/month",
+}
+
+
+def _get_upgrade(client):
     user = SimpleNamespace(
         id=2, telegram_user_id=222, language="he", trial_ends_at=None, paid_until=None, takbull_subscription_uniqid=None,
         free_access_granted=False,
@@ -186,8 +193,47 @@ def test_upgrade_page_shows_three_passes_with_prices_when_the_free_flow_is_on(cl
     ):
         resp = client.get("/upgrade")
     assert resp.status_code == 200
-    for plan in PASS_PLANS:
-        assert f'value="{plan}"' in resp.text
+    return resp.text
+
+
+def test_the_pass_is_picked_on_takbull_unless_every_pass_has_its_own_page(monkeypatch):
+    assert takbull_client.pass_is_picked_on_takbull() is True
+    monkeypatch.setenv("TAKBULL_PAYMENT_PAGE_URL_PASS_30", _PER_PASS_PAGES["TAKBULL_PAYMENT_PAGE_URL_PASS_30"])
+    assert takbull_client.pass_is_picked_on_takbull() is True
+    for name, url in _PER_PASS_PAGES.items():
+        monkeypatch.setenv(name, url)
+    assert takbull_client.pass_is_picked_on_takbull() is False
+
+
+def test_upgrade_page_explains_three_passes_and_has_one_button_to_takbull(client):
+    # 2026-10-13 (owner decision): no more picking the pass here and then again on Takbull's page
+    html = _get_upgrade(client)
     for price in ("19.90", "29.90", "49.90"):
-        assert f"₪{price}" in resp.text
-    assert "auto-renews" not in resp.text and "מתחדש אוטומטית" not in resp.text.split("upgrade-faq")[0]
+        assert f"₪{price}" in html
+    assert html.count('name="plan"') == 1 and 'value="pass_choice"' in html
+    assert "לבחירת חבילה ותשלום מאובטח" in html
+    assert "לסמן שוב" not in html
+    assert "auto-renews" not in html and "מתחדש אוטומטית" not in html.split("upgrade-faq")[0]
+
+
+def test_upgrade_page_keeps_a_button_per_pass_when_every_pass_has_its_own_page(client, monkeypatch):
+    for name, url in _PER_PASS_PAGES.items():
+        monkeypatch.setenv(name, url)
+    html = _get_upgrade(client)
+    for plan in PASS_PLANS:
+        assert f'value="{plan}"' in html
+    assert 'value="pass_choice"' not in html
+
+
+def test_the_single_button_opens_the_shared_page_with_a_placeholder_pending_payment(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_PAYMENT_PAGE_URL_PASS_30", _PER_PASS_PAGES["TAKBULL_PAYMENT_PAGE_URL_PASS_30"])
+    resp, sess = _post_upgrade(client, "pass_choice")
+    assert resp.status_code == 303 and resp.headers["location"] == f"{_PAGE}?order_reference=77"
+    created = sess.added[0]
+    assert created.plan == "pass_30" and created.amount_ils == Decimal("49.90") and created.status == "pending"
+
+
+def test_the_single_button_is_refused_when_every_pass_has_its_own_page(client, monkeypatch):
+    for name, url in _PER_PASS_PAGES.items():
+        monkeypatch.setenv(name, url)
+    assert _post_upgrade(client, "pass_choice")[0].status_code == 400

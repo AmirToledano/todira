@@ -1725,9 +1725,18 @@ def upgrade(request: Request, uid: int | None = None):
                 takbull_client.hosted_page_configured() and not takbull_client.recurring_api_configured()
             ),
             "pass_plans": _pass_plan_cards(),
+            # 2026-10-13 (owner decision): one button to Takbull's shared page, where the pass is picked - see
+            # takbull_client.pass_is_picked_on_takbull.
+            "pass_picked_on_takbull": takbull_client.pass_is_picked_on_takbull(),
+            "pass_choice_value": _PASS_PICKED_ON_TAKBULL,
         },
         known_lang=user.language,
     )
+
+
+# What the single /upgrade button posts as `plan` when the customer picks the pass on Takbull's shared page. The pending
+# Payment is stored as the longest pass until the webhook rewrites plan and amount from what was actually charged.
+_PASS_PICKED_ON_TAKBULL = "pass_choice"
 
 
 def _pass_plan_cards() -> list[dict]:
@@ -1782,6 +1791,10 @@ def upgrade_submit(
     one_time_mode = takbull_client.hosted_page_configured() and not takbull_client.recurring_api_configured()
     if one_time_mode and plan == SUBSCRIPTION_PLAN:
         plan = PASS_PLANS[-1]  # an old page / bookmark still posting the monthly plan: the 30-day pass
+    # The single button (the pass is picked on Takbull's shared page): no page of a specific pass, and a placeholder plan.
+    page_plan: str | None = plan
+    if one_time_mode and plan == _PASS_PICKED_ON_TAKBULL and takbull_client.pass_is_picked_on_takbull():
+        plan, page_plan = PASS_PLANS[-1], None
     allowed_plans = PASS_PLANS if one_time_mode else (SUBSCRIPTION_PLAN,)
     if plan not in allowed_plans or not terms_agreed:
         return _render(request, "auth_error.html", {}, status_code=400)
@@ -1849,7 +1862,7 @@ def upgrade_submit(
             session.add(payment)
             session.commit()
             checkout_url = takbull_client.build_hosted_checkout_url(
-                payment_id=payment.id, email=user.google_email, plan=plan
+                payment_id=payment.id, email=user.google_email, plan=page_plan
             )
             if checkout_url is None:
                 return _render(request, "auth_error.html", {}, status_code=502)
@@ -2094,9 +2107,11 @@ def _match_takbull_payment(session, body: dict, payment_id: int | None):
     A webhook WITHOUT any usable reference — what the free hosted payment page may send, since order_reference passing
     through that page is documented by Takbull but not yet confirmed end to end — is matched, most reliable first:
     1. the payer's email (CustomerEmail) equals a user's linked Google email -> that user's newest pending Payment;
-    2. exactly ONE pending hosted-page payment of the same amount was started in the last 3 hours -> that one (a real
-       charge of exactly that amount arrived and only one person is waiting). With two or more waiting we refuse to
-       guess and the owner is alerted instead (the unmatched branch of _process_takbull_payload).
+    2. the charge is a real pass price and exactly ONE pending hosted-page payment was started in the last 3 hours ->
+       that one, whatever amount it was stored with (since 2026-10-13 the customer usually picks the pass on Takbull's
+       page, so the pending row only holds a placeholder). With several waiting, the single one stored with exactly
+       the charged amount (a pass clicked on its own page); otherwise we refuse to guess and the owner is alerted
+       instead (the unmatched branch of _process_takbull_payload).
     A transaction id we already recorded is never matched again (a replay cannot credit a newer pending payment).
     The amount is verified again by the caller against OrderTotalSum before anything is granted."""
     if payment_id is not None:
@@ -2147,16 +2162,20 @@ def _match_takbull_payment(session, body: dict, payment_id: int | None):
         total = Decimal(str(body.get("OrderTotalSum")))
     except (InvalidOperation, TypeError, ValueError):
         return None, False
+    if plan_for_amount(total, test_amount_from_env()) is None:
+        return None, False
     waiting = session.scalars(
         select(Payment).where(
             Payment.gateway == "takbull",
             Payment.status == "pending",
             Payment.subscription_uniqid.is_(None),
-            Payment.amount_ils == total,
             Payment.created_at >= dt.datetime.now(dt.timezone.utc) - _TAKBULL_WAITING_WINDOW,
         )
     ).all()
-    return (waiting[0], False) if len(waiting) == 1 else (None, False)
+    if len(waiting) == 1:
+        return waiting[0], False
+    same_amount = [p for p in waiting if p.amount_ils == total]
+    return (same_amount[0], False) if len(same_amount) == 1 else (None, False)
 
 
 def _alert_owner_unmatched_takbull_payment(body: dict) -> None:
