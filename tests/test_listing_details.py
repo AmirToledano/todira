@@ -153,12 +153,25 @@ def test_details_says_when_no_other_site_has_it(client):
     [(-12, "זולה ב-12% מהמחיר הרגיל באזור"), (9, "יקרה ב-9% מהמחיר הרגיל באזור"), (3, "בדיוק במחיר הרגיל באזור")],
 )
 def test_details_compares_the_price_with_the_area(client, diff_pct, expected):
-    area = {"area": "פלורנטין", "median": 6500, "count": 23, "diff_pct": diff_pct}
+    area = {"area": "פלורנטין", "median": 6500, "count": 23, "diff_pct": diff_pct, "solid": True, "sqm_median": None}
     html = _get_details(client, _listing(), area=area).text
 
     assert expected in html
     assert "המחיר האמצעי לדירות 3 חדרים בפלורנטין: 6,500 ₪" in html
-    assert "לפי 23 מודעות פעילות" in html
+    assert "לפי 23 מודעות מהחודש האחרון" in html
+    assert "כדאי להתייחס בזהירות" not in html
+    assert "למ״ר:" not in html
+
+
+def test_details_explains_exactly_how_the_area_price_was_worked_out(client):
+    area = {"area": "פלורנטין", "median": 6500, "count": 6, "diff_pct": -8, "solid": False, "sqm_median": 92}
+    html = _get_details(client, _listing(price=6000, size_sqm=75), area=area).text
+
+    assert "איך חישבנו את זה?" in html
+    assert "מתוך 6 מודעות של דירות 3 חדרים להשכרה בפלורנטין שראינו ב־30 הימים האחרונים" in html
+    assert "לא המחירים שנסגרו בפועל" in html
+    assert "מבוסס על מעט מודעות (6), כדאי להתייחס בזהירות" in html
+    assert "למ״ר: 80 ₪ כאן, לעומת 92 ₪ בדרך כלל" in html
 
 
 def test_details_leaves_the_area_comparison_out_without_enough_data(client):
@@ -233,21 +246,60 @@ class _MedianSession:
         return SimpleNamespace(one=lambda: row)
 
 
+def _sql(stmt) -> str:
+    from sqlalchemy.dialects import postgresql
+
+    return str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+
 def test_area_comparison_uses_the_neighborhood_when_it_has_enough_listings():
-    session = _MedianSession((Decimal("6500"), 8))
+    session = _MedianSession((Decimal("6500"), 12), (86.4, 9))
     result = website_main._area_price_comparison(session, _listing(price=6000))
 
-    assert result == {"area": "פלורנטין", "median": 6500, "count": 8, "diff_pct": -8}
-    assert len(session.statements) == 1
+    assert result == {
+        "area": "פלורנטין", "median": 6500, "count": 12, "diff_pct": -8, "solid": True, "sqm_median": 86, "sqm_count": 9,
+    }
+    assert len(session.statements) == 2
+    assert "listings.neighborhood = 'פלורנטין'" in _sql(session.statements[0])
+    assert "listings.size_sqm BETWEEN 15 AND 500" in _sql(session.statements[1])
 
 
-def test_area_comparison_falls_back_to_the_city():
-    session = _MedianSession((Decimal("6500"), 2), (Decimal("5000"), 40))
+def test_area_comparison_falls_back_to_the_city_and_flags_a_small_sample():
+    session = _MedianSession((Decimal("6500"), 2), (Decimal("5000"), 7), (None, 0))
     result = website_main._area_price_comparison(session, _listing(price=6000))
 
-    assert result == {"area": "תל אביב יפו", "median": 5000, "count": 40, "diff_pct": 20}
+    assert result == {"area": "תל אביב יפו", "median": 5000, "count": 7, "diff_pct": 20, "solid": False, "sqm_median": None}
+    assert "neighborhood" not in _sql(session.statements[1])
 
 
 def test_area_comparison_needs_enough_listings_and_a_price():
     assert website_main._area_price_comparison(_MedianSession((Decimal("6500"), 2), (6400, 4)), _listing()) is None
     assert website_main._area_price_comparison(_MedianSession(), _listing(price=None)) is None
+
+
+def test_area_comparison_treats_the_rest_of_the_city_bucket_as_the_city():
+    session = _MedianSession((Decimal("2500"), 5))
+    website_main._area_price_comparison(session, _listing(neighborhood="שאר העיר", size_sqm=None))
+
+    assert len(session.statements) == 1
+    assert "neighborhood" not in _sql(session.statements[0])
+
+
+def test_area_comparison_only_counts_real_peers():
+    """Last 30 days (taken-down ones included), no duplicates, never this flat, same rooms and deal, and a shared room
+    only against shared rooms."""
+    session = _MedianSession((Decimal("6500"), 5))
+    website_main._area_price_comparison(session, _listing(neighborhood=None, size_sqm=None, duplicate_of_id=3))
+    sql = _sql(session.statements[0])
+
+    assert "percentile_cont(0.5) WITHIN GROUP (ORDER BY listings.price)" in sql
+    assert "listings.scraped_at >= now() - " in sql
+    assert "is_delisted" not in sql
+    assert "listings.duplicate_of_id IS NULL" in sql
+    assert "listings.id != 7" in sql and "listings.id != 3" in sql
+    assert "listings.deal_type = 'rent'" in sql and "listings.rooms = 3.0" in sql
+    assert "listings.property_type != 'shared_room'" in sql
+
+    shared = _MedianSession((Decimal("1500"), 5))
+    website_main._area_price_comparison(shared, _listing(property_type="shared_room", neighborhood=None, size_sqm=None))
+    assert "listings.property_type = 'shared_room'" in _sql(shared.statements[0])

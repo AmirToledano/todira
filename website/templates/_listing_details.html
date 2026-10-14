@@ -33,6 +33,17 @@
       {% else %}{{ t('details.area_median', area=area.area, price="{:,}".format(area.median)) }}{% endif %}
       · {{ t('details.area_based_on', n=area.count) }}
     </div>
+    {% if area.sqm_median and price_per_sqm %}
+    <div class="ld-insight-sub">{{ t('details.area_sqm', mine="{:,}".format(price_per_sqm), usual="{:,}".format(area.sqm_median)) }}</div>
+    {% endif %}
+    {% if not area.solid %}<div class="ld-insight-sub ld-insight-few">{{ t('details.area_few', n=area.count) }}</div>{% endif %}
+    {# Exactly how the number was worked out, so nobody has to take it on trust (main.py's _area_price_comparison). #}
+    {% set _peer_kind = (t('details.kind_rooms', rooms=_rooms) if _rooms else t('details.kind_any'))
+                   ~ ((' ' ~ t('details.deal_' ~ l.deal_type)) if l.deal_type in ('rent', 'sale', 'sublet') else '') %}
+    <details class="ld-how">
+      <summary>{{ t('details.area_how_title') }}</summary>
+      <p>{{ t('details.area_how_body', n=area.count, kind=_peer_kind, area=area.area) }}</p>
+    </details>
   </section>
   {% endif %}
 

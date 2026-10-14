@@ -2243,3 +2243,7 @@ body.apt-modal-open { overflow: hidden; }
   font-size: .76rem; color: var(--text-muted); padding: 0 8px; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis;
 }
+.apt-detail-body .ld-insight-few { font-style: italic; }
+.apt-detail-body .ld-how { font-size: .78rem; color: var(--text-muted); }
+.apt-detail-body .ld-how summary { cursor: pointer; font-weight: 600; color: var(--teal); width: fit-content; }
+.apt-detail-body .ld-how p { margin: 6px 0 0; line-height: 1.55; }
