@@ -50,6 +50,10 @@ spec:
         - name: bot
           image: "{{ .Values.botImage.repository }}:{{ .Values.botImage.tag | default "latest" }}"
           env:
+            # 2026-10-14: at most two glibc malloc arenas, so a multi-threaded Python process keeps less freed memory
+            # to itself on the 2 GB server (the default allows 8 per CPU).
+            - name: MALLOC_ARENA_MAX
+              value: "2"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

@@ -4,7 +4,9 @@ CronJob (see charts/todira), or manually via `docker compose run --rm scraper` l
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import datetime as dt
+import gc
 import json
 import logging
 import os
@@ -762,6 +764,9 @@ async def _backfill_missing_yad2_descriptions(session) -> int:
 
 _TEXT_FEATURES_MAX_ENV_VAR = "TEXT_FEATURES_MAX_PER_RUN"
 _DEFAULT_TEXT_FEATURES_MAX_PER_RUN = 0
+# 2026-10-14: read and update the descriptions this many at a time (each batch committed) instead of holding up to
+# TEXT_FEATURES_MAX_PER_RUN description texts in memory at once on a 2 GB server.
+_TEXT_FEATURES_BATCH = 2000
 
 
 def _text_features_max_per_run() -> int:
@@ -784,26 +789,33 @@ def _fill_missing_fields_from_descriptions(session) -> int:
         return 0
     table = Listing.__table__
     columns = [table.c[name] for name in text_features.COLUMNS]
-    rows = session.execute(
-        select(table.c.id, table.c.description, *columns)
-        .where(
-            table.c.description.is_not(None),
-            table.c.text_parsed_at.is_(None),
-            table.c.is_delisted.is_(False),
-            table.c.duplicate_of_id.is_(None),
-        )
-        .order_by(table.c.first_seen_at.desc())
-        .limit(max_per_run)
-    ).all()
     filled = 0
-    for row in rows:
-        listing_like = types.SimpleNamespace(description=row.description, **{name: getattr(row, name) for name in text_features.COLUMNS})
-        updates = text_features.missing_updates(listing_like)
-        session.execute(
-            table.update().where(table.c.id == row.id).values(**updates, text_parsed_at=func.now())
-        )
-        filled += len(updates)
-    session.commit()
+    remaining = max_per_run
+    # Batch by batch: every row read is marked read (text_parsed_at), so the next query picks up where this one stopped.
+    while remaining > 0:
+        batch_size = min(remaining, _TEXT_FEATURES_BATCH)
+        rows = session.execute(
+            select(table.c.id, table.c.description, *columns)
+            .where(
+                table.c.description.is_not(None),
+                table.c.text_parsed_at.is_(None),
+                table.c.is_delisted.is_(False),
+                table.c.duplicate_of_id.is_(None),
+            )
+            .order_by(table.c.first_seen_at.desc())
+            .limit(batch_size)
+        ).all()
+        for row in rows:
+            listing_like = types.SimpleNamespace(description=row.description, **{name: getattr(row, name) for name in text_features.COLUMNS})
+            updates = text_features.missing_updates(listing_like)
+            session.execute(
+                table.update().where(table.c.id == row.id).values(**updates, text_parsed_at=func.now())
+            )
+            filled += len(updates)
+        session.commit()
+        remaining -= len(rows)
+        if len(rows) < batch_size:
+            break
     return filled
 
 
@@ -2248,6 +2260,17 @@ _ALL_SOURCE_SCRAPERS: tuple[tuple[str, Callable[[], tuple]], ...] = (
 _FACEBOOK_KILL_SWITCHED_SOURCES = (Source.FACEBOOK_MARKETPLACE, Source.FACEBOOK_GROUPS)
 
 
+def _release_freed_memory() -> None:
+    """2026-10-14 (owner: the 2 GB server swaps during runs): hands memory this run has finished with back to the server.
+    Python frees objects into the C allocator, which normally keeps the pages for itself, so the pod kept its biggest moment's
+    size until the run ended. glibc's malloc_trim returns what's free; a no-op where there is no glibc."""
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
 def _active_source_scrapers() -> tuple[tuple[str, Callable[[], tuple]], ...]:
     """Which sources THIS run actually scrapes. Facebook (both Marketplace and Groups) is a real
     kill-switch case, not just another source — see _SCRAPE_SOURCES_ENV_VAR's own comment: neither
@@ -2304,6 +2327,7 @@ def run_once() -> dict[str, int]:
         len(active_sources), ", ".join(source for source, _fn in active_sources),
     )
     results = asyncio.run(_scrape_sources_concurrently(active_sources))
+    normalized_items = None
     for (source, _scrape_fn), (
         normalized_items, seen_external_ids, source_fetched, source_errors, all_succeeded
     ) in zip(active_sources, results):
@@ -2314,9 +2338,13 @@ def run_once() -> dict[str, int]:
         if source == Source.YAD2:
             scraped_city_names |= _STREAMED_CITIES
         per_source_delisting_input[source] = (seen_external_ids, scraped_city_names, all_succeeded)
+    # The scraped items now live only in all_normalized_items, so they can be freed right after the upsert below.
+    results = normalized_items = seen_external_ids = scraped_city_names = None
 
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, all_normalized_items)
+        all_normalized_items.clear()
+        _release_freed_memory()
         new_ids = new_ids + _STREAMED_NEW_IDS
         price_change_pairs = price_change_pairs + _STREAMED_PRICE_PAIRS
         new_ids = _apply_tile_seed_policy(session, new_ids)
@@ -2351,6 +2379,10 @@ def run_once() -> dict[str, int]:
                     "for delisting.",
                     source,
                 )
+        # The seen-id sets (~100,000 ids for Yad2) are done with.
+        seen_external_ids = scraped_city_names = None
+        per_source_delisting_input.clear()
+        _release_freed_memory()
 
         new_listings = (
             list(session.scalars(select(Listing).where(_col_in(Listing.id, new_ids))))
