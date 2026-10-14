@@ -1,5 +1,22 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-10-14 (owner: "the site is slow"; "delete listings after a month") — measured first, then fixed
+- Measured live (`diagnose-speed-and-storage.yaml`): ordinary pages take ~2 ms on the server, but **/apartments took
+  16-27 s per page and per infinite-scroll batch** - every request loaded every candidate listing (~140k active since
+  the full-country sweeps) as a full ORM object, raw_payload included. Nothing was compressed (shared JS chunk 433 KB,
+  style.css 126 KB) and no static file was cacheable. The node had ~220 MB RAM free and ~600 MB in swap with 21% iowait
+  during a scraper run (t3.small, 2 GB; the scraper's limit alone is 1.5 GB) - a bigger instance is the owner's call.
+- Fixes: matching reads only the columns evaluate() needs as light rows, price/rooms pre-filtered in SQL
+  (`listing_matches.matching_listing_rows`, verified identical to the old results on 40 random filters over 40k rows,
+  ~20x faster); /apartments caches the ordered match ids per user+filter+hidden set for 2 minutes, so scrolling loads
+  only the next 24 listings. Caddy compresses everything (zstd/gzip) and marks hashed bundles / ?v= assets immutable.
+  The home page hides its crawler-only `.seo-fallback` until React mounts (it flashed as a long plain page).
+- Listing retention: a listing is deleted a month after first seen once it is no longer published (delisted for a
+  week, or not seen for a month) - `scraper/main.py` `_delete_expired_listings`, end of every main scraper run.
+  Still-published ads are kept on purpose (deleting them would re-announce them as new on the next run). Storage
+  reality: the whole DB is ~400 MB of the 18 GB disk (74% used mostly by images/OS/swap), so this keeps growth in check
+  rather than freeing much today. Migration 0027 indexes sent_notifications.listing_id for the cascade.
+
 ## ▶ 2026-10-13 (owner): WhatsApp is GONE from the project — only Telegram and the website remain
 - Removed: the WhatsApp webhook, client, cost guard, check-in, 24h-window and pause modules, the `?wid=` login, every
   WhatsApp button/link/text on the site and in the bot, its settings on /account, its helm values/secrets/env vars and

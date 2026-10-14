@@ -28,6 +28,7 @@ _spec = importlib.util.spec_from_file_location("website_main_auth", _WEBSITE_DIR
 website_main = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(website_main)
 
+import todira_common.listing_matches as listing_matches_module  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 _BOT_TOKEN = "test-bot-token"
@@ -79,6 +80,9 @@ class _FakeSession:
         return _Scalars()
 
     def execute(self, stmt):
+        if "FROM listings" in str(stmt):
+            return []  # /apartments' match scan (light rows, 2026-10-14)
+
         class _Result:
             def first(self):
                 return None
@@ -312,7 +316,7 @@ def test_apartments_hides_insecure_notice_when_reached_via_real_session(client):
         yield fake_session
 
     with patch.object(website_main, "get_session", _fake_get_session), patch.object(
-        website_main, "evaluate", return_value=type("Result", (), {"matched": False})()
+        listing_matches_module, "evaluate", return_value=type("Result", (), {"matched": False})()
     ):
         callback_params = _signed_params(id="123456")
         login_resp = client.get("/auth/telegram/callback", params=callback_params)

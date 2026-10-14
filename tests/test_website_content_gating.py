@@ -33,6 +33,7 @@ _spec = importlib.util.spec_from_file_location(
 website_main = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(website_main)
 
+import todira_common.listing_matches as listing_matches_module  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 _NOW = dt.datetime.now(dt.timezone.utc)
@@ -84,6 +85,7 @@ class _FakeListing:
         self.move_in_date = move_in_date
         self.previous_price = previous_price
         self.url = url
+        self.is_delisted = False
 
 
 class _FakeSession:
@@ -105,6 +107,8 @@ class _FakeSession:
         return self._user
 
     def execute(self, stmt):
+        if "FROM listings" in str(stmt):
+            return list(self._listings)  # /apartments' match scan (light rows, 2026-10-14)
         # Backs base.html's header lookup (_current_user_summary), triggered whenever the
         # request's session already carries a user_id (a real session-only visitor).
         class _Result:
@@ -151,7 +155,7 @@ def test_apartments_shows_description_but_hides_url_for_an_expired_user(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -168,7 +172,7 @@ def test_apartments_shows_description_and_url_for_a_trial_user(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -189,7 +193,7 @@ def test_apartments_map_workspace_renders_with_pins_for_listings_that_have_coord
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -214,7 +218,7 @@ def test_apartments_map_does_not_auto_refit_bounds_on_infinite_scroll(client):
     fake_session = _FakeSession(user, listings=[_FakeListing(id=1, latitude=32.0853, longitude=34.7818)])
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -243,7 +247,7 @@ def test_apartments_workspace_has_map_toggle_settings_and_detail_modal_markup(cl
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -314,7 +318,7 @@ def test_apartments_listing_card_omits_posted_at_and_description_full_when_absen
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -337,7 +341,7 @@ def test_apartments_card_shows_street_property_type_and_price_drop_badge(client)
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -359,7 +363,7 @@ def test_apartments_card_shows_price_rise_badge_with_correct_sign(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -377,7 +381,7 @@ def test_apartments_card_omits_price_change_badge_when_price_unchanged(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -452,7 +456,7 @@ def test_apartments_contact_buttons_are_locked_for_a_trial_user(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -472,7 +476,7 @@ def test_apartments_view_listing_link_still_works_for_a_trial_user(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -490,7 +494,7 @@ def test_apartments_contact_buttons_are_real_links_for_a_genuinely_paid_user(cli
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -506,7 +510,7 @@ def test_apartments_contact_buttons_are_locked_for_an_expired_user(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -559,7 +563,7 @@ def test_apartments_listing_deep_link_renders_even_when_it_does_not_match_curren
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(False)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(False)),
     ):
         resp = client.get("/apartments", params={"uid": 222, "listing": 77})
 
@@ -575,7 +579,7 @@ def test_apartments_no_deep_link_card_when_listing_param_absent(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -602,7 +606,7 @@ def test_apartments_uses_the_identified_users_own_language_over_accept_language(
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get(
             "/apartments", params={"uid": 222}, headers={"accept-language": "en-US,en;q=0.9"}
@@ -621,7 +625,7 @@ def test_apartments_explicit_lang_query_param_still_overrides_the_users_own_lang
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222, "lang": "en"})
 
@@ -640,7 +644,7 @@ def test_apartments_first_page_shows_only_page_size_and_a_sentinel(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -661,7 +665,7 @@ def test_apartments_no_sentinel_when_everything_fits_on_one_page(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -681,7 +685,7 @@ def test_apartments_fragment_request_returns_only_the_next_batch_no_page_layout(
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222, "offset": page_size, "fragment": "1"})
 
@@ -726,7 +730,7 @@ def test_apartments_listing_photos_have_real_alt_text(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -745,7 +749,7 @@ def test_apartments_has_an_aria_live_region_for_infinite_scroll_announcements(cl
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -762,7 +766,7 @@ def test_apartments_scopes_the_listings_query_by_filter_city_and_deal_type(clien
     # window by newer listings scraped for every other city. Applying city/deal_type in the SQL
     # WHERE clause itself (both already hard filters evaluate() enforces regardless) fixes this by
     # construction — asserted here directly against the compiled statement rather than through
-    # observed behavior, since the fake session's scalars() doesn't otherwise care what it's given.
+    # observed behavior, since the fake session doesn't otherwise care what it's given.
     class _RecordingSession(_FakeSession):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -772,6 +776,10 @@ def test_apartments_scopes_the_listings_query_by_filter_city_and_deal_type(clien
             self.captured_stmts.append(stmt)
             return super().scalars(stmt)
 
+        def execute(self, stmt):
+            self.captured_stmts.append(stmt)
+            return super().execute(stmt)
+
     user = _FakeUser(
         id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(deal_type="rent", cities=["חיפה"])
     )
@@ -779,13 +787,13 @@ def test_apartments_scopes_the_listings_query_by_filter_city_and_deal_type(clien
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
     assert resp.status_code == 200
-    # /apartments issues several scalars() queries per request (hidden-listing-ids, the listings
-    # query itself, liked-listing-ids) — find the one actually selecting from "listings".
+    # /apartments issues several queries per request (hidden-listing-ids, the listings scan itself,
+    # liked-listing-ids) — find the one actually selecting from "listings".
     listings_stmt = next(
         stmt for stmt in fake_session.captured_stmts if "FROM listings" in str(stmt)
     )
@@ -797,3 +805,75 @@ def test_apartments_scopes_the_listings_query_by_filter_city_and_deal_type(clien
 class SimpleNamespaceMatch:
     def __init__(self, matched):
         self.matched = matched
+
+
+# --- 2026-10-14: speed (owner: "the site is slow") — measured live at 16-27 s per /apartments page, every infinite-scroll
+# batch re-scanning every listing. The scan result (ordered ids) is now reused for a couple of minutes. ---
+
+
+class _CountingSession(_FakeSession):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scans = 0
+
+    def execute(self, stmt):
+        if "FROM listings" in str(stmt):
+            self.scans += 1
+        return super().execute(stmt)
+
+
+def _always_match(filter_row, listing_row):
+    return SimpleNamespaceMatch(True)
+
+
+def test_scrolling_reuses_the_match_scan_instead_of_redoing_it(client):
+    page_size = website_main.APARTMENTS_PAGE_SIZE
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    listings = [_FakeListing(id=i) for i in range(page_size + 5)]
+    for i, listing in enumerate(listings):
+        listing.city = f"עיר-{i}"
+    fake_session = _CountingSession(user, listings=listings)
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(listing_matches_module, "evaluate", _always_match),
+    ):
+        first = client.get("/apartments", params={"uid": 222})
+        more = client.get("/apartments", params={"uid": 222, "offset": page_size, "fragment": "1"})
+
+    assert first.status_code == 200 and more.status_code == 200
+    assert "עיר-0" in first.text and f"עיר-{page_size}" in more.text
+    assert fake_session.scans == 1
+
+
+def test_a_changed_filter_is_scanned_again(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(cities=["חיפה"]))
+    fake_session = _CountingSession(user, listings=[_FakeListing(id=1)])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(listing_matches_module, "evaluate", _always_match),
+    ):
+        client.get("/apartments", params={"uid": 222})
+        user.filter = SimpleNamespaceFilter(cities=["חיפה", "עכו"])
+        client.get("/apartments", params={"uid": 222})
+
+    assert fake_session.scans == 2
+
+
+def test_a_listing_taken_down_after_the_scan_is_not_shown(client):
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter())
+    gone = _FakeListing(id=1, url="https://yad2.co.il/item/gone111")
+    kept = _FakeListing(id=2, url="https://yad2.co.il/item/kept222")
+    fake_session = _FakeSession(user, listings=[gone, kept])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(listing_matches_module, "evaluate", _always_match),
+    ):
+        client.get("/apartments", params={"uid": 222})
+        gone.is_delisted = True
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert 'data-listing-id="2"' in resp.text
+    assert 'data-listing-id="1"' not in resp.text

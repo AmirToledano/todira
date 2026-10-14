@@ -337,8 +337,9 @@ class SentNotification(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    # index=True (migration 0027): deleting an expired listing cascades here, looked up by listing_id alone
     listing_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("listings.id", ondelete="CASCADE"), nullable=False, index=True
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="new", server_default="new")
     sent_at: Mapped[dt.datetime] = mapped_column(

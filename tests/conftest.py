@@ -84,3 +84,19 @@ def _reset_homeless_fetch_counters(monkeypatch):
     monkeypatch.setattr(homeless_client, "_zenrows_requests_this_process", 0)
     monkeypatch.setattr(homeless_client, "_free_consecutive_failures", 0)
     monkeypatch.setattr(homeless_client, "_free_route_blocked", False)
+
+
+@pytest.fixture(autouse=True)
+def _clear_website_match_id_caches():
+    """website/main.py caches each user's matching listing ids for a couple of minutes (2026-10-14); the test files load
+    that module under their own names, and their fake users share ids - so a cache filled by one test must never answer
+    the next one."""
+    def _clear():
+        for module in list(sys.modules.values()):
+            cache = getattr(module, "_match_ids_cache", None)
+            if isinstance(cache, dict):
+                cache.clear()
+
+    _clear()
+    yield
+    _clear()

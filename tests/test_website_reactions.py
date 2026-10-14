@@ -31,6 +31,7 @@ _spec = importlib.util.spec_from_file_location("website_main_reactions", _WEBSIT
 website_main = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(website_main)
 
+import todira_common.listing_matches as listing_matches_module  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 
@@ -79,6 +80,7 @@ class _FakeListing:
         self.description = "תיאור"
         self.posted_at = None
         self.url = f"https://yad2.co.il/item/{id}"
+        self.is_delisted = False
 
 
 class _Scalars:
@@ -121,6 +123,8 @@ class _FakeSession:
         return _Scalars(self._listings)
 
     def execute(self, stmt):
+        if "FROM listings" in str(stmt) and not isinstance(stmt, Delete):
+            return list(self._listings)  # /apartments' match scan (light rows, 2026-10-14)
         if isinstance(stmt, Delete):
             self.deleted_ids.append("deleted")
             return None
@@ -283,18 +287,18 @@ def test_apartments_excludes_hidden_listings(client):
 
     class _ApartmentsSession(_FakeSession):
         def scalars(self, stmt):
-            # First scalars() call is the hidden-ids query, second is the listings query — mirrors
-            # the two scalars() calls /apartments makes per request.
+            # First scalars() call is the hidden-ids query; the listings themselves come from the match scan
+            # (execute(), the session's own listings) and are then loaded by id.
             self._scalars_call_count = getattr(self, "_scalars_call_count", 0) + 1
             if self._scalars_call_count == 1:
                 return _Scalars([2])  # listing id 2 is hidden
             return _Scalars([shown, hidden_listing])
 
-    fake_session = _ApartmentsSession(user, scalar_queue=[user])
+    fake_session = _ApartmentsSession(user, scalar_queue=[user], listings=[shown, hidden_listing])
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: type("M", (), {"matched": True})()),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: type("M", (), {"matched": True})()),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 
@@ -318,7 +322,7 @@ def test_apartments_renders_saved_map_region_badge_and_prefill(client):
 
     with (
         patch.object(website_main, "get_session", _fake_get_session(fake_session)),
-        patch.object(website_main, "evaluate", lambda filter_row, listing_row: type("M", (), {"matched": True})()),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: type("M", (), {"matched": True})()),
     ):
         resp = client.get("/apartments", params={"uid": 222})
 

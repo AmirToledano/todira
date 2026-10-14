@@ -950,6 +950,47 @@ def _mark_delisted(
     return len(newly_delisted)
 
 
+# 2026-10-14 (owner): "delete listings after a month (the longest pass is a month anyway) so they don't take space; and
+# if they're published again they should come up as new". A listing is deleted a month after we first saw it - once it
+# is no longer published on the source (delisted for a week, or not seen at all for a month). A still-published ad is
+# kept: deleting it would make the very next run find it as brand new and send it to every matching user again (the
+# ~60,000 for-sale ads first stored on the same days would all come back at once). An ad deleted here that is
+# published again later is inserted as a new listing and notified like any other new one. The week of grace keeps an
+# ad that only dropped out of a capped map response for a few runs (see _mark_delisted) from being deleted and then
+# re-announced.
+LISTING_RETENTION = dt.timedelta(days=30)
+DELISTED_GRACE = dt.timedelta(days=7)
+_EXPIRED_DELETE_BATCH = 1000
+_EXPIRED_DELETE_MAX_BATCHES = 50  # at most 50,000 a run; the rest go on the next run
+
+
+def _expired_listings_condition(table):
+    now = func.now()
+    return (table.c.first_seen_at < now - LISTING_RETENTION) & (
+        (
+            table.c.is_delisted.is_(True)
+            & (func.coalesce(table.c.delisted_at, table.c.scraped_at) < now - DELISTED_GRACE)
+        )
+        | (table.c.scraped_at < now - LISTING_RETENTION)
+    )
+
+
+def _delete_expired_listings(session) -> int:
+    """Deletes expired listings (see LISTING_RETENTION) in small batches, each its own short transaction. Their
+    sent_notifications / likes / hides go with them (ON DELETE CASCADE), and a duplicate that pointed at one becomes
+    its own listing again (ON DELETE SET NULL). Returns how many were deleted."""
+    table = Listing.__table__
+    deleted = 0
+    for _ in range(_EXPIRED_DELETE_MAX_BATCHES):
+        batch = select(table.c.id).where(_expired_listings_condition(table)).limit(_EXPIRED_DELETE_BATCH)
+        removed = session.execute(table.delete().where(table.c.id.in_(batch.scalar_subquery()))).rowcount or 0
+        session.commit()
+        deleted += removed
+        if removed < _EXPIRED_DELETE_BATCH:
+            break
+    return deleted
+
+
 def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Listing]:
     """Active listings from the last `_RETRY_UNNOTIFIED_HOURS` that have NEVER produced even one
     successful 'new' notification to anyone, excluding `exclude_ids` (this run's own genuinely-new
@@ -2420,6 +2461,11 @@ def run_once() -> dict[str, int]:
                     summary.update(run_renewal_reminders(session))
                 except Exception:
                     logger.exception("renewal reminder step failed")
+                try:
+                    summary["expired_listings_deleted"] = _delete_expired_listings(session)
+                except Exception:
+                    session.rollback()
+                    logger.exception("expired listings cleanup step failed")
 
     return summary
 

@@ -9,5 +9,21 @@ metadata:
 data:
   Caddyfile: |
     {{ .Values.website.domain }} {
+        # 2026-10-14 (owner: "the site is slow"): measured live, nothing was compressed (the shared JS chunk went out at
+        # 433 KB, style.css at 126 KB) and no static file could be cached, so every page change asked for all of it again.
+        encode zstd gzip
+        # Built bundles have a content hash in their name, and style.css is linked with ?v=<git sha>: a new deploy
+        # changes the URL, so the browser may keep these for a year.
+        @immutable expression `{path}.startsWith("/static/landing/assets/") || ({path}.startsWith("/static/") && {query.v} != "")`
+        header @immutable {
+            Cache-Control "public, max-age=31536000, immutable"
+            defer
+        }
+        # Every other static file (images, icons, the landing page shells): a day.
+        @static expression `{path}.startsWith("/static/") && !{path}.startsWith("/static/landing/assets/") && {query.v} == ""`
+        header @static {
+            Cache-Control "public, max-age=86400"
+            defer
+        }
         reverse_proxy {{ .Release.Name }}-website:8000
     }

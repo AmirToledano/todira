@@ -417,7 +417,8 @@ resources:
     limits: { cpu: "500m", memory: "768Mi" }
   caddy:
     requests: { cpu: "25m", memory: "32Mi" }
-    limits: { cpu: "100m", memory: "96Mi" }
+    # 2026-10-14: 100m -> 250m (a limit only) — Caddy now compresses every response (the Caddyfile's `encode`).
+    limits: { cpu: "250m", memory: "96Mi" }
   healthcheck:
     requests: { cpu: "10m", memory: "16Mi" }
     limits: { cpu: "50m", memory: "32Mi" }
