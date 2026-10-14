@@ -1,0 +1,139 @@
+name: Off-site backup — encrypted database copy to Google Drive
+
+# 2026-10-14 owner request: a copy of the database OUTSIDE AWS, in case the AWS account is closed or deleted. The nightly
+# S3 backup (charts/todira/templates/backup-cronjob.yaml) lives in the same AWS account, so it would go with it.
+# Every night: pg_dump streamed out of the Postgres pod, encrypted with 7-Zip AES-256 (file names hidden too) using a
+# password only the owner knows, uploaded to the owner's Google Drive folder "Todira-backups"; the last 30 nightly copies
+# are kept. Sundays also add the full source code (git bundle). Setup and restore: docs/offsite-backup.md.
+#
+# This repository is public, so its logs are too: the steps print only file names, sizes and counts - never the token,
+# the password or any database content. The Drive token is limited to files this backup itself created (drive.file).
+on:
+  schedule:
+    - cron: "40 0 * * *"  # 00:40 UTC = 03:40 in Israel (summer) / 02:40 (winter): no scraper runs at night
+  workflow_dispatch: {}
+
+concurrency:
+  group: offsite-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the two secrets are set
+        id: setup
+        env:
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+        run: |
+          if [ -z "$GDRIVE_TOKEN" ] && [ -z "$BACKUP_PASSWORD" ]; then
+            # Not set up yet (docs/offsite-backup.md): skip quietly instead of a nightly failure alert.
+            echo "::notice::Off-site backup is not set up yet (GDRIVE_TOKEN and BACKUP_PASSWORD) - skipped. See docs/offsite-backup.md"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          missing=""
+          [ -n "$GDRIVE_TOKEN" ] || missing="$missing GDRIVE_TOKEN"
+          [ -n "$BACKUP_PASSWORD" ] || missing="$missing BACKUP_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing - see docs/offsite-backup.md"
+            exit 1
+          fi
+          if [ "${#BACKUP_PASSWORD}" -lt 12 ]; then
+            echo "::error::BACKUP_PASSWORD must be at least 12 characters"
+            exit 1
+          fi
+          if ! printf '%s' "$GDRIVE_TOKEN" | python3 -c 'import json, sys; t = json.load(sys.stdin); assert t.get("refresh_token")' 2>/dev/null; then
+            echo "::error::GDRIVE_TOKEN is not the one-line {...} token that 'rclone authorize' prints - see docs/offsite-backup.md"
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.setup.outputs.ready == 'true' }}
+        with:
+          fetch-depth: 0  # the Sunday code bundle carries the whole history
+
+      - uses: azure/setup-kubectl@v4
+        if: ${{ steps.setup.outputs.ready == 'true' }}
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        if: ${{ steps.setup.outputs.ready == 'true' }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Dump the database
+        if: ${{ steps.setup.outputs.ready == 'true' }}
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          # Plain SQL, compressed inside the pod; local socket connections to the official Postgres image need no password.
+          kubectl exec -n todira "$PG" -- sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=plain --no-owner --no-privileges | gzip -6' \
+            > todira-db.sql.gz
+          gzip -t todira-db.sql.gz
+          # pg_dump writes this line last, so a dump cut short anywhere fails here instead of being uploaded.
+          zcat todira-db.sql.gz | tail -c 4096 > dump-tail.txt
+          grep -q "PostgreSQL database dump complete" dump-tail.txt
+          rm -f dump-tail.txt
+          echo "dump OK: $(du -h todira-db.sql.gz | cut -f1)"
+
+      - name: Encrypt
+        if: ${{ steps.setup.outputs.ready == 'true' }}
+        env:
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+        run: |
+          command -v 7z >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full >/dev/null; }
+          NAME="todira-db-$(date -u +%Y-%m-%d).7z"
+          # -mhe=on hides the file names too; -mx=0 because the dump is already compressed.
+          7z a -t7z -mhe=on -mx=0 -p"$BACKUP_PASSWORD" "$NAME" todira-db.sql.gz >/dev/null
+          7z t -p"$BACKUP_PASSWORD" "$NAME" >/dev/null  # opens with the password, checksums match
+          rm -f todira-db.sql.gz
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          echo "encrypted: $NAME $(du -h "$NAME" | cut -f1)"
+
+      - name: Sundays (and manual runs) - also the full source code
+        if: ${{ steps.setup.outputs.ready == 'true' }}
+        run: |
+          if [ "$(date -u +%u)" = "7" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CODE="todira-code-$(date -u +%Y-%m-%d).bundle"
+            git bundle create "$CODE" --all
+            git bundle verify "$CODE" >/dev/null
+            echo "CODE=$CODE" >> "$GITHUB_ENV"
+            echo "code bundle: $CODE $(du -h "$CODE" | cut -f1)"
+          fi
+
+      - name: Upload to Google Drive and keep the last 30 days
+        if: ${{ steps.setup.outputs.ready == 'true' }}
+        env:
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          curl -fsSL -o rclone.zip https://github.com/rclone/rclone/releases/download/v1.68.2/rclone-v1.68.2-linux-amd64.zip
+          unzip -q rclone.zip && RCLONE="$PWD/rclone-v1.68.2-linux-amd64/rclone"
+          mkdir -p "$HOME/.config/rclone"
+          ( umask 077; printf '[gdrive]\ntype = drive\nscope = drive.file\ntoken = %s\n' "$GDRIVE_TOKEN" > "$HOME/.config/rclone/rclone.conf" )
+          "$RCLONE" copy "$NAME" gdrive:Todira-backups --stats-log-level NOTICE
+          if [ -n "${CODE:-}" ]; then "$RCLONE" copy "$CODE" gdrive:Todira-backups --stats-log-level NOTICE; fi
+          cp docs/offsite-backup.md HOW-TO-RESTORE.md
+          "$RCLONE" copy HOW-TO-RESTORE.md gdrive:Todira-backups --stats-log-level NOTICE
+          "$RCLONE" delete gdrive:Todira-backups --min-age 30d --include "todira-db-*.7z" --include "todira-code-*.bundle"
+          echo "in Drive now: $("$RCLONE" lsf gdrive:Todira-backups --include 'todira-db-*.7z' | wc -l) database copies, $("$RCLONE" lsf gdrive:Todira-backups --include 'todira-code-*.bundle' | wc -l) code bundles"
+          rm -f "$HOME/.config/rclone/rclone.conf"
+
+      - name: Tell the owner on Telegram if this failed
+        if: ${{ failure() }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OWNER_TELEGRAM_USER_ID: ${{ secrets.OWNER_TELEGRAM_USER_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$OWNER_TELEGRAM_USER_ID" ] || exit 0
+          curl -fsS --max-time 10 -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${OWNER_TELEGRAM_USER_ID}" \
+            --data-urlencode "text=🚨 טודירה: הגיבוי הלילי לגוגל דרייב נכשל. פרטים: ${RUN_URL}" || true
