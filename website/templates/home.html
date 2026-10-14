@@ -30,6 +30,16 @@
 }
 </script>
 {% for css_url in landing_css_urls %}<link rel="stylesheet" href="{{ css_url }}">{% endfor %}
+{% if landing_js_url %}<link rel="modulepreload" href="{{ landing_js_url }}">{% endif %}
+{# 2026-10-14 owner report: opening the site showed the long plain .seo-fallback page for a split second before React
+   replaced it. The fallback stays in the HTML for crawlers that don't run JS, but a browser that runs JS keeps it
+   invisible (its space reserved, so nothing jumps) until React swaps in the real page. If the bundle never runs, the
+   class comes off after a few seconds and the plain page shows instead of a blank one. #}
+<style>html.landing-pending .seo-fallback { visibility: hidden; }</style>
+<script>
+  document.documentElement.classList.add('landing-pending');
+  setTimeout(function () { document.documentElement.classList.remove('landing-pending'); }, 6000);
+</script>
 {% endblock %}
 {% block content %}
 {# 2026-09-25: the marketing content below (hero/features/FAQ/etc — everything that used to be

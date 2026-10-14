@@ -43,7 +43,9 @@ import logging
 import mimetypes
 import os
 import secrets
+import threading
 import time
+from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlencode
@@ -68,7 +70,7 @@ from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES, EXTRA_LOCALITIES, LOCALITY_SET, REGIONS
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
-from todira_common.matching import evaluate
+from todira_common.listing_matches import load_listings, matching_listing_rows
 from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from todira_common.uid_token import verify_uid_token
 from fastapi import FastAPI, Form, Request
@@ -1045,6 +1047,36 @@ def _listing_action_ids(session, user_id: int, action: str) -> set[int]:
 
 APARTMENTS_PAGE_SIZE = 24
 
+# The ordered ids of a user's current matches, per (user, filter contents, hidden listings), for _MATCH_IDS_TTL seconds
+# - long enough that scrolling and coming back to /apartments doesn't redo the full scan, short enough that a listing
+# scraped a moment ago shows up within a couple of minutes. A filter save or a hide changes the key, so it never shows
+# stale results for the new filter.
+_MATCH_IDS_TTL = 120.0
+_MATCH_IDS_MAX_ENTRIES = 64
+_match_ids_cache: "OrderedDict[tuple, tuple[float, list[int]]]" = OrderedDict()
+_match_ids_lock = threading.Lock()
+
+
+def _filter_fingerprint(filter_row) -> tuple:
+    return tuple((column.key, repr(getattr(filter_row, column.key, None))) for column in Filter.__table__.columns)
+
+
+def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[int]:
+    key = (user_id, _filter_fingerprint(filter_row), frozenset(hidden_ids))
+    now = time.monotonic()
+    with _match_ids_lock:
+        hit = _match_ids_cache.get(key)
+        if hit is not None and now - hit[0] < _MATCH_IDS_TTL:
+            _match_ids_cache.move_to_end(key)
+            return hit[1]
+    ids = [row.id for row in matching_listing_rows(session, filter_row, hidden_ids)]
+    with _match_ids_lock:
+        _match_ids_cache[key] = (now, ids)
+        _match_ids_cache.move_to_end(key)
+        while len(_match_ids_cache) > _MATCH_IDS_MAX_ENTRIES:
+            _match_ids_cache.popitem(last=False)
+    return ids
+
 
 def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
     """2026-10-05: fills in the details (description, floor, parking, elevator, balcony, safe room, future move-in) of
@@ -1152,52 +1184,17 @@ def apartments(
             return _render(request, "no_filter.html", {"uid": user.telegram_user_id}, known_lang=user.language)
 
         hidden_ids = _listing_action_ids(session, user.id, "hidden")
-        # duplicate_of_id.is_(None): 2026-09-13 cross-source dedup — a duplicate row is a real
-        # DB row (still upserted/price-refreshed every run) but never its own visible listing, see
-        # models.py's Listing.duplicate_of_id docstring.
-        listings_query = select(Listing).where(
-            Listing.is_delisted.is_(False), Listing.duplicate_of_id.is_(None)
-        )
-        if user.filter.deal_type:
-            listings_query = listings_query.where(Listing.deal_type == user.filter.deal_type)
-        if user.filter.cities:
-            # Found live 2026-09-07: this used to only ever look at the 200 most-recently-scraped
-            # listings across EVERY city/deal_type, THEN filter — so a narrow filter for one
-            # specific (usually less active) city could have its own matching listings permanently
-            # pushed out of that window by newer listings scraped for every other city, city and
-            # deal_type both being hard filters this evaluate() call below already enforces
-            # anyway, so applying them here too only ever removes rows that would have failed
-            # matching regardless — never changes which listings can actually match. Mirrors
-            # bot/handlers/apartments.py's find_matching_listings, which had the identical gap.
-            listings_query = listings_query.where(Listing.city.in_(user.filter.cities))
-        # 2026-09-15: no `.limit(...)` here anymore — used to cap the underlying candidate scan at
-        # 500 most-recently-scraped rows before filtering, same spirit as the city-window bug just
-        # above and bot/handlers/apartments.py's own find_matching_listings (see that function's
-        # 2026-09-15 comment for the real owner report this fixes): a broad filter matching
-        # thousands of listings only ever showed whichever happened to be among the 500 most
-        # recent, with the rest silently invisible however far the user scrolled. `page_items`
-        # below still slices to APARTMENTS_PAGE_SIZE per request either way — this only widens the
-        # candidate pool that gets filtered+paginated, not how much renders into the DOM at once.
-        listings = session.scalars(
-            listings_query.order_by(Listing.first_seen_at.desc(), Listing.id.desc())
-        ).all()
-        # 2026-09-06: previously didn't exclude hidden listings at all (unlike the bot's own
-        # /apartments, see find_matching_listings) — a listing hidden via the Telegram 🙈 button
-        # kept showing up here regardless. Same UserListingAction table, so this is a real fix, not
-        # a new feature.
-        matches = [
+        # 2026-10-14: measured live at 16-27 s per page (and per infinite-scroll batch) - see listing_matches.py's
+        # MATCH_COLUMNS comment. The match scan now reads light rows only, and its result (just the ordered ids) is
+        # kept for a couple of minutes per user + filter + hidden set, so scrolling loads only the next 24 listings.
+        match_ids = _cached_match_ids(session, user.id, user.filter, hidden_ids)
+        page_items = [
             listing
-            for listing in listings
-            if listing.id not in hidden_ids and evaluate(user.filter, listing).matched
+            for listing in load_listings(session, match_ids[offset : offset + APARTMENTS_PAGE_SIZE])
+            if not listing.is_delisted  # taken down since the ids were cached
         ]
-        # 2026-09-06: rendering all (up to 200) matches into one page crashed real visitors'
-        # browsers — up to 200 full card subtrees (carousel, reaction forms, badges) is too much
-        # DOM at once on a weak mobile device, independent of the backdrop-filter fix just above
-        # in git history. Paginated instead, matching the reference bot's own /apartments
-        # (listings load in as you scroll, not all at once) — see PROJECT_STATE.md.
-        page_items = matches[offset : offset + APARTMENTS_PAGE_SIZE]
         next_offset = offset + APARTMENTS_PAGE_SIZE
-        has_more = next_offset < len(matches)
+        has_more = next_offset < len(match_ids)
         liked_ids = _listing_action_ids(session, user.id, "liked")
         # Only true when this page was actually reached via the real, signed session cookie — the
         # "insecure temporary access" notice below must not show for a real login just because a
@@ -1221,7 +1218,7 @@ def apartments(
 
     context = {
         "listings": page_items,
-        "total_count": len(matches),
+        "total_count": len(match_ids),
         "next_offset": next_offset,
         "has_more": has_more,
         "uid": user.telegram_user_id,

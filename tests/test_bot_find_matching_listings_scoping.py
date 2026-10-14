@@ -22,14 +22,18 @@ find_matching_listings = apartments_module.find_matching_listings
 
 
 class _RecordingSession:
-    """Only scalars() is exercised by find_matching_listings: once for hidden-listing-ids, once
-    for the listings query itself — both captured so the test can pick out the one selecting from
-    "listings"."""
+    """find_matching_listings reads hidden-listing-ids through scalars() and scans the listings
+    through execute() (light rows, 2026-10-14) — both captured so the test can pick out the one
+    selecting from "listings"."""
 
     def __init__(self):
         self.captured_stmts = []
 
     def scalars(self, stmt):
+        self.captured_stmts.append(stmt)
+        return []
+
+    def execute(self, stmt):
         self.captured_stmts.append(stmt)
         return []
 
