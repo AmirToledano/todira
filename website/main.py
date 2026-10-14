@@ -49,6 +49,7 @@ from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 import httpx
 from todira_common import listing_enrichment
@@ -80,8 +81,9 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import defer
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
@@ -1139,6 +1141,127 @@ def _attach_also_on(session, listings, lang: str | None) -> None:
             item.also_on = entries
     except Exception:
         logger.warning("could not work out the 'also posted on' sites for a listing page", exc_info=True)
+
+
+# 2026-10-14 owner request: "when you click a listing, the page itself should be rich and full, not look exactly like
+# the card before I clicked". The detail view (apartments.html's openListingDetail) now loads this fragment: every
+# fact we hold, laid out as a property sheet, the amenities we know either way, how the price compares with the same
+# kind of flat around it, its price history, when we found it and when we last saw it live, every site it was posted
+# on, a small map, and similar listings nearby. Only real data: a section with nothing to show is left out.
+_ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
+_SIMILAR_LISTINGS_SHOWN = 4
+_AREA_COMPARE_MIN_LISTINGS = 5
+
+
+def _area_price_comparison(session, listing: Listing) -> dict | None:
+    """The median asking price of the same kind of listing (deal type, room count) in the same neighborhood - or the
+    whole city when the neighborhood has fewer than _AREA_COMPARE_MIN_LISTINGS of them - and how this one compares."""
+    if not listing.price or not listing.city:
+        return None
+    base = select(func.percentile_cont(0.5).within_group(Listing.price), func.count()).where(
+        Listing.is_delisted.is_(False),
+        Listing.duplicate_of_id.is_(None),
+        Listing.deal_type == listing.deal_type,
+        Listing.price.is_not(None),
+        Listing.price > 0,
+        Listing.id != listing.id,
+        Listing.city == listing.city,
+    )
+    if listing.rooms is not None:
+        base = base.where(Listing.rooms == listing.rooms)
+    scopes = []
+    if listing.neighborhood:
+        scopes.append((listing.neighborhood, base.where(Listing.neighborhood == listing.neighborhood)))
+    scopes.append((listing.city, base))
+    for area, stmt in scopes:
+        median, count = session.execute(stmt).one()
+        if median and count >= _AREA_COMPARE_MIN_LISTINGS:
+            median = float(median)
+            return {
+                "area": area,
+                "median": int(round(median, -1)),
+                "count": count,
+                "diff_pct": int(round((listing.price - median) / median * 100)),
+            }
+    return None
+
+
+def _similar_listings(session, listing: Listing, hidden_ids: set[int]) -> list[Listing]:
+    """Up to _SIMILAR_LISTINGS_SHOWN other live listings like this one: same city and deal type, rooms within half a
+    room, price within 20%, the same neighborhood first, newest first."""
+    if not listing.city:
+        return []
+    query = (
+        select(Listing)
+        .options(defer(Listing.raw_payload))
+        .where(
+            Listing.is_delisted.is_(False),
+            Listing.duplicate_of_id.is_(None),
+            Listing.deal_type == listing.deal_type,
+            Listing.city == listing.city,
+            Listing.id != listing.id,
+        )
+    )
+    if listing.duplicate_of_id is not None:
+        query = query.where(Listing.id != listing.duplicate_of_id)
+    if listing.rooms is not None:
+        query = query.where(Listing.rooms.between(listing.rooms - Decimal("0.5"), listing.rooms + Decimal("0.5")))
+    if listing.price:
+        query = query.where(Listing.price.between(int(listing.price * 0.8), int(listing.price * 1.2)))
+    if hidden_ids:
+        query = query.where(Listing.id.not_in(hidden_ids))
+    order = [Listing.first_seen_at.desc(), Listing.id.desc()]
+    if listing.neighborhood:
+        order.insert(0, case((Listing.neighborhood == listing.neighborhood, 0), else_=1))
+    return list(session.scalars(query.order_by(*order).limit(_SIMILAR_LISTINGS_SHOWN)))
+
+
+def _local_time(value: dt.datetime | None) -> dt.datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.timezone.utc)
+    return value.astimezone(_ISRAEL_TZ)
+
+
+@app.get("/apartments/listing/{listing_id}/details")
+def listing_details(request: Request, listing_id: int, uid: int | None = None):
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None:
+            return Response(status_code=401)
+        listing = session.get(Listing, listing_id)
+        if listing is None:
+            return Response(status_code=404)
+        lang = get_lang(request, user.language)
+        _attach_also_on(session, [listing], lang)
+        hidden_ids = _listing_action_ids(session, user.id, "hidden")
+        try:
+            area = _area_price_comparison(session, listing)
+        except Exception:
+            logger.warning("could not compare listing %s with its area", listing_id, exc_info=True)
+            area = None
+        try:
+            similar = _similar_listings(session, listing, hidden_ids)
+        except Exception:
+            logger.warning("could not find listings similar to %s", listing_id, exc_info=True)
+            similar = []
+        source_names = _SOURCE_DISPLAY_NAMES.get(listing.source) or {}
+        context = {
+            "l": listing,
+            "area": area,
+            "similar": similar,
+            "source_name": source_names.get("he" if lang == "he" else "default", listing.source),
+            "posted_on": _local_time(listing.posted_at),
+            "first_seen": _local_time(listing.first_seen_at),
+            "last_seen": _local_time(listing.scraped_at),
+            "price_changed_on": _local_time(listing.price_changed_at),
+            "delisted_on": _local_time(listing.delisted_at),
+            "price_per_sqm": (
+                int(round(listing.price / listing.size_sqm)) if listing.price and listing.size_sqm else None
+            ),
+        }
+    return _render(request, "_listing_details.html", context, known_lang=user.language)
 
 
 @app.get("/go/{listing_id}")

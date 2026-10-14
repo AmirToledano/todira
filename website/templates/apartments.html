@@ -223,7 +223,8 @@
     <div class="apt-listing-modal-body apt-detail-body" id="apt-listing-modal-body"
          data-description-heading="{{ t('apartments.detail_description_heading') }}"
          data-posted-on-template="{{ t('apartments.detail_posted_on', date='__DATE__') }}"
-         data-also-on-label="{{ t('apartments.detail_also_on') }}"></div>
+         data-also-on-label="{{ t('apartments.detail_also_on') }}"
+         data-details-loading="{{ t('details.loading') }}"></div>
   </div>
 </div>
 
@@ -575,6 +576,85 @@
       updateFilterPaneScrollFade();
     }
 
+    // 2026-10-14 owner request ("when you click a listing the page itself should be rich and full, not look exactly
+    // like the card"): loads main.py's listing_details fragment (templates/_listing_details.html) and puts its three
+    // slots into the view built from the card above: "top" (area price, property facts, amenities) replaces the
+    // card's chip row, "middle" (where else it was posted, timeline, map) goes before the contact buttons, "end"
+    // (similar listings) goes last. If the request fails the card-based view simply stays as it is.
+    var richDetailsCache = {};
+    function initDetailMap(container) {
+      var mapEl = container.querySelector('.ld-map');
+      if (!mapEl) { return; }
+      if (typeof L === 'undefined') {
+        // A deep-linked listing can open before leaflet.js (further down this page) has loaded.
+        if (document.readyState !== 'complete') {
+          window.addEventListener('load', function () { initDetailMap(container); }, { once: true });
+        } else {
+          (mapEl.closest('.ld-map-wrap') || mapEl).remove();
+        }
+        return;
+      }
+      var lat = parseFloat(mapEl.dataset.lat), lng = parseFloat(mapEl.dataset.lng);
+      if (isNaN(lat) || isNaN(lng)) { return; }
+      try {
+        var detailMap = L.map(mapEl, {
+          zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+          boxZoom: false, keyboard: false, touchZoom: false, tap: false
+        }).setView([lat, lng], 15);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19,
+          attribution: '© <a href="https://www.esri.com" target="_blank">Esri</a>'
+        }).addTo(detailMap);
+        L.circleMarker([lat, lng], {
+          radius: 9, color: '#173c40', weight: 2, fillColor: '#0e8a82', fillOpacity: 0.9
+        }).addTo(detailMap);
+        setTimeout(function () { detailMap.invalidateSize(); }, 60);
+      } catch (e) { (mapEl.closest('.ld-map-wrap') || mapEl).remove(); }
+    }
+    function placeRichDetails(clone, html) {
+      var holder = document.createElement('div');
+      holder.innerHTML = html;
+      var top = holder.querySelector('[data-slot="top"]');
+      var middle = holder.querySelector('[data-slot="middle"]');
+      var end = holder.querySelector('[data-slot="end"]');
+      var body = clone.querySelector('.listing-body');
+      if (!body || !top || !middle || !end) { return; }
+      var loadingEl = clone.querySelector('.ld-loading');
+      if (loadingEl) { loadingEl.remove(); }
+      var badges = clone.querySelector('.feature-badges');
+      if (badges) { badges.replaceWith(top); } else { body.prepend(top); }
+      // The sources and timeline sections replace the two plain lines buildDetailContent added under the footer.
+      clone.querySelectorAll('.apt-modal-also-on, .apt-modal-posted-on').forEach(function (el) { el.remove(); });
+      var contact = body.querySelector('.contact-actions') || body.querySelector('.listing-footer');
+      if (contact) { contact.before(middle); } else { body.appendChild(middle); }
+      body.appendChild(end);
+      initDetailMap(clone);
+      updateFilterPaneScrollFade();
+    }
+    function loadRichDetails(card, clone) {
+      var id = card.dataset.listingId;
+      if (!id) { return; }
+      if (richDetailsCache[id]) { placeRichDetails(clone, richDetailsCache[id]); return; }
+      var badges = clone.querySelector('.feature-badges');
+      if (badges) {
+        var loadingEl = document.createElement('div');
+        loadingEl.className = 'ld-loading';
+        loadingEl.textContent = modalBody.dataset.detailsLoading || '';
+        badges.after(loadingEl);
+      }
+      fetch('/apartments/listing/' + encodeURIComponent(id) + '/details', { credentials: 'same-origin' })
+        .then(function (resp) { return resp.ok ? resp.text() : null; })
+        .then(function (html) {
+          if (html === null) { throw new Error('no details'); }
+          richDetailsCache[id] = html;
+          placeRichDetails(clone, html);
+        })
+        .catch(function () {
+          var leftover = clone.querySelector('.ld-loading');
+          if (leftover) { leftover.remove(); }
+        });
+    }
+
     function openListingDetail(card) {
       var clone = buildDetailContent(card);
       lastFocusedEl = document.activeElement;
@@ -597,6 +677,7 @@
         document.body.classList.add('apt-modal-open'); // blocks background scroll while open
         modalHeader.focus();
       }
+      loadRichDetails(card, clone);
     }
     window.__aptOpenListingDetail = openListingDetail; // read by the Leaflet script below, on pin click
 
@@ -662,6 +743,18 @@
       var card = e.target.closest('.listing-card');
       if (!card) { return; }
       openListingDetail(card);
+    });
+
+    // A "similar apartments" link opens that listing right here when its card is already on the page; otherwise the
+    // link's own /apartments?listing=<id> deep link loads it.
+    document.addEventListener('click', function (e) {
+      var similarLink = e.target.closest('.ld-similar-card');
+      if (!similarLink || e.ctrlKey || e.metaKey || e.shiftKey) { return; }
+      var match = /[?&]listing=(\d+)/.exec(similarLink.getAttribute('href') || '');
+      var target = match && grid.querySelector('.listing-card[data-listing-id="' + match[1] + '"]');
+      if (!target) { return; }
+      e.preventDefault();
+      openListingDetail(target);
     });
 
     // Delegated on document, not on modalBody/filterPaneDetailBody individually — the detail
