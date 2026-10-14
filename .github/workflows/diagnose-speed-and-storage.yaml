@@ -1,0 +1,181 @@
+name: Diagnose — site speed and listing storage (read-only)
+
+# Owner report 2026-10-14: the site is slow and moving between pages takes long; also asked to delete listings after a
+# month to save AWS space. Before changing anything: real numbers. Read-only - prints only timings, sizes, counts and
+# headers (never a token, id, email or phone).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Public timings (from GitHub's runner) and response headers
+        run: |
+          t() { curl -s -o /dev/null -H 'Accept-Encoding: gzip, br, zstd' \
+                  -w "$1  code=%{http_code} bytes=%{size_download} connect=%{time_connect}s tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s\n" "$2"; }
+          for p in / /about /login /contact /upgrade; do for i in 1 2 3; do t "$p" "https://todira.app$p"; done; done
+          HOME_HTML=$(curl -s https://todira.app/)
+          JS=$(printf '%s' "$HOME_HTML" | grep -oE '/static/landing/assets/index-[^"]+\.js' | head -1)
+          CSS=$(printf '%s' "$HOME_HTML" | grep -oE '/static/style\.css\?v=[^"]+' | head -1)
+          echo "--- assets ---"
+          for a in "$JS" "$CSS" /static/landing/assets/$(curl -s "https://todira.app$JS" | grep -oE 'i18n-[A-Za-z0-9_-]+\.js' | head -1); do t "$a" "https://todira.app$a"; done
+          echo "--- headers: home ---"
+          curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip, br, zstd' https://todira.app/ | grep -iE '^(HTTP|content-encoding|cache-control|etag|last-modified|content-length|server|via)' || true
+          echo "--- headers: home JS ---"
+          curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip, br, zstd' "https://todira.app$JS" | grep -iE '^(HTTP|content-encoding|cache-control|etag|last-modified|content-length)' || true
+          echo "--- headers: style.css ---"
+          curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip, br, zstd' "https://todira.app$CSS" | grep -iE '^(HTTP|content-encoding|cache-control|etag|last-modified|content-length)' || true
+          echo "--- home page HTML size uncompressed: $(printf '%s' "$HOME_HTML" | wc -c) bytes ---"
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Node and pods
+        run: |
+          kubectl top nodes || true
+          kubectl top pods -n todira || true
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          kubectl get node "$NODE" -o jsonpath='{.metadata.labels.node\.kubernetes\.io/instance-type}{"  "}{.metadata.labels.topology\.kubernetes\.io/region}{"\n"}' || true
+          kubectl describe node "$NODE" | sed -n '/Conditions:/,/Addresses:/p;/Allocated resources:/,/Events:/p' || true
+          echo "--- node filesystem (kubelet stats) ---"
+          kubectl get --raw "/api/v1/nodes/$NODE/proxy/stats/summary" | python3 -c "
+          import json, sys
+          s = json.load(sys.stdin)['node']
+          for name in ('fs', 'runtime'):
+              part = s.get(name) or {}
+              if name == 'runtime':
+                  part = (part.get('imageFs') or {})
+              cap, used = part.get('capacityBytes'), part.get('usedBytes')
+              if cap:
+                  print(f'{name}: used {used/1e9:.1f} GB of {cap/1e9:.1f} GB ({100*used/cap:.0f}%)')
+          mem = s.get('memory') or {}
+          if mem.get('workingSetBytes') is not None:
+              print(f\"node memory working set {mem['workingSetBytes']/1e9:.2f} GB, available {(mem.get('availableBytes') or 0)/1e9:.2f} GB\")
+          " || true
+          kubectl get pods -n todira -o wide
+          echo "--- restarts / OOM ---"
+          kubectl get pods -n todira -o jsonpath='{range .items[*]}{.metadata.name}{"  restarts="}{.status.containerStatuses[0].restartCount}{"  last="}{.status.containerStatuses[0].lastState.terminated.reason}{"\n"}{end}' || true
+
+      - name: CPU steal (burstable instance out of credits?) and load
+        run: |
+          WEB=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$WEB" -- python3 -c "
+          import time
+          def read():
+              f = open('/proc/stat').readline().split()[1:]
+              return [int(x) for x in f]
+          a = read(); time.sleep(10); b = read()
+          d = [y - x for x, y in zip(a, b)]
+          total = sum(d) or 1
+          names = ['user','nice','system','idle','iowait','irq','softirq','steal']
+          print('host CPU over 10s: ' + ', '.join(f'{n}={100*v/total:.1f}%' for n, v in zip(names, d)))
+          print('loadavg:', open('/proc/loadavg').read().strip())
+          m = {l.split(':')[0]: l.split(':')[1].strip() for l in open('/proc/meminfo')}
+          print('MemTotal', m['MemTotal'], 'MemAvailable', m['MemAvailable'], 'SwapTotal', m.get('SwapTotal'), 'SwapFree', m.get('SwapFree'))
+          "
+
+      - name: Server-side timings inside the cluster (no internet in between)
+        run: |
+          WEB=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$WEB" -- python3 -c "
+          import os, time, urllib.request
+          from todira_common.uid_token import signed_login_query
+          def get(path):
+              t = time.time()
+              with urllib.request.urlopen('http://127.0.0.1:8000' + path, timeout=60) as r:
+                  n = len(r.read()); code = r.status
+              return code, n, time.time() - t
+          for path in ['/healthz', '/', '/about', '/login', '/upgrade']:
+              for _ in range(3):
+                  code, n, s = get(path)
+                  print(f'{path:12} code={code} bytes={n} {s*1000:.0f} ms')
+          owner = os.environ.get('OWNER_TELEGRAM_USER_ID')
+          if owner:
+              q = signed_login_query(int(owner))
+              for label, path in [('apartments', '/apartments?' + q), ('apartments page 2', '/apartments?' + q + '&offset=24&fragment=1'),
+                                  ('filter', '/filter?' + q), ('account', '/account?' + q), ('liked', '/liked?' + q)]:
+                  for _ in range(2):
+                      code, n, s = get(path)
+                      print(f'{label:18} code={code} bytes={n} {s*1000:.0f} ms')
+          "
+
+      - name: Listing storage and ages
+        run: |
+          kubectl delete pod diag-speed-storage -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-speed-storage
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-speed-storage
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    psql "$CONN" -c "SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;"
+                    psql "$CONN" -c "
+                      SELECT relname AS table, pg_size_pretty(pg_total_relation_size(relid)) AS total,
+                             pg_size_pretty(pg_relation_size(relid)) AS heap,
+                             pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) AS toast_and_indexes,
+                             n_live_tup AS live_rows, n_dead_tup AS dead_rows
+                      FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 12;"
+                    psql "$CONN" -c "
+                      SELECT pg_size_pretty(sum(pg_column_size(raw_payload))::bigint) AS raw_payload_total,
+                             pg_size_pretty(avg(pg_column_size(raw_payload))::bigint) AS raw_payload_avg,
+                             pg_size_pretty(sum(pg_column_size(description))::bigint) AS description_total,
+                             pg_size_pretty(sum(pg_column_size(image_urls))::bigint) AS image_urls_total
+                      FROM listings;"
+                    echo '--- listings by source / deal / active, with first_seen age ---'
+                    psql "$CONN" -c "
+                      SELECT source, deal_type, NOT is_delisted AS active, count(*) AS rows,
+                             count(*) FILTER (WHERE first_seen_at < now() - interval '30 days') AS first_seen_30d_plus,
+                             count(*) FILTER (WHERE scraped_at < now() - interval '30 days') AS last_seen_30d_plus,
+                             count(*) FILTER (WHERE posted_at IS NOT NULL) AS has_posted_at,
+                             count(*) FILTER (WHERE posted_at < now() - interval '30 days') AS posted_30d_plus
+                      FROM listings GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;"
+                    echo '--- active listings: how old is the source posting date? ---'
+                    psql "$CONN" -c "
+                      SELECT source,
+                             count(*) FILTER (WHERE posted_at >= now() - interval '7 days') AS posted_0_7d,
+                             count(*) FILTER (WHERE posted_at < now() - interval '7 days' AND posted_at >= now() - interval '30 days') AS posted_7_30d,
+                             count(*) FILTER (WHERE posted_at < now() - interval '30 days' AND posted_at >= now() - interval '90 days') AS posted_30_90d,
+                             count(*) FILTER (WHERE posted_at < now() - interval '90 days') AS posted_90d_plus,
+                             count(*) FILTER (WHERE posted_at IS NULL) AS no_posted_at,
+                             min(posted_at) AS oldest_posted, max(posted_at) AS newest_posted
+                      FROM listings WHERE NOT is_delisted GROUP BY 1 ORDER BY 1;"
+                    echo '--- delisted listings by how long ago ---'
+                    psql "$CONN" -c "
+                      SELECT count(*) FILTER (WHERE delisted_at >= now() - interval '7 days') AS delisted_0_7d,
+                             count(*) FILTER (WHERE delisted_at < now() - interval '7 days' AND delisted_at >= now() - interval '30 days') AS delisted_7_30d,
+                             count(*) FILTER (WHERE delisted_at < now() - interval '30 days') AS delisted_30d_plus
+                      FROM listings WHERE is_delisted;"
+                    echo '--- rows that point at listings ---'
+                    psql "$CONN" -c "SELECT (SELECT count(*) FROM sent_notifications) AS sent_notifications, (SELECT count(*) FROM user_listing_actions) AS user_listing_actions;"
+          PODYAML
+          for i in $(seq 1 60); do
+            PHASE=$(kubectl get pod diag-speed-storage -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-speed-storage || true
+          kubectl delete pod diag-speed-storage -n todira --ignore-not-found
+          echo "--- postgres volume ---"
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$PG" -- df -h /var/lib/postgresql/data || true
