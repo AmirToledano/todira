@@ -2432,6 +2432,7 @@ def run_once() -> dict[str, int]:
         )
         retried_unnotified_count = len(retry_listings)
         new_listings = new_listings + retry_listings
+        retry_ids = {listing.id for listing in retry_listings}
         price_change_ids = [listing_id for listing_id, _old_price in price_change_pairs]
         listings_by_id = {
             listing.id: listing
@@ -2500,13 +2501,14 @@ def run_once() -> dict[str, int]:
                                 new_listings,
                                 price_change_events,
                                 only_telegram_user_id=owner_telegram_user_id,
+                                retry_ids=retry_ids,
                             )
                         )
                     )
                     summary["notifications_suspended"] = True
             else:
                 summary.update(
-                    asyncio.run(run_notifications(session, new_listings, price_change_events))
+                    asyncio.run(run_notifications(session, new_listings, price_change_events, retry_ids=retry_ids))
                 )
         finally:
             # 2026-10-09: the catch-up on older Yad2 listings whose details were never read (up to

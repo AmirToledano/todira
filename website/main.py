@@ -72,7 +72,7 @@ from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES, EXTRA_LOCALITIES, LOCALITY_SET, REGIONS
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
-from todira_common.listing_matches import load_listings, matching_listing_rows, shown_listing_id
+from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
 from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from todira_common.uid_token import verify_uid_token
 from fastapi import FastAPI, Form, Request
@@ -1614,6 +1614,22 @@ def toggle_no_brokers(
     return RedirectResponse(_identity_redirect_url("/apartments", uid), status_code=303)
 
 
+def _mark_matches_seen_in_background(user_id: int) -> None:
+    """After a filter change on the website: what already matches is recorded as sent, so the scraper's next run does
+    not push a week of older listings at once (listing_matches.mark_recent_matches_seen has the bug this fixes).
+    Off the request thread - the page never waits for it."""
+    def _run() -> None:
+        try:
+            with get_session() as session:
+                filter_row = session.scalar(select(Filter).where(Filter.user_id == user_id))
+                if filter_row is not None:
+                    mark_recent_matches_seen(session, user_id, filter_row)
+        except Exception:
+            logger.exception("could not record the current matches as seen after a filter change")
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 @app.post("/filter/region")
 def filter_set_region(
     request: Request,
@@ -1663,6 +1679,7 @@ def filter_set_region(
             f.map_radius_m = radius_m
             f.map_sw_lat = f.map_sw_lng = f.map_ne_lat = f.map_ne_lng = None
         session.commit()
+        _mark_matches_seen_in_background(user.id)
 
     return RedirectResponse(_identity_redirect_url("/apartments", uid), status_code=303)
 
@@ -2972,6 +2989,7 @@ def filter_update(
         f.keywords = [k.strip() for k in keywords.split(",") if k.strip()]
         f.flexible_match = flexible_match is not None
         session.commit()
+        _mark_matches_seen_in_background(user.id)
 
     # 2026-09-08 UX fix (owner's own report): a successful save used to redirect back to /filter
     # itself, leaving the visitor staring at the same form with no visible feedback that anything

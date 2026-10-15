@@ -27,6 +27,7 @@ from todira_common.google_link import TOKEN_PREFIX as GOOGLE_LINK_TOKEN_PREFIX
 from todira_common.google_link import resolve_google_link_token
 from todira_common.bot_strings import BOT_STRINGS, bot_text
 from todira_common.language import DEFAULT_LANG, normalize_language_code
+from todira_common.listing_matches import mark_recent_matches_seen
 from todira_common.models import User
 from todira_common.uid_token import signed_login_query
 from sqlalchemy import select
@@ -120,6 +121,15 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                 code_user.first_name = code_user.first_name or tg_user.first_name
                 code_user.is_active = True
                 session.commit()
+                # 2026-10-15 (bug): a website account that just got Telegram would otherwise be sent every matching
+                # listing of the past week on the next run - see listing_matches.mark_recent_matches_seen.
+                linked_filter = getattr(code_user, "filter", None)
+                if linked_filter is not None:
+                    try:
+                        mark_recent_matches_seen(session, code_user.id, linked_filter)
+                    except Exception:
+                        session.rollback()
+                        logger.exception("could not record the current matches as seen after linking Telegram")
                 return "linked", bot_text("start.linked", code_user.language)
             # Unknown/expired code — fall through to the normal /start handling below rather
             # than erroring, since a plain "/start" with no payload hits this same path with

@@ -460,3 +460,29 @@ def test_a_hidden_listing_gets_no_price_alert():
         asyncio.run(notifier._notify_price_change(SimpleNamespace(), session, listing, old_price=5000))
 
     send.assert_not_called()
+
+
+def test_retried_listings_reach_one_user_at_most_a_few_times_per_run():
+    """2026-10-15: the retry pass could push a week of listings at once to a user whose filter just widened."""
+    budget: dict[int, int] = {}
+    user = _user()
+    sends = AsyncMock(return_value=True)
+
+    def _session():
+        return SimpleNamespace(get=lambda model, pk: user, add=lambda obj: None, commit=lambda: None)
+
+    with (
+        patch.object(notifier, "_candidate_filters", return_value=[SimpleNamespace(user_id=1)]),
+        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
+        patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
+        patch.object(notifier, "_complete_card_fields", AsyncMock()),
+        patch.object(notifier, "format_caption", return_value="caption"),
+        patch.object(notifier, "send_listing_card", sends),
+        patch.object(notifier, "SEND_DELAY_SECONDS", 0),
+    ):
+        for listing_id in range(notifier.RETRY_MAX_PER_USER_PER_RUN + 3):
+            listing = SimpleNamespace(id=listing_id, price=4000, description=None)
+            asyncio.run(notifier._notify_new_matches(SimpleNamespace(), _session(), listing, per_user_budget=budget))
+
+    assert sends.await_count == notifier.RETRY_MAX_PER_USER_PER_RUN

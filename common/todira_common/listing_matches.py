@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from todira_common.enums import NotificationReason
@@ -179,3 +180,29 @@ def find_new_matches_to_show(
             SentNotification(user_id=user_id, listing_id=listing.id, reason=NotificationReason.NEW)
         )
     return len(matches), new_to_show
+
+
+# How far back the scraper's retry pass looks for listings nobody was told about (scraper/main.py
+# _RETRY_UNNOTIFIED_HOURS) - kept in step with it.
+RECENT_MATCH_WINDOW = dt.timedelta(days=7)
+
+
+def mark_recent_matches_seen(session: Session, user_id: int, filter_row: Filter) -> int:
+    """2026-10-15 (bug): the scraper's retry pass sends every listing of the last week that nobody was ever told about
+    to whoever matches it now. Saving a filter in the BOT marks what already matches (find_new_matches_to_show), but a
+    filter changed on the WEBSITE, or Telegram linked to a website account, did not - so the next run sent that user
+    every matching listing of the past week at once (an open filter: thousands). This records the recent current
+    matches as already sent - ids only, no cards, nothing sent - so only genuinely new listings arrive from now on.
+    Commits. Returns how many were recorded."""
+    since = dt.datetime.now(dt.timezone.utc) - RECENT_MATCH_WINDOW
+    ids = [row.id for row in matching_listing_rows(session, filter_row, hidden_listing_ids(session, user_id))
+           if row.first_seen_at is not None and row.first_seen_at >= since]
+    for start in range(0, len(ids), 5000):  # a week of an open filter is tens of thousands; 3 parameters a row, 65,535 max
+        session.execute(
+            pg_insert(SentNotification)
+            .values([{"user_id": user_id, "listing_id": listing_id, "reason": NotificationReason.NEW}
+                     for listing_id in ids[start:start + 5000]])
+            .on_conflict_do_nothing(constraint="uq_sent_notifications_user_listing_reason")
+        )
+    session.commit()
+    return len(ids)
