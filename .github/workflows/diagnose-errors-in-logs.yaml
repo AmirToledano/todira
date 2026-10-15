@@ -1,0 +1,69 @@
+name: Diagnose — which errors the live pods logged (read-only)
+
+# 2026-10-15 owner: "find bugs in the site, the bot, everywhere". Real errors from production logs, grouped: for every
+# Python traceback, the exception type and the last line of OUR code it went through; for every ERROR/WARNING line, the
+# logger and the first words of the message with every digit removed. Never the message text past that, never ids, user
+# text or ad content. Covers the website and bot pods since they started (each deploy restarts them) and the scraper
+# and Facebook scraper pods Kubernetes still keeps.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Group the errors
+        run: |
+          cat > /tmp/group.py <<'PY'
+          import collections, re, sys
+          name = sys.argv[1]
+          lines = sys.stdin.read().splitlines()
+          tracebacks = collections.Counter()
+          logged = collections.Counter()
+          frame = None
+          in_tb = False
+          for line in lines:
+              if line.startswith("Traceback (most recent call last)"):
+                  in_tb, frame = True, None
+                  continue
+              if in_tb:
+                  m = re.match(r'\s+File "([^"]+)", line (\d+), in (\S+)', line)
+                  if m:
+                      path = m.group(1)
+                      if "/site-packages/" not in path and "/dist-packages/" not in path and "/lib/python" not in path:
+                          frame = f"{path.split('/')[-1]}:{m.group(2)} {m.group(3)}"
+                      continue
+                  m = re.match(r"([A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt|Warning|Timeout|Refused|Failure)\w*)", line.strip())
+                  if m and not line.startswith(" "):
+                      tracebacks[(m.group(1), frame or "-")] += 1
+                      in_tb = False
+                  continue
+              m = re.search(r"\b(ERROR|WARNING|CRITICAL)\b(?: ([\w.]+):)?:?\s+(.*)", line)
+              if m:
+                  words = " ".join(re.sub(r"\d+", "#", m.group(3)).split()[:7])[:70]
+                  logged[(m.group(1), m.group(2) or "-", words)] += 1
+          print(f"=== {name}: {len(lines)} log lines")
+          for (exc, where), n in tracebacks.most_common(25):
+              print(f"  traceback x{n}: {exc} at {where}")
+          for (level, logger, words), n in logged.most_common(30):
+              print(f"  {level} x{n}: [{logger}] {words}")
+          PY
+          for dep in todira-website todira-bot; do
+            kubectl logs -n todira deploy/$dep --since=48h --tail=200000 2>/dev/null | python3 /tmp/group.py "$dep (since its last restart)"
+            kubectl logs -n todira deploy/$dep --previous --tail=200000 2>/dev/null | python3 /tmp/group.py "$dep (previous container)" || true
+          done
+          for app in todira-scraper todira-facebook-scraper; do
+            for pod in $(kubectl get pods -n todira -l app=$app -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+              kubectl logs -n todira "$pod" --tail=200000 2>/dev/null | python3 /tmp/group.py "$app $(kubectl get pod -n todira $pod -o jsonpath='{.status.startTime}')"
+            done
+          done
