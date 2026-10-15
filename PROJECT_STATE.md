@@ -5,7 +5,12 @@
   person in the singular masculine ("אתה", no "/י" or plural "אתם"), short and casual, the way the owner talks. Legal
   pages (privacy, terms, accessibility) were left as they are. Emoji and colors untouched.
 - The scan hours (9:00-22:00) are gone from every page: the owner does not want visitors to know them.
-- Facebook is scanned 3 times a day, the other sites hourly, so no text puts "every hour" next to the list of all four.
+- Owner rule (same day): nothing user-facing may say where the listings come from - no site names (Yad2, Komo,
+  Homeless, Facebook), no "4 sites", not in the site, the bot, social content or the content skills. The only place a
+  source name appears is on a listing itself (its source label, "also posted on", the link to the original ad).
+- Checked live (`diagnose-cross-source-duplicates.yaml`): "also posted on" is real - ~6,000 active listings show it
+  (mostly Yad2/Komo pairs). It never fires for Facebook (those ads have no street or rooms), and about a third of the
+  likely Yad2/Komo pairs and most Homeless/Yad2 pairs are missed because a floor is missing or differs.
 - Owner asked to keep the old wording in case he changes his mind: revert PR #786 on GitHub (it touches only
   `website/i18n.py`, the generated `content.json` and the rebuilt `static/landing` bundle).
 
