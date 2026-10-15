@@ -23,6 +23,20 @@
     (no street, rooms or size in those ads). Likes, hides and sent marks move to the row that stays shown.
 - Owner asked to keep the old wording in case he changes his mind: revert PR #786 on GitHub (it touches only
   `website/i18n.py`, the generated `content.json` and the rebuilt `static/landing` bundle).
+- Bug hunt the same night (owner: "keep working, find bugs everywhere"), each fix with tests:
+  - Facebook ads had no room count (0 of 65), so no one with a rooms range got them: rooms/size now read from the
+    title and description (#792). A real person's phone and a broker's phone were removed from this public repo.
+  - Bot /filter: a resumed draft wrote old values over website edits; Save now writes only what changed in the bot (#793).
+  - Hidden ads still got price-drop/new alerts; website filter "5,000" became "no limit", min > max matched nothing;
+    /upgrade/pay without a payment showed raw JSON; Komo "price not stated" ads (~2%) were dropped and re-fetched
+    every run (#798).
+  - Same flat posted twice on one site with the same text is linked (261 Yad2 pairs); likes/hides on a linked ad land
+    on the shown row; the "next" redirect accepted "/\evil" (#800).
+  - A website filter change or linking Telegram could flood a user with a week of old listings via the retry pass:
+    current matches are now recorded as sent, and retried listings reach a user at most 5 times a run (#801).
+  - New read-only diagnostics: `diagnose-errors-in-logs.yaml` (grouped errors from the live pods),
+    `diagnose-komo-no-price.yaml`, `diagnose-same-site-duplicates.yaml`.
+  - Idea left for the owner (not built): a "your trial ends tomorrow" reminder - only paying users get one today.
 
 ## ▶ 2026-10-14 (owner: "the site is slow"; "delete listings after a month") — measured first, then fixed
 - Measured live (`diagnose-speed-and-storage.yaml`): ordinary pages take ~2 ms on the server, but **/apartments took
