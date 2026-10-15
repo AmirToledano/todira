@@ -2375,6 +2375,12 @@ async def _process_takbull_payload(body: dict) -> Response:
         # at the ORIGINAL (now already "paid") Payment row, since that row IS the subscription from Takbull's point of
         # view. Genuinely NOT live-verified yet — see takbull_client.py's module docstring.
         payment, is_renewal = _match_takbull_payment(session, body, payment_id)
+        if payment is None and _already_credited_takbull_charge(session, body, payment_id):
+            # 2026-10-16: the owner's Takbull account has the same webhook set up twice, so every charge arrives twice.
+            # The first credits it; the second used to fall through to "did not match" and alert the owner about a
+            # payment that was in fact credited. A repeat of a credited charge is now quietly acknowledged.
+            logger.info("Takbull webhook repeats a charge already credited (order_reference=%r) - ignored", order_reference)
+            return Response(status_code=200)
         if payment is None:
             logger.warning(
                 "Takbull webhook (order_reference=%r) did not match any pending Takbull payment, user email or "
@@ -2492,9 +2498,29 @@ async def _process_takbull_payload(body: dict) -> Response:
             user.takbull_subscription_uniqid = payment.subscription_uniqid
             user.cancel_at_period_end = False
         extend_paid_until(user, payment.plan)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # The same charge delivered twice at the same moment: the other request already credited it (the unique
+            # gateway_transaction_id stopped this one) - nothing is granted twice.
+            session.rollback()
+            logger.info("Takbull webhook for payment_id=%s lost a race with its own repeat - already credited", payment.id)
 
     return Response(status_code=200)
+
+
+def _already_credited_takbull_charge(session, body: dict, payment_id: int | None) -> bool:
+    """True when this webhook is a repeat of a charge we already credited: its transaction id is on a paid payment, or
+    its order reference names a payment that is already paid by that very charge."""
+    transaction_id = str(body.get("uniqId") or body.get("OrderNumber") or "")
+    if transaction_id and session.scalar(
+        select(Payment.id).where(Payment.gateway_transaction_id == transaction_id, Payment.status == "paid").limit(1)
+    ) is not None:
+        return True
+    if payment_id is not None and not transaction_id:
+        paid = session.scalar(select(Payment).where(Payment.id == payment_id, Payment.status == "paid"))
+        return paid is not None and paid.gateway_transaction_id == str(payment_id)
+    return False
 
 
 # 2026-10-13 (owner asked what the "ממתין" rows on /account were): every press of the checkout button records a pending
