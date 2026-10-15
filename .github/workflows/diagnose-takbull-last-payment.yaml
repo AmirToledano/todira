@@ -1,0 +1,48 @@
+name: Diagnose — did the last Takbull payment get credited? (read-only)
+
+# 2026-10-16: the owner's live payment test on a fresh account. Shows the Takbull payments of the last 3 hours and, for
+# each, whether its account now has paid access and for how long - plus how the website handled the webhooks (counts of
+# credited / repeated / unmatched lines). Never an email, name, phone, user id or raw payload (the raw-payload log line
+# is counted, never printed).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Payments of the last 3 hours
+        run: |
+          cat > /tmp/q.sql <<'SQL'
+          SELECT p.id AS payment, p.plan, p.amount_ils, p.status, (p.gateway_transaction_id IS NOT NULL) AS has_transaction,
+                 to_char(p.created_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') AS created_il,
+                 to_char(p.paid_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') AS paid_il,
+                 round(extract(epoch FROM (u.paid_until - now())) / 3600.0, 1) AS access_hours_left,
+                 (u.trial_ends_at < now()) AS trial_over, (u.google_sub IS NOT NULL) AS has_google, (u.telegram_user_id IS NOT NULL) AS has_telegram
+          FROM payments p JOIN users u ON u.id = p.user_id
+          WHERE p.gateway = 'takbull' AND p.created_at > now() - interval '3 hours'
+          ORDER BY p.id DESC;
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < /tmp/q.sql
+
+      - name: How the website handled the webhooks (counts only)
+        run: |
+          LOG=$(kubectl logs -n todira deploy/todira-website --since=3h 2>/dev/null || true)
+          echo "webhook payloads received:        $(echo "$LOG" | grep -c 'Takbull POST webhook raw payload' || true)"
+          echo "repeats of a credited charge:     $(echo "$LOG" | grep -c 'repeats a charge already credited' || true)"
+          echo "did not match any payment:        $(echo "$LOG" | grep -c 'did not match any pending Takbull payment' || true)"
+          echo "amount matched no pass:           $(echo "$LOG" | grep -c 'leaving pending rather than guessing' || true)"
+          echo "no success signal:                $(echo "$LOG" | grep -c 'no recognizable success signal' || true)"
+          echo "webhook requests (any status):    $(echo "$LOG" | grep -c 'POST /webhooks/takbull' || true)"
+          echo "webhook requests answered 200:    $(echo "$LOG" | grep 'POST /webhooks/takbull' | grep -c ' 200' || true)"
