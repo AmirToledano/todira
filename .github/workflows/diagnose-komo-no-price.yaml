@@ -1,0 +1,57 @@
+name: Diagnose — why some Komo ads have no price on their page (read-only)
+
+# 2026-10-15: every main scraper run logs dozens of "No price found on Komo details page" - and such an ad is dropped,
+# then fetched again as "new" on the next run, forever. This samples Komo's own nationwide id list from a GitHub
+# runner (Komo needs no proxy, see komo_client._isp_proxy_get), opens 60 random ad pages, and for those without the
+# price element shows the SHAPE of the page: size, which known blocks exist, and the text right after a price-like
+# class with every digit masked. No ad text beyond that, no contact details.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r scraper/requirements.txt
+      - name: Sample Komo ad pages
+        env:
+          DATABASE_URL: postgresql://unused:unused@localhost/unused
+          PYTHONPATH: scraper:common
+        run: |
+          python3 - <<'PY'
+          import collections, random, re, time
+          import komo_client as k
+          rent = k.fetch_all_coordinate_ids()
+          sale = k.fetch_all_coordinate_ids(iska="2", search_page_url=k.SALE_SEARCH_PAGE_URL)
+          print(f"ids: rent {len(rent)}, sale {len(sale)}")
+          random.seed(7)
+          sample = [("rent", c) for c in random.sample(rent, min(40, len(rent)))] + [("sale", c) for c in random.sample(sale, min(20, len(sale)))]
+          counts = collections.Counter()
+          shapes = collections.Counter()
+          for kind, c in sample:
+              try:
+                  page = k._isp_proxy_get(f"{k.DETAILS_PAGE_URL}?modaaNum={c['id']}", context_label="probe")
+              except Exception as exc:
+                  counts[(kind, "fetch failed " + type(exc).__name__)] += 1
+                  continue
+              time.sleep(0.5)
+              if k._PRICE_RE.search(page):
+                  counts[(kind, "price found")] += 1
+                  continue
+              counts[(kind, "NO price")] += 1
+              flat = re.sub(r"\s+", " ", page)
+              m = re.search(r'class="[^"]*[Pp]rice[^"]*"[^>]*>(.{0,90})', flat)
+              snippet = re.sub(r"\d", "#", re.sub(r"<[^>]+>", "|", m.group(1)))[:90] if m else "-"
+              markers = [w for w in ("modaaWPrice", "og:title", "ModaaWDetailsValue", "לא נמצא", "הוסרה", "אינה קיימת", "פג תוקף", "לא צוין", "מחיר") if w in page]
+              shapes[(len(page) // 20000 * 20000, tuple(markers), snippet)] += 1
+          for key, n in sorted(counts.items()):
+              print(f"{key[0]:5} {key[1]:25} {n}")
+          print("pages without a price - (size bucket, markers present, text after a price class):")
+          for key, n in shapes.most_common(15):
+              print(f"  x{n} {key}")
+          PY
