@@ -24,8 +24,10 @@ def _make_update(text: str):
 
 
 def _make_context():
+    # the menu is open, so a draft is in progress (a missing one is loaded from the saved filter - see test_filter_draft_merge.py)
     return SimpleNamespace(
-        user_data={}, bot=SimpleNamespace(send_message=AsyncMock(), edit_message_reply_markup=AsyncMock())
+        user_data={"draft": filter_conversation._default_draft()},
+        bot=SimpleNamespace(send_message=AsyncMock(), edit_message_reply_markup=AsyncMock()),
     )
 
 

@@ -17,6 +17,7 @@ following the exact same add/remove pattern as `loc` (cities) whenever that's wa
 from __future__ import annotations
 
 import asyncio
+import copy
 import datetime as dt
 import logging
 import math
@@ -348,6 +349,52 @@ def _parse_optional_date(raw: str) -> tuple[bool, dt.date | None]:
         return False, None
 
 
+# 2026-10-15 (bug): the bot keeps an unsaved /filter draft across visits, so a draft started in the bot, then the filter
+# edited on the website, then the bot's /filter resumed and saved, put the old values back over the website's. Now the
+# draft remembers the saved filter it started from ("draft_base"): /filter brings website edits into a resumed draft,
+# and Save writes only what was changed in the bot on top of whatever is saved by then.
+def _drop_draft(context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("draft", None)
+    context.user_data.pop("draft_base", None)
+
+
+def _normalized(values: dict) -> dict:
+    """Same shape for a draft, a saved filter and FilterData output (Decimal vs float rooms etc.), for comparing."""
+    try:
+        return FilterData(**values).model_dump()
+    except ValidationError:
+        return dict(values)
+
+
+def _bot_changes(draft: dict, base: dict) -> dict:
+    """The draft's values that differ from the saved filter it started from - what was changed in the bot."""
+    draft_n, base_n = _normalized(draft), _normalized(base)
+    return {field: draft[field] for field in draft if field not in base_n or draft_n.get(field) != base_n.get(field)}
+
+
+def _merge_onto_saved(saved: dict, values: dict, base: dict) -> dict:
+    """`values` (a validated draft) written over `saved` (the filter as it is now) - but only the fields changed in the
+    bot since `base`. Falls back to `values` as a whole if the combination is not a valid filter (e.g. the website
+    raised the minimum price above the bot's new maximum)."""
+    if _normalized(saved) == _normalized(base):
+        return values
+    merged = {**saved, **_bot_changes(values, base)}
+    try:
+        return FilterData(**merged).model_dump()
+    except ValidationError:
+        return values
+
+
+async def _ensure_draft(update: Update, context: ContextTypes.DEFAULT_TYPE) -> dict:
+    """The draft in progress, or - when there is none (lost or cleared while a menu was still on screen) - the saved
+    filter, never empty defaults that a Save would write over the user's real filter."""
+    draft = context.user_data.get("draft")
+    if draft is None:
+        draft, lang = await asyncio.to_thread(_load_draft_and_lang_from_db_sync, update.effective_user)
+        context.user_data.update(draft=draft, draft_base=copy.deepcopy(draft), lang=lang)
+    return draft
+
+
 def _load_draft_and_lang_from_db_sync(tg_user) -> tuple[dict, str]:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
@@ -365,17 +412,23 @@ async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     # /filter ever, or after Save/Cancel/allow_reentry's own reset already cleared it) — a resumed
     # draft already has "lang" stashed in user_data from the /filter call that started it, so no
     # DB round-trip is needed just to keep editing.
+    #
+    # 2026-10-15: the saved filter is read every time now, so edits made on the website since the draft began are
+    # brought into it (see _drop_draft's comment); a draft from before drafts remembered their start is replaced by
+    # the saved filter, since nothing says how old it is.
+    # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
+    # call directly on the event loop would freeze every other user's bot interaction too,
+    # not just this one, since PTB processes updates one at a time by default.
+    saved, lang = await asyncio.to_thread(_load_draft_and_lang_from_db_sync, update.effective_user)
     draft = context.user_data.get("draft")
-    if draft is None:
-        # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
-        # call directly on the event loop would freeze every other user's bot interaction too,
-        # not just this one, since PTB processes updates one at a time by default.
-        draft, lang = await asyncio.to_thread(
-            _load_draft_and_lang_from_db_sync, update.effective_user
-        )
-        context.user_data["draft"] = draft
-        context.user_data["lang"] = lang
-    lang = _lang(context)
+    base = context.user_data.get("draft_base")
+    if draft is None or base is None:
+        draft = saved
+    elif _normalized(saved) != _normalized(base):
+        draft = {**saved, **_bot_changes(draft, base)}
+    context.user_data["draft"] = draft
+    context.user_data["draft_base"] = copy.deepcopy(saved)
+    context.user_data["lang"] = lang
     context.user_data.pop("awaiting", None)
     sent = await update.message.reply_text(
         kb.render_root_summary(draft, lang),
@@ -408,7 +461,7 @@ def _describe_validation_error(exc: ValidationError, lang: str) -> str:
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
-def _save_and_match_sync(tg_user, values: dict) -> int:
+def _save_and_match_sync(tg_user, values: dict, base: dict | None = None) -> int:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
         existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
@@ -416,6 +469,8 @@ def _save_and_match_sync(tg_user, values: dict) -> int:
             existing = Filter(user_id=user.id, **values)
             session.add(existing)
         else:
+            if base is not None:  # keep what was changed on the website meanwhile (see _drop_draft's comment)
+                values = _merge_onto_saved(_draft_from_filter(existing), values, base)
             for field, value in values.items():
                 setattr(existing, field, value)
         session.commit()
@@ -464,10 +519,10 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
     total = await asyncio.to_thread(
-        _save_and_match_sync, update.effective_user, validated.model_dump()
+        _save_and_match_sync, update.effective_user, validated.model_dump(), context.user_data.get("draft_base")
     )
 
-    context.user_data.pop("draft", None)
+    _drop_draft(context)
     apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
     # reply_markup=None explicitly — editMessageText treats an OMITTED reply_markup as "leave
     # unchanged" (python-telegram-bot's own Bot._post drops None-valued params before the request
@@ -503,7 +558,7 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    draft = context.user_data.setdefault("draft", _default_draft())
+    draft = await _ensure_draft(update, context)
     lang = _lang(context)
     parts = query.data.split(":")
     action = parts[1]
@@ -513,7 +568,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if action == "save":
         return await _handle_save(update, context, draft)
     if action == "cancel":
-        context.user_data.pop("draft", None)
+        _drop_draft(context)
         # reply_markup=None — same real bug/fix as _handle_save's own identical edit_message_text
         # call above: an omitted reply_markup leaves the previous (root menu) keyboard live and
         # tappable under the "cancelled" text, even though the conversation has already ended.
@@ -683,7 +738,7 @@ async def menu_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # 2026-10-13 (owner report): "use the buttons above" pointed at a menu scrolled far up the chat, so a user who typed
     # "דירה 3.5 חדרים עד 8 אלף" saw no buttons at all. Now what the free rules (todira_common/search_text.py) read in
     # the text goes straight into the draft, and the menu is sent again right below, so saving is one tap away.
-    draft = context.user_data.setdefault("draft", _default_draft())
+    draft = await _ensure_draft(update, context)
     found = search_text.parse(raw)
     if _apply_typed_search(draft, found):
         note = bot_text("filter.typed_applied", lang, summary=search_text.summary(found, lang))
@@ -729,7 +784,7 @@ def _apply_typed_search(draft: dict, found: dict) -> bool:
 
 async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = _lang(context)
-    draft = context.user_data.setdefault("draft", _default_draft())
+    draft = await _ensure_draft(update, context)
     awaiting = context.user_data.pop("awaiting", None)
     raw = (update.message.text or "").strip()
 
@@ -817,7 +872,7 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def _cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = _lang(context)
-    context.user_data.pop("draft", None)
+    _drop_draft(context)
     await update.message.reply_text(bot_text("filter.cancelled_command", lang))
     return ConversationHandler.END
 
@@ -832,7 +887,7 @@ async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAUL
     swallowed by menu_text_fallback/text_input instead. Mirrors onboarding.py's own identical fix
     for the exact same bug class (_cancel_for_other_command there, 2026-09-25)."""
     lang = _lang(context)
-    context.user_data.pop("draft", None)
+    _drop_draft(context)
     await update.message.reply_text(bot_text("filter.cancelled_for_other_command", lang))
     return ConversationHandler.END
 
