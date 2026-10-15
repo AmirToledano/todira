@@ -114,16 +114,11 @@ def test_onboarding_handler_also_has_allow_reentry():
     assert build_onboarding_handler().allow_reentry is True
 
 
-def test_filter_start_resumes_existing_draft_without_touching_the_db(monkeypatch):
-    def _fail_if_called(*_args, **_kwargs):
-        raise AssertionError(
-            "filter_start hit the DB even though a draft was already in progress in "
-            "context.user_data - it should have resumed that draft instead of reloading and "
-            "silently discarding whatever wasn't saved yet"
-        )
-
-    monkeypatch.setattr(filter_conversation, "get_session", _fail_if_called)
-    monkeypatch.setattr(filter_conversation, "get_or_create_user", _fail_if_called)
+def test_filter_start_resumes_existing_draft_keeping_unsaved_choices(monkeypatch):
+    """A draft in progress is resumed, not replaced - its unsaved choices stay. Since 2026-10-15 the saved filter is
+    read each time (see test_filter_draft_merge.py for what happens when it changed meanwhile)."""
+    saved = _default_draft()
+    monkeypatch.setattr(filter_conversation, "_load_draft_and_lang_from_db_sync", lambda tg_user: (dict(saved), "he"))
 
     draft_in_progress = _default_draft()
     draft_in_progress["cities"] = ["חיפה"]  # a selection the user made but never hit Save on
@@ -132,13 +127,11 @@ def test_filter_start_resumes_existing_draft_without_touching_the_db(monkeypatch
         effective_user=SimpleNamespace(id=USER_ID),
         message=SimpleNamespace(reply_text=AsyncMock()),
     )
-    context = SimpleNamespace(user_data={"draft": draft_in_progress, "awaiting": "price_min"})
+    context = SimpleNamespace(user_data={"draft": draft_in_progress, "draft_base": dict(saved), "awaiting": "price_min"})
 
     result = asyncio.run(filter_start(update, context))
 
     assert result == MENU
-    # same dict, not replaced by a fresh one loaded from the DB
-    assert context.user_data["draft"] is draft_in_progress
     assert context.user_data["draft"]["cities"] == ["חיפה"]
     # a leftover "awaiting a text reply" prompt from before is cleared, same as always
     assert "awaiting" not in context.user_data
