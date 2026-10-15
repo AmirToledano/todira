@@ -126,7 +126,7 @@
     "ar": "إمكانية الوصول"
   },
   "cookies.notice_text": {
-    "he": "האתר משתמש בשתי עוגיות פונקציונליות בלבד (התחברות ושפת תצוגה) — לא בעוגיות פרסום או מעקב.",
+    "he": "האתר משתמש רק בשתי עוגיות: אחת זוכרת שהתחברת ואחת זוכרת את השפה. בלי פרסומות ובלי מעקב.",
     "en": "This site uses exactly two functional cookies (login and display language) — no advertising or tracking cookies.",
     "ru": "Сайт использует только два функциональных файла cookie (вход и язык отображения) — без рекламных или отслеживающих файлов cookie.",
     "fr": "Ce site utilise exactement deux cookies fonctionnels (connexion et langue d'affichage) — aucun cookie publicitaire ou de suivi.",
@@ -161,11 +161,11 @@
     "ar": "شقتك تجدك"
   },
   "home.lead": {
-    "he": "טודירה סורק את שוק הדירות בלי הפסקה, ומתריע לך תוך דקות ברגע שעולה דירה שמתאימה בדיוק למה שחיפשת — לפני שמישהו אחר יתפוס אותה.",
-    "en": "Todira scans the apartment market non-stop, and alerts you within minutes the moment a listing matches exactly what you're looking for — before someone else grabs it.",
-    "ru": "Todira непрерывно сканирует рынок квартир и уведомляет вас в течение нескольких минут, как только появляется объявление, точно соответствующее вашему запросу — прежде чем его займёт кто-то другой.",
-    "fr": "Todira scanne le marché des appartements sans interruption et vous alerte en quelques minutes dès qu'une annonce correspond exactement à ce que vous cherchez — avant que quelqu'un d'autre ne la prenne.",
-    "ar": "توديرا يفحص سوق الشقق بلا توقف، وينبهك خلال دقائق فور ظهور شقة تطابق تمامًا ما تبحث عنه — قبل أن يسبقك إليها شخص آخر."
+    "he": "אנחנו עוברים בשבילך על יד2, קומו, הומלס ופייסבוק, ושולחים לך לטלגרם רק את הדירות שבאמת מתאימות לך. בלי לרענן אתרים כל היום.",
+    "en": "We go through Yad2, Komo, Homeless and Facebook for you, and send you on Telegram only the apartments that really fit you. No refreshing websites all day.",
+    "ru": "Мы проверяем за вас Yad2, Komo, Homeless и Facebook и присылаем в Telegram только подходящие квартиры. Больше не нужно весь день обновлять сайты.",
+    "fr": "Nous parcourons Yad2, Komo, Homeless et Facebook pour vous, et vous envoyons sur Telegram uniquement les appartements qui vous correspondent vraiment. Fini de rafraîchir les sites toute la journée.",
+    "ar": "نمرّ من أجلك على يد2 وكومو وهوملس وفيسبوك، ونرسل لك على تيليجرام فقط الشقق التي تناسبك فعلًا. بلا تحديث للمواقع طوال اليوم."
   },
   "home.cta_open_bot": {
     "he": "פתח את הבוט בטלגרם",
@@ -245,11 +245,11 @@
     "ar": "الآن"
   },
   "home.live_scan_hours_label": {
-    "he": "סריקה כל שעה, 9:00–22:00",
-    "en": "Scanning every hour, 9:00–22:00",
-    "ru": "Сканирование каждый час, 9:00–22:00",
-    "fr": "Analyse toutes les heures, 9h–22h",
-    "ar": "فحص كل ساعة، 9:00–22:00"
+    "he": "תדירות סריקה",
+    "en": "Scan frequency",
+    "ru": "Частота сканирования",
+    "fr": "Fréquence de scan",
+    "ar": "تكرار الفحص"
   },
   "home.live_cinematic_caption": {
     "he": "מודעות חדשות מצאנו ב־24 השעות האחרונות",
@@ -301,18 +301,18 @@
     "ar": "فترة تجريبية"
   },
   "home.momentum_1_value": {
-    "he": "הקהילה שלנו",
-    "en": "Our community",
-    "ru": "Наше сообщество",
-    "fr": "Notre communauté",
-    "ar": "مجتمعنا"
+    "he": "4 אתרים",
+    "en": "4 websites",
+    "ru": "4 сайта",
+    "fr": "4 sites",
+    "ar": "4 مواقع"
   },
   "home.momentum_1_label": {
-    "he": "גדלה כל יום",
-    "en": "Growing every day",
-    "ru": "Растёт каждый день",
-    "fr": "En croissance chaque jour",
-    "ar": "ينمو كل يوم"
+    "he": "יד2, קומו, הומלס ופייסבוק, במקום אחד",
+    "en": "Yad2, Komo, Homeless and Facebook, in one place",
+    "ru": "Yad2, Komo, Homeless и Facebook в одном месте",
+    "fr": "Yad2, Komo, Homeless et Facebook, au même endroit",
+    "ar": "يد2 وكومو وهوملس وفيسبوك في مكان واحد"
   },
   "home.momentum_2_value": {
     "he": "ההתראה שלך",
@@ -336,11 +336,11 @@
     "ar": "في جميع أنحاء البلاد"
   },
   "home.momentum_3_label": {
-    "he": "כל האזורים בישראל, במקום אחד",
-    "en": "Every region in Israel, in one place",
-    "ru": "Все регионы Израиля в одном месте",
-    "fr": "Toutes les régions d'Israël réunies",
-    "ar": "جميع مناطق إسرائيل في مكان واحد"
+    "he": "מאילת ועד קריית שמונה",
+    "en": "From Eilat to Kiryat Shmona",
+    "ru": "От Эйлата до Кирьят-Шмоны",
+    "fr": "D'Eilat à Kiryat Shmona",
+    "ar": "من إيلات حتى كريات شمونة"
   },
   "home.live_badge": {
     "he": "התראות בזמן אמת 🔔",
@@ -371,14 +371,14 @@
     "ar": "رمات غان · غرفتان · 4,900 ₪"
   },
   "home.feature1_title": {
-    "he": "מבין אותך בשפה חופשית",
-    "en": "Understands you in plain language",
-    "ru": "Понимает вас на естественном языке",
-    "fr": "Vous comprend en langage naturel",
-    "ar": "يفهمك بلغة طبيعية"
+    "he": "תכתוב לו כמו לחבר",
+    "en": "Write to it like a friend",
+    "ru": "Пишите ему как другу",
+    "fr": "Écrivez-lui comme à un ami",
+    "ar": "اكتب له كما تكتب لصديق"
   },
   "home.feature1_body": {
-    "he": "פשוט תכתבו לבוט מה אתם מחפשים, בדיוק כמו שהייתם מתארים לחבר — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילכם, בלי טפסים מסובכים.",
+    "he": "תכתוב לבוט במילים שלך מה אתה מחפש. הוא מבין לבד ובונה לך את הסינון. בלי טפסים ובלי תפריטים.",
     "en": "Just write what you're looking for in Hebrew, like you'd describe it to a friend — and AI understands it and sets up the filter for you, no complicated forms.",
     "ru": "Просто напишите боту на иврите, что вы ищете, как будто рассказываете другу — и ИИ поймёт вас и настроит фильтр без сложных форм.",
     "fr": "Décrivez simplement au bot ce que vous cherchez en hébreu, comme vous le feriez auprès d'un ami — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
@@ -406,11 +406,11 @@
     "ar": "حتى 6,000 ₪"
   },
   "home.feature1_understood_label": {
-    "he": "הבינה המלאכותית זיהתה:",
-    "en": "AI identified:",
-    "ru": "ИИ определил:",
-    "fr": "L'IA a identifié :",
-    "ar": "الذكاء الاصطناعي حدد:"
+    "he": "הבוט הבין:",
+    "en": "The bot understood:",
+    "ru": "Бот понял:",
+    "fr": "Le bot a compris :",
+    "ar": "فهم البوت:"
   },
   "home.feature2_title": {
     "he": "התראות בזמן אמת",
@@ -420,11 +420,11 @@
     "ar": "تنبيهات فورية"
   },
   "home.feature2_body": {
-    "he": "הסריקה רצה כל הזמן ברקע. ברגע שדירה חדשה תואמת עולה לרשת — אתה מקבל הודעה בטלגרם, לא צריך לרענן אתרים כל היום.",
-    "en": "Scanning runs continuously in the background. The moment a new matching listing goes online, you get a Telegram message — no need to refresh sites all day.",
-    "ru": "Сканирование работает непрерывно в фоне. Как только появляется новое подходящее объявление, вы получаете сообщение в Telegram — не нужно весь день обновлять сайты.",
-    "fr": "Le scan tourne en continu en arrière-plan. Dès qu'une nouvelle annonce correspondante est publiée, vous recevez un message Telegram — plus besoin de rafraîchir des sites toute la journée.",
-    "ar": "الفحص يعمل باستمرار في الخلفية. فور ظهور إعلان جديد مطابق على الشبكة، تصلك رسالة على تيليجرام — لا حاجة لتحديث المواقع طوال اليوم."
+    "he": "הבוט עובר על האתרים בשבילך שוב ושוב לאורך היום. עלתה דירה שמתאימה לך? ברגע שהוא מוצא אותה, היא אצלך בטלגרם. אתה לא צריך לרענן כלום.",
+    "en": "The bot goes through the sites for you again and again throughout the day. A new apartment that fits you? The moment it finds it, it's on your Telegram. You don't need to refresh anything.",
+    "ru": "Бот снова и снова проверяет сайты за вас в течение дня. Появилась подходящая квартира? Как только бот её найдёт, она у вас в Telegram. Ничего не нужно обновлять.",
+    "fr": "Le bot parcourt les sites pour vous, encore et encore, tout au long de la journée. Un appartement qui vous correspond ? Dès qu'il le trouve, il arrive sur votre Telegram. Vous n'avez rien à rafraîchir.",
+    "ar": "يمرّ البوت على المواقع من أجلك مرة بعد مرة طوال اليوم. نُشرت شقة تناسبك؟ لحظة أن يجدها تصلك على تيليجرام. لا حاجة لتحديث أي شيء."
   },
   "home.feature3_title": {
     "he": "שומר לך את הדירות שאהבת",
@@ -434,7 +434,7 @@
     "ar": "يحفظ الشقق التي أعجبتك"
   },
   "home.feature3_body": {
-    "he": "סמן דירות שמעניינות אותך ותחזור אליהן בקלות בכל שלב — כאן באתר או ישירות מתוך הבוט.",
+    "he": "תסמן דירות שמעניינות אותך ותחזור אליהן מתי שבא לך, פה באתר או בבוט.",
     "en": "Mark apartments you're interested in and come back to them easily at any point — here on the site or straight from the bot.",
     "ru": "Отмечайте интересные квартиры и легко возвращайтесь к ним в любой момент — здесь на сайте или прямо в боте.",
     "fr": "Marquez les appartements qui vous intéressent et retrouvez-les facilement à tout moment — ici sur le site ou directement depuis le bot.",
@@ -448,7 +448,7 @@
     "ar": "لماذا لا تكتفي بالتصفح بنفسك؟"
   },
   "home.compare_sub": {
-    "he": "כי אתה עסוק, ודירות טובות נעלמות תוך שעות.",
+    "he": "כי דירה טובה נחטפת תוך כמה שעות, ואין לך זמן לשבת על זה כל היום.",
     "en": "Because you're busy, and good apartments disappear within hours.",
     "ru": "Потому что вы заняты, а хорошие квартиры исчезают за считанные часы.",
     "fr": "Parce que vous êtes occupé, et les bons appartements disparaissent en quelques heures.",
@@ -462,28 +462,28 @@
     "ar": "بدون توديرا 😩"
   },
   "home.compare_without_1": {
-    "he": "מרעננים כמה אתרים כל כמה שעות",
+    "he": "אתה מרענן כמה אתרים כל כמה שעות",
     "en": "Refreshing several sites every few hours",
     "ru": "Обновляете несколько сайтов каждые несколько часов",
     "fr": "Rafraîchir plusieurs sites toutes les quelques heures",
     "ar": "تحديث عدة مواقع كل بضع ساعات"
   },
   "home.compare_without_2": {
-    "he": "מפספסים דירות טובות שנתפסות עוד לפני שראיתם אותן",
+    "he": "מפספס דירות טובות שנחטפות עוד לפני שראית אותן",
     "en": "Missing good apartments that get taken before you even see them",
     "ru": "Упускаете хорошие квартиры, которые сдают ещё до того, как вы их увидели",
     "fr": "Rater de bons appartements pris avant même que vous les voyiez",
     "ar": "تفويت شقق جيدة تُحجز قبل أن تراها أصلًا"
   },
   "home.compare_without_3": {
-    "he": "עוברים ידנית על עשרות מודעות לא רלוונטיות",
+    "he": "עובר ידנית על עשרות מודעות שלא קשורות אליך",
     "en": "Manually sifting through dozens of irrelevant listings",
     "ru": "Вручную просматриваете десятки нерелевантных объявлений",
     "fr": "Parcourir manuellement des dizaines d'annonces non pertinentes",
     "ar": "تصفح عشرات الإعلانات غير ذات الصلة يدويًا"
   },
   "home.compare_without_4": {
-    "he": "שוכחים דירה ששמרתם בלשונית שנסגרה",
+    "he": "שוכח דירה ששמרת בלשונית שנסגרה",
     "en": "Forgetting an apartment you saved in a tab you closed",
     "ru": "Забываете квартиру, сохранённую во вкладке, которую закрыли",
     "fr": "Oublier un appartement enregistré dans un onglet fermé",
@@ -497,28 +497,28 @@
     "ar": "مع توديرا 👑"
   },
   "home.compare_with_1": {
-    "he": "סריקה אוטומטית כל שעה, ברקע",
+    "he": "הבוט סורק בשבילך כל שעה, ברקע",
     "en": "Automatic scanning every hour, in the background",
     "ru": "Автоматическое сканирование каждый час в фоне",
     "fr": "Scan automatique toutes les heures, en arrière-plan",
     "ar": "فحص تلقائي كل ساعة في الخلفية"
   },
   "home.compare_with_2": {
-    "he": "התראה מיידית בטלגרם ברגע שיש התאמה",
+    "he": "הודעה בטלגרם ברגע שיש דירה שמתאימה לך",
     "en": "Instant Telegram alert the moment there's a match",
     "ru": "Мгновенное уведомление в Telegram при совпадении",
     "fr": "Alerte Telegram instantanée dès qu'il y a une correspondance",
     "ar": "تنبيه فوري على تيليجرام فور وجود تطابق"
   },
   "home.compare_with_3": {
-    "he": "רואים רק דירות שבאמת עומדות בסינון שלכם",
+    "he": "רואה רק דירות שבאמת מתאימות לסינון שלך",
     "en": "You only see apartments that truly meet your filter",
     "ru": "Вы видите только квартиры, действительно соответствующие фильтру",
     "fr": "Vous ne voyez que les appartements qui correspondent vraiment à votre filtre",
     "ar": "لا ترى إلا الشقق التي تطابق فعلًا فلترك"
   },
   "home.compare_with_4": {
-    "he": "כל דירה ששמרתם מחכה לכם כאן וגם בבוט",
+    "he": "כל דירה ששמרת מחכה לך פה וגם בבוט",
     "en": "Every apartment you saved is waiting for you here and in the bot",
     "ru": "Каждая сохранённая квартира ждёт вас здесь и в боте",
     "fr": "Chaque appartement enregistré vous attend ici et dans le bot",
@@ -532,49 +532,49 @@
     "ar": "كيف يعمل"
   },
   "home.how_sub": {
-    "he": "שלוש דקות התחלה, ואז טודירה עובד בשבילך ברקע.",
-    "en": "Three minutes to get started, then Todira works for you in the background.",
-    "ru": "Три минуты на старт — и дальше Todira работает за вас в фоне.",
-    "fr": "Trois minutes pour démarrer, puis Todira travaille pour vous en arrière-plan.",
-    "ar": "ثلاث دقائق للبدء، ثم يعمل توديرا من أجلك في الخلفية."
+    "he": "שתי דקות להתחיל, ומשם טודירה עובד בשבילך.",
+    "en": "Two minutes to start, and from there Todira works for you.",
+    "ru": "Две минуты на старт, а дальше Todira работает за вас.",
+    "fr": "Deux minutes pour démarrer, ensuite Todira travaille pour vous.",
+    "ar": "دقيقتان للبدء، ومن هناك توديرا يعمل من أجلك."
   },
   "home.step1_title": {
-    "he": "מדברים עם הבוט",
+    "he": "מדבר עם הבוט",
     "en": "Talk to the bot",
     "ru": "Общайтесь с ботом",
     "fr": "Discutez avec le bot",
     "ar": "تحدث مع البوت"
   },
   "home.step1_body": {
-    "he": "פותחים שיחה בטלגרם ומתארים במילים שלכם את הדירה שאתם מחפשים.",
+    "he": "פותח שיחה בטלגרם ומספר במילים שלך איזו דירה אתה מחפש.",
     "en": "Open a chat on Telegram and describe, in Hebrew and in your own words, the apartment you're looking for.",
     "ru": "Откройте чат в Telegram и опишите на иврите своими словами квартиру, которую вы ищете.",
     "fr": "Ouvrez une conversation sur Telegram et décrivez, en hébreu et avec vos propres mots, l'appartement que vous cherchez.",
     "ar": "افتح محادثة على تيليجرام وصف بالعبرية وبكلماتك الشقة التي تبحث عنها."
   },
   "home.step2_title": {
-    "he": "הסינון נבנה אוטומטית",
+    "he": "הסינון נבנה לבד",
     "en": "The filter builds itself",
     "ru": "Фильтр строится автоматически",
     "fr": "Le filtre se construit automatiquement",
     "ar": "يُبنى الفلتر تلقائيًا"
   },
   "home.step2_body": {
-    "he": "עיר, טווח מחיר, מספר חדרים ועוד — הכל נחלץ מהשיחה שלכם ונשמר כפרופיל חיפוש.",
+    "he": "עיר, מחיר, חדרים ועוד. הבוט מוציא הכל מהשיחה ושומר לך את החיפוש.",
     "en": "City, price range, number of rooms and more — it's all extracted from your conversation and saved as a search profile.",
     "ru": "Город, диапазон цен, количество комнат и многое другое — всё извлекается из вашего разговора и сохраняется как профиль поиска.",
     "fr": "Ville, fourchette de prix, nombre de pièces et plus — tout est extrait de votre conversation et enregistré comme profil de recherche.",
     "ar": "المدينة ونطاق السعر وعدد الغرف وأكثر — كل ذلك يُستخرج من محادثتك ويُحفظ كملف بحث."
   },
   "home.step3_title": {
-    "he": "מקבלים התראות",
+    "he": "מקבל התראות",
     "en": "Get alerts",
     "ru": "Получайте уведомления",
     "fr": "Recevez des alertes",
     "ar": "احصل على تنبيهات"
   },
   "home.step3_body": {
-    "he": "מרגע זה, כל דירה חדשה שמתאימה תשלח אליכם ישירות — וגם תופיע כאן באתר.",
+    "he": "מעכשיו, כל דירה חדשה שמתאימה לך מגיעה אליך ישר, וגם מופיעה פה באתר.",
     "en": "From this moment on, every new matching apartment is sent straight to you — and also shows up here on the site.",
     "ru": "С этого момента каждая новая подходящая квартира отправляется прямо вам — а также появляется здесь на сайте.",
     "fr": "Dès cet instant, chaque nouvel appartement correspondant vous est envoyé directement — et apparaît aussi ici sur le site.",
@@ -588,14 +588,14 @@
     "ar": "الأسئلة الشائعة"
   },
   "home.faq1_q": {
-    "he": "איך הבינה המלאכותית מבינה מה אני מחפש?",
-    "en": "How does the AI understand what I'm looking for?",
-    "ru": "Как ИИ понимает, что я ищу?",
-    "fr": "Comment l'IA comprend-elle ce que je cherche ?",
-    "ar": "كيف يفهم الذكاء الاصطناعي ما أبحث عنه؟"
+    "he": "איך הבוט מבין מה אני מחפש?",
+    "en": "How does the bot understand what I'm looking for?",
+    "ru": "Как бот понимает, что я ищу?",
+    "fr": "Comment le bot comprend-il ce que je cherche ?",
+    "ar": "كيف يفهم البوت ما أبحث عنه؟"
   },
   "home.faq1_a": {
-    "he": "אתם כותבים לבוט בשפה חופשית, בדיוק כמו שהייתם מתארים לחבר מה אתם מחפשים. מודל שפה מזהה מתוך המשפט עיר, טווח מחיר, מספר חדרים ופרטים נוספים, ובונה מזה פרופיל חיפוש — בלי טפסים ובלי תפריטים מסובכים.",
+    "he": "אתה כותב לו בשפה חופשית, כמו שהיית מספר לחבר. הבוט מוציא מהמשפט עיר, מחיר, חדרים ועוד, ובונה מזה חיפוש. בלי טפסים ובלי תפריטים.",
     "en": "You write to the bot in plain Hebrew, just like you'd describe it to a friend. A language model picks out the city, price range, number of rooms and more from your sentence, and builds a search profile from it — no forms, no complicated menus.",
     "ru": "Вы пишете боту на иврите свободным текстом, как будто рассказываете другу. Языковая модель распознаёт город, диапазон цен, количество комнат и другие детали из вашего сообщения и строит на их основе профиль поиска — без форм и сложных меню.",
     "fr": "Vous écrivez au bot en hébreu, en langage libre, exactement comme vous le décririez à un ami. Un modèle de langage identifie dans votre phrase la ville, la fourchette de prix, le nombre de pièces et d'autres détails, puis construit un profil de recherche — sans formulaires ni menus compliqués.",
@@ -609,11 +609,11 @@
     "ar": "من أين تأتي الإعلانات؟"
   },
   "home.faq2_a": {
-    "he": "טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל שעה, מ־9 בבוקר עד 10 בלילה, ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.",
-    "en": "Todira automatically scans the apartment market online every hour from 9:00 to 22:00 and compares every new listing against your filter. More sources are being added gradually.",
-    "ru": "Todira автоматически сканирует рынок квартир в сети каждый час с 9:00 до 22:00 и сравнивает каждое новое объявление с вашим фильтром. Постепенно добавляются новые источники.",
-    "fr": "Todira scanne automatiquement le marché des appartements en ligne toutes les heures de 9h à 22h et compare chaque nouvelle annonce à votre filtre. D'autres sources sont ajoutées progressivement.",
-    "ar": "يفحص توديرا سوق الشقق على الإنترنت تلقائيًا كل ساعة من 9:00 حتى 22:00 ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا."
+    "he": "מיד2, קומו, הומלס ופייסבוק. הבוט עובר עליהם שוב ושוב לאורך היום, ובודק כל מודעה חדשה מול הסינון שלך. ועוד אתרים בדרך.",
+    "en": "From Yad2, Komo, Homeless and Facebook. The bot goes through them again and again throughout the day and checks every new listing against your filter. More sites are on the way.",
+    "ru": "С Yad2, Komo, Homeless и Facebook. Бот снова и снова проверяет их в течение дня и сравнивает каждое новое объявление с вашим фильтром. Скоро добавятся новые сайты.",
+    "fr": "De Yad2, Komo, Homeless et Facebook. Le bot les parcourt encore et encore tout au long de la journée et compare chaque nouvelle annonce à votre filtre. D'autres sites arrivent bientôt.",
+    "ar": "من يد2 وكومو وهوملس وفيسبوك. يمرّ البوت عليها مرة بعد مرة طوال اليوم، ويقارن كل إعلان جديد بفلترك. ومواقع أخرى في الطريق."
   },
   "home.faq3_q": {
     "he": "כמה זה עולה?",
@@ -623,7 +623,7 @@
     "ar": "كم تكلفته؟"
   },
   "home.faq3_a": {
-    "he": "יש תקופת ניסיון של 3 ימים, ואז תשלום חד-פעמי: 19.90 ₪ לשבוע, 29.90 ₪ לשבועיים או 49.90 ₪ לחודש — בלי חידוש אוטומטי.",
+    "he": "יש 3 ימי ניסיון בחינם, ואחרי זה תשלום חד־פעמי: 19.90 ₪ לשבוע, 29.90 ₪ לשבועיים או 49.90 ₪ לחודש. בלי חידוש אוטומטי.",
     "en": "There's a 3-day trial period, then a one-time payment: ₪19.90 for a week, ₪29.90 for two weeks or ₪49.90 for a month — no automatic renewal.",
     "ru": "Есть 3-дневный пробный период, затем разовый платёж: 19.90 ₪ за неделю, 29.90 ₪ за две недели или 49.90 ₪ за месяц — без автопродления.",
     "fr": "Il y a une période d'essai de 3 jours, puis un paiement unique : 19,90 ₪ pour une semaine, 29,90 ₪ pour deux semaines ou 49,90 ₪ pour un mois — sans renouvellement automatique.",
@@ -637,21 +637,21 @@
     "ar": "هل يمكنني تغيير الفلتر بعد إعداده؟"
   },
   "home.faq4_a": {
-    "he": "בהחלט — גם דרך הבוט בטלגרם וגם כאן באתר, בעמוד \"הסינון שלי\", בכל שלב שתרצו.",
+    "he": "בטח. בבוט בטלגרם או פה באתר, בעמוד ״הסינון שלי״, מתי שבא לך.",
     "en": "Absolutely — through the Telegram bot or right here on the site, on the \"My filter\" page, whenever you like.",
     "ru": "Конечно — через бота в Telegram или прямо здесь на сайте, на странице «Мой фильтр», в любой момент.",
     "fr": "Bien sûr — via le bot Telegram ou ici même sur le site, sur la page « Mon filtre », à tout moment.",
     "ar": "بالتأكيد — عبر البوت على تيليجرام أو هنا على الموقع، في صفحة \"فلتري\"، في أي وقت تشاء."
   },
   "home.footer_cta_title": {
-    "he": "מוכנים למצוא את הדירה?",
-    "en": "Ready to find your apartment?",
-    "ru": "Готовы найти свою квартиру?",
-    "fr": "Prêt à trouver votre appartement ?",
-    "ar": "مستعد لإيجاد شقتك؟"
+    "he": "יאללה, בוא נמצא לך דירה",
+    "en": "Come on, let's find you an apartment",
+    "ru": "Давайте найдём вам квартиру",
+    "fr": "Allez, trouvons-vous un appartement",
+    "ar": "يلّا، لنجد لك شقة"
   },
   "home.footer_cta_body": {
-    "he": "זה לוקח פחות משתי דקות להתחיל, וההתראות הראשונות יכולות להגיע עוד היום.",
+    "he": "לוקח פחות משתי דקות להתחיל, וההתראות הראשונות יכולות להגיע כבר היום.",
     "en": "It takes less than two minutes to get started, and your first alerts can arrive today.",
     "ru": "Начать можно меньше чем за две минуты, а первые уведомления могут прийти уже сегодня.",
     "fr": "Il faut moins de deux minutes pour commencer, et vos premières alertes peuvent arriver dès aujourd'hui.",
@@ -672,7 +672,7 @@
     "ar": "تواصل معنا 📬"
   },
   "contact.subtitle": {
-    "he": "יש לך שאלה, בעיה או רעיון? נשמח לשמוע — נחזור אליך בהקדם.",
+    "he": "יש לך שאלה, בעיה או רעיון? תכתוב, נחזור אליך מהר.",
     "en": "Have a question, a problem, or an idea? We'd love to hear from you — we'll get back to you soon.",
     "ru": "Есть вопрос, проблема или идея? Будем рады услышать вас — скоро ответим.",
     "fr": "Une question, un problème ou une idée ? N'hésitez pas à nous écrire — nous vous répondrons rapidement.",
@@ -700,7 +700,7 @@
     "ar": "رسالتك"
   },
   "contact.message_placeholder": {
-    "he": "כתוב/י כאן את מה שתרצה/י להעביר לנו...",
+    "he": "תכתוב פה מה שבא לך...",
     "en": "Write what you'd like to tell us here...",
     "ru": "Напишите здесь то, что хотите нам сообщить...",
     "fr": "Écrivez ici ce que vous souhaitez nous dire...",
@@ -728,14 +728,14 @@
     "ar": "يرجى الموافقة على سياسة الخصوصية لإرسال رسالتك. ⚠️"
   },
   "contact.error_generic": {
-    "he": "משהו השתבש. נסו שוב בעוד רגע. ⚠️",
+    "he": "משהו השתבש. נסה שוב עוד רגע. ⚠️",
     "en": "Something went wrong. Please try again in a moment. ⚠️",
     "ru": "Что-то пошло не так. Попробуйте ещё раз через минуту. ⚠️",
     "fr": "Une erreur s'est produite. Veuillez réessayer dans un instant. ⚠️",
     "ar": "حدث خطأ ما. يرجى المحاولة مرة أخرى بعد قليل. ⚠️"
   },
   "contact.consent_prefix": {
-    "he": "קראתי ואני מסכים/ה ל",
+    "he": "קראתי ואני מסכים ל",
     "en": "I have read and agree to the",
     "ru": "Я прочитал(а) и согласен(на) с",
     "fr": "J'ai lu et j'accepte la",
@@ -749,7 +749,7 @@
     "ar": "تم إرسال الرسالة! ✅"
   },
   "contact.success_body": {
-    "he": "תודה שפנית אלינו — נחזור אליך בהקדם האפשרי.",
+    "he": "תודה שכתבת! נחזור אליך הכי מהר שאפשר.",
     "en": "Thanks for reaching out — we'll get back to you as soon as possible.",
     "ru": "Спасибо, что обратились к нам — мы ответим вам как можно скорее.",
     "fr": "Merci de nous avoir contactés — nous vous répondrons dès que possible.",
@@ -763,7 +763,7 @@
     "ar": "طرق أخرى للتواصل"
   },
   "contact.telegram_way": {
-    "he": "טלגרם — כתוב/י ישירות לבוט",
+    "he": "טלגרם: תכתוב ישר לבוט",
     "en": "Telegram — message the bot directly",
     "ru": "Telegram — напишите боту напрямую",
     "fr": "Telegram — écrivez directement au bot",
@@ -781,11 +781,11 @@
     "en": "About Todira"
   },
   "about.body_intro": {
-    "he": "טודירה הוא שירות אישי (בוט בטלגרם ואתר נלווה) בתחום הנדל\"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (אתרי נדל\"ן ולוחות מודעות שונים), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).",
-    "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (real-estate sites and listing boards), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published."
+    "he": "טודירה זה בוט בטלגרם ואתר שמחפשים לך דירה. הבוט עובר על אתרי הדירות והלוחות ברשת, ושולח לך רק מודעות שמתאימות לסינון שלך: עיר, מחיר, חדרים, סוג נכס ועוד.",
+    "en": "Todira is a Telegram bot and website that look for an apartment for you. The bot goes through apartment sites and listing boards online and sends you only the listings that match your filter: city, price, rooms, property type and more."
   },
   "about.body_disclaimer": {
-    "he": "השירות אינו משרד תיווך, אינו בעל נכסים ואינו צד לעסקאות שכירות — הוא כלי טכנולוגי שמטרתו לחסוך למחפשי דירה את הצורך לרענן שוב ושוב אתרי מודעות בעצמם.",
+    "he": "חשוב לדעת: אנחנו לא משרד תיווך, אין לנו נכסים ואנחנו לא צד לעסקה. אנחנו כלי שחוסך לך לרענן אתרים כל היום.",
     "en": "The service is not a real-estate brokerage, does not own any properties, and is not a party to any rental transaction — it is a technology tool built to save apartment seekers the need to repeatedly refresh listing sites themselves."
   },
   "about.links_p1": {
@@ -1201,7 +1201,7 @@
     "ar": "انتهت الفترة التجريبية ⚠️"
   },
   "account.upgrade_cta_renew": {
-    "he": "שדרג/י מנוי",
+    "he": "שדרג מנוי",
     "en": "Upgrade subscription",
     "ru": "Улучшить подписку",
     "fr": "Améliorer l'abonnement",
@@ -1222,7 +1222,7 @@
     "ar": "يتجدد اشتراكك تلقائيًا كل شهر."
   },
   "account.subscription_will_not_renew": {
-    "he": "ביטלת את החידוש האוטומטי — הגישה תישאר עד תום התקופה ששולמה, ולא תחויב/י שוב.",
+    "he": "ביטלת את החידוש האוטומטי. הגישה נשארת עד סוף התקופה ששילמת, ולא תחויב שוב.",
     "en": "You cancelled auto-renewal — access stays until the end of the period you already paid for, and you won't be charged again.",
     "ru": "Вы отменили автопродление — доступ сохранится до конца уже оплаченного периода, повторного списания не будет.",
     "fr": "Vous avez annulé le renouvellement automatique — l'accès reste actif jusqu'à la fin de la période déjà payée, sans nouveau prélèvement.",
@@ -1243,14 +1243,14 @@
     "ar": "إلغاء الشراء"
   },
   "account.cancel_pass_refund": {
-    "he": "ביטול עכשיו יסגור את הגישה מיד, ויוחזרו לך ₪{refund} לאמצעי התשלום תוך 14 ימים.",
+    "he": "ביטול עכשיו סוגר את הגישה מיד, ותקבל החזר של ₪{refund} לאמצעי התשלום תוך 14 ימים.",
     "en": "Cancelling now ends your access right away, and ₪{refund} will be refunded to your payment method within 14 days.",
     "ru": "Отмена сейчас сразу закроет доступ, а ₪{refund} вернутся на ваш способ оплаты в течение 14 дней.",
     "fr": "Annuler maintenant met fin à ton accès immédiatement, et ₪{refund} seront remboursés sur ton moyen de paiement sous 14 jours.",
     "ar": "الإلغاء الآن يُنهي وصولك فورًا، وسيُعاد إليك ₪{refund} إلى وسيلة الدفع خلال 14 يومًا."
   },
   "account.cancel_pass_no_refund": {
-    "he": "ביטול עכשיו יסגור את הגישה מיד. לפי מדיניות הביטול לא מגיע החזר על הרכישה הזו.",
+    "he": "ביטול עכשיו סוגר את הגישה מיד. לפי מדיניות הביטול, על הרכישה הזו אין החזר.",
     "en": "Cancelling now ends your access right away. Under the cancellation policy, no refund is due for this purchase.",
     "ru": "Отмена сейчас сразу закроет доступ. По правилам отмены за эту покупку возврат не положен.",
     "fr": "Annuler maintenant met fin à ton accès immédiatement. Selon la politique d'annulation, aucun remboursement n'est dû pour cet achat.",
@@ -1355,14 +1355,14 @@
     "ar": "متصل ✅"
   },
   "account.telegram_connect_cta": {
-    "he": "פתח/י את הבוט לחיבור",
+    "he": "פתח את הבוט לחיבור",
     "en": "Open the bot to connect",
     "ru": "Открыть бота для подключения",
     "fr": "Ouvrir le bot pour vous connecter",
     "ar": "افتح البوت للربط"
   },
   "account.telegram_connect_hint": {
-    "he": "לוחצים על הכפתור והחיבור קורה אוטומטית 🎉",
+    "he": "לוחץ על הכפתור והחיבור קורה לבד 🎉",
     "en": "Tap the button and the connection happens automatically 🎉",
     "ru": "Нажмите на кнопку — подключение произойдёт автоматически 🎉",
     "fr": "Appuyez sur le bouton, la connexion se fait automatiquement 🎉",
@@ -1390,7 +1390,7 @@
     "ar": "رمزك:"
   },
   "account.code_hint_suffix": {
-    "he": "— בתוקף ל-15 דקות. אפשר גם לשלוח אותו ידנית מהערוץ שרוצים לחבר, במקום ללחוץ על הכפתור.",
+    "he": "(בתוקף ל־15 דקות). אפשר גם לשלוח אותו ידנית מהערוץ שאתה רוצה לחבר, במקום ללחוץ על הכפתור.",
     "en": "— valid for 15 minutes. You can also send it manually from the channel you want to connect, instead of tapping the button.",
     "ru": "— действителен 15 минут. Можно также отправить его вручную из канала, который хотите подключить, вместо нажатия кнопки.",
     "fr": "— valable 15 minutes. Vous pouvez aussi l'envoyer manuellement depuis le canal que vous souhaitez connecter, au lieu d'appuyer sur le bouton.",
@@ -1439,7 +1439,7 @@
     "ar": "تسجيل الدخول إلى توديرا"
   },
   "login.subtitle": {
-    "he": "בחר/י איך להתחבר — כל האפשרויות מובילות לאותו חשבון.",
+    "he": "בחר איך להתחבר. כל האפשרויות מובילות לאותו חשבון.",
     "en": "Choose how to log in — every option leads to the same account.",
     "ru": "Выберите способ входа — все варианты ведут к одному и тому же аккаунту.",
     "fr": "Choisissez comment vous connecter — toutes les options mènent au même compte.",
@@ -1467,7 +1467,7 @@
     "ar": "تابع عبر تيليجرام"
   },
   "login.hint": {
-    "he": "כבר רשום/ה דרך טלגרם, אבל עדיין לא קישרת Google? לחיצה על \"{telegram_cta}\" למעלה תפתח את הבוט — שם תמצא/י קישור לחשבון שלך (🔗) שמחזיר אותך לכאן, לאותו דפדפן, מזוהה. משם, החיבור עם Google יעבוד ישר על החשבון הקיים שלך.",
+    "he": "כבר נרשמת בטלגרם ועוד לא חיברת Google? לחיצה על ״{telegram_cta}״ פותחת את הבוט. שם יש קישור לחשבון שלך (🔗) שמחזיר אותך לפה, לאותו דפדפן, מחובר. משם החיבור ל־Google יעבוד ישר על החשבון שלך.",
     "en": "Already registered via Telegram, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot — you'll find your account link there (🔗) that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
     "ru": "Уже зарегистрированы через Telegram, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота — там вы найдёте ссылку на свой аккаунт (🔗), которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
     "fr": "Déjà inscrit via Telegram, mais pas encore lié à Google ? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot — vous y trouverez le lien de votre compte (🔗) qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
@@ -1509,7 +1509,7 @@
     "ar": "شهر كامل مقابل 49.90 ₪؟ تقريبًا سعر قهوة ومعجنات."
   },
   "upgrade.value_anchor_body": {
-    "he": "עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי, בלי חידוש אוטומטי ובלי התחייבות.",
+    "he": "עמלת תיווך עולה בדרך כלל אלפי שקלים. אצלנו זה סכום סמלי, בלי חידוש אוטומטי ובלי התחייבות.",
     "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token amount, with no automatic renewal and no commitment.",
     "ru": "Комиссия брокера обычно стоит тысячи шекелей. У нас — символическая сумма, без автопродления и обязательств.",
     "fr": "Les frais d'un agent coûtent souvent des milliers de shekels. Chez nous, c'est un montant symbolique, sans renouvellement automatique ni engagement.",
