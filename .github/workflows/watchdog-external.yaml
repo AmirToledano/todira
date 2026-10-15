@@ -1,0 +1,95 @@
+name: Watchdog — site, bot and scraper, checked from outside every hour
+
+# 2026-10-16 (owner: "what else is there" before launch). The in-cluster healthcheck CronJob only checks the website
+# from inside the same server, so it can never report the server itself being down, and nothing watched the bot or
+# the scraper. This runs on GitHub's machines every hour and DMs the owner on Telegram ONLY when something is wrong:
+#   - the website does not answer /healthz (3 tries, 20 s apart - a deploy restart is not an alert);
+#   - the bot is not running;
+#   - the last main scraper run failed, or (10:00-23:00 Israel time, when it runs hourly) no scan finished for 2.5 h.
+# Silent when all is well. Prints only statuses, never ids or tokens. Free: the repository is public.
+on:
+  schedule:
+    - cron: "25 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: watchdog-external
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Website
+        id: site
+        run: |
+          ok=0
+          for i in 1 2 3; do
+            if curl -fsS --max-time 15 -o /dev/null https://todira.app/healthz; then ok=1; break; fi
+            sleep 20
+          done
+          echo "website healthy: $ok"
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          if [ "$ok" = 1 ]; then
+            curl -fsS --max-time 15 https://todira.app/api/home-stats -o stats.json || echo '{}' > stats.json
+            MIN=$(python3 -c 'import json; v = json.load(open("stats.json")).get("last_scan_minutes"); print("" if v is None else int(v))')
+            echo "minutes since the last scan: ${MIN:-unknown}"
+            echo "scan_minutes=$MIN" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Bot and last scraper run
+        id: cluster
+        continue-on-error: true
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+          BOT=$(kubectl get deploy -n todira todira-bot -o jsonpath='{.status.readyReplicas}' --request-timeout=20s 2>/dev/null || echo "?")
+          echo "bot ready replicas: ${BOT:-0}"
+          echo "bot=${BOT:-0}" >> "$GITHUB_OUTPUT"
+          LAST=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{range .items[*]}{.status.phase}{" "}{.metadata.creationTimestamp}{"\n"}{end}' --request-timeout=20s 2>/dev/null | tail -1)
+          echo "last scraper pod (phase started): ${LAST:-none}"
+          echo "scraper_failed=$(echo "$LAST" | awk '{print ($1 == "Failed") ? 1 : 0}')" >> "$GITHUB_OUTPUT"
+
+      - name: Tell the owner if something is wrong
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OWNER_TELEGRAM_USER_ID: ${{ secrets.OWNER_TELEGRAM_USER_ID }}
+          SITE_OK: ${{ steps.site.outputs.ok }}
+          SCAN_MINUTES: ${{ steps.site.outputs.scan_minutes }}
+          BOT_READY: ${{ steps.cluster.outputs.bot }}
+          SCRAPER_FAILED: ${{ steps.cluster.outputs.scraper_failed }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          problems=""
+          [ "$SITE_OK" = "1" ] || problems="${problems}• האתר לא עונה (או שהשרת כולו נפל)
+          "
+          if [ "$SITE_OK" = "1" ] && [ "$BOT_READY" != "?" ] && [ "${BOT_READY:-0}" -lt 1 ] 2>/dev/null; then
+            problems="${problems}• הבוט בטלגרם לא רץ
+          "
+          fi
+          [ "$SCRAPER_FAILED" = "1" ] && problems="${problems}• ריצת הסריקה האחרונה נכשלה
+          "
+          HOUR=$(TZ=Asia/Jerusalem date +%H | sed 's/^0//')
+          if [ "$SITE_OK" = "1" ] && [ "$HOUR" -ge 10 ] && [ "$HOUR" -le 23 ]; then
+            if [ -z "$SCAN_MINUTES" ] || [ "$SCAN_MINUTES" -gt 150 ]; then
+              problems="${problems}• לא הסתיימה סריקה כבר ${SCAN_MINUTES:-?} דקות
+          "
+            fi
+          fi
+          if [ -z "$problems" ]; then
+            echo "all good - no message"
+            exit 0
+          fi
+          echo "problems found - telling the owner"
+          [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$OWNER_TELEGRAM_USER_ID" ] || exit 0
+          text="$(printf '🚨 טודירה - משהו לא תקין:\n%s\nפרטים: %s' "$problems" "$RUN_URL" | sed 's/^ *//')"
+          curl -fsS --max-time 10 -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${OWNER_TELEGRAM_USER_ID}" --data-urlencode "text=${text}" || true
