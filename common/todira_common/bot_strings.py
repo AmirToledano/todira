@@ -346,6 +346,23 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Salut ! Ton accès à Todira se termine le {date} ⏰ Pour continuer à recevoir les annonces et les détails, renouvelle ici : {url}",
         "ar": "مرحباً! ينتهي وصولك إلى Todira في {date} ⏰ لمتابعة تلقي الإعلانات والتفاصيل جدّد من هنا: {url}",
     },
+    # 2026-10-16 (owner): one message before the free trial ends - scraper/renewal_reminder.py.
+    "trial.reminder": {
+        "he": "היי! הניסיון החינמי שלך בטודירה נגמר {when} ⏳ רוצה להמשיך לקבל דירות עם כל הפרטים והקישור למודעה? אפשר לשדרג פה: {url}",
+        "en": "Hi! Your free Todira trial ends {when} ⏳ Want to keep getting listings with all the details and the link to the ad? Upgrade here: {url}",
+        "ru": "Привет! Ваш бесплатный пробный период в Todira заканчивается {when} ⏳ Хотите и дальше получать объявления со всеми деталями и ссылкой? Оформите доступ здесь: {url}",
+        "fr": "Salut ! Ton essai gratuit de Todira se termine {when} ⏳ Tu veux continuer à recevoir les annonces avec tous les détails et le lien ? Passe à l'offre complète ici : {url}",
+        "ar": "مرحباً! تنتهي فترتك التجريبية المجانية في Todira {when} ⏳ تريد الاستمرار في تلقي الإعلانات مع كل التفاصيل والرابط؟ رقِّ اشتراكك من هنا: {url}",
+    },
+    "trial.when_today": {
+        "he": "היום ב־{time}", "en": "today at {time}", "ru": "сегодня в {time}", "fr": "aujourd'hui à {time}", "ar": "اليوم الساعة {time}",
+    },
+    "trial.when_tomorrow": {
+        "he": "מחר ב־{time}", "en": "tomorrow at {time}", "ru": "завтра в {time}", "fr": "demain à {time}", "ar": "غداً الساعة {time}",
+    },
+    "trial.when_date": {
+        "he": "ב־{date}", "en": "on {date}", "ru": "{date}", "fr": "le {date}", "ar": "في {date}",
+    },
     "profile.header": {
         "he": "👤 <b>הפרופיל שלך</b>", "en": "👤 <b>Your profile</b>",
         "ru": "👤 <b>Ваш профиль</b>", "fr": "👤 <b>Ton profil</b>", "ar": "👤 <b>ملفك الشخصي</b>",
