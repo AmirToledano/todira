@@ -1,0 +1,78 @@
+name: Diagnose — does "also posted on" really find the same apartment on several sites? (read-only)
+
+# 2026-10-15 owner question: the listing detail view says "this listing was also posted on ..." - is that real, does it
+# actually catch apartments posted on more than one site? That line comes from listings.duplicate_of_id, which
+# scraper/dedup.py sets only when a NEW listing has city + street + rooms + floor + price all known and matches an
+# active listing from another site. This prints how often that really happens, which signals each site leaves empty,
+# and how many likely pairs the strict rule misses. Read-only SELECTs; prints only counts per site, never ad content.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Counts
+        run: |
+          cat > /tmp/q.sql <<'SQL'
+          SET statement_timeout = '240s';
+          \echo '== 1. rows marked as a duplicate of another site (all time / still active), by duplicate site -> kept site'
+          SELECT d.source AS duplicate_site, c.source AS kept_site, count(*) AS all_time,
+                 count(*) FILTER (WHERE NOT d.is_delisted AND NOT c.is_delisted) AS both_active
+          FROM listings d JOIN listings c ON c.id = d.duplicate_of_id
+          GROUP BY 1, 2 ORDER BY 3 DESC;
+
+          \echo '== 2. active listings shown to users, and how many of them show an "also posted on" line'
+          WITH shown AS (SELECT id, source FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL)
+          SELECT s.source, count(*) AS shown,
+                 count(*) FILTER (WHERE EXISTS (SELECT 1 FROM listings d WHERE d.duplicate_of_id = s.id AND NOT d.is_delisted)) AS with_also_on
+          FROM shown s GROUP BY 1 ORDER BY 2 DESC;
+
+          \echo '== 3. new listings in the last 7 days: how many had every signal the matcher needs (city, street, rooms, floor, price)'
+          SELECT source, count(*) AS new_7d,
+                 count(*) FILTER (WHERE city IS NOT NULL) AS has_city,
+                 count(*) FILTER (WHERE coalesce(street, '') <> '') AS has_street,
+                 count(*) FILTER (WHERE rooms IS NOT NULL) AS has_rooms,
+                 count(*) FILTER (WHERE floor IS NOT NULL) AS has_floor,
+                 count(*) FILTER (WHERE price IS NOT NULL) AS has_price,
+                 count(*) FILTER (WHERE city IS NOT NULL AND coalesce(street, '') <> '' AND rooms IS NOT NULL
+                                  AND floor IS NOT NULL AND price IS NOT NULL) AS has_all_five
+          FROM listings WHERE first_seen_at >= now() - interval '7 days'
+          GROUP BY 1 ORDER BY 2 DESC;
+
+          \echo '== 4. likely same apartment on two sites that the strict rule did NOT link (active, same deal, city, street, rooms, price within 5%/150)'
+          WITH a AS (
+            SELECT id, source, deal_type, city, rooms, floor, price, duplicate_of_id,
+                   nullif(lower(regexp_replace(regexp_replace(trim(coalesce(street, '')), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g')), '') AS st
+            FROM listings WHERE NOT is_delisted AND price IS NOT NULL AND rooms IS NOT NULL AND city IS NOT NULL
+          )
+          SELECT x.source || ' + ' || y.source AS sites,
+                 count(*) AS likely_pairs,
+                 count(*) FILTER (WHERE x.duplicate_of_id = y.id OR y.duplicate_of_id = x.id
+                                  OR (x.duplicate_of_id IS NOT NULL AND x.duplicate_of_id = y.duplicate_of_id)) AS already_linked,
+                 count(*) FILTER (WHERE x.floor IS NULL OR y.floor IS NULL) AS a_floor_missing,
+                 count(*) FILTER (WHERE x.floor IS NOT NULL AND y.floor IS NOT NULL AND x.floor <> y.floor) AS floors_differ
+          FROM a x JOIN a y ON x.source < y.source AND x.deal_type = y.deal_type AND x.city = y.city
+                           AND x.rooms = y.rooms AND x.st = y.st
+                           AND abs(x.price - y.price) <= greatest(greatest(x.price, y.price) * 0.05, 150)
+          GROUP BY 1 ORDER BY 2 DESC;
+
+          \echo '== 5. same check without a street (city, rooms, floor, exact price) - a rough upper bound, may include different flats'
+          SELECT x.source || ' + ' || y.source AS sites, count(*) AS rough_pairs
+          FROM listings x JOIN listings y ON x.source < y.source AND x.deal_type = y.deal_type AND x.city = y.city
+                                         AND x.rooms = y.rooms AND x.floor = y.floor AND x.price = y.price
+          WHERE NOT x.is_delisted AND NOT y.is_delisted AND x.price IS NOT NULL
+          GROUP BY 1 ORDER BY 2 DESC;
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
