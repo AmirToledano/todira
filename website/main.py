@@ -72,7 +72,7 @@ from todira_common.channel_link import generate_link_code
 from todira_common.cities import CITIES, EXTRA_LOCALITIES, LOCALITY_SET, REGIONS
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
-from todira_common.listing_matches import load_listings, matching_listing_rows
+from todira_common.listing_matches import load_listings, matching_listing_rows, shown_listing_id
 from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from todira_common.uid_token import verify_uid_token
 from fastapi import FastAPI, Form, Request
@@ -726,7 +726,11 @@ def accessibility(request: Request):
 
 
 def _safe_next(next: str) -> str:
-    return next if next.startswith("/") and not next.startswith("//") else "/apartments"
+    # 2026-10-15 (security): "/\\evil.example" also passed the old check, and browsers treat a backslash like a slash -
+    # "//evil.example" - so the redirect left the site. A backslash or any control character is never a page of ours.
+    if not next.startswith("/") or next.startswith("//") or "\\" in next or any(ord(ch) < 32 for ch in next):
+        return "/apartments"
+    return next
 
 
 @app.get("/auth/telegram/callback")
@@ -1562,6 +1566,7 @@ def react_toggle(
         user = _resolve_user(request, session, uid)
         if user is None:
             return _render(request, "need_uid.html", {"target": "apartments"})
+        listing_id = shown_listing_id(session, listing_id)
 
         existing_id = session.scalar(
             select(UserListingAction.id).where(
@@ -1589,8 +1594,7 @@ def react_toggle(
 
     # same-origin relative path only — `next` is attacker-controllable form input, never redirect
     # anywhere else with it.
-    safe_next = next if next.startswith("/") and not next.startswith("//") else "/apartments"
-    return RedirectResponse(safe_next, status_code=303)
+    return RedirectResponse(_safe_next(next), status_code=303)
 
 
 @app.post("/apartments/no-brokers")

@@ -114,6 +114,8 @@ class _FakeSession:
         self._commit_calls = 0
 
     def scalar(self, stmt):
+        if "duplicate_of_id" in str(stmt):  # shown_listing_id: these listings are not linked duplicates
+            return None
         return self._scalar_queue.pop(0) if self._scalar_queue else None
 
     def get(self, model, pk):
@@ -430,3 +432,11 @@ def test_filter_region_rect_missing_bounds_rejected(client):
         resp = client.post("/filter/region", data={"uid": 222, "kind": "rect", "sw_lat": 32.0})
 
     assert resp.status_code == 400
+
+
+def test_next_with_a_backslash_never_leaves_the_site():
+    """2026-10-15: "/\\evil.example" passed the same-origin check; browsers read it as "//evil.example"."""
+    assert website_main._safe_next("/\\evil.example") == "/apartments"
+    assert website_main._safe_next("//evil.example") == "/apartments"
+    assert website_main._safe_next("https://evil.example") == "/apartments"
+    assert website_main._safe_next("/liked?x=1") == "/liked?x=1"

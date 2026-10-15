@@ -292,3 +292,43 @@ def link_missed_duplicates(session) -> int:
     _move_user_state(session, links)
     session.commit()
     return len(links)
+
+
+# 2026-10-15: the same flat posted twice on ONE site (an owner and an agent, or a repost) showed up twice. Measured live
+# (diagnose-same-site-duplicates.yaml): of ~1,000 live Yad2 pairs agreeing on street + number, floor, rooms and price,
+# 261 also carry the very same description text - those are linked here, the newer to the older. The rest are left
+# alone: without the same text they may be two identical flats in one new building.
+_SAME_SITE_REPOSTS_SQL = r"""
+WITH a AS (
+  SELECT id, source, deal_type, city, rooms, floor, price, size_sqm, first_seen_at, md5(trim(description)) AS text_hash,
+         lower(regexp_replace(regexp_replace(regexp_replace(trim(street), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g'), '\s+', ' ', 'g')) AS st
+  FROM listings
+  WHERE NOT is_delisted AND duplicate_of_id IS NULL AND city IS NOT NULL AND rooms IS NOT NULL AND floor IS NOT NULL
+    AND price IS NOT NULL AND street ~ '[0-9]' AND length(trim(coalesce(description, ''))) >= 40
+), g AS (
+  SELECT id, price, size_sqm,
+         first_value(id) OVER w AS root_id, first_value(price) OVER w AS root_price, first_value(size_sqm) OVER w AS root_size
+  FROM a WINDOW w AS (PARTITION BY source, deal_type, city, rooms, floor, st, text_hash ORDER BY first_seen_at, id)
+)
+SELECT id, root_id FROM g
+WHERE id <> root_id
+  AND abs(price - root_price) <= greatest(greatest(price, root_price) * 0.05, 150)
+  AND (size_sqm IS NULL OR root_size IS NULL OR abs(size_sqm - root_size) <= greatest(2, 0.05 * greatest(size_sqm, root_size)))
+"""
+
+
+def link_same_site_reposts(session) -> int:
+    """Links a live ad to an older live ad of the SAME site that is the same flat posted again: same street with house
+    number, floor, rooms and description text (at least a sentence of it), a price within the usual tolerance and a
+    size that agrees when both have one. Likes/hides/sent marks move to the older ad. Returns how many were linked."""
+    links = {row_id: root_id for row_id, root_id in session.execute(sql_text(_SAME_SITE_REPOSTS_SQL)).all()}
+    if not links:
+        return 0
+    old_ids = list(links)
+    session.execute(sql_text(
+        "WITH m AS (SELECT * FROM unnest(CAST(:old AS bigint[]), CAST(:new AS bigint[])) AS t(old_id, new_id)) "
+        "UPDATE listings l SET duplicate_of_id = m.new_id FROM m WHERE l.id = m.old_id OR l.duplicate_of_id = m.old_id"
+    ), {"old": old_ids, "new": [links[row_id] for row_id in old_ids]})
+    _move_user_state(session, links)
+    session.commit()
+    return len(links)

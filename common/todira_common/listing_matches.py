@@ -45,6 +45,14 @@ MATCH_COLUMNS = (
 )
 
 
+def shown_listing_id(session: Session, listing_id: int) -> int:
+    """The row shown for this apartment. A like or hide tapped on a card whose ad was later found to be the same flat as
+    another (scraper/dedup.py links the two) belongs on the row users actually see - otherwise "hide" hid nothing.
+    2026-10-15."""
+    canonical = session.scalar(select(Listing.duplicate_of_id).where(Listing.id == listing_id))
+    return canonical or listing_id
+
+
 def hidden_listing_ids(session: Session, user_id: int) -> set[int]:
     return set(
         session.scalars(
