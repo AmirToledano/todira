@@ -20,7 +20,7 @@ from sqlalchemy import Text, all_, any_, bindparam, case, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from dedup import find_duplicate_listing, link_missed_duplicates, promote_live_duplicates
+from dedup import find_duplicate_listing, link_missed_duplicates, link_same_site_reposts, promote_live_duplicates
 from todira_common import text_features, yad2_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
@@ -2543,6 +2543,7 @@ def run_once() -> dict[str, int]:
                 try:
                     summary["duplicates_promoted"] = promote_live_duplicates(session)
                     summary["duplicates_linked"] = link_missed_duplicates(session)
+                    summary["reposts_linked"] = link_same_site_reposts(session)
                 except Exception:
                     session.rollback()
                     logger.exception("cross-site duplicates step failed")

@@ -19,6 +19,7 @@ from todira_common.bot_strings import bot_text
 from todira_common.cards import format_caption, send_listing_card
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG, normalize_language_code
+from todira_common.listing_matches import shown_listing_id
 from todira_common.models import Listing, UserListingAction
 from todira_common.users import get_or_create_user
 from todira_common.uid_token import signed_login_query
@@ -136,6 +137,7 @@ def _apply_reaction_sync(tg_user, action: str, listing_id: int) -> str:
             return bot_text("liked.found_paused", lang)
 
         db_action = "liked" if action == "like" else "hidden"
+        listing_id = shown_listing_id(session, listing_id)
         existing_id = session.scalar(
             select(UserListingAction.id).where(
                 UserListingAction.user_id == user.id,
