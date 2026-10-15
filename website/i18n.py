@@ -179,7 +179,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Mon compte 👤", "ar": "حسابي 👤",
     },
     "auth.you": {
-        "he": "מחובר/ת", "en": "Logged in", "ru": "Вы вошли", "fr": "Connecté(e)", "ar": "تم تسجيل الدخول",
+        "he": "מחובר", "en": "Logged in", "ru": "Вы вошли", "fr": "Connecté(e)", "ar": "تم تسجيل الدخول",
     },
     "auth.logout": {
         "he": "התנתקות", "en": "Log out", "ru": "Выйти", "fr": "Se déconnecter", "ar": "تسجيل الخروج",
@@ -193,7 +193,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Lier votre compte Google 🔗", "ar": "ربط حساب Google 🔗",
     },
     "auth.error_body": {
-        "he": "לא הצלחנו לאמת את ההתחברות. אפשר לנסות שוב.",
+        "he": "משהו לא הסתדר בהתחברות. נסה שוב.",
         "en": "We couldn't verify the login. Please try again.",
         "ru": "Не удалось подтвердить вход. Попробуйте снова.",
         "fr": "Impossible de vérifier la connexion. Veuillez réessayer.",
@@ -275,7 +275,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- cookie notice banner (2026-09-25) ----------
     "cookies.notice_text": {
-        "he": "האתר משתמש בשתי עוגיות פונקציונליות בלבד (התחברות ושפת תצוגה) — לא בעוגיות פרסום או מעקב.",
+        "he": "האתר משתמש רק בשתי עוגיות: אחת זוכרת שהתחברת ואחת זוכרת את השפה. בלי פרסומות ובלי מעקב.",
         "en": "This site uses exactly two functional cookies (login and display language) — no advertising or tracking cookies.",
         "ru": "Сайт использует только два функциональных файла cookie (вход и язык отображения) — без рекламных или отслеживающих файлов cookie.",
         "fr": "Ce site utilise exactement deux cookies fonctionnels (connexion et langue d'affichage) — aucun cookie publicitaire ou de suivi.",
@@ -407,11 +407,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "شقتك تجدك",
     },
     "home.lead": {
-        "he": "טודירה סורק את שוק הדירות בלי הפסקה, ומתריע לך תוך דקות ברגע שעולה דירה שמתאימה בדיוק למה שחיפשת — לפני שמישהו אחר יתפוס אותה.",
-        "en": "Todira scans the apartment market non-stop, and alerts you within minutes the moment a listing matches exactly what you're looking for — before someone else grabs it.",
-        "ru": "Todira непрерывно сканирует рынок квартир и уведомляет вас в течение нескольких минут, как только появляется объявление, точно соответствующее вашему запросу — прежде чем его займёт кто-то другой.",
-        "fr": "Todira scanne le marché des appartements sans interruption et vous alerte en quelques minutes dès qu'une annonce correspond exactement à ce que vous cherchez — avant que quelqu'un d'autre ne la prenne.",
-        "ar": "توديرا يفحص سوق الشقق بلا توقف، وينبهك خلال دقائق فور ظهور شقة تطابق تمامًا ما تبحث عنه — قبل أن يسبقك إليها شخص آخر.",
+        "he": "אנחנו עוברים בשבילך על יד2, קומו, הומלס ופייסבוק, ושולחים לך לטלגרם רק את הדירות שבאמת מתאימות לך. בלי לרענן אתרים כל היום.",
+        "en": "We go through Yad2, Komo, Homeless and Facebook for you, and send you on Telegram only the apartments that really fit you. No refreshing websites all day.",
+        "ru": "Мы проверяем за вас Yad2, Komo, Homeless и Facebook и присылаем в Telegram только подходящие квартиры. Больше не нужно весь день обновлять сайты.",
+        "fr": "Nous parcourons Yad2, Komo, Homeless et Facebook pour vous, et vous envoyons sur Telegram uniquement les appartements qui vous correspondent vraiment. Fini de rafraîchir les sites toute la journée.",
+        "ar": "نمرّ من أجلك على يد2 وكومو وهوملس وفيسبوك، ونرسل لك على تيليجرام فقط الشقق التي تناسبك فعلًا. بلا تحديث للمواقع طوال اليوم.",
     },
     "home.cta_open_bot": {
         "he": "פתח את הבוט בטלגרם",
@@ -480,11 +480,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "الآن",
     },
     "home.live_scan_hours_label": {
-        "he": "סריקה כל שעה, 9:00–22:00",
-        "en": "Scanning every hour, 9:00–22:00",
-        "ru": "Сканирование каждый час, 9:00–22:00",
-        "fr": "Analyse toutes les heures, 9h–22h",
-        "ar": "فحص كل ساعة، 9:00–22:00",
+        "he": "תדירות סריקה",
+        "en": "Scan frequency",
+        "ru": "Частота сканирования",
+        "fr": "Fréquence de scan",
+        "ar": "تكرار الفحص",
     },
     "home.live_cinematic_caption": {
         "he": "מודעות חדשות מצאנו ב־24 השעות האחרונות",
@@ -512,12 +512,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Période d'essai", "ar": "فترة تجريبية",
     },
     "home.momentum_1_value": {
-        "he": "הקהילה שלנו", "en": "Our community", "ru": "Наше сообщество",
-        "fr": "Notre communauté", "ar": "مجتمعنا",
+        "he": "4 אתרים", "en": "4 websites", "ru": "4 сайта",
+        "fr": "4 sites", "ar": "4 مواقع",
     },
     "home.momentum_1_label": {
-        "he": "גדלה כל יום", "en": "Growing every day", "ru": "Растёт каждый день",
-        "fr": "En croissance chaque jour", "ar": "ينمو كل يوم",
+        "he": "יד2, קומו, הומלס ופייסבוק, במקום אחד", "en": "Yad2, Komo, Homeless and Facebook, in one place", "ru": "Yad2, Komo, Homeless и Facebook в одном месте",
+        "fr": "Yad2, Komo, Homeless et Facebook, au même endroit", "ar": "يد2 وكومو وهوملس وفيسبوك في مكان واحد",
     },
     "home.momentum_2_value": {
         "he": "ההתראה שלך", "en": "Your alert", "ru": "Ваше уведомление",
@@ -534,9 +534,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Tout le pays", "ar": "في جميع أنحاء البلاد",
     },
     "home.momentum_3_label": {
-        "he": "כל האזורים בישראל, במקום אחד", "en": "Every region in Israel, in one place",
-        "ru": "Все регионы Израиля в одном месте", "fr": "Toutes les régions d'Israël réunies",
-        "ar": "جميع مناطق إسرائيل في مكان واحد",
+        "he": "מאילת ועד קריית שמונה", "en": "From Eilat to Kiryat Shmona",
+        "ru": "От Эйлата до Кирьят-Шмоны", "fr": "D'Eilat à Kiryat Shmona",
+        "ar": "من إيلات حتى كريات شمونة",
     },
     "home.live_badge": {
         "he": "התראות בזמן אמת 🔔", "en": "Real-time alerts 🔔", "ru": "Уведомления в реальном времени 🔔",
@@ -561,11 +561,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "رمات غان · غرفتان · 4,900 ₪",
     },
     "home.feature1_title": {
-        "he": "מבין אותך בשפה חופשית",
-        "en": "Understands you in plain language",
-        "ru": "Понимает вас на естественном языке",
-        "fr": "Vous comprend en langage naturel",
-        "ar": "يفهمك بلغة طبيعية",
+        "he": "תכתוב לו כמו לחבר",
+        "en": "Write to it like a friend",
+        "ru": "Пишите ему как другу",
+        "fr": "Écrivez-lui comme à un ami",
+        "ar": "اكتب له كما تكتب لصديق",
     },
     # 2026-09-25: no longer quotes the literal example ("2-3 rooms in Tel Aviv, up to 6,000 ILS")
     # inline — the demo box right below (feature1_example_city/rooms/price + the fixed query text
@@ -573,7 +573,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # just duplicated the same numbers twice back-to-back. The "in Hebrew" clarification stays —
     # that's a real functional instruction for non-Hebrew readers, not part of the redundant quote.
     "home.feature1_body": {
-        "he": "פשוט תכתבו לבוט מה אתם מחפשים, בדיוק כמו שהייתם מתארים לחבר — ובינה מלאכותית מבינה ומגדירה את הסינון בשבילכם, בלי טפסים מסובכים.",
+        "he": "תכתוב לבוט במילים שלך מה אתה מחפש. הוא מבין לבד ובונה לך את הסינון. בלי טפסים ובלי תפריטים.",
         "en": "Just write what you're looking for in Hebrew, like you'd describe it to a friend — and AI understands it and sets up the filter for you, no complicated forms.",
         "ru": "Просто напишите боту на иврите, что вы ищете, как будто рассказываете другу — и ИИ поймёт вас и настроит фильтр без сложных форм.",
         "fr": "Décrivez simplement au bot ce que vous cherchez en hébreu, comme vous le feriez auprès d'un ami — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
@@ -605,19 +605,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # bubble now makes the "AI extracted these 3 things from your sentence" point explicit instead
     # of implied by a lone arrow.
     "home.feature1_understood_label": {
-        "he": "הבינה המלאכותית זיהתה:", "en": "AI identified:", "ru": "ИИ определил:",
-        "fr": "L'IA a identifié :", "ar": "الذكاء الاصطناعي حدد:",
+        "he": "הבוט הבין:", "en": "The bot understood:", "ru": "Бот понял:",
+        "fr": "Le bot a compris :", "ar": "فهم البوت:",
     },
     "home.feature2_title": {
         "he": "התראות בזמן אמת", "en": "Real-time alerts", "ru": "Уведомления в реальном времени",
         "fr": "Alertes en temps réel", "ar": "تنبيهات فورية",
     },
     "home.feature2_body": {
-        "he": "הסריקה רצה כל הזמן ברקע. ברגע שדירה חדשה תואמת עולה לרשת — אתה מקבל הודעה בטלגרם, לא צריך לרענן אתרים כל היום.",
-        "en": "Scanning runs continuously in the background. The moment a new matching listing goes online, you get a Telegram message — no need to refresh sites all day.",
-        "ru": "Сканирование работает непрерывно в фоне. Как только появляется новое подходящее объявление, вы получаете сообщение в Telegram — не нужно весь день обновлять сайты.",
-        "fr": "Le scan tourne en continu en arrière-plan. Dès qu'une nouvelle annonce correspondante est publiée, vous recevez un message Telegram — plus besoin de rafraîchir des sites toute la journée.",
-        "ar": "الفحص يعمل باستمرار في الخلفية. فور ظهور إعلان جديد مطابق على الشبكة، تصلك رسالة على تيليجرام — لا حاجة لتحديث المواقع طوال اليوم.",
+        "he": "הבוט עובר על האתרים בשבילך שוב ושוב לאורך היום. עלתה דירה שמתאימה לך? ברגע שהוא מוצא אותה, היא אצלך בטלגרם. אתה לא צריך לרענן כלום.",
+        "en": "The bot goes through the sites for you again and again throughout the day. A new apartment that fits you? The moment it finds it, it's on your Telegram. You don't need to refresh anything.",
+        "ru": "Бот снова и снова проверяет сайты за вас в течение дня. Появилась подходящая квартира? Как только бот её найдёт, она у вас в Telegram. Ничего не нужно обновлять.",
+        "fr": "Le bot parcourt les sites pour vous, encore et encore, tout au long de la journée. Un appartement qui vous correspond ? Dès qu'il le trouve, il arrive sur votre Telegram. Vous n'avez rien à rafraîchir.",
+        "ar": "يمرّ البوت على المواقع من أجلك مرة بعد مرة طوال اليوم. نُشرت شقة تناسبك؟ لحظة أن يجدها تصلك على تيليجرام. لا حاجة لتحديث أي شيء.",
     },
     "home.feature3_title": {
         "he": "שומר לך את הדירות שאהבת",
@@ -627,7 +627,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "يحفظ الشقق التي أعجبتك",
     },
     "home.feature3_body": {
-        "he": "סמן דירות שמעניינות אותך ותחזור אליהן בקלות בכל שלב — כאן באתר או ישירות מתוך הבוט.",
+        "he": "תסמן דירות שמעניינות אותך ותחזור אליהן מתי שבא לך, פה באתר או בבוט.",
         "en": "Mark apartments you're interested in and come back to them easily at any point — here on the site or straight from the bot.",
         "ru": "Отмечайте интересные квартиры и легко возвращайтесь к ним в любой момент — здесь на сайте или прямо в боте.",
         "fr": "Marquez les appartements qui vous intéressent et retrouvez-les facilement à tout moment — ici sur le site ou directement depuis le bot.",
@@ -641,7 +641,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "لماذا لا تكتفي بالتصفح بنفسك؟",
     },
     "home.compare_sub": {
-        "he": "כי אתה עסוק, ודירות טובות נעלמות תוך שעות.",
+        "he": "כי דירה טובה נחטפת תוך כמה שעות, ואין לך זמן לשבת על זה כל היום.",
         "en": "Because you're busy, and good apartments disappear within hours.",
         "ru": "Потому что вы заняты, а хорошие квартиры исчезают за считанные часы.",
         "fr": "Parce que vous êtes occupé, et les bons appartements disparaissent en quelques heures.",
@@ -652,28 +652,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Sans Todira 😩", "ar": "بدون توديرا 😩",
     },
     "home.compare_without_1": {
-        "he": "מרעננים כמה אתרים כל כמה שעות",
+        "he": "אתה מרענן כמה אתרים כל כמה שעות",
         "en": "Refreshing several sites every few hours",
         "ru": "Обновляете несколько сайтов каждые несколько часов",
         "fr": "Rafraîchir plusieurs sites toutes les quelques heures",
         "ar": "تحديث عدة مواقع كل بضع ساعات",
     },
     "home.compare_without_2": {
-        "he": "מפספסים דירות טובות שנתפסות עוד לפני שראיתם אותן",
+        "he": "מפספס דירות טובות שנחטפות עוד לפני שראית אותן",
         "en": "Missing good apartments that get taken before you even see them",
         "ru": "Упускаете хорошие квартиры, которые сдают ещё до того, как вы их увидели",
         "fr": "Rater de bons appartements pris avant même que vous les voyiez",
         "ar": "تفويت شقق جيدة تُحجز قبل أن تراها أصلًا",
     },
     "home.compare_without_3": {
-        "he": "עוברים ידנית על עשרות מודעות לא רלוונטיות",
+        "he": "עובר ידנית על עשרות מודעות שלא קשורות אליך",
         "en": "Manually sifting through dozens of irrelevant listings",
         "ru": "Вручную просматриваете десятки нерелевантных объявлений",
         "fr": "Parcourir manuellement des dizaines d'annonces non pertinentes",
         "ar": "تصفح عشرات الإعلانات غير ذات الصلة يدويًا",
     },
     "home.compare_without_4": {
-        "he": "שוכחים דירה ששמרתם בלשונית שנסגרה",
+        "he": "שוכח דירה ששמרת בלשונית שנסגרה",
         "en": "Forgetting an apartment you saved in a tab you closed",
         "ru": "Забываете квартиру, сохранённую во вкладке, которую закрыли",
         "fr": "Oublier un appartement enregistré dans un onglet fermé",
@@ -689,28 +689,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # which already said the correct "כל שעתיים"/"Every 2h". Found by cross-checking the page's
     # own claims against each other, then against the real CronJob schedule.
     "home.compare_with_1": {
-        "he": "סריקה אוטומטית כל שעה, ברקע",
+        "he": "הבוט סורק בשבילך כל שעה, ברקע",
         "en": "Automatic scanning every hour, in the background",
         "ru": "Автоматическое сканирование каждый час в фоне",
         "fr": "Scan automatique toutes les heures, en arrière-plan",
         "ar": "فحص تلقائي كل ساعة في الخلفية",
     },
     "home.compare_with_2": {
-        "he": "התראה מיידית בטלגרם ברגע שיש התאמה",
+        "he": "הודעה בטלגרם ברגע שיש דירה שמתאימה לך",
         "en": "Instant Telegram alert the moment there's a match",
         "ru": "Мгновенное уведомление в Telegram при совпадении",
         "fr": "Alerte Telegram instantanée dès qu'il y a une correspondance",
         "ar": "تنبيه فوري على تيليجرام فور وجود تطابق",
     },
     "home.compare_with_3": {
-        "he": "רואים רק דירות שבאמת עומדות בסינון שלכם",
+        "he": "רואה רק דירות שבאמת מתאימות לסינון שלך",
         "en": "You only see apartments that truly meet your filter",
         "ru": "Вы видите только квартиры, действительно соответствующие фильтру",
         "fr": "Vous ne voyez que les appartements qui correspondent vraiment à votre filtre",
         "ar": "لا ترى إلا الشقق التي تطابق فعلًا فلترك",
     },
     "home.compare_with_4": {
-        "he": "כל דירה ששמרתם מחכה לכם כאן וגם בבוט",
+        "he": "כל דירה ששמרת מחכה לך פה וגם בבוט",
         "en": "Every apartment you saved is waiting for you here and in the bot",
         "ru": "Каждая сохранённая квартира ждёт вас здесь и в боте",
         "fr": "Chaque appartement enregistré vous attend ici et dans le bot",
@@ -721,40 +721,40 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Comment ça marche", "ar": "كيف يعمل",
     },
     "home.how_sub": {
-        "he": "שלוש דקות התחלה, ואז טודירה עובד בשבילך ברקע.",
-        "en": "Three minutes to get started, then Todira works for you in the background.",
-        "ru": "Три минуты на старт — и дальше Todira работает за вас в фоне.",
-        "fr": "Trois minutes pour démarrer, puis Todira travaille pour vous en arrière-plan.",
-        "ar": "ثلاث دقائق للبدء، ثم يعمل توديرا من أجلك في الخلفية.",
+        "he": "שתי דקות להתחיל, ומשם טודירה עובד בשבילך.",
+        "en": "Two minutes to start, and from there Todira works for you.",
+        "ru": "Две минуты на старт, а дальше Todira работает за вас.",
+        "fr": "Deux minutes pour démarrer, ensuite Todira travaille pour vous.",
+        "ar": "دقيقتان للبدء، ومن هناك توديرا يعمل من أجلك.",
     },
     "home.step1_title": {
-        "he": "מדברים עם הבוט", "en": "Talk to the bot", "ru": "Общайтесь с ботом",
+        "he": "מדבר עם הבוט", "en": "Talk to the bot", "ru": "Общайтесь с ботом",
         "fr": "Discutez avec le bot", "ar": "تحدث مع البوت",
     },
     "home.step1_body": {
-        "he": "פותחים שיחה בטלגרם ומתארים במילים שלכם את הדירה שאתם מחפשים.",
+        "he": "פותח שיחה בטלגרם ומספר במילים שלך איזו דירה אתה מחפש.",
         "en": "Open a chat on Telegram and describe, in Hebrew and in your own words, the apartment you're looking for.",
         "ru": "Откройте чат в Telegram и опишите на иврите своими словами квартиру, которую вы ищете.",
         "fr": "Ouvrez une conversation sur Telegram et décrivez, en hébreu et avec vos propres mots, l'appartement que vous cherchez.",
         "ar": "افتح محادثة على تيليجرام وصف بالعبرية وبكلماتك الشقة التي تبحث عنها.",
     },
     "home.step2_title": {
-        "he": "הסינון נבנה אוטומטית", "en": "The filter builds itself", "ru": "Фильтр строится автоматически",
+        "he": "הסינון נבנה לבד", "en": "The filter builds itself", "ru": "Фильтр строится автоматически",
         "fr": "Le filtre se construit automatiquement", "ar": "يُبنى الفلتر تلقائيًا",
     },
     "home.step2_body": {
-        "he": "עיר, טווח מחיר, מספר חדרים ועוד — הכל נחלץ מהשיחה שלכם ונשמר כפרופיל חיפוש.",
+        "he": "עיר, מחיר, חדרים ועוד. הבוט מוציא הכל מהשיחה ושומר לך את החיפוש.",
         "en": "City, price range, number of rooms and more — it's all extracted from your conversation and saved as a search profile.",
         "ru": "Город, диапазон цен, количество комнат и многое другое — всё извлекается из вашего разговора и сохраняется как профиль поиска.",
         "fr": "Ville, fourchette de prix, nombre de pièces et plus — tout est extrait de votre conversation et enregistré comme profil de recherche.",
         "ar": "المدينة ونطاق السعر وعدد الغرف وأكثر — كل ذلك يُستخرج من محادثتك ويُحفظ كملف بحث.",
     },
     "home.step3_title": {
-        "he": "מקבלים התראות", "en": "Get alerts", "ru": "Получайте уведомления",
+        "he": "מקבל התראות", "en": "Get alerts", "ru": "Получайте уведомления",
         "fr": "Recevez des alertes", "ar": "احصل على تنبيهات",
     },
     "home.step3_body": {
-        "he": "מרגע זה, כל דירה חדשה שמתאימה תשלח אליכם ישירות — וגם תופיע כאן באתר.",
+        "he": "מעכשיו, כל דירה חדשה שמתאימה לך מגיעה אליך ישר, וגם מופיעה פה באתר.",
         "en": "From this moment on, every new matching apartment is sent straight to you — and also shows up here on the site.",
         "ru": "С этого момента каждая новая подходящая квартира отправляется прямо вам — а также появляется здесь на сайте.",
         "fr": "Dès cet instant, chaque nouvel appartement correspondant vous est envoyé directement — et apparaît aussi ici sur le site.",
@@ -765,14 +765,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Questions fréquentes", "ar": "الأسئلة الشائعة",
     },
     "home.faq1_q": {
-        "he": "איך הבינה המלאכותית מבינה מה אני מחפש?",
-        "en": "How does the AI understand what I'm looking for?",
-        "ru": "Как ИИ понимает, что я ищу?",
-        "fr": "Comment l'IA comprend-elle ce que je cherche ?",
-        "ar": "كيف يفهم الذكاء الاصطناعي ما أبحث عنه؟",
+        "he": "איך הבוט מבין מה אני מחפש?",
+        "en": "How does the bot understand what I'm looking for?",
+        "ru": "Как бот понимает, что я ищу?",
+        "fr": "Comment le bot comprend-il ce que je cherche ?",
+        "ar": "كيف يفهم البوت ما أبحث عنه؟",
     },
     "home.faq1_a": {
-        "he": "אתם כותבים לבוט בשפה חופשית, בדיוק כמו שהייתם מתארים לחבר מה אתם מחפשים. מודל שפה מזהה מתוך המשפט עיר, טווח מחיר, מספר חדרים ופרטים נוספים, ובונה מזה פרופיל חיפוש — בלי טפסים ובלי תפריטים מסובכים.",
+        "he": "אתה כותב לו בשפה חופשית, כמו שהיית מספר לחבר. הבוט מוציא מהמשפט עיר, מחיר, חדרים ועוד, ובונה מזה חיפוש. בלי טפסים ובלי תפריטים.",
         "en": "You write to the bot in plain Hebrew, just like you'd describe it to a friend. A language model picks out the city, price range, number of rooms and more from your sentence, and builds a search profile from it — no forms, no complicated menus.",
         "ru": "Вы пишете боту на иврите свободным текстом, как будто рассказываете другу. Языковая модель распознаёт город, диапазон цен, количество комнат и другие детали из вашего сообщения и строит на их основе профиль поиска — без форм и сложных меню.",
         "fr": "Vous écrivez au bot en hébreu, en langage libre, exactement comme vous le décririez à un ami. Un modèle de langage identifie dans votre phrase la ville, la fourchette de prix, le nombre de pièces et d'autres détails, puis construit un profil de recherche — sans formulaires ni menus compliqués.",
@@ -784,18 +784,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "من أين تأتي الإعلانات؟",
     },
     "home.faq2_a": {
-        "he": "טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל שעה, מ־9 בבוקר עד 10 בלילה, ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.",
-        "en": "Todira automatically scans the apartment market online every hour from 9:00 to 22:00 and compares every new listing against your filter. More sources are being added gradually.",
-        "ru": "Todira автоматически сканирует рынок квартир в сети каждый час с 9:00 до 22:00 и сравнивает каждое новое объявление с вашим фильтром. Постепенно добавляются новые источники.",
-        "fr": "Todira scanne automatiquement le marché des appartements en ligne toutes les heures de 9h à 22h et compare chaque nouvelle annonce à votre filtre. D'autres sources sont ajoutées progressivement.",
-        "ar": "يفحص توديرا سوق الشقق على الإنترنت تلقائيًا كل ساعة من 9:00 حتى 22:00 ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا.",
+        "he": "מיד2, קומו, הומלס ופייסבוק. הבוט עובר עליהם שוב ושוב לאורך היום, ובודק כל מודעה חדשה מול הסינון שלך. ועוד אתרים בדרך.",
+        "en": "From Yad2, Komo, Homeless and Facebook. The bot goes through them again and again throughout the day and checks every new listing against your filter. More sites are on the way.",
+        "ru": "С Yad2, Komo, Homeless и Facebook. Бот снова и снова проверяет их в течение дня и сравнивает каждое новое объявление с вашим фильтром. Скоро добавятся новые сайты.",
+        "fr": "De Yad2, Komo, Homeless et Facebook. Le bot les parcourt encore et encore tout au long de la journée et compare chaque nouvelle annonce à votre filtre. D'autres sites arrivent bientôt.",
+        "ar": "من يد2 وكومو وهوملس وفيسبوك. يمرّ البوت عليها مرة بعد مرة طوال اليوم، ويقارن كل إعلان جديد بفلترك. ومواقع أخرى في الطريق.",
     },
     "home.faq3_q": {
         "he": "כמה זה עולה?", "en": "How much does it cost?", "ru": "Сколько это стоит?",
         "fr": "Combien ça coûte ?", "ar": "كم تكلفته؟",
     },
     "home.faq3_a": {
-        "he": 'יש תקופת ניסיון של 3 ימים, ואז תשלום חד-פעמי: 19.90 ₪ לשבוע, 29.90 ₪ לשבועיים או 49.90 ₪ לחודש — בלי חידוש אוטומטי.',
+        "he": "יש 3 ימי ניסיון בחינם, ואחרי זה תשלום חד־פעמי: 19.90 ₪ לשבוע, 29.90 ₪ לשבועיים או 49.90 ₪ לחודש. בלי חידוש אוטומטי.",
         "en": "There's a 3-day trial period, then a one-time payment: ₪19.90 for a week, ₪29.90 for two weeks or ₪49.90 for a month — no automatic renewal.",
         "ru": 'Есть 3-дневный пробный период, затем разовый платёж: 19.90 ₪ за неделю, 29.90 ₪ за две недели или 49.90 ₪ за месяц — без автопродления.',
         "fr": "Il y a une période d'essai de 3 jours, puis un paiement unique : 19,90 ₪ pour une semaine, 29,90 ₪ pour deux semaines ou 49,90 ₪ pour un mois — sans renouvellement automatique.",
@@ -809,19 +809,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "هل يمكنني تغيير الفلتر بعد إعداده؟",
     },
     "home.faq4_a": {
-        "he": "בהחלט — גם דרך הבוט בטלגרם וגם כאן באתר, בעמוד \"הסינון שלי\", בכל שלב שתרצו.",
+        "he": "בטח. בבוט בטלגרם או פה באתר, בעמוד ״הסינון שלי״, מתי שבא לך.",
         "en": "Absolutely — through the Telegram bot or right here on the site, on the \"My filter\" page, whenever you like.",
         "ru": "Конечно — через бота в Telegram или прямо здесь на сайте, на странице «Мой фильтр», в любой момент.",
         "fr": "Bien sûr — via le bot Telegram ou ici même sur le site, sur la page « Mon filtre », à tout moment.",
         "ar": "بالتأكيد — عبر البوت على تيليجرام أو هنا على الموقع، في صفحة \"فلتري\"، في أي وقت تشاء.",
     },
     "home.footer_cta_title": {
-        "he": "מוכנים למצוא את הדירה?", "en": "Ready to find your apartment?",
-        "ru": "Готовы найти свою квартиру?", "fr": "Prêt à trouver votre appartement ?",
-        "ar": "مستعد لإيجاد شقتك؟",
+        "he": "יאללה, בוא נמצא לך דירה", "en": "Come on, let's find you an apartment",
+        "ru": "Давайте найдём вам квартиру", "fr": "Allez, trouvons-vous un appartement",
+        "ar": "يلّا، لنجد لك شقة",
     },
     "home.footer_cta_body": {
-        "he": "זה לוקח פחות משתי דקות להתחיל, וההתראות הראשונות יכולות להגיע עוד היום.",
+        "he": "לוקח פחות משתי דקות להתחיל, וההתראות הראשונות יכולות להגיע כבר היום.",
         "en": "It takes less than two minutes to get started, and your first alerts can arrive today.",
         "ru": "Начать можно меньше чем за две минуты, а первые уведомления могут прийти уже сегодня.",
         "fr": "Il faut moins de deux minutes pour commencer, et vos premières alertes peuvent arriver dès aujourd'hui.",
@@ -873,25 +873,25 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Avec agences 🏢", "ar": "يشمل السماسرة 🏢",
     },
     "apartments.empty_title": {
-        "he": "אין עדיין דירות תואמות להצגה.",
+        "he": "עוד אין דירות שמתאימות לך.",
         "en": "No matching apartments to show yet.",
         "ru": "Пока нет подходящих квартир для показа.",
         "fr": "Aucun appartement correspondant à afficher pour le moment.",
         "ar": "لا توجد بعد شقق مطابقة لعرضها.",
     },
     "apartments.empty_hint": {
-        "he": "אם זה נראה משונה — סביר שזה כי שאיבת המודעות עדיין בבנייה, לא בעיה בסינון שלך. נסה שוב בקרוב.",
-        "en": "If this seems odd — it's most likely because listing collection is still being built out, not an issue with your filter. Try again soon.",
-        "ru": "Если это кажется странным — скорее всего, сбор объявлений ещё дорабатывается, а не проблема в вашем фильтре. Попробуйте снова позже.",
-        "fr": "Si cela semble étrange — c'est très probablement parce que la collecte des annonces est encore en construction, pas un problème avec votre filtre. Réessayez bientôt.",
-        "ar": "إذا بدا هذا غريبًا — فالسبب على الأرجح أن جمع الإعلانات ما زال قيد الإنشاء، وليس مشكلة في فلترك. حاول مجددًا قريبًا.",
+        "he": "אולי הסינון קצת צר. נסה להרחיב אותו, או תחזור עוד מעט אחרי הסריקה הבאה.",
+        "en": "Your filter may be a little narrow. Try widening it, or come back after the next scan.",
+        "ru": "Возможно, фильтр слишком узкий. Попробуйте расширить его или загляните после следующего сканирования.",
+        "fr": "Votre filtre est peut-être un peu étroit. Élargissez-le, ou revenez après le prochain scan.",
+        "ar": "ربما الفلتر ضيق قليلًا. جرّب توسيعه، أو عد بعد الفحص القادم.",
     },
     # Announced via an aria-live region when infinite scroll loads another batch (2026-09-07 audit
     # fix) — without this, a screen-reader user got zero indication that new listings had appeared
     # below the ones they'd already heard, since the new cards are inserted silently by JS with no
     # page navigation to re-announce anything.
     "apartments.loading_more": {
-        "he": "עוד רגע, טוען דירות נוספות...",
+        "he": "רגע, טוען עוד דירות...",
         "en": "One moment, loading more apartments...",
         "ru": "Секунду, загружаем ещё квартиры...",
         "fr": "Un instant, chargement d'autres appartements...",
@@ -918,7 +918,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "{shown} شقق على الخريطة (من {total})",
     },
     "apartments.map_load_failed": {
-        "he": "לא ניתן לטעון את המפה כרגע (ייתכן שחוסם פרסומות/פרטיות בדפדפן חוסם אותה) — הדירות עצמן עדיין מוצגות ברשימה.",
+        "he": "המפה לא נטענה כרגע (אולי חוסם פרסומות בדפדפן). הדירות עצמן מופיעות ברשימה.",
         "en": "The map couldn't load right now (an ad/privacy blocker may be blocking it) — the apartments themselves are still shown in the list.",
         "ru": "Не удалось загрузить карту (возможно, её блокирует блокировщик рекламы/приватности) — сами квартиры всё ещё показаны в списке.",
         "fr": "La carte n'a pas pu se charger (un bloqueur de publicités/confidentialité la bloque peut-être) — les appartements restent affichés dans la liste.",
@@ -1541,7 +1541,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- listing card ----------
     "card.like_btn": {
-        "he": "שמור/י דירה", "en": "Save apartment", "ru": "Сохранить квартиру",
+        "he": "שמור דירה", "en": "Save apartment", "ru": "Сохранить квартиру",
         "fr": "Enregistrer l'appartement", "ar": "احفظ الشقة",
     },
     "card.hide_btn": {
@@ -1610,7 +1610,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # viewer regardless of subscription (see _listing_card.html); this button now gates only the
     # outbound link to the listing's original source (Yad2/etc), so the copy says that instead.
     "card.locked_btn": {
-        "he": "שדרג/י לקישור למקור", "en": "Upgrade for original link",
+        "he": "שדרג וקבל קישור למודעה", "en": "Upgrade for original link",
         "ru": "Обновите для перехода к источнику", "fr": "Mettre à niveau pour le lien d'origine",
         "ar": "الترقية للرابط الأصلي",
     },
@@ -1632,12 +1632,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Contacter — ouvrir l'annonce d'origine", "ar": "التواصل — فتح الإعلان الأصلي",
     },
     "card.contact_modal_title": {
-        "he": "רוצים את פרטי הקשר?", "en": "Want the contact details?",
+        "he": "רוצה את פרטי הקשר?", "en": "Want the contact details?",
         "ru": "Хотите получить контактные данные?", "fr": "Vous voulez les coordonnées ?",
         "ar": "هل تريد بيانات التواصل؟",
     },
     "card.contact_modal_body": {
-        "he": "פרטי הקשר עם המפרסם/ת פתוחים למנויי פרימיום. שדרג/י את המנוי כדי לגשת אליהם.",
+        "he": "פרטי הקשר של המפרסם פתוחים למנויים. שדרג ותקבל גישה.",
         "en": "Contact details for the poster are open to Premium subscribers. Upgrade your "
         "subscription to access them.",
         "ru": "Контактные данные автора объявления доступны подписчикам Premium. Обновите "
@@ -1647,7 +1647,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "بيانات التواصل مع المعلن متاحة لمشتركي Premium. قم بترقية اشتراكك للوصول إليها.",
     },
     "card.contact_modal_upgrade_btn": {
-        "he": "עברו למנוי פרימיום 👑", "en": "Go Premium 👑", "ru": "Перейти на Premium 👑",
+        "he": "לשדרוג 👑", "en": "Go Premium 👑", "ru": "Перейти на Premium 👑",
         "fr": "Passer à Premium 👑", "ar": "الترقية إلى Premium 👑",
     },
     # 2026-09-26 follow-up: explicit owner decision, matching dorin.app's own popup exactly — a
@@ -1671,7 +1671,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "صورة الشقة في {city}، {rooms} غرف",
     },
     "card.no_image_caption": {
-        "he": "דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה! 🕵️",
+        "he": "הדירה עלתה בלי תמונות, אבל שווה לבקש מהמפרסם כמה! 🕵️",
         "en": "This listing has no photos yet — it's worth contacting the lister to ask for some! 🕵️",
         "ru": "У этого объявления пока нет фото — стоит написать автору и попросить! 🕵️",
         "fr": "Cette annonce n'a pas encore de photos — ça vaut le coup de demander au contact ! 🕵️",
@@ -1723,14 +1723,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Mon filtre ⚙️", "ar": "فلتري ⚙️",
     },
     "filter.welcome_banner": {
-        "he": "ברוך הבא לטודירה! בוא נגדיר את הסינון שלך כדי שנראה לך בדיוק את הדירות שמתאימות",
+        "he": "ברוך הבא לטודירה! בוא נגדיר את הסינון, ונראה לך רק דירות שמתאימות לך.",
         "en": "Welcome to Todira! Let's set up your filter so we can show you exactly the apartments that fit",
         "ru": "Добро пожаловать в Todira! Давайте настроим ваш фильтр, чтобы показывать именно те квартиры, которые подходят",
         "fr": "Bienvenue sur Todira ! Configurons votre filtre pour vous montrer exactement les appartements qui correspondent",
         "ar": "مرحبًا بك في طوديرة! لنقم بإعداد الفلتر الخاص بك لنعرض لك بالضبط الشقق المناسبة",
     },
     "filter.subtitle": {
-        "he": "עריכה מלאה כאן. לעריכה של שכונות/רחובות ספציפיים ותאריכי כניסה — ב-/filter בטלגרם",
+        "he": "פה אפשר לערוך הכל. שכונות, רחובות ותאריכי כניסה עורכים ב־/filter בבוט.",
         "en": "Full editing here. For specific neighborhoods/streets and move-in dates, use /filter on Telegram.",
         "ru": "Полное редактирование здесь. Для конкретных районов/улиц и дат заселения используйте /filter в Telegram.",
         "fr": "Édition complète ici. Pour des quartiers/rues spécifiques et des dates d'emménagement, utilisez /filter sur Telegram.",
@@ -1742,7 +1742,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # the full subtitle in each language, since that sentence alone is still fully true and
     # actionable regardless of which channel got them here.
     "filter.subtitle_short": {
-        "he": "עריכה מלאה כאן.",
+        "he": "פה אפשר לערוך הכל.",
         "en": "Full editing here.",
         "ru": "Полное редактирование здесь.",
         "fr": "Édition complète ici.",
@@ -1756,7 +1756,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "ערים", "en": "Cities", "ru": "Города", "fr": "Villes", "ar": "المدن",
     },
     "filter.cities_placeholder": {
-        "he": "חפש/י עיר, יישוב או אזור...", "en": "Search a city, town or area...",
+        "he": "חפש עיר, יישוב או אזור...", "en": "Search a city, town or area...",
         "ru": "Поиск города, посёлка или района...", "fr": "Rechercher une ville, une localité ou une région...",
         "ar": "ابحث عن مدينة أو بلدة أو منطقة...",
     },
@@ -1899,7 +1899,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "مفصولة بفواصل — تُطابق الشقة إذا احتوى وصفها على كلمة واحدة منها على الأقل",
     },
     "filter.flexible_match_label": {
-        "he": "התאמה גמישה — הצג גם דירות שמפספסות מאפיין אחד בלבד",
+        "he": "התאמה גמישה: תראה לי גם דירות שחסר להן מאפיין אחד",
         "en": "Flexible match — also show apartments that miss just one feature",
         "ru": "Гибкое совпадение — показывать также квартиры, которым не хватает лишь одной характеристики",
         "fr": "Correspondance flexible — afficher aussi les appartements qui ne remplissent pas qu'un seul critère",
@@ -1920,7 +1920,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Enregistrer et continuer ←", "ar": "احفظ وتابع ←",
     },
     "filter.cities_required_error": {
-        "he": "חובה לבחור עיר אחת. בחר לפחות עיר אחת כדי להתחיל לקבל הצעות",
+        "he": "צריך לבחור לפחות עיר אחת כדי להתחיל לקבל דירות.",
         "en": "You must choose at least one city. Pick at least one to start getting matches",
         "ru": "Нужно выбрать хотя бы один город. Выберите хотя бы один, чтобы начать получать варианты",
         "fr": "Vous devez choisir au moins une ville. Choisissez-en au moins une pour commencer à recevoir des offres",
@@ -1948,7 +1948,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "ننصح بربط البوت 🔔",
     },
     "onboarding.notifications_body": {
-        "he": "מומלץ לחבר את הבוט בטלגרם כדי לקבל דירות חדשות בשנייה שהן עולות — לפני כולם.",
+        "he": "תחבר את הבוט בטלגרם ותקבל דירות חדשות בשנייה שהן עולות, לפני כולם.",
         "en": "We recommend connecting the Telegram bot so you get new apartments the second they go up — before everyone else.",
         "ru": "Рекомендуем подключить бота в Telegram, чтобы получать новые квартиры в ту же секунду, как они появляются — раньше всех.",
         "fr": "Nous recommandons de connecter le bot Telegram pour recevoir les nouveaux appartements dès leur publication — avant tout le monde.",
@@ -1959,7 +1959,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Notifications Telegram", "ar": "إشعارات تيليجرام",
     },
     "onboarding.notifications_skip": {
-        "he": "המשך ללא התראות לנייד ←", "en": "Continue without mobile notifications ←",
+        "he": "המשך בלי התראות לנייד ←", "en": "Continue without mobile notifications ←",
         "ru": "Продолжить без уведомлений на телефон ←", "fr": "Continuer sans notifications mobiles ←",
         "ar": "المتابعة بدون إشعارات على الجوال ←",
     },
@@ -1969,7 +1969,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "🎉 حصلت على 3 أيام بريميوم كهدية!",
     },
     "onboarding.trial_body": {
-        "he": "גישה מלאה לכל התכונות, כולל יצירת קשר ישיר עם המפרסמים, בתוקף עד {date}. בלי כרטיס אשראי, בלי חיוב אוטומטי.",
+        "he": "גישה מלאה להכל, כולל יצירת קשר עם המפרסמים, עד {date}. בלי כרטיס אשראי ובלי חיוב אוטומטי.",
         "en": "Full access to every feature, including direct contact with posters, valid until {date}. No credit card, no auto-billing.",
         "ru": "Полный доступ ко всем функциям, включая прямую связь с авторами объявлений, действует до {date}. Без карты, без автосписания.",
         "fr": "Accès complet à toutes les fonctionnalités, y compris le contact direct avec les annonceurs, valable jusqu'au {date}. Sans carte bancaire, sans prélèvement automatique.",
@@ -1981,7 +1981,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- empty states / small pages ----------
     "no_filter.body": {
-        "he": "לא מצאנו חשבון או סינון פעיל. צריך להגדיר סינון קודם דרך הבוט בטלגרם.",
+        "he": "לא מצאנו חשבון או סינון. קודם צריך להגדיר סינון בבוט בטלגרם.",
         "en": "We couldn't find an account or an active filter. You need to set up a filter first, through the Telegram bot.",
         "ru": "Мы не нашли аккаунт или активный фильтр. Сначала настройте фильтр через бота в Telegram.",
         "fr": "Nous n'avons trouvé aucun compte ni filtre actif. Vous devez d'abord configurer un filtre via le bot Telegram.",
@@ -1991,7 +1991,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "פתח את הבוט", "en": "Open the bot", "ru": "Открыть бота", "fr": "Ouvrir le bot", "ar": "افتح البوت",
     },
     "need_uid.body": {
-        "he": "כדי לראות את ה{target} שלך, צריך להיכנס עם קישור אישי מהבוט בטלגרם.",
+        "he": "כדי לראות את ה{target} שלך, צריך להיכנס עם הקישור האישי מהבוט בטלגרם.",
         "en": "To see your {target}, you need to open a personal link from the Telegram bot.",
         "ru": "Чтобы увидеть {target}, откройте персональную ссылку из бота в Telegram.",
         "fr": "Pour voir {target}, vous devez ouvrir un lien personnel depuis le bot Telegram.",
@@ -2042,7 +2042,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Nous contacter 📬", "ar": "تواصل معنا 📬",
     },
     "contact.subtitle": {
-        "he": "יש לך שאלה, בעיה או רעיון? נשמח לשמוע — נחזור אליך בהקדם.",
+        "he": "יש לך שאלה, בעיה או רעיון? תכתוב, נחזור אליך מהר.",
         "en": "Have a question, a problem, or an idea? We'd love to hear from you — we'll get back to you soon.",
         "ru": "Есть вопрос, проблема или идея? Будем рады услышать вас — скоро ответим.",
         "fr": "Une question, un problème ou une idée ? N'hésitez pas à nous écrire — nous vous répondrons rapidement.",
@@ -2061,7 +2061,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Votre message", "ar": "رسالتك",
     },
     "contact.message_placeholder": {
-        "he": "כתוב/י כאן את מה שתרצה/י להעביר לנו...",
+        "he": "תכתוב פה מה שבא לך...",
         "en": "Write what you'd like to tell us here...",
         "ru": "Напишите здесь то, что хотите нам сообщить...",
         "fr": "Écrivez ici ce que vous souhaitez nous dire...",
@@ -2090,14 +2090,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # is now a real, distinct client-side state the old full-page-reload form never had to render
     # its own message for (the browser's own error page handled it before).
     "contact.error_generic": {
-        "he": "משהו השתבש. נסו שוב בעוד רגע. ⚠️",
+        "he": "משהו השתבש. נסה שוב עוד רגע. ⚠️",
         "en": "Something went wrong. Please try again in a moment. ⚠️",
         "ru": "Что-то пошло не так. Попробуйте ещё раз через минуту. ⚠️",
         "fr": "Une erreur s'est produite. Veuillez réessayer dans un instant. ⚠️",
         "ar": "حدث خطأ ما. يرجى المحاولة مرة أخرى بعد قليل. ⚠️",
     },
     "contact.consent_prefix": {
-        "he": "קראתי ואני מסכים/ה ל", "en": "I have read and agree to the",
+        "he": "קראתי ואני מסכים ל", "en": "I have read and agree to the",
         "ru": "Я прочитал(а) и согласен(на) с", "fr": "J'ai lu et j'accepte la",
         "ar": "لقد قرأت وأوافق على",
     },
@@ -2109,7 +2109,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "تم إرسال الرسالة! ✅",
     },
     "contact.success_body": {
-        "he": "תודה שפנית אלינו — נחזור אליך בהקדם האפשרי.",
+        "he": "תודה שכתבת! נחזור אליך הכי מהר שאפשר.",
         "en": "Thanks for reaching out — we'll get back to you as soon as possible.",
         "ru": "Спасибо, что обратились к нам — мы ответим вам как можно скорее.",
         "fr": "Merci de nous avoir contactés — nous vous répondrons dès que possible.",
@@ -2121,7 +2121,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "طرق أخرى للتواصل",
     },
     "contact.telegram_way": {
-        "he": "טלגרם — כתוב/י ישירות לבוט", "en": "Telegram — message the bot directly",
+        "he": "טלגרם: תכתוב ישר לבוט", "en": "Telegram — message the bot directly",
         "ru": "Telegram — напишите боту напрямую", "fr": "Telegram — écrivez directement au bot",
         "ar": "تيليجرام — راسل البوت مباشرة",
     },
@@ -2143,11 +2143,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # real-content-only behavior rather than fabricating three new translations here.
     "about.h1": {"he": "אודות טודירה", "en": "About Todira"},
     "about.body_intro": {
-        "he": 'טודירה הוא שירות אישי (בוט בטלגרם ואתר נלווה) בתחום הנדל"ן — סריקה אוטומטית של מודעות דירות להשכרה ממקורות חיצוניים ברשת (אתרי נדל"ן ולוחות מודעות שונים), והתראה מיידית למשתמש כאשר מתפרסמת מודעה שתואמת לסינון האישי שהגדיר (עיר, טווח מחיר, מספר חדרים, סוג נכס ועוד).',
-        "en": "Todira is a personal real-estate service (a Telegram bot and companion website) — it automatically scans rental apartment listings from external sources on the web (real-estate sites and listing boards), and instantly alerts the user when a listing matching their personal filter (city, price range, number of rooms, property type, and more) is published.",
+        "he": "טודירה זה בוט בטלגרם ואתר שמחפשים לך דירה. הבוט עובר על אתרי הדירות והלוחות ברשת, ושולח לך רק מודעות שמתאימות לסינון שלך: עיר, מחיר, חדרים, סוג נכס ועוד.",
+        "en": "Todira is a Telegram bot and website that look for an apartment for you. The bot goes through apartment sites and listing boards online and sends you only the listings that match your filter: city, price, rooms, property type and more.",
     },
     "about.body_disclaimer": {
-        "he": "השירות אינו משרד תיווך, אינו בעל נכסים ואינו צד לעסקאות שכירות — הוא כלי טכנולוגי שמטרתו לחסוך למחפשי דירה את הצורך לרענן שוב ושוב אתרי מודעות בעצמם.",
+        "he": "חשוב לדעת: אנחנו לא משרד תיווך, אין לנו נכסים ואנחנו לא צד לעסקה. אנחנו כלי שחוסך לך לרענן אתרים כל היום.",
         "en": "The service is not a real-estate brokerage, does not own any properties, and is not a party to any rental transaction — it is a technology tool built to save apartment seekers the need to repeatedly refresh listing sites themselves.",
     },
     "about.links_p1": {"he": "לפרטים נוספים ניתן לעיין ב", "en": "For more details, see the "},
@@ -2455,7 +2455,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "انتهت الفترة التجريبية ⚠️",
     },
     "account.upgrade_cta_renew": {
-        "he": "שדרג/י מנוי", "en": "Upgrade subscription", "ru": "Улучшить подписку",
+        "he": "שדרג מנוי", "en": "Upgrade subscription", "ru": "Улучшить подписку",
         "fr": "Améliorer l'abonnement", "ar": "ترقية الاشتراك",
     },
     "account.upgrade_cta_start": {
@@ -2470,7 +2470,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "يتجدد اشتراكك تلقائيًا كل شهر.",
     },
     "account.subscription_will_not_renew": {
-        "he": "ביטלת את החידוש האוטומטי — הגישה תישאר עד תום התקופה ששולמה, ולא תחויב/י שוב.",
+        "he": "ביטלת את החידוש האוטומטי. הגישה נשארת עד סוף התקופה ששילמת, ולא תחויב שוב.",
         "en": "You cancelled auto-renewal — access stays until the end of the period you already paid for, and you won't be charged again.",
         "ru": "Вы отменили автопродление — доступ сохранится до конца уже оплаченного периода, повторного списания не будет.",
         "fr": "Vous avez annulé le renouvellement automatique — l'accès reste actif jusqu'à la fin de la période déjà payée, sans nouveau prélèvement.",
@@ -2487,14 +2487,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "إلغاء الشراء",
     },
     "account.cancel_pass_refund": {
-        "he": "ביטול עכשיו יסגור את הגישה מיד, ויוחזרו לך ₪{refund} לאמצעי התשלום תוך 14 ימים.",
+        "he": "ביטול עכשיו סוגר את הגישה מיד, ותקבל החזר של ₪{refund} לאמצעי התשלום תוך 14 ימים.",
         "en": "Cancelling now ends your access right away, and ₪{refund} will be refunded to your payment method within 14 days.",
         "ru": "Отмена сейчас сразу закроет доступ, а ₪{refund} вернутся на ваш способ оплаты в течение 14 дней.",
         "fr": "Annuler maintenant met fin à ton accès immédiatement, et ₪{refund} seront remboursés sur ton moyen de paiement sous 14 jours.",
         "ar": "الإلغاء الآن يُنهي وصولك فورًا، وسيُعاد إليك ₪{refund} إلى وسيلة الدفع خلال 14 يومًا.",
     },
     "account.cancel_pass_no_refund": {
-        "he": "ביטול עכשיו יסגור את הגישה מיד. לפי מדיניות הביטול לא מגיע החזר על הרכישה הזו.",
+        "he": "ביטול עכשיו סוגר את הגישה מיד. לפי מדיניות הביטול, על הרכישה הזו אין החזר.",
         "en": "Cancelling now ends your access right away. Under the cancellation policy, no refund is due for this purchase.",
         "ru": "Отмена сейчас сразу закроет доступ. По правилам отмены за эту покупку возврат не положен.",
         "fr": "Annuler maintenant met fin à ton accès immédiatement. Selon la politique d'annulation, aucun remboursement n'est dû pour cet achat.",
@@ -2561,12 +2561,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "מחובר ✅", "en": "Connected ✅", "ru": "Подключено ✅", "fr": "Connecté ✅", "ar": "متصل ✅",
     },
     "account.telegram_connect_cta": {
-        "he": "פתח/י את הבוט לחיבור", "en": "Open the bot to connect",
+        "he": "פתח את הבוט לחיבור", "en": "Open the bot to connect",
         "ru": "Открыть бота для подключения", "fr": "Ouvrir le bot pour vous connecter",
         "ar": "افتح البوت للربط",
     },
     "account.telegram_connect_hint": {
-        "he": "לוחצים על הכפתור והחיבור קורה אוטומטית 🎉",
+        "he": "לוחץ על הכפתור והחיבור קורה לבד 🎉",
         "en": "Tap the button and the connection happens automatically 🎉",
         "ru": "Нажмите на кнопку — подключение произойдёт автоматически 🎉",
         "fr": "Appuyez sur le bouton, la connexion se fait automatiquement 🎉",
@@ -2586,7 +2586,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "הקוד שלך:", "en": "Your code:", "ru": "Ваш код:", "fr": "Votre code :", "ar": "رمزك:",
     },
     "account.code_hint_suffix": {
-        "he": "— בתוקף ל-15 דקות. אפשר גם לשלוח אותו ידנית מהערוץ שרוצים לחבר, במקום ללחוץ על הכפתור.",
+        "he": "(בתוקף ל־15 דקות). אפשר גם לשלוח אותו ידנית מהערוץ שאתה רוצה לחבר, במקום ללחוץ על הכפתור.",
         "en": "— valid for 15 minutes. You can also send it manually from the channel you want to connect, instead of tapping the button.",
         "ru": "— действителен 15 минут. Можно также отправить его вручную из канала, который хотите подключить, вместо нажатия кнопки.",
         "fr": "— valable 15 minutes. Vous pouvez aussi l'envoyer manuellement depuis le canal que vous souhaitez connecter, au lieu d'appuyer sur le bouton.",
@@ -2618,7 +2618,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Connexion à Todira", "ar": "تسجيل الدخول إلى توديرا",
     },
     "login.subtitle": {
-        "he": "בחר/י איך להתחבר — כל האפשרויות מובילות לאותו חשבון.",
+        "he": "בחר איך להתחבר. כל האפשרויות מובילות לאותו חשבון.",
         "en": "Choose how to log in — every option leads to the same account.",
         "ru": "Выберите способ входа — все варианты ведут к одному и тому же аккаунту.",
         "fr": "Choisissez comment vous connecter — toutes les options mènent au même compte.",
@@ -2639,7 +2639,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Continuer sur Telegram", "ar": "تابع عبر تيليجرام",
     },
     "login.hint": {
-        "he": "כבר רשום/ה דרך טלגרם, אבל עדיין לא קישרת Google? לחיצה על \"{telegram_cta}\" למעלה תפתח את הבוט — שם תמצא/י קישור לחשבון שלך (🔗) שמחזיר אותך לכאן, לאותו דפדפן, מזוהה. משם, החיבור עם Google יעבוד ישר על החשבון הקיים שלך.",
+        "he": "כבר נרשמת בטלגרם ועוד לא חיברת Google? לחיצה על ״{telegram_cta}״ פותחת את הבוט. שם יש קישור לחשבון שלך (🔗) שמחזיר אותך לפה, לאותו דפדפן, מחובר. משם החיבור ל־Google יעבוד ישר על החשבון שלך.",
         "en": "Already registered via Telegram, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot — you'll find your account link there (🔗) that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
         "ru": "Уже зарегистрированы через Telegram, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота — там вы найдёте ссылку на свой аккаунт (🔗), которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
         "fr": "Déjà inscrit via Telegram, mais pas encore lié à Google ? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot — vous y trouverez le lien de votre compte (🔗) qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
@@ -2651,21 +2651,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "تم تسجيل الدخول عبر Google بنجاح",
     },
     "google_pending.subtitle": {
-        "he": "זו הפעם הראשונה שאנחנו רואים את החשבון הזה — איך תרצה/י להמשיך?",
+        "he": "זו הפעם הראשונה שאנחנו רואים את החשבון הזה. איך תרצה להמשיך?",
         "en": "This is the first time we've seen this account — how would you like to continue?",
         "ru": "Мы впервые видим этот аккаунт — как вы хотите продолжить?",
         "fr": "C'est la première fois que nous voyons ce compte — comment souhaitez-vous continuer ?",
         "ar": "هذه أول مرة نرى فيها هذا الحساب — كيف تريد المتابعة؟",
     },
     "google_pending.new_account_cta": {
-        "he": "זה חשבון חדש — תתחיל/י ישר כאן באתר ✨",
+        "he": "זה חשבון חדש, מתחיל ישר פה באתר ✨",
         "en": "This is a new account — start right here on the site ✨",
         "ru": "Это новый аккаунт — начните прямо здесь, на сайте ✨",
         "fr": "C'est un nouveau compte — commencez directement ici sur le site ✨",
         "ar": "هذا حساب جديد — ابدأ مباشرة هنا في الموقع ✨",
     },
     "google_pending.new_account_hint": {
-        "he": "ניצור לך חשבון וסינון פתוח שמתאים לכל הדירות — תוכל/י לצמצם אותו בכל רגע ב\"סינון\". טלגרם יישאר זמין תמיד כאופציה נוספת לקבלת התראות, בלי חובה להשתמש בו.",
+        "he": "ניצור לך חשבון עם סינון פתוח לכל הדירות, ותוכל לצמצם אותו מתי שבא לך ב״סינון״. טלגרם תמיד יישאר אפשרות נוספת להתראות, לא חובה.",
         "en": "We'll create an account for you with an open filter that matches every listing — you can narrow it down anytime in \"Filter\". Telegram will always stay available as an extra way to get notified, with no obligation to use it.",
         "ru": "Мы создадим для вас аккаунт с открытым фильтром, который подходит под все объявления — вы можете сузить его в любой момент в разделе «Фильтр». Telegram всегда будет доступен как дополнительный способ получать уведомления, без обязательства им пользоваться.",
         "fr": "Nous créerons pour vous un compte avec un filtre ouvert qui correspond à toutes les annonces — vous pourrez le restreindre à tout moment dans « Filtre ». Telegram restera toujours disponible comme moyen supplémentaire de recevoir des notifications, sans obligation de l'utiliser.",
@@ -2687,14 +2687,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "🔗 اربط بحسابي الحالي",
     },
     "google_pending.link_hint_with_token": {
-        "he": "שלח/י /start בבוט — החיבור יושלם מיד שם, בלי קשר לאיזה דפדפן תשתמש/י בהמשך.",
+        "he": "שלח /start בבוט, והחיבור יושלם שם מיד, לא משנה באיזה דפדפן תמשיך.",
         "en": "Send /start to the bot — the connection completes right there, regardless of which browser you use afterward.",
         "ru": "Отправьте /start боту — подключение завершится сразу там, независимо от того, каким браузером вы будете пользоваться дальше.",
         "fr": "Envoyez /start au bot — la connexion se termine immédiatement là-bas, quel que soit le navigateur que vous utiliserez ensuite.",
         "ar": "أرسل /start للبوت — سيكتمل الربط هناك فورًا، بغض النظر عن المتصفح الذي ستستخدمه لاحقًا.",
     },
     "google_pending.link_hint_no_token": {
-        "he": "פתח/י את הבוט פעם אחת — כשתחזור/י לאתר מאותו דפדפן, נשלים את החיבור אוטומטית.",
+        "he": "פתח את הבוט פעם אחת. כשתחזור לאתר מאותו דפדפן, נשלים את החיבור לבד.",
         "en": "Open the bot once — when you return to the site from the same browser, we'll complete the connection automatically.",
         "ru": "Откройте бота один раз — когда вы вернётесь на сайт из того же браузера, мы автоматически завершим подключение.",
         "fr": "Ouvrez le bot une fois — lorsque vous reviendrez sur le site depuis le même navigateur, nous terminerons la connexion automatiquement.",
@@ -2724,7 +2724,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "أنت في الفترة التجريبية، حتى {date}.",
     },
     "upgrade.access_expired": {
-        "he": "תקופת הניסיון הסתיימה. כדי להמשיך לקבל את המודעה המלאה + קישור ישיר, בחר תוכנית למטה.",
+        "he": "תקופת הניסיון נגמרה. כדי להמשיך לקבל את המודעה המלאה וקישור ישיר, בחר חבילה למטה.",
         "en": "Your trial period has ended. To keep getting the full listing + direct link, choose a plan below.",
         "ru": "Ваш пробный период закончился. Чтобы продолжать получать полное объявление + прямую ссылку, выберите план ниже.",
         "fr": "Votre période d'essai est terminée. Pour continuer à recevoir l'annonce complète + le lien direct, choisissez un forfait ci-dessous.",
@@ -2779,21 +2779,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "اختر {plan}",
     },
     "upgrade.payment_hint_takbull": {
-        "he": "התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. בעמוד התשלום תראה/י את 3 התוכניות יחד — פשוט תוסיף/י לעגלה את זו שבחרת כאן (לפי המחיר) ותשלים/י תשלום. 🐾",
+        "he": "התשלום מאובטח דרך תקבול: ביט, Apple Pay, Google Pay או כרטיס אשראי. בעמוד התשלום תראה את 3 החבילות. תוסיף לעגלה את זו שבחרת ותשלם. 🐾",
         "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. On the payment page you'll see all 3 plans together — just add the one you chose here (by price) to the cart and complete payment. 🐾",
         "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. На странице оплаты вы увидите все 3 плана вместе — просто добавьте выбранный здесь план (по цене) в корзину и завершите оплату. 🐾",
         "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Sur la page de paiement, vous verrez les 3 forfaits ensemble — ajoutez simplement celui choisi ici (selon le prix) au panier et finalisez le paiement. 🐾",
         "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. في صفحة الدفع سترى الخطط الثلاث معًا — فقط أضف الخطة التي اخترتها هنا (حسب السعر) إلى السلة وأكمل الدفع. 🐾",
     },
     "upgrade.payment_hint_takbull_recurring": {
-        "he": "התשלום מאובטח דרך תקבול — ביט, Apple Pay, Google Pay או כרטיס אשראי. החיוב יתחדש אוטומטית כל חודש עד שתבטל/י. 🐾",
+        "he": "התשלום מאובטח דרך תקבול: ביט, Apple Pay, Google Pay או כרטיס אשראי. החיוב מתחדש כל חודש עד שתבטל. 🐾",
         "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. The charge auto-renews every month until you cancel. 🐾",
         "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Списание автоматически продлевается каждый месяц, пока вы не отмените подписку. 🐾",
         "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Le prélèvement se renouvelle automatiquement chaque mois jusqu'à l'annulation. 🐾",
         "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
     },
     "upgrade.payment_hint_manual": {
-        "he": "התשלום מתבצע ידנית בביט/PayBox — אחרי הלחיצה תועבר/י לעמוד עם כל פרטי התשלום. 🐾",
+        "he": "התשלום ידני בביט/PayBox. אחרי הלחיצה תעבור לעמוד עם כל הפרטים. 🐾",
         "en": "Payment is done manually via Bit/PayBox — after clicking you'll be taken to a page with all the payment details. 🐾",
         "ru": "Оплата производится вручную через Bit/PayBox — после нажатия вы перейдёте на страницу со всеми деталями оплаты. 🐾",
         "fr": "Le paiement se fait manuellement via Bit/PayBox — après avoir cliqué, vous serez redirigé vers une page avec tous les détails de paiement. 🐾",
@@ -2819,7 +2819,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "شهر كامل مقابل 49.90 ₪؟ تقريبًا سعر قهوة ومعجنات.",
     },
     "upgrade.value_anchor_body": {
-        "he": 'עמלת תיווך בדרך כלל עולה אלפי שקלים בפעם אחת. אצלנו זה סכום סמלי, בלי חידוש אוטומטי ובלי התחייבות.',
+        "he": "עמלת תיווך עולה בדרך כלל אלפי שקלים. אצלנו זה סכום סמלי, בלי חידוש אוטומטי ובלי התחייבות.",
         "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token amount, with no automatic renewal and no commitment.",
         "ru": 'Комиссия брокера обычно стоит тысячи шекелей. У нас — символическая сумма, без автопродления и обязательств.',
         "fr": "Les frais d'un agent coûtent souvent des milliers de shekels. Chez nous, c'est un montant symbolique, sans renouvellement automatique ni engagement.",
@@ -2831,7 +2831,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # the terms link (reusing footer.terms for the link text itself) rather than one embedded-
     # HTML string, matching this file's own no-`| safe`-anywhere convention.
     "upgrade.terms_agree_prefix": {
-        "he": "קראתי ואני מסכים/ה ל", "en": "I have read and agree to the ",
+        "he": "קראתי ואני מסכים ל", "en": "I have read and agree to the ",
         "ru": "Я прочитал(а) и согласен(на) с ", "fr": "J'ai lu et j'accepte les ",
         "ar": "لقد قرأت وأوافق على ",
     },
@@ -2935,7 +2935,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": 'هل يتجدد تلقائيًا؟',
     },
     "upgrade.faq_a1_onetime": {
-        "he": 'לא. זה תשלום חד-פעמי לתקופה שבחרת (7, 14 או 30 ימים). לפני שהגישה מסתיימת נשלח לך תזכורת, ואם תרצה להמשיך אפשר לבחור שוב.',
+        "he": "לא. זה תשלום חד־פעמי לתקופה שבחרת (7, 14 או 30 ימים). לפני שהגישה נגמרת נשלח לך תזכורת, ואם תרצה להמשיך, פשוט תבחר שוב.",
         "en": "No. It's a one-time payment for the period you choose (7, 14 or 30 days). We'll send you a reminder before your access ends, and if you want to continue you can choose again.",
         "ru": 'Нет. Это разовый платёж за выбранный период (7, 14 или 30 дней). Перед окончанием доступа мы пришлём напоминание, и вы сможете выбрать снова.',
         "fr": "Non. C'est un paiement unique pour la période choisie (7, 14 ou 30 jours). Nous vous enverrons un rappel avant la fin de votre accès, et vous pourrez choisir à nouveau.",
@@ -2949,7 +2949,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": 'ماذا يحدث عند انتهاء الفترة؟',
     },
     "upgrade.faq_a3_onetime": {
-        "he": 'הגישה המלאה מסתיימת ולא תחויב/י שוב. אפשר לחדש בכל רגע מעמוד זה.',
+        "he": "הגישה המלאה נגמרת ולא תחויב שוב. אפשר לחדש מתי שבא לך מהעמוד הזה.",
         "en": 'Full access ends and you are not charged again. You can renew at any time from this page.',
         "ru": 'Полный доступ заканчивается, повторных списаний нет. Продлить можно в любой момент на этой странице.',
         "fr": "L'accès complet se termine et vous n'êtes plus débité. Vous pouvez renouveler à tout moment depuis cette page.",
@@ -2967,11 +2967,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "وصول كامل لكل شقة تناسبك، بلا حدود",
     },
     "upgrade.checklist_scan": {
-        "he": "סריקה אוטומטית כל שעתיים מכל המקורות",
-        "en": "Automatic scan every 2 hours across all sources",
-        "ru": "Автоматическое сканирование каждые 2 часа по всем источникам",
-        "fr": "Scan automatique toutes les 2 heures sur toutes les sources",
-        "ar": "فحص تلقائي كل ساعتين من جميع المصادر",
+        "he": "סריקה אוטומטית של כל האתרים, לאורך כל היום",
+        "en": "Automatic scanning of every source, all day long",
+        "ru": "Автоматическое сканирование всех источников весь день",
+        "fr": "Scan automatique de toutes les sources, toute la journée",
+        "ar": "فحص تلقائي لكل المصادر طوال اليوم",
     },
     "upgrade.checklist_alert": {
         "he": "התראה מיידית בטלגרם ברגע שיש התאמה",
@@ -3036,7 +3036,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "ماذا يحدث إذا ألغيت اشتراكي؟",
     },
     "upgrade.faq_a3": {
-        "he": "ממשיכים לקבל גישה מלאה עד סוף התקופה ששילמת עליה, ולא תחויב/י שוב.",
+        "he": "ממשיכים לקבל גישה מלאה עד סוף התקופה ששילמת עליה, ולא תחויב שוב.",
         "en": "You keep full access until the end of the period you already paid for, and you won't be charged again.",
         "ru": "Вы сохраните полный доступ до конца уже оплаченного периода, и повторного списания не будет.",
         "fr": "Vous gardez un accès complet jusqu'à la fin de la période déjà payée, et vous ne serez plus débité.",
@@ -3058,19 +3058,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Forfait : {plan} — à payer :", "ar": "الخطة: {plan} — للدفع:",
     },
     "upgrade_pay.bit_instruction": {
-        "he": "פתח/י את אפליקציית Bit, חפש/י את המספר הבא ושלח/י ₪{amount}:",
+        "he": "פתח את Bit, חפש את המספר הזה ושלח ₪{amount}:",
         "en": "Open the Bit app, search for the following number and send ₪{amount}:",
         "ru": "Откройте приложение Bit, найдите следующий номер и отправьте ₪{amount}:",
         "fr": "Ouvrez l'application Bit, recherchez le numéro suivant et envoyez ₪{amount} :",
         "ar": "افتح تطبيق Bit، ابحث عن الرقم التالي وأرسل ₪{amount}:",
     },
     "upgrade_pay.paybox_cta": {
-        "he": "פתח/י את דף התשלום ב-PayBox", "en": "Open the PayBox payment page",
+        "he": "פתח את דף התשלום ב־PayBox", "en": "Open the PayBox payment page",
         "ru": "Открыть страницу оплаты PayBox", "fr": "Ouvrir la page de paiement PayBox",
         "ar": "افتح صفحة الدفع في PayBox",
     },
     "upgrade_pay.manual_bit_hint": {
-        "he": "שלח/י ₪{amount} בביט — פרטים יישלחו אליך בנפרד. 🐾",
+        "he": "שלח ₪{amount} בביט, והפרטים יישלחו אליך בנפרד. 🐾",
         "en": "Send ₪{amount} via Bit — details will be sent to you separately. 🐾",
         "ru": "Отправьте ₪{amount} через Bit — детали будут отправлены вам отдельно. 🐾",
         "fr": "Envoyez ₪{amount} via Bit — les détails vous seront envoyés séparément. 🐾",
@@ -3085,12 +3085,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "המשך", "en": "Continue", "ru": "Продолжить", "fr": "Continuer", "ar": "متابعة",
     },
     "upgrade_pay.confirm_paid_cta": {
-        "he": "שילמתי, אשר/י את הגישה ✅", "en": "I've paid, confirm access ✅",
+        "he": "שילמתי, תפתחו לי גישה ✅", "en": "I've paid, confirm access ✅",
         "ru": "Я оплатил(а), подтвердите доступ ✅", "fr": "J'ai payé, confirmez l'accès ✅",
         "ar": "لقد دفعت، أكّد الوصول ✅",
     },
     "upgrade_pay.confirm_hint": {
-        "he": "לוחצים רק אחרי ששלחתם את התשלום בפועל.",
+        "he": "תלחץ רק אחרי שבאמת שילמת.",
         "en": "Only click after you've actually sent the payment.",
         "ru": "Нажимайте только после того, как действительно отправили платёж.",
         "fr": "Cliquez uniquement après avoir réellement envoyé le paiement.",
@@ -3106,7 +3106,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Voir les appartements", "ar": "لعرض الشقق",
     },
     "upgrade_success.processing_message": {
-        "he": "מעבדים את התשלום... הדף יתעדכן אוטומטית בעוד כמה שניות.",
+        "he": "מעבדים את התשלום... הדף יתעדכן לבד בעוד כמה שניות.",
         "en": "Processing payment... the page will update automatically in a few seconds.",
         "ru": "Обрабатываем платёж... страница обновится автоматически через несколько секунд.",
         "fr": "Traitement du paiement... la page se mettra à jour automatiquement dans quelques secondes.",
