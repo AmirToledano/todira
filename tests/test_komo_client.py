@@ -186,6 +186,18 @@ def test_parse_details_html_missing_price_returns_none():
     assert _parse_details_html(html, modaa_num="1") is None
 
 
+def test_parse_details_html_price_not_stated_keeps_the_ad_without_a_price():
+    """2026-10-15: "לא צוין מחיר" in the price box (live: ~2% of Komo ads) - kept with no price, not dropped."""
+    html = (
+        '<div class="price modaaWPrice" ><span class="ModaaWDetailsValue">לא צוין מחיר</span></div>'
+        '<meta property="og:title" content="להשכרה&nbsp;דירות&nbsp;2 חדרים &nbsp;בירושלים, א 1" />'
+    )
+    item = _parse_details_html(html, modaa_num="1")
+    assert item is not None
+    assert item["price"] is None
+    assert item["rooms"] == 2.0
+
+
 def test_parse_details_html_missing_og_title_returns_none():
     html = '<div class="price modaaWPrice"><span>7,000</span></div>'
     assert _parse_details_html(html, modaa_num="1") is None

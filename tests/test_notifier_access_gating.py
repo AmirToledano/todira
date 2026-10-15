@@ -59,6 +59,7 @@ def test_notify_new_matches_passes_has_access_false_for_an_expired_user():
         patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption") as mock_format,
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)),
     ):
@@ -81,6 +82,7 @@ def _captured_format_kwargs(user):
         patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption") as mock_format,
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)),
     ):
@@ -110,6 +112,7 @@ def test_notify_new_matches_passes_has_access_true_for_a_trial_user():
         patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption") as mock_format,
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)),
     ):
@@ -269,6 +272,7 @@ def test_notify_new_matches_skips_a_user_with_no_telegram_id():
         patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption") as mock_format,
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
@@ -297,6 +301,7 @@ def test_notify_price_change_skips_a_user_with_no_telegram_id():
     with (
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption") as mock_format,
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
@@ -323,6 +328,7 @@ def test_notify_price_change_also_passes_has_access():
     with (
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption") as mock_format,
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)),
     ):
@@ -360,6 +366,7 @@ def test_notify_price_change_excludes_a_user_just_notified_as_new_matches_in_thi
     with (
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption", return_value="caption"),
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
@@ -429,3 +436,27 @@ def test_complete_card_fields_runs_the_yad2_detail_fetch_first_then_the_text():
         asyncio.run(notifier._complete_card_fields(session, listing, [_user()]))
     assert listing.has_parking is True  # from the structured record
     assert listing.floor == 1 and listing.floor_total == 3 and listing.has_balcony is True  # from the description text
+
+
+def test_a_hidden_listing_gets_no_price_alert():
+    """2026-10-15 bug: someone who hid an apartment still got "the price dropped" for it."""
+    listing = SimpleNamespace(id=10, price=4000, description=None)
+    user = _user()
+    session = SimpleNamespace(
+        scalars=lambda stmt: [1],
+        get=lambda model, pk: user,
+        scalar=lambda stmt: SimpleNamespace(user_id=1),
+        add=lambda obj: None,
+        commit=lambda: None,
+    )
+    send = AsyncMock(return_value=True)
+
+    with (
+        patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
+        patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=True),
+        patch.object(notifier, "send_listing_card", send),
+    ):
+        asyncio.run(notifier._notify_price_change(SimpleNamespace(), session, listing, old_price=5000))
+
+    send.assert_not_called()

@@ -29,10 +29,10 @@ from telegram import Bot
 from todira_common import text_features, yad2_detail
 from todira_common.access import access_state, has_full_access
 from todira_common.cards import format_caption, send_listing_card
-from todira_common.enums import NotificationReason, Source
+from todira_common.enums import ListingAction, NotificationReason, Source
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
-from todira_common.models import Filter, Listing, SentNotification, User
+from todira_common.models import Filter, Listing, SentNotification, User, UserListingAction
 from todira_common.uid_token import signed_login_query
 
 
@@ -97,6 +97,21 @@ def _candidate_filters(session: Session, listing: Listing) -> list[Filter]:
     else:
         city_clause = text("filters.cities = '{}'")
     return list(session.scalars(stmt.where(city_clause)))
+
+
+def _hidden_by(session: Session, user_id: int, listing_id: int) -> bool:
+    """2026-10-15 (bug): someone who hid an apartment still got "the price dropped" for it, and a hidden apartment
+    that came to match the filter later still arrived as new. Hidden means never again, by any alert."""
+    return (
+        session.execute(
+            select(UserListingAction.id).where(
+                UserListingAction.user_id == user_id,
+                UserListingAction.listing_id == listing_id,
+                UserListingAction.action == ListingAction.HIDDEN,
+            )
+        ).first()
+        is not None
+    )
 
 
 def _already_notified(session: Session, user_id: int, listing_id: int, reason: str) -> bool:
@@ -186,6 +201,8 @@ async def _notify_new_matches(
             continue
         matched += 1
         if _already_notified(session, filter_row.user_id, listing.id, NotificationReason.NEW):
+            continue
+        if _hidden_by(session, filter_row.user_id, listing.id):
             continue
         user = session.get(User, filter_row.user_id)
         if user is None:
@@ -281,6 +298,8 @@ async def _notify_price_change(
     to_notify: list[User] = []
     for user_id in previously_notified_user_ids:
         if _already_notified(session, user_id, listing.id, reason):
+            continue
+        if _hidden_by(session, user_id, listing.id):
             continue
         user = session.get(User, user_id)
         if user is None or not user.is_active or not user.notifications_enabled:
