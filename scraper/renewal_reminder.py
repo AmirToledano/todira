@@ -11,6 +11,11 @@ whose Takbull subscription is active and not cancelled is renewed automatically 
 Sent on Telegram (free). A user who can't be reached right now (a failed send, or no Telegram linked yet) is simply
 retried on the next run until paid_until passes. A user who blocked the bot is marked done (nothing will ever get
 through).
+
+2026-10-16 (owner): the same once-only message before the FREE TRIAL ends, TRIAL_REMINDER_LEAD before trial_ends_at
+("your free trial ends tomorrow at 09:30"), to anyone still on the trial: not paying, no comp access, not paused, not the
+owner. Recorded in User.trial_reminder_sent_at. Runs only 9:00-22:00 with the scraper, so a trial ending at night is
+reminded the same morning ("today at 23:30").
 """
 from __future__ import annotations
 
@@ -33,6 +38,8 @@ from todira_common.uid_token import signed_login_query
 logger = logging.getLogger(__name__)
 
 REMINDER_LEAD = dt.timedelta(days=3)
+TRIAL_REMINDER_LEAD = dt.timedelta(hours=24)
+OWNER_TELEGRAM_USER_ID = os.environ.get("OWNER_TELEGRAM_USER_ID", "").strip()
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
 _ISRAEL = ZoneInfo("Asia/Jerusalem")
 
@@ -54,23 +61,79 @@ def _due_users(session: Session, now: dt.datetime) -> list[User]:
     )
 
 
+def _due_trial_users(session: Session, now: dt.datetime) -> list[User]:
+    conditions = [
+        User.trial_ends_at > now,
+        User.trial_ends_at <= now + TRIAL_REMINDER_LEAD,
+        User.trial_reminder_sent_at.is_(None),
+        or_(User.paid_until.is_(None), User.paid_until <= now),
+        User.free_access_granted.is_(False),
+        User.is_active.is_(True),
+    ]
+    if OWNER_TELEGRAM_USER_ID.isdigit():
+        conditions.append(or_(User.telegram_user_id.is_(None), User.telegram_user_id != int(OWNER_TELEGRAM_USER_ID)))
+    return list(session.scalars(select(User).where(*conditions)))
+
+
+def _trial_when(ends_at: dt.datetime, now: dt.datetime, lang: str) -> str:
+    """"today at 23:30" / "tomorrow at 09:30" in Israel time (the date itself if neither)."""
+    end_local, now_local = ends_at.astimezone(_ISRAEL), now.astimezone(_ISRAEL)
+    time_text = end_local.strftime("%H:%M")
+    days = (end_local.date() - now_local.date()).days
+    if days == 0:
+        return bot_text("trial.when_today", lang, time=time_text)
+    if days == 1:
+        return bot_text("trial.when_tomorrow", lang, time=time_text)
+    return bot_text("trial.when_date", lang, date=end_local.strftime("%d.%m.%Y"))
+
+
+def _trial_message(user: User, url: str, now: dt.datetime) -> str:
+    lang = user.language or DEFAULT_LANG
+    return bot_text("trial.reminder", lang, when=_trial_when(user.trial_ends_at, now, lang), url=url)
+
+
 def _message(user: User, url: str) -> str:
     lang = user.language or DEFAULT_LANG
     date = user.paid_until.astimezone(_ISRAEL).strftime("%d.%m.%Y")
     return bot_text("renewal.reminder", lang, date=date, url=url)
 
 
-async def _send_telegram(bot: Bot, user: User) -> bool | None:
+async def _send_telegram(bot: Bot, user: User, compose=None) -> bool | None:
     """True = sent, None = can never be delivered (blocked), False = failed, retry later."""
     url = f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}"
     try:
-        await bot.send_message(chat_id=user.telegram_user_id, text=_message(user, url))
+        await bot.send_message(chat_id=user.telegram_user_id, text=(compose or _message)(user, url))
         return True
     except Forbidden:
         return None
     except Exception:
         logger.exception("renewal reminder: Telegram send failed for user_id=%s", user.id)
         return False
+
+
+async def _run_trial(session: Session, now: dt.datetime) -> int:
+    users = [user for user in _due_trial_users(session, now) if user.telegram_user_id]
+    if not users:
+        return 0
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return 0
+    sent = 0
+    bot = Bot(token=token)
+    await bot.initialize()
+    try:
+        for user in users:
+            result = await _send_telegram(bot, user, compose=lambda u, url: _trial_message(u, url, now))
+            if result is False:
+                continue  # retry next run, while the trial lasts
+            user.trial_reminder_sent_at = now
+            session.commit()
+            if result:
+                sent += 1
+            await asyncio.sleep(0.3)
+    finally:
+        await bot.shutdown()
+    return sent
 
 
 async def _run(session: Session, now: dt.datetime) -> int:
@@ -103,4 +166,10 @@ async def _run(session: Session, now: dt.datetime) -> int:
 def run_renewal_reminders(session: Session) -> dict[str, int]:
     """Returns {"renewal_reminders_sent": n} for the run summary."""
     now = dt.datetime.now(dt.timezone.utc)
-    return {"renewal_reminders_sent": asyncio.run(_run(session, now))}
+    summary = {"renewal_reminders_sent": asyncio.run(_run(session, now))}
+    try:
+        summary["trial_reminders_sent"] = asyncio.run(_run_trial(session, now))
+    except Exception:
+        session.rollback()
+        logger.exception("trial reminder step failed")
+    return summary

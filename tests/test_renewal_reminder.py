@@ -133,3 +133,71 @@ def test_reminder_text_exists_in_all_five_languages():
     entry = BOT_STRINGS["renewal.reminder"]
     for lang in ("he", "en", "ru", "fr", "ar"):
         assert "{date}" in entry[lang] and "{url}" in entry[lang]
+
+
+# --- 2026-10-16: the one reminder before the free trial ends ---------------------------------------
+
+
+def _trial_run(users, session=None):
+    session = session or _Session()
+    with patch.object(rr, "_due_trial_users", lambda s, n: users):
+        return asyncio.run(rr._run_trial(session, NOW)), session
+
+
+def _trial_user(**kw):
+    base = dict(id=2, telegram_user_id=222, language="he", trial_ends_at=NOW + dt.timedelta(hours=20),
+                trial_reminder_sent_at=None)
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_trial_user_gets_one_reminder_saying_when_with_an_upgrade_link_and_is_marked():
+    user = _trial_user()  # NOW is 15:00 in Israel; the trial ends 11:00 the next day
+    sent, session = _trial_run([user])
+    assert sent == 1
+    chat_id, text = _Bot.sent[0]
+    assert chat_id == 222
+    assert "מחר ב־11:00" in text
+    assert "/upgrade?t=TOKEN" in text
+    assert user.trial_reminder_sent_at == NOW
+    assert session.commits == 1
+
+
+def test_trial_ending_later_today_says_today():
+    assert rr._trial_when(NOW + dt.timedelta(hours=3), NOW, "he") == "היום ב־18:00"
+    assert rr._trial_when(NOW + dt.timedelta(hours=20), NOW, "en") == "tomorrow at 11:00"
+
+
+def test_trial_send_failure_is_retried_and_a_blocked_bot_is_marked_done():
+    _Bot.error = RuntimeError("network")
+    user = _trial_user()
+    sent, session = _trial_run([user])
+    assert (sent, user.trial_reminder_sent_at, session.commits) == (0, None, 0)
+    _Bot.error = Forbidden("bot was blocked by the user")
+    sent, _ = _trial_run([user])
+    assert sent == 0 and user.trial_reminder_sent_at == NOW
+
+
+def test_trial_user_without_telegram_is_skipped():
+    sent, session = _trial_run([_trial_user(telegram_user_id=None)])
+    assert sent == 0 and session.commits == 0 and _Bot.sent == []
+
+
+def test_trial_selection_query_is_valid_sql_and_covers_the_rules():
+    class _Capture:
+        def scalars(self, stmt):
+            self.sql = str(stmt.compile(dialect=postgresql.dialect()))
+            return []
+
+    session = _Capture()
+    assert rr._due_trial_users(session, NOW) == []
+    for needle in ("trial_ends_at", "trial_reminder_sent_at", "paid_until", "free_access_granted", "is_active"):
+        assert needle in session.sql
+
+
+def test_trial_texts_exist_in_all_five_languages():
+    from todira_common.bot_strings import BOT_STRINGS
+
+    for lang in ("he", "en", "ru", "fr", "ar"):
+        assert "{when}" in BOT_STRINGS["trial.reminder"][lang] and "{url}" in BOT_STRINGS["trial.reminder"][lang]
+        assert "{time}" in BOT_STRINGS["trial.when_today"][lang] and "{time}" in BOT_STRINGS["trial.when_tomorrow"][lang]
