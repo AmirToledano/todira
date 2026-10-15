@@ -1,0 +1,92 @@
+name: Diagnose — why the same apartment on two sites is not linked, and what would link it safely (read-only)
+
+# 2026-10-15 owner: "improve the also-posted-on detection". diagnose-cross-source-duplicates.yaml showed most likely
+# Homeless/Yad2 pairs have DIFFERENT floors and a third of Yad2/Komo pairs miss or differ on floor. Before changing the
+# matcher: how the floors differ, whether size and map position agree, and - as a false-match baseline - how often two
+# DIFFERENT ads on the SAME site (never the same apartment twice, unique per site) would pass the same looser rules.
+# Read-only (a temp table only); prints only counts per site and floor numbers, never ad content.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Counts
+        run: |
+          cat > /tmp/q.sql <<'SQL'
+          SET statement_timeout = '300s';
+          CREATE TEMP TABLE a AS
+            SELECT id, source, external_id, deal_type, city, rooms, floor, price, size_sqm, duplicate_of_id, first_seen_at,
+                   latitude::float AS lat, longitude::float AS lon, neighborhood,
+                   nullif(lower(regexp_replace(regexp_replace(trim(coalesce(street, '')), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g')), '') AS st,
+                   (street ~ '[0-9]') AS street_has_digit
+            FROM listings WHERE NOT is_delisted AND price IS NOT NULL AND rooms IS NOT NULL AND city IS NOT NULL
+              AND source IN ('yad2', 'komo', 'homeless');
+          ANALYZE a;
+          -- p: same deal, city, street, rooms, price within 5%/150 - cross = two sites, same = two different ads on one site
+          CREATE TEMP TABLE p AS
+            SELECT CASE WHEN x.source = y.source THEN 'SAME ' || x.source ELSE x.source || '+' || y.source END AS kind,
+                   x.floor AS xf, y.floor AS yf, x.size_sqm AS xs, y.size_sqm AS ys,
+                   CASE WHEN x.lat IS NULL OR y.lat IS NULL THEN NULL
+                        ELSE 111000 * sqrt(power(x.lat - y.lat, 2) + power((x.lon - y.lon) * cos(radians(x.lat)), 2)) END AS dist_m,
+                   (x.duplicate_of_id = y.id OR y.duplicate_of_id = x.id OR (x.duplicate_of_id IS NOT NULL AND x.duplicate_of_id = y.duplicate_of_id)) AS linked
+            FROM a x JOIN a y ON (x.source < y.source OR (x.source = y.source AND x.id < y.id)) AND x.deal_type = y.deal_type
+                             AND x.city = y.city AND x.rooms = y.rooms AND x.st = y.st
+                             AND abs(x.price - y.price) <= greatest(greatest(x.price, y.price) * 0.05, 150);
+
+          \echo '== 1. map position and street format per site (active)'
+          SELECT source, count(*) AS active, count(lat) AS has_position, count(*) FILTER (WHERE street_has_digit) AS street_has_digit,
+                 count(size_sqm) AS has_size, count(floor) AS has_floor
+          FROM a GROUP BY 1 ORDER BY 2 DESC;
+
+          \echo '== 2. floors that differ, cross-site likely pairs: the 25 most common (floor on first site, floor on second site)'
+          SELECT kind, xf, yf, count(*) FROM p
+          WHERE kind NOT LIKE 'SAME%' AND xf IS NOT NULL AND yf IS NOT NULL AND xf <> yf
+          GROUP BY 1, 2, 3 ORDER BY 4 DESC LIMIT 25;
+
+          \echo '== 3. by floor status and size agreement: cross-site likely pairs vs two different ads on the same site'
+          SELECT kind,
+                 CASE WHEN xf IS NULL OR yf IS NULL THEN 'floor missing' WHEN xf = yf THEN 'same floor'
+                      WHEN abs(xf - yf) = 1 THEN 'floor off by 1' ELSE 'floor differs 2+' END AS floor_status,
+                 count(*) AS pairs,
+                 count(*) FILTER (WHERE xs IS NOT NULL AND ys IS NOT NULL AND abs(xs - ys) <= greatest(2, 0.05 * greatest(xs, ys))) AS size_agrees,
+                 count(*) FILTER (WHERE xs IS NOT NULL AND ys IS NOT NULL AND abs(xs - ys) > greatest(2, 0.05 * greatest(xs, ys))) AS size_differs,
+                 count(*) FILTER (WHERE dist_m < 60) AS within_60m,
+                 count(*) FILTER (WHERE dist_m >= 60) AS over_60m,
+                 count(*) FILTER (WHERE linked) AS already_linked
+          FROM p GROUP BY 1, 2 ORDER BY 1, 2;
+
+          \echo '== 4. no street on one side (Yad2 often has none): same deal, city, neighborhood, rooms, floor, size within 2/5%, price within 5%'
+          SELECT CASE WHEN x.source = y.source THEN 'SAME ' || x.source ELSE x.source || '+' || y.source END AS kind, count(*) AS pairs,
+                 count(*) FILTER (WHERE x.lat IS NOT NULL AND y.lat IS NOT NULL
+                                  AND 111000 * sqrt(power(x.lat - y.lat, 2) + power((x.lon - y.lon) * cos(radians(x.lat)), 2)) < 60) AS within_60m
+          FROM a x JOIN a y ON (x.source < y.source OR (x.source = y.source AND x.id < y.id)) AND x.deal_type = y.deal_type AND x.city = y.city
+                           AND x.rooms = y.rooms AND x.floor = y.floor AND x.neighborhood = y.neighborhood
+                           AND abs(x.price - y.price) <= greatest(greatest(x.price, y.price) * 0.05, 150)
+                           AND abs(x.size_sqm - y.size_sqm) <= greatest(2, 0.05 * greatest(x.size_sqm, y.size_sqm))
+          WHERE (x.st IS NULL) <> (y.st IS NULL)
+          GROUP BY 1 ORDER BY 2 DESC;
+
+          \echo '== 5. Facebook ads (active): which signals they carry'
+          SELECT count(*) AS active, count(city) AS city, count(rooms) AS rooms, count(floor) AS floor, count(size_sqm) AS size,
+                 count(price) AS price, count(latitude) AS position, count(nullif(street, '')) AS street, count(nullif(neighborhood, '')) AS neighborhood
+          FROM listings WHERE NOT is_delisted AND source LIKE 'facebook%';
+
+          \echo '== 6. hidden apartments: duplicate rows still live whose kept row is no longer live'
+          SELECT d.source AS live_duplicate_site, c.source AS gone_kept_site, count(*)
+          FROM listings d JOIN listings c ON c.id = d.duplicate_of_id
+          WHERE NOT d.is_delisted AND c.is_delisted GROUP BY 1, 2 ORDER BY 3 DESC;
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
