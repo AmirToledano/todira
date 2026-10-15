@@ -1,15 +1,58 @@
 import { motion } from "framer-motion";
 import { t } from "../i18n";
 import { useSpotlight } from "../useSpotlight";
+import { useLiveStats } from "../liveStats";
+import CountUp from "../CountUp";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
-const STATS = [
+// Shown only when the live numbers are unavailable (see liveStats.js).
+const STATIC_STATS = [
   ["home.stat_scan_freq_value", "home.stat_scan_freq_label"],
   ["home.stat_ai_value", "home.stat_ai_label"],
   ["home.stat_uptime_value", "home.stat_uptime_label"],
   ["home.stat_free_value", "home.stat_free_label"],
 ];
+
+// A check counts as "recent" for a bit over an hour (scrapes run hourly, 9:00-22:00); otherwise the card says when scanning
+// happens instead of showing a stale "N hours ago" overnight.
+const RECENT_SCAN_MINUTES = 75;
+
+function LiveDot() {
+  return (
+    <motion.span
+      aria-hidden="true"
+      animate={{ opacity: [1, 0.35, 1], scale: [1, 1.25, 1] }}
+      transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+      style={{
+        display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: "#2fa866",
+        marginInlineEnd: 8, verticalAlign: "middle",
+      }}
+    />
+  );
+}
+
+function liveCards(stats) {
+  const minutes = stats.last_scan_minutes;
+  const recent = typeof minutes === "number" && minutes <= RECENT_SCAN_MINUTES;
+  return [
+    { key: "new", value: <CountUp value={stats.new_24h} />, label: t("home.live_new_24h_label") },
+    { key: "active", value: <CountUp value={stats.active} />, label: t("home.live_active_label") },
+    { key: "cities", value: <CountUp value={stats.cities} />, label: t("home.live_cities_label") },
+    recent
+      ? {
+          key: "scan",
+          value: (
+            <>
+              <LiveDot />
+              {minutes < 2 ? t("home.live_last_scan_now") : t("home.live_last_scan_value", { n: minutes })}
+            </>
+          ),
+          label: t("home.live_last_scan_label"),
+        }
+      : { key: "scan", value: t("home.stat_scan_freq_value"), label: t("home.live_scan_hours_label") },
+  ];
+}
 
 const container = {
   hidden: {},
@@ -20,7 +63,7 @@ const item = {
   show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: easePremium } },
 };
 
-function StatCard({ valueKey, labelKey }) {
+function StatCard({ value, label }) {
   const spotlight = useSpotlight();
   return (
     <motion.div
@@ -40,14 +83,18 @@ function StatCard({ valueKey, labelKey }) {
     >
       <span className="tl-spotlight-glow" aria-hidden="true" />
       <div style={{ fontFamily: "Rubik, sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "var(--teal)" }}>
-        {t(valueKey)}
+        {value}
       </div>
-      <div style={{ fontSize: ".82rem", color: "var(--text-muted)", marginTop: 4 }}>{t(labelKey)}</div>
+      <div style={{ fontSize: ".82rem", color: "var(--text-muted)", marginTop: 4 }}>{label}</div>
     </motion.div>
   );
 }
 
 export default function Stats() {
+  const stats = useLiveStats();
+  const cards = stats
+    ? liveCards(stats)
+    : STATIC_STATS.map(([valueKey, labelKey]) => ({ key: valueKey, value: t(valueKey), label: t(labelKey) }));
   return (
     <section style={{ paddingTop: 0, paddingBottom: "clamp(40px, 6vw, 80px)" }}>
       <motion.div
@@ -63,8 +110,8 @@ export default function Stats() {
           margin: "0 auto",
         }}
       >
-        {STATS.map(([valueKey, labelKey]) => (
-          <StatCard key={valueKey} valueKey={valueKey} labelKey={labelKey} />
+        {cards.map((card) => (
+          <StatCard key={card.key} value={card.value} label={card.label} />
         ))}
       </motion.div>
     </section>

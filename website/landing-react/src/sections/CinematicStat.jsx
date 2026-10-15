@@ -1,6 +1,8 @@
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { t } from "../i18n";
+import { useLiveStats } from "../liveStats";
+import CountUp from "../CountUp";
 
 /* A deliberate "camera-move" moment borrowed from the current wave of Awwwards-style 3D/WebGL
    product sites (reviewed live: real reference reels of Three.js product showcases — huge
@@ -12,6 +14,9 @@ import { t } from "../i18n";
    given one dramatic full-bleed moment of its own rather than a small card among four others. */
 export default function CinematicStat() {
   const ref = useRef(null);
+  // 2026-10-15 (owner): the big figure is the live count of new listings in the last 24 hours when available.
+  const stats = useLiveStats();
+  const live = stats && stats.new_24h > 0;
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
   const scale = useTransform(scrollYProgress, [0, 0.5, 1], [0.82, 1, 0.82]);
   const opacity = useTransform(scrollYProgress, [0, 0.3, 0.7, 1], [0.25, 1, 1, 0.25]);
@@ -33,9 +38,9 @@ export default function CinematicStat() {
     <section ref={ref} className="tl-cinematic" aria-hidden="true">
       <motion.div style={reduceMotion ? undefined : { scale, opacity }}>
         <motion.div className="tl-cinematic-figure" style={reduceMotion ? undefined : { filter }}>
-          {t("home.stat_uptime_value")}
+          {live ? <CountUp value={stats.new_24h} duration={2.2} /> : t("home.stat_uptime_value")}
         </motion.div>
-        <p className="tl-cinematic-caption">{t("home.stat_uptime_label")}</p>
+        <p className="tl-cinematic-caption">{live ? t("home.live_cinematic_caption") : t("home.stat_uptime_label")}</p>
       </motion.div>
 
       <style>{`

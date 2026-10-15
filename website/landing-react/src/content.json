@@ -189,11 +189,11 @@
     "ar": "الملك تودي — بوت البحث عن شقق توديرا"
   },
   "home.stat_scan_freq_value": {
-    "he": "כל שעתיים",
-    "en": "Every 2h",
-    "ru": "Каждые 2 ч",
-    "fr": "Toutes les 2h",
-    "ar": "كل ساعتين"
+    "he": "כל שעה",
+    "en": "Every hour",
+    "ru": "Каждый час",
+    "fr": "Toutes les heures",
+    "ar": "كل ساعة"
   },
   "home.stat_scan_freq_label": {
     "he": "תדירות סריקה",
@@ -201,6 +201,62 @@
     "ru": "Частота сканирования",
     "fr": "Fréquence de scan",
     "ar": "تكرار الفحص"
+  },
+  "home.live_new_24h_label": {
+    "he": "מודעות חדשות ב־24 השעות האחרונות",
+    "en": "New listings in the last 24 hours",
+    "ru": "Новых объявлений за 24 часа",
+    "fr": "Nouvelles annonces ces dernières 24 h",
+    "ar": "إعلانات جديدة خلال آخر 24 ساعة"
+  },
+  "home.live_active_label": {
+    "he": "מודעות פעילות עכשיו",
+    "en": "Live listings right now",
+    "ru": "Активных объявлений сейчас",
+    "fr": "Annonces actives en ce moment",
+    "ar": "إعلانات نشطة الآن"
+  },
+  "home.live_cities_label": {
+    "he": "ערים ויישובים עם מודעות",
+    "en": "Cities and towns with listings",
+    "ru": "Городов и посёлков с объявлениями",
+    "fr": "Villes et localités avec des annonces",
+    "ar": "مدن وبلدات فيها إعلانات"
+  },
+  "home.live_last_scan_label": {
+    "he": "בדיקה אחרונה",
+    "en": "Last check",
+    "ru": "Последняя проверка",
+    "fr": "Dernière vérification",
+    "ar": "آخر فحص"
+  },
+  "home.live_last_scan_value": {
+    "he": "לפני {n} דק׳",
+    "en": "{n} min ago",
+    "ru": "{n} мин назад",
+    "fr": "il y a {n} min",
+    "ar": "قبل {n} دقيقة"
+  },
+  "home.live_last_scan_now": {
+    "he": "ממש עכשיו",
+    "en": "Just now",
+    "ru": "Только что",
+    "fr": "À l'instant",
+    "ar": "الآن"
+  },
+  "home.live_scan_hours_label": {
+    "he": "סריקה כל שעה, 9:00–22:00",
+    "en": "Scanning every hour, 9:00–22:00",
+    "ru": "Сканирование каждый час, 9:00–22:00",
+    "fr": "Analyse toutes les heures, 9h–22h",
+    "ar": "فحص كل ساعة، 9:00–22:00"
+  },
+  "home.live_cinematic_caption": {
+    "he": "מודעות חדשות מצאנו ב־24 השעות האחרונות",
+    "en": "new listings found in the last 24 hours",
+    "ru": "новых объявлений найдено за последние 24 часа",
+    "fr": "nouvelles annonces trouvées ces dernières 24 heures",
+    "ar": "إعلانًا جديدًا وجدناها خلال آخر 24 ساعة"
   },
   "home.stat_ai_value": {
     "he": "AI",
@@ -441,11 +497,11 @@
     "ar": "مع توديرا 👑"
   },
   "home.compare_with_1": {
-    "he": "סריקה אוטומטית כל שעתיים, ברקע",
-    "en": "Automatic scanning every 2 hours, in the background",
-    "ru": "Автоматическое сканирование каждые 2 часа в фоне",
-    "fr": "Scan automatique toutes les 2 heures, en arrière-plan",
-    "ar": "فحص تلقائي كل ساعتين في الخلفية"
+    "he": "סריקה אוטומטית כל שעה, ברקע",
+    "en": "Automatic scanning every hour, in the background",
+    "ru": "Автоматическое сканирование каждый час в фоне",
+    "fr": "Scan automatique toutes les heures, en arrière-plan",
+    "ar": "فحص تلقائي كل ساعة في الخلفية"
   },
   "home.compare_with_2": {
     "he": "התראה מיידית בטלגרם ברגע שיש התאמה",
@@ -553,11 +609,11 @@
     "ar": "من أين تأتي الإعلانات؟"
   },
   "home.faq2_a": {
-    "he": "טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל שעתיים ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.",
-    "en": "Todira automatically scans the apartment market online every 2 hours and compares every new listing against your filter. More sources are being added gradually.",
-    "ru": "Todira автоматически сканирует рынок квартир в сети каждые 2 часа и сравнивает каждое новое объявление с вашим фильтром. Постепенно добавляются новые источники.",
-    "fr": "Todira scanne automatiquement le marché des appartements en ligne toutes les 2 heures et compare chaque nouvelle annonce à votre filtre. D'autres sources sont ajoutées progressivement.",
-    "ar": "يفحص توديرا سوق الشقق على الإنترنت تلقائيًا كل ساعتين ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا."
+    "he": "טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל שעה, מ־9 בבוקר עד 10 בלילה, ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.",
+    "en": "Todira automatically scans the apartment market online every hour from 9:00 to 22:00 and compares every new listing against your filter. More sources are being added gradually.",
+    "ru": "Todira автоматически сканирует рынок квартир в сети каждый час с 9:00 до 22:00 и сравнивает каждое новое объявление с вашим фильтром. Постепенно добавляются новые источники.",
+    "fr": "Todira scanne automatiquement le marché des appartements en ligne toutes les heures de 9h à 22h et compare chaque nouvelle annonce à votre filtre. D'autres sources sont ajoutées progressivement.",
+    "ar": "يفحص توديرا سوق الشقق على الإنترنت تلقائيًا كل ساعة من 9:00 حتى 22:00 ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا."
   },
   "home.faq3_q": {
     "he": "כמה זה עולה?",
@@ -1116,6 +1172,20 @@
     "fr": "✅ Actif, valable jusqu'au {date}",
     "ar": "✅ نشط، ساري حتى {date}"
   },
+  "account.days_left": {
+    "he": "נשארו {days} ימים",
+    "en": "{days} days left",
+    "ru": "Осталось дней: {days}",
+    "fr": "Encore {days} jours",
+    "ar": "متبقٍ {days} أيام"
+  },
+  "account.last_day": {
+    "he": "זה היום האחרון",
+    "en": "This is the last day",
+    "ru": "Сегодня последний день",
+    "fr": "C'est le dernier jour",
+    "ar": "هذا هو اليوم الأخير"
+  },
   "account.subscription_trial": {
     "he": "⏳ תקופת ניסיון, עד {date}",
     "en": "⏳ Trial period, until {date}",
@@ -1164,6 +1234,69 @@
     "ru": "Отменить автопродление",
     "fr": "Annuler le renouvellement automatique",
     "ar": "إلغاء التجديد التلقائي"
+  },
+  "account.cancel_pass_link": {
+    "he": "ביטול הרכישה",
+    "en": "Cancel purchase",
+    "ru": "Отменить покупку",
+    "fr": "Annuler l'achat",
+    "ar": "إلغاء الشراء"
+  },
+  "account.cancel_pass_refund": {
+    "he": "ביטול עכשיו יסגור את הגישה מיד, ויוחזרו לך ₪{refund} לאמצעי התשלום תוך 14 ימים.",
+    "en": "Cancelling now ends your access right away, and ₪{refund} will be refunded to your payment method within 14 days.",
+    "ru": "Отмена сейчас сразу закроет доступ, а ₪{refund} вернутся на ваш способ оплаты в течение 14 дней.",
+    "fr": "Annuler maintenant met fin à ton accès immédiatement, et ₪{refund} seront remboursés sur ton moyen de paiement sous 14 jours.",
+    "ar": "الإلغاء الآن يُنهي وصولك فورًا، وسيُعاد إليك ₪{refund} إلى وسيلة الدفع خلال 14 يومًا."
+  },
+  "account.cancel_pass_no_refund": {
+    "he": "ביטול עכשיו יסגור את הגישה מיד. לפי מדיניות הביטול לא מגיע החזר על הרכישה הזו.",
+    "en": "Cancelling now ends your access right away. Under the cancellation policy, no refund is due for this purchase.",
+    "ru": "Отмена сейчас сразу закроет доступ. По правилам отмены за эту покупку возврат не положен.",
+    "fr": "Annuler maintenant met fin à ton accès immédiatement. Selon la politique d'annulation, aucun remboursement n'est dû pour cet achat.",
+    "ar": "الإلغاء الآن يُنهي وصولك فورًا. وفق سياسة الإلغاء لا يُستحق استرداد عن هذا الشراء."
+  },
+  "account.cancel_pass_breakdown": {
+    "he": "שולם ₪{paid}. מקוזזים ₪{covering} עבור {days} ימים מאז הרכישה ו־₪{fee} דמי ביטול.",
+    "en": "Paid ₪{paid}. Deducted: ₪{covering} for {days} days since the purchase and a ₪{fee} cancellation fee.",
+    "ru": "Оплачено ₪{paid}. Удерживается ₪{covering} за {days} дн. с момента покупки и ₪{fee} за отмену.",
+    "fr": "Payé ₪{paid}. Retenus : ₪{covering} pour {days} jours depuis l'achat et ₪{fee} de frais d'annulation.",
+    "ar": "تم دفع ₪{paid}. يُخصم ₪{covering} مقابل {days} أيام منذ الشراء و₪{fee} رسوم إلغاء."
+  },
+  "account.cancel_pass_policy": {
+    "he": "מדיניות הביטול",
+    "en": "Cancellation policy",
+    "ru": "Правила отмены",
+    "fr": "Politique d'annulation",
+    "ar": "سياسة الإلغاء"
+  },
+  "account.cancel_pass_confirm": {
+    "he": "אישור הביטול",
+    "en": "Confirm cancellation",
+    "ru": "Подтвердить отмену",
+    "fr": "Confirmer l'annulation",
+    "ar": "تأكيد الإلغاء"
+  },
+  "account.cancel_pass_keep": {
+    "he": "השארת הגישה",
+    "en": "Keep my access",
+    "ru": "Оставить доступ",
+    "fr": "Garder mon accès",
+    "ar": "الإبقاء على الوصول"
+  },
+  "account.cancel_pass_done": {
+    "he": "הביטול התקבל והגישה נסגרה. החזר של ₪{refund} יגיע לאמצעי התשלום תוך 14 ימים.",
+    "en": "Your cancellation was received and access has ended. A refund of ₪{refund} will reach your payment method within 14 days.",
+    "ru": "Отмена принята, доступ закрыт. Возврат ₪{refund} поступит на ваш способ оплаты в течение 14 дней.",
+    "fr": "Annulation reçue, l'accès est terminé. Un remboursement de ₪{refund} arrivera sur ton moyen de paiement sous 14 jours.",
+    "ar": "تم استلام الإلغاء وانتهى الوصول. سيصل استرداد بقيمة ₪{refund} إلى وسيلة الدفع خلال 14 يومًا."
+  },
+  "account.cancel_pass_done_no_refund": {
+    "he": "הביטול התקבל והגישה נסגרה.",
+    "en": "Your cancellation was received and access has ended.",
+    "ru": "Отмена принята, доступ закрыт.",
+    "fr": "Annulation reçue, l'accès est terminé.",
+    "ar": "تم استلام الإلغاء وانتهى الوصول."
   },
   "account.resume_subscription_cta": {
     "he": "חדש חידוש אוטומטי",
@@ -1382,69 +1515,6 @@
     "fr": "Les frais d'un agent coûtent souvent des milliers de shekels. Chez nous, c'est un montant symbolique, sans renouvellement automatique ni engagement.",
     "ar": "عمولة الوسيط تكلّف عادةً آلاف الشواقل. عندنا مبلغ رمزي، بدون تجديد تلقائي وبدون التزام."
   },
-  "account.cancel_pass_link": {
-    "he": "ביטול הרכישה",
-    "en": "Cancel purchase",
-    "ru": "Отменить покупку",
-    "fr": "Annuler l'achat",
-    "ar": "إلغاء الشراء"
-  },
-  "account.cancel_pass_refund": {
-    "he": "ביטול עכשיו יסגור את הגישה מיד, ויוחזרו לך ₪{refund} לאמצעי התשלום תוך 14 ימים.",
-    "en": "Cancelling now ends your access right away, and ₪{refund} will be refunded to your payment method within 14 days.",
-    "ru": "Отмена сейчас сразу закроет доступ, а ₪{refund} вернутся на ваш способ оплаты в течение 14 дней.",
-    "fr": "Annuler maintenant met fin à ton accès immédiatement, et ₪{refund} seront remboursés sur ton moyen de paiement sous 14 jours.",
-    "ar": "الإلغاء الآن يُنهي وصولك فورًا، وسيُعاد إليك ₪{refund} إلى وسيلة الدفع خلال 14 يومًا."
-  },
-  "account.cancel_pass_no_refund": {
-    "he": "ביטול עכשיו יסגור את הגישה מיד. לפי מדיניות הביטול לא מגיע החזר על הרכישה הזו.",
-    "en": "Cancelling now ends your access right away. Under the cancellation policy, no refund is due for this purchase.",
-    "ru": "Отмена сейчас сразу закроет доступ. По правилам отмены за эту покупку возврат не положен.",
-    "fr": "Annuler maintenant met fin à ton accès immédiatement. Selon la politique d'annulation, aucun remboursement n'est dû pour cet achat.",
-    "ar": "الإلغاء الآن يُنهي وصولك فورًا. وفق سياسة الإلغاء لا يُستحق استرداد عن هذا الشراء."
-  },
-  "account.cancel_pass_breakdown": {
-    "he": "שולם ₪{paid}. מקוזזים ₪{covering} עבור {days} ימים מאז הרכישה ו־₪{fee} דמי ביטול.",
-    "en": "Paid ₪{paid}. Deducted: ₪{covering} for {days} days since the purchase and a ₪{fee} cancellation fee.",
-    "ru": "Оплачено ₪{paid}. Удерживается ₪{covering} за {days} дн. с момента покупки и ₪{fee} за отмену.",
-    "fr": "Payé ₪{paid}. Retenus : ₪{covering} pour {days} jours depuis l'achat et ₪{fee} de frais d'annulation.",
-    "ar": "تم دفع ₪{paid}. يُخصم ₪{covering} مقابل {days} أيام منذ الشراء و₪{fee} رسوم إلغاء."
-  },
-  "account.cancel_pass_policy": {
-    "he": "מדיניות הביטול",
-    "en": "Cancellation policy",
-    "ru": "Правила отмены",
-    "fr": "Politique d'annulation",
-    "ar": "سياسة الإلغاء"
-  },
-  "account.cancel_pass_confirm": {
-    "he": "אישור הביטול",
-    "en": "Confirm cancellation",
-    "ru": "Подтвердить отмену",
-    "fr": "Confirmer l'annulation",
-    "ar": "تأكيد الإلغاء"
-  },
-  "account.cancel_pass_keep": {
-    "he": "השארת הגישה",
-    "en": "Keep my access",
-    "ru": "Оставить доступ",
-    "fr": "Garder mon accès",
-    "ar": "الإبقاء على الوصول"
-  },
-  "account.cancel_pass_done": {
-    "he": "הביטול התקבל והגישה נסגרה. החזר של ₪{refund} יגיע לאמצעי התשלום תוך 14 ימים.",
-    "en": "Your cancellation was received and access has ended. A refund of ₪{refund} will reach your payment method within 14 days.",
-    "ru": "Отмена принята, доступ закрыт. Возврат ₪{refund} поступит на ваш способ оплаты в течение 14 дней.",
-    "fr": "Annulation reçue, l'accès est terminé. Un remboursement de ₪{refund} arrivera sur ton moyen de paiement sous 14 jours.",
-    "ar": "تم استلام الإلغاء وانتهى الوصول. سيصل استرداد بقيمة ₪{refund} إلى وسيلة الدفع خلال 14 يومًا."
-  },
-  "account.cancel_pass_done_no_refund": {
-    "he": "הביטול התקבל והגישה נסגרה.",
-    "en": "Your cancellation was received and access has ended.",
-    "ru": "Отмена принята, доступ закрыт.",
-    "fr": "Annulation reçue, l'accès est terminé.",
-    "ar": "تم استلام الإلغاء وانتهى الوصول."
-  },
   "upgrade.pass_name_7": {
     "he": "שבוע",
     "en": "1 week",
@@ -1465,19 +1535,5 @@
     "ru": "1 месяц",
     "fr": "1 mois",
     "ar": "شهر"
-  },
-  "account.days_left": {
-    "he": "נשארו {days} ימים",
-    "en": "{days} days left",
-    "ru": "Осталось дней: {days}",
-    "fr": "Encore {days} jours",
-    "ar": "متبقٍ {days} أيام"
-  },
-  "account.last_day": {
-    "he": "זה היום האחרון",
-    "en": "This is the last day",
-    "ru": "Сегодня последний день",
-    "fr": "C'est le dernier jour",
-    "ar": "هذا هو اليوم الأخير"
   }
 }

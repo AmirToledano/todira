@@ -106,3 +106,79 @@ def test_home_server_renders_crawlable_content(client):
     assert website_i18n.TRANSLATIONS["home.h1"]["he"] in resp.text
     assert website_i18n.TRANSLATIONS["home.feature1_title"]["he"] in resp.text
     assert website_i18n.TRANSLATIONS["home.faq1_q"]["he"] in resp.text
+
+
+# --- 2026-10-15 (owner): live numbers on the home page ----------------------------------------------------------------
+
+import datetime as _dt  # noqa: E402
+from contextlib import contextmanager  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+
+class _StatsSession:
+    def __init__(self, new_24h=37, active=1234, cities=88, last_scan=None):
+        self._new_24h, self._active, self._cities, self._last_scan = new_24h, active, cities, last_scan
+        self.scalar_calls = 0
+
+    def scalar(self, stmt):
+        self.scalar_calls += 1
+        return self._new_24h if "first_seen_at" in str(stmt) else self._last_scan
+
+    def execute(self, stmt):
+        return SimpleNamespace(one=lambda: (self._active, self._cities))
+
+
+def _fake_session(session):
+    @contextmanager
+    def _inner():
+        yield session
+
+    return _inner
+
+
+@pytest.fixture
+def _fresh_stats_cache():
+    website_main._home_stats_cache.update(at=0.0, value=None)
+    yield
+    website_main._home_stats_cache.update(at=0.0, value=None)
+
+
+def test_live_stats_count_from_the_listings_table_and_are_cached(_fresh_stats_cache):
+    session = _StatsSession(last_scan=_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=12, seconds=5))
+    with patch.object(website_main, "get_session", _fake_session(session)):
+        first = website_main._home_live_stats()
+        second = website_main._home_live_stats()
+
+    assert first == {"new_24h": 37, "active": 1234, "cities": 88, "last_scan_minutes": 12}
+    assert second == first
+    assert session.scalar_calls == 2  # the second call came from the cache
+
+
+def test_live_stats_are_none_when_the_database_fails(_fresh_stats_cache):
+    @contextmanager
+    def _broken():
+        raise RuntimeError("db down")
+        yield  # pragma: no cover
+
+    with patch.object(website_main, "get_session", _broken):
+        assert website_main._home_live_stats() is None
+
+
+def test_home_stats_api_and_page_injection(client):
+    stats = {"new_24h": 5, "active": 50, "cities": 3, "last_scan_minutes": 4}
+    with patch.object(website_main, "_home_live_stats", lambda: stats):
+        api = client.get("/api/home-stats")
+        page = client.get("/?lang=he")
+
+    assert api.status_code == 200 and api.json() == stats
+    assert 'liveStats: {"active": 50, "cities": 3, "last_scan_minutes": 4, "new_24h": 5}' in page.text
+
+
+def test_home_stats_api_says_unavailable_and_the_page_falls_back(client):
+    with patch.object(website_main, "_home_live_stats", lambda: None):
+        api = client.get("/api/home-stats")
+        page = client.get("/?lang=he")
+
+    assert api.status_code == 503
+    assert "liveStats: null" in page.text
