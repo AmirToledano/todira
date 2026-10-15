@@ -47,7 +47,7 @@ project's Facebook code:
       own docstring already carries for a different field).
     - The real free-text post body is a `TextWithEntities` node — confirmed live, real text:
       "*יחידת הורים אחרונה ברחוב ששת הימים 7*\nיחידת הורים מוארת בדירת שותפים...1,350ש"ח...לפרטים
-      ותמונות נוספות: דרור בעלי 050-9516572...". Distinguishing it from a COMMENT's own
+      ותמונות נוספות: בעל הדירה 050-0000000...". Distinguishing it from a COMMENT's own
       TextWithEntities (the same page also embeds real comments, which are irrelevant noise here) is
       real and confirmed, not guessed: the post's own body node has EXACTLY two keys (`__typename`,
       `text`) and nothing else, while every comment/mention TextWithEntities node carries `ranges`/

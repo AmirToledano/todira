@@ -38,8 +38,17 @@ _ROOMS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*חד(?:רים|׳|'|ר)?\b")
 _FLOOR_RE = re.compile(r"קומ[הת]\s*(\d+)")
 _GROUND_FLOOR_RE = re.compile(r"קומת\s*קרקע")
 
-# "80 מ\"ר" / "80 מ״ר" / "80 מטר" / "80 מטרים"
-_SQM_RE = re.compile(r'(\d+)\s*(?:מ["״]?ר|מטר(?:ים)?)')
+# "80 מ\"ר" / "80 מ״ר" / "80 מטר" / "80 מטרים". 2026-10-15: not a distance - "200 מטר מהים", "50 מטרים לתחנה" - and only a
+# believable flat size, so a stray number never becomes one.
+_SQM_RE = re.compile(r'(?<!\d)(\d{2,3})\s*(?:מ["״\']?ר(?![א-ת])|מטר(?:ים)?(?![א-ת])(?!\s*(?:מ|ל|עד|הליכה|נסיעה)))')
+_SQM_RANGE = (15, 500)
+_ROOMS_RANGE = (1.0, 12.0)
+
+# 2026-10-15: a room in a shared flat states the FLAT's rooms ("חדר להשכרה בדירת 4 חדרים"), not what is for rent - no room
+# count then, so the ad never reaches someone looking for a whole 4-room flat.
+_SINGLE_ROOM_RE = re.compile(
+    r"חדר\s+(?:להשכרה|פנוי|בדירת|בדירה)|(?:מפנה|מפנים|משכיר|משכירה)\s+(?:את\s+)?ה?חדר(?![א-ת])|שות(?:ף|פה|פים|פות)\s+ל?דירת"
+)
 
 # Each: (compiled pattern, raw_item key, value to set). Checked in order; a later match never
 # overwrites an earlier one for the same key (see parse_listing_fields). Negation-aware only for
@@ -77,9 +86,7 @@ def parse_listing_fields(text: str) -> dict[str, Any]:
         digits = (price_match.group(1) or price_match.group(2)).replace(",", "")
         fields["price"] = int(digits)
 
-    rooms_match = _ROOMS_RE.search(text)
-    if rooms_match:
-        fields["rooms"] = float(rooms_match.group(1))
+    fields.update(rooms_and_size(text))
 
     if _GROUND_FLOOR_RE.search(text):
         fields["floor"] = 0
@@ -88,10 +95,6 @@ def parse_listing_fields(text: str) -> dict[str, Any]:
         if floor_match:
             fields["floor"] = int(floor_match.group(1))
 
-    sqm_match = _SQM_RE.search(text)
-    if sqm_match:
-        fields["square_meters"] = int(sqm_match.group(1))
-
     for pattern, key, value in _AMENITY_PATTERNS:
         if key not in fields and pattern.search(text):
             fields[key] = value
@@ -99,4 +102,21 @@ def parse_listing_fields(text: str) -> dict[str, Any]:
     if _PETS_ALLOWED_RE.search(text) and not _PETS_NEGATION_RE.search(text):
         fields["petsAllowed"] = True
 
+    return fields
+
+
+def rooms_and_size(text: str | None) -> dict[str, Any]:
+    """2026-10-15: the room count and size an ad's own text states, as raw_item keys ("rooms", "square_meters") - also used
+    for Marketplace ads, whose feed has neither (facebook_client.py). Only what the text clearly says; nothing on doubt."""
+    if not text:
+        return {}
+    fields: dict[str, Any] = {}
+    rooms_match = _ROOMS_RE.search(text)
+    if rooms_match and not _SINGLE_ROOM_RE.search(text):
+        rooms = float(rooms_match.group(1))
+        if _ROOMS_RANGE[0] <= rooms <= _ROOMS_RANGE[1] and (rooms * 2).is_integer():
+            fields["rooms"] = rooms
+    sqm_match = _SQM_RE.search(text)
+    if sqm_match and _SQM_RANGE[0] <= int(sqm_match.group(1)) <= _SQM_RANGE[1]:
+        fields["square_meters"] = int(sqm_match.group(1))
     return fields

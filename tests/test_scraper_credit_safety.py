@@ -796,6 +796,23 @@ def test_scrape_facebook_upserts_a_new_listing_with_its_real_detail_city(monkeyp
     assert errors == 0
 
 
+def test_scrape_facebook_reads_rooms_and_size_from_the_title_and_description(monkeypatch):
+    """2026-10-15: the Marketplace feed has no room count, so without this no ad reached anyone with a rooms range."""
+    item = dict(_fake_facebook_item("1"), title="דירת 3 חדרים ברמת גן")
+    monkeypatch.setattr(scraper_main, "_fetch_known_external_ids", lambda source: set())
+    monkeypatch.setattr(scraper_main, "_FACEBOOK_DETAIL_FETCH_PACING_SECONDS_RANGE", (0, 0))
+    monkeypatch.setattr(scraper_main, "fetch_facebook_results", _rent_only([item]))
+    monkeypatch.setattr(
+        scraper_main, "fetch_facebook_listing_detail",
+        lambda item_id: {"city": "רמת גן", "description": 'דירה מוארת, 75 מ"ר, 200 מטר מהפארק'},
+    )
+
+    normalized_items, *_ = scraper_main._scrape_facebook()
+
+    assert normalized_items[0].rooms == 3.0
+    assert normalized_items[0].size_sqm == 75
+
+
 def test_scrape_facebook_skips_a_new_listing_with_no_confirmed_city(monkeypatch):
     """No safe fallback for an unknown city — the listing is skipped entirely (not upserted with
     city=None), and stays out of known_ids so a later run retries it."""

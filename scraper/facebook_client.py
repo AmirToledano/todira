@@ -226,6 +226,9 @@ def _parse_listing_story(story: dict[str, Any]) -> dict[str, Any] | None:
         "city": None,
         "neighborhood": None,
         "street": None,
+        # 2026-10-15: the seller's own Hebrew title ("דירת 3 חדרים ברמת גן") - read for rooms/size together with the
+        # description (scraper/main.py's _scrape_facebook), never stored as a column.
+        "title": item.get("marketplace_listing_title") if isinstance(item.get("marketplace_listing_title"), str) else None,
     }
 
 
