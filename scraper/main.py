@@ -27,6 +27,7 @@ from todira_common.enums import DealType, NotificationReason, Source
 from todira_common import app_flags
 from todira_common.models import Listing, SentNotification
 import facebook_client
+import facebook_groups_text_parser
 from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
 from facebook_client import fetch_search_results as fetch_facebook_results
@@ -775,6 +776,35 @@ def _text_features_max_per_run() -> int:
         return max(0, int(raw)) if raw else _DEFAULT_TEXT_FEATURES_MAX_PER_RUN
     except ValueError:
         return _DEFAULT_TEXT_FEATURES_MAX_PER_RUN
+
+
+def _fill_facebook_rooms_and_size(session) -> int:
+    """2026-10-15: Facebook ads stored before rooms/size were read from their text (see _scrape_facebook) - and any whose
+    description arrived later - get them from the description now. Only empty columns, only live Facebook ads (a few
+    dozen), so it is cheap to look at the same ones again each run. A recent ad that nobody was told about yet is
+    picked up by the next run's retry (_find_unnotified_recent_listings) now that it can match a rooms range."""
+    table = Listing.__table__
+    rows = session.execute(
+        select(table.c.id, table.c.description, table.c.rooms, table.c.size_sqm).where(
+            table.c.source.in_([Source.FACEBOOK_MARKETPLACE, Source.FACEBOOK_GROUPS]),
+            table.c.is_delisted.is_(False),
+            table.c.description.is_not(None),
+            (table.c.rooms.is_(None)) | (table.c.size_sqm.is_(None)),
+        )
+    ).all()
+    filled = 0
+    for row in rows:
+        found = facebook_groups_text_parser.rooms_and_size(row.description)
+        updates = {}
+        if row.rooms is None and "rooms" in found:
+            updates["rooms"] = found["rooms"]
+        if row.size_sqm is None and "square_meters" in found:
+            updates["size_sqm"] = found["square_meters"]
+        if updates:
+            session.execute(table.update().where(table.c.id == row.id).values(**updates))
+            filled += 1
+    session.commit()
+    return filled
 
 
 def _fill_missing_fields_from_descriptions(session) -> int:
@@ -2156,6 +2186,12 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
 
             raw_item["city"] = detail["city"]
             raw_item["description"] = detail.get("description")
+            # 2026-10-15: the feed has no room count or size, so every Marketplace ad missed everyone with a rooms range
+            # (live: 0 of 65 had rooms). Read them from the seller's own title and description, before the ad is
+            # matched and notified.
+            raw_item.update(facebook_groups_text_parser.rooms_and_size(
+                "\n".join(part for part in (raw_item.get("title"), raw_item.get("description")) if part)
+            ))
             normalized = normalize(raw_item, source=Source.FACEBOOK_MARKETPLACE, deal_type=deal_type)
             if normalized is not None:
                 normalized_items.append(normalized)
@@ -2484,6 +2520,11 @@ def run_once() -> dict[str, int]:
                 summary["text_features_filled"] = _fill_missing_fields_from_descriptions(session)
             except Exception:
                 logger.exception("Description text features step failed")
+            try:
+                summary["facebook_rooms_filled"] = _fill_facebook_rooms_and_size(session)
+            except Exception:
+                session.rollback()
+                logger.exception("Facebook rooms/size step failed")
             # Runs even when the notification step above raised (the exception still propagates
             # afterwards). Fail-soft — never takes the scraper run down. Only on the main scraper
             # (SCRAPE_SOURCES unset): the Facebook CronJob also runs this function, and two jobs must

@@ -7,7 +7,7 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
-from facebook_groups_text_parser import parse_listing_fields
+from facebook_groups_text_parser import parse_listing_fields, rooms_and_size
 
 REAL_POST_1 = (
     '*יחידת הורים אחרונה ברחוב ששת הימים 7*\n'
@@ -18,7 +18,7 @@ REAL_POST_1 = (
     'דופלקס כדירת חמישה שותפים. \n'
     'חניה ציבורית בשפע ובחינם .🚘\n'
     '1,350ש"ח + חשבונות נמוכים. ללא דמי תיווך.\n'
-    'לפרטים ותמונות נוספות: דרור בעלי 050-9516572.🙏*עדכון מחיר*'
+    'לפרטים ותמונות נוספות: בעל הדירה 050-0000000.🙏*עדכון מחיר*'
 )
 
 REAL_POST_2 = (
@@ -76,3 +76,29 @@ def test_empty_text_returns_empty_dict():
 
 def test_text_with_no_matches_returns_empty_dict():
     assert parse_listing_fields("שלום, מה שלומכם היום?") == {}
+
+
+# --- 2026-10-15: rooms_and_size, also used for Marketplace ads -------------------------------------
+
+
+def test_rooms_and_size_read_the_common_ways_of_writing_them():
+    assert rooms_and_size('דירת 3 חדרים ברמת גן, 75 מ"ר') == {"rooms": 3.0, "square_meters": 75}
+    assert rooms_and_size("להשכרה 3.5 חד' משופצת 90 מטר") == {"rooms": 3.5, "square_meters": 90}
+    assert rooms_and_size("דירת 2.5חד 55מ״ר") == {"rooms": 2.5, "square_meters": 55}
+
+
+def test_a_distance_is_never_a_size():
+    assert rooms_and_size("דירה 4 חדרים, 200 מטר מהים") == {"rooms": 4.0}
+    assert rooms_and_size("80 מטרים לתחנה, 3 חד") == {"rooms": 3.0}
+
+
+def test_a_room_in_a_shared_flat_gets_no_room_count():
+    assert "rooms" not in rooms_and_size("חדר להשכרה בדירת 4 חדרים בפלורנטין")
+    assert "rooms" not in rooms_and_size("מחפשים שותף לדירת 3 חדרים")
+
+
+def test_bedrooms_and_unbelievable_numbers_are_ignored():
+    assert rooms_and_size("2 חדרי שינה וסלון") == {}
+    assert rooms_and_size("דירה 100 חדרים") == {}
+    assert rooms_and_size('דירת 3 חדרים 1000 מ"ר') == {"rooms": 3.0}
+    assert rooms_and_size("") == {} and rooms_and_size(None) == {}
