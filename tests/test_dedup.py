@@ -29,9 +29,10 @@ _normalize = scraper_main.normalize
 find_duplicate_listing = dedup.find_duplicate_listing
 _normalize_street_for_matching = dedup._normalize_street_for_matching
 _prices_plausibly_match = dedup._prices_plausibly_match
+same_apartment_by_street_name = dedup.same_apartment_by_street_name
 
 
-def _make_item(*, source="yad2", city="תל אביב יפו", street="הרצל", rooms=3.0, floor=2, price=5000):
+def _make_item(*, source="yad2", city="תל אביב יפו", street="הרצל", rooms=3.0, floor=2, price=5000, size=None):
     item = _normalize(
         {
             "id": "x1",
@@ -41,6 +42,7 @@ def _make_item(*, source="yad2", city="תל אביב יפו", street="הרצל",
             "rooms": rooms,
             "floor": floor,
             "price": price,
+            "square_meters": size,
         },
         source=source,
     )
@@ -113,28 +115,28 @@ def test_price_tolerance_has_an_absolute_floor_for_cheap_listings():
 
 def test_finds_a_real_cross_source_duplicate():
     item = _make_item(source="komo")
-    session = _FakeSession([(101, "רחוב הרצל", 5050)])  # same street (prefixed), close price
+    session = _FakeSession([(101, "רחוב הרצל", 5050, None)])  # same street (prefixed), close price
 
     assert find_duplicate_listing(session, item) == 101
 
 
 def test_no_match_when_street_text_differs():
     item = _make_item(source="komo")
-    session = _FakeSession([(101, "אלנבי", 5000)])
+    session = _FakeSession([(101, "אלנבי", 5000, None)])
 
     assert find_duplicate_listing(session, item) is None
 
 
 def test_no_match_when_price_is_too_far_off():
     item = _make_item(source="komo", price=5000)
-    session = _FakeSession([(101, "הרצל", 9000)])
+    session = _FakeSession([(101, "הרצל", 9000, None)])
 
     assert find_duplicate_listing(session, item) is None
 
 
 def test_no_query_at_all_when_item_is_missing_street():
     item = _make_item(source="komo", street=None)
-    session = _FakeSession([(101, "הרצל", 5000)])
+    session = _FakeSession([(101, "הרצל", 5000, None)])
 
     assert find_duplicate_listing(session, item) is None
     assert session.executed_stmts == []  # short-circuited before ever touching the DB
@@ -143,7 +145,7 @@ def test_no_query_at_all_when_item_is_missing_street():
 def test_no_query_at_all_when_item_is_missing_rooms_or_floor():
     item_no_rooms = _make_item(source="komo", rooms=None)
     item_no_floor = _make_item(source="komo", floor=None)
-    session = _FakeSession([(101, "הרצל", 5000)])
+    session = _FakeSession([(101, "הרצל", 5000, None)])
 
     assert find_duplicate_listing(session, item_no_rooms) is None
     assert find_duplicate_listing(session, item_no_floor) is None
@@ -161,10 +163,51 @@ def test_picks_first_matching_candidate_among_several():
     item = _make_item(source="komo")
     session = _FakeSession(
         [
-            (101, "אלנבי", 5000),  # different street - skipped
-            (102, "רחוב הרצל", 5000),  # matches
-            (103, "הרצל", 5000),  # would also match - never reached
+            (101, "אלנבי", 5000, None),  # different street - skipped
+            (102, "רחוב הרצל", 5000, None),  # matches
+            (103, "הרצל", 5000, None),  # would also match - never reached
         ]
     )
+
+    assert find_duplicate_listing(session, item) == 102
+
+
+# --- 2026-10-15: street name when only one side has a house number -------------------------------
+
+
+def test_street_name_rule_matches_when_only_one_side_has_a_number_and_sizes_agree():
+    assert same_apartment_by_street_name("הרצל 12", 70, "רחוב הרצל", 71) is True
+    assert same_apartment_by_street_name("הרצל", 70, "הרצל 12א", 70) is True
+
+
+def test_street_name_rule_never_matches_two_numbers_or_a_missing_size():
+    assert same_apartment_by_street_name("הרצל 12", 70, "הרצל 14", 70) is False  # two buildings
+    assert same_apartment_by_street_name("הרצל 12", None, "הרצל", 70) is False
+    assert same_apartment_by_street_name("הרצל 12", 70, "הרצל", None) is False
+
+
+def test_street_name_rule_needs_the_same_name_and_size():
+    assert same_apartment_by_street_name("הרצל 12", 70, "אלנבי", 70) is False
+    assert same_apartment_by_street_name("הרצל 12", 70, "הרצל", 90) is False
+    assert same_apartment_by_street_name("1 במאי", 70, "1 במאי 5", 70) is False  # a street that is only a number
+
+
+def test_finds_a_duplicate_by_street_name_when_it_is_the_only_one():
+    item = _make_item(source="komo", street="הרצל 12", size=70)
+    session = _FakeSession([(101, "הרצל", 5000, 70)])
+
+    assert find_duplicate_listing(session, item) == 101
+
+
+def test_two_street_name_candidates_are_ambiguous_and_never_matched():
+    item = _make_item(source="yad2", street="הרצל", size=70)
+    session = _FakeSession([(101, "הרצל 12", 5000, 70), (102, "הרצל 14", 5000, 70)])
+
+    assert find_duplicate_listing(session, item) is None
+
+
+def test_an_exact_street_match_wins_over_a_street_name_one():
+    item = _make_item(source="komo", street="הרצל 12", size=70)
+    session = _FakeSession([(101, "הרצל", 5000, 70), (102, "הרצל 12", 5000, None)])
 
     assert find_duplicate_listing(session, item) == 102

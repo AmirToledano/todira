@@ -20,7 +20,7 @@ from sqlalchemy import Text, all_, any_, bindparam, case, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from dedup import find_duplicate_listing
+from dedup import find_duplicate_listing, link_missed_duplicates, promote_live_duplicates
 from todira_common import text_features, yad2_detail
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
@@ -2498,6 +2498,13 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("expired listings cleanup step failed")
+                # 2026-10-15: after the expiry cleanup, which itself turns duplicates of a deleted row back into shown rows.
+                try:
+                    summary["duplicates_promoted"] = promote_live_duplicates(session)
+                    summary["duplicates_linked"] = link_missed_duplicates(session)
+                except Exception:
+                    session.rollback()
+                    logger.exception("cross-site duplicates step failed")
 
     return summary
 
