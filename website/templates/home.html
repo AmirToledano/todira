@@ -85,7 +85,9 @@
 <script>
   window.__TODIRA_PAGE__ = {
     lang: "{{ lang }}",
-    dir: "{{ dir }}"
+    dir: "{{ dir }}",
+    {# 2026-10-15: live numbers (main.py's _home_live_stats) - integers only, or null; refreshed by the page every minute. #}
+    liveStats: {{ live_stats | tojson }}
   };
 </script>
 {% if landing_js_url %}

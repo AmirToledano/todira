@@ -77,7 +77,7 @@ from todira_common.uid_token import verify_uid_token
 from fastapi import FastAPI, Form, Request
 
 import takbull_client
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -506,6 +506,56 @@ def healthz() -> Response:
     return Response(status_code=200, content="ok")
 
 
+# 2026-10-15 (owner): real numbers on the home page, always current, instead of fixed claims (one of which, "scans every two
+# hours", had gone stale - it scans every hour). Counted from the listings table: new listings in the last 24 hours, live
+# listings now, cities with a live listing, and minutes since a scrape last confirmed a listing. Cross-site duplicates of one
+# flat count once. Cached briefly: every visitor shares one query every two minutes. None when the database can't answer,
+# so the page falls back to its fixed stats instead of failing.
+_HOME_STATS_TTL_SECONDS = 120
+_home_stats_cache: dict = {"at": 0.0, "value": None}
+_home_stats_lock = threading.Lock()
+
+
+def _home_live_stats() -> dict | None:
+    with _home_stats_lock:
+        if _home_stats_cache["value"] is not None and time.monotonic() - _home_stats_cache["at"] < _HOME_STATS_TTL_SECONDS:
+            return _home_stats_cache["value"]
+    try:
+        with get_session() as session:
+            canonical = Listing.duplicate_of_id.is_(None)
+            live = [canonical, Listing.is_delisted.is_(False)]
+            new_24h = session.scalar(
+                select(func.count()).select_from(Listing).where(
+                    canonical, Listing.first_seen_at >= func.now() - dt.timedelta(hours=24)
+                )
+            )
+            active, cities = session.execute(
+                select(func.count(), func.count(func.distinct(Listing.city))).select_from(Listing).where(*live)
+            ).one()
+            last_scan = session.scalar(select(func.max(Listing.scraped_at)))
+    except Exception:
+        logger.warning("could not count the home page's live stats", exc_info=True)
+        return None
+    minutes = None
+    if last_scan is not None:
+        if last_scan.tzinfo is None:
+            last_scan = last_scan.replace(tzinfo=dt.timezone.utc)
+        minutes = max(0, int((dt.datetime.now(dt.timezone.utc) - last_scan).total_seconds() // 60))
+    value = {"new_24h": int(new_24h or 0), "active": int(active or 0), "cities": int(cities or 0), "last_scan_minutes": minutes}
+    with _home_stats_lock:
+        _home_stats_cache.update(at=time.monotonic(), value=value)
+    return value
+
+
+@app.get("/api/home-stats")
+def home_stats():
+    """The home page refreshes its live numbers from here every minute while it is open."""
+    stats = _home_live_stats()
+    if stats is None:
+        return JSONResponse({"error": "unavailable"}, status_code=503, headers={"Cache-Control": "no-store"})
+    return JSONResponse(stats, headers={"Cache-Control": "public, max-age=60"})
+
+
 @app.get("/")
 def home(request: Request):
     landing_assets = _landing_react_assets()
@@ -515,6 +565,7 @@ def home(request: Request):
         {
             "landing_js_url": landing_assets.get("js", ""),
             "landing_css_urls": landing_assets.get("css", []),
+            "live_stats": _home_live_stats(),
         },
     )
 

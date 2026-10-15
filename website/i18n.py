@@ -431,10 +431,67 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Le roi Todi — le bot de recherche d'appartements Todira",
         "ar": "الملك تودي — بوت البحث عن شقق توديرا",
     },
-    "home.stat_scan_freq_value": {"he": "כל שעתיים", "en": "Every 2h", "ru": "Каждые 2 ч", "fr": "Toutes les 2h", "ar": "كل ساعتين"},
+    "home.stat_scan_freq_value": {"he": "כל שעה", "en": "Every hour", "ru": "Каждый час", "fr": "Toutes les heures", "ar": "كل ساعة"},
     "home.stat_scan_freq_label": {
         "he": "תדירות סריקה", "en": "Scan frequency", "ru": "Частота сканирования",
         "fr": "Fréquence de scan", "ar": "تكرار الفحص",
+    },
+    # 2026-10-15 (owner): live numbers on the home page (main.py's _home_live_stats, Stats.jsx / CinematicStat.jsx).
+    "home.live_new_24h_label": {
+        "he": "מודעות חדשות ב־24 השעות האחרונות",
+        "en": "New listings in the last 24 hours",
+        "ru": "Новых объявлений за 24 часа",
+        "fr": "Nouvelles annonces ces dernières 24 h",
+        "ar": "إعلانات جديدة خلال آخر 24 ساعة",
+    },
+    "home.live_active_label": {
+        "he": "מודעות פעילות עכשיו",
+        "en": "Live listings right now",
+        "ru": "Активных объявлений сейчас",
+        "fr": "Annonces actives en ce moment",
+        "ar": "إعلانات نشطة الآن",
+    },
+    "home.live_cities_label": {
+        "he": "ערים ויישובים עם מודעות",
+        "en": "Cities and towns with listings",
+        "ru": "Городов и посёлков с объявлениями",
+        "fr": "Villes et localités avec des annonces",
+        "ar": "مدن وبلدات فيها إعلانات",
+    },
+    "home.live_last_scan_label": {
+        "he": "בדיקה אחרונה",
+        "en": "Last check",
+        "ru": "Последняя проверка",
+        "fr": "Dernière vérification",
+        "ar": "آخر فحص",
+    },
+    "home.live_last_scan_value": {
+        "he": "לפני {n} דק׳",
+        "en": "{n} min ago",
+        "ru": "{n} мин назад",
+        "fr": "il y a {n} min",
+        "ar": "قبل {n} دقيقة",
+    },
+    "home.live_last_scan_now": {
+        "he": "ממש עכשיו",
+        "en": "Just now",
+        "ru": "Только что",
+        "fr": "À l'instant",
+        "ar": "الآن",
+    },
+    "home.live_scan_hours_label": {
+        "he": "סריקה כל שעה, 9:00–22:00",
+        "en": "Scanning every hour, 9:00–22:00",
+        "ru": "Сканирование каждый час, 9:00–22:00",
+        "fr": "Analyse toutes les heures, 9h–22h",
+        "ar": "فحص كل ساعة، 9:00–22:00",
+    },
+    "home.live_cinematic_caption": {
+        "he": "מודעות חדשות מצאנו ב־24 השעות האחרונות",
+        "en": "new listings found in the last 24 hours",
+        "ru": "новых объявлений найдено за последние 24 часа",
+        "fr": "nouvelles annonces trouvées ces dernières 24 heures",
+        "ar": "إعلانًا جديدًا وجدناها خلال آخر 24 ساعة",
     },
     "home.stat_ai_value": {"he": "AI", "en": "AI", "ru": "ИИ", "fr": "IA", "ar": "ذكاء اصطناعي"},
     "home.stat_ai_label": {
@@ -632,11 +689,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # which already said the correct "כל שעתיים"/"Every 2h". Found by cross-checking the page's
     # own claims against each other, then against the real CronJob schedule.
     "home.compare_with_1": {
-        "he": "סריקה אוטומטית כל שעתיים, ברקע",
-        "en": "Automatic scanning every 2 hours, in the background",
-        "ru": "Автоматическое сканирование каждые 2 часа в фоне",
-        "fr": "Scan automatique toutes les 2 heures, en arrière-plan",
-        "ar": "فحص تلقائي كل ساعتين في الخلفية",
+        "he": "סריקה אוטומטית כל שעה, ברקע",
+        "en": "Automatic scanning every hour, in the background",
+        "ru": "Автоматическое сканирование каждый час в фоне",
+        "fr": "Scan automatique toutes les heures, en arrière-plan",
+        "ar": "فحص تلقائي كل ساعة في الخلفية",
     },
     "home.compare_with_2": {
         "he": "התראה מיידית בטלגרם ברגע שיש התאמה",
@@ -727,11 +784,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "من أين تأتي الإعلانات؟",
     },
     "home.faq2_a": {
-        "he": "טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל שעתיים ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.",
-        "en": "Todira automatically scans the apartment market online every 2 hours and compares every new listing against your filter. More sources are being added gradually.",
-        "ru": "Todira автоматически сканирует рынок квартир в сети каждые 2 часа и сравнивает каждое новое объявление с вашим фильтром. Постепенно добавляются новые источники.",
-        "fr": "Todira scanne automatiquement le marché des appartements en ligne toutes les 2 heures et compare chaque nouvelle annonce à votre filtre. D'autres sources sont ajoutées progressivement.",
-        "ar": "يفحص توديرا سوق الشقق على الإنترنت تلقائيًا كل ساعتين ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا.",
+        "he": "טודירה סורק את שוק הדירות ברשת באופן אוטומטי כל שעה, מ־9 בבוקר עד 10 בלילה, ומשווה כל מודעה חדשה מול הסינון שלכם. עוד מקורות מתווספים בהדרגה.",
+        "en": "Todira automatically scans the apartment market online every hour from 9:00 to 22:00 and compares every new listing against your filter. More sources are being added gradually.",
+        "ru": "Todira автоматически сканирует рынок квартир в сети каждый час с 9:00 до 22:00 и сравнивает каждое новое объявление с вашим фильтром. Постепенно добавляются новые источники.",
+        "fr": "Todira scanne automatiquement le marché des appartements en ligne toutes les heures de 9h à 22h et compare chaque nouvelle annonce à votre filtre. D'autres sources sont ajoutées progressivement.",
+        "ar": "يفحص توديرا سوق الشقق على الإنترنت تلقائيًا كل ساعة من 9:00 حتى 22:00 ويقارن كل إعلان جديد بفلترك. تُضاف مصادر إضافية تدريجيًا.",
     },
     "home.faq3_q": {
         "he": "כמה זה עולה?", "en": "How much does it cost?", "ru": "Сколько это стоит?",
