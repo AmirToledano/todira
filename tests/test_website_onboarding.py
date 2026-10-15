@@ -332,3 +332,21 @@ def test_trial_step_continue_button_goes_to_apartments_with_identity():
         client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
         resp = client.get("/onboarding/trial", params={"uid": 555})
     assert 'href="/apartments?uid=555"' in resp.text
+
+
+def test_property_type_section_is_open_for_a_new_users_first_filter_only():
+    """2026-10-16 (owner): in the welcome flow the property type section starts open; elsewhere it stays folded."""
+    import re
+
+    def _property_section_tag(params):
+        user = _FakeUser(uid=555)
+        with _client_for(user):
+            client = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+            html = client.get("/filter", params=params).text
+        from i18n import TRANSLATIONS
+
+        summary = html.index(TRANSLATIONS["filter.property_type_section"]["he"])
+        return re.findall(r"<details[^>]*>", html[:summary])[-1]
+
+    assert "open" in _property_section_tag({"uid": 555, "welcome": "1"})
+    assert "open" not in _property_section_tag({"uid": 555})

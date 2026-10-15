@@ -101,7 +101,8 @@
   </div>
 </details>
 
-<details class="filter-section">
+{# 2026-10-16 (owner): open for a new user's first filter (the welcome flow) and whenever types are already chosen. #}
+<details class="filter-section" {{ 'open' if welcome or f.property_types }}>
   <summary>{{ t('filter.property_type_section') }}</summary>
   <div class="field">
     <div class="checkbox-grid">
