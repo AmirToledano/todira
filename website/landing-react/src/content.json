@@ -161,11 +161,11 @@
     "ar": "شقتك تجدك"
   },
   "home.lead": {
-    "he": "אנחנו עוברים בשבילך על יד2, קומו, הומלס ופייסבוק, ושולחים לך לטלגרם רק את הדירות שבאמת מתאימות לך. בלי לרענן אתרים כל היום.",
-    "en": "We go through Yad2, Komo, Homeless and Facebook for you, and send you on Telegram only the apartments that really fit you. No refreshing websites all day.",
-    "ru": "Мы проверяем за вас Yad2, Komo, Homeless и Facebook и присылаем в Telegram только подходящие квартиры. Больше не нужно весь день обновлять сайты.",
-    "fr": "Nous parcourons Yad2, Komo, Homeless et Facebook pour vous, et vous envoyons sur Telegram uniquement les appartements qui vous correspondent vraiment. Fini de rafraîchir les sites toute la journée.",
-    "ar": "نمرّ من أجلك على يد2 وكومو وهوملس وفيسبوك، ونرسل لك على تيليجرام فقط الشقق التي تناسبك فعلًا. بلا تحديث للمواقع طوال اليوم."
+    "he": "אנחנו מחפשים לך דירה, ושולחים לך לטלגרם רק את הדירות שבאמת מתאימות לך. בלי לרענן אתרים כל היום.",
+    "en": "We look for an apartment for you, and send you on Telegram only the ones that really fit you. No refreshing websites all day.",
+    "ru": "Мы ищем квартиру за вас и присылаем в Telegram только те, что действительно подходят. Больше не нужно весь день обновлять сайты.",
+    "fr": "Nous cherchons un appartement pour vous, et vous envoyons sur Telegram uniquement ceux qui vous correspondent vraiment. Fini de rafraîchir les sites toute la journée.",
+    "ar": "نبحث لك عن شقة، ونرسل لك على تيليجرام فقط الشقق التي تناسبك فعلًا. بلا تحديث للمواقع طوال اليوم."
   },
   "home.cta_open_bot": {
     "he": "פתח את הבוט בטלגרם",
@@ -301,18 +301,18 @@
     "ar": "فترة تجريبية"
   },
   "home.momentum_1_value": {
-    "he": "4 אתרים",
-    "en": "4 websites",
-    "ru": "4 сайта",
-    "fr": "4 sites",
-    "ar": "4 مواقع"
+    "he": "הכל במקום אחד",
+    "en": "All in one place",
+    "ru": "Всё в одном месте",
+    "fr": "Tout au même endroit",
+    "ar": "كل شيء في مكان واحد"
   },
   "home.momentum_1_label": {
-    "he": "יד2, קומו, הומלס ופייסבוק, במקום אחד",
-    "en": "Yad2, Komo, Homeless and Facebook, in one place",
-    "ru": "Yad2, Komo, Homeless и Facebook в одном месте",
-    "fr": "Yad2, Komo, Homeless et Facebook, au même endroit",
-    "ar": "يد2 وكومو وهوملس وفيسبوك في مكان واحد"
+    "he": "בלי לקפוץ בין אתרים ולוחות",
+    "en": "No more jumping between sites and boards",
+    "ru": "Не нужно прыгать между сайтами и досками объявлений",
+    "fr": "Fini de passer d'un site à l'autre",
+    "ar": "بلا تنقّل بين المواقع ولوحات الإعلانات"
   },
   "home.momentum_2_value": {
     "he": "ההתראה שלך",
@@ -420,11 +420,11 @@
     "ar": "تنبيهات فورية"
   },
   "home.feature2_body": {
-    "he": "הבוט עובר על האתרים בשבילך שוב ושוב לאורך היום. עלתה דירה שמתאימה לך? ברגע שהוא מוצא אותה, היא אצלך בטלגרם. אתה לא צריך לרענן כלום.",
-    "en": "The bot goes through the sites for you again and again throughout the day. A new apartment that fits you? The moment it finds it, it's on your Telegram. You don't need to refresh anything.",
-    "ru": "Бот снова и снова проверяет сайты за вас в течение дня. Появилась подходящая квартира? Как только бот её найдёт, она у вас в Telegram. Ничего не нужно обновлять.",
-    "fr": "Le bot parcourt les sites pour vous, encore et encore, tout au long de la journée. Un appartement qui vous correspond ? Dès qu'il le trouve, il arrive sur votre Telegram. Vous n'avez rien à rafraîchir.",
-    "ar": "يمرّ البوت على المواقع من أجلك مرة بعد مرة طوال اليوم. نُشرت شقة تناسبك؟ لحظة أن يجدها تصلك على تيليجرام. لا حاجة لتحديث أي شيء."
+    "he": "הבוט מחפש בשבילך שוב ושוב לאורך היום. עלתה דירה שמתאימה לך? ברגע שהוא מוצא אותה, היא אצלך בטלגרם. אתה לא צריך לרענן כלום.",
+    "en": "The bot searches for you again and again throughout the day. A new apartment that fits you? The moment it finds it, it's on your Telegram. You don't need to refresh anything.",
+    "ru": "Бот снова и снова ищет за вас в течение дня. Появилась подходящая квартира? Как только бот её найдёт, она у вас в Telegram. Ничего не нужно обновлять.",
+    "fr": "Le bot cherche pour vous, encore et encore, tout au long de la journée. Un appartement qui vous correspond ? Dès qu'il le trouve, il arrive sur votre Telegram. Vous n'avez rien à rafraîchir.",
+    "ar": "يبحث البوت من أجلك مرة بعد مرة طوال اليوم. نُشرت شقة تناسبك؟ لحظة أن يجدها تصلك على تيليجرام. لا حاجة لتحديث أي شيء."
   },
   "home.feature3_title": {
     "he": "שומר לך את הדירות שאהבת",
@@ -602,18 +602,18 @@
     "ar": "تكتب للبوت بالعبرية بلغة حرة، تمامًا كما لو كنت تصف الأمر لصديق. يحدد نموذج اللغة من جملتك المدينة ونطاق السعر وعدد الغرف وتفاصيل أخرى، ويبني منها ملف بحث — بدون نماذج أو قوائم معقدة."
   },
   "home.faq2_q": {
-    "he": "מאיפה מגיעות הדירות?",
-    "en": "Where do the listings come from?",
-    "ru": "Откуда берутся объявления?",
-    "fr": "D'où viennent les annonces ?",
-    "ar": "من أين تأتي الإعلانات؟"
+    "he": "כל כמה זמן הבוט בודק?",
+    "en": "How often does the bot check?",
+    "ru": "Как часто бот проверяет?",
+    "fr": "À quelle fréquence le bot vérifie-t-il ?",
+    "ar": "كم مرة يفحص البوت؟"
   },
   "home.faq2_a": {
-    "he": "מיד2, קומו, הומלס ופייסבוק. הבוט עובר עליהם שוב ושוב לאורך היום, ובודק כל מודעה חדשה מול הסינון שלך. ועוד אתרים בדרך.",
-    "en": "From Yad2, Komo, Homeless and Facebook. The bot goes through them again and again throughout the day and checks every new listing against your filter. More sites are on the way.",
-    "ru": "С Yad2, Komo, Homeless и Facebook. Бот снова и снова проверяет их в течение дня и сравнивает каждое новое объявление с вашим фильтром. Скоро добавятся новые сайты.",
-    "fr": "De Yad2, Komo, Homeless et Facebook. Le bot les parcourt encore et encore tout au long de la journée et compare chaque nouvelle annonce à votre filtre. D'autres sites arrivent bientôt.",
-    "ar": "من يد2 وكومو وهوملس وفيسبوك. يمرّ البوت عليها مرة بعد مرة طوال اليوم، ويقارن كل إعلان جديد بفلترك. ومواقع أخرى في الطريق."
+    "he": "שוב ושוב לאורך כל היום. כל מודעה חדשה נבדקת מול הסינון שלך, ומה שמתאים מגיע אליך לטלגרם וגם מחכה לך פה באתר.",
+    "en": "Again and again throughout the day. Every new listing is checked against your filter, and whatever fits reaches you on Telegram and also waits for you here on the site.",
+    "ru": "Снова и снова в течение всего дня. Каждое новое объявление сравнивается с вашим фильтром, и всё подходящее приходит вам в Telegram и ждёт вас здесь на сайте.",
+    "fr": "Encore et encore, tout au long de la journée. Chaque nouvelle annonce est comparée à votre filtre, et ce qui correspond arrive sur votre Telegram et vous attend aussi ici sur le site.",
+    "ar": "مرة بعد مرة طوال اليوم. كل إعلان جديد يُقارن بفلترك، وما يناسبك يصلك على تيليجرام وينتظرك أيضًا هنا في الموقع."
   },
   "home.faq3_q": {
     "he": "כמה זה עולה?",
@@ -781,8 +781,8 @@
     "en": "About Todira"
   },
   "about.body_intro": {
-    "he": "טודירה זה בוט בטלגרם ואתר שמחפשים לך דירה. הבוט עובר על אתרי הדירות והלוחות ברשת, ושולח לך רק מודעות שמתאימות לסינון שלך: עיר, מחיר, חדרים, סוג נכס ועוד.",
-    "en": "Todira is a Telegram bot and website that look for an apartment for you. The bot goes through apartment sites and listing boards online and sends you only the listings that match your filter: city, price, rooms, property type and more."
+    "he": "טודירה זה בוט בטלגרם ואתר שמחפשים לך דירה. הבוט מחפש בשבילך שוב ושוב לאורך היום, ושולח לך רק מודעות שמתאימות לסינון שלך: עיר, מחיר, חדרים, סוג נכס ועוד.",
+    "en": "Todira is a Telegram bot and website that look for an apartment for you. The bot searches for you again and again throughout the day and sends you only the listings that match your filter: city, price, rooms, property type and more."
   },
   "about.body_disclaimer": {
     "he": "חשוב לדעת: אנחנו לא משרד תיווך, אין לנו נכסים ואנחנו לא צד לעסקה. אנחנו כלי שחוסך לך לרענן אתרים כל היום.",

@@ -1452,7 +1452,7 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
 
 /* ================= Accessibility widget ================= */
 /* 2026-09-03 request (real legal concern under Israeli accessibility regulations, matching the
-   floating accessibility button pattern on yad2.co.il and similar Israeli sites). Physical `left`
+   floating accessibility button pattern common on Israeli sites). Physical `left`
    (not inset-inline-start) — a fixed, language-independent corner, same convention as the
    listing-card badges above. Sits above everything else (z-index) since it must stay reachable
    from anywhere on the page. */
