@@ -129,6 +129,8 @@ _SESSION_TOKEN_RE = re.compile(r'sessionToken\s*=\s*"([A-Za-z0-9]{16,64})"')
 
 # Confirmed live against modaaNum=4471462 (see module docstring, step 3).
 _PRICE_RE = re.compile(r'class="price modaaWPrice"[^>]*>\s*<span[^>]*>([\d,]+)')
+# The same price box, saying "price not stated" instead of a number (confirmed live 2026-10-15).
+_PRICE_NOT_STATED_RE = re.compile(r'class="price modaaWPrice".{0,300}?לא צוין מחיר', re.S)
 _OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]+)"')
 # Confirmed live 2026-09-13 (diagnose-komo-homeless-reachability.yaml run #12, re-read while
 # investigating why Komo listings never carry a description): a real, free-text Hebrew ad
@@ -395,10 +397,16 @@ def _parse_details_html(page_html: str, *, modaa_num: str) -> dict[str, Any] | N
     `html.unescape` on the description field below); a same-named parameter would shadow it for
     the whole function body."""
     price_match = _PRICE_RE.search(page_html)
-    if price_match is None:
+    if price_match is not None:
+        price = int(price_match.group(1).replace(",", ""))
+    elif _PRICE_NOT_STATED_RE.search(page_html):
+        # 2026-10-15: the seller chose not to state a price (about 2% of Komo ads, measured live with
+        # diagnose-komo-no-price.yaml). Kept with no price, like Yad2 ads without one - it used to be dropped here,
+        # then fetched again as "new" on every single run.
+        price = None
+    else:
         logger.warning("No price found on Komo details page for modaaNum=%s", modaa_num)
         return None
-    price = int(price_match.group(1).replace(",", ""))
 
     og_title_match = _OG_TITLE_RE.search(page_html)
     if og_title_match is None:

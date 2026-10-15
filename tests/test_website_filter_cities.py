@@ -188,14 +188,33 @@ def test_non_numeric_rooms_max_is_treated_as_no_limit_not_a_500(client, fake_use
     assert fake_user.filter.rooms_max is None
 
 
-def test_comma_formatted_price_is_treated_as_no_limit_not_a_500(client, fake_user):
-    # A real, plausible way to hit this without any malice at all — a user pasting "5,000" from
-    # somewhere with thousands separators. int("5,000") raises ValueError just like garbage text.
+def test_comma_formatted_price_is_read_as_the_number(client, fake_user):
+    # A real, plausible way to hit this — a user pasting "5,000" from somewhere with thousands separators. It used to be
+    # treated as "no limit" (2026-10-15: silently dropping the user's maximum); now it is 5000.
     resp = client.post(
-        "/filter", data=_base_form(fake_user.telegram_user_id, price_max="5,000")
+        "/filter", data=_base_form(fake_user.telegram_user_id, price_max="5,000", price_min="₪3000")
+    )
+    assert resp.status_code == 303
+    assert (fake_user.filter.price_min, fake_user.filter.price_max) == (3000, 5000)
+
+
+def test_a_minimum_above_the_maximum_is_swapped_not_saved_as_an_empty_filter(client, fake_user):
+    resp = client.post(
+        "/filter",
+        data=_base_form(fake_user.telegram_user_id, price_min="8000", price_max="5000", rooms_min="4", rooms_max="2"),
+    )
+    assert resp.status_code == 303
+    assert (fake_user.filter.price_min, fake_user.filter.price_max) == (5000, 8000)
+    assert (fake_user.filter.rooms_min, fake_user.filter.rooms_max) == (2.0, 4.0)
+
+
+def test_numbers_the_database_cannot_hold_are_dropped_not_a_500(client, fake_user):
+    resp = client.post(
+        "/filter", data=_base_form(fake_user.telegram_user_id, price_max="99999999999", rooms_max="inf", rooms_min="nan")
     )
     assert resp.status_code == 303
     assert fake_user.filter.price_max is None
+    assert fake_user.filter.rooms_max is None and fake_user.filter.rooms_min is None
 
 
 def test_non_numeric_input_does_not_prevent_the_rest_of_the_form_from_saving(client, fake_user):

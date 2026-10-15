@@ -46,6 +46,7 @@ def test_notify_new_matches_skips_a_non_owner_user_when_restricted():
         patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
         matched, sent, _newly_notified = asyncio.run(
@@ -68,6 +69,7 @@ def test_notify_new_matches_still_notifies_the_matching_owner_id():
         patch.object(notifier, "_candidate_filters", return_value=[filter_row]),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "format_caption", return_value="caption"),
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):
@@ -94,6 +96,7 @@ def test_notify_price_change_skips_a_non_owner_user_when_restricted():
 
     with (
         patch.object(notifier, "_already_notified", return_value=False),
+        patch.object(notifier, "_hidden_by", return_value=False),
         patch.object(notifier, "evaluate", return_value=SimpleNamespace(matched=True)),
         patch.object(notifier, "send_listing_card", AsyncMock(return_value=True)) as mock_send,
     ):

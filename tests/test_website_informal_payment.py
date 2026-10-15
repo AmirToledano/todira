@@ -253,3 +253,10 @@ def test_upgrade_pay_page_404s_for_a_gateway_payment(client):
 # the request), so the header's _current_user_summary runs a column lookup via session.execute(). The
 # fake has no such lookup; "no row" is the right answer for it.
 _FakeSession.execute = lambda self, *args, **kwargs: type("_NoRow", (), {"first": lambda s: None})()
+
+
+def test_pay_page_without_a_payment_goes_back_to_the_plans(client):
+    """2026-10-15: an old or cut-off /upgrade/pay link showed a raw validation error (JSON)."""
+    resp = client.get("/upgrade/pay", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/upgrade"

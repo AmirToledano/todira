@@ -40,6 +40,7 @@ import hmac
 import html
 import json
 import logging
+import math
 import mimetypes
 import os
 import secrets
@@ -2041,13 +2042,15 @@ def upgrade_success(request: Request, payment_id: int | None = None, uid: int | 
 
 
 @app.get("/upgrade/pay")
-def upgrade_pay(request: Request, payment_id: int, uid: int | None = None):
+def upgrade_pay(request: Request, payment_id: int | None = None, uid: int | None = None):
     """Informal Bit/PayBox payment instructions (2026-09-05) — no verified "open the app
     pre-filled" deep link exists for either (see OWNER_BIT_PHONE's own comment), so this just
     shows the exact amount + the owner's Bit phone / PayBox link plainly, with a self-service
     "I paid" confirmation below. Same honesty tradeoff as the old instant-grant-on-click flow —
     still trusted, not verified — just made into an explicit, visible step instead of an invisible
     side effect of clicking a plan button."""
+    if payment_id is None:  # an old or cut-off link: back to the plans, not a raw validation error
+        return RedirectResponse("/upgrade", status_code=303)
     with get_session() as session:
         payment = session.get(Payment, payment_id)
         user = _resolve_user(request, session, uid)
@@ -2850,13 +2853,14 @@ def _parse_int_or_none(raw: str) -> int | None:
     not just that one field. Trims the same way the call sites already did, but treats anything
     that still doesn't parse as "no limit" (None) rather than crashing — the same fallback an empty
     field already got, not silently rejecting the rest of the form the user just filled in."""
-    raw = raw.strip()
+    raw = raw.strip().replace(",", "").replace("₪", "").strip()  # 2026-10-15: "5,000" / "₪5000" mean 5000, not "no limit"
     if not raw:
         return None
     try:
-        return int(raw)
+        value = int(raw)
     except ValueError:
         return None
+    return value if abs(value) < 2**31 else None  # the columns are 32-bit; a bigger number was a 500
 
 
 def _parse_float_or_none(raw: str) -> float | None:
@@ -2864,9 +2868,18 @@ def _parse_float_or_none(raw: str) -> float | None:
     if not raw:
         return None
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError:
         return None
+    # "nan" / "inf" parse as floats but are no room count (and a 500 when the database refuses them)
+    return value if math.isfinite(value) and 0 <= value < 100 else None
+
+
+def _ordered(low, high):
+    """A minimum above the maximum (typed the wrong way round) matches nothing at all - swap the two instead."""
+    if low is not None and high is not None and low > high:
+        return high, low
+    return low, high
 
 
 @app.post("/filter")
@@ -2936,13 +2949,10 @@ def filter_update(
 
         f: Filter = user.filter
         f.cities = [] if all_cities is not None else [c for c in cities if c in LOCALITY_SET]
-        f.price_min = _parse_int_or_none(price_min)
-        f.price_max = _parse_int_or_none(price_max)
-        f.rooms_min = _parse_float_or_none(rooms_min)
-        f.rooms_max = _parse_float_or_none(rooms_max)
+        f.price_min, f.price_max = _ordered(_parse_int_or_none(price_min), _parse_int_or_none(price_max))
+        f.rooms_min, f.rooms_max = _ordered(_parse_float_or_none(rooms_min), _parse_float_or_none(rooms_max))
         f.property_types = [p for p in property_types if p in PROPERTY_TYPE_LABELS[DEFAULT_LANG]]
-        f.floor_min = _parse_int_or_none(floor_min)
-        f.floor_max = _parse_int_or_none(floor_max)
+        f.floor_min, f.floor_max = _ordered(_parse_int_or_none(floor_min), _parse_int_or_none(floor_max))
         f.ground_floor_only = ground_floor_only is not None
         f.require_parking = require_parking is not None
         f.require_elevator = require_elevator is not None
