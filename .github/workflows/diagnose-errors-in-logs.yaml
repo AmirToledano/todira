@@ -72,5 +72,7 @@ jobs:
         run: |
           for pod in $(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
             echo "=== $pod $(kubectl get pod -n todira $pod -o jsonpath='{.status.phase} {.status.startTime}')"
-            kubectl logs -n todira "$pod" --tail=60 2>&1 | sed -E 's/^[0-9-]+ [0-9:,]+ //; s/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g; s/[0-9]+/<n>/g' | cut -c1-220
+            # the run summary is only counts - printed as is
+            kubectl logs -n todira "$pod" --tail=60 2>&1 | grep "run summary" | sed -E 's/^[0-9-]+ [0-9:,]+ //' | cut -c1-900
+            kubectl logs -n todira "$pod" --tail=60 2>&1 | grep -v "run summary" | sed -E 's/^[0-9-]+ [0-9:,]+ //; s/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g; s/[0-9]+/<n>/g' | cut -c1-220
           done
