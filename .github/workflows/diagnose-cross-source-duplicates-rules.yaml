@@ -1,0 +1,74 @@
+name: Diagnose — test looser duplicate rules against live data before using them (read-only)
+
+# 2026-10-15 owner: "improve the also-posted-on detection". diagnose-cross-source-duplicates-why.yaml showed Komo streets
+# almost always carry the house number and Yad2's only about half the time, so "Herzl 12" never equals "Herzl"; and a
+# sixth of Komo ads have no floor. Two candidate rules, each checked against pairs where the answer is already known:
+#  A. street NAME equal when only one side has a house number - how often do two ads that agree on everything else
+#     turn out to have DIFFERENT numbers, when both do have one?
+#  B. floor missing on one side - how often do two ads that agree on street + number + rooms + size + price turn out to
+#     be on DIFFERENT floors, when both floors are known? And how many floor-missing ads have exactly one candidate?
+# Read-only (temp tables only); prints counts only.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Counts
+        run: |
+          cat > /tmp/q.sql <<'SQL'
+          SET statement_timeout = '300s';
+          CREATE TEMP TABLE a AS
+            SELECT id, source, deal_type, city, rooms, floor, price, size_sqm, duplicate_of_id, st,
+                   nullif(trim(regexp_replace(st, '\s*[0-9].*$', '')), '') AS base,
+                   substring(st from '([0-9]+)')::int AS num
+            FROM (SELECT *, nullif(lower(regexp_replace(regexp_replace(trim(coalesce(street, '')), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g')), '') AS st
+                  FROM listings WHERE NOT is_delisted AND price IS NOT NULL AND rooms IS NOT NULL AND city IS NOT NULL
+                    AND source IN ('yad2', 'komo', 'homeless')) s;
+          CREATE INDEX ON a (city, rooms, base);
+          ANALYZE a;
+          CREATE TEMP TABLE p AS
+            SELECT CASE WHEN x.source = y.source THEN 'SAME ' || x.source ELSE x.source || '+' || y.source END AS kind,
+                   x.id AS xid, y.id AS yid, x.num AS xn, y.num AS yn, x.floor AS xf, y.floor AS yf,
+                   (x.size_sqm IS NOT NULL AND y.size_sqm IS NOT NULL) AS both_size,
+                   (x.size_sqm IS NULL OR y.size_sqm IS NULL OR abs(x.size_sqm - y.size_sqm) <= greatest(2, 0.05 * greatest(x.size_sqm, y.size_sqm))) AS size_ok,
+                   (x.duplicate_of_id = y.id OR y.duplicate_of_id = x.id OR (x.duplicate_of_id IS NOT NULL AND x.duplicate_of_id = y.duplicate_of_id)) AS linked
+            FROM a x JOIN a y ON (x.source < y.source OR (x.source = y.source AND x.id < y.id)) AND x.deal_type = y.deal_type
+                             AND x.city = y.city AND x.rooms = y.rooms AND x.base = y.base
+                             AND abs(x.price - y.price) <= greatest(greatest(x.price, y.price) * 0.05, 150);
+
+          \echo '== A1. street name + floor + rooms + price + size agree, BOTH have a house number: same number or not'
+          SELECT kind, count(*) FILTER (WHERE xn = yn) AS same_number, count(*) FILTER (WHERE xn <> yn) AS different_number
+          FROM p WHERE xn IS NOT NULL AND yn IS NOT NULL AND xf = yf AND both_size AND size_ok GROUP BY 1 ORDER BY 1;
+
+          \echo '== A2. rule A would link: only one side has a number, same floor, size agrees (or unknown) - pairs / already linked'
+          SELECT kind, count(*) AS pairs, count(*) FILTER (WHERE both_size) AS with_both_sizes, count(*) FILTER (WHERE linked) AS already_linked
+          FROM p WHERE (xn IS NULL) <> (yn IS NULL) AND xf = yf AND size_ok GROUP BY 1 ORDER BY 1;
+
+          \echo '== B1. same street AND number, rooms, price, both sizes agree, both floors known: same floor or not'
+          SELECT kind, count(*) FILTER (WHERE xf = yf) AS same_floor, count(*) FILTER (WHERE xf <> yf) AS different_floor
+          FROM p WHERE xn IS NOT NULL AND xn = yn AND both_size AND size_ok AND xf IS NOT NULL AND yf IS NOT NULL GROUP BY 1 ORDER BY 1;
+
+          \echo '== B2. rule B would link: one floor missing, same street and number, both sizes agree - pairs, and floor-missing ads with exactly one candidate'
+          SELECT kind, count(*) AS pairs, count(*) FILTER (WHERE linked) AS already_linked
+          FROM p WHERE (xf IS NULL) <> (yf IS NULL) AND xn IS NOT NULL AND xn = yn AND both_size AND size_ok GROUP BY 1 ORDER BY 1;
+          WITH c AS (
+            SELECT CASE WHEN xf IS NULL THEN xid ELSE yid END AS missing_id, kind
+            FROM p WHERE kind NOT LIKE 'SAME%' AND (xf IS NULL) <> (yf IS NULL) AND xn IS NOT NULL AND xn = yn AND both_size AND size_ok
+          )
+          SELECT kind, count(*) FILTER (WHERE n = 1) AS ads_with_one_candidate, count(*) FILTER (WHERE n > 1) AS ads_with_several
+          FROM (SELECT kind, missing_id, count(*) AS n FROM c GROUP BY 1, 2) t GROUP BY 1 ORDER BY 1;
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
