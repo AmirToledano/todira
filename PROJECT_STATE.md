@@ -6,7 +6,7 @@
   pages (privacy, terms, accessibility) were left as they are. Emoji and colors untouched.
 - The scan hours (9:00-22:00) are gone from every page: the owner does not want visitors to know them.
 - Facebook is scanned 3 times a day, the other sites hourly, so no text puts "every hour" next to the list of all four.
-- Owner asked to keep the old wording in case he changes his mind: revert this change's PR on GitHub (it touches only
+- Owner asked to keep the old wording in case he changes his mind: revert PR #786 on GitHub (it touches only
   `website/i18n.py`, the generated `content.json` and the rebuilt `static/landing` bundle).
 
 ## ▶ 2026-10-14 (owner: "the site is slow"; "delete listings after a month") — measured first, then fixed
