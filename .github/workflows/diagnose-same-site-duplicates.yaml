@@ -1,0 +1,61 @@
+name: Diagnose — the same apartment posted twice on the same site (read-only)
+
+# 2026-10-15: ~1,100 pairs of live Yad2 ads share street + house number, floor, rooms, size and price. Some are the same
+# flat posted twice (owner and agent, or a repost), and the user sees it twice; some may be two identical flats in one
+# new building. Before linking any: how many pairs also share the exact same description text, the same first photo,
+# or the same map point - signals two different flats would rarely share. Read-only; counts only.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Counts
+        run: |
+          cat > /tmp/q.sql <<'SQL'
+          SET statement_timeout = '300s';
+          CREATE TEMP TABLE a AS
+            SELECT id, source, deal_type, city, rooms, floor, price, size_sqm, latitude::float AS lat, longitude::float AS lon,
+                   md5(nullif(trim(description), '')) AS d, image_urls[1] AS img, is_broker_listing AS broker,
+                   nullif(lower(regexp_replace(regexp_replace(trim(coalesce(street, '')), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g')), '') AS st
+            FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL AND price IS NOT NULL AND rooms IS NOT NULL
+              AND floor IS NOT NULL AND city IS NOT NULL;
+          CREATE INDEX ON a (source, city, rooms, floor, st);
+          ANALYZE a;
+          CREATE TEMP TABLE p AS
+            SELECT x.source,
+                   (x.d IS NOT NULL AND x.d = y.d) AS same_text,
+                   (x.img IS NOT NULL AND x.img = y.img) AS same_photo,
+                   (x.lat IS NOT NULL AND y.lat IS NOT NULL AND abs(x.lat - y.lat) < 0.00015 AND abs(x.lon - y.lon) < 0.00015) AS same_point,
+                   (x.size_sqm IS NOT NULL AND y.size_sqm IS NOT NULL AND x.size_sqm = y.size_sqm) AS same_size,
+                   (x.price = y.price) AS same_price,
+                   (x.broker IS DISTINCT FROM y.broker) AS broker_and_owner
+            FROM a x JOIN a y ON x.source = y.source AND x.id < y.id AND x.deal_type = y.deal_type AND x.city = y.city
+                             AND x.rooms = y.rooms AND x.floor = y.floor AND x.st = y.st AND x.st ~ '[0-9]'
+                             AND abs(x.price - y.price) <= greatest(greatest(x.price, y.price) * 0.05, 150)
+                             AND (x.size_sqm IS NULL OR y.size_sqm IS NULL OR abs(x.size_sqm - y.size_sqm) <= greatest(2, 0.05 * greatest(x.size_sqm, y.size_sqm)));
+
+          \echo '== pairs on one site that agree on street + number, floor, rooms, price (and size when known)'
+          SELECT source, count(*) AS pairs,
+                 count(*) FILTER (WHERE same_text) AS same_text,
+                 count(*) FILTER (WHERE same_photo) AS same_first_photo,
+                 count(*) FILTER (WHERE same_text OR same_photo) AS text_or_photo,
+                 count(*) FILTER (WHERE same_point) AS same_map_point,
+                 count(*) FILTER (WHERE same_size AND same_price) AS exact_size_and_price,
+                 count(*) FILTER (WHERE broker_and_owner) AS one_broker_one_not,
+                 count(*) FILTER (WHERE NOT same_text AND NOT same_photo AND NOT same_point) AS no_extra_signal
+          FROM p GROUP BY 1 ORDER BY 2 DESC;
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
