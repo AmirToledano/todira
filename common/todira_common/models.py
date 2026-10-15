@@ -295,8 +295,9 @@ class Listing(Base):
 
     # 2026-09-13: cross-source dedup — the same real-world apartment posted on more than one
     # source (e.g. Yad2 AND Komo) used to create a fully separate row per source, each notified
-    # independently. Set (only at INSERT time, by scraper/dedup.find_duplicate_listing — see its
-    # own docstring for the actual city/street/rooms/floor/price-tolerance matching heuristic) to
+    # independently. Set at INSERT time by scraper/dedup.find_duplicate_listing, and after the fact by its
+    # link_missed_duplicates pass at the end of each main scraper run (see
+    # their docstrings for the actual city/street/rooms/floor/price-tolerance matching heuristic) to
     # the id of the OTHER-source row this one is believed to be a duplicate of; NULL means this
     # row is either unique or is itself the canonical one other duplicates point to. A duplicate
     # row is still fully upserted/price-refreshed/delisted like any other (see
@@ -306,12 +307,9 @@ class Listing(Base):
     # bot/handlers/apartments.py, bot/handlers/liked.py all add duplicate_of_id.is_(None)) so the
     # user only ever sees/gets notified about ONE row per real apartment.
     #
-    # KNOWN, DELIBERATELY UNSOLVED GAP (not fixed in this pass): if the CANONICAL row later gets
-    # delisted (e.g. removed from Yad2) while a duplicate sibling (e.g. still-live on Komo) is not,
-    # the sibling stays hidden too — nothing here "promotes" a duplicate back to canonical when its
-    # canonical row disappears. Documented rather than silently assumed away; a real follow-up, not
-    # attempted here given the added complexity (would need touching _mark_delisted's UPDATE logic
-    # to find and promote one live duplicate per newly-delisted canonical row).
+    # If the CANONICAL row later gets delisted (e.g. removed from Yad2) while a duplicate sibling (e.g. still live on
+    # Komo) is not, the sibling is promoted to canonical at the end of the next main scraper run (2026-10-15,
+    # scraper/dedup.py promote_live_duplicates - before that the apartment simply vanished; 239 live at the time).
     duplicate_of_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("listings.id", ondelete="SET NULL"), index=True
     )

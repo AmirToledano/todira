@@ -346,7 +346,7 @@ def test_new_item_matching_a_duplicate_candidate_is_inserted_but_excluded_from_n
     session = _QueueSession(
         [
             _CannedResult(None),  # SELECT existing-check -> no existing row
-            _CannedRows([(101, "רחוב הרצל", 5050)]),  # a real cross-source match
+            _CannedRows([(101, "רחוב הרצל", 5050, None)]),  # a real cross-source match
             _CannedResult((5001,)),  # INSERT returning id (still inserted!)
         ]
     )

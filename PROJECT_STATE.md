@@ -11,6 +11,16 @@
 - Checked live (`diagnose-cross-source-duplicates.yaml`): "also posted on" is real - ~6,000 active listings show it
   (mostly Yad2/Komo pairs). It never fires for Facebook (those ads have no street or rooms), and about a third of the
   likely Yad2/Komo pairs and most Homeless/Yad2 pairs are missed because a floor is missing or differs.
+- Improved the same night (owner: "improve it if possible"), every rule measured live first
+  (`diagnose-cross-source-duplicates-why.yaml`, `-rules.yaml`):
+  - 239 apartments had vanished: their shown row was delisted while the copy on another site was live. Now the
+    live copy is promoted at the end of every main scraper run (`dedup.promote_live_duplicates`).
+  - Komo writes the house number into the street, Yad2 only half the time. When only one side has a number, the
+    street name counts if both sizes agree and the two ads are each other's only match (96% right on known pairs).
+  - Pairs the insert-time check could not see (floor/size filled in later, older ads) are linked after the fact
+    (`dedup.link_missed_duplicates`), never two ads of the same site into one apartment.
+  - Not done on purpose: a missing floor (8% of such pairs are different flats in the same building), and Facebook
+    (no street, rooms or size in those ads). Likes, hides and sent marks move to the row that stays shown.
 - Owner asked to keep the old wording in case he changes his mind: revert PR #786 on GitHub (it touches only
   `website/i18n.py`, the generated `content.json` and the rebuilt `static/landing` bundle).
 
