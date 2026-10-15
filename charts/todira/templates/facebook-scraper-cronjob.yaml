@@ -50,6 +50,10 @@ spec:
             - name: facebook-scraper
               image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
               env:
+                # 2026-10-14: at most two glibc malloc arenas, so a multi-threaded Python process keeps less freed memory
+                # to itself on the 2 GB server (the default allows 8 per CPU).
+                - name: MALLOC_ARENA_MAX
+                  value: "2"
                 # 2026-10-09: the retry pass of this job can announce a Yad2 listing, and its card is completed from Yad2's own
                 # item JSON just before it is sent (scraper/notifier.py _maybe_fetch_description).
                 - name: YAD2_ITEM_API

@@ -257,3 +257,19 @@ def test_text_catch_up_fills_only_empty_columns_and_marks_every_row_read(monkeyp
     assert "text_parsed_at" in str(session.executed_stmts[1]) and "text_parsed_at" in str(session.executed_stmts[2])
     assert "floor" not in second
     assert session.committed is True
+
+
+def test_text_catch_up_reads_in_batches_until_nothing_is_left(monkeypatch):
+    """2026-10-14: descriptions are read a batch at a time (each committed), not all TEXT_FEATURES_MAX_PER_RUN at once."""
+    monkeypatch.setenv(scraper_main._TEXT_FEATURES_MAX_ENV_VAR, "5")
+    monkeypatch.setattr(scraper_main, "_TEXT_FEATURES_BATCH", 2)
+    batches = [[_text_row(1, "x"), _text_row(2, "x")], [_text_row(3, "x"), _text_row(4, "x")], [_text_row(5, "x")]]
+    queue = []
+    for batch in batches:
+        queue.append(_TextResult(batch))
+        queue.extend([None] * len(batch))
+    session = _QueueSession(queue)
+    _fill_from_text(session)
+    selects = [stmt for stmt in session.executed_stmts if str(stmt).lstrip().upper().startswith("SELECT")]
+    assert len(selects) == 3
+    assert [stmt.compile().params.get("param_1") for stmt in selects] == [2, 2, 1]
