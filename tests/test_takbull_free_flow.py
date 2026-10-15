@@ -239,3 +239,36 @@ def test_thank_you_page_waits_for_a_still_pending_payment_and_confirms_a_paid_on
     user = SimpleNamespace(id=2, telegram_user_id=222, language="he")
     assert "http-equiv=\"refresh\"" in _success_resp(client, _payment(status="pending"), user).text
     assert "http-equiv=\"refresh\"" not in _success_resp(client, _payment(status="paid"), user).text
+
+
+# --- 2026-10-16: the same webhook set up twice in Takbull - every charge arrives twice ---
+
+
+def test_a_repeat_of_a_credited_charge_is_acknowledged_without_an_alert(client, monkeypatch):
+    monkeypatch.setenv("TAKBULL_WEBHOOK_SECRET", "real-secret")
+    sess = _Sess(scalar_results=[123])  # the transaction id is already on a paid payment
+
+    @contextmanager
+    def _gs():
+        yield sess
+
+    alerts = []
+    with (
+        patch.object(website_main, "get_session", _gs),
+        patch.object(website_main, "_match_takbull_payment", lambda *a, **k: (None, False)),
+        patch.object(website_main, "_notify_owner_sync", lambda *a, **k: alerts.append(a)),
+    ):
+        resp = client.post(
+            "/webhooks/takbull/real-secret",
+            json={"StatusDescription": "Success", "OrderTotalSum": "1", "uniqId": "t1"},
+        )
+    assert resp.status_code == 200
+    assert alerts == []
+    assert sess.committed is False
+
+
+def test_already_credited_by_reference_when_the_charge_carried_no_transaction_id():
+    paid = SimpleNamespace(gateway_transaction_id="5")
+    assert website_main._already_credited_takbull_charge(_Sess(scalar_results=[paid]), {}, 5) is True
+    assert website_main._already_credited_takbull_charge(_Sess(scalar_results=[None]), {}, 5) is False
+    assert website_main._already_credited_takbull_charge(_Sess(), {"uniqId": "new"}, None) is False
