@@ -179,6 +179,7 @@ async def _notify_new_matches(
     listing: Listing,
     *,
     only_telegram_user_id: str | None = None,
+    per_user_budget: dict[int, int] | None = None,
 ) -> tuple[int, int, set[int]]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
@@ -211,6 +212,8 @@ async def _notify_new_matches(
             only_telegram_user_id
         ):
             continue
+        if per_user_budget is not None and per_user_budget.get(user.id, 0) >= RETRY_MAX_PER_USER_PER_RUN:
+            continue  # left unsent and unmarked: the next run's retry offers it again
         if user.telegram_user_id is None:
             # No channel to push through: a Google-only standalone account (2026-09-05) checks the
             # website instead, or links Telegram via /account. Skipping here (rather than letting a
@@ -247,6 +250,8 @@ async def _notify_new_matches(
             session.commit()
             sent += 1
             newly_notified_user_ids.add(filter_row.user_id)
+            if per_user_budget is not None:
+                per_user_budget[user.id] = per_user_budget.get(user.id, 0) + 1
     return matched, sent, newly_notified_user_ids
 
 
@@ -338,12 +343,21 @@ async def _notify_price_change(
     return sent
 
 
+# 2026-10-15 (bug, with listing_matches.mark_recent_matches_seen): the retry pass offers every listing of the past week
+# that nobody was told about to whoever matches it now - a user whose filter just widened (or who just linked Telegram)
+# could get hundreds of cards in one run. Retried listings now reach one user at most this many times per run; the rest
+# stay unsent and unmarked, so they are offered again on later runs if still relevant. Genuinely new listings are not
+# limited.
+RETRY_MAX_PER_USER_PER_RUN = 5
+
+
 async def run_notifications(
     session: Session,
     new_listings: list[Listing],
     price_change_events: list[tuple[Listing, int]],
     *,
     only_telegram_user_id: str | None = None,
+    retry_ids: set[int] | frozenset[int] = frozenset(),
 ) -> dict[str, int]:
     """`new_listings`: rows inserted for the first time this run. `price_change_events`:
     (listing, old_price) pairs for existing listings whose price just changed (either direction).
@@ -367,6 +381,7 @@ async def run_notifications(
     new_sent_count = 0
     price_change_sent_count = 0
 
+    retry_budget: dict[int, int] = {}
     async with Bot(token=token) as bot:
         for listing in new_listings:
             m, s, _newly_notified = await _notify_new_matches(
@@ -374,6 +389,7 @@ async def run_notifications(
                 session,
                 listing,
                 only_telegram_user_id=only_telegram_user_id,
+                per_user_budget=retry_budget if listing.id in retry_ids else None,
             )
             matched_count += m
             new_sent_count += s
