@@ -90,8 +90,9 @@ website:
   # in the "Hook Address" path registered in Takbull (https://<domain>/webhooks/takbull/<secret>, event "עסקה חדשה").
   takbullPaymentPageUrl: "https://paypage.takbull.co.il/4BPyx"
   # TEMPORARY test mode: "1" while the owner pays NIS 1 to test the full flow (grants 1 day), then back to "".
-  # 2026-10-16 morning: card payment tested end to end, turned off. 2026-10-16 night: on again for one Bit payment.
-  takbullTestAmountIls: "1"
+  # 2026-10-16 morning: card payment tested end to end, turned off. 2026-10-16 night: on again for one Bit payment, which
+  # Takbull refused ("no permission" - Bit is not yet enabled for the account), so off again until support enables it.
+  takbullTestAmountIls: ""
   takbullPaymentPageUrlPass7: ""
   takbullPaymentPageUrlPass14: ""
   takbullPaymentPageUrlPass30: ""
