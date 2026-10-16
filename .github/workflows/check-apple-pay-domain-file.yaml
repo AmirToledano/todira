@@ -1,0 +1,25 @@
+name: Check — Apple Pay domain verification file is live (read-only)
+
+# 2026-10-16: Apple fetches /.well-known/apple-developer-merchantid-domain-association from todira.app before Apple Pay
+# can be turned on in Takbull. Fetches it from outside, the way Apple does (HTTPS, no redirects followed), and compares
+# it with the file in the repo. Public file, no secrets used or printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch it the way Apple does
+        run: |
+          URL=https://todira.app/.well-known/apple-developer-merchantid-domain-association
+          curl -sS -o /tmp/live -D /tmp/headers --max-time 20 -w "http_status=%{http_code} redirects=%{num_redirects} content_type=%{content_type}\n" "$URL"
+          head -1 /tmp/headers
+          if cmp -s /tmp/live website/apple-pay/apple-developer-merchantid-domain-association; then
+            echo "identical to the file in the repo"
+          else
+            echo "DIFFERENT from the file in the repo"; exit 1
+          fi
