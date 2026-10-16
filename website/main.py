@@ -2397,6 +2397,12 @@ async def _process_takbull_payload(body: dict) -> Response:
                 "pending, see the raw payload logged above",
                 payment.id,
             )
+            # 2026-10-16 (owner asked about Bit): only card payments were tested live. If a Bit charge ever reports
+            # success in a shape this does not recognize, the customer paid and got nothing - the owner hears about it.
+            status = body.get("StatusDescription") or body.get("Status") or body.get("StatusCode")
+            await asyncio.to_thread(
+                _alert_owner_pending_takbull_payment, body, f"לא זוהה בהודעה שהתשלום הצליח, סטטוס: {status!r}"
+            )
             return Response(status_code=200)
 
         # The customer picks their item themselves on Takbull's one shared multi-plan page (see
