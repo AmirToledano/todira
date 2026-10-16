@@ -23,3 +23,26 @@ jobs:
           else
             echo "DIFFERENT from the file in the repo"; exit 1
           fi
+
+  who-fetched-it:
+    # Did anyone (Takbull, Apple) actually fetch the file when the owner pressed "verify domain"? Time and status only:
+    # the client address is cut off, never printed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Requests for the file in the last 3 hours (time, method, status)
+        run: |
+          HITS=$(kubectl logs -n todira deploy/todira-website --since=3h --timestamps 2>/dev/null \
+            | grep 'apple-developer-merchantid-domain-association' \
+            | sed -E 's/^([^ ]+) .*"([A-Z]+) [^"]*" ([0-9]{3}).*/\1 \2 \3/' || true)
+          echo "requests: $(echo -n "$HITS" | grep -c . || true)"
+          echo "$HITS"
