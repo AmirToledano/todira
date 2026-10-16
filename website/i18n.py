@@ -2779,18 +2779,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "اختر {plan}",
     },
     "upgrade.payment_hint_takbull": {
-        "he": "התשלום מאובטח דרך תקבול: ביט, Apple Pay, Google Pay או כרטיס אשראי. בעמוד התשלום תראה את 3 החבילות. תוסיף לעגלה את זו שבחרת ותשלם. 🐾",
-        "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. On the payment page you'll see all 3 plans together — just add the one you chose here (by price) to the cart and complete payment. 🐾",
-        "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. На странице оплаты вы увидите все 3 плана вместе — просто добавьте выбранный здесь план (по цене) в корзину и завершите оплату. 🐾",
-        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Sur la page de paiement, vous verrez les 3 forfaits ensemble — ajoutez simplement celui choisi ici (selon le prix) au panier et finalisez le paiement. 🐾",
-        "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. في صفحة الدفع سترى الخطط الثلاث معًا — فقط أضف الخطة التي اخترتها هنا (حسب السعر) إلى السلة وأكمل الدفع. 🐾",
+        "he": "התשלום מאובטח דרך תקבול: ביט או כרטיס אשראי. בעמוד התשלום תראה את 3 החבילות. תוסיף לעגלה את זו שבחרת ותשלם. 🐾",
+        "en": "Payment is secured through Takbull — Bit or credit card. On the payment page you'll see all 3 plans together — just add the one you chose here (by price) to the cart and complete payment. 🐾",
+        "ru": "Оплата защищена через Takbull — Bit или банковская карта. На странице оплаты вы увидите все 3 плана вместе — просто добавьте выбранный здесь план (по цене) в корзину и завершите оплату. 🐾",
+        "fr": "Le paiement est sécurisé via Takbull — Bit ou carte de crédit. Sur la page de paiement, vous verrez les 3 forfaits ensemble — ajoutez simplement celui choisi ici (selon le prix) au panier et finalisez le paiement. 🐾",
+        "ar": "الدفع مؤمّن عبر تكبول — Bit أو بطاقة ائتمان. في صفحة الدفع سترى الخطط الثلاث معًا — فقط أضف الخطة التي اخترتها هنا (حسب السعر) إلى السلة وأكمل الدفع. 🐾",
     },
     "upgrade.payment_hint_takbull_recurring": {
-        "he": "התשלום מאובטח דרך תקבול: ביט, Apple Pay, Google Pay או כרטיס אשראי. החיוב מתחדש כל חודש עד שתבטל. 🐾",
-        "en": "Payment is secured through Takbull — Bit, Apple Pay, Google Pay or credit card. The charge auto-renews every month until you cancel. 🐾",
-        "ru": "Оплата защищена через Takbull — Bit, Apple Pay, Google Pay или банковская карта. Списание автоматически продлевается каждый месяц, пока вы не отмените подписку. 🐾",
-        "fr": "Le paiement est sécurisé via Takbull — Bit, Apple Pay, Google Pay ou carte de crédit. Le prélèvement se renouvelle automatiquement chaque mois jusqu'à l'annulation. 🐾",
-        "ar": "الدفع مؤمّن عبر تكبول — Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
+        "he": "התשלום מאובטח דרך תקבול: ביט או כרטיס אשראי. החיוב מתחדש כל חודש עד שתבטל. 🐾",
+        "en": "Payment is secured through Takbull — Bit or credit card. The charge auto-renews every month until you cancel. 🐾",
+        "ru": "Оплата защищена через Takbull — Bit или банковская карта. Списание автоматически продлевается каждый месяц, пока вы не отмените подписку. 🐾",
+        "fr": "Le paiement est sécurisé via Takbull — Bit ou carte de crédit. Le prélèvement se renouvelle automatiquement chaque mois jusqu'à l'annulation. 🐾",
+        "ar": "الدفع مؤمّن عبر تكبول — Bit أو بطاقة ائتمان. يتجدد الخصم تلقائيًا كل شهر حتى تقوم بالإلغاء. 🐾",
     },
     "upgrade.payment_hint_manual": {
         "he": "התשלום ידני בביט/PayBox. אחרי הלחיצה תעבור לעמוד עם כל הפרטים. 🐾",
@@ -2907,11 +2907,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # upgrade.pass_onetime_hint and upgrade.payment_hint_takbull_onetime, which repeated each other). "No automatic
     # renewal and no commitment" is left to upgrade.value_anchor_body right below, so it is said once on the page.
     "upgrade.pass_fact_secure": {
-        "he": 'תשלום מאובטח דרך תקבול: ביט, Apple Pay, Google Pay או כרטיס אשראי',
-        "en": 'Secure payment through Takbull: Bit, Apple Pay, Google Pay or credit card',
-        "ru": 'Защищённая оплата через Takbull: Bit, Apple Pay, Google Pay или банковская карта',
-        "fr": 'Paiement sécurisé via Takbull : Bit, Apple Pay, Google Pay ou carte bancaire',
-        "ar": 'دفع آمن عبر Takbull: Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان',
+        "he": 'תשלום מאובטח דרך תקבול: ביט או כרטיס אשראי',
+        "en": 'Secure payment through Takbull: Bit or credit card',
+        "ru": 'Защищённая оплата через Takbull: Bit или банковская карта',
+        "fr": 'Paiement sécurisé via Takbull : Bit ou carte bancaire',
+        "ar": 'دفع آمن عبر Takbull: Bit أو بطاقة ائتمان',
     },
     "upgrade.pass_fact_instant": {
         "he": 'הגישה נפתחת אוטומטית תוך דקה',
@@ -3024,11 +3024,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "كيف أدفع؟ هل الدفع آمن؟",
     },
     "upgrade.faq_a2": {
-        "he": "התשלום מאובטח לגמרי, דרך ביט, Apple Pay, Google Pay או כרטיס אשראי.",
-        "en": "Payment is fully secured, via Bit, Apple Pay, Google Pay or credit card.",
-        "ru": "Оплата полностью защищена — через Bit, Apple Pay, Google Pay или банковскую карту.",
-        "fr": "Le paiement est entièrement sécurisé, via Bit, Apple Pay, Google Pay ou carte de crédit.",
-        "ar": "الدفع مؤمّن بالكامل، عبر Bit أو Apple Pay أو Google Pay أو بطاقة ائتمان.",
+        "he": "התשלום מאובטח לגמרי, דרך ביט או כרטיס אשראי.",
+        "en": "Payment is fully secured, via Bit or credit card.",
+        "ru": "Оплата полностью защищена — через Bit или банковскую карту.",
+        "fr": "Le paiement est entièrement sécurisé, via Bit ou carte de crédit.",
+        "ar": "الدفع مؤمّن بالكامل، عبر Bit أو بطاقة ائتمان.",
     },
     "upgrade.faq_q3": {
         "he": "מה קורה אם אני מבטל את המנוי?", "en": "What happens if I cancel my subscription?",
