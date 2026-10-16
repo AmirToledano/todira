@@ -597,6 +597,17 @@ def robots_txt(request: Request) -> PlainTextResponse:
     return PlainTextResponse("\n".join(lines))
 
 
+# 2026-10-16 (owner wants Apple Pay): Takbull's provider settings ask to verify the site's domain before Apple Pay can
+# be used. Apple fetches this exact file from this exact path over HTTPS; it is the file the owner downloaded from
+# Takbull, served byte for byte. Public by design (anyone can fetch it from any Apple Pay merchant's domain).
+_APPLE_PAY_DOMAIN_ASSOCIATION = BASE_DIR / "apple-pay" / "apple-developer-merchantid-domain-association"
+
+
+@app.get("/.well-known/apple-developer-merchantid-domain-association")
+def apple_pay_domain_association() -> Response:
+    return Response(content=_APPLE_PAY_DOMAIN_ASSOCIATION.read_bytes(), media_type="text/plain")
+
+
 # Public, unauthenticated, content pages worth a search engine indexing — kept in sync by hand
 # since the set of genuinely public marketing/legal pages changes rarely; every one of these
 # already renders in all 5 languages via base.html's own hreflang alternates (added alongside
