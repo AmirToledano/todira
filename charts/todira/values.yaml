@@ -89,9 +89,9 @@ website:
   # The webhook decides the days from the AMOUNT paid; an amount that matches no pass is left pending. Also needs the GitHub secret TAKBULL_WEBHOOK_SECRET and the same secret
   # in the "Hook Address" path registered in Takbull (https://<domain>/webhooks/takbull/<secret>, event "עסקה חדשה").
   takbullPaymentPageUrl: "https://paypage.takbull.co.il/4BPyx"
-  # TEMPORARY test mode: "1" while the owner paid NIS 1 to test the full flow (grants 1 day). Turned off 2026-10-16 after
-  # the owner's live test on a fresh account was credited end to end. "" = off: a NIS 1 charge matches no pass.
-  takbullTestAmountIls: ""
+  # TEMPORARY test mode: "1" while the owner pays NIS 1 to test the full flow (grants 1 day), then back to "".
+  # 2026-10-16 morning: card payment tested end to end, turned off. 2026-10-16 night: on again for one Bit payment.
+  takbullTestAmountIls: "1"
   takbullPaymentPageUrlPass7: ""
   takbullPaymentPageUrlPass14: ""
   takbullPaymentPageUrlPass30: ""

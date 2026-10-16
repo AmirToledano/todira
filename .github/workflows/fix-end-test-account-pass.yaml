@@ -1,0 +1,83 @@
+name: Fix — end the test pass of the owner's test account (before a second payment test)
+
+# Owner request (2026-10-16 night): the test account still holds the 1-day pass from this morning's NIS 1 card test.
+# Take that access away so a NIS 1 Bit payment can show whether Bit grants access on its own. Touches ONE row only: the
+# single account, not the owner's and without free access, that holds a paid test pass (plan pass_test) from the last
+# 48 hours. Zero or several such accounts: nothing is changed. Prints only counts and timestamps - never an id, name,
+# email or phone. Payment history is left as it is.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "end-pass" to really change the row'
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the input
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          [ "$CONFIRM" = "end-pass" ] || { echo "confirm must be end-pass - nothing changed"; exit 1; }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: End the access of the one test account
+        run: |
+          kubectl delete pod fix-end-test-pass -n todira --ignore-not-found --wait=true
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fix-end-test-pass
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: fix-end-test-pass
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER_TELEGRAM_USER_ID
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://\${DATABASE_URL#*://}"
+                    WHERE="id IN (SELECT user_id FROM payments WHERE gateway = 'takbull' AND status = 'paid'
+                                  AND plan = 'pass_test' AND paid_at > now() - interval '48 hours')
+                           AND (telegram_user_id IS NULL OR telegram_user_id::text <> '\${OWNER_TELEGRAM_USER_ID}')
+                           AND free_access_granted = false"
+                    N=\$(psql "\$CONN" -Atc "SELECT count(*) FROM users WHERE \$WHERE;")
+                    echo "accounts holding a test pass from the last 48h (not the owner, no free access): \$N"
+                    if [ "\$N" != "1" ]; then echo "need exactly one - nothing changed"; exit 0; fi
+                    psql "\$CONN" -c "UPDATE users SET paid_until = now() - interval '1 minute',
+                                             trial_ends_at = LEAST(COALESCE(trial_ends_at, now()), now() - interval '1 minute')
+                                      WHERE \$WHERE
+                                      RETURNING (paid_until < now()) AS pass_over, (trial_ends_at < now()) AS trial_over,
+                                                (google_sub IS NOT NULL) AS has_google, (telegram_user_id IS NOT NULL) AS has_telegram;"
+          PODYAML
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl get pod fix-end-test-pass -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          echo "--- output ---"
+          kubectl logs -n todira fix-end-test-pass || true
+          kubectl delete pod fix-end-test-pass -n todira --ignore-not-found
