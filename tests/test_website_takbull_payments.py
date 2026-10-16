@@ -443,8 +443,12 @@ def test_webhook_leaves_payment_pending_when_no_success_signal_recognized(client
         user_id=2, plan="monthly_subscription", amount_ils=Decimal("49.90"), status="pending", gateway="takbull"
     )
     fake_session = _FakeSession(scalar_results=[payment])
+    alerts = []
 
-    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "_notify_owner_sync", lambda *a, **k: alerts.append(a)),
+    ):
         resp = client.post(
             "/webhooks/takbull/real-secret",
             json={"order_reference": str(payment.id), "StatusDescription": "Pending"},
@@ -453,6 +457,9 @@ def test_webhook_leaves_payment_pending_when_no_success_signal_recognized(client
     assert resp.status_code == 200
     assert payment.status == "pending"
     assert fake_session.committed is False
+    # a charge whose success we cannot read (e.g. a Bit payment in another shape) is never dropped silently
+    assert len(alerts) == 1
+    assert "'Pending'" in alerts[0][2]
 
 
 def test_webhook_leaves_payment_pending_when_amount_does_not_match(client, monkeypatch):
