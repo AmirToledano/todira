@@ -877,3 +877,28 @@ def test_a_listing_taken_down_after_the_scan_is_not_shown(client):
 
     assert 'data-listing-id="2"' in resp.text
     assert 'data-listing-id="1"' not in resp.text
+
+
+def test_apartments_card_prints_whole_rooms_and_a_thousands_separator(client):
+    """2026-10-17: rooms is NUMERIC(3,1) and the card printed "3.0 חדרים" and "5000 ₪"; the bot's cards and the home
+    page already say "3 חדרים" / "4,900 ₪"."""
+    from decimal import Decimal
+
+    user = _FakeUser(id=2, telegram_user_id=222, filter=SimpleNamespaceFilter(),
+                      trial_ends_at=_NOW + dt.timedelta(days=2))
+    whole = _FakeListing(id=1, previous_price=5300)
+    whole.rooms = Decimal("3.0")
+    half = _FakeListing(id=2)
+    half.rooms = Decimal("2.5")
+    fake_session = _FakeSession(user, listings=[whole, half])
+
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(listing_matches_module, "evaluate", lambda filter_row, listing_row: SimpleNamespaceMatch(True)),
+    ):
+        resp = client.get("/apartments", params={"uid": 222})
+
+    assert resp.status_code == 200
+    assert "3 חדרים" in resp.text and "3.0 חדרים" not in resp.text
+    assert "2.5 חדרים" in resp.text
+    assert "5,000 ₪" in resp.text and "5,300 ₪" in resp.text
