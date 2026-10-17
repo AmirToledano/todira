@@ -160,6 +160,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "(לעמוד הבית)", "en": "(home page)", "ru": "(на главную)",
         "fr": "(page d'accueil)", "ar": "(الصفحة الرئيسية)",
     },
+    # 2026-10-17: banner for visitors inside a social app's built-in browser (main.py _in_app_browser).
+    "inapp.text": {
+        "he": "פתחת את טודירה מתוך {app}. בדפדפן הרגיל הכל עובד הכי טוב, ותישאר מחובר.",
+        "en": "You opened Todira inside {app}. Everything works best in your regular browser, and you stay signed in.",
+        "ru": "Вы открыли Todira внутри {app}. В обычном браузере всё работает лучше всего, и вы останетесь в системе.",
+        "fr": "Vous avez ouvert Todira dans {app}. Tout fonctionne mieux dans votre navigateur habituel, et vous restez connecté.",
+        "ar": "فتحت Todira داخل {app}. كل شيء يعمل بشكل أفضل في متصفحك العادي، وستبقى متصلاً.",
+    },
+    "inapp.button": {
+        "he": "פתח בדפדפן", "en": "Open in browser", "ru": "Открыть в браузере",
+        "fr": "Ouvrir dans le navigateur", "ar": "افتح في المتصفح",
+    },
+    "inapp.fallback": {
+        "he": "לא נפתח? לחץ על ••• למעלה ובחר 'פתח בדפדפן'.",
+        "en": "Didn't open? Tap ••• at the top and choose 'Open in browser'.",
+        "ru": "Не открылось? Нажмите ••• вверху и выберите «Открыть в браузере».",
+        "fr": "Rien ne s'ouvre ? Touchez ••• en haut et choisissez « Ouvrir dans le navigateur ».",
+        "ar": "لم يُفتح؟ اضغط على ••• في الأعلى واختر «فتح في المتصفح».",
+    },
+    "inapp.close": {"he": "סגור", "en": "Close", "ru": "Закрыть", "fr": "Fermer", "ar": "إغلاق"},
     "nav.liked": {
         "he": "שמורות", "en": "Saved", "ru": "Сохранённые", "fr": "Enregistrés", "ar": "المحفوظة",
     },
@@ -3163,61 +3183,24 @@ FURNITURE_LABELS: dict[str, dict[str, str]] = {
 }
 
 
-def _best_lang_from_accept_language(header_value: str) -> str | None:
-    """2026-09-26 real owner request: a first-time visitor's phone/browser already tells us its
-    language on every single request, via the standard Accept-Language header (e.g.
-    "en-US,en;q=0.9,he;q=0.8") — we just never looked at it, always defaulting to Hebrew instead.
-    Parses the RFC 2616 "type;q=value" weighted-list format, picks the highest-weighted tag that
-    matches one of SUPPORTED_LANGS (comparing only the primary subtag — "en-US" matches "en"), and
-    returns None if nothing in the header matches any supported language (caller falls back to
-    DEFAULT_LANG exactly as before). Deliberately NOT used once a visitor has an explicit ?lang= or
-    a cookie — this only fills in a better default for the very first, unconfigured visit."""
-    best_lang, best_q = None, -1.0
-    for part in header_value.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if ";" in part:
-            tag, _, q_part = part.partition(";")
-            try:
-                q = float(q_part.strip().removeprefix("q="))
-            except ValueError:
-                q = 1.0
-        else:
-            tag, q = part, 1.0
-        primary = tag.strip().split("-")[0].lower()
-        if primary in SUPPORTED_LANGS and q > best_q:
-            best_lang, best_q = primary, q
-    return best_lang
-
-
 def get_lang(request: Request, known_lang: str | None = None) -> str:
     """?lang= wins for this request (and main.py persists it to a cookie on the response);
     otherwise a previously-set cookie (an explicit choice made earlier on this same browser);
     otherwise `known_lang` — the viewer's own language on file (User.language), passed in by a
-    caller that already resolved a real user via uid — otherwise the browser's own
-    Accept-Language header (its FIRST visit's best guess, not persisted here — a cookie is only
-    ever set from an explicit ?lang=, see main.py's _render); otherwise Hebrew.
+    caller that already resolved a real user via uid — otherwise Hebrew.
 
-    2026-09-29 real bug found live: a Telegram user with the bot itself set to Hebrew opened their
-    own personalized /apartments link (from inside Telegram's in-app browser) and got an English
-    page — Telegram's in-app browser's own Accept-Language reflects the PHONE's system language,
-    not the language the person actually chose for the bot, and this function had no way to know
-    the difference for an identified visitor. `known_lang` lets a caller that already has the real
-    user row (e.g. website/main.py's _resolve_user) short-circuit that guess with the actual
-    on-file preference, while still letting an explicit ?lang= or an earlier cookie choice on this
-    browser override it (both come first, since either represents THIS visitor's own explicit
-    choice for THIS browser, not the value the bot happens to have on file)."""
+    2026-10-17 (owner, launch day): the browser's Accept-Language is no longer used. A visitor from
+    Instagram's in-app browser on a phone set to English got the whole site in English; the owner wants
+    Hebrew for everyone until they pick another language themselves (the switcher sets the cookie).
+
+    2026-09-29: a Telegram user with the bot set to Hebrew opening their own link from Telegram's in-app
+    browser must get Hebrew - `known_lang` carries that on-file preference; an explicit ?lang= or an
+    earlier cookie choice on this browser still comes first."""
     candidate = request.query_params.get("lang") or request.cookies.get("lang")
     if candidate in SUPPORTED_LANGS:
         return candidate
     if known_lang in SUPPORTED_LANGS:
         return known_lang
-    accept_language = request.headers.get("accept-language")
-    if accept_language:
-        detected = _best_lang_from_accept_language(accept_language)
-        if detected is not None:
-            return detected
     return DEFAULT_LANG
 
 
