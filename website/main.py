@@ -49,7 +49,7 @@ import time
 from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote as url_quote, urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -74,7 +74,7 @@ from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
 from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
-from todira_common.uid_token import verify_uid_token
+from todira_common.uid_token import generate_handoff_token, verify_handoff_token, verify_uid_token
 from fastapi import FastAPI, Form, Request
 
 import takbull_client
@@ -327,6 +327,49 @@ def _current_user_summary(request: Request) -> dict | None:
     }
 
 
+# 2026-10-17 (owner, launch day: the site is linked from his Instagram bio). Apps that open links in their own
+# built-in browser keep their own cookies, apart from Safari/Chrome; Google also refuses its sign-in inside them.
+# Visitors in one get a banner with a button that opens the same page in their real browser - still signed in,
+# through a short-lived one-time handoff link (/auth/handoff).
+_IN_APP_BROWSER_MARKERS = (
+    ("Instagram", "Instagram"),
+    ("FBAN", "Facebook"),
+    ("FBAV", "Facebook"),
+    ("FB_IAB", "Facebook"),
+    ("BytedanceWebview", "TikTok"),
+    ("musical_ly", "TikTok"),
+    ("TikTok", "TikTok"),
+    ("Snapchat", "Snapchat"),
+    ("LinkedInApp", "LinkedIn"),
+    (" Line/", "LINE"),
+)
+
+
+def _in_app_browser(request: Request) -> dict | None:
+    """{"app", "open_url"} when the page is open inside a social app's built-in browser, else None. open_url
+    opens this page in the real browser: Chrome through an Android intent, Safari through iOS's x-safari-
+    scheme. A signed-in visitor's link goes through /auth/handoff so the new browser is signed in too."""
+    user_agent = request.headers.get("user-agent", "")
+    app_name = next((name for marker, name in _IN_APP_BROWSER_MARKERS if marker in user_agent), None)
+    if app_name is None:
+        return None
+    path = request.url.path
+    user_id = request.session.get("user_id")
+    if user_id is not None and _current_user_summary(request) is not None:
+        path = f"/auth/handoff?h={generate_handoff_token(user_id)}&next={url_quote(path, safe='/')}"
+    target = f"https://{request.url.netloc}{path}"
+    if "Android" in user_agent:
+        open_url = (
+            f"intent://{request.url.netloc}{path}#Intent;scheme=https;package=com.android.chrome;"
+            f"S.browser_fallback_url={url_quote(target, safe='')};end"
+        )
+    elif any(device in user_agent for device in ("iPhone", "iPad", "iPod")):
+        open_url = f"x-safari-{target}"
+    else:
+        open_url = target
+    return {"app": app_name, "open_url": open_url}
+
+
 def _render(
     request: Request,
     template_name: str,
@@ -376,6 +419,7 @@ def _render(
             "supported_langs": SUPPORTED_LANGS,
             "lang_labels": LANG_LABELS,
             "current_user": current_user,
+            "in_app_browser": _in_app_browser(request),
             "static_version": GIT_SHA,
             "is_owner": is_real_owner and not _preview_as_free(request),
             "is_real_owner": is_real_owner,
@@ -742,6 +786,28 @@ def _safe_next(next: str) -> str:
     if not next.startswith("/") or next.startswith("//") or "\\" in next or any(ord(ch) < 32 for ch in next):
         return "/apartments"
     return next
+
+
+# Handoff tokens already turned into a session (token -> when it was used); each one works once. In memory: one
+# website replica, and a token lives only ten minutes anyway.
+_USED_HANDOFF_TOKENS: dict[str, float] = {}
+
+
+@app.get("/auth/handoff")
+def auth_handoff(request: Request, h: str = "", next: str = "/"):
+    """Signs this browser in as the user a fresh handoff token belongs to (see _in_app_browser), then goes on to
+    `next`. A forged, expired or already used token just goes on, signed out."""
+    now = time.time()
+    for token, used_at in list(_USED_HANDOFF_TOKENS.items()):
+        if now - used_at > 15 * 60:
+            _USED_HANDOFF_TOKENS.pop(token, None)
+    user_id = verify_handoff_token(h) if h else None
+    if user_id is not None and h not in _USED_HANDOFF_TOKENS:
+        _USED_HANDOFF_TOKENS[h] = now
+        with get_session() as session:
+            if session.get(User, user_id) is not None:
+                request.session["user_id"] = user_id
+    return RedirectResponse(_safe_next(next), status_code=303)
 
 
 @app.get("/auth/telegram/callback")

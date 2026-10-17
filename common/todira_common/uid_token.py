@@ -44,3 +44,25 @@ def verify_uid_token(token: str) -> int | None:
 def signed_login_query(telegram_user_id: int) -> str:
     """`t=<token>` — the query-string fragment every bot/notifier link to the website uses."""
     return f"t={generate_uid_token(telegram_user_id)}"
+
+
+# 2026-10-17 (owner, launch day): someone who signed in inside Instagram's (or Facebook's, TikTok's...) in-app
+# browser and then moves to Safari/Chrome lands logged out - each app keeps its own cookies, nothing can share
+# them. The "open in your browser" button carries this short-lived token instead, and /auth/handoff turns it
+# into the normal session in the new browser. Ten minutes, and the website accepts each token once.
+_handoff_serializer = URLSafeTimedSerializer(_SESSION_SECRET_KEY, salt="todira-browser-handoff")
+HANDOFF_TOKEN_MAX_AGE_SECONDS = 10 * 60
+
+
+def generate_handoff_token(user_id: int) -> str:
+    return _handoff_serializer.dumps({"u": int(user_id), "n": os.urandom(8).hex()})
+
+
+def verify_handoff_token(token: str) -> int | None:
+    """The website user id (users.id) if `token` is a genuine, unexpired generate_handoff_token() output."""
+    try:
+        value = _handoff_serializer.loads(token, max_age=HANDOFF_TOKEN_MAX_AGE_SECONDS)
+    except (BadSignature, SignatureExpired):
+        return None
+    user_id = value.get("u") if isinstance(value, dict) else None
+    return user_id if isinstance(user_id, int) and not isinstance(user_id, bool) else None
