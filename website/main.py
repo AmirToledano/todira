@@ -225,6 +225,10 @@ app = FastAPI(title="טודירה")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+# 2026-10-17: listing cards printed "2.0 חדרים" (rooms is NUMERIC(3,1)) and "4900 ₪" with no thousands separator,
+# while the bot's cards and the home page already say "2 חדרים" / "4,900 ₪".
+templates.env.filters["rooms_label"] = lambda rooms: f"{float(rooms):g}" if rooms else "?"
+templates.env.filters["ils"] = lambda amount: f"{int(amount):,} ₪"
 
 LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year — a site-wide preference, not per-session
 

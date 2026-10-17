@@ -55,7 +55,7 @@
         </button>
       </form>
     </div>
-    {% set _photo_alt = t('card.photo_alt', city=(l.city or t('card.no_city')), rooms=(l.rooms or '?')) %}
+    {% set _photo_alt = t('card.photo_alt', city=(l.city or t('card.no_city')), rooms=(l.rooms|rooms_label)) %}
     <div class="listing-cover">
       {% if l.image_urls %}
         {% for img in l.image_urls[:8] %}
@@ -104,10 +104,10 @@
       {% set _pct = (_pct_raw if _pct_raw >= 0 else -_pct_raw) | round | int %}
     {% endif %}
     <div class="listing-price-row">
-      <div class="listing-price">{{ "%d ₪"|format(l.price) if l.price else t('card.no_price') }}</div>
+      <div class="listing-price">{{ l.price|ils if l.price else t('card.no_price') }}</div>
       {% if _price_changed %}
       <div class="price-change {{ 'price-drop' if _dropped else 'price-rise' }}">
-        <span class="price-change-old">{{ "%d ₪"|format(l.previous_price) }}</span>
+        <span class="price-change-old">{{ l.previous_price|ils }}</span>
         {# dir="ltr" — without it, the RTL page context bidi-reorders "+20%"/"-5%" so the sign
            visually lands AFTER the number ("20%+") instead of before it, real bug caught in the
            very first screenshot of this feature. Isolating this one span as LTR keeps the
@@ -139,7 +139,7 @@
     }.get(l.property_type) %}
     <div class="feature-badges">
       {% if _type_label %}<span class="feature-badge">{{ _type_label }} 🏠</span>{% endif %}
-      {% if l.rooms %}<span class="feature-badge">{{ l.rooms }} {{ t('card.rooms') }} 🛏️</span>{% endif %}
+      {% if l.rooms %}<span class="feature-badge">{{ l.rooms|rooms_label }} {{ t('card.rooms') }} 🛏️</span>{% endif %}
       {% if l.floor is not none %}<span class="feature-badge">{{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %} 🏢</span>{% endif %}
       {% if l.size_sqm %}<span class="feature-badge">{{ l.size_sqm }} {{ t('card.sqm') }} 📐</span>{% endif %}
       {% if l.move_in_date %}<span class="feature-badge">{{ t('card.move_in_date', date=l.move_in_date.strftime('%d.%m.%y')) }} 📅</span>{% elif l.move_in_note %}<span class="feature-badge">{{ t('card.move_in_date', date=(t('card.move_in_immediate') if l.move_in_note == 'מיידית' else (t('card.move_in_flexible') if l.move_in_note == 'גמיש' else l.move_in_note))) }} 📅</span>{% endif %}
