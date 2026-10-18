@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+from zoneinfo import ZoneInfo
 import importlib.util
 import json
 import os
@@ -330,7 +331,7 @@ def test_account_shows_active_subscription_status_when_paid_until_is_future(clie
 
     config = _account_config(resp.text)
     assert config["hasAccess"] is True
-    assert config["paidUntil"] == paid_until.strftime("%d/%m/%Y")
+    assert config["paidUntil"] == paid_until.astimezone(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y")  # Israel time, 2026-10-19
 
 
 def test_account_shows_trial_subscription_status_when_trial_still_open(client):
@@ -342,7 +343,7 @@ def test_account_shows_trial_subscription_status_when_trial_still_open(client):
 
     config = _account_config(resp.text)
     assert config["paidUntil"] is None
-    assert config["trialEndsAt"] == trial_ends_at.strftime("%d/%m/%Y")
+    assert config["trialEndsAt"] == trial_ends_at.astimezone(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y")
 
 
 def test_account_shows_expired_subscription_status_when_no_trial_or_paid(client):
@@ -406,8 +407,8 @@ def test_account_config_carries_payment_history_when_payments_exist(client):
     assert resp.status_code == 200
     config = _account_config(resp.text)
     assert config["payments"] == [
-        {"plan": "monthly_subscription", "amountIls": "49.90", "date": "01/08/2026", "status": "paid"},
-        {"plan": "weekly", "amountIls": "15.00", "date": "15/08/2026", "status": "failed"},
+        {"plan": "monthly_subscription", "amountIls": "49.90", "date": "01.08.2026", "status": "paid"},
+        {"plan": "weekly", "amountIls": "15.00", "date": "15.08.2026", "status": "failed"},
     ]
 
 
@@ -589,3 +590,9 @@ def test_account_config_counts_the_days_of_access_left(client):
         with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
             config = _account_config(client.get("/account", params={"uid": 222}).text)
         assert config["daysLeft"] == expected
+
+
+def test_dates_are_shown_in_israel_time_not_utc():
+    # 2026-10-19 bug sweep: 22:30 UTC on 3.11 is already 4.11 in Israel; /account showed 03/11 while the bot said 04.11.
+    assert website_main._israel_date(dt.datetime(2026, 11, 3, 22, 30, tzinfo=dt.timezone.utc)) == "04.11.2026"
+    assert website_main._israel_date(None) == ""

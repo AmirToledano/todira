@@ -230,6 +230,23 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.filters["rooms_label"] = lambda rooms: f"{float(rooms):g}" if rooms else "?"
 templates.env.filters["ils"] = lambda amount: f"{int(amount):,} ₪"
 
+
+def _israel_date(value, fmt: str = "%d.%m.%Y") -> str:
+    """2026-10-19 (bug sweep): dates were printed in UTC, so an end time after 21:00/22:00 UTC showed the PREVIOUS day on
+    /account and /upgrade while the bot and the notice showed the right one (one page said 03.11, another 04.11). Every
+    shown date goes through here: Israel time, one format."""
+    if value is None:
+        return ""
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=dt.timezone.utc)
+        value = value.astimezone(ZoneInfo("Asia/Jerusalem"))
+    return value.strftime(fmt)
+
+
+templates.env.filters["il_date"] = _israel_date
+templates.env.filters["il_datetime"] = lambda value: _israel_date(value, "%d.%m.%Y %H:%M")
+
 LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year — a site-wide preference, not per-session
 
 # /contact form notification — reuses the bot's own TELEGRAM_BOT_TOKEN (no extra secret needed) to
@@ -2755,8 +2772,8 @@ def account(request: Request, uid: int | None = None):
                 # be silently dropped if it kept that name.
                 "displayIsOwner": _display_is_owner(request, user.telegram_user_id),
                 "hasAccess": access,
-                "trialEndsAt": user.trial_ends_at.strftime("%d/%m/%Y") if user.trial_ends_at else None,
-                "paidUntil": user.paid_until.strftime("%d/%m/%Y") if user.paid_until else None,
+                "trialEndsAt": _israel_date(user.trial_ends_at) or None,
+                "paidUntil": _israel_date(user.paid_until) or None,
                 # 2026-10-13 (owner): how many days of access are left, counting today (None when none is running).
                 "daysLeft": _days_left(max((d for d in (user.paid_until, user.trial_ends_at) if d is not None), default=None)),
                 "notificationsEnabled": notifications_enabled,
@@ -2773,7 +2790,7 @@ def account(request: Request, uid: int | None = None):
                         # of rendering it, same "apartments.txt" symptom as the earlier incident).
                         # str(), not float() — 49.90 must stay "49.90", not become 49.9.
                         "amountIls": str(payment.amount_ils),
-                        "date": (payment.paid_at or payment.created_at).strftime("%d/%m/%Y"),
+                        "date": _israel_date(payment.paid_at or payment.created_at),
                         "status": payment.status,
                     }
                     for payment in payments
@@ -2877,7 +2894,7 @@ def account_cancel_pass(
         lines = [
             "🔴 ביטול רכישה",
             f"חבילה: {_PASS_NAMES_HE.get(payment.plan, payment.plan)} (₪{payment.amount_ils}), "
-            f"נרכשה ב-{payment.paid_at.strftime('%d/%m/%Y')}",
+            f"נרכשה ב-{_israel_date(payment.paid_at)}",
             f"עברו {quote['elapsed_days']} ימים: מקוזז מחיר {covering} ₪{quote['covering_ils']} "
             f"ודמי ביטול ₪{quote['fee_ils']}",
             f"להחזיר בתקבול: ₪{quote['refund_ils']}" if quote["refund_ils"] > 0 else "לא מגיע החזר, רק לידיעה.",
