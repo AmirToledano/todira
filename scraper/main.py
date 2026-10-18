@@ -2420,8 +2420,20 @@ def run_once() -> dict[str, int]:
         per_source_delisting_input.clear()
         _release_freed_memory()
 
+        # 2026-10-18 (owner: "the bot sent me the same apartments many times"): measured live, most repeats were the
+        # same Yad2 ad posted again under a new id (~3 days apart), or a flat already sent from another site. Both
+        # were linked as duplicates only AFTER this run's alerts had gone out (the step at the end of the run), so
+        # the copy reached everyone first. Linking now, before the alerts, keeps a copy from ever being sent.
+        duplicates_linked_before_alerts = 0
+        try:
+            duplicates_linked_before_alerts = link_missed_duplicates(session) + link_same_site_reposts(session)
+        except Exception:
+            session.rollback()
+            logger.exception("linking duplicates before the alerts failed")
         new_listings = (
-            list(session.scalars(select(Listing).where(_col_in(Listing.id, new_ids))))
+            list(session.scalars(
+                select(Listing).where(_col_in(Listing.id, new_ids), Listing.duplicate_of_id.is_(None))
+            ))
             if new_ids
             else []
         )
@@ -2457,6 +2469,7 @@ def run_once() -> dict[str, int]:
             "homeless_backfilled": homeless_backfilled_count,
             "price_changes": len(price_change_events),
             "delisted": delisted_count,
+            "duplicates_linked_before_alerts": duplicates_linked_before_alerts,
             "errors": errors,
         }
         try:
