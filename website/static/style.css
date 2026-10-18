@@ -2266,3 +2266,12 @@ body.apt-modal-open { overflow: hidden; }
 .apt-detail-body .ld-how { font-size: .78rem; color: var(--text-muted); }
 .apt-detail-body .ld-how summary { cursor: pointer; font-weight: 600; color: var(--teal); width: fit-content; }
 .apt-detail-body .ld-how p { margin: 6px 0 0; line-height: 1.55; }
+
+/* 2026-10-19: /apartments notice for a viewer whose trial or pass ended (apartments.html). */
+.apt-access-notice {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+  margin: 0 0 14px; padding: 14px 16px; border-radius: 16px;
+  background: var(--teal-tint, #e6f4f2); border: 1px solid var(--teal, #0e8a82);
+}
+.apt-access-notice p { margin: 0; flex: 1 1 260px; font-weight: 600; line-height: 1.5; }
+.apt-access-notice .btn { white-space: nowrap; }

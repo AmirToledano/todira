@@ -937,7 +937,7 @@ def test_subscription_expired_notice_is_different_from_the_trial_one():
     caption = format_caption(
         make_listing(), has_access=False, upgrade_url="https://todira.app/upgrade?t=x", access_state="subscription_expired"
     )
-    assert "תוקף המנוי הסתיים" in caption
+    assert "תקופת המנוי הסתיימה" in caption and "לחדש מנוי בקישור למטה 👇" in caption  # owner's wording, 2026-10-19
     assert "תקופת הניסיון" not in caption
     assert 'href="https://todira.app/upgrade?t=x"' in caption
 
@@ -946,7 +946,7 @@ def test_expiry_notice_without_an_upgrade_url_is_plain_text():
     trial = format_caption(make_listing(), has_access=False, access_state="trial_ended")
     sub = format_caption(make_listing(), has_access=False, access_state="subscription_expired")
     assert "תקופת הניסיון הסתיימה" in trial and "<a" not in trial.split("\n\n")[-1]
-    assert "תוקף המנוי הסתיים" in sub
+    assert "תקופת המנוי הסתיימה" in sub
 
 
 def test_expiry_notice_is_translated():
@@ -957,7 +957,7 @@ def test_expiry_notice_is_translated():
         make_listing(), has_access=False, upgrade_url="https://x/u", access_state="subscription_expired", lang="en"
     )
     assert "free trial has ended" in trial_en
-    assert "subscription has expired" in sub_en
+    assert "subscription has ended" in sub_en
 
 
 def test_unknown_access_state_keeps_the_generic_lock_line():
@@ -1002,3 +1002,19 @@ def test_no_property_type_line_for_apartment_or_unknown():
 def test_property_type_line_is_translated():
     caption = format_caption(make_listing(property_type="private_house"), has_access=True, lang="en")
     assert "Type:" in caption and "Private house" in caption
+
+
+
+def test_a_listing_without_a_price_says_so():
+    # 2026-10-19 (owner): "מחיר: לא צוין" instead of leaving the price line out.
+    caption = format_caption(make_listing(price=None), has_access=True)
+    assert "לא צוין" in caption
+
+
+def test_the_expiry_notice_sits_above_its_own_link_line():
+    caption = format_caption(
+        make_listing(), has_access=False, upgrade_url="https://todira.app/upgrade?t=x", access_state="trial_ended"
+    )
+    notice_at = caption.index("תקופת הניסיון הסתיימה")
+    link_at = caption.index('href="https://todira.app/upgrade?t=x"')
+    assert notice_at < link_at and "👇" in caption[notice_at:link_at]

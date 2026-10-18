@@ -261,6 +261,9 @@ def _build_body_lines(
 
     if listing.price is not None:
         lines.append(f"💰 {bold(bot_text('card.price_label', lang))} {listing.price:,}₪")
+    else:
+        # 2026-10-19 (owner): say it, rather than leaving the price line out.
+        lines.append(f"💰 {bold(bot_text('card.price_label', lang))} {bot_text('card.price_unknown', lang)}")
 
     lines.append(f"🛏️ {bold(bot_text('card.rooms_label', lang))} {_format_rooms(listing.rooms)}")
 
@@ -508,10 +511,11 @@ def format_caption(
         # 2026-10-09 owner request: tell the person WHY the link is locked — the free trial ended vs. a paid
         # subscription that ended — instead of the one generic lock line.
         notice_key = _expired_notice_key(access_state)
+        notice = html.escape(bot_text(notice_key + "_notice", lang), quote=False)
         if upgrade_url:
-            footer_text = f'⚠️ <a href="{upgrade_url}">{bot_text(notice_key + "_link", lang)}</a>'
+            footer_text = f'{notice}\n\n🔗 <a href="{upgrade_url}">{bot_text(notice_key + "_link", lang)}</a>'
         else:
-            footer_text = f"⚠️ {bot_text(notice_key + '_plain', lang)}"
+            footer_text = notice
     elif upgrade_url:
         link_text = bot_text("card.upgrade_to_see_link", lang)
         footer_text = f'🔒 <a href="{upgrade_url}">{link_text}</a>'
