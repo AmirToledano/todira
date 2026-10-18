@@ -1,0 +1,78 @@
+name: Probe — Facebook groups feed in a real browser session (counts only)
+
+# 2026-10-19, owner approved ("מאשר דפדפן לפייסבוק"): get MANY Facebook group posts without getting the account blocked.
+# Today the scraper does plain page loads that show ~2 posts each. This runs scraper/facebook_browser/probe_feed.py ONCE in
+# a throwaway pod with headless Chromium: one groups-feed session, slow human-like scrolling, reading the posts
+# Facebook's own page receives. Counts only in this public log. Stops at a login/checkpoint page.
+on:
+  workflow_dispatch:
+    inputs:
+      scrolls:
+        description: how many scrolls
+        default: "12"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Run the probe pod
+        env:
+          SCROLLS: ${{ inputs.scrolls }}
+        run: |
+          kubectl delete pod fb-browser-probe -n todira --ignore-not-found --wait=true
+          kubectl delete configmap fb-browser-probe -n todira --ignore-not-found
+          kubectl create configmap fb-browser-probe -n todira --from-file=probe_feed.py=scraper/facebook_browser/probe_feed.py
+          cat <<PODYAML | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fb-browser-probe
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: probe
+                image: python:3.12-slim
+                resources:
+                  requests: { memory: "256Mi", cpu: "100m" }
+                  limits: { memory: "900Mi", cpu: "1" }
+                env:
+                  - name: PROBE_SCROLLS
+                    value: "$SCROLLS"
+                  - name: FACEBOOK_COOKIES
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: facebook-cookies
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    pip install --quiet --no-cache-dir playwright==1.48.0 >/dev/null 2>&1 &&
+                    python -m playwright install --with-deps chromium >/dev/null 2>&1 &&
+                    python -u /probe/probe_feed.py
+                volumeMounts:
+                  - name: probe
+                    mountPath: /probe
+            volumes:
+              - name: probe
+                configMap:
+                  name: fb-browser-probe
+          PODYAML
+          PHASE=""
+          for i in $(seq 1 120); do
+            PHASE=$(kubectl get pod fb-browser-probe -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 10
+          done
+          echo "pod phase: $PHASE"
+          kubectl logs fb-browser-probe -n todira | grep -v -i "cookie" | tail -40
+          kubectl delete pod fb-browser-probe -n todira --ignore-not-found
+          kubectl delete configmap fb-browser-probe -n todira --ignore-not-found
