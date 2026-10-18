@@ -350,28 +350,36 @@ _IN_APP_BROWSER_MARKERS = (
 
 
 def _in_app_browser(request: Request) -> dict | None:
-    """{"app", "open_url"} when the page is open inside a social app's built-in browser, else None. open_url
-    opens this page in the real browser: Chrome through an Android intent, Safari through iOS's x-safari-
-    scheme. A signed-in visitor's link goes through /auth/handoff so the new browser is signed in too."""
+    """{"app", "open_url", "copy_url", "platform"} when the page is open inside a social app's built-in browser, else
+    None. open_url opens this page in the real browser: Chrome through an Android intent, Safari through iOS's x-safari-
+    scheme. A signed-in visitor's link goes through /auth/handoff so the new browser is signed in too.
+
+    2026-10-18 (owner: "the open in browser button doesn't work"): Instagram's and Facebook's iOS browser ignore the
+    x-safari- scheme since 2025, and iOS has no supported way for a web page to leave an app's browser. So the button
+    also copies copy_url (the plain https link), and when the page is still showing a moment later the banner shows the
+    steps that always work: the app's own menu, or pasting the copied link into the browser."""
     user_agent = request.headers.get("user-agent", "")
     app_name = next((name for marker, name in _IN_APP_BROWSER_MARKERS if marker in user_agent), None)
     if app_name is None:
         return None
-    path = request.url.path
+    path = request.url.path + (f"?{request.url.query}" if request.url.query else "")
     user_id = request.session.get("user_id")
     if user_id is not None and _current_user_summary(request) is not None:
         path = f"/auth/handoff?h={generate_handoff_token(user_id)}&next={url_quote(path, safe='/')}"
     target = f"https://{request.url.netloc}{path}"
     if "Android" in user_agent:
+        platform = "android"
         open_url = (
             f"intent://{request.url.netloc}{path}#Intent;scheme=https;package=com.android.chrome;"
             f"S.browser_fallback_url={url_quote(target, safe='')};end"
         )
     elif any(device in user_agent for device in ("iPhone", "iPad", "iPod")):
+        platform = "ios"
         open_url = f"x-safari-{target}"
     else:
+        platform = "other"
         open_url = target
-    return {"app": app_name, "open_url": open_url}
+    return {"app": app_name, "open_url": open_url, "copy_url": target, "platform": platform}
 
 
 def _render(

@@ -105,3 +105,28 @@ def test_signed_in_visitor_gets_a_handoff_link_in_the_banner():
 
     assert 'href="x-safari-https://testserver/auth/handoff?h=' in resp.text
     assert "&amp;next=/terms" in resp.text
+
+
+def test_the_button_also_copies_the_plain_link_and_has_steps_for_when_the_app_blocks_it():
+    # 2026-10-18 (owner: "the open in browser button doesn't work"): Instagram on iPhone ignores x-safari-.
+    resp = _client().get("/apartments?listing=5", headers={"user-agent": INSTAGRAM_IPHONE})
+    assert 'var copyUrl = "https://testserver/apartments?listing=5";' in resp.text
+    assert 'href="x-safari-https://testserver/apartments?listing=5"' in resp.text
+    assert 'id="inapp-steps" hidden' in resp.text
+    assert "ספארי" in resp.text  # the iPhone steps, not Android's
+
+
+def test_android_gets_the_android_steps():
+    resp = _client().get("/terms", headers={"user-agent": INSTAGRAM_ANDROID})
+    assert "⋮" in resp.text and "ספארי" not in resp.text
+
+
+def test_the_handoff_link_keeps_the_page_query():
+    token = generate_handoff_token(7)
+    client = _client()
+    with patch.object(website_main, "get_session", _fake_get_session), patch.object(
+        website_main, "_current_user_summary", lambda request: {"telegram_user_id": None, "first_name": "x", "telegram_username": None}
+    ):
+        client.get(f"/auth/handoff?h={token}&next=/terms")
+        resp = client.get("/terms?lang=he", headers={"user-agent": INSTAGRAM_IPHONE})
+    assert "next=/terms%3Flang%3Dhe" in resp.text
