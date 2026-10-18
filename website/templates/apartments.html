@@ -245,12 +245,8 @@
       <a class="apt-contact-modal-upgrade-btn" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">
         {{ t('card.contact_modal_upgrade_btn') }}
       </a>
-      {# href set per-listing by the script below (openContactModal), from the .contact-actions
-         wrapper's own data-listing-url — see _listing_card.html's own comment on this element. #}
-      <a class="apt-contact-modal-view-original-btn" id="apt-contact-modal-view-original"
-         href="#" target="_blank" rel="noopener">
-        {{ t('card.contact_modal_view_original_btn') }}
-      </a>
+      {# 2026-10-18 (owner): the "view the original listing" link that used to sit here is gone - it reached the
+         poster without paying, so nobody upgraded. /go/{id} itself now needs access too (main.py). #}
     </div>
   </div>
 </div>
@@ -426,7 +422,6 @@
     var contactModal = document.getElementById('apt-contact-modal');
     var contactModalBackdrop = document.getElementById('apt-contact-modal-backdrop');
     var contactModalClose = document.getElementById('apt-contact-modal-close');
-    var contactModalViewOriginal = document.getElementById('apt-contact-modal-view-original');
     if (!grid || !modal || !modalBackdrop || !modalHeader || !modalBody) { return; }
     var hasDesktopSwap = !!(filterPaneInner && filterPaneDetail && filterPaneDetailBack && filterPaneDetailBody);
     function isDesktopViewport() {
@@ -711,16 +706,8 @@
     // button was clicked"). A has_access viewer's equivalent buttons are real <a> links straight to
     // the listing's own source instead (same _listing_card.html block), so they never reach this
     // handler at all.
-    function openContactModal(listingGoUrl) {
+    function openContactModal() {
       if (!contactModal) { return; }
-      if (contactModalViewOriginal) {
-        if (listingGoUrl) {
-          contactModalViewOriginal.href = listingGoUrl;
-          contactModalViewOriginal.hidden = false;
-        } else {
-          contactModalViewOriginal.hidden = true;
-        }
-      }
       contactModal.hidden = false;
     }
     function closeContactModal() {
@@ -763,8 +750,7 @@
     document.addEventListener('click', function (e) {
       var lockedBtn = e.target.closest('.contact-locked-btn');
       if (!lockedBtn) { return; }
-      var actionsEl = lockedBtn.closest('.contact-actions');
-      openContactModal(actionsEl ? actionsEl.getAttribute('data-listing-go-url') : null);
+      openContactModal();
     });
 
     // Close via the top header bar (tap/click anywhere on it, including its own ✕), the backdrop,
