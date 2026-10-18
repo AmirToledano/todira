@@ -55,8 +55,12 @@ jobs:
                 command: ["/bin/sh", "-c"]
                 args:
                   - |
-                    pip install --quiet --no-cache-dir playwright==1.48.0 >/dev/null 2>&1 &&
-                    python -m playwright install --with-deps chromium >/dev/null 2>&1 &&
+                    set -e
+                    echo "installing playwright"
+                    pip install --quiet --no-cache-dir playwright==1.48.0 > /tmp/pip.log 2>&1 || { tail -5 /tmp/pip.log; exit 1; }
+                    echo "installing chromium"
+                    python -m playwright install --with-deps chromium > /tmp/pw.log 2>&1 || { tail -15 /tmp/pw.log; exit 1; }
+                    echo "running the probe"
                     python -u /probe/probe_feed.py
                 volumeMounts:
                   - name: probe
