@@ -20,6 +20,9 @@ on:
       - "website/**"
       - "common/**"
       - "migrations/**"
+      # 2026-10-18: a test-only fix must run CI/CD too - the tests gate the deploy, so a commit that only repaired a
+      # failing test (#824) left four merged changes undeployed until something else touched app code.
+      - "tests/**"
       - "charts/todira/**"
       - "requirements*.txt"
       - "**/Dockerfile"
