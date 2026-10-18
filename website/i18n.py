@@ -172,12 +172,59 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "פתח בדפדפן", "en": "Open in browser", "ru": "Открыть в браузере",
         "fr": "Ouvrir dans le navigateur", "ar": "افتح في المتصفح",
     },
-    "inapp.fallback": {
-        "he": "לא נפתח? לחץ על ••• למעלה ובחר 'פתח בדפדפן'.",
-        "en": "Didn't open? Tap ••• at the top and choose 'Open in browser'.",
-        "ru": "Не открылось? Нажмите ••• вверху и выберите «Открыть в браузере».",
-        "fr": "Rien ne s'ouvre ? Touchez ••• en haut et choisissez « Ouvrir dans le navigateur ».",
-        "ar": "لم يُفتح؟ اضغط على ••• في الأعلى واختر «فتح في المتصفح».",
+    "inapp.fallback_ios": {
+        "he": "לא נפתח? לחץ על ••• למעלה ובחר לפתוח בדפדפן.",
+        "en": "Didn't open? Tap ••• at the top and choose to open in your browser.",
+        "ru": "Не открылось? Нажмите ••• вверху и выберите открыть в браузере.",
+        "fr": "Rien ne s'ouvre ? Touchez ••• en haut et choisissez d'ouvrir dans le navigateur.",
+        "ar": "لم يُفتح؟ اضغط على ••• في الأعلى واختر الفتح في المتصفح.",
+    },
+    "inapp.fallback_android": {
+        "he": "לא נפתח? לחץ על ⋮ למעלה ובחר לפתוח ב־Chrome.",
+        "en": "Didn't open? Tap ⋮ at the top and choose to open in Chrome.",
+        "ru": "Не открылось? Нажмите ⋮ вверху и выберите открыть в Chrome.",
+        "fr": "Rien ne s'ouvre ? Touchez ⋮ en haut et choisissez d'ouvrir dans Chrome.",
+        "ar": "لم يُفتح؟ اضغط على ⋮ في الأعلى واختر الفتح في Chrome.",
+    },
+    "inapp.fallback_other": {
+        "he": "לא נפתח? פתח את התפריט של האפליקציה ובחר לפתוח בדפדפן.",
+        "en": "Didn't open? Open the app's menu and choose to open in your browser.",
+        "ru": "Не открылось? Откройте меню приложения и выберите открыть в браузере.",
+        "fr": "Rien ne s'ouvre ? Ouvrez le menu de l'application et choisissez d'ouvrir dans le navigateur.",
+        "ar": "لم يُفتح؟ افتح قائمة التطبيق واختر الفتح في المتصفح.",
+    },
+    # 2026-10-18: shown when the button could not leave the app's browser (Instagram on iPhone ignores it).
+    "inapp.copied": {
+        "he": "✅ הקישור הועתק",
+        "en": "✅ Link copied",
+        "ru": "✅ Ссылка скопирована",
+        "fr": "✅ Lien copié",
+        "ar": "✅ تم نسخ الرابط",
+    },
+    "inapp.steps_ios": {
+        "he": "לחץ על ••• למעלה ובחר לפתוח בדפדפן. או פתח את ספארי, לחיצה ארוכה על שורת הכתובת והדבק.",
+        "en": "Tap ••• at the top and choose to open in your browser. Or open Safari, long-press the address bar and paste.",
+        "ru": "Нажмите ••• вверху и выберите открыть в браузере. Или откройте Safari, удерживайте адресную строку и вставьте.",
+        "fr": "Touchez ••• en haut et choisissez d'ouvrir dans le navigateur. Ou ouvrez Safari, appuyez longuement sur la "
+        "barre d'adresse et collez.",
+        "ar": "اضغط على ••• في الأعلى واختر الفتح في المتصفح. أو افتح Safari، اضغط مطولاً على شريط العنوان والصق.",
+    },
+    "inapp.steps_android": {
+        "he": "לחץ על ⋮ למעלה ובחר לפתוח ב־Chrome. או פתח את Chrome והדבק בשורת הכתובת.",
+        "en": "Tap ⋮ at the top and choose to open in Chrome. Or open Chrome and paste into the address bar.",
+        "ru": "Нажмите ⋮ вверху и выберите открыть в Chrome. Или откройте Chrome и вставьте в адресную строку.",
+        "fr": "Touchez ⋮ en haut et choisissez d'ouvrir dans Chrome. Ou ouvrez Chrome et collez dans la barre d'adresse.",
+        "ar": "اضغط على ⋮ في الأعلى واختر الفتح في Chrome. أو افتح Chrome والصق في شريط العنوان.",
+    },
+    "inapp.steps_other": {
+        "he": "פתח את התפריט של האפליקציה ובחר לפתוח בדפדפן, או הדבק את הקישור בדפדפן.",
+        "en": "Open the app's menu and choose to open in your browser, or paste the link into your browser.",
+        "ru": "Откройте меню приложения и выберите открыть в браузере, или вставьте ссылку в браузер.",
+        "fr": "Ouvrez le menu de l'application et choisissez d'ouvrir dans le navigateur, ou collez le lien dans le navigateur.",
+        "ar": "افتح قائمة التطبيق واختر الفتح في المتصفح، أو الصق الرابط في المتصفح.",
+    },
+    "inapp.copy_again": {
+        "he": "העתק שוב", "en": "Copy again", "ru": "Скопировать снова", "fr": "Copier à nouveau", "ar": "انسخ مجدداً",
     },
     "inapp.close": {"he": "סגור", "en": "Close", "ru": "Закрыть", "fr": "Fermer", "ar": "إغلاق"},
     "nav.liked": {

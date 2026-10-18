@@ -1334,6 +1334,10 @@ summary:focus-visible {
 .inapp-banner p { margin: 0; font-size: .9rem; line-height: 1.45; }
 .inapp-banner .inapp-open { padding: 9px 22px; font-size: .95rem; }
 .inapp-banner .inapp-fallback { font-size: .75rem; opacity: .8; }
+.inapp-banner .inapp-fallback[hidden], .inapp-banner .inapp-steps[hidden] { display: none; }
+.inapp-banner .inapp-steps { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 420px; }
+.inapp-banner .inapp-steps .inapp-copied { font-weight: 700; }
+.inapp-banner .inapp-copy { padding: 6px 16px; font-size: .85rem; color: #fff8ea !important; border-color: #fff8ea; }
 .inapp-banner .inapp-close {
   position: absolute; top: 8px; inset-inline-end: 10px; background: none; border: 0; color: inherit;
   font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 4px 8px;

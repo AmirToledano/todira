@@ -109,18 +109,59 @@
   {% if in_app_browser %}
   <div class="inapp-banner" id="inapp-banner" role="region" aria-label="{{ t('inapp.button') }}">
     <p>{{ t('inapp.text', app=in_app_browser.app) }}</p>
-    <a class="btn gold inapp-open" href="{{ in_app_browser.open_url }}">{{ t('inapp.button') }}</a>
-    <p class="inapp-fallback">{{ t('inapp.fallback') }}</p>
+    <a class="btn gold inapp-open" id="inapp-open" href="{{ in_app_browser.open_url }}">{{ t('inapp.button') }}</a>
+    <p class="inapp-fallback" id="inapp-hint">{{ t('inapp.fallback_' ~ in_app_browser.platform) }}</p>
+    <div class="inapp-steps" id="inapp-steps" hidden>
+      <p class="inapp-copied">{{ t('inapp.copied') }}</p>
+      <p>{{ t('inapp.steps_' ~ in_app_browser.platform) }}</p>
+      <button type="button" class="btn outline inapp-copy" id="inapp-copy">{{ t('inapp.copy_again') }}</button>
+    </div>
     <button type="button" class="inapp-close" id="inapp-close" aria-label="{{ t('inapp.close') }}">×</button>
   </div>
   <script>
     (function () {
       var banner = document.getElementById('inapp-banner');
+      var copyUrl = {{ in_app_browser.copy_url | tojson }};
       try { if (sessionStorage.getItem('inappBannerClosed') === '1') { banner.hidden = true; } } catch (e) {}
       document.getElementById('inapp-close').addEventListener('click', function () {
         banner.hidden = true;
         try { sessionStorage.setItem('inappBannerClosed', '1'); } catch (e) {}
       });
+      // 2026-10-18: Instagram on iPhone ignores the "open in Safari" link. The tap also copies the plain link (inside
+      // the tap, the only moment iOS allows it), and if the page is still showing a moment later, the steps that
+      // always work appear: the app's own menu, or pasting into the browser.
+      function copyLink() {
+        var done = false;
+        try {
+          var area = document.createElement('textarea');
+          area.value = copyUrl;
+          area.setAttribute('readonly', '');
+          area.style.position = 'fixed';
+          area.style.opacity = '0';
+          document.body.appendChild(area);
+          area.select();
+          area.setSelectionRange(0, copyUrl.length);
+          done = document.execCommand('copy');
+          document.body.removeChild(area);
+        } catch (e) {}
+        if (!done && navigator.clipboard && window.isSecureContext) {
+          try { navigator.clipboard.writeText(copyUrl).catch(function () {}); } catch (e) {}
+        }
+      }
+      var left = false;
+      function markLeft() { if (document.visibilityState === 'hidden') { left = true; } }
+      document.addEventListener('visibilitychange', markLeft);
+      window.addEventListener('pagehide', function () { left = true; });
+      document.getElementById('inapp-open').addEventListener('click', function () {
+        copyLink();
+        left = false;
+        setTimeout(function () {
+          if (left) { return; }
+          document.getElementById('inapp-hint').hidden = true;
+          document.getElementById('inapp-steps').hidden = false;
+        }, 1200);
+      });
+      document.getElementById('inapp-copy').addEventListener('click', copyLink);
     })();
   </script>
   {% endif %}
