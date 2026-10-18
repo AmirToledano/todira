@@ -339,6 +339,19 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "D'accord ! 🙂",
         "ar": "حسناً! 🙂",
     },
+    # 2026-10-18: the one-time message bot/announce_trial_extension.py sends (trial 3 -> 10 days, +7 for everyone).
+    "trial_gift.telegram": {
+        "he": "🎁 מתנה מטודירה!\nהארכנו לך את תקופת הניסיון ב־7 ימים נוספים, ויש לך עכשיו גישה מלאה עד {date} 🙌\n"
+        "אני ממשיך לחפש ושולח לך כל דירה חדשה שמתאימה לחיפוש שלך.\nלכל הדירות שמתאימות לך: /apartments",
+        "en": "🎁 A gift from Todira!\nWe extended your free trial by 7 more days, so you now have full access until {date} 🙌\n"
+        "I keep searching and send you every new apartment that matches your search.\nAll your matches: /apartments",
+        "ru": "🎁 Подарок от Todira!\nМы продлили ваш пробный период ещё на 7 дней: полный доступ до {date} 🙌\n"
+        "Я продолжаю искать и присылаю каждую новую подходящую квартиру.\nВсе подходящие квартиры: /apartments",
+        "fr": "🎁 Un cadeau de Todira !\nNous avons prolongé ton essai de 7 jours : accès complet jusqu'au {date} 🙌\n"
+        "Je continue à chercher et je t'envoie chaque nouvel appartement qui correspond.\nToutes tes annonces : /apartments",
+        "ar": "🎁 هدية من Todira!\nمددنا فترتك التجريبية 7 أيام إضافية، ولديك الآن وصول كامل حتى {date} 🙌\n"
+        "أواصل البحث وأرسل لك كل شقة جديدة تناسب بحثك.\nكل الشقق المناسبة لك: /apartments",
+    },
     "contact_fallback.help_escalated": {
         "he": "תודה שכתבת! ההודעה שלך התקבלה ואנחנו נחזור אליך בהקדם 🙏\n\nלחיפוש דירות: /start",
         "en": "Thanks for writing! Your message was received and we'll get back to you soon 🙏\n\n"

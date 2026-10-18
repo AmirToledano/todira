@@ -318,9 +318,10 @@ def _current_user_summary(request: Request) -> dict | None:
         return None
     with get_session() as session:
         row = session.execute(
-            select(User.telegram_user_id, User.first_name, User.telegram_username).where(
-                User.id == user_id
-            )
+            select(
+                User.telegram_user_id, User.first_name, User.telegram_username, User.created_at,
+                User.trial_ends_at, User.paid_until, User.free_access_granted,
+            ).where(User.id == user_id)
         ).first()
     if row is None:
         return None
@@ -328,7 +329,33 @@ def _current_user_summary(request: Request) -> dict | None:
         "telegram_user_id": row.telegram_user_id,
         "first_name": row.first_name,
         "telegram_username": row.telegram_username,
+        "trial_gift_until": _trial_gift_until(row),
     }
+
+
+# 2026-10-18 (owner): the free trial went from 3 to 10 days, and everyone already registered got 7 more days
+# (migration 0030). Telegram users hear it from the bot (bot/announce_trial_extension.py); signed-in visitors of the
+# site - including Google-only accounts the bot can't reach - see a notice with their new end date until this date.
+TRIAL_GIFT_CUTOFF = dt.datetime(2026, 10, 19, 0, 0, tzinfo=dt.timezone.utc)  # accounts created before the change
+TRIAL_GIFT_NOTICE_UNTIL = dt.datetime(2026, 10, 29, tzinfo=dt.timezone.utc)
+
+
+def _trial_gift_until(row) -> str | None:
+    """The new trial end date (dd.mm.yyyy, Israel time) to show in the notice, or None: only for an account created
+    before the change, still in its trial, without a paid pass or free access, and only until the notice period ends."""
+    now = dt.datetime.now(dt.timezone.utc)
+    created_at = getattr(row, "created_at", None)
+    trial_ends_at = getattr(row, "trial_ends_at", None)
+    paid_until = getattr(row, "paid_until", None)
+    if (
+        now >= TRIAL_GIFT_NOTICE_UNTIL
+        or not isinstance(created_at, dt.datetime) or created_at >= TRIAL_GIFT_CUTOFF
+        or not isinstance(trial_ends_at, dt.datetime) or trial_ends_at <= now
+        or (isinstance(paid_until, dt.datetime) and paid_until > now)
+        or getattr(row, "free_access_granted", False) is True
+    ):
+        return None
+    return trial_ends_at.astimezone(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y")
 
 
 # 2026-10-17 (owner, launch day: the site is linked from his Instagram bio). Apps that open links in their own
@@ -1807,7 +1834,7 @@ def _effective_access(request: Request, user: User) -> bool:
 
 def _effective_paid_access(request: Request, user: User) -> bool:
     """Same preview-override pattern as _effective_access, but backed by has_paid_access — a real
-    subscription only, the 3-day trial doesn't count (2026-09-27 owner decision, see that
+    subscription only, the free trial doesn't count (2026-09-27 owner decision, see that
     function's own docstring). Used only for the listing card's contact button; every other access-gated surface keeps using _effective_access
     above, unchanged."""
     if _preview_as_free(request):
@@ -3157,7 +3184,7 @@ def onboarding_notifications(request: Request, uid: int | None = None):
 @app.get("/onboarding/trial")
 def onboarding_trial(request: Request, uid: int | None = None):
     """Step 3 of 3 — the free-trial-activated confirmation screen. No action needed from the user
-    and nothing to activate here: every account already gets trial_ends_at = now() + 3 days
+    and nothing to activate here: every account already gets trial_ends_at = now() + 10 days
     automatically at creation (models.py's own server_default), matching dorin's own "שבוע פרימיום
     במתנה" auto-activation (dorin: 7 days; this project: 3, same mechanism, already live well
     before this onboarding flow existed) — this screen is purely the celebratory confirmation dorin
