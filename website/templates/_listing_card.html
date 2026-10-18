@@ -72,7 +72,15 @@
            (there's no per-photo caption data at all — a real Yad2/scraper limitation, not a
            choice), so a screen-reader user at least learns what apartment the gallery is of
            instead of getting nothing. #}
+        {# 2026-10-18 (launch: "/apartments crashes on a fast scroll", Safari "a problem repeatedly occurred", iOS
+           Chrome "can't open this page" = the page ran out of memory): every card decoded up to 8 full-size photos
+           and nothing was ever released while scrolling. Only the first photo loads now; the rest load on the
+           card's first swipe, and photos far off-screen are released (base.html's cover-photo script). #}
+        {% if loop.first %}
         <img class="cover-slide" src="{{ img }}" loading="lazy" decoding="async" alt="{{ _photo_alt }}">
+        {% else %}
+        <img class="cover-slide" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="{{ img }}" decoding="async" alt="{{ _photo_alt }}">
+        {% endif %}
         {% endfor %}
       {% else %}
         {# No real photos for this listing — a single branded illustration instead: Todi as a
