@@ -572,10 +572,11 @@
     }
 
     // 2026-10-14 owner request ("when you click a listing the page itself should be rich and full, not look exactly
-    // like the card"): loads main.py's listing_details fragment (templates/_listing_details.html) and puts its three
-    // slots into the view built from the card above: "top" (area price, property facts, amenities) replaces the
-    // card's chip row, "middle" (where else it was posted, timeline, map) goes before the contact buttons, "end"
-    // (similar listings) goes last. If the request fails the card-based view simply stays as it is.
+    // like the card"): loads main.py's listing_details fragment (templates/_listing_details.html) and puts its
+    // slots into the view built from the card above: "top" (property facts) replaces the card's chip row,
+    // "after-desc" (features, area price) goes right after the description, "middle" (where else it was posted,
+    // timeline, map) goes before the contact buttons, "end" (similar listings) goes last. If the request fails the
+    // card-based view simply stays as it is.
     var richDetailsCache = {};
     function initDetailMap(container) {
       var mapEl = container.querySelector('.ld-map');
@@ -610,14 +611,18 @@
       var holder = document.createElement('div');
       holder.innerHTML = html;
       var top = holder.querySelector('[data-slot="top"]');
+      var afterDesc = holder.querySelector('[data-slot="after-desc"]');
       var middle = holder.querySelector('[data-slot="middle"]');
       var end = holder.querySelector('[data-slot="end"]');
       var body = clone.querySelector('.listing-body');
-      if (!body || !top || !middle || !end) { return; }
+      if (!body || !top || !afterDesc || !middle || !end) { return; }
       var loadingEl = clone.querySelector('.ld-loading');
       if (loadingEl) { loadingEl.remove(); }
       var badges = clone.querySelector('.feature-badges');
       if (badges) { badges.replaceWith(top); } else { body.prepend(top); }
+      // 2026-10-18 (owner): the description right under the property details, then the features and the area price.
+      var desc = body.querySelector('.listing-desc');
+      if (desc) { desc.after(afterDesc); } else { top.after(afterDesc); }
       // The sources and timeline sections replace the two plain lines buildDetailContent added under the footer.
       clone.querySelectorAll('.apt-modal-also-on, .apt-modal-posted-on').forEach(function (el) { el.remove(); });
       var contact = body.querySelector('.contact-actions') || body.querySelector('.listing-footer');
