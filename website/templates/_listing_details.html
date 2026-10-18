@@ -12,6 +12,52 @@
 }.get(l.property_type) %}
 <div class="ld-fragment">
 <div class="ld-slot" data-slot="top">
+
+  <section class="ld-section">
+    <h3 class="apt-modal-section-heading">{{ t('details.facts_title') }}</h3>
+    <dl class="ld-facts">
+      {% if _type_label %}<div class="ld-fact"><dt>🏠 {{ t('details.property_type') }}</dt><dd>{{ _type_label }}</dd></div>{% endif %}
+      {% if _rooms %}<div class="ld-fact"><dt>🛏️ {{ t('details.rooms') }}</dt><dd>{{ _rooms }}</dd></div>{% endif %}
+      {% if l.size_sqm %}<div class="ld-fact"><dt>📐 {{ t('details.size') }}</dt><dd>{{ t('details.size_value', n=l.size_sqm) }}</dd></div>{% endif %}
+      {% if l.floor is not none %}
+      {% set _floor = t('details.floor_ground') if l.floor == 0 else l.floor %}
+      <div class="ld-fact"><dt>🏢 {{ t('details.floor') }}</dt><dd>{% if l.floor_total %}{{ t('details.floor_of', floor=_floor, total=l.floor_total) }}{% else %}{{ _floor }}{% endif %}</dd></div>
+      {% endif %}
+      {% if price_per_sqm %}<div class="ld-fact"><dt>💰 {{ t('details.price_per_sqm') }}</dt><dd>{{ "{:,}".format(price_per_sqm) }} ₪</dd></div>{% endif %}
+      {% if l.move_in_date %}
+      <div class="ld-fact"><dt>📅 {{ t('details.move_in') }}</dt><dd>{{ l.move_in_date.strftime('%d.%m.%Y') }}</dd></div>
+      {% elif l.move_in_note %}
+      <div class="ld-fact"><dt>📅 {{ t('details.move_in') }}</dt><dd>{{ t('card.move_in_immediate') if l.move_in_note == 'מיידית' else (t('card.move_in_flexible') if l.move_in_note == 'גמיש' else l.move_in_note) }}</dd></div>
+      {% endif %}
+      {% if l.is_broker_listing is not none %}<div class="ld-fact"><dt>🤝 {{ t('details.listed_by') }}</dt><dd>{{ t('details.listed_by_broker') if l.is_broker_listing else t('details.listed_by_private') }}</dd></div>{% endif %}
+      {% if l.furniture in ('furnished', 'unfurnished') %}<div class="ld-fact"><dt>🛋️ {{ t('details.furniture') }}</dt><dd>{{ t('details.' ~ l.furniture) }}</dd></div>{% endif %}
+      {% if l.safe_room_type in ('safe_room', 'building_shelter', 'none') %}
+      <div class="ld-fact"><dt>🛡️ {{ t('details.safe_room') }}</dt><dd>{{ {'safe_room': t('details.safe_room_in_flat'), 'building_shelter': t('details.building_shelter'), 'none': t('details.no_shelter')}[l.safe_room_type] }}</dd></div>
+      {% endif %}
+    </dl>
+  </section>
+
+</div>
+
+{# 2026-10-18 (owner): property details, then the description right under them, then the features, and the
+   price-for-the-area comparison lower down. "top" holds the details (before the description), this slot goes
+   right after the description. #}
+<div class="ld-slot" data-slot="after-desc">
+  {% set _amenities = [
+    (l.has_parking, t('card.amenity_parking')), (l.has_elevator, t('card.amenity_elevator')),
+    (l.has_balcony, t('card.amenity_balcony')), (l.pets_allowed, t('card.amenity_pets')),
+    (l.is_renovated, t('card.amenity_renovated')), (l.is_roommate_friendly, t('details.amenity_roommates')),
+  ] | selectattr(0, 'ne', none) | list %}
+  {% if _amenities %}
+  <section class="ld-section">
+    <h3 class="apt-modal-section-heading">{{ t('details.amenities_title') }}</h3>
+    <ul class="ld-amenities">
+      {% for has_it, label in _amenities %}
+      <li class="ld-amenity {{ 'yes' if has_it else 'no' }}"><span class="ld-amenity-mark" aria-label="{{ t('details.amenity_yes') if has_it else t('details.amenity_no') }}">{{ '✓' if has_it else '✕' }}</span>{{ label }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
   {% if area %}
   {% set _pct = area.diff_pct if area.diff_pct >= 0 else -area.diff_pct %}
   {% set _kind = 'typical' if _pct < 5 else ('cheaper' if area.diff_pct < 0 else 'pricier') %}
@@ -44,46 +90,6 @@
       <summary>{{ t('details.area_how_title') }}</summary>
       <p>{{ t('details.area_how_body', n=area.count, kind=_peer_kind, area=area.area) }}</p>
     </details>
-  </section>
-  {% endif %}
-
-  <section class="ld-section">
-    <h3 class="apt-modal-section-heading">{{ t('details.facts_title') }}</h3>
-    <dl class="ld-facts">
-      {% if _type_label %}<div class="ld-fact"><dt>🏠 {{ t('details.property_type') }}</dt><dd>{{ _type_label }}</dd></div>{% endif %}
-      {% if _rooms %}<div class="ld-fact"><dt>🛏️ {{ t('details.rooms') }}</dt><dd>{{ _rooms }}</dd></div>{% endif %}
-      {% if l.size_sqm %}<div class="ld-fact"><dt>📐 {{ t('details.size') }}</dt><dd>{{ t('details.size_value', n=l.size_sqm) }}</dd></div>{% endif %}
-      {% if l.floor is not none %}
-      {% set _floor = t('details.floor_ground') if l.floor == 0 else l.floor %}
-      <div class="ld-fact"><dt>🏢 {{ t('details.floor') }}</dt><dd>{% if l.floor_total %}{{ t('details.floor_of', floor=_floor, total=l.floor_total) }}{% else %}{{ _floor }}{% endif %}</dd></div>
-      {% endif %}
-      {% if price_per_sqm %}<div class="ld-fact"><dt>💰 {{ t('details.price_per_sqm') }}</dt><dd>{{ "{:,}".format(price_per_sqm) }} ₪</dd></div>{% endif %}
-      {% if l.move_in_date %}
-      <div class="ld-fact"><dt>📅 {{ t('details.move_in') }}</dt><dd>{{ l.move_in_date.strftime('%d.%m.%Y') }}</dd></div>
-      {% elif l.move_in_note %}
-      <div class="ld-fact"><dt>📅 {{ t('details.move_in') }}</dt><dd>{{ t('card.move_in_immediate') if l.move_in_note == 'מיידית' else (t('card.move_in_flexible') if l.move_in_note == 'גמיש' else l.move_in_note) }}</dd></div>
-      {% endif %}
-      {% if l.is_broker_listing is not none %}<div class="ld-fact"><dt>🤝 {{ t('details.listed_by') }}</dt><dd>{{ t('details.listed_by_broker') if l.is_broker_listing else t('details.listed_by_private') }}</dd></div>{% endif %}
-      {% if l.furniture in ('furnished', 'unfurnished') %}<div class="ld-fact"><dt>🛋️ {{ t('details.furniture') }}</dt><dd>{{ t('details.' ~ l.furniture) }}</dd></div>{% endif %}
-      {% if l.safe_room_type in ('safe_room', 'building_shelter', 'none') %}
-      <div class="ld-fact"><dt>🛡️ {{ t('details.safe_room') }}</dt><dd>{{ {'safe_room': t('details.safe_room_in_flat'), 'building_shelter': t('details.building_shelter'), 'none': t('details.no_shelter')}[l.safe_room_type] }}</dd></div>
-      {% endif %}
-    </dl>
-  </section>
-
-  {% set _amenities = [
-    (l.has_parking, t('card.amenity_parking')), (l.has_elevator, t('card.amenity_elevator')),
-    (l.has_balcony, t('card.amenity_balcony')), (l.pets_allowed, t('card.amenity_pets')),
-    (l.is_renovated, t('card.amenity_renovated')), (l.is_roommate_friendly, t('details.amenity_roommates')),
-  ] | selectattr(0, 'ne', none) | list %}
-  {% if _amenities %}
-  <section class="ld-section">
-    <h3 class="apt-modal-section-heading">{{ t('details.amenities_title') }}</h3>
-    <ul class="ld-amenities">
-      {% for has_it, label in _amenities %}
-      <li class="ld-amenity {{ 'yes' if has_it else 'no' }}"><span class="ld-amenity-mark" aria-label="{{ t('details.amenity_yes') if has_it else t('details.amenity_no') }}">{{ '✓' if has_it else '✕' }}</span>{{ label }}</li>
-      {% endfor %}
-    </ul>
   </section>
   {% endif %}
 </div>

@@ -1226,11 +1226,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "لا يوجد",
     },
     "details.amenities_title": {
-        "he": "מה יש ומה אין",
-        "en": "What it has",
-        "ru": "Что есть",
+        "he": "פיצ׳רים בדירה",
+        "en": "Features",
+        "ru": "Удобства в квартире",
         "fr": "Équipements",
-        "ar": "ما المتوفر",
+        "ar": "مزايا الشقة",
     },
     "details.amenity_roommates": {
         "he": "מתאימה לשותפים",

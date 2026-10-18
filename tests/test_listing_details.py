@@ -208,7 +208,7 @@ def test_details_survives_a_listing_with_almost_nothing_known(client):
     resp = _get_details(client, bare)
 
     assert resp.status_code == 200
-    assert "מה יש ומה אין" not in resp.text
+    assert "פיצ׳רים בדירה" not in resp.text
     assert 'class="ld-map"' not in resp.text
     assert "📍 תל אביב יפו" in resp.text
 
@@ -303,3 +303,16 @@ def test_area_comparison_only_counts_real_peers():
     shared = _MedianSession((Decimal("1500"), 5))
     website_main._area_price_comparison(shared, _listing(property_type="shared_room", neighborhood=None, size_sqm=None))
     assert "listings.property_type = 'shared_room'" in _sql(shared.statements[0])
+
+
+def test_details_order_facts_then_features_then_area_price(client):
+    # 2026-10-18 (owner): property details first (the description goes right under them, placed by apartments.html),
+    # then the features, renamed, and the price-for-the-area comparison lower down.
+    area = SimpleNamespace(diff_pct=-12.0, median=6800, count=40, area="לב העיר", sqm_median=None, solid=True)
+    html = _get_details(client, _listing(), area=area).text
+
+    top = html.index('data-slot="top"')
+    after_desc = html.index('data-slot="after-desc"')
+    middle = html.index('data-slot="middle"')
+    assert top < html.index("פרטי הנכס") < after_desc
+    assert after_desc < html.index("פיצ׳רים בדירה") < html.index("ld-insight") < middle
