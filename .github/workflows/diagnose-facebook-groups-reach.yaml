@@ -1,0 +1,87 @@
+name: Diagnose — how many joined Facebook groups the scraper could read (read-only, counts only)
+
+# 2026-10-18 owner: "Facebook brings few listings although I joined many groups". The groups scraper reads only the
+# group ids listed in values.yaml facebookGroups.trackedIds (one group today) and only from the home feed. This does
+# three plain page loads with the dedicated account's cookie - the home feed, the groups feed and the "your groups"
+# list - and prints counts only: posts found, distinct groups among them, how many are already tracked, and how many
+# joined groups the list page names. Never a name, id or post text.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Three page loads, a few seconds apart
+        run: |
+          COOKIE=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.facebook-cookies}' | base64 -d)
+          echo "::add-mask::$COOKIE"
+          TRACKED=$(kubectl get cronjob -n todira -l app=todira-facebook-scraper -o json \
+            | jq -r '[.items[].spec.jobTemplate.spec.template.spec.containers[].env[]? | select(.name|test("FACEBOOK_GROUPS.*TRACKED")) | .value] | join(",")')
+          echo "$TRACKED" > /tmp/tracked.txt
+          n=0
+          for URL in "https://www.facebook.com/" "https://www.facebook.com/groups/feed/" "https://www.facebook.com/groups/joins/?nav_source=tab"; do
+            n=$((n+1))
+            curl -sS --compressed -L --max-redirs 5 -o /tmp/page$n.html -w "page $n: http %{http_code}, %{size_download} bytes\n" --max-time 30 \
+              -H "Cookie: $COOKIE" \
+              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+              -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" \
+              -H "Sec-Fetch-Site: none" -H "Sec-Fetch-Mode: navigate" -H "Sec-Fetch-Dest: document" \
+              -H "sec-ch-ua: \"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"" \
+              -H "sec-ch-ua-mobile: ?0" -H "sec-ch-ua-platform: \"Windows\"" \
+              "$URL" || echo "page $n: fetch failed"
+            sleep $((6 + RANDOM % 6))
+          done
+
+      - name: Counts
+        run: |
+          python3 - <<'PY'
+          import json, re
+          tracked = {g for g in open('/tmp/tracked.txt').read().replace(' ', '').split(',') if g}
+          print(f"groups tracked in the config: {len(tracked)}")
+          def blocks(html):
+              for b in re.findall(r'<script type="application/json"[^>]*>(.*?)</script>', html, re.S):
+                  b = b.strip()
+                  try:
+                      yield json.loads(b)
+                  except Exception:
+                      continue
+          def walk(o, out):
+              if isinstance(o, dict):
+                  if o.get('__typename') == 'Story' and o.get('post_id'):
+                      fb = o.get('feedback') if isinstance(o.get('feedback'), dict) else {}
+                      g = fb.get('associated_group') if isinstance(fb.get('associated_group'), dict) else {}
+                      out.append((o['post_id'], g.get('id')))
+                  for v in o.values():
+                      walk(v, out)
+              elif isinstance(o, list):
+                  for v in o:
+                      walk(v, out)
+          names = {1: 'home feed', 2: 'groups feed', 3: 'your-groups list'}
+          for n in (1, 2, 3):
+              try:
+                  html = open(f'/tmp/page{n}.html', encoding='utf-8', errors='replace').read()
+              except FileNotFoundError:
+                  print(f"{names[n]}: no page"); continue
+              login_wall = ('id="login_form"' in html) or ('/checkpoint/' in html)
+              stories = []
+              for b in blocks(html):
+                  walk(b, stories)
+              posts = {p for p, _ in stories}
+              groups = {g for _, g in stories if g}
+              linked_groups = set(re.findall(r'facebook\.com\\?/groups\\?/(\d{6,})', html)) | set(re.findall(r'"/groups/(\d{6,})/"', html))
+              print(f"{names[n]}: login wall={login_wall}, posts={len(posts)}, groups among posts={len(groups)}, "
+                    f"of them tracked={len(groups & tracked)}, distinct group links on the page={len(linked_groups)}, "
+                    f"tracked among links={len(linked_groups & tracked)}")
+          PY
