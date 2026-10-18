@@ -18,7 +18,7 @@ import httpx
 from PIL import Image
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
-from telegram.error import RetryAfter, TelegramError
+from telegram.error import Forbidden, RetryAfter, TelegramError
 
 from todira_common.access import ACCESS_SUBSCRIPTION_EXPIRED, ACCESS_TRIAL_ENDED
 from todira_common.bot_strings import BOT_STRINGS, bot_text
@@ -626,12 +626,28 @@ async def send_listing_card(
                 chat_id,
             )
             return False
+        except Forbidden:
+            # The person blocked the bot (or deleted their account). Not an error of ours - see BLOCKED.
+            logger.warning("Chat %s can't be reached (blocked the bot) - listing %s not sent", chat_id, listing.id)
+            return BLOCKED
         except TelegramError:
             logger.exception(
                 "Failed to send listing card to chat %s for listing %s", chat_id, listing.id
             )
             return False
     return False
+
+
+class _Blocked:
+    """send_listing_card's result when Telegram refuses the chat itself (2026-10-18: one such chat failed on every
+    scraper run, and was offered the same listings again each time since nothing marked it). Falsy like any failed
+    send; the notifier tells it apart with `is BLOCKED` and pauses that user."""
+
+    def __bool__(self) -> bool:
+        return False
+
+
+BLOCKED = _Blocked()
 
 
 def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboardMarkup:
