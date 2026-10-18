@@ -1,0 +1,73 @@
+name: Diagnose — why the owner got the same apartment several times (read-only)
+
+# 2026-10-18 owner report: with a "all rentals" filter the bot sent the same apartments many times. One listing id can
+# only be sent once (sent_notifications is unique per user + listing + reason), so repeats must be DIFFERENT listing
+# rows of the same flat. This groups the owner's alerts of the last 3 days by what the card shows (city, street,
+# rooms, price) and counts how the repeated rows relate: same site or another, linked as a duplicate or not, a price
+# change alert, how far apart. Read-only SELECTs; prints counts only - no address, id, or text. The owner's id is read
+# from the cluster secret and never printed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Counts
+        run: |
+          OWNER=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$OWNER"
+          [ -n "$OWNER" ] || { echo "no owner id in the secret"; exit 1; }
+          cat > /tmp/q.sql <<'SQL'
+          SET statement_timeout = '240s';
+          CREATE TEMP TABLE o AS
+            SELECT s.reason, s.sent_at, l.id, l.source, l.city, l.street, l.rooms, l.price, l.floor, l.size_sqm,
+                   l.duplicate_of_id, l.external_id, l.first_seen_at, l.description
+            FROM sent_notifications s JOIN users u ON u.id = s.user_id JOIN listings l ON l.id = s.listing_id
+            WHERE u.telegram_user_id::text = :'owner' AND s.sent_at > now() - interval '3 days';
+          \echo '== 1. alerts to the owner in the last 3 days, by reason and site'
+          SELECT reason, source, count(*) FROM o GROUP BY 1, 2 ORDER BY 3 DESC;
+          \echo '== 2. alerts per day'
+          SELECT date_trunc('day', sent_at)::date AS day, count(*) FROM o GROUP BY 1 ORDER BY 1;
+          \echo '== 3. NEW alerts whose card looks like another NEW alert (same city + street + rooms + price): groups and extra cards'
+          SELECT count(*) AS groups, sum(n - 1) AS extra_cards, max(n) AS biggest_group
+          FROM (SELECT city, street, rooms, price, count(*) AS n FROM o
+                WHERE reason = 'new' AND street IS NOT NULL GROUP BY 1, 2, 3, 4 HAVING count(*) > 1) g;
+          \echo '== 4. those repeats: same site or not, and is either row linked as a duplicate'
+          SELECT CASE WHEN a.source = b.source THEN 'same site' ELSE 'other site' END AS kind,
+                 (a.duplicate_of_id IS NOT NULL OR b.duplicate_of_id IS NOT NULL) AS linked,
+                 (a.description IS NOT DISTINCT FROM b.description) AS same_text,
+                 (a.floor IS NOT DISTINCT FROM b.floor) AS same_floor,
+                 count(*) AS pairs
+          FROM o a JOIN o b ON a.id < b.id AND a.reason = 'new' AND b.reason = 'new' AND a.city = b.city
+                           AND a.street = b.street AND a.rooms IS NOT DISTINCT FROM b.rooms AND a.price = b.price
+          GROUP BY 1, 2, 3, 4 ORDER BY 5 DESC;
+          \echo '== 5. same-site repeats by site, and hours between the two first_seen'
+          SELECT a.source, count(*) AS pairs,
+                 round(avg(abs(extract(epoch FROM b.first_seen_at - a.first_seen_at)) / 3600)::numeric, 1) AS avg_hours_apart
+          FROM o a JOIN o b ON a.id < b.id AND a.reason = 'new' AND b.reason = 'new' AND a.source = b.source
+                           AND a.city = b.city AND a.street = b.street AND a.rooms IS NOT DISTINCT FROM b.rooms
+                           AND a.price = b.price
+          GROUP BY 1 ORDER BY 2 DESC;
+          \echo '== 6. repeats by same text only (any site, street may be missing): pairs by site pair'
+          SELECT a.source || ' + ' || b.source AS sites, count(*) AS pairs
+          FROM o a JOIN o b ON a.id < b.id AND a.reason = 'new' AND b.reason = 'new'
+                           AND length(a.description) > 40 AND a.description = b.description
+          GROUP BY 1 ORDER BY 2 DESC;
+          \echo '== 7. NEW alerts for rows that are marked as a duplicate of another row (should be zero)'
+          SELECT count(*) FROM o WHERE reason = 'new' AND duplicate_of_id IS NOT NULL;
+          \echo '== 8. price-change alerts in the window'
+          SELECT reason, count(*) FROM o WHERE reason <> 'new' GROUP BY 1;
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=0 -v owner='$OWNER' -P pager=off -f -" < /tmp/q.sql
