@@ -1223,33 +1223,32 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     # 2026-10-09: what a card says instead of the generic lock line to a user whose access has ended, so the person knows
     # WHY the original-listing link is missing. Two situations, two texts (owner request): the free trial ran out vs. a
     # paid subscription/pass that ended. `_link` goes inside the upgrade hyperlink, `_plain` is used when there is no URL.
-    "card.trial_ended_link": {
-        "he": "תקופת הניסיון הסתיימה — לקישור למודעה המקורית שדרג/י את המנוי",
-        "en": "Your free trial has ended — upgrade to see the original listing link",
-        "ru": "Пробный период закончился — обновите подписку, чтобы увидеть ссылку на объявление",
-        "fr": "Ta période d'essai est terminée — passe à l'abonnement pour voir le lien de l'annonce",
-        "ar": "انتهت الفترة التجريبية — رقّ اشتراكك لرؤية رابط الإعلان الأصلي",
+    # 2026-10-19 (owner, matching the competitor's card): the notice on its own line, then the link on the next.
+    "card.trial_ended_notice": {
+        "he": "✨ תקופת הניסיון הסתיימה! לצפייה במודעה המלאה ובמקור, עם גישה מלאה לשירות, אפשר לשדרג בקישור למטה 👇",
+        "en": "✨ Your free trial has ended! To see the full listing and its source, with full access, upgrade via the link below 👇",
+        "ru": "✨ Пробный период закончился! Чтобы видеть объявление полностью и его источник, оформите доступ по ссылке ниже 👇",
+        "fr": "✨ Ta période d'essai est terminée ! Pour voir l'annonce complète et sa source, passe à l'accès complet via le lien ci-dessous 👇",
+        "ar": "✨ انتهت الفترة التجريبية! لرؤية الإعلان كاملاً ومصدره، مع وصول كامل للخدمة، يمكنك الترقية عبر الرابط أدناه 👇",
     },
-    "card.trial_ended_plain": {
-        "he": "תקופת הניסיון הסתיימה — לקישור למודעה המקורית יש לשדרג את המנוי",
-        "en": "Your free trial has ended — upgrade your subscription to see the original listing link",
-        "ru": "Пробный период закончился — обновите подписку, чтобы увидеть ссылку на объявление",
-        "fr": "Ta période d'essai est terminée — passe à l'abonnement pour voir le lien de l'annonce",
-        "ar": "انتهت الفترة التجريبية — رقّ اشتراكك لرؤية رابط الإعلان الأصلي",
+    "card.trial_ended_link": {
+        "he": "לשדרוג וצפייה במודעה המלאה >>", "en": "Upgrade and see the full listing >>",
+        "ru": "Оформить доступ и открыть объявление >>", "fr": "Passer à l'accès complet >>",
+        "ar": "الترقية ورؤية الإعلان كاملاً >>",
+    },
+    "card.subscription_expired_notice": {
+        "he": "✨ תקופת המנוי הסתיימה! על מנת לצפות שוב במודעות עם גישה מלאה לשירות, אפשר לחדש מנוי בקישור למטה 👇",
+        "en": "✨ Your subscription has ended! To see listings again with full access, renew via the link below 👇",
+        "ru": "✨ Срок подписки закончился! Чтобы снова видеть объявления с полным доступом, продлите её по ссылке ниже 👇",
+        "fr": "✨ Ton abonnement est terminé ! Pour revoir les annonces avec un accès complet, renouvelle-le via le lien ci-dessous 👇",
+        "ar": "✨ انتهى اشتراكك! لرؤية الإعلانات مجدداً مع وصول كامل للخدمة، يمكنك التجديد عبر الرابط أدناه 👇",
     },
     "card.subscription_expired_link": {
-        "he": "תוקף המנוי הסתיים — לקישור למודעה המקורית חדש/י את המנוי",
-        "en": "Your subscription has expired — renew it to see the original listing link",
-        "ru": "Срок подписки истёк — продлите её, чтобы увидеть ссылку на объявление",
-        "fr": "Ton abonnement a expiré — renouvelle-le pour voir le lien de l'annonce",
-        "ar": "انتهى اشتراكك — جدّده لرؤية رابط الإعلان الأصلي",
+        "he": "לחידוש המנוי >>", "en": "Renew my access >>", "ru": "Продлить доступ >>",
+        "fr": "Renouveler mon accès >>", "ar": "تجديد الاشتراك >>",
     },
-    "card.subscription_expired_plain": {
-        "he": "תוקף המנוי הסתיים — לקישור למודעה המקורית יש לחדש את המנוי",
-        "en": "Your subscription has expired — renew it to see the original listing link",
-        "ru": "Срок подписки истёк — продлите её, чтобы увидеть ссылку на объявление",
-        "fr": "Ton abonnement a expiré — renouvelle-le pour voir le lien de l'annonce",
-        "ar": "انتهى اشتراكك — جدّده لرؤية رابط الإعلان الأصلي",
+    "card.price_unknown": {
+        "he": "לא צוין", "en": "not listed", "ru": "не указана", "fr": "non indiqué", "ar": "غير محدد",
     },
     "card.no_photos_banner": {
         "he": "🕵️ <b>דירה זו עלתה ללא תמונות, אך שווה לפנות למפרסם ולבקש כמה!</b>\n\n",

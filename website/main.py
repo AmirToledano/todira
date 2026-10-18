@@ -65,6 +65,8 @@ from todira_common.access import (
     plan_for_amount,
     test_amount_from_env,
     extend_paid_until,
+    ACCESS_TRIAL_ENDED,
+    access_state,
     has_full_access,
     has_paid_access,
 )
@@ -1572,6 +1574,7 @@ def apartments(
         "via_session": via_session,
         "has_access": has_access,
         "has_paid_access": has_paid_access,
+        "access_state": _effective_access_state(request, user),
         "liked_ids": liked_ids,
         "hidden_ids": set(),
         "deep_link_listing": deep_link_listing,
@@ -1632,6 +1635,7 @@ def liked(request: Request, uid: int | None = None):
             "user": user,
             "has_access": has_access,
             "has_paid_access": has_paid_access,
+            "access_state": _effective_access_state(request, user),
             "liked_ids": liked_ids,
             "hidden_ids": set(),
         },
@@ -1668,6 +1672,7 @@ def hidden(request: Request, uid: int | None = None):
             "user": user,
             "has_access": has_access,
             "has_paid_access": has_paid_access,
+            "access_state": _effective_access_state(request, user),
             "liked_ids": set(),
             "hidden_ids": hidden_ids,
         },
@@ -1847,6 +1852,15 @@ def _effective_access(request: Request, user: User) -> bool:
     if _preview_as_free(request):
         return False
     return has_full_access(user, is_owner=_is_owner_id(user.telegram_user_id))
+
+
+def _effective_access_state(request: Request, user: User) -> str:
+    """todira_common.access.access_state, with the same preview override as _effective_access: the cards and the
+    /apartments notice say WHY the original listing is locked - the free trial ended, or a paid period ended
+    (2026-10-19, owner)."""
+    if _preview_as_free(request):
+        return ACCESS_TRIAL_ENDED
+    return access_state(user, is_owner=_is_owner_id(user.telegram_user_id))
 
 
 def _effective_paid_access(request: Request, user: User) -> bool:

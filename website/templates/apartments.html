@@ -13,6 +13,14 @@
    pure clutter. This is one slim line: title, the no-brokers quick-toggle (kept — it's the one
    real one-click action here the sidebar's own full-page-reload checkbox doesn't beat), and the
    live count. #}
+{% if user and not has_access %}
+{# 2026-10-19 (owner): one clear line on why the original listings are locked, with the way to open them. The upgrade
+   page knows who this is (the signed session), so the purchase lands on this same account. #}
+<div class="apt-access-notice reveal">
+  <p>{{ t('apartments.notice_subscription_expired' if access_state == 'subscription_expired' else 'apartments.notice_trial_ended') }}</p>
+  <a class="btn gold" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t('apartments.notice_renew_btn' if access_state == 'subscription_expired' else 'apartments.notice_upgrade_btn') }}</a>
+</div>
+{% endif %}
 <div class="apt-toolbar reveal">
   <h1 class="apt-toolbar-title">{{ t('apartments.title') }}</h1>
   {% if user and user.filter %}

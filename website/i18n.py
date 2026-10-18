@@ -1627,8 +1627,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Réafficher", "ar": "إظهار مجددًا",
     },
     "card.no_price": {
-        "he": "מחיר לא צוין", "en": "Price not listed", "ru": "Цена не указана",
-        "fr": "Prix non indiqué", "ar": "السعر غير محدد",
+        "he": "מחיר: לא צוין", "en": "Price: not listed", "ru": "Цена: не указана",
+        "fr": "Prix : non indiqué", "ar": "السعر: غير محدد",
     },
     "card.no_city": {
         "he": "עיר לא צוינה", "en": "City not listed", "ru": "Город не указан",
@@ -1683,6 +1683,30 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # 2026-09-12: reworded from "Upgrade to view" — the description/photos are now shown to every
     # viewer regardless of subscription (see _listing_card.html); this button now gates only the
     # outbound link to the listing's original source (Yad2/etc), so the copy says that instead.
+    "card.locked_btn_renew": {
+        "he": "חדש מנוי וקבל קישור למודעה", "en": "Renew for the original link", "ru": "Продлите для перехода к источнику",
+        "fr": "Renouveler pour le lien d'origine", "ar": "جدّد للرابط الأصلي",
+    },
+    "apartments.notice_trial_ended": {
+        "he": "✨ תקופת הניסיון הסתיימה! לצפייה במודעות המלאות ובמקור, עם גישה מלאה לשירות, אפשר לשדרג כאן 👇",
+        "en": "✨ Your free trial has ended! To see full listings and their source, with full access, upgrade here 👇",
+        "ru": "✨ Пробный период закончился! Чтобы видеть объявления полностью и их источник, оформите доступ здесь 👇",
+        "fr": "✨ Ta période d'essai est terminée ! Pour voir les annonces complètes et leur source, passe à l'accès complet ici 👇",
+        "ar": "✨ انتهت الفترة التجريبية! لرؤية الإعلانات كاملة ومصدرها، مع وصول كامل للخدمة، يمكنك الترقية هنا 👇",
+    },
+    "apartments.notice_subscription_expired": {
+        "he": "✨ תקופת המנוי הסתיימה! על מנת לצפות שוב במודעות עם גישה מלאה לשירות, אפשר לחדש מנוי כאן 👇",
+        "en": "✨ Your subscription has ended! To see listings again with full access, renew here 👇",
+        "ru": "✨ Срок подписки закончился! Чтобы снова видеть объявления с полным доступом, продлите её здесь 👇",
+        "fr": "✨ Ton abonnement est terminé ! Pour revoir les annonces avec un accès complet, renouvelle-le ici 👇",
+        "ar": "✨ انتهى اشتراكك! لرؤية الإعلانات مجدداً مع وصول كامل للخدمة، يمكنك التجديد هنا 👇",
+    },
+    "apartments.notice_upgrade_btn": {
+        "he": "לשדרוג המנוי", "en": "Upgrade", "ru": "Оформить доступ", "fr": "Passer à l'accès complet", "ar": "الترقية",
+    },
+    "apartments.notice_renew_btn": {
+        "he": "לחידוש המנוי", "en": "Renew", "ru": "Продлить", "fr": "Renouveler", "ar": "التجديد",
+    },
     "card.locked_btn": {
         "he": "שדרג וקבל קישור למודעה", "en": "Upgrade for original link",
         "ru": "Обновите для перехода к источнику", "fr": "Mettre à niveau pour le lien d'origine",

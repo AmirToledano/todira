@@ -200,7 +200,9 @@
       {% if has_access %}
         <a class="view-btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ t('card.view_btn') }}</a>
       {% else %}
-        <a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t('card.locked_btn') }} 🔒</a>
+        {# 2026-10-19 (owner): the button says why it's locked - a trial that ended, or a pass that ended. #}
+        {% set _lock_key = 'card.locked_btn_renew' if access_state == 'subscription_expired' else 'card.locked_btn' %}
+        <a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t(_lock_key) }} 🔒</a>
       {% endif %}
     </div>
   </div>
