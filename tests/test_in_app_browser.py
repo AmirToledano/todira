@@ -109,9 +109,10 @@ def test_signed_in_visitor_gets_a_handoff_link_in_the_banner():
 
 def test_the_button_also_copies_the_plain_link_and_has_steps_for_when_the_app_blocks_it():
     # 2026-10-18 (owner: "the open in browser button doesn't work"): Instagram on iPhone ignores x-safari-.
-    resp = _client().get("/apartments?listing=5", headers={"user-agent": INSTAGRAM_IPHONE})
-    assert 'var copyUrl = "https://testserver/apartments?listing=5";' in resp.text
-    assert 'href="x-safari-https://testserver/apartments?listing=5"' in resp.text
+    # /terms, not /apartments: no database in CI, and the query string is what matters here
+    resp = _client().get("/terms?listing=5", headers={"user-agent": INSTAGRAM_IPHONE})
+    assert 'var copyUrl = "https://testserver/terms?listing=5";' in resp.text
+    assert 'href="x-safari-https://testserver/terms?listing=5"' in resp.text
     assert 'id="inapp-steps" hidden' in resp.text
     assert "ספארי" in resp.text  # the iPhone steps, not Android's
 
