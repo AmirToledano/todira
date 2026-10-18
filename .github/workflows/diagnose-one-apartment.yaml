@@ -1,0 +1,52 @@
+name: Diagnose — do we have one specific apartment, and did it reach the owner? (read-only)
+
+# 2026-10-19 owner: a competitor showed a Yad2 rental (Mevaseret Zion, HaHarel 9, 3 rooms, floor 2 of 4, 100 m2, no
+# price, entry 31.10.2026). Looks for it by city + street, prints the ad's own public facts (no user data), whether it
+# matched the owner's filter, and whether an alert went out. The owner's id is read from the cluster secret, masked,
+# and only used inside the query. Inputs default to that apartment.
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: city as stored
+        default: "מבשרת ציון"
+      street:
+        description: street name prefix
+        default: "הראל"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Look it up
+        env:
+          CITY: ${{ inputs.city }}
+          STREET: ${{ inputs.street }}
+        run: |
+          OWNER=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$OWNER"
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== rows in that city on that street (any site, any state)'
+          SELECT l.id, l.source, l.deal_type, l.street, l.rooms, l.floor, l.size_sqm, l.price, l.is_delisted,
+                 l.duplicate_of_id IS NOT NULL AS is_dup, l.first_seen_at, l.posted_at, l.scraped_at
+          FROM listings l WHERE l.city = :'city' AND l.street LIKE :'street' || '%' ORDER BY l.first_seen_at DESC LIMIT 20;
+          \echo '== listings in that city by site, seen in the last 3 days'
+          SELECT source, deal_type, count(*) FROM listings WHERE city = :'city' AND first_seen_at > now() - interval '3 days' GROUP BY 1, 2;
+          \echo '== alerts to the owner for those rows'
+          SELECT s.listing_id, s.reason, s.sent_at FROM sent_notifications s JOIN users u ON u.id = s.user_id
+          JOIN listings l ON l.id = s.listing_id
+          WHERE u.telegram_user_id::text = :'owner' AND l.city = :'city' AND l.street LIKE :'street' || '%';
+          \echo '== the owner filter (deal type, number of cities, price range, require_price)'
+          SELECT f.deal_type, coalesce(array_length(f.cities, 1), 0) AS n_cities, f.price_min, f.price_max, f.require_price,
+                 f.rooms_min, f.rooms_max FROM filters f JOIN users u ON u.id = f.user_id WHERE u.telegram_user_id::text = :'owner';
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -P pager=off -v owner='$OWNER' -v city='$CITY' -v street='$STREET' -f -" < /tmp/q.sql
