@@ -341,15 +341,15 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     },
     # 2026-10-18: the one-time message bot/announce_trial_extension.py sends (trial 3 -> 10 days, +7 for everyone).
     "trial_gift.telegram": {
-        "he": "🎁 מתנה מטודירה!\nהארכנו לך את תקופת הניסיון ב־7 ימים נוספים, ויש לך עכשיו גישה מלאה עד {date} 🙌\n"
+        "he": "🎁 מתנה מטודירה!\nפתחנו לך עוד 7 ימים של גישה מלאה וחינמית, עד {date} 🙌\n"
         "אני ממשיך לחפש ושולח לך כל דירה חדשה שמתאימה לחיפוש שלך.\nלכל הדירות שמתאימות לך: /apartments",
-        "en": "🎁 A gift from Todira!\nWe extended your free trial by 7 more days, so you now have full access until {date} 🙌\n"
+        "en": "🎁 A gift from Todira!\nYou get 7 more days of full, free access, until {date} 🙌\n"
         "I keep searching and send you every new apartment that matches your search.\nAll your matches: /apartments",
-        "ru": "🎁 Подарок от Todira!\nМы продлили ваш пробный период ещё на 7 дней: полный доступ до {date} 🙌\n"
+        "ru": "🎁 Подарок от Todira!\nВам открыто ещё 7 дней полного бесплатного доступа, до {date} 🙌\n"
         "Я продолжаю искать и присылаю каждую новую подходящую квартиру.\nВсе подходящие квартиры: /apartments",
-        "fr": "🎁 Un cadeau de Todira !\nNous avons prolongé ton essai de 7 jours : accès complet jusqu'au {date} 🙌\n"
+        "fr": "🎁 Un cadeau de Todira !\nTu as 7 jours de plus d'accès complet et gratuit, jusqu'au {date} 🙌\n"
         "Je continue à chercher et je t'envoie chaque nouvel appartement qui correspond.\nToutes tes annonces : /apartments",
-        "ar": "🎁 هدية من Todira!\nمددنا فترتك التجريبية 7 أيام إضافية، ولديك الآن وصول كامل حتى {date} 🙌\n"
+        "ar": "🎁 هدية من Todira!\nلديك 7 أيام إضافية من الوصول الكامل المجاني، حتى {date} 🙌\n"
         "أواصل البحث وأرسل لك كل شقة جديدة تناسب بحثك.\nكل الشقق المناسبة لك: /apartments",
     },
     "contact_fallback.help_escalated": {
