@@ -517,34 +517,51 @@ def test_apartments_contact_buttons_are_locked_for_an_expired_user(client):
     assert resp.status_code == 200
     assert "secret999" not in resp.text  # no real link leaked anywhere, including these buttons
     assert 'class="contact-btn contact-btn-phone contact-locked-btn"' in resp.text
-    # 2026-09-26 follow-up: real owner decision to add a working "view original listing" escape
-    # hatch to the paywall modal even for this exact expired-user case — it has to point at the
-    # safe /go/{id} redirect (main.py), never the raw l.url, or this test's own "secret999 not in
-    # resp.text" assertion above would be lying about what actually leaked.
-    assert 'data-listing-go-url="/go/1"' in resp.text
+    # 2026-10-18 (owner): the paywall popup no longer has a free "view the original listing" link.
+    assert "apt-contact-modal-view-original" not in resp.text
+    assert "/go/1" not in resp.text
 
 
-def test_go_to_listing_source_redirects_with_no_access_check(client):
-    """2026-09-26: the paywall modal's "view original listing" escape hatch (see the two tests
-    above) resolves through this route with zero access gating — same real owner decision, matching
-    dorin.app's own popup, that a non-access viewer can still reach a listing's actual source on
-    their own explicit click. No get_session/user patching here at all: this route doesn't look at
-    the request's identity, only the path's listing_id."""
+def test_go_to_listing_source_sends_an_expired_user_to_upgrade(client):
+    """2026-10-18 (owner): /go/{id} used to be open to everyone, so the paywall popup's link reached the poster without
+    paying. A viewer without access now goes to /upgrade, and the real URL is never sent."""
     listing = _FakeListing(id=1)
     fake_session = _FakeSession(_FakeUser(id=2, telegram_user_id=222), listings=[listing])
 
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/go/1", params={"uid": 222}, follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/upgrade"
+
+
+def test_go_to_listing_source_sends_a_signed_out_visitor_to_upgrade(client):
+    fake_session = _FakeSession(None, listings=[_FakeListing(id=1)])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
         resp = client.get("/go/1", follow_redirects=False)
+
+    assert resp.headers["location"] == "/upgrade"
+
+
+def test_go_to_listing_source_redirects_a_viewer_with_access(client):
+    listing = _FakeListing(id=1)
+    user = _FakeUser(id=2, telegram_user_id=222, trial_ends_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2))
+    fake_session = _FakeSession(user, listings=[listing])
+
+    with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
+        resp = client.get("/go/1", params={"uid": 222}, follow_redirects=False)
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://yad2.co.il/item/secret999"
 
 
 def test_go_to_listing_source_404s_for_a_missing_listing(client):
-    fake_session = _FakeSession(_FakeUser(id=2, telegram_user_id=222), listings=[])
+    user = _FakeUser(id=2, telegram_user_id=222, trial_ends_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2))
+    fake_session = _FakeSession(user, listings=[])
 
     with patch.object(website_main, "get_session", _fake_get_session(fake_session)):
-        resp = client.get("/go/999", follow_redirects=False)
+        resp = client.get("/go/999", params={"uid": 222}, follow_redirects=False)
 
     assert resp.status_code == 404
 
