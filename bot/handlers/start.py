@@ -26,7 +26,7 @@ from todira_common.db import get_session
 from todira_common.google_link import TOKEN_PREFIX as GOOGLE_LINK_TOKEN_PREFIX
 from todira_common.google_link import resolve_google_link_token
 from todira_common.bot_strings import BOT_STRINGS, bot_text
-from todira_common.language import DEFAULT_LANG, normalize_language_code
+from todira_common.language import DEFAULT_LANG
 from todira_common.listing_matches import mark_recent_matches_seen
 from todira_common.models import User
 from todira_common.uid_token import signed_login_query
@@ -148,9 +148,9 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                 telegram_user_id=tg_user.id,
                 telegram_username=tg_user.username,
                 first_name=tg_user.first_name,
-                # 2026-09-26: Telegram gives us the user's own device language for free — see
-                # todira_common/language.py's own docstring.
-                language=normalize_language_code(getattr(tg_user, "language_code", None)),
+                # 2026-10-18 (owner): every new user starts in Hebrew, whatever the phone's language is; /language
+                # switches it (handlers/language.py). The phone language left English speakers' friends stuck in English.
+                language=None,
             )
             session.add(user)
         else:

@@ -40,6 +40,8 @@ def _keyboard(user: User, lang: str) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton(active_label, callback_data="profile:toggle_active")],
             [InlineKeyboardButton(notif_label, callback_data="profile:toggle_notifications")],
+            # handled by handlers/language.py (pattern ^lang:)
+            [InlineKeyboardButton(bot_text("profile.btn_language", lang), callback_data="lang:menu")],
         ]
     )
 

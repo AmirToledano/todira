@@ -18,7 +18,7 @@ from todira_common.access import ACCESS_FULL, access_state
 from todira_common.bot_strings import bot_text
 from todira_common.cards import format_caption, send_listing_card
 from todira_common.db import get_session
-from todira_common.language import DEFAULT_LANG, normalize_language_code
+from todira_common.language import DEFAULT_LANG
 from todira_common.listing_matches import shown_listing_id
 from todira_common.models import Listing, UserListingAction
 from todira_common.users import get_or_create_user
@@ -181,12 +181,8 @@ async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             listing_id,
             update.effective_user.id,
         )
-        # No DB round-trip on this rare-failure path — Telegram's own language_code (already
-        # what we'd have stored as user.language at account-creation time in the common case) is
-        # good enough for one error toast.
-        error_lang = normalize_language_code(
-            getattr(update.effective_user, "language_code", None)
-        ) or DEFAULT_LANG
+        # No DB round-trip on this rare-failure path: the default language is good enough for one error toast.
+        error_lang = DEFAULT_LANG
         await query.answer(bot_text("liked.reaction_error", error_lang))
         return
 
