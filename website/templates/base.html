@@ -106,6 +106,25 @@
     <a href="/preview/toggle?next={{ request.url.path | urlencode }}">כבה תצוגה מקדימה וחזור לגישה מלאה</a>
   </div>
   {% endif %}
+  {% if current_user and current_user.trial_gift_until %}
+  {# 2026-10-18 (owner): the trial is 10 days now and everyone registered got 7 more - see main.py's _trial_gift_until. #}
+  <div class="trial-gift-banner" id="trial-gift-banner" role="status" hidden>
+    <p>{{ t('trial_gift.text', date=current_user.trial_gift_until) }}</p>
+    <button type="button" class="trial-gift-close" id="trial-gift-close" aria-label="{{ t('inapp.close') }}">×</button>
+  </div>
+  <script>
+    (function () {
+      var banner = document.getElementById('trial-gift-banner');
+      var closed = false;
+      try { closed = localStorage.getItem('trialGiftClosed') === '1'; } catch (e) {}
+      if (!closed) { banner.hidden = false; }
+      document.getElementById('trial-gift-close').addEventListener('click', function () {
+        banner.hidden = true;
+        try { localStorage.setItem('trialGiftClosed', '1'); } catch (e) {}
+      });
+    })();
+  </script>
+  {% endif %}
   {% if in_app_browser %}
   <div class="inapp-banner" id="inapp-banner" role="region" aria-label="{{ t('inapp.button') }}">
     <p>{{ t('inapp.text', app=in_app_browser.app) }}</p>

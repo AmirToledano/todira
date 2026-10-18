@@ -82,9 +82,10 @@ class User(Base):
     # by the user's own plan-selection click (website's /upgrade), trusting it rather than
     # verifying a real charge. A migration backfills trial_ends_at = (deploy time + 3 days) for
     # every row that already existed when this shipped, so existing users get the SAME 3-day grace
-    # a brand-new signup gets, not an instant cutoff.
+    # a brand-new signup gets, not an instant cutoff. 2026-10-18 (owner): the trial is 10 days now
+    # (migration 0030, which also gave everyone already registered 7 more days).
     trial_ends_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("now() + interval '3 days'")
+        DateTime(timezone=True), server_default=text("now() + interval '10 days'")
     )
     paid_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # Owner-granted comp access, independent of trial/payment — set only via the admin panel

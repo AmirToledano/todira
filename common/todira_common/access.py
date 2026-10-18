@@ -1,4 +1,4 @@
-"""Paid-access gate — a 3-day free trial, then a single recurring ₪49.90/month subscription
+"""Paid-access gate — a 10-day free trial (3 days until 2026-10-18), then a single recurring ₪49.90/month subscription
 (2026-09-21 SaaS pivot, replacing the earlier one-time weekly/biweekly/monthly plans — those two
 keys are kept below ONLY so historical Payment rows priced under them still mean something; /upgrade
 no longer offers them). Payment itself is website/takbull_client.py's job (Takbull's recurring-
@@ -89,7 +89,7 @@ def has_full_access(user: User, *, is_owner: bool = False) -> bool:
 
 
 def has_paid_access(user: User, *, is_owner: bool = False) -> bool:
-    """2026-09-27 real owner decision: same as has_full_access, EXCEPT the 3-day trial no longer
+    """2026-09-27 real owner decision: same as has_full_access, EXCEPT the free trial no longer
     counts. Reaching a listing's actual poster (the contact button) now needs
     a genuine paid subscription (or the owner/free-access-grant equivalents, which still count —
     those represent real access already granted, not a time-limited trial) — a trial user sees the

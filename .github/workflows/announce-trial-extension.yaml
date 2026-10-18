@@ -1,0 +1,45 @@
+name: Announce — trial extended to 10 days (one Telegram message, once)
+
+# Owner request (2026-10-18): the free trial went from 3 to 10 days and everyone already registered got 7 more days
+# (migration 0030). This sends the one Telegram message about it, from inside the bot pod
+# (bot/announce_trial_extension.py): only to people inside their trial now, still searching, with alerts on. A chat it
+# reached is logged on the bot's volume, so running it again never repeats the message. "dry-run" only counts.
+# Prints counts only - never an id, name or chat.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '"dry-run" to count, "send" to really send'
+        required: true
+        default: dry-run
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the input
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          [ "$MODE" = "dry-run" ] || [ "$MODE" = "send" ] || { echo "mode must be dry-run or send"; exit 1; }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run it in the bot pod
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$POD" ] || { echo "no running bot pod"; exit 1; }
+          if [ "$MODE" = "send" ]; then
+            kubectl exec -n todira "$POD" -- python announce_trial_extension.py --send
+          else
+            kubectl exec -n todira "$POD" -- python announce_trial_extension.py
+          fi

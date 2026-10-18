@@ -1326,6 +1326,16 @@ summary:focus-visible {
 }
 .preview-banner a { color: #ffd97a; text-decoration: underline; text-underline-offset: 2px; }
 /* 2026-10-17: visitor inside Instagram/Facebook/TikTok's built-in browser (base.html, main.py _in_app_browser) */
+.trial-gift-banner[hidden] { display: none; }
+.trial-gift-banner {
+  position: relative; background: var(--gold, #e9b949); color: #2b2111; text-align: center;
+  padding: 12px 44px; font-weight: 600;
+}
+.trial-gift-banner p { margin: 0; font-size: .92rem; line-height: 1.45; }
+.trial-gift-banner .trial-gift-close {
+  position: absolute; top: 6px; inset-inline-end: 10px; background: none; border: 0; color: inherit;
+  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 4px 8px;
+}
 .inapp-banner[hidden] { display: none; }
 .inapp-banner {
   position: relative; background: var(--teal-dark); color: #fff8ea; text-align: center;
