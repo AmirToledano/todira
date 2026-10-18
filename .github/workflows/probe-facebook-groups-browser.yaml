@@ -40,7 +40,7 @@ jobs:
             restartPolicy: Never
             containers:
               - name: probe
-                image: python:3.12-slim
+                image: python:3.12-slim-bookworm  # Playwright 1.48 installs its browser deps on Debian 12, not 13
                 resources:
                   requests: { memory: "256Mi", cpu: "100m" }
                   limits: { memory: "900Mi", cpu: "1" }
