@@ -10,6 +10,7 @@ from pathlib import Path
 from handlers.apartments import build_apartments_handler
 from handlers.contact_fallback import build_contact_fallback_handler
 from handlers.filter_conversation import build_filter_conversation_handler
+from handlers.language import build_language_handlers
 from handlers.liked import build_hidden_handler, build_liked_handler, build_reaction_handler
 from handlers.onboarding import build_onboarding_handler
 from handlers.profile import build_profile_handlers
@@ -56,6 +57,7 @@ BOT_COMMANDS = [
     BotCommand("liked", "❤️ דירות ששמרתי"),
     BotCommand("hidden", "🙈 דירות שהסתרתי"),
     BotCommand("profile", "👤 אזור אישי"),
+    BotCommand("language", "🌐 שפה · Language"),
 ]
 
 
@@ -118,6 +120,8 @@ def main() -> None:
     application.add_handler(build_hidden_handler())
     application.add_handler(build_reaction_handler())
     for handler in build_profile_handlers():
+        application.add_handler(handler)
+    for handler in build_language_handlers():
         application.add_handler(handler)
     # Registered LAST (same default group) so it only fires once every ConversationHandler and
     # CommandHandler above has already declined the update — see contact_fallback.py's docstring.

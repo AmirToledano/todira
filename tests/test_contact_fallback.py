@@ -309,6 +309,7 @@ def test_apply_filter_change_sync_applies_a_coherent_range():
 
 
 def test_onboarded_user_filter_change_message_updates_filter_directly():
+    # 2026-10-18: read with the free rules (search_text), no AI call at all - this used to depend on Gemini entirely.
     filter_row = _FakeFilterRow(cities=["תל אביב יפו"])
     session = _FakeFilterSession(existing_filter=filter_row)
     update = _make_update("תוסיף לי גם רמת גן")
@@ -317,21 +318,127 @@ def test_onboarded_user_filter_change_message_updates_filter_directly():
     with (
         patch.object(contact_fallback, "get_session", lambda: session),
         patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
-        patch.object(
-            contact_fallback.gemini_client,
-            "chat_with_existing_user",
-            return_value={
-                "filter_changed": True,
-                "cities": ["תל אביב יפו", "רמת גן"],
-                "response_message": "הוספתי גם את רמת גן! 🏠",
-            },
-        ),
+        patch.object(contact_fallback, "find_new_matches_to_show", return_value=(12, [])) as matches_mock,
+        patch.object(contact_fallback.gemini_client, "chat_with_existing_user") as chat_mock,
     ):
         _run(contact_fallback.handle_stray_message(update, context))
 
+    chat_mock.assert_not_called()
     assert filter_row.cities == ["תל אביב יפו", "רמת גן"]
     assert session.committed is True
-    update.message.reply_text.assert_called_once_with("הוספתי גם את רמת גן! 🏠")
+    matches_mock.assert_called_once()  # what matches now is recorded as shown, no backlog on the next run
+    reply = update.message.reply_text.call_args.args[0]
+    assert "עדכנתי" in reply and "רמת גן" in reply and "12" in reply
+
+
+def _run_rules(text: str, **filter_kwargs):
+    filter_row = _FakeFilterRow(**filter_kwargs)
+    session = _FakeFilterSession(existing_filter=filter_row)
+    update = _make_update(text)
+    context = _make_context()
+    with (
+        patch.object(contact_fallback, "get_session", lambda: session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
+        patch.object(contact_fallback, "find_new_matches_to_show", return_value=(0, [])),
+        patch.object(
+            contact_fallback.gemini_client,
+            "chat_with_existing_user",
+            return_value={"filter_changed": False, "response_message": "תשובת צ'אט"},
+        ) as chat_mock,
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+    return filter_row, update.message.reply_text.call_args.args[0], chat_mock
+
+
+def test_a_full_search_message_replaces_the_search():
+    filter_row, reply, chat_mock = _run_rules(
+        "3 חדרים בחיפה עד 6,000 ש\"ח", cities=["תל אביב יפו"], rooms_min=2, rooms_max=2.5, price_max=9000
+    )
+    chat_mock.assert_not_called()
+    assert filter_row.cities == ["חיפה"]
+    assert (filter_row.rooms_min, filter_row.rooms_max) == (3.0, 3.5)
+    assert (filter_row.price_min, filter_row.price_max) == (None, 6000)
+    assert "חיפה" in reply
+
+
+def test_a_new_minimum_drops_an_old_maximum_it_would_invert():
+    filter_row, _reply, _chat = _run_rules("לפחות 4 חדרים", rooms_min=2, rooms_max=3)
+    assert (filter_row.rooms_min, filter_row.rooms_max) == (4.0, None)
+
+
+def test_a_purchase_budget_on_a_rent_search_switches_it_to_sale():
+    filter_row, _reply, _chat = _run_rules("עד 2 מיליון", deal_type="rent", price_min=4000, price_max=7000)
+    assert filter_row.deal_type == "sale"
+    assert (filter_row.price_min, filter_row.price_max) == (None, 2_000_000)
+
+
+def test_nationwide_clears_the_cities():
+    filter_row, _reply, _chat = _run_rules("שכירות בכל הארץ", cities=["חיפה"])
+    assert filter_row.cities == []
+
+
+def test_a_question_about_a_city_does_not_change_the_search():
+    filter_row, reply, chat_mock = _run_rules("יש דירות בחיפה?", cities=["תל אביב יפו"])
+    assert filter_row.cities == ["תל אביב יפו"]
+    chat_mock.assert_called_once()
+    assert reply == "תשובת צ'אט"
+
+
+def test_a_change_request_phrased_as_a_question_still_changes_it():
+    filter_row, _reply, chat_mock = _run_rules("אפשר לשנות לירושלים?", cities=["תל אביב יפו"])
+    assert filter_row.cities == ["ירושלים"]
+    chat_mock.assert_not_called()
+
+
+def test_thanks_gets_a_reply_without_the_ai():
+    _filter_row, reply, chat_mock = _run_rules("תודה רבה!")
+    chat_mock.assert_not_called()
+    assert "בכיף" in reply
+
+
+def test_an_ai_exception_still_gets_a_reply_with_an_example():
+    session = _FakeFilterSession(existing_filter=_FakeFilterRow())
+    update = _make_update("מה נשמע")
+    context = _make_context()
+    with (
+        patch.object(contact_fallback, "get_session", lambda: session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
+        patch.object(contact_fallback.gemini_client, "chat_with_existing_user", side_effect=TimeoutError("read timeout")),
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+    reply = update.message.reply_text.call_args.args[0]
+    assert "למשל" in reply and "/filter" in reply
+
+
+def test_no_ai_left_today_still_gets_a_reply_with_an_example():
+    session = _FakeFilterSession(existing_filter=_FakeFilterRow())
+    update = _make_update("מה נשמע")
+    context = _make_context()
+    with (
+        patch.object(contact_fallback, "get_session", lambda: session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
+        patch.object(contact_fallback.ai_gate, "allowed", return_value=False),
+        patch.object(contact_fallback.gemini_client, "chat_with_existing_user") as chat_mock,
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+    chat_mock.assert_not_called()
+    assert "למשל" in update.message.reply_text.call_args.args[0]
+
+
+def test_a_user_without_a_search_who_writes_a_full_one_gets_it_saved():
+    no_filter_session = _FakeFilterSession(existing_filter=None)
+    update = _make_update("מחפש דירה להשכרה בחיפה עד 5000")
+    context = _make_context()
+    with (
+        patch.object(contact_fallback, "get_session", lambda: no_filter_session),
+        patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
+        patch.object(contact_fallback, "_save_filter_sync", return_value=4) as save_mock,
+    ):
+        _run(contact_fallback.handle_stray_message(update, context))
+    state = save_mock.call_args.args[1]
+    assert state["deal_type"] == "rent" and state["cities"] == ["חיפה"] and state["price_max"] == 5000
+    reply = update.message.reply_text.call_args.args[0]
+    assert "חיפה" in reply and "4" in reply
 
 
 def test_onboarded_user_gemini_failure_sends_hiccup_message():

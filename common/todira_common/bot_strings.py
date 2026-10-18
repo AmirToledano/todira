@@ -37,7 +37,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>אפשר פשוט לכתוב לי מה מחפשים</b>, במילים שלך, ואני אבין לבד.\n"
             "💬 למשל: <i>\"דירת 3 חדרים בתל אביב עד 8,000 ₪ עם מרפסת\"</i>\n\n⠀\n"
             "📋 <b>פקודות:</b>\n/filter — הגדרת/עדכון הסינון שלך\n/apartments — "
-            "הדירות התואמות האחרונות\n/liked — הדירות ששמרת\n/profile — הפרופיל וההגדרות שלך\n\n"
+            "הדירות התואמות האחרונות\n/liked — הדירות ששמרת\n/profile — הפרופיל וההגדרות שלך\n/language — שינוי שפה · Language\n\n"
             "🔗 רוצה גם להתחבר באתר (Google)? <a href=\"{account_url}\">לכניסה לאזור האישי</a>"
         ),
         "en": (
@@ -48,7 +48,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>Just tell me what you're looking for</b>, in your own words, and I'll understand.\n"
             "💬 For example: <i>\"3 rooms in Tel Aviv up to ₪8,000 with a balcony\"</i>\n\n⠀\n"
             "📋 <b>Commands:</b>\n/filter — set/update your filter\n/apartments — the latest matching listings\n"
-            "/liked — listings you saved\n/profile — your profile and settings\n\n"
+            "/liked — listings you saved\n/profile — your profile and settings\n/language — change language · שפה\n\n"
             "🔗 Want to also sign in on the website (Google)? <a href=\"{account_url}\">Open my account</a>"
         ),
         "ru": (
@@ -59,7 +59,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>Просто напишите, что вы ищете</b>, своими словами, и я пойму.\n"
             "💬 Например: <i>«3 комнаты в Тель-Авиве до 8 000 ₪ с балконом»</i>\n\n⠀\n"
             "📋 <b>Команды:</b>\n/filter — настроить/изменить фильтр\n/apartments — последние подходящие "
-            "объявления\n/liked — сохранённые объявления\n/profile — ваш профиль и настройки\n\n"
+            "объявления\n/liked — сохранённые объявления\n/profile — ваш профиль и настройки\n/language — сменить язык · שפה\n\n"
             "🔗 Хотите также входить на сайте (Google)? <a href=\"{account_url}\">Открыть личный кабинет</a>"
         ),
         "fr": (
@@ -71,7 +71,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "💬 Par exemple : <i>« 3 pièces à Tel Aviv jusqu'à 8 000 ₪ avec balcon »</i>\n\n⠀\n"
             "📋 <b>Commandes :</b>\n/filter — définir/modifier ton filtre\n/apartments — les dernières "
             "annonces correspondantes\n/liked — les annonces enregistrées\n/profile — ton profil et "
-            "tes réglages\n\n"
+            "tes réglages\n/language — changer de langue · שפה\n\n"
             "🔗 Tu veux aussi te connecter sur le site (Google) ? <a href=\"{account_url}\">Ouvrir mon espace</a>"
         ),
         "ar": (
@@ -81,7 +81,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>اكتب لي ببساطة ما تبحث عنه</b> بكلماتك الخاصة، وسأفهم.\n"
             "💬 مثلاً: <i>\"3 غرف في تل أبيب حتى 8,000 ₪ مع شرفة\"</i>\n\n⠀\n"
             "📋 <b>الأوامر:</b>\n/filter — ضبط/تحديث تفضيلاتك\n/apartments — أحدث الإعلانات "
-            "المطابقة\n/liked — الإعلانات المحفوظة\n/profile — ملفك الشخصي وإعداداتك\n\n"
+            "المطابقة\n/liked — الإعلانات المحفوظة\n/profile — ملفك الشخصي وإعداداتك\n/language — تغيير اللغة · שפה\n\n"
             "🔗 هل تريد أيضاً تسجيل الدخول عبر الموقع (Google)؟ <a href=\"{account_url}\">فتح حسابي</a>"
         ),
     },
@@ -305,13 +305,32 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "لا توجد شقق مطابقة بعد — سأستمر بالبحث وأخبرك. يمكنك أيضاً المتابعة عبر الموقع: "
         "{apartments_url}",
     },
-    "contact_fallback.error": {
-        "he": "כרגע לא הצלחתי לקרוא את ההודעה 😅 לשינוי החיפוש: /filter, ולדירות שנמצאו: /apartments",
-        "en": "I couldn't read that message right now 😅 To change your search: /filter. To see what was found: /apartments",
-        "ru": "Сейчас не получилось прочитать сообщение 😅 Изменить поиск: /filter. Найденные квартиры: /apartments",
-        "fr": "Je n'ai pas pu lire ce message pour l'instant 😅 Pour changer ta recherche : /filter. Pour voir ce qui a été "
-        "trouvé : /apartments",
-        "ar": "لم أتمكن من قراءة الرسالة الآن 😅 لتغيير البحث: /filter. لرؤية ما وُجد: /apartments",
+    # 2026-10-18: a message the bot could not turn into a search change, with an example of what works.
+    "contact_fallback.not_understood": {
+        "he": "לא הבנתי מה לשנות בחיפוש 🤔\nאפשר לכתוב לי למשל: ״3 חדרים בחיפה עד 6,000 ₪״ או ״תוסיף גם רמת גן״.\n"
+        "לכל ההגדרות: /filter · לדירות שנמצאו: /apartments",
+        "en": "I didn't catch what to change in your search 🤔\nYou can write, for example: \"3 rooms in Haifa up to "
+        "₪6,000\" or \"add Ramat Gan too\".\nAll settings: /filter · Listings found: /apartments",
+        "ru": "Не понял, что изменить в поиске 🤔\nМожно написать, например: «3 комнаты в Хайфе до 6 000 ₪» или "
+        "«добавь Рамат-Ган».\nВсе настройки: /filter · Найденные квартиры: /apartments",
+        "fr": "Je n'ai pas compris quoi changer dans ta recherche 🤔\nTu peux écrire par exemple : « 3 pièces à Haïfa "
+        "jusqu'à 6 000 ₪ » ou « ajoute aussi Ramat Gan ».\nTous les réglages : /filter · Annonces trouvées : /apartments",
+        "ar": "لم أفهم ما الذي يجب تغييره في البحث 🤔\nيمكنك أن تكتب مثلاً: «3 غرف في حيفا حتى 6,000 ₪» أو "
+        "«أضف رمات غان أيضاً».\nكل الإعدادات: /filter · الشقق التي وُجدت: /apartments",
+    },
+    "contact_fallback.updated": {
+        "he": "✅ עדכנתי את החיפוש שלך: {summary}",
+        "en": "✅ I updated your search: {summary}",
+        "ru": "✅ Обновил ваш поиск: {summary}",
+        "fr": "✅ J'ai mis à jour ta recherche : {summary}",
+        "ar": "✅ حدّثت بحثك: {summary}",
+    },
+    "contact_fallback.thanks": {
+        "he": "בכיף! 🙂 אני ממשיך לחפש ואעדכן אותך ברגע שעולה דירה מתאימה.",
+        "en": "Anytime! 🙂 I'll keep searching and let you know the moment a matching apartment comes up.",
+        "ru": "Всегда пожалуйста! 🙂 Продолжаю искать и сразу сообщу, когда появится подходящая квартира.",
+        "fr": "Avec plaisir ! 🙂 Je continue à chercher et je te préviens dès qu'un appartement correspond.",
+        "ar": "على الرحب! 🙂 سأواصل البحث وأخبرك فور ظهور شقة مناسبة.",
     },
     "contact_fallback.default_ack": {
         "he": "בסדר! 🙂",
@@ -413,6 +432,23 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     "profile.btn_notif_off": {
         "he": "🔕 כבה התראות", "en": "🔕 Turn off notifications", "ru": "🔕 Выключить уведомления",
         "fr": "🔕 Désactiver les notifications", "ar": "🔕 إيقاف الإشعارات",
+    },
+    "profile.btn_language": {
+        "he": "🌐 שפה · Language", "en": "🌐 Language · שפה", "ru": "🌐 Язык · שפה",
+        "fr": "🌐 Langue · שפה", "ar": "🌐 اللغة · שפה",
+    },
+    # 2026-10-18: /language (bot/handlers/language.py). The prompt names the choice in every language, since the
+    # person picking may not read the language the bot is in right now.
+    "language.prompt": {
+        lang: "🌐 בחר/י שפה · Choose a language · Выберите язык · Choisis ta langue · اختر لغتك"
+        for lang in ("he", "en", "ru", "fr", "ar")
+    },
+    "language.changed": {
+        "he": "✅ מעכשיו אדבר איתך בעברית.",
+        "en": "✅ Done, I'll talk to you in English from now on.",
+        "ru": "✅ Готово, теперь я буду писать вам по-русски.",
+        "fr": "✅ C'est fait, je te parlerai en français désormais.",
+        "ar": "✅ تم، سأتحدث معك بالعربية من الآن.",
     },
     "profile.btn_notif_on": {
         "he": "🔔 הפעל התראות", "en": "🔔 Turn on notifications", "ru": "🔔 Включить уведомления",
