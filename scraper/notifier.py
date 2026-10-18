@@ -28,7 +28,7 @@ from telegram import Bot
 
 from todira_common import text_features, yad2_detail
 from todira_common.access import access_state, has_full_access
-from todira_common.cards import format_caption, send_listing_card
+from todira_common.cards import BLOCKED, format_caption, send_listing_card
 from todira_common.enums import ListingAction, NotificationReason, Source
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
@@ -112,6 +112,15 @@ def _hidden_by(session: Session, user_id: int, listing_id: int) -> bool:
         ).first()
         is not None
     )
+
+
+def _pause_blocked_user(session: Session, user: User) -> None:
+    """2026-10-18: a person who blocked the bot failed on every run and was offered the same listings again each time
+    (nothing is marked sent for a failed send). Their search is paused the same way /profile's pause button does it;
+    /start sets it active again the moment they come back."""
+    user.is_active = False
+    session.commit()
+    logger.info("Paused a user whose chat refuses the bot")
 
 
 def _already_notified(session: Session, user_id: int, listing_id: int, reason: str) -> bool:
@@ -235,8 +244,13 @@ async def _notify_new_matches(
             lang=user_lang,
             access_state=_access_state_for(user),
         )
+        if not user.is_active:
+            continue  # turned off earlier in this run: the chat turned out to be blocked
         sent_ok = await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang)
         await asyncio.sleep(SEND_DELAY_SECONDS)
+        if sent_ok is BLOCKED:
+            _pause_blocked_user(session, user)
+            continue
         if sent_ok:
             # One row per user per listing — "has this user already been told about this listing,"
             # matching _already_notified's own lookup key, so they're never re-notified on a later run.
@@ -333,7 +347,12 @@ async def _notify_price_change(
             lang=user_lang,
             access_state=_access_state_for(user),
         )
-        if await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang):
+        if not user.is_active:
+            continue  # turned off earlier in this run: the chat turned out to be blocked
+        sent_ok = await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang)
+        if sent_ok is BLOCKED:
+            _pause_blocked_user(session, user)
+        elif sent_ok:
             session.add(
                 SentNotification(user_id=user.id, listing_id=listing.id, reason=reason)
             )
