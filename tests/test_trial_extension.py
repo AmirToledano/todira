@@ -87,3 +87,10 @@ def test_the_site_notice_is_only_for_accounts_the_extension_helped(overrides, sh
     if NOW >= website_main.TRIAL_GIFT_NOTICE_UNTIL:
         pytest.skip("the notice period is over")
     assert (website_main._trial_gift_until(_row(**overrides)) is not None) is shown
+
+
+def test_everyone_registered_before_gets_access_until_26_10_at_10_israel_time():
+    migration = (_ROOT / "migrations" / "versions" / "0031_trial_until_26_10.py").read_text()
+    assert "2026-10-26 07:00:00+00" in migration  # 10:00 Israel time (UTC+3)
+    assert "trial_ends_at < " in migration  # never shortens a later trial
+    assert "pass_test" in migration
