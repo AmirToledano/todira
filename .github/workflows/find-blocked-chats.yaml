@@ -1,0 +1,25 @@
+name: Find who blocked the bot (names go only to the owner's Telegram)
+
+# 2026-10-19 owner request. Runs bot/find_blocked_chats.py in the bot pod: checks every active Telegram user with an
+# invisible "typing" action, pauses the ones who blocked the bot, and sends the owner - in his own Telegram chat - who
+# they are. This public log shows counts only.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Run it in the bot pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$POD" ] || { echo "no running bot pod"; exit 1; }
+          kubectl exec -n todira "$POD" -- python find_blocked_chats.py
