@@ -559,6 +559,7 @@
       var ambient = document.querySelector('.site-ambient');
       if (!bar && !ambient) { return; }
       var ticking = false;
+      var coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
       function update() {
         var doc = document.documentElement;
         var max = doc.scrollHeight - doc.clientHeight;
@@ -569,7 +570,9 @@
         // ±20deg was too subtle to actually notice) so the swing visibly carries the glow beyond
         // its resting teal/gold into warmer amber/coral and cooler blue/violet territory at the
         // two scroll extremes, without ever cycling all the way through a literal rainbow.
-        if (ambient) { ambient.style.setProperty('--scroll-hue', (progress * 110 - 55) + 'deg'); }
+        // Not on phones (2026-10-18): re-filtering a full-screen blurred layer on every scroll frame, on top of a
+        // long list of photos, helped push mobile Safari over its memory limit on /apartments.
+        if (ambient && !coarsePointer) { ambient.style.setProperty('--scroll-hue', (progress * 110 - 55) + 'deg'); }
         ticking = false;
       }
       update();
@@ -611,6 +614,51 @@
           }
         });
       }, { passive: true });
+    })();
+    (function () {
+      // Listing card photos (2026-10-18, launch: /apartments crashed phones on a fast scroll - out of memory).
+      // _listing_card.html loads only each card's first photo; the rest carry data-src and load on the card's
+      // first swipe or touch. Cards far off-screen give their photos back (a 1px placeholder) and get the
+      // first one - or every photo, if they had been swiped - again when they come near. Looks the same;
+      // memory stays bounded however far the list is scrolled.
+      var BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      function show(img) { if (img.dataset.src && img.getAttribute('src') !== img.dataset.src) { img.src = img.dataset.src; } }
+      function swiped(cover) {
+        if (!cover || cover.dataset.allPhotos === '1') { return; }
+        cover.dataset.allPhotos = '1';
+        cover.querySelectorAll('img.cover-slide').forEach(show);
+      }
+      document.addEventListener('touchstart', function (e) {
+        swiped(e.target.closest && e.target.closest('.listing-cover'));
+      }, { passive: true, capture: true });
+      document.addEventListener('scroll', function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains('listing-cover')) { swiped(e.target); }
+      }, { passive: true, capture: true });
+      if (!('IntersectionObserver' in window)) { return; }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          var cover = entry.target;
+          cover.querySelectorAll('img.cover-slide').forEach(function (img, i) {
+            if (!img.dataset.src) { img.dataset.src = img.getAttribute('src'); }
+            if (!entry.isIntersecting) {
+              if (img.getAttribute('src') !== BLANK) { img.src = BLANK; }
+            } else if (i === 0 || cover.dataset.allPhotos === '1') {
+              show(img);
+            }
+          });
+        });
+      }, { rootMargin: '2500px 0px' });
+      function watch(root) {
+        (root.querySelectorAll ? root.querySelectorAll('.listing-cover') : []).forEach(function (cover) {
+          if (cover.dataset.photoWatch) { return; }
+          cover.dataset.photoWatch = '1';
+          io.observe(cover);
+        });
+      }
+      watch(document);
+      new MutationObserver(function (mutations) {
+        mutations.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { watch(n); } }); });
+      }).observe(document.body, { childList: true, subtree: true });
     })();
   </script>
 </body>
