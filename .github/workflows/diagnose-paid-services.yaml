@@ -95,7 +95,7 @@ jobs:
       - name: The server (instance type, spot or on-demand)
         run: |
           POD=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
-          kubectl exec -n todira "$POD" -- python3 - <<'PY'
+          kubectl exec -i -n todira "$POD" -- python3 - <<'PY'
           import urllib.request
           def get(path, token):
               req = urllib.request.Request("http://169.254.169.254/latest/meta-data/" + path, headers={"X-aws-ec2-metadata-token": token})
