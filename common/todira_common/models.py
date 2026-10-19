@@ -75,6 +75,8 @@ class User(Base):
     renewal_reminder_for: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # When the one "your free trial ends tomorrow" reminder was sent (scraper/renewal_reminder.py, 2026-10-16); NULL = not yet.
     trial_reminder_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the one "7 more days" email reached this Google-only user (website/announce_trial_extension_email.py, 2026-10-19).
+    trial_gift_emailed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Paid-access fields — 2026-09-04 pricing decision (see common/todira_common/access.py for the
     # actual gate, `has_full_access`). Payment itself is informal/manual for now (a Bit transfer

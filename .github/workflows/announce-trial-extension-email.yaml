@@ -1,0 +1,43 @@
+name: Announce — trial extension by email to Google-only users (once)
+
+# 2026-10-19 owner request: the "7 more days" news by email to people who signed up with Google only (the bot can't reach
+# them). Runs website/announce_trial_extension_email.py in the website pod; needs RESEND_API_KEY. Each sent email is
+# marked in the database, so running it again never repeats it. "dry-run" only counts. Prints counts only.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '"dry-run" to count, "send" to really send'
+        required: true
+        default: dry-run
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the input
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          [ "$MODE" = "dry-run" ] || [ "$MODE" = "send" ] || { echo "mode must be dry-run or send"; exit 1; }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run it in the website pod
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$POD" ] || { echo "no running website pod"; exit 1; }
+          if [ "$MODE" = "send" ]; then
+            kubectl exec -n todira "$POD" -- python announce_trial_extension_email.py --send
+          else
+            kubectl exec -n todira "$POD" -- python announce_trial_extension_email.py
+          fi
