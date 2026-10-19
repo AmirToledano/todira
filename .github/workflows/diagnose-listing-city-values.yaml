@@ -1,0 +1,27 @@
+name: Diagnose — every city value our live listings carry, per site (read-only)
+
+# 2026-10-19 owner: "go over every city, moshav and settlement in the country and make sure everything is there". Prints
+# each distinct listings.city with its site and number of live listings, so the names can be checked against the
+# localities list (todira_common.cities). City names only - public ad data, no user data.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: City values
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "|" -c "
+            SELECT coalesce(city, '"'"'(none)'"'"'), source, count(*) FILTER (WHERE NOT is_delisted AND duplicate_of_id IS NULL), count(*)
+            FROM listings GROUP BY 1, 2 ORDER BY 3 DESC"' > city_values.txt
+          wc -l city_values.txt
+          cat city_values.txt
