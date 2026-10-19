@@ -132,6 +132,18 @@ LOCALITY_SET = frozenset(LOCALITIES)
 _SPLIT_COMBINED = re.compile(r"\s*/\s*|\s+[-–]\s+")
 
 
+def locality_skeleton(name: str | None) -> str:
+    """locality_key without the vowel letters י and ו inside words (2026-10-19, owner: "קידר" found nothing - the place
+    is stored "קדר"). Hebrew is written both with and without them ("קידר"/"קדר", "גבעון"/"גיבעון", "אורנית"/"ארנית"), so
+    two spellings that differ only there meet here. A word's first letter is kept ("יבנה" stays "יבנה")."""
+    return " ".join(word[:1] + word[1:].replace("י", "").replace("ו", "") for word in locality_key(name).split())
+
+
+_SKELETON_INDEX: dict[str, set[str]] = {}
+for _name in LOCALITIES:
+    _SKELETON_INDEX.setdefault(locality_skeleton(_name), set()).add(_name)
+
+
 def resolve_locality(name: str | None) -> str | None:
     """The stored spelling of whatever locality `name` is (any official or listings spelling, a common abbreviation
     such as ת"א, or a combined "מיתר / כרמית" name), or None when it is no known locality."""
@@ -150,6 +162,10 @@ def resolve_locality(name: str | None) -> str | None:
             found = ALIASES.get(locality_key(piece))
             if found:
                 return found
+    # Written with or without the vowel letters ("קידר" for "קדר") - only when that leaves exactly one place.
+    same_skeleton = _SKELETON_INDEX.get(locality_skeleton(name), set())
+    if len(same_skeleton) == 1:
+        return next(iter(same_skeleton))
     return None
 
 

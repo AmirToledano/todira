@@ -224,6 +224,18 @@
     label.appendChild(document.createTextNode(' ' + name));
     return label;
   }
+  // 2026-10-19 (owner: "קידר" found nothing, the place is "קדר"): compare without quote marks and without the vowel
+  // letters י/ו inside words, so a name written with or without them still matches - same rule as the bot's
+  // todira_common.cities.locality_skeleton.
+  function _skel(text) {
+    return text.replace(/["'׳״`\-–־]/g, '').split(/\s+/).map(function (w) {
+      return w.charAt(0) + w.slice(1).replace(/[יו]/g, '');
+    }).join(' ').trim();
+  }
+  function _nameMatches(name, q) {
+    var sq = _skel(q);
+    return name.indexOf(q) !== -1 || (sq.length >= 3 && _skel(name).indexOf(sq) !== -1);
+  }
   function filterCityChips(query) {
     var q = query.trim();
     var bare = q.replace(/^ה/, '');
@@ -236,13 +248,13 @@
     var shown = {};
     grid.querySelectorAll('.check-chip[data-city-name]').forEach(function (chip) {
       shown[chip.dataset.cityName] = true;
-      if (!chip.classList.contains('extra-locality')) chip.hidden = q.length > 0 && chip.dataset.cityName.indexOf(q) === -1;
+      if (!chip.classList.contains('extra-locality')) chip.hidden = q.length > 0 && !_nameMatches(chip.dataset.cityName, q);
     });
     if (q.length < 2) return;
     var data = _localities();
     data.regions.forEach(function (pair) {
       var name = pair[0];
-      if (name.indexOf(q) === -1 && name.replace(/(^|\s)ה/g, '$1').indexOf(bare) === -1) return;
+      if (!_nameMatches(name, q) && name.replace(/(^|\s)ה/g, '$1').indexOf(bare) === -1) return;
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'check-chip region-chip';
@@ -252,7 +264,7 @@
     });
     var added = 0;
     data.extra.forEach(function (name) {
-      if (added >= 40 || shown[name] || name.indexOf(q) === -1) return;
+      if (added >= 40 || shown[name] || !_nameMatches(name, q)) return;
       grid.appendChild(_cityChip(name, false));
       added += 1;
     });
