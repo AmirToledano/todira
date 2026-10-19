@@ -79,6 +79,19 @@ def test_the_page_carries_five_example_chats_for_the_demo(client):
     assert [c["name"] for c in data["cities"]][0] == "Haifa"
 
 
+def test_dark_mode_shows_the_same_portrait_with_its_words(client):
+    """Owner, 2026-10-19: the dark page showed a different picture of Todi; both themes use the one portrait with
+    the words on it now."""
+    html = client.get("/?lang=he").text
+    assert html.count('class="lp-portrait"') == 1 and "todi-hero-light.webp" in html
+    assert "todi-hero-dark" not in html
+
+
+def test_every_map_label_says_which_side_of_its_city_it_sits_on():
+    for city in website_main._landing_js("he")["cities"]:
+        assert city["side"] in ("w", "e") and city["name"]
+
+
 def test_no_text_on_the_page_uses_the_tells_the_owner_ruled_out():
     for key, entry in T.items():
         if not key.startswith("landing."):

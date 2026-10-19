@@ -42,8 +42,7 @@
         <p class="lp-fine">{{ t('landing.trial_note') }}</p>
       </div>
       <div class="lp-todi">
-        <img class="lp-portrait lp-light-only" src="/static/todi-hero-light.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024">
-        <img class="lp-portrait lp-dark-only" src="/static/todi-hero-dark.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="540" height="610">
+        <img class="lp-portrait" src="/static/todi-hero-light.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024">
         <div class="lp-notif" id="lp-notif" aria-hidden="true" hidden>
           <img src="/static/apple-touch-icon.png" alt="">
           <div class="lp-notif-who"><b>טודירה</b><span>{{ t('landing.notif_now') }}</span></div>
@@ -64,7 +63,7 @@
         <ul class="lp-feed" id="lp-feed" aria-label="{{ t('landing.feed_label') }}"></ul>
         <p class="lp-feed-note">{{ t('landing.feed_note') }}</p>
       </div>
-      <div class="lp-map lp-sweep" id="lp-map"></div>
+      <div class="lp-map" id="lp-map"></div>
     </div>
   </section>
 

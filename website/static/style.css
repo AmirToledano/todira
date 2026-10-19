@@ -315,8 +315,16 @@ header.site {
   .site-nav-desktop a:hover, .site-nav-desktop a.active { background: rgba(255,255,255,.16); color: #fff; }
 }
 
-.nav-panel { max-height: 0; overflow: hidden; transition: max-height .32s ease; }
-.nav-panel.open { max-height: 70vh; overflow-y: auto; }
+/* 2026-10-19 (owner's report: the menu opened slowly, "like 10 FPS"): it used to grow its max-height over .32s,
+   which pushed the whole page down a little on every frame, so the phone re-laid and repainted everything below
+   (the home page's map included) about 20 times per opening. Now it appears in one step and only its own box fades
+   in over a few frames, which the browser does without touching the page. */
+.nav-panel { display: none; }
+.nav-panel.open { display: block; max-height: 70vh; overflow-y: auto; }
+@media (prefers-reduced-motion: no-preference) {
+  html:not(.a11y-no-motion) .nav-panel.open .nav-panel-inner { animation: nav-panel-in .14s ease-out; }
+}
+@keyframes nav-panel-in { from { opacity: 0; transform: translateY(-6px); } }
 .nav-panel-inner {
   max-width: 1100px; margin: 0 auto; padding: 6px 16px 16px;
   background: var(--card); border-radius: 0 0 var(--radius-md) var(--radius-md);
@@ -329,27 +337,6 @@ nav.site-nav a {
   transition: background .15s, color .15s;
 }
 nav.site-nav a:hover, nav.site-nav a.active { background: var(--teal-tint); color: var(--heading); }
-/* Staggered entrance for the mobile nav panel's own links (2026-09-25) — same slide+fade
-   language as .reveal elsewhere, triggered by .nav-panel.open (base.html's own toggle script)
-   rather than IntersectionObserver, since this is opened by a click, not scrolled into view.
-   Delays are short (30ms apart) so the whole list finishes close to when the panel's own
-   max-height transition does (.32s, right above) rather than trailing behind it. */
-nav.site-nav a {
-  opacity: 0; transform: translateX(14px);
-  transition: opacity .3s var(--ease-premium), transform .3s var(--ease-premium), background .15s, color .15s;
-}
-[dir="rtl"] nav.site-nav a { transform: translateX(-14px); }
-.nav-panel.open nav.site-nav a { opacity: 1; transform: none; }
-.nav-panel.open nav.site-nav a:nth-child(1) { transition-delay: .02s; }
-.nav-panel.open nav.site-nav a:nth-child(2) { transition-delay: .05s; }
-.nav-panel.open nav.site-nav a:nth-child(3) { transition-delay: .08s; }
-.nav-panel.open nav.site-nav a:nth-child(4) { transition-delay: .11s; }
-.nav-panel.open nav.site-nav a:nth-child(5) { transition-delay: .14s; }
-.nav-panel.open nav.site-nav a:nth-child(6) { transition-delay: .17s; }
-.nav-panel.open nav.site-nav a:nth-child(7) { transition-delay: .2s; }
-@media (prefers-reduced-motion: reduce) {
-  nav.site-nav a { opacity: 1; transform: none; transition: none; }
-}
 
 main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 
