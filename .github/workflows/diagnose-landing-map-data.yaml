@@ -1,0 +1,49 @@
+name: Diagnose — where live listings are, for the home page map (read-only)
+
+# 2026-10-19 (owner approved a home page with a live map of Israel): prints aggregates only - listing counts per map
+# square of about 2.5 km (coordinates rounded to 0.025 degrees), the totals the page shows, and the city / rooms /
+# price of the newest few listings. No street, no description, no user data. Read-only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Aggregates
+        run: |
+          cat > /tmp/q.sql <<'SQL'
+          \pset format unaligned
+          \pset tuples_only on
+          \echo '== totals (active|new_24h|cities_24h|with_coords)'
+          SELECT count(*) FILTER (WHERE NOT is_delisted AND duplicate_of_id IS NULL),
+                 count(*) FILTER (WHERE NOT is_delisted AND duplicate_of_id IS NULL AND first_seen_at > now() - interval '24 hours'),
+                 count(DISTINCT city) FILTER (WHERE NOT is_delisted AND duplicate_of_id IS NULL AND first_seen_at > now() - interval '24 hours'),
+                 count(*) FILTER (WHERE NOT is_delisted AND duplicate_of_id IS NULL AND latitude IS NOT NULL)
+          FROM listings;
+          \echo '== grid (lat|lng|active|new_24h)'
+          SELECT round(latitude / 0.025) * 0.025, round(longitude / 0.025) * 0.025, count(*),
+                 count(*) FILTER (WHERE first_seen_at > now() - interval '24 hours')
+          FROM listings
+          WHERE NOT is_delisted AND duplicate_of_id IS NULL AND latitude IS NOT NULL
+            AND latitude BETWEEN 29.4 AND 33.4 AND longitude BETWEEN 34.2 AND 35.9
+          GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== newest (city|rooms|price|deal|lat|lng)'
+          SELECT city, rooms, price, deal_type, round(latitude, 2), round(longitude, 2)
+          FROM listings
+          WHERE NOT is_delisted AND duplicate_of_id IS NULL AND price IS NOT NULL AND rooms IS NOT NULL
+            AND latitude IS NOT NULL AND city IS NOT NULL
+          ORDER BY first_seen_at DESC LIMIT 24;
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < /tmp/q.sql
