@@ -2313,6 +2313,33 @@ def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, True
 
 
+def _delist_group_posts_that_are_not_listings() -> int:
+    """2026-10-19 (owner: an ad for a guarantees company reached everyone as a flat): every live group post stored since
+    the browser feed started is checked again with the current rule (facebook_groups_text_parser.looks_like_listing)
+    and taken down when it fails - so a tighter rule also cleans what an earlier, looser one let in. The text checked is
+    the description without the "(מפרסם/ת: ...)" line we add."""
+    table = Listing.__table__
+    with get_session() as session:
+        rows = session.execute(
+            select(table.c.id, table.c.description).where(
+                table.c.source == Source.FACEBOOK_GROUPS,
+                table.c.is_delisted.is_(False),
+                table.c.description.is_not(None),
+            )
+        ).all()
+        bad = [row.id for row in rows
+               if not facebook_groups_text_parser.looks_like_listing(row.description.split("\n\n(מפרסם/ת:")[0])]
+        if bad:
+            session.execute(
+                table.update().where(table.c.id.in_(bad))
+                .values(is_delisted=True, delisted_at=dt.datetime.now(dt.timezone.utc))
+            )
+            session.commit()
+    if bad:
+        logger.info("Facebook groups: %d stored posts are not flats on offer - taken down", len(bad))
+    return len(bad)
+
+
 def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[str], int, int, bool]:
     """The browser route of _scrape_facebook_groups (2026-10-19): one groups-feed session covers EVERY group the
     dedicated account joined - no tracked-id list needed - and each post's text, time and photos come with the feed,
@@ -2336,6 +2363,10 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
         logger.exception("Facebook groups feed failed - skipping this source this run")
         return normalized_items, seen_external_ids, 0, 1, False
 
+    try:
+        _delist_group_posts_that_are_not_listings()
+    except Exception:
+        logger.exception("re-checking stored Facebook group posts failed")
     known_ids = _fetch_known_external_ids(Source.FACEBOOK_GROUPS)
     skipped_seekers = skipped_vague = errors = 0
     for post in posts:
@@ -2346,8 +2377,10 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
             skipped_seekers += 1
             continue
         raw_item = raw_item_from_feed_post(post)
-        if raw_item.get("price") is None and raw_item.get("rooms") is None:
-            skipped_vague += 1
+        if (raw_item.get("price") is None and raw_item.get("rooms") is None) or not (
+            facebook_groups_text_parser.looks_like_listing(post["text"], raw_item)
+        ):
+            skipped_vague += 1  # no price or rooms, or not a flat on offer at all (an ad for a service, chatter)
             continue
         hint = raw_item.pop("dealHint", None)
         deal_type = hint if hint in DealType.ALL else (DealType.SALE if post["group_id"] in sale_group_ids else DealType.RENT)

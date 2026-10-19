@@ -165,3 +165,32 @@ def parse_place_and_deal(text: str) -> dict[str, Any]:
         if 2 <= len(name) <= 24:
             fields["street"] = f"{name} {street.group(2)}" if street.group(2) else name
     return fields
+
+
+
+# --- 2026-10-19 (owner: a guarantees-company ad with a "10,000 ₪" gift voucher reached everyone as an apartment) --------
+# A group post becomes a listing only when it reads as a real flat on offer: it names the property ("דירה", "יחידת
+# דיור", "סטודיו"...) or states a room count, AND it says it is on offer (rent/sale/sublet words, "מפנה", "פנויה",
+# "כניסה") or gives a room count; and it carries none of the marks of an advertisement for a service.
+_PROPERTY_RE = re.compile(
+    r"(?<![א-ת])(?:ה?דירה|ה?דירת|דירות|יחידת\s*דיור|יח[\"״]ד|סטודיו|פנטהאוז|פנטהאוס|דופלקס|קוטג|וילה|בית\s+פרטי|"
+    r"דירת\s+גן|חדר\s+(?:להשכרה|בדירת|בדירה|פנוי))(?![א-ת])"
+)
+_ON_OFFER_RE = re.compile(
+    r"(?<![א-ת])(?:להשכרה|להשכיר|למכירה|למכור|סאבלט|סבלט|מפנה|מפנים|מתפנה|פנויה|פנוי|משכיר|משכירה|כניסה)(?![א-ת])"
+)
+_AD_MARKS_RE = re.compile(
+    r"utm_|(?<![א-ת])(?:הגרלה|בהגרלה|להגרלה|שובר|שוברים|ערבות|ערבויות|משכנתא|משכנתאות|הלוואה|הלוואות|ביטוח|"
+    r"ייעוץ|יועץ|קורס|סדנה|וובינר|מבצע|הנחה|קופון|פרסומת|ממומן|לחצו\s+על\s+הקישור|הירשמו|להרשמה)(?![א-ת])"
+)
+
+
+def looks_like_listing(text: str, raw_item: dict[str, Any] | None = None) -> bool:
+    """True when a group post is a flat on offer, not an ad, a question or chatter. `raw_item` (parse_listing_fields
+    output) supplies the room count when already read."""
+    if not text or _AD_MARKS_RE.search(text):
+        return False
+    rooms = (raw_item or {}).get("rooms") if raw_item else rooms_and_size(text).get("rooms")
+    names_property = bool(_PROPERTY_RE.search(text)) or rooms is not None
+    on_offer = bool(_ON_OFFER_RE.search(text)) or rooms is not None
+    return names_property and on_offer
