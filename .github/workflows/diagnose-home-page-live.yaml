@@ -1,0 +1,25 @@
+name: Diagnose — is the new home page live (read-only)
+
+# 2026-10-19: after the home page redesign, checks from outside that todira.app serves the new page, the old one is
+# still reachable with ?design=classic, and /api/home-map answers. Prints status codes and counts only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pages and data
+        run: |
+          home=$(curl -s -w '\n%{http_code}' https://todira.app/?lang=he)
+          echo "home: HTTP $(echo "$home" | tail -1), new page marker: $(echo "$home" | grep -c 'static/home.js'), old page marker: $(echo "$home" | grep -c 'id=\"root\"')"
+          classic=$(curl -s https://todira.app/?design=classic)
+          echo "classic: old page marker: $(echo "$classic" | grep -c 'id=\"root\"')"
+          for f in home.css home.js fonts/karantina-hebrew-700-normal.woff2 todi-hero-light.webp todi-hero-dark.webp; do
+            echo "$f: $(curl -s -o /dev/null -w '%{http_code} %{size_download}' https://todira.app/static/$f)"
+          done
+          curl -s https://todira.app/api/home-map -o /tmp/m.json -w 'home-map: HTTP %{http_code}\n'
+          python3 -c "import json; d=json.load(open('/tmp/m.json')); print('grid cells', len(d.get('grid', [])), 'new_24h', d.get('new_24h'), 'cities_24h', d.get('cities_24h'), 'recent', len(d.get('recent', [])))" || true
