@@ -127,7 +127,20 @@ except ImportError:  # only while scripts/build_localities.py builds it for the 
     ALIASES, EXTRA_LOCALITIES, REGIONS = {}, [], {}
 
 # CITIES first and unchanged, so an index into CITIES (old bot buttons) is the same index here.
-LOCALITIES: list[str] = [*CITIES, *[name for name in EXTRA_LOCALITIES if name not in CITIES]]
+# 2026-10-19 (owner: "make sure every place in the country is there"): the Central Bureau of Statistics list also names
+# 25 Bedouin tribes (שבט) in the Negev, which the generated list left out. Appended at the END, so every existing index
+# into LOCALITIES (old bot buttons) stays the same.
+BEDOUIN_TRIBES: list[str] = [
+    "אעצם (שבט)", "אבו עבדון (שבט)", "אבו עמאר (שבט)", "אבו עמרה (שבט)", "אבו ג'ווייעד (שבט)", "אבו קורינאת (שבט)",
+    "אבו רובייעה (שבט)", "אבו רוקייק (שבט)", "אבו סריחאן (שבט)", "אפיניש (שבט)", "אסד (שבט)", "עטאוונה (שבט)",
+    "אטרש (שבט)", "הוואשלה (שבט)", "הוזייל (שבט)", "ג'נאביב (שבט)", "ח'ואלד (שבט)", "נצאצרה (שבט)", "קבועה (שבט)",
+    "קוואעין (שבט)", "קודייראת א-צאנע (שבט)", "סואעד (כמאנה) (שבט)", "סייד (שבט)", "תראבין א-צאנע (שבט)",
+    "זבארגה (שבט)",
+]
+LOCALITIES: list[str] = [
+    *CITIES, *[name for name in EXTRA_LOCALITIES if name not in CITIES],
+    *[name for name in BEDOUIN_TRIBES if name not in EXTRA_LOCALITIES],
+]
 LOCALITY_SET = frozenset(LOCALITIES)
 _SPLIT_COMBINED = re.compile(r"\s*/\s*|\s+[-–]\s+")
 
@@ -214,4 +227,179 @@ def canonicalize_city(raw_city: str | None) -> str | None:
             return city
     # 2026-10-13: every other known locality too (official list + listings variants, see resolve_locality), so a new
     # listing is stored under the one spelling a filter for that place uses.
-    return resolve_locality(raw_city) or raw_city
+    return resolve_locality(raw_city) or resolve_messy_city(raw_city) or raw_city
+
+
+# --- 2026-10-19: messy city text (owner: "make sure every place is there") ---------------------------------------------
+# Measured live: ~330 live listings (mostly Homeless, where the poster types the city freely) carried a "city" no
+# filter could ever match: a neighbourhood ("קרית חיים", "רמת אביב", "גילה"), a typo ("תל אביבב", "בניברק"), English
+# or Russian ("Haifa", "Хайфа"), a place word in front ("קיבוץ מצובה"), or a whole address ("נתניה ישראל בורגנסקי 4").
+# resolve_messy_city reads those; anything still unclear stays as it was (never a guess between two places).
+
+_PLACE_WORDS = re.compile(r"^(?:אזור תעשי+ה|א\.?ת\.?|קיבוץ|קבוץ|מושב|מושבה|כפר|שכונת|שכ['׳]|יישוב|ישוב|העיר|עיר)\s+")
+_INDUSTRIAL_ZONE = re.compile(r"^(?:אזור תעשי+ה|א\.?ת\.?)\s")
+_SETTLEMENT_WORD = re.compile(r"^(?:קיבוץ|קבוץ|מושב|מושבה|יישוב|ישוב)\s")
+_FOREIGN_NAMES = {
+    "tel aviv": "תל אביב יפו", "tel-aviv": "תל אביב יפו", "tel aviv yafo": "תל אביב יפו", "telaviv": "תל אביב יפו",
+    "jerusalem": "ירושלים", "haifa": "חיפה", "herzliya": "הרצליה", "herzlia": "הרצליה", "herzelia": "הרצליה",
+    "netanya": "נתניה", "ashdod": "אשדוד", "ashkelon": "אשקלון", "beer sheva": "באר שבע", "beersheba": "באר שבע",
+    "rishon lezion": "ראשון לציון", "rishon le zion": "ראשון לציון", "ramat gan": "רמת גן", "holon": "חולון",
+    "bat yam": "בת ים", "eilat": "אילת", "petah tikva": "פתח תקווה", "petach tikva": "פתח תקווה", "rehovot": "רחובות",
+    "raanana": "רעננה", "kfar saba": "כפר סבא", "givatayim": "גבעתיים", "oranit": "אורנית", "haderah": "חדרה",
+    "hadera": "חדרה", "nahariya": "נהריה", "modiin": "מודיעין מכבים רעות", "bnei brak": "בני ברק",
+    "тель-авив": "תל אביב יפו", "тель авив": "תל אביב יפו", "иерусалим": "ירושלים", "хайфа": "חיפה",
+    "бат ям": "בת ים", "бат-ям": "בת ים", "нетания": "נתניה", "ашдод": "אשדוד", "ашкелон": "אשקלון",
+    "беэр шева": "באר שבע", "беэр-шева": "באר שבע", "холон": "חולון", "ришон ле цион": "ראשון לציון",
+    "ришон лецион": "ראשון לציון", "рамат ган": "רמת גן", "хадера": "חדרה", "эйлат": "אילת",
+    "ariel": "אריאל", "ari'el": "אריאל", "betar ilit": "ביתר עילית", "beitar illit": "ביתר עילית", "efrat": "אפרת",
+    "elkana": "אלקנה", "karne shomron": "קרני שומרון", "karnei shomron": "קרני שומרון", "kiryat arba": "קרית ארבע",
+    "ramla": "רמלה", "lod": "לוד", "beit dagan": "בית דגן", "katzrin": "קצרין", "nili": "ניל\"י", "bt yam": "בת ים",
+    "giv'on hahadasha": "גבעון החדשה", "givon hahadasha": "גבעון החדשה", "beit shemesh": "בית שמש",
+    "kiryat gat": "קריית גת", "kiryat ata": "קריית אתא", "kiryat yam": "קריית ים", "kiryat bialik": "קריית ביאליק",
+    "kiryat motzkin": "קריית מוצקין", "yavne": "יבנה", "nes ziona": "נס ציונה", "rosh haayin": "ראש העין",
+    "afula": "עפולה", "tiberias": "טבריה", "nazareth": "נצרת", "acre": "עכו", "akko": "עכו", "dimona": "דימונה",
+    "sderot": "שדרות", "ofakim": "אופקים", "netivot": "נתיבות", "maale adumim": "מעלה אדומים", "harish": "חריש",
+    "петах тиква": "פתח תקווה", "реховот": "רחובות", "кирьят ям": "קריית ים", "кирьят ата": "קריית אתא",
+}
+# Neighbourhoods people write as the "city" - only well-known ones that belong to exactly one city.
+_NEIGHBOURHOODS = {
+    "קרית חיים": "חיפה", "קרית חיים מזרחית": "חיפה", "קרית חיים מערבית": "חיפה", "קרית שמואל": "חיפה",
+    "קרית אליעזר": "חיפה", "נוה שאנן": "חיפה", "הדר": "חיפה", "הדר הכרמל": "חיפה", "רמות רמז": "חיפה",
+    "דניה": "חיפה", "רמת הדר": "חיפה", "בת גלים": "חיפה", "מרכז הכרמל": "חיפה",
+    "יפו": "תל אביב יפו", "רמת אביב": "תל אביב יפו", "רמת אביב ג": "תל אביב יפו", "רמת אביב נוה אביבים": "תל אביב יפו",
+    "נוה אביבים": "תל אביב יפו", "תל ברוך": "תל אביב יפו", "תל ברוך צפון": "תל אביב יפו", "נוה עופר": "תל אביב יפו",
+    "שכונת התקוה": "תל אביב יפו", "התקוה": "תל אביב יפו", "יד אליהו": "תל אביב יפו", "בבלי": "תל אביב יפו",
+    "פלורנטין": "תל אביב יפו", "נוה צדק": "תל אביב יפו", "הצפון הישן": "תל אביב יפו", "הצפון החדש": "תל אביב יפו",
+    "לב תל אביב": "תל אביב יפו", "רמת החייל": "תל אביב יפו", "כרם התימנים": "תל אביב יפו", "שיכון בבלי": "תל אביב יפו",
+    "תל אביב צפון": "תל אביב יפו", "רמת הטייסים": "תל אביב יפו", "נוה שאנן תל אביב": "תל אביב יפו",
+    "גילה": "ירושלים", "הר חומה": "ירושלים", "רמות": "ירושלים", "רמות ב": "ירושלים", "פסגת זאב": "ירושלים",
+    "רמת שלמה": "ירושלים", "בית הכרם": "ירושלים", "קטמון": "ירושלים", "תלפיות": "ירושלים", "ארנונה": "ירושלים",
+    "קרית יובל": "ירושלים", "קרית מנחם": "ירושלים", "רחביה": "ירושלים", "בקעה": "ירושלים", "נחלאות": "ירושלים",
+    "רמת מוצא": "ירושלים", "גבעת שאול": "ירושלים", "הר נוף": "ירושלים", "רמת אשכול": "ירושלים", "בית וגן": "ירושלים",
+    "רמת הנשיא": "בת ים", "רמת פנקס": "אור יהודה", "קרית חתני פרס נובל": "ראשון לציון", "פרס נובל": "ראשון לציון",
+    "נוה ים": "ראשון לציון", "מרום נוה": "רמת גן", "רמת אפעל": "רמת גן", "רמת חן": "רמת גן", "הבורסה": "רמת גן",
+    "עפולה הצעירה": "עפולה", "נצרת עילית": "נוף הגליל", "נוף הגליל נצרת עלית": "נוף הגליל", "עיר ימים": "נתניה",
+    "קרית השרון": "נתניה", "רמת פולג": "נתניה", "קרית יערים": "טלז סטון", "רמלה לוד": None,
+}
+# Short or misspelt names of a city that the official list doesn't hold.
+_SHORT_NAMES = {
+    "מודיעין": "מודיעין מכבים רעות", "מודעין": "מודיעין מכבים רעות", "מודיעין מכבי": "מודיעין מכבים רעות",
+    "מודיעין מכבים": "מודיעין מכבים רעות", "תל אביב": "תל אביב יפו", "תל אביב מרכז": "תל אביב יפו",
+    "שכונת שפירא": "תל אביב יפו", "שפירא": "תל אביב יפו", "באקה": "באקה אל גרביה", "יבניאל": "יבנאל",
+    "יבניל": "יבנאל", "ברגיורא": "בר גיורא",
+}
+_PHONE_OR_NUMBER = re.compile(r"[\d\-]{6,}")
+_BIDI_MARKS = re.compile(r"[\u200e\u200f\u202a-\u202e]")
+
+
+_WHOLE_WORD_CANDIDATES = [name for name in LOCALITIES if name in CITIES or " " in locality_key(name)]
+# The official list's second names in brackets ("כפר רוזנואלד (זרעית)", "ג'ש (גוש חלב)", "ניר דוד (תל עמל)"), which the
+# stored spelling dropped: each one is another way of writing that place.
+SECOND_NAMES = {
+    "זרעית": "כפר רוזנואלד", "גוש חלב": "ג'ש", "תל עמל": "ניר דוד", "אבן יצחק": "גלעד", "בוקייעה": "פקיעין",
+    "בנו עוקבה": "עוקבי", "לי און": "שריגים", "חמירה": "סואעד", "דהרה": "חוג'ייראת", "חלמיש": "נווה צוף",
+    "צופין": "צופים", "גרנות הגליל": "גורנות הגליל", "גרונות הגליל": "גורנות הגליל",
+}
+for _other, _name in SECOND_NAMES.items():
+    ALIASES.setdefault(locality_key(_other), _name)
+# Each half of a combined official name ("כוכב יאיר / צור יגאל"), when that half names only one place.
+_COMBINED_PIECES: dict[str, str] = {}
+for _name in LOCALITIES:
+    _pieces = [p for p in _SPLIT_COMBINED.split(_name) if p.strip()]
+    for _piece in _pieces if len(_pieces) > 1 else ():
+        _COMBINED_PIECES[locality_key(_piece)] = None if locality_key(_piece) in _COMBINED_PIECES else _name
+# Every way of writing a city, for the typo match ("תל אביבב" is closest to "תל אביב", not "תל אביב יפו").
+_CITY_SPELLINGS: dict[str, str] = {locality_key(c): c for c in CITIES}
+_LOCALITY_KEYS: dict[str, str] = {locality_key(n): n for n in LOCALITIES}
+_CITY_SPELLINGS.update({k: v for k, v in ALIASES.items() if v in CITIES and len(k) >= 4})
+
+
+def _whole_word_places(text: str) -> set[str]:
+    """Places named whole-word inside a longer text ("פסגת זאב ירושלים", "נתניה ישראל בורגנסקי 4")."""
+    key = f" {locality_key(text)} "
+    found = set()
+    # Only cities and multi-word places: a one-word village ("רחוב", "שני") is also an everyday word or a first name
+    # inside an agent's name ("חכמת רחוב", "שני ליבנה").
+    for name in sorted(_WHOLE_WORD_CANDIDATES, key=len, reverse=True):
+        name_key = locality_key(name)
+        if len(name_key) >= 3 and f" {name_key} " in key:
+            found.add(name)
+            key = key.replace(f" {name_key} ", " ")
+    for short, name in _SHORT_NAMES.items():
+        if " " in short and f" {locality_key(short)} " in key:
+            found.add(name)
+    return found
+
+
+def resolve_messy_city(raw_city: str | None) -> str | None:
+    """The locality a free-typed city text means, or None when it can't be told for sure."""
+    if not raw_city:
+        return None
+    text = _BIDI_MARKS.sub("", raw_city).strip()
+    text = _PHONE_OR_NUMBER.split(text)[0]
+    text = " ".join(re.sub(r"\d+", " ", html.unescape(text)).split()).strip(" ,.-")
+    if not text:
+        return None
+    found = resolve_locality(text)
+    if found:
+        return found
+    stripped = _PLACE_WORDS.sub("", text).strip()
+    if stripped != text:
+        found = resolve_locality(stripped)
+        if found:
+            return found
+
+    foreign = _FOREIGN_NAMES.get(" ".join(text.lower().replace("-", " ").split())) or _FOREIGN_NAMES.get(text.lower())
+    if foreign:
+        return foreign
+    key = locality_key(stripped)
+    for spelling in (locality_key(text), key):
+        short = {locality_key(k): v for k, v in _SHORT_NAMES.items()}.get(spelling)
+        if short:
+            return short
+        neighbourhood = {locality_key(k): v for k, v in _NEIGHBOURHOODS.items()}.get(spelling)
+        if neighbourhood:
+            return neighbourhood
+    if _COMBINED_PIECES.get(key):
+        return _COMBINED_PIECES[key]
+    if key in {locality_key(n) for n in _NEIGHBOURHOODS}:
+        return next(city for n, city in _NEIGHBOURHOODS.items() if locality_key(n) == key)
+    # "בניברק", "רמת גן ן", "קרית אונוון": a doubled last letter or a missing space.
+    squeezed = key.replace(" ", "")
+    for name in CITIES:
+        if locality_key(name).replace(" ", "") == squeezed or locality_key(name).replace(" ", "") == squeezed[:-1]:
+            return name
+    # "קרית שדה התעופה / איירפורט סיטי": a piece that is a known place, when only one place is named.
+    pieces = {resolve_locality(p) for p in _SPLIT_COMBINED.split(text) if p.strip()} - {None}
+    if len(pieces) == 1 and len(_SPLIT_COMBINED.split(text)) > 1:
+        return next(iter(pieces))
+    places = _whole_word_places(stripped if _INDUSTRIAL_ZONE.match(text) else text)
+    # Inside a longer text only a two-word neighbourhood counts ("רמות" alone is also "רמות ים" near Netanya).
+    neighbourhood_cities = {
+        city for n, city in _NEIGHBOURHOODS.items()
+        if city and " " in locality_key(n) and f" {locality_key(n)} " in f" {key} "
+    }
+    candidates = places | neighbourhood_cities
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    # A typo of a major city ("תל אביבב", "תל אבבי", "קרית חים") - only when one city is clearly closest.
+    import difflib
+
+    close = difflib.get_close_matches(key, list(_CITY_SPELLINGS), n=3, cutoff=0.85)
+    meant = {_CITY_SPELLINGS[k] for k in close}
+    if len(meant) == 1:
+        return next(iter(meant))
+    # Any other place, only a very close spelling of a longer name ("פקיעין החדשה" for "פקיעין חדשה").
+    if len(key) >= 7:
+        close = difflib.get_close_matches(key, list(_LOCALITY_KEYS), n=2, cutoff=0.9)
+        if len({_LOCALITY_KEYS[k] for k in close}) == 1:
+            return _LOCALITY_KEYS[close[0]]
+    # "מושב צופר בערבה", "מושב מרגליות סמוך למכללת...": after "מושב"/"קיבוץ", the place's name comes first.
+    if _SETTLEMENT_WORD.match(text):
+        words = stripped.split()
+        for size in range(min(3, len(words) - 1), 0, -1):
+            found = resolve_locality(" ".join(words[:size]))
+            if found:
+                return found
+    return None
+

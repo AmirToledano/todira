@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing, link_missed_duplicates, link_same_site_reposts, promote_live_duplicates
 from todira_common import text_features, yad2_detail
+from todira_common.cities import LOCALITY_SET, canonicalize_city
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common import app_flags
@@ -2313,6 +2314,29 @@ def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
     return normalized_items, seen_external_ids, fetched, errors, True
 
 
+def _fix_unknown_city_names(session) -> int:
+    """2026-10-19 (owner: "make sure every place in the country is there"): a live listing whose city is no known place
+    ("קרית חיים", "תל אביבב", "Хайфа", "קיבוץ מצובה") can never match a filter. Each one is read again with the current
+    rules (cities.canonicalize_city) and stored under the place's own name when that is now clear. Runs before the
+    alerts, so this run's new listings are already fixed when they are matched."""
+    table = Listing.__table__
+    rows = session.execute(
+        select(table.c.id, table.c.city).where(table.c.is_delisted.is_(False), table.c.city.is_not(None))
+    ).all()
+    fixed = 0
+    for row in rows:
+        if row.city in LOCALITY_SET:
+            continue
+        city = canonicalize_city(row.city)
+        if city != row.city and city in LOCALITY_SET:
+            session.execute(table.update().where(table.c.id == row.id).values(city=city))
+            fixed += 1
+    if fixed:
+        session.commit()
+        logger.info("city names: %d stored listings now carry a known place", fixed)
+    return fixed
+
+
 def _delist_group_posts_that_are_not_listings() -> int:
     """2026-10-19 (owner: an ad for a guarantees company reached everyone as a flat): every live group post stored since
     the browser feed started is checked again with the current rule (facebook_groups_text_parser.looks_like_listing)
@@ -2541,6 +2565,11 @@ def run_once() -> dict[str, int]:
         # same Yad2 ad posted again under a new id (~3 days apart), or a flat already sent from another site. Both
         # were linked as duplicates only AFTER this run's alerts had gone out (the step at the end of the run), so
         # the copy reached everyone first. Linking now, before the alerts, keeps a copy from ever being sent.
+        try:
+            _fix_unknown_city_names(session)
+        except Exception:
+            session.rollback()
+            logger.exception("fixing stored city names failed")
         duplicates_linked_before_alerts = 0
         try:
             duplicates_linked_before_alerts = link_missed_duplicates(session) + link_same_site_reposts(session)

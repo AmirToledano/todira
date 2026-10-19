@@ -71,7 +71,7 @@ from todira_common.access import (
     has_paid_access,
 )
 from todira_common.channel_link import generate_link_code
-from todira_common.cities import CITIES, EXTRA_LOCALITIES, LOCALITY_SET, REGIONS
+from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECOND_NAMES
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
@@ -2029,7 +2029,9 @@ _PASS_PICKED_ON_TAKBULL = "pass_choice"
 # major cities as before; every other locality, and every area (a click selects all its localities), appears when the
 # search box matches it (_filter_form_fields.html). Built once - the lists are static.
 _LOCALITY_PICKER_CONTEXT = {
-    "extra_localities_list": sorted(name for name in EXTRA_LOCALITIES if name not in CITIES),
+    "extra_localities_list": sorted(name for name in LOCALITIES if name not in CITIES),
+    # 2026-10-19: a place's second name ("זרעית" for "כפר רוזנואלד") finds it too.
+    "other_locality_names": sorted(SECOND_NAMES.items()),
     "city_regions_list": sorted(REGIONS.items()),
 }
 

@@ -24,7 +24,8 @@ def test_any_spelling_resolves_to_the_one_stored_name():
 
 def test_new_listings_are_stored_under_that_name():
     assert cities.canonicalize_city("תל אביב - יפו") == "תל אביב יפו"
-    assert cities.canonicalize_city("בחולון") == "בחולון"  # unknown text is left as it was
+    assert cities.canonicalize_city("בחולון") == "חולון"  # 2026-10-19: "in Holon" is read too (resolve_messy_city)
+    assert cities.canonicalize_city("דירת גן") == "דירת גן"  # unknown text is left as it was
 
 
 def test_areas_hold_their_localities():
