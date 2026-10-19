@@ -1,0 +1,129 @@
+name: Diagnose — what Todira pays for, checked live (read-only)
+
+# 2026-10-19 (owner: "what am I still paying for? no old numbers"): asks each outside service directly and prints only
+# plan names, balances, usage counts and dates - never a key or any user detail. Read-only: nothing is changed.
+#   - which keys production actually holds (set / not set)
+#   - ZenRows: the account's plan and usage, and whether production still sends it any requests
+#   - Bright Data: the account balance, and whether production still sends it any requests
+#   - the server: EC2 instance type and whether it is spot or on-demand (from the instance's own metadata)
+#   - the domain todira.app: registrar and expiry date (public RDAP record)
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keys this repository holds (set / not set)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TAKBULL_API_KEY: ${{ secrets.TAKBULL_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          for name in ZENROWS_API_KEY BRIGHT_DATA_API_KEY GEMINI_API_KEY RESEND_API_KEY TAKBULL_API_KEY AWS_ACCESS_KEY_ID; do
+            if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: not set"; fi
+          done
+
+      - name: ZenRows account (plan and usage)
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          [ -n "$ZENROWS_API_KEY" ] || { echo "no key"; exit 0; }
+          for url in "https://api.zenrows.com/v1/subscriptions/self/details" "https://api.zenrows.com/v1/usage"; do
+            code=$(curl -s -o /tmp/z.json -w '%{http_code}' -H "X-API-Key: $ZENROWS_API_KEY" "$url?apikey=$ZENROWS_API_KEY")
+            echo "$url -> HTTP $code"
+            # Print only plan / usage / date fields, never anything that could hold the key.
+            python3 - <<'PY' || true
+          import json
+          try:
+              data = json.load(open("/tmp/z.json"))
+          except Exception:
+              print("  (not JSON)"); raise SystemExit
+          def walk(obj, prefix=""):
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      walk(v, f"{prefix}{k}.")
+              elif not isinstance(obj, list):
+                  key = prefix.rstrip(".")
+                  if any(w in key.lower() for w in ("plan", "usage", "used", "limit", "credit", "period", "renew",
+                                                     "status", "price", "amount", "end", "start", "concurrency", "name")):
+                      if "key" not in key.lower() and "email" not in key.lower():
+                          print(f"  {key}: {obj}")
+          walk(data)
+          PY
+          done
+
+      - name: Bright Data account (balance)
+        env:
+          BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+        run: |
+          [ -n "$BRIGHT_DATA_API_KEY" ] || { echo "no key"; exit 0; }
+          code=$(curl -s -o /tmp/b.json -w '%{http_code}' -H "Authorization: Bearer $BRIGHT_DATA_API_KEY" \
+            https://api.brightdata.com/customer/balance)
+          echo "balance -> HTTP $code"
+          python3 -c "import json; d=json.load(open('/tmp/b.json')); print({k: d.get(k) for k in ('balance', 'pending_balance', 'pending_costs', 'credit')})" || true
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Does production still call the paid scraping services? (today's scraper pod logs, counts only)
+        run: |
+          for pod in $(kubectl get pods -n todira -l 'app in (todira-scraper,todira-facebook-scraper)' -o jsonpath='{.items[*].metadata.name}'); do
+            logs=$(kubectl logs -n todira "$pod" 2>/dev/null || true)
+            z=$(printf '%s' "$logs" | grep -ci "zenrows" || true)
+            u=$(printf '%s' "$logs" | grep -ci "web unlocker\|bright data\|brightdata" || true)
+            g=$(printf '%s' "$logs" | grep -ci "gemini" || true)
+            echo "$pod: zenrows_lines=$z bright_data_lines=$u gemini_lines=$g"
+          done
+          echo "--- lines mentioning a paid route (first 15, cut short) ---"
+          for pod in $(kubectl get pods -n todira -l app=todira-scraper -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl logs -n todira "$pod" 2>/dev/null | grep -i "zenrows\|web unlocker\|bright data" | grep -v -i notifier | cut -c1-150 | head -5
+          done
+
+      - name: The server (instance type, spot or on-demand)
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$POD" -- python3 - <<'PY'
+          import urllib.request
+          def get(path, token):
+              req = urllib.request.Request("http://169.254.169.254/latest/meta-data/" + path, headers={"X-aws-ec2-metadata-token": token})
+              return urllib.request.urlopen(req, timeout=3).read().decode()
+          try:
+              tok = urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/latest/api/token", method="PUT",
+                  headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"}), timeout=3).read().decode()
+              for path in ("instance-type", "instance-life-cycle", "placement/region"):
+                  try:
+                      print(path, "=", get(path, tok))
+                  except Exception as exc:
+                      print(path, "= unavailable", type(exc).__name__)
+          except Exception as exc:
+              print("metadata unavailable:", type(exc).__name__)
+          PY
+          kubectl get nodes -o jsonpath='{range .items[*]}node {.metadata.name}: cpu={.status.capacity.cpu} memory={.status.capacity.memory}{"\n"}{end}'
+          kubectl get pvc -A -o jsonpath='{range .items[*]}pvc {.metadata.name}: {.status.capacity.storage}{"\n"}{end}'
+
+      - name: The domain (public record)
+        run: |
+          curl -s https://rdap.org/domain/todira.app -L -o /tmp/d.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/d.json'))
+          for e in d.get('events', []):
+              print(e.get('eventAction'), e.get('eventDate'))
+          for ent in d.get('entities', []):
+              if 'registrar' in ent.get('roles', []):
+                  vc = ent.get('vcardArray', [None, []])[1]
+                  print('registrar', [x[3] for x in vc if x[0] == 'fn'])
+          "
