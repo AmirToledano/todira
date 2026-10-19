@@ -146,6 +146,11 @@ _CITY_PATTERNS = _build_city_patterns()
 _ABBREVIATION = re.compile(_BOUNDARY_BEFORE + r"[בלמו]?([א-ת]{1,4}[\"'׳״][א-ת])" + _BOUNDARY_AFTER)
 
 
+_PLACE_WORD = re.compile(
+    _BOUNDARY_BEFORE + r"[בלמו]?(?:ה?יישוב|ה?ישוב|ה?מושב|ה?קיבוץ|ה?התנחלות|ה?כפר)\s+([א-ת][א-ת\"'׳״\-]{1,20})" + _BOUNDARY_AFTER
+)
+
+
 def _cities(text: str) -> list[str]:
     normalized = normalize_spelling(text)
     hits: list[tuple[int, str]] = []
@@ -156,6 +161,12 @@ def _cities(text: str) -> list[str]:
                 continue
             taken.append((m.start(), m.end()))
             hits.extend((m.start(), city) for city in cities_found)
+    # 2026-10-19: a one-word place is only picked out of a sentence when the sentence says it is a place
+    # ("ביישוב קדר", "במושב נורדיה", "בקיבוץ גבעון") - on its own, "קדר" is also a word.
+    for m in _PLACE_WORD.finditer(text):
+        city = resolve_locality(m.group(1))
+        if city:
+            hits.append((m.start(), city))
     for m in _ABBREVIATION.finditer(text):
         city = _ALIASES.get("".join(ch for ch in m.group(1) if ch not in _QUOTES))
         if city:
