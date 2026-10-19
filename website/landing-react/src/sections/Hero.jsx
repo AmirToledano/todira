@@ -179,25 +179,6 @@ export default function Hero() {
                  height in style hits the exact same browser behavior). */
               style={{ width: "100%", height: "auto", borderRadius: 28, boxShadow: "0 30px 60px rgba(14,60,58,.22)" }}
             />
-            {/* home.stat_uptime_* ("24/7" / "הבוט תמיד ער") here, not home.live_badge — that text
-                already appears once, in its original spot near the CTAs below, so reusing it here
-                too would just repeat the same sentence on screen twice for no reason. */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8, x: -20 }}
-              animate={{ opacity: 1, scale: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 1.1, ease: easePremium }}
-              style={{
-                position: "absolute", bottom: -18, insetInlineStart: -18,
-                background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16,
-                padding: "10px 16px", boxShadow: "0 12px 28px rgba(14,60,58,.16)",
-                display: "flex", alignItems: "center", gap: 8,
-              }}
-            >
-              <span style={{ fontFamily: "Rubik, sans-serif", fontWeight: 800, fontSize: "1.05rem", color: "var(--teal)" }}>
-                {t("home.stat_uptime_value")}
-              </span>
-              <span style={{ fontSize: ".72rem", color: "var(--text-muted)" }}>{t("home.stat_uptime_label")}</span>
-            </motion.div>
           </TiltImage>
         </motion.div>
       </div>

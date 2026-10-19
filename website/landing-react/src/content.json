@@ -1,10 +1,10 @@
 {
   "meta.title_home": {
-    "he": "טודירה — חיפוש דירות בזמן אמת",
-    "en": "Todira — real-time apartment search",
-    "ru": "Todira — поиск квартир в реальном времени",
-    "fr": "Todira — recherche d'appartements en temps réel",
-    "ar": "توديرا — بحث عن شقق في الوقت الفعلي"
+    "he": "טודירה | חיפוש דירות בזמן אמת",
+    "en": "Todira | real-time apartment search",
+    "ru": "Todira | поиск квартир в реальном времени",
+    "fr": "Todira | recherche d'appartements en temps réel",
+    "ar": "توديرا | بحث عن شقق في الوقت الفعلي"
   },
   "meta.description": {
     "he": "בוט חיפוש דירות אישי שסורק את שוק הדירות ומתריע לך ברגע שמופיעה דירה שמתאימה בדיוק לסינון שלך.",
@@ -14,53 +14,53 @@
     "ar": "بوت بحث شقق شخصي يفحص السوق باستمرار وينبهك فور ظهور إعلان يطابق بالضبط الفلتر الخاص بك."
   },
   "meta.title_about": {
-    "he": "אודות — טודירה",
-    "en": "About — Todira",
-    "ru": "О нас — Todira",
-    "fr": "À propos — Todira",
-    "ar": "من نحن — توديرا"
+    "he": "אודות | טודירה",
+    "en": "About | Todira",
+    "ru": "О нас | Todira",
+    "fr": "À propos | Todira",
+    "ar": "من نحن | توديرا"
   },
   "meta.title_terms": {
-    "he": "תנאי שימוש — טודירה",
-    "en": "Terms of Use — Todira",
-    "ru": "Условия использования — Todira",
-    "fr": "Conditions d'utilisation — Todira",
-    "ar": "شروط الاستخدام — توديرا"
+    "he": "תנאי שימוש | טודירה",
+    "en": "Terms of Use | Todira",
+    "ru": "Условия использования | Todira",
+    "fr": "Conditions d'utilisation | Todira",
+    "ar": "شروط الاستخدام | توديرا"
   },
   "meta.title_privacy": {
-    "he": "מדיניות פרטיות — טודירה",
-    "en": "Privacy Policy — Todira",
-    "ru": "Политика конфиденциальности — Todira",
-    "fr": "Politique de confidentialité — Todira",
-    "ar": "سياسة الخصوصية — توديرا"
+    "he": "מדיניות פרטיות | טודירה",
+    "en": "Privacy Policy | Todira",
+    "ru": "Политика конфиденциальности | Todira",
+    "fr": "Politique de confidentialité | Todira",
+    "ar": "سياسة الخصوصية | توديرا"
   },
   "meta.title_accessibility": {
-    "he": "הצהרת נגישות — טודירה",
-    "en": "Accessibility Statement — Todira",
-    "ru": "Заявление о доступности — Todira",
-    "fr": "Déclaration d'accessibilité — Todira",
-    "ar": "بيان إمكانية الوصول — توديرا"
+    "he": "הצהרת נגישות | טודירה",
+    "en": "Accessibility Statement | Todira",
+    "ru": "Заявление о доступности | Todira",
+    "fr": "Déclaration d'accessibilité | Todira",
+    "ar": "بيان إمكانية الوصول | توديرا"
   },
   "meta.title_contact": {
-    "he": "צור קשר — טודירה",
-    "en": "Contact us — Todira",
-    "ru": "Связаться с нами — Todira",
-    "fr": "Nous contacter — Todira",
-    "ar": "تواصل معنا — توديرا"
+    "he": "צור קשר | טודירה",
+    "en": "Contact us | Todira",
+    "ru": "Связаться с нами | Todira",
+    "fr": "Nous contacter | Todira",
+    "ar": "تواصل معنا | توديرا"
   },
   "meta.title_account": {
-    "he": "החשבון שלי — טודירה",
-    "en": "My Account — Todira",
-    "ru": "Мой аккаунт — Todira",
-    "fr": "Mon compte — Todira",
-    "ar": "حسابي — توديرا"
+    "he": "החשבון שלי | טודירה",
+    "en": "My Account | Todira",
+    "ru": "Мой аккаунт | Todira",
+    "fr": "Mon compte | Todira",
+    "ar": "حسابي | توديرا"
   },
   "meta.title_login": {
-    "he": "התחברות — טודירה",
-    "en": "Login — Todira",
-    "ru": "Вход — Todira",
-    "fr": "Connexion — Todira",
-    "ar": "تسجيل الدخول — توديرا"
+    "he": "התחברות | טודירה",
+    "en": "Login | Todira",
+    "ru": "Вход | Todira",
+    "fr": "Connexion | Todira",
+    "ar": "تسجيل الدخول | توديرا"
   },
   "auth.logout": {
     "he": "התנתקות",
@@ -94,7 +94,7 @@
     "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. ליצירת קשר: ",
     "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. Contact: ",
     "ru": "Todira управляется Амиром Толедано, освобождённый предприниматель (עוסק פטור) № 211530563. Контакт: ",
-    "fr": "Todira est exploité par Amir Toledano, entrepreneur exonéré (עוסק פטור) n° 211530563. Contact : ",
+    "fr": "Todira est exploité par Amir Toledano, entrepreneur exonéré (עוסק פטור) n° 211530563. Contact: ",
     "ar": "توديرا يُدار من قبل أمير توليدانو، تاجر معفى رقم 211530563. للتواصل: "
   },
   "footer.about": {
@@ -127,10 +127,10 @@
   },
   "cookies.notice_text": {
     "he": "האתר משתמש רק בשתי עוגיות: אחת זוכרת שהתחברת ואחת זוכרת את השפה. בלי פרסומות ובלי מעקב.",
-    "en": "This site uses exactly two functional cookies (login and display language) — no advertising or tracking cookies.",
-    "ru": "Сайт использует только два функциональных файла cookie (вход и язык отображения) — без рекламных или отслеживающих файлов cookie.",
-    "fr": "Ce site utilise exactement deux cookies fonctionnels (connexion et langue d'affichage) — aucun cookie publicitaire ou de suivi.",
-    "ar": "يستخدم هذا الموقع ملفي تعريف ارتباط وظيفيين فقط (تسجيل الدخول ولغة العرض) — بدون ملفات تعريف ارتباط إعلانية أو تعقب."
+    "en": "This site uses exactly two functional cookies (login and display language), no advertising or tracking cookies.",
+    "ru": "Сайт использует только два функциональных файла cookie (вход и язык отображения), без рекламных или отслеживающих файлов cookie.",
+    "fr": "Ce site utilise exactement deux cookies fonctionnels (connexion et langue d'affichage), aucun cookie publicitaire ou de suivi.",
+    "ar": "يستخدم هذا الموقع ملفي تعريف ارتباط وظيفيين فقط (تسجيل الدخول ولغة العرض), بدون ملفات تعريف ارتباط إعلانية أو تعقب."
   },
   "cookies.notice_link": {
     "he": "מדיניות פרטיות",
@@ -147,11 +147,11 @@
     "ar": "فهمت"
   },
   "home.eyebrow": {
-    "he": "דירות בזמן אמת · בטלגרם 👑",
-    "en": "Real-time apartments · on Telegram 👑",
-    "ru": "Квартиры в реальном времени · в Telegram 👑",
-    "fr": "Appartements en temps réel · sur Telegram 👑",
-    "ar": "شقق في الوقت الفعلي · على تيليجرام 👑"
+    "he": "דירות בזמן אמת בטלגרם",
+    "en": "Real-time apartments, on Telegram",
+    "ru": "Квартиры в реальном времени, в Telegram",
+    "fr": "Appartements en temps réel, sur Telegram",
+    "ar": "شقق في الوقت الفعلي, على تيليجرام"
   },
   "home.h1": {
     "he": "הדירה שלך מוצאת אותך",
@@ -178,15 +178,15 @@
     "he": "איך זה עובד?",
     "en": "How does it work?",
     "ru": "Как это работает?",
-    "fr": "Comment ça marche ?",
+    "fr": "Comment ça marche?",
     "ar": "كيف يعمل؟"
   },
   "home.hero_img_alt": {
-    "he": "טודי המלך — בוט חיפוש דירות טודירה",
-    "en": "King Todi — the Todira apartment-search bot",
-    "ru": "Король Тоди — бот поиска квартир Todira",
-    "fr": "Le roi Todi — le bot de recherche d'appartements Todira",
-    "ar": "الملك تودي — بوت البحث عن شقق توديرا"
+    "he": "טודי המלך, הכלב של טודירה",
+    "en": "King Todi, the Todira apartment-search bot",
+    "ru": "Король Тоди, бот поиска квартир Todira",
+    "fr": "Le roi Todi, le bot de recherche d'appartements Todira",
+    "ar": "الملك تودي, بوت البحث عن شقق توديرا"
   },
   "home.stat_scan_freq_value": {
     "he": "כל שעה",
@@ -343,11 +343,11 @@
     "ar": "من إيلات حتى كريات شمونة"
   },
   "home.live_badge": {
-    "he": "התראות בזמן אמת 🔔",
-    "en": "Real-time alerts 🔔",
-    "ru": "Уведомления в реальном времени 🔔",
-    "fr": "Alertes en temps réel 🔔",
-    "ar": "تنبيهات فورية 🔔"
+    "he": "התראות בזמן אמת",
+    "en": "Real-time alerts",
+    "ru": "Уведомления в реальном времени",
+    "fr": "Alertes en temps réel",
+    "ar": "تنبيهات فورية"
   },
   "home.example_badge_label": {
     "he": "לדוגמה",
@@ -360,15 +360,15 @@
     "he": "דירה חדשה!",
     "en": "New listing!",
     "ru": "Новое объявление!",
-    "fr": "Nouvelle annonce !",
+    "fr": "Nouvelle annonce!",
     "ar": "شقة جديدة!"
   },
   "home.example_card_sub": {
-    "he": "רמת גן · 2 חדרים · 4,900 ₪",
-    "en": "Ramat Gan · 2 rooms · ₪4,900",
-    "ru": "Рамат-Ган · 2 комнаты · 4,900 ₪",
-    "fr": "Ramat Gan · 2 pièces · 4 900 ₪",
-    "ar": "رمات غان · غرفتان · 4,900 ₪"
+    "he": "רמת גן, 2 חדרים, 4,900 ₪",
+    "en": "Ramat Gan, 2 rooms, ₪4,900",
+    "ru": "Рамат-Ган, 2 комнаты, 4,900 ₪",
+    "fr": "Ramat Gan, 2 pièces, 4 900 ₪",
+    "ar": "رمات غان, غرفتان, 4,900 ₪"
   },
   "home.feature1_title": {
     "he": "תכתוב לו כמו לחבר",
@@ -379,10 +379,10 @@
   },
   "home.feature1_body": {
     "he": "תכתוב לבוט במילים שלך מה אתה מחפש. הוא מבין לבד ובונה לך את הסינון. בלי טפסים ובלי תפריטים.",
-    "en": "Just write what you're looking for in Hebrew, like you'd describe it to a friend — and AI understands it and sets up the filter for you, no complicated forms.",
-    "ru": "Просто напишите боту на иврите, что вы ищете, как будто рассказываете другу — и ИИ поймёт вас и настроит фильтр без сложных форм.",
-    "fr": "Décrivez simplement au bot ce que vous cherchez en hébreu, comme vous le feriez auprès d'un ami — et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
-    "ar": "فقط اكتب للبوت ما تبحث عنه بالعبرية، تمامًا كما لو كنت تصفه لصديق — ويفهم الذكاء الاصطناعي طلبك ويضبط الفلتر نيابة عنك، بدون نماذج معقدة."
+    "en": "Just write what you're looking for in Hebrew, like you'd describe it to a friend, and AI understands it and sets up the filter for you, no complicated forms.",
+    "ru": "Просто напишите боту на иврите, что вы ищете, как будто рассказываете другу, и ИИ поймёт вас и настроит фильтр без сложных форм.",
+    "fr": "Décrivez simplement au bot ce que vous cherchez en hébreu, comme vous le feriez auprès d'un ami, et l'IA comprend et configure le filtre pour vous, sans formulaires compliqués.",
+    "ar": "فقط اكتب للبوت ما تبحث عنه بالعبرية، تمامًا كما لو كنت تصفه لصديق, ويفهم الذكاء الاصطناعي طلبك ويضبط الفلتر نيابة عنك، بدون نماذج معقدة."
   },
   "home.feature1_example_city": {
     "he": "תל אביב",
@@ -409,7 +409,7 @@
     "he": "הבוט הבין:",
     "en": "The bot understood:",
     "ru": "Бот понял:",
-    "fr": "Le bot a compris :",
+    "fr": "Le bot a compris:",
     "ar": "فهم البوت:"
   },
   "home.feature2_title": {
@@ -423,7 +423,7 @@
     "he": "הבוט מחפש בשבילך שוב ושוב לאורך היום. עלתה דירה שמתאימה לך? ברגע שהוא מוצא אותה, היא אצלך בטלגרם. אתה לא צריך לרענן כלום.",
     "en": "The bot searches for you again and again throughout the day. A new apartment that fits you? The moment it finds it, it's on your Telegram. You don't need to refresh anything.",
     "ru": "Бот снова и снова ищет за вас в течение дня. Появилась подходящая квартира? Как только бот её найдёт, она у вас в Telegram. Ничего не нужно обновлять.",
-    "fr": "Le bot cherche pour vous, encore et encore, tout au long de la journée. Un appartement qui vous correspond ? Dès qu'il le trouve, il arrive sur votre Telegram. Vous n'avez rien à rafraîchir.",
+    "fr": "Le bot cherche pour vous, encore et encore, tout au long de la journée. Un appartement qui vous correspond? Dès qu'il le trouve, il arrive sur votre Telegram. Vous n'avez rien à rafraîchir.",
     "ar": "يبحث البوت من أجلك مرة بعد مرة طوال اليوم. نُشرت شقة تناسبك؟ لحظة أن يجدها تصلك على تيليجرام. لا حاجة لتحديث أي شيء."
   },
   "home.feature3_title": {
@@ -435,16 +435,16 @@
   },
   "home.feature3_body": {
     "he": "תסמן דירות שמעניינות אותך ותחזור אליהן מתי שבא לך, פה באתר או בבוט.",
-    "en": "Mark apartments you're interested in and come back to them easily at any point — here on the site or straight from the bot.",
-    "ru": "Отмечайте интересные квартиры и легко возвращайтесь к ним в любой момент — здесь на сайте или прямо в боте.",
-    "fr": "Marquez les appartements qui vous intéressent et retrouvez-les facilement à tout moment — ici sur le site ou directement depuis le bot.",
-    "ar": "علّم الشقق التي تهمك وارجع إليها بسهولة في أي وقت — هنا على الموقع أو مباشرة من داخل البوت."
+    "en": "Mark apartments you're interested in and come back to them easily at any point, here on the site or straight from the bot.",
+    "ru": "Отмечайте интересные квартиры и легко возвращайтесь к ним в любой момент, здесь на сайте или прямо в боте.",
+    "fr": "Marquez les appartements qui vous intéressent et retrouvez-les facilement à tout moment, ici sur le site ou directement depuis le bot.",
+    "ar": "علّم الشقق التي تهمك وارجع إليها بسهولة في أي وقت, هنا على الموقع أو مباشرة من داخل البوت."
   },
   "home.compare_title": {
     "he": "למה לא פשוט לגלול לבד?",
     "en": "Why not just scroll on your own?",
     "ru": "Почему бы просто не искать самому?",
-    "fr": "Pourquoi ne pas simplement chercher soi-même ?",
+    "fr": "Pourquoi ne pas simplement chercher soi-même?",
     "ar": "لماذا لا تكتفي بالتصفح بنفسك؟"
   },
   "home.compare_sub": {
@@ -455,11 +455,11 @@
     "ar": "لأنك مشغول، والشقق الجيدة تختفي خلال ساعات."
   },
   "home.compare_without_title": {
-    "he": "בלי טודירה 😩",
-    "en": "Without Todira 😩",
-    "ru": "Без Todira 😩",
-    "fr": "Sans Todira 😩",
-    "ar": "بدون توديرا 😩"
+    "he": "בלי טודירה",
+    "en": "Without Todira",
+    "ru": "Без Todira",
+    "fr": "Sans Todira",
+    "ar": "بدون توديرا"
   },
   "home.compare_without_1": {
     "he": "אתה מרענן כמה אתרים כל כמה שעות",
@@ -490,11 +490,11 @@
     "ar": "نسيان شقة حفظتها في تبويب أغلقته"
   },
   "home.compare_with_title": {
-    "he": "עם טודירה 👑",
-    "en": "With Todira 👑",
-    "ru": "С Todira 👑",
-    "fr": "Avec Todira 👑",
-    "ar": "مع توديرا 👑"
+    "he": "עם טודירה",
+    "en": "With Todira",
+    "ru": "С Todira",
+    "fr": "Avec Todira",
+    "ar": "مع توديرا"
   },
   "home.compare_with_1": {
     "he": "הבוט סורק בשבילך כל שעה, ברקע",
@@ -561,10 +561,10 @@
   },
   "home.step2_body": {
     "he": "עיר, מחיר, חדרים ועוד. הבוט מוציא הכל מהשיחה ושומר לך את החיפוש.",
-    "en": "City, price range, number of rooms and more — it's all extracted from your conversation and saved as a search profile.",
-    "ru": "Город, диапазон цен, количество комнат и многое другое — всё извлекается из вашего разговора и сохраняется как профиль поиска.",
-    "fr": "Ville, fourchette de prix, nombre de pièces et plus — tout est extrait de votre conversation et enregistré comme profil de recherche.",
-    "ar": "المدينة ونطاق السعر وعدد الغرف وأكثر — كل ذلك يُستخرج من محادثتك ويُحفظ كملف بحث."
+    "en": "City, price range, number of rooms and more, it's all extracted from your conversation and saved as a search profile.",
+    "ru": "Город, диапазон цен, количество комнат и многое другое, всё извлекается из вашего разговора и сохраняется как профиль поиска.",
+    "fr": "Ville, fourchette de prix, nombre de pièces et plus, tout est extrait de votre conversation et enregistré comme profil de recherche.",
+    "ar": "المدينة ونطاق السعر وعدد الغرف وأكثر, كل ذلك يُستخرج من محادثتك ويُحفظ كملف بحث."
   },
   "home.step3_title": {
     "he": "מקבל התראות",
@@ -575,10 +575,10 @@
   },
   "home.step3_body": {
     "he": "מעכשיו, כל דירה חדשה שמתאימה לך מגיעה אליך ישר, וגם מופיעה פה באתר.",
-    "en": "From this moment on, every new matching apartment is sent straight to you — and also shows up here on the site.",
-    "ru": "С этого момента каждая новая подходящая квартира отправляется прямо вам — а также появляется здесь на сайте.",
-    "fr": "Dès cet instant, chaque nouvel appartement correspondant vous est envoyé directement — et apparaît aussi ici sur le site.",
-    "ar": "من هذه اللحظة، تُرسل إليك مباشرة كل شقة جديدة مطابقة — وتظهر أيضًا هنا على الموقع."
+    "en": "From this moment on, every new matching apartment is sent straight to you, and also shows up here on the site.",
+    "ru": "С этого момента каждая новая подходящая квартира отправляется прямо вам, а также появляется здесь на сайте.",
+    "fr": "Dès cet instant, chaque nouvel appartement correspondant vous est envoyé directement, et apparaît aussi ici sur le site.",
+    "ar": "من هذه اللحظة، تُرسل إليك مباشرة كل شقة جديدة مطابقة, وتظهر أيضًا هنا على الموقع."
   },
   "home.faq_title": {
     "he": "שאלות נפוצות",
@@ -591,21 +591,21 @@
     "he": "איך הבוט מבין מה אני מחפש?",
     "en": "How does the bot understand what I'm looking for?",
     "ru": "Как бот понимает, что я ищу?",
-    "fr": "Comment le bot comprend-il ce que je cherche ?",
+    "fr": "Comment le bot comprend-il ce que je cherche?",
     "ar": "كيف يفهم البوت ما أبحث عنه؟"
   },
   "home.faq1_a": {
     "he": "אתה כותב לו בשפה חופשית, כמו שהיית מספר לחבר. הבוט מוציא מהמשפט עיר, מחיר, חדרים ועוד, ובונה מזה חיפוש. בלי טפסים ובלי תפריטים.",
-    "en": "You write to the bot in plain Hebrew, just like you'd describe it to a friend. A language model picks out the city, price range, number of rooms and more from your sentence, and builds a search profile from it — no forms, no complicated menus.",
-    "ru": "Вы пишете боту на иврите свободным текстом, как будто рассказываете другу. Языковая модель распознаёт город, диапазон цен, количество комнат и другие детали из вашего сообщения и строит на их основе профиль поиска — без форм и сложных меню.",
-    "fr": "Vous écrivez au bot en hébreu, en langage libre, exactement comme vous le décririez à un ami. Un modèle de langage identifie dans votre phrase la ville, la fourchette de prix, le nombre de pièces et d'autres détails, puis construit un profil de recherche — sans formulaires ni menus compliqués.",
-    "ar": "تكتب للبوت بالعبرية بلغة حرة، تمامًا كما لو كنت تصف الأمر لصديق. يحدد نموذج اللغة من جملتك المدينة ونطاق السعر وعدد الغرف وتفاصيل أخرى، ويبني منها ملف بحث — بدون نماذج أو قوائم معقدة."
+    "en": "You write to the bot in plain Hebrew, just like you'd describe it to a friend. A language model picks out the city, price range, number of rooms and more from your sentence, and builds a search profile from it, no forms, no complicated menus.",
+    "ru": "Вы пишете боту на иврите свободным текстом, как будто рассказываете другу. Языковая модель распознаёт город, диапазон цен, количество комнат и другие детали из вашего сообщения и строит на их основе профиль поиска, без форм и сложных меню.",
+    "fr": "Vous écrivez au bot en hébreu, en langage libre, exactement comme vous le décririez à un ami. Un modèle de langage identifie dans votre phrase la ville, la fourchette de prix, le nombre de pièces et d'autres détails, puis construit un profil de recherche, sans formulaires ni menus compliqués.",
+    "ar": "تكتب للبوت بالعبرية بلغة حرة، تمامًا كما لو كنت تصف الأمر لصديق. يحدد نموذج اللغة من جملتك المدينة ونطاق السعر وعدد الغرف وتفاصيل أخرى، ويبني منها ملف بحث, بدون نماذج أو قوائم معقدة."
   },
   "home.faq2_q": {
     "he": "כל כמה זמן הבוט בודק?",
     "en": "How often does the bot check?",
     "ru": "Как часто бот проверяет?",
-    "fr": "À quelle fréquence le bot vérifie-t-il ?",
+    "fr": "À quelle fréquence le bot vérifie-t-il?",
     "ar": "كم مرة يفحص البوت؟"
   },
   "home.faq2_a": {
@@ -619,29 +619,29 @@
     "he": "כמה זה עולה?",
     "en": "How much does it cost?",
     "ru": "Сколько это стоит?",
-    "fr": "Combien ça coûte ?",
+    "fr": "Combien ça coûte?",
     "ar": "كم تكلفته؟"
   },
   "home.faq3_a": {
     "he": "יש 10 ימי ניסיון בחינם, ואחרי זה תשלום חד־פעמי: 19.90 ₪ לשבוע, 29.90 ₪ לשבועיים או 49.90 ₪ לחודש. בלי חידוש אוטומטי.",
-    "en": "There's a 10-day trial period, then a one-time payment: ₪19.90 for a week, ₪29.90 for two weeks or ₪49.90 for a month — no automatic renewal.",
-    "ru": "Есть 10-дневный пробный период, затем разовый платёж: 19.90 ₪ за неделю, 29.90 ₪ за две недели или 49.90 ₪ за месяц — без автопродления.",
-    "fr": "Il y a une période d'essai de 10 jours, puis un paiement unique : 19,90 ₪ pour une semaine, 29,90 ₪ pour deux semaines ou 49,90 ₪ pour un mois — sans renouvellement automatique.",
-    "ar": "هناك فترة تجريبية مدتها 10 أيام، ثم دفعة واحدة: 19.90 ₪ للأسبوع، أو 29.90 ₪ لأسبوعين، أو 49.90 ₪ للشهر — بدون تجديد تلقائي."
+    "en": "There's a 10-day trial period, then a one-time payment: ₪19.90 for a week, ₪29.90 for two weeks or ₪49.90 for a month, no automatic renewal.",
+    "ru": "Есть 10-дневный пробный период, затем разовый платёж: 19.90 ₪ за неделю, 29.90 ₪ за две недели или 49.90 ₪ за месяц, без автопродления.",
+    "fr": "Il y a une période d'essai de 10 jours, puis un paiement unique: 19,90 ₪ pour une semaine, 29,90 ₪ pour deux semaines ou 49,90 ₪ pour un mois, sans renouvellement automatique.",
+    "ar": "هناك فترة تجريبية مدتها 10 أيام، ثم دفعة واحدة: 19.90 ₪ للأسبوع، أو 29.90 ₪ لأسبوعين، أو 49.90 ₪ للشهر, بدون تجديد تلقائي."
   },
   "home.faq4_q": {
     "he": "אפשר לשנות את הסינון אחרי שהגדרתי אותו?",
     "en": "Can I change my filter after setting it up?",
     "ru": "Можно ли изменить фильтр после его настройки?",
-    "fr": "Puis-je modifier mon filtre après l'avoir configuré ?",
+    "fr": "Puis-je modifier mon filtre après l'avoir configuré?",
     "ar": "هل يمكنني تغيير الفلتر بعد إعداده؟"
   },
   "home.faq4_a": {
     "he": "בטח. בבוט בטלגרם או פה באתר, בעמוד ״הסינון שלי״, מתי שבא לך.",
-    "en": "Absolutely — through the Telegram bot or right here on the site, on the \"My filter\" page, whenever you like.",
-    "ru": "Конечно — через бота в Telegram или прямо здесь на сайте, на странице «Мой фильтр», в любой момент.",
-    "fr": "Bien sûr — via le bot Telegram ou ici même sur le site, sur la page « Mon filtre », à tout moment.",
-    "ar": "بالتأكيد — عبر البوت على تيليجرام أو هنا على الموقع، في صفحة \"فلتري\"، في أي وقت تشاء."
+    "en": "Absolutely, through the Telegram bot or right here on the site, on the \"My filter\" page, whenever you like.",
+    "ru": "Конечно, через бота в Telegram или прямо здесь на сайте, на странице «Мой фильтр», в любой момент.",
+    "fr": "Bien sûr, via le bot Telegram ou ici même sur le site, sur la page « Mon filtre », à tout moment.",
+    "ar": "بالتأكيد, عبر البوت على تيليجرام أو هنا على الموقع، في صفحة \"فلتري\"، في أي وقت تشاء."
   },
   "home.footer_cta_title": {
     "he": "יאללה, בוא נמצא לך דירה",
@@ -658,25 +658,25 @@
     "ar": "يستغرق البدء أقل من دقيقتين، وقد تصلك أول التنبيهات اليوم نفسه."
   },
   "home.footer_cta_btn": {
-    "he": "פתח את הבוט בטלגרם ←",
-    "en": "Open the Telegram bot →",
-    "ru": "Открыть бота в Telegram →",
-    "fr": "Ouvrir le bot Telegram →",
-    "ar": "افتح البوت على تيليجرام ←"
+    "he": "פתח את הבוט בטלגרם",
+    "en": "Open the Telegram bot",
+    "ru": "Открыть бота в Telegram",
+    "fr": "Ouvrir le bot Telegram",
+    "ar": "افتح البوت على تيليجرام"
   },
   "contact.title": {
-    "he": "צור קשר 📬",
-    "en": "Contact us 📬",
-    "ru": "Связаться с нами 📬",
-    "fr": "Nous contacter 📬",
-    "ar": "تواصل معنا 📬"
+    "he": "צור קשר",
+    "en": "Contact us",
+    "ru": "Связаться с нами",
+    "fr": "Nous contacter",
+    "ar": "تواصل معنا"
   },
   "contact.subtitle": {
     "he": "יש לך שאלה, בעיה או רעיון? תכתוב, נחזור אליך מהר.",
-    "en": "Have a question, a problem, or an idea? We'd love to hear from you — we'll get back to you soon.",
-    "ru": "Есть вопрос, проблема или идея? Будем рады услышать вас — скоро ответим.",
-    "fr": "Une question, un problème ou une idée ? N'hésitez pas à nous écrire — nous vous répondrons rapidement.",
-    "ar": "هل لديك سؤال أو مشكلة أو فكرة؟ يسعدنا أن نسمع منك — سنرد عليك قريبًا."
+    "en": "Have a question, a problem, or an idea? We'd love to hear from you, we'll get back to you soon.",
+    "ru": "Есть вопрос, проблема или идея? Будем рады услышать вас, скоро ответим.",
+    "fr": "Une question, un problème ou une idée? N'hésitez pas à nous écrire, nous vous répondrons rapidement.",
+    "ar": "هل لديك سؤال أو مشكلة أو فكرة؟ يسعدنا أن نسمع منك, سنرد عليك قريبًا."
   },
   "contact.name_label": {
     "he": "שם (לא חובה)",
@@ -707,32 +707,32 @@
     "ar": "اكتب هنا ما تود إخبارنا به..."
   },
   "contact.submit_btn": {
-    "he": "שלח הודעה 📨",
-    "en": "Send message 📨",
-    "ru": "Отправить сообщение 📨",
-    "fr": "Envoyer le message 📨",
-    "ar": "إرسال الرسالة 📨"
+    "he": "שלח הודעה",
+    "en": "Send message",
+    "ru": "Отправить сообщение",
+    "fr": "Envoyer le message",
+    "ar": "إرسال الرسالة"
   },
   "contact.error_empty": {
-    "he": "ההודעה לא יכולה להיות ריקה. ⚠️",
-    "en": "The message can't be empty. ⚠️",
-    "ru": "Сообщение не может быть пустым. ⚠️",
-    "fr": "Le message ne peut pas être vide. ⚠️",
-    "ar": "لا يمكن أن تكون الرسالة فارغة. ⚠️"
+    "he": "ההודעה לא יכולה להיות ריקה.",
+    "en": "The message can't be empty.",
+    "ru": "Сообщение не может быть пустым.",
+    "fr": "Le message ne peut pas être vide.",
+    "ar": "لا يمكن أن تكون الرسالة فارغة."
   },
   "contact.error_consent": {
-    "he": "יש לאשר את מדיניות הפרטיות כדי לשלוח את הפנייה. ⚠️",
-    "en": "Please agree to the privacy policy to send your message. ⚠️",
-    "ru": "Чтобы отправить сообщение, необходимо согласиться с политикой конфиденциальности. ⚠️",
-    "fr": "Veuillez accepter la politique de confidentialité pour envoyer votre message. ⚠️",
-    "ar": "يرجى الموافقة على سياسة الخصوصية لإرسال رسالتك. ⚠️"
+    "he": "יש לאשר את מדיניות הפרטיות כדי לשלוח את הפנייה.",
+    "en": "Please agree to the privacy policy to send your message.",
+    "ru": "Чтобы отправить сообщение, необходимо согласиться с политикой конфиденциальности.",
+    "fr": "Veuillez accepter la politique de confidentialité pour envoyer votre message.",
+    "ar": "يرجى الموافقة على سياسة الخصوصية لإرسال رسالتك."
   },
   "contact.error_generic": {
-    "he": "משהו השתבש. נסה שוב עוד רגע. ⚠️",
-    "en": "Something went wrong. Please try again in a moment. ⚠️",
-    "ru": "Что-то пошло не так. Попробуйте ещё раз через минуту. ⚠️",
-    "fr": "Une erreur s'est produite. Veuillez réessayer dans un instant. ⚠️",
-    "ar": "حدث خطأ ما. يرجى المحاولة مرة أخرى بعد قليل. ⚠️"
+    "he": "משהו השתבש. נסה שוב עוד רגע.",
+    "en": "Something went wrong. Please try again in a moment.",
+    "ru": "Что-то пошло не так. Попробуйте ещё раз через минуту.",
+    "fr": "Une erreur s'est produite. Veuillez réessayer dans un instant.",
+    "ar": "حدث خطأ ما. يرجى المحاولة مرة أخرى بعد قليل."
   },
   "contact.consent_prefix": {
     "he": "קראתי ואני מסכים ל",
@@ -742,18 +742,18 @@
     "ar": "لقد قرأت وأوافق على"
   },
   "contact.success_title": {
-    "he": "ההודעה נשלחה! ✅",
-    "en": "Message sent! ✅",
-    "ru": "Сообщение отправлено! ✅",
-    "fr": "Message envoyé ! ✅",
-    "ar": "تم إرسال الرسالة! ✅"
+    "he": "ההודעה נשלחה!",
+    "en": "Message sent!",
+    "ru": "Сообщение отправлено!",
+    "fr": "Message envoyé!",
+    "ar": "تم إرسال الرسالة!"
   },
   "contact.success_body": {
     "he": "תודה שכתבת! נחזור אליך הכי מהר שאפשר.",
-    "en": "Thanks for reaching out — we'll get back to you as soon as possible.",
-    "ru": "Спасибо, что обратились к нам — мы ответим вам как можно скорее.",
-    "fr": "Merci de nous avoir contactés — nous vous répondrons dès que possible.",
-    "ar": "شكرًا لتواصلك معنا — سنرد عليك في أقرب وقت ممكن."
+    "en": "Thanks for reaching out, we'll get back to you as soon as possible.",
+    "ru": "Спасибо, что обратились к нам, мы ответим вам как можно скорее.",
+    "fr": "Merci de nous avoir contactés, nous vous répondrons dès que possible.",
+    "ar": "شكرًا لتواصلك معنا, سنرد عليك في أقرب وقت ممكن."
   },
   "contact.other_ways_title": {
     "he": "דרכים נוספות ליצור קשר",
@@ -764,10 +764,10 @@
   },
   "contact.telegram_way": {
     "he": "טלגרם: תכתוב ישר לבוט",
-    "en": "Telegram — message the bot directly",
-    "ru": "Telegram — напишите боту напрямую",
-    "fr": "Telegram — écrivez directement au bot",
-    "ar": "تيليجرام — راسل البوت مباشرة"
+    "en": "Telegram, message the bot directly",
+    "ru": "Telegram, напишите боту напрямую",
+    "fr": "Telegram, écrivez directement au bot",
+    "ar": "تيليجرام, راسل البوت مباشرة"
   },
   "legal.non_native_notice": {
     "he": "",
@@ -786,7 +786,7 @@
   },
   "about.body_disclaimer": {
     "he": "חשוב לדעת: אנחנו לא משרד תיווך, אין לנו נכסים ואנחנו לא צד לעסקה. אנחנו כלי שחוסך לך לרענן אתרים כל היום.",
-    "en": "The service is not a real-estate brokerage, does not own any properties, and is not a party to any rental transaction — it is a technology tool built to save apartment seekers the need to repeatedly refresh listing sites themselves."
+    "en": "The service is not a real-estate brokerage, does not own any properties, and is not a party to any rental transaction, it is a technology tool built to save apartment seekers the need to repeatedly refresh listing sites themselves."
   },
   "about.links_p1": {
     "he": "לפרטים נוספים ניתן לעיין ב",
@@ -829,8 +829,8 @@
     "en": "1. Our commitment"
   },
   "accessibility.s1_body": {
-    "he": "טודירה פועל להנגיש את האתר לאנשים עם מוגבלות, ברוח תקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע\"ג-2013, ובהתאם לתקן הישראלי (ת\"י 5568) המבוסס על הנחיות WCAG 2.0 ברמה AA. זהו תהליך מתמשך — האתר עדיין לא עבר בדיקת התאמה מלאה על ידי גורם מוסמך חיצוני.",
-    "en": "Todira works to make this website accessible to people with disabilities, in the spirit of Israel's Equal Rights for Persons with Disabilities (Service Accessibility Adjustments) Regulations, 2013, and the Israeli standard (IS 5568) based on WCAG 2.0 Level AA guidelines. This is an ongoing effort — the site has not yet undergone a full conformance audit by an external accredited party."
+    "he": "טודירה פועל להנגיש את האתר לאנשים עם מוגבלות, ברוח תקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע\"ג-2013, ובהתאם לתקן הישראלי (ת\"י 5568) המבוסס על הנחיות WCAG 2.0 ברמה AA. זהו תהליך מתמשך. האתר עדיין לא עבר בדיקת התאמה מלאה על ידי גורם מוסמך חיצוני.",
+    "en": "Todira works to make this website accessible to people with disabilities, in the spirit of Israel's Equal Rights for Persons with Disabilities (Service Accessibility Adjustments) Regulations, 2013, and the Israeli standard (IS 5568) based on WCAG 2.0 Level AA guidelines. This is an ongoing effort, the site has not yet undergone a full conformance audit by an external accredited party."
   },
   "accessibility.s2_title": {
     "he": "2. מה קיים באתר כיום",
@@ -865,8 +865,8 @@
     "en": "4. Accessibility coordinator and reporting an issue"
   },
   "accessibility.s4_body_pre": {
-    "he": "נתקלתם בבעיית נגישות באתר? נשמח שתדווחו לנו כדי שנוכל לטפל בכך. רכז הנגישות של טודירה הוא אמיר טולדנו — ניתן לפנות ישירות באימייל ",
-    "en": "Found an accessibility problem on the site? We'd appreciate a report so we can address it. Todira's accessibility coordinator is Amir Toledano — you can reach out directly by email at "
+    "he": "נתקלתם בבעיית נגישות באתר? נשמח שתדווחו לנו כדי שנוכל לטפל בכך. רכז הנגישות של טודירה הוא אמיר טולדנו. ניתן לפנות ישירות באימייל ",
+    "en": "Found an accessibility problem on the site? We'd appreciate a report so we can address it. Todira's accessibility coordinator is Amir Toledano, you can reach out directly by email at "
   },
   "accessibility.s4_body_post": {
     "he": " או דרך הבוט בטלגרם.",
@@ -893,8 +893,8 @@
     "en": "Your email address and display name from your Google account, if you signed in with Google."
   },
   "privacy.s1_item4": {
-    "he": "הסינון שהגדרת — עיר, טווח מחיר, מספר חדרים, סוג נכס ושאר העדפות חיפוש.",
-    "en": "The filter you set up — city, price range, number of rooms, property type, and other search preferences."
+    "he": "הסינון שהגדרת: עיר, טווח מחיר, מספר חדרים, סוג נכס ושאר העדפות חיפוש.",
+    "en": "The filter you set up, city, price range, number of rooms, property type, and other search preferences."
   },
   "privacy.s1_item5": {
     "he": "הודעות טקסט חופשי ששלחת לבוט (לצורך בניית פרופיל חיפוש בעזרת בינה מלאכותית).",
@@ -913,12 +913,12 @@
     "en": "We never see or store your credit card details"
   },
   "privacy.s1_item7_post": {
-    "he": " — התשלום עצמו מתבצע ישירות מול ספק סליקה חיצוני (ר' סעיף 3).",
-    "en": " — payment itself is made directly with an external payment processor (see section 3)."
+    "he": ": התשלום עצמו מתבצע ישירות מול ספק סליקה חיצוני (ר' סעיף 3).",
+    "en": ": payment itself is made directly with an external payment processor (see section 3)."
   },
   "privacy.s1_item8": {
-    "he": "אם פנית אלינו דרך טופס יצירת הקשר באתר — שם, אימייל ותוכן הפנייה שהזנת.",
-    "en": "If you contacted us via the site's contact form — the name, email, and message content you entered."
+    "he": "אם פנית אלינו דרך טופס יצירת הקשר באתר: שם, אימייל ותוכן הפנייה שהזנת.",
+    "en": "If you contacted us via the site's contact form, the name, email, and message content you entered."
   },
   "privacy.s2_title": {
     "he": "2. איך המידע משמש",
@@ -941,40 +941,40 @@
     "en": "Telegram"
   },
   "privacy.s3_item1_body": {
-    "he": " — שליחת וקבלת הודעות הבוט.",
-    "en": " — sending/receiving bot messages."
+    "he": ": שליחת וקבלת הודעות הבוט.",
+    "en": ": sending/receiving bot messages."
   },
   "privacy.s3_item3_label": {
     "he": "Google",
     "en": "Google"
   },
   "privacy.s3_item3_body": {
-    "he": " — התחברות עם חשבון Google (Sign in with Google), ו-Gemini API לפענוח הודעות טקסט חופשי ולחילוץ פרטים ממודעות. הודעות הטקסט החופשי שאתה שולח לבוט מועברות ל-Gemini לצורך כך.",
-    "en": " — signing in with a Google account (Sign in with Google), and the Gemini API to interpret free-text messages and extract details from listings. The free-text messages you send to the bot are passed to Gemini for this purpose."
+    "he": ": התחברות עם חשבון Google (Sign in with Google), ו-Gemini API לפענוח הודעות טקסט חופשי ולחילוץ פרטים ממודעות. הודעות הטקסט החופשי שאתה שולח לבוט מועברות ל-Gemini לצורך כך.",
+    "en": ": signing in with a Google account (Sign in with Google), and the Gemini API to interpret free-text messages and extract details from listings. The free-text messages you send to the bot are passed to Gemini for this purpose."
   },
   "privacy.s3_item4_label": {
     "he": "Takbull (דרך UPAY)",
     "en": "Takbull (via UPAY)"
   },
   "privacy.s3_item4_body": {
-    "he": " — עיבוד תשלומים עבור מנוי בתשלום. פרטי האשראי עצמם מוזנים ישירות בדף הסליקה המאובטח של הספק ולעולם אינם עוברים דרך שרתי טודירה.",
-    "en": " — payment processing for paid subscriptions. Your card details are entered directly on the processor's own secure checkout page and never pass through Todira's servers."
+    "he": ": עיבוד תשלומים עבור מנוי בתשלום. פרטי האשראי עצמם מוזנים ישירות בדף הסליקה המאובטח של הספק ולעולם אינם עוברים דרך שרתי טודירה.",
+    "en": ": payment processing for paid subscriptions. Your card details are entered directly on the processor's own secure checkout page and never pass through Todira's servers."
   },
   "privacy.s3_item5_label": {
     "he": "ZenRows, Bright Data ו-Amazon Web Services (AWS)",
     "en": "ZenRows, Bright Data and Amazon Web Services (AWS)"
   },
   "privacy.s3_item5_body": {
-    "he": " — תשתית טכנית: איסוף מודעות דירות ממקורות חיצוניים ברשת (ZenRows ו-Bright Data, שאינם מקבלים מידע אישי עליך), ואחסון ענן שבו רצים השירות ומסד הנתונים (AWS).",
-    "en": " — technical infrastructure: collecting apartment listings from external sources on the web (ZenRows and Bright Data, which receive no personal information about you), and the cloud hosting on which the service and its database run (AWS)."
+    "he": ": תשתית טכנית: איסוף מודעות דירות ממקורות חיצוניים ברשת (ZenRows ו-Bright Data, שאינם מקבלים מידע אישי עליך), ואחסון ענן שבו רצים השירות ומסד הנתונים (AWS).",
+    "en": ": technical infrastructure: collecting apartment listings from external sources on the web (ZenRows and Bright Data, which receive no personal information about you), and the cloud hosting on which the service and its database run (AWS)."
   },
   "privacy.s4_title": {
     "he": "4. עוגיות (Cookies)",
     "en": "4. Cookies"
   },
   "privacy.s4_body": {
-    "he": "האתר משתמש בעוגיות פונקציונליות בלבד: עוגיית התחברות (session) הנחוצה כדי לזהות אותך כמחובר בין דפים, ועוגיית שמירת שפת התצוגה שבחרת. בנוסף נשמרות בדפדפן העדפות התצוגה שבחרת (כגון מצב כהה והגדרות נגישות). כל אלה טכניות בלבד — לא עוגיות פרסום, מעקב אחר גלישה או פרסונליזציה שיווקית. שרתי האתר רושמים נתונים טכניים של הגלישה (כגון כתובת IP וסוג הדפדפן) לצורכי אבטחה ותפעול.",
-    "en": "The website uses functional cookies only: a login (session) cookie needed to recognize you as signed in between pages, and a cookie that remembers the display language you chose. Display preferences you choose (such as dark mode and accessibility settings) are also kept in your browser. All of these are technical only — not advertising cookies, browsing tracking or marketing personalization. The website's servers record technical browsing data (such as IP address and browser type) for security and operational purposes."
+    "he": "האתר משתמש בעוגיות פונקציונליות בלבד: עוגיית התחברות (session) הנחוצה כדי לזהות אותך כמחובר בין דפים, ועוגיית שמירת שפת התצוגה שבחרת. בנוסף נשמרות בדפדפן העדפות התצוגה שבחרת (כגון מצב כהה והגדרות נגישות). כל אלה טכניות בלבד. אין עוגיות פרסום, מעקב אחר גלישה או פרסונליזציה שיווקית. שרתי האתר רושמים נתונים טכניים של הגלישה (כגון כתובת IP וסוג הדפדפן) לצורכי אבטחה ותפעול.",
+    "en": "The website uses functional cookies only: a login (session) cookie needed to recognize you as signed in between pages, and a cookie that remembers the display language you chose. Display preferences you choose (such as dark mode and accessibility settings) are also kept in your browser. All of these are technical only, not advertising cookies, browsing tracking or marketing personalization. The website's servers record technical browsing data (such as IP address and browser type) for security and operational purposes."
   },
   "privacy.s5_title": {
     "he": "5. שמירת מידע ומחיקתו",
@@ -1025,7 +1025,7 @@
     "en": "10. Contact"
   },
   "privacy.s10_body_pre": {
-    "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע — ניתן לפנות באימייל ",
+    "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע, ניתן לפנות באימייל ",
     "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. For questions about privacy, or to request data deletion, please email "
   },
   "privacy.s10_body_post": {
@@ -1053,8 +1053,8 @@
     "en": "2. No warranty on listing content"
   },
   "terms.s2_body": {
-    "he": "כל המודעות המוצגות בטודירה נאספות ממקורות חיצוניים שאינם בשליטת טודירה. טודירה אינו מפרסם, יוצר, מאמת או ערב לדיוק, לעדכניות או לזמינות של אף מודעה — מחיר, תמונות, זמינות, תיאור הנכס וכל פרט אחר עשויים להיות שגויים, מיושנים או שהנכס כבר הושכר/נמכר. יש לבדוק כל מודעה מול המקור המקורי ומול המפרסם לפני כל החלטה. המודעות מוצגות לנוחות המשתמש תוך הפניה למקור; פרטי הקשר של המפרסם (לרבות מספר טלפון) נמצאים באתר המקור בלבד, ואינם נשמרים אצלנו. מפרסם המבקש להסיר מודעה מהשירות מוזמן לפנות אלינו (סעיף 12) ונטפל בבקשה בהקדם.",
-    "en": "All listings shown in Todira are collected from external sources outside Todira's control. Todira does not publish, create, verify or vouch for the accuracy, freshness or availability of any listing — price, photos, availability, the property description and any other detail may be wrong, outdated, or the property may already be rented/sold. Check every listing with the original source and the advertiser before any decision. Listings are shown for the user's convenience with a reference to the source; the advertiser's contact details (including a phone number) are found on the source site only and are not stored by us. An advertiser who wants a listing removed from the service is welcome to contact us (section 12) and we will handle the request promptly."
+    "he": "כל המודעות המוצגות בטודירה נאספות ממקורות חיצוניים שאינם בשליטת טודירה. טודירה אינו מפרסם, יוצר, מאמת או ערב לדיוק, לעדכניות או לזמינות של אף מודעה. מחיר, תמונות, זמינות, תיאור הנכס וכל פרט אחר עשויים להיות שגויים, מיושנים או שהנכס כבר הושכר/נמכר. יש לבדוק כל מודעה מול המקור המקורי ומול המפרסם לפני כל החלטה. המודעות מוצגות לנוחות המשתמש תוך הפניה למקור; פרטי הקשר של המפרסם (לרבות מספר טלפון) נמצאים באתר המקור בלבד, ואינם נשמרים אצלנו. מפרסם המבקש להסיר מודעה מהשירות מוזמן לפנות אלינו (סעיף 12) ונטפל בבקשה בהקדם.",
+    "en": "All listings shown in Todira are collected from external sources outside Todira's control. Todira does not publish, create, verify or vouch for the accuracy, freshness or availability of any listing, price, photos, availability, the property description and any other detail may be wrong, outdated, or the property may already be rented/sold. Check every listing with the original source and the advertiser before any decision. Listings are shown for the user's convenience with a reference to the source; the advertiser's contact details (including a phone number) are found on the source site only and are not stored by us. An advertiser who wants a listing removed from the service is welcome to contact us (section 12) and we will handle the request promptly."
   },
   "terms.s3_title": {
     "he": "3. טודירה אינו צד לעסקה",
@@ -1069,16 +1069,16 @@
     "en": "4. Use of AI"
   },
   "terms.s4_body": {
-    "he": "השירות משתמש במודל שפה (Gemini מבית Google) כדי לפרש הודעות טקסט חופשי ולבנות מהן פרופיל חיפוש, וכדי לעזור לחלץ פרטים ממודעות. הפירוש והחילוץ עלולים לפעמים להיות שגויים — ניתן תמיד לתקן את הסינון ידנית דרך הבוט (/filter) או דרך האתר, ויש לאמת כל פרט מול המודעה המקורית.",
-    "en": "The service uses a language model (Google's Gemini) to interpret free-text messages and build a search profile from them, and to help extract details from listings. The interpretation and extraction may sometimes be wrong — you can always correct the filter manually through the bot (/filter) or the website, and every detail should be verified against the original listing."
+    "he": "השירות משתמש במודל שפה (Gemini מבית Google) כדי לפרש הודעות טקסט חופשי ולבנות מהן פרופיל חיפוש, וכדי לעזור לחלץ פרטים ממודעות. הפירוש והחילוץ עלולים לפעמים להיות שגויים. ניתן תמיד לתקן את הסינון ידנית דרך הבוט (/filter) או דרך האתר, ויש לאמת כל פרט מול המודעה המקורית.",
+    "en": "The service uses a language model (Google's Gemini) to interpret free-text messages and build a search profile from them, and to help extract details from listings. The interpretation and extraction may sometimes be wrong, you can always correct the filter manually through the bot (/filter) or the website, and every detail should be verified against the original listing."
   },
   "terms.s5_title": {
     "he": "5. הגבלת אחריות",
     "en": "5. Limitation of liability"
   },
   "terms.s5_body": {
-    "he": "השירות ניתן \"כמות שהוא\" (AS IS), ללא כל התחייבות לזמינות רציפה, נכונות המידע או התאמה למטרה מסוימת. ככל שמותר על פי דין, טודירה ומפעיליו לא יישאו באחריות לכל נזק — ישיר או עקיף — שייגרם משימוש בשירות, מהסתמכות על מידע בו, מתקלה טכנית או מהפסקת השירות.",
-    "en": "The service is provided \"AS IS,\" with no commitment to continuous availability, accuracy of information, or fitness for a particular purpose. To the extent permitted by law, Todira and its operator shall not be liable for any damage — direct or indirect — arising from use of the service, reliance on information in it, technical failure, or discontinuation of the service."
+    "he": "השירות ניתן \"כמות שהוא\" (AS IS), ללא כל התחייבות לזמינות רציפה, נכונות המידע או התאמה למטרה מסוימת. ככל שמותר על פי דין, טודירה ומפעיליו לא יישאו באחריות לכל נזק, ישיר או עקיף, שייגרם משימוש בשירות, מהסתמכות על מידע בו, מתקלה טכנית או מהפסקת השירות.",
+    "en": "The service is provided \"AS IS,\" with no commitment to continuous availability, accuracy of information, or fitness for a particular purpose. To the extent permitted by law, Todira and its operator shall not be liable for any damage, direct or indirect, arising from use of the service, reliance on information in it, technical failure, or discontinuation of the service."
   },
   "terms.s6_title": {
     "he": "6. שינויים בשירות",
@@ -1117,7 +1117,7 @@
     "en": "10. Cancellation and refunds"
   },
   "terms.s10_body": {
-    "he": "מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 10 ימים לפני כל תשלום (ר' סעיף 1). הגישה נמכרת בתשלום חד-פעמי לתקופה שנבחרה (7, 14 או 30 ימים), ללא חידוש אוטומטי, ולכן אין מנוי שצריך לבטל. בהתאם לחוק הגנת הצרכן, התשמ\"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בכפתור הביטול באזור האישי באתר, או בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. הגישה לשירות מסתיימת במועד הודעת הביטול. מאחר שהגישה לשירות זמינה במלואה מרגע התשלום, בין אם נעשה בה שימוש ובין אם לא, מהסכום ששולם יקוזזו מחיר החבילה הקצרה ביותר שמכסה את הימים שחלפו ממועד הרכישה (יום שהחל נחשב יום מלא), ודמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש\"ח, לפי הנמוך מביניהם. היתרה, אם נותרה, תוחזר לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול. לדוגמה: מי שרכש גישה לחודש (49.90 ש\"ח) וביטל לאחר 10 ימים — יקוזזו מחיר גישה לשבועיים (29.90 ש\"ח) ודמי ביטול (2.50 ש\"ח), והוא יקבל החזר של 17.50 ש\"ח; מי שרכש גישה לשבוע וביטל לפני תום השבוע לא יקבל החזר, כי מחיר החבילה הקצרה ביותר כבר מכסה את הימים שחלפו. ההחזר מבוצע באמצעות ספק הסליקה, ומועד הופעתו בחשבונך תלוי בנהלי חברת האשראי. לאחר 14 ימים ממועד העסקה לא ניתן לבטלה, ולא יינתן החזר בגין יתרת התקופה. בנוסף, נבחן בתום לב כל פנייה להחזר במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.",
+    "he": "מדובר בשירות דיגיטלי הניתן באופן מיידי ואוטומטי מרגע אישור התשלום. לכל משתמש ניתנת תקופת ניסיון חינמית בת 10 ימים לפני כל תשלום (ר' סעיף 1). הגישה נמכרת בתשלום חד-פעמי לתקופה שנבחרה (7, 14 או 30 ימים), ללא חידוש אוטומטי, ולכן אין מנוי שצריך לבטל. בהתאם לחוק הגנת הצרכן, התשמ\"א-1981, ניתן לבטל עסקה שנעשתה מרחוק בתוך 14 ימים ממועד ביצוע העסקה (או ממועד קבלת האישור בכתב, לפי המאוחר), בכפתור הביטול באזור האישי באתר, או בהודעה אלינו דרך עמוד יצירת הקשר או הבוט בטלגרם. הגישה לשירות מסתיימת במועד הודעת הביטול. מאחר שהגישה לשירות זמינה במלואה מרגע התשלום, בין אם נעשה בה שימוש ובין אם לא, מהסכום ששולם יקוזזו מחיר החבילה הקצרה ביותר שמכסה את הימים שחלפו ממועד הרכישה (יום שהחל נחשב יום מלא), ודמי ביטול בשיעור של 5% ממחיר העסקה או 100 ש\"ח, לפי הנמוך מביניהם. היתרה, אם נותרה, תוחזר לאמצעי התשלום המקורי בתוך 14 ימים ממועד הודעת הביטול. לדוגמה: מי שרכש גישה לחודש (49.90 ש\"ח) וביטל לאחר 10 ימים, יקוזזו מחיר גישה לשבועיים (29.90 ש\"ח) ודמי ביטול (2.50 ש\"ח), והוא יקבל החזר של 17.50 ש\"ח; מי שרכש גישה לשבוע וביטל לפני תום השבוע לא יקבל החזר, כי מחיר החבילה הקצרה ביותר כבר מכסה את הימים שחלפו. ההחזר מבוצע באמצעות ספק הסליקה, ומועד הופעתו בחשבונך תלוי בנהלי חברת האשראי. לאחר 14 ימים ממועד העסקה לא ניתן לבטלה, ולא יינתן החזר בגין יתרת התקופה. בנוסף, נבחן בתום לב כל פנייה להחזר במקרה של תקלה טכנית מהותית שמנעה שימוש בשירות, חיוב כפול או טעות בתשלום.",
     "en": "This is a digital service delivered immediately and automatically upon payment confirmation. Every user gets a free 10-day trial before any payment (see section 1). Access is sold as a one-time payment for the period chosen (7, 14 or 30 days), with no automatic renewal, so there is no subscription to cancel. In accordance with Israel's Consumer Protection Law, 5741-1981, a distance transaction may be cancelled within 14 days of the transaction (or of receiving the written confirmation, whichever is later) with the cancel button on your account page, or by notifying us through the contact page or the Telegram bot. Access to the service ends when the cancellation notice is given. Because full access is available from the moment of payment, whether or not it is used, the amount paid is reduced by the price of the shortest pass that covers the days that have passed since the purchase (a day that has started counts as a full day) and by a cancellation fee of 5% of the transaction price or NIS 100, whichever is lower. Any remaining balance is refunded to the original payment method within 14 days of the cancellation notice. For example: someone who bought 1 month (NIS 49.90) and cancelled after 10 days is charged the 2-week price (NIS 29.90) and the cancellation fee (NIS 2.50), and gets a refund of NIS 17.50; someone who bought 1 week and cancelled before the week ended gets no refund, since the price of the shortest pass already covers the days that have passed. The refund is processed through the payment provider, and when it appears in your account depends on the card company's procedures. After 14 days from the transaction it can no longer be cancelled, and no refund is given for the rest of the period. In addition, we will review in good faith any refund request in case of a material technical fault that prevented use of the service, a duplicate charge, or a payment error."
   },
   "terms.s11_title": {
@@ -1133,7 +1133,7 @@
     "en": "12. Contact"
   },
   "terms.s12_pre": {
-    "he": "לשאלות בנוגע לתנאים אלה — ניתן לפנות באימייל ",
+    "he": "לשאלות בנוגע לתנאים אלה, ניתן לפנות באימייל ",
     "en": "For questions about these terms, please reach out via email at "
   },
   "terms.s12_mid": {
@@ -1145,32 +1145,32 @@
     "en": "."
   },
   "account.h1": {
-    "he": "החשבון שלי 👤",
-    "en": "My Account 👤",
-    "ru": "Мой аккаунт 👤",
-    "fr": "Mon compte 👤",
-    "ar": "حسابي 👤"
+    "he": "החשבון שלי",
+    "en": "My Account",
+    "ru": "Мой аккаунт",
+    "fr": "Mon compte",
+    "ar": "حسابي"
   },
   "account.subtitle": {
-    "he": "המנוי, ההתראות, היסטוריית התשלומים, וחיבור הערוצים — טלגרם וגוגל, הכל באותו חשבון אחד.",
-    "en": "Your subscription, notifications, payment history, and connected channels — Telegram and Google, all one account.",
-    "ru": "Подписка, уведомления, история платежей и подключённые каналы — Telegram и Google, всё в одном аккаунте.",
-    "fr": "Votre abonnement, vos notifications, votre historique de paiements et vos canaux connectés — Telegram et Google, tout dans un seul compte.",
-    "ar": "اشتراكك، إشعاراتك، سجل مدفوعاتك، والقنوات المرتبطة — تيليجرام وجوجل، كلها في حساب واحد."
+    "he": "המנוי, ההתראות, היסטוריית התשלומים וחיבור הערוצים, טלגרם וגוגל, הכל באותו חשבון.",
+    "en": "Your subscription, notifications, payment history, and connected channels, Telegram and Google, all one account.",
+    "ru": "Подписка, уведомления, история платежей и подключённые каналы, Telegram и Google, всё в одном аккаунте.",
+    "fr": "Votre abonnement, vos notifications, votre historique de paiements et vos canaux connectés, Telegram et Google, tout dans un seul compte.",
+    "ar": "اشتراكك، إشعاراتك، سجل مدفوعاتك، والقنوات المرتبطة, تيليجرام وجوجل، كلها في حساب واحد."
   },
   "account.subscription_title": {
-    "he": "המנוי שלי 👑",
-    "en": "My Subscription 👑",
-    "ru": "Моя подписка 👑",
-    "fr": "Mon abonnement 👑",
-    "ar": "اشتراكي 👑"
+    "he": "המנוי שלי",
+    "en": "My Subscription",
+    "ru": "Моя подписка",
+    "fr": "Mon abonnement",
+    "ar": "اشتراكي"
   },
   "account.subscription_active": {
-    "he": "✅ פעיל, בתוקף עד {date}",
-    "en": "✅ Active, valid until {date}",
-    "ru": "✅ Активна, действует до {date}",
-    "fr": "✅ Actif, valable jusqu'au {date}",
-    "ar": "✅ نشط، ساري حتى {date}"
+    "he": "פעיל, בתוקף עד {date}",
+    "en": "Active, valid until {date}",
+    "ru": "Активна, действует до {date}",
+    "fr": "Actif, valable jusqu'au {date}",
+    "ar": "نشط، ساري حتى {date}"
   },
   "account.days_left": {
     "he": "נשארו {days} ימים",
@@ -1187,18 +1187,18 @@
     "ar": "هذا هو اليوم الأخير"
   },
   "account.subscription_trial": {
-    "he": "⏳ תקופת ניסיון, עד {date}",
-    "en": "⏳ Trial period, until {date}",
-    "ru": "⏳ Пробный период, до {date}",
-    "fr": "⏳ Période d'essai, jusqu'au {date}",
-    "ar": "⏳ فترة تجريبية، حتى {date}"
+    "he": "תקופת ניסיון, עד {date}",
+    "en": "Trial period, until {date}",
+    "ru": "Пробный период, до {date}",
+    "fr": "Période d'essai, jusqu'au {date}",
+    "ar": "فترة تجريبية، حتى {date}"
   },
   "account.subscription_expired": {
-    "he": "תקופת הניסיון הסתיימה ⚠️",
-    "en": "Trial period ended ⚠️",
-    "ru": "Пробный период закончился ⚠️",
-    "fr": "Période d'essai terminée ⚠️",
-    "ar": "انتهت الفترة التجريبية ⚠️"
+    "he": "תקופת הניסיון הסתיימה",
+    "en": "Trial period ended",
+    "ru": "Пробный период закончился",
+    "fr": "Période d'essai terminée",
+    "ar": "انتهت الفترة التجريبية"
   },
   "account.upgrade_cta_renew": {
     "he": "שדרג מנוי",
@@ -1223,10 +1223,10 @@
   },
   "account.subscription_will_not_renew": {
     "he": "ביטלת את החידוש האוטומטי. הגישה נשארת עד סוף התקופה ששילמת, ולא תחויב שוב.",
-    "en": "You cancelled auto-renewal — access stays until the end of the period you already paid for, and you won't be charged again.",
-    "ru": "Вы отменили автопродление — доступ сохранится до конца уже оплаченного периода, повторного списания не будет.",
-    "fr": "Vous avez annulé le renouvellement automatique — l'accès reste actif jusqu'à la fin de la période déjà payée, sans nouveau prélèvement.",
-    "ar": "لقد ألغيت التجديد التلقائي — يبقى الوصول حتى نهاية الفترة المدفوعة بالفعل، ولن يتم خصم أي مبلغ مرة أخرى."
+    "en": "You cancelled auto-renewal, access stays until the end of the period you already paid for, and you won't be charged again.",
+    "ru": "Вы отменили автопродление, доступ сохранится до конца уже оплаченного периода, повторного списания не будет.",
+    "fr": "Vous avez annulé le renouvellement automatique, l'accès reste actif jusqu'à la fin de la période déjà payée, sans nouveau prélèvement.",
+    "ar": "لقد ألغيت التجديد التلقائي, يبقى الوصول حتى نهاية الفترة المدفوعة بالفعل، ولن يتم خصم أي مبلغ مرة أخرى."
   },
   "account.cancel_subscription_cta": {
     "he": "בטל חידוש אוטומטי",
@@ -1260,7 +1260,7 @@
     "he": "שולם ₪{paid}. מקוזזים ₪{covering} עבור {days} ימים מאז הרכישה ו־₪{fee} דמי ביטול.",
     "en": "Paid ₪{paid}. Deducted: ₪{covering} for {days} days since the purchase and a ₪{fee} cancellation fee.",
     "ru": "Оплачено ₪{paid}. Удерживается ₪{covering} за {days} дн. с момента покупки и ₪{fee} за отмену.",
-    "fr": "Payé ₪{paid}. Retenus : ₪{covering} pour {days} jours depuis l'achat et ₪{fee} de frais d'annulation.",
+    "fr": "Payé ₪{paid}. Retenus: ₪{covering} pour {days} jours depuis l'achat et ₪{fee} de frais d'annulation.",
     "ar": "تم دفع ₪{paid}. يُخصم ₪{covering} مقابل {days} أيام منذ الشراء و₪{fee} رسوم إلغاء."
   },
   "account.cancel_pass_policy": {
@@ -1306,25 +1306,25 @@
     "ar": "استئناف التجديد التلقائي"
   },
   "account.notifications_title": {
-    "he": "התראות 🔔",
-    "en": "Notifications 🔔",
-    "ru": "Уведомления 🔔",
-    "fr": "Notifications 🔔",
-    "ar": "الإشعارات 🔔"
+    "he": "התראות",
+    "en": "Notifications",
+    "ru": "Уведомления",
+    "fr": "Notifications",
+    "ar": "الإشعارات"
   },
   "account.status_on": {
-    "he": "🔔 מופעלות",
-    "en": "🔔 On",
-    "ru": "🔔 Включены",
-    "fr": "🔔 Activées",
-    "ar": "🔔 مفعّلة"
+    "he": "מופעלות",
+    "en": "On",
+    "ru": "Включены",
+    "fr": "Activées",
+    "ar": "مفعّلة"
   },
   "account.status_off": {
-    "he": "🔕 כבויות",
-    "en": "🔕 Off",
-    "ru": "🔕 Выключены",
-    "fr": "🔕 Désactivées",
-    "ar": "🔕 معطّلة"
+    "he": "כבויות",
+    "en": "Off",
+    "ru": "Выключены",
+    "fr": "Désactivées",
+    "ar": "معطّلة"
   },
   "account.notifications_toggle_off": {
     "he": "כבה התראות",
@@ -1341,18 +1341,18 @@
     "ar": "تفعيل الإشعارات"
   },
   "account.channels_title": {
-    "he": "חיבור ערוצים 🔗",
-    "en": "Connected Channels 🔗",
-    "ru": "Подключённые каналы 🔗",
-    "fr": "Canaux connectés 🔗",
-    "ar": "القنوات المرتبطة 🔗"
+    "he": "חיבור ערוצים",
+    "en": "Connected Channels",
+    "ru": "Подключённые каналы",
+    "fr": "Canaux connectés",
+    "ar": "القنوات المرتبطة"
   },
   "account.channel_connected": {
-    "he": "מחובר ✅",
-    "en": "Connected ✅",
-    "ru": "Подключено ✅",
-    "fr": "Connecté ✅",
-    "ar": "متصل ✅"
+    "he": "מחובר",
+    "en": "Connected",
+    "ru": "Подключено",
+    "fr": "Connecté",
+    "ar": "متصل"
   },
   "account.telegram_connect_cta": {
     "he": "פתח את הבוט לחיבור",
@@ -1362,11 +1362,11 @@
     "ar": "افتح البوت للربط"
   },
   "account.telegram_connect_hint": {
-    "he": "לוחץ על הכפתור והחיבור קורה לבד 🎉",
-    "en": "Tap the button and the connection happens automatically 🎉",
-    "ru": "Нажмите на кнопку — подключение произойдёт автоматически 🎉",
-    "fr": "Appuyez sur le bouton, la connexion se fait automatiquement 🎉",
-    "ar": "اضغط على الزر وسيتم الربط تلقائيًا 🎉"
+    "he": "לוחץ על הכפתור והחיבור קורה לבד",
+    "en": "Tap the button and the connection happens automatically",
+    "ru": "Нажмите на кнопку, подключение произойдёт автоматически",
+    "fr": "Appuyez sur le bouton, la connexion se fait automatiquement",
+    "ar": "اضغط على الزر وسيتم الربط تلقائيًا"
   },
   "account.no_active_code": {
     "he": "אין קוד חיבור פעיל כרגע",
@@ -1386,50 +1386,50 @@
     "he": "הקוד שלך:",
     "en": "Your code:",
     "ru": "Ваш код:",
-    "fr": "Votre code :",
+    "fr": "Votre code:",
     "ar": "رمزك:"
   },
   "account.code_hint_suffix": {
     "he": "(בתוקף ל־15 דקות). אפשר גם לשלוח אותו ידנית מהערוץ שאתה רוצה לחבר, במקום ללחוץ על הכפתור.",
-    "en": "— valid for 15 minutes. You can also send it manually from the channel you want to connect, instead of tapping the button.",
-    "ru": "— действителен 15 минут. Можно также отправить его вручную из канала, который хотите подключить, вместо нажатия кнопки.",
-    "fr": "— valable 15 minutes. Vous pouvez aussi l'envoyer manuellement depuis le canal que vous souhaitez connecter, au lieu d'appuyer sur le bouton.",
-    "ar": "— صالح لمدة 15 دقيقة. يمكنك أيضًا إرساله يدويًا من القناة التي تريد ربطها، بدلاً من الضغط على الزر."
+    "en": ": valid for 15 minutes. You can also send it manually from the channel you want to connect, instead of tapping the button.",
+    "ru": ": действителен 15 минут. Можно также отправить его вручную из канала, который хотите подключить, вместо нажатия кнопки.",
+    "fr": ": valable 15 minutes. Vous pouvez aussi l'envoyer manuellement depuis le canal que vous souhaitez connecter, au lieu d'appuyer sur le bouton.",
+    "ar": ": صالح لمدة 15 دقيقة. يمكنك أيضًا إرساله يدويًا من القناة التي تريد ربطها، بدلاً من الضغط على الزر."
   },
   "account.payment_history_title": {
-    "he": "היסטוריית תשלומים 📄",
-    "en": "Payment History 📄",
-    "ru": "История платежей 📄",
-    "fr": "Historique des paiements 📄",
-    "ar": "سجل المدفوعات 📄"
+    "he": "היסטוריית תשלומים",
+    "en": "Payment History",
+    "ru": "История платежей",
+    "fr": "Historique des paiements",
+    "ar": "سجل المدفوعات"
   },
   "account.payment_status_paid": {
-    "he": "✅ שולם",
-    "en": "✅ Paid",
-    "ru": "✅ Оплачено",
-    "fr": "✅ Payé",
-    "ar": "✅ مدفوع"
+    "he": "שולם",
+    "en": "Paid",
+    "ru": "Оплачено",
+    "fr": "Payé",
+    "ar": "مدفوع"
   },
   "account.payment_status_pending": {
-    "he": "⏳ ממתין",
-    "en": "⏳ Pending",
-    "ru": "⏳ В ожидании",
-    "fr": "⏳ En attente",
-    "ar": "⏳ قيد الانتظار"
+    "he": "ממתין",
+    "en": "Pending",
+    "ru": "В ожидании",
+    "fr": "En attente",
+    "ar": "قيد الانتظار"
   },
   "account.payment_status_failed": {
-    "he": "❌ נכשל",
-    "en": "❌ Failed",
-    "ru": "❌ Не удалось",
-    "fr": "❌ Échoué",
-    "ar": "❌ فشل"
+    "he": "נכשל",
+    "en": "Failed",
+    "ru": "Не удалось",
+    "fr": "Échoué",
+    "ar": "فشل"
   },
   "account.payment_status_cancelled": {
-    "he": "✋ בוטל",
-    "en": "✋ Cancelled",
-    "ru": "✋ Отменено",
-    "fr": "✋ Annulé",
-    "ar": "✋ ألغي"
+    "he": "בוטל",
+    "en": "Cancelled",
+    "ru": "Отменено",
+    "fr": "Annulé",
+    "ar": "ألغي"
   },
   "login.h1": {
     "he": "התחברות לטודירה",
@@ -1440,10 +1440,10 @@
   },
   "login.subtitle": {
     "he": "בחר איך להתחבר. כל האפשרויות מובילות לאותו חשבון.",
-    "en": "Choose how to log in — every option leads to the same account.",
-    "ru": "Выберите способ входа — все варианты ведут к одному и тому же аккаунту.",
-    "fr": "Choisissez comment vous connecter — toutes les options mènent au même compte.",
-    "ar": "اختر طريقة تسجيل الدخول — كل الخيارات تؤدي إلى نفس الحساب."
+    "en": "Choose how to log in, every option leads to the same account.",
+    "ru": "Выберите способ входа, все варианты ведут к одному и тому же аккаунту.",
+    "fr": "Choisissez comment vous connecter, toutes les options mènent au même compte.",
+    "ar": "اختر طريقة تسجيل الدخول, كل الخيارات تؤدي إلى نفس الحساب."
   },
   "login.google_cta": {
     "he": "התחברות מהירה עם Google",
@@ -1467,11 +1467,11 @@
     "ar": "تابع عبر تيليجرام"
   },
   "login.hint": {
-    "he": "כבר נרשמת בטלגרם ועוד לא חיברת Google? לחיצה על ״{telegram_cta}״ פותחת את הבוט. שם יש קישור לחשבון שלך (🔗) שמחזיר אותך לפה, לאותו דפדפן, מחובר. משם החיבור ל־Google יעבוד ישר על החשבון שלך.",
-    "en": "Already registered via Telegram, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot — you'll find your account link there (🔗) that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
-    "ru": "Уже зарегистрированы через Telegram, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота — там вы найдёте ссылку на свой аккаунт (🔗), которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
-    "fr": "Déjà inscrit via Telegram, mais pas encore lié à Google ? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot — vous y trouverez le lien de votre compte (🔗) qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
-    "ar": "مسجّل بالفعل عبر تيليجرام، لكن لم تربط Google بعد؟ الضغط على \"{telegram_cta}\" أعلاه يفتح البوت — ستجد هناك رابط حسابك (🔗) الذي يعيدك إلى هنا، في نفس المتصفح، معروفًا. من هناك، سيعمل الربط مع Google مباشرة على حسابك الحالي."
+    "he": "כבר נרשמת בטלגרם ועוד לא חיברת Google? לחיצה על ״{telegram_cta}״ פותחת את הבוט. שם יש קישור לחשבון שלך שמחזיר אותך לפה, לאותו דפדפן, מחובר. משם החיבור ל־Google יעבוד ישר על החשבון שלך.",
+    "en": "Already registered via Telegram, but haven't linked Google yet? Tapping \"{telegram_cta}\" above opens the bot, you'll find your account link there that brings you back here, in the same browser, recognized. From there, connecting with Google will work straight on your existing account.",
+    "ru": "Уже зарегистрированы через Telegram, но ещё не привязали Google? Нажатие на «{telegram_cta}» выше откроет бота, там вы найдёте ссылку на свой аккаунт, которая вернёт вас сюда, в тот же браузер, уже узнанным. Оттуда подключение через Google сработает прямо на вашем существующем аккаунте.",
+    "fr": "Déjà inscrit via Telegram, mais pas encore lié à Google? Appuyer sur « {telegram_cta} » ci-dessus ouvre le bot, vous y trouverez le lien de votre compte qui vous ramène ici, dans le même navigateur, reconnu. À partir de là, la connexion avec Google fonctionnera directement sur votre compte existant.",
+    "ar": "مسجّل بالفعل عبر تيليجرام، لكن لم تربط Google بعد؟ الضغط على \"{telegram_cta}\" أعلاه يفتح البوت, ستجد هناك رابط حسابك الذي يعيدك إلى هنا، في نفس المتصفح، معروفًا. من هناك، سيعمل الربط مع Google مباشرة على حسابك الحالي."
   },
   "upgrade.plan_weekly": {
     "he": "שבועי",
@@ -1505,13 +1505,13 @@
     "he": "חודש שלם ב־49.90 ₪? בערך המחיר של קפה ומאפה.",
     "en": "A whole month for ₪49.90? About the price of a coffee and a pastry.",
     "ru": "Целый месяц за 49.90 ₪? Примерно цена кофе с выпечкой.",
-    "fr": "Un mois entier pour 49,90 ₪ ? À peu près le prix d'un café et d'une pâtisserie.",
+    "fr": "Un mois entier pour 49,90 ₪? À peu près le prix d'un café et d'une pâtisserie.",
     "ar": "شهر كامل مقابل 49.90 ₪؟ تقريبًا سعر قهوة ومعجنات."
   },
   "upgrade.value_anchor_body": {
     "he": "עמלת תיווך עולה בדרך כלל אלפי שקלים. אצלנו זה סכום סמלי, בלי חידוש אוטומטי ובלי התחייבות.",
     "en": "A broker's fee usually costs thousands of shekels, once. With us it's a token amount, with no automatic renewal and no commitment.",
-    "ru": "Комиссия брокера обычно стоит тысячи шекелей. У нас — символическая сумма, без автопродления и обязательств.",
+    "ru": "Комиссия брокера обычно стоит тысячи шекелей. У нас, символическая сумма, без автопродления и обязательств.",
     "fr": "Les frais d'un agent coûtent souvent des milliers de shekels. Chez nous, c'est un montant symbolique, sans renouvellement automatique ni engagement.",
     "ar": "عمولة الوسيط تكلّف عادةً آلاف الشواقل. عندنا مبلغ رمزي، بدون تجديد تلقائي وبدون التزام."
   },

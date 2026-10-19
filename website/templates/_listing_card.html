@@ -130,8 +130,8 @@
        dedup.find_duplicate_listing) but was never actually shown on the card until now. #}
     <div class="listing-loc">
       <span class="loc-city">{{ l.city or t('card.no_city') }}</span>
-      {% if l.neighborhood %}<span class="loc-sep">·</span><span class="loc-area">{{ l.neighborhood }}</span>{% endif %}
-      {% if l.street %}<span class="loc-sep">·</span><span class="loc-street">{{ l.street }}</span>{% endif %}
+      {% if l.neighborhood %}<span class="loc-sep">, </span><span class="loc-area">{{ l.neighborhood }}</span>{% endif %}
+      {% if l.street %}<span class="loc-sep">, </span><span class="loc-street">{{ l.street }}</span>{% endif %}
     </div>
     {# 2026-09-24: property-type + rooms/floor/sqm/move-in + amenities unified into ONE row of
        outlined chip badges (real owner request, matching dorin.app's own card — previously two
@@ -202,7 +202,7 @@
       {% else %}
         {# 2026-10-19 (owner): the button says why it's locked - a trial that ended, or a pass that ended. #}
         {% set _lock_key = 'card.locked_btn_renew' if access_state == 'subscription_expired' else 'card.locked_btn' %}
-        <a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t(_lock_key) }} 🔒</a>
+        <a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t(_lock_key) }}</a>
       {% endif %}
     </div>
   </div>

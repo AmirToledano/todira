@@ -144,7 +144,7 @@ export default function Contact() {
       >
         <h2 className="section-title">{t("contact.other_ways_title")}</h2>
         <a className="btn outline" href={telegramBotUrl} target="_blank" rel="noreferrer">
-          {t("contact.telegram_way")} 💬
+          {t("contact.telegram_way")}
         </a>
       </motion.div>
     </>

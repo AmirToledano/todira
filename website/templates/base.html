@@ -195,13 +195,13 @@
            hamburger panel is untouched and still covers mobile plus the secondary items (language
            switcher, login/logout, admin links) at every width. -->
       <nav class="site-nav-desktop" aria-label="{{ t('a11y.main_nav_label') }}">
-        <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }} 🔑</a>
-        <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }} ❤️</a>
-        <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }} ⚙️</a>
+        <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }}</a>
+        <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }}</a>
+        <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }}</a>
         {% if uid or current_user %}
         <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
         {% endif %}
-        <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }} ✉️</a>
+        <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
       </nav>
       <div class="header-actions">
         {% if not current_user and not uid %}
@@ -218,13 +218,13 @@
     <div class="nav-panel" id="nav-panel">
       <div class="nav-panel-inner">
         <nav class="site-nav" aria-label="{{ t('a11y.main_nav_label') }}">
-          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }} 🔑</a>
-          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }} ❤️</a>
-          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }} ⚙️</a>
+          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }}</a>
+          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }}</a>
+          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }}</a>
           {% if uid or current_user %}
           <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
           {% endif %}
-          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }} ✉️</a>
+          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
           {% if is_owner %}
           <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}">📬</a>
           <a href="/admin/users" class="{{ 'active' if active_page == 'admin_users' else '' }}">👥</a>
@@ -272,7 +272,7 @@
         <a href="/privacy">{{ t('footer.privacy') }}</a>
         <a href="/accessibility">{{ t('footer.accessibility') }}</a>
       </nav>
-      <p class="footer-note">{{ t('footer.built_by') }} 🐾</p>
+      <p class="footer-note">{{ t('footer.built_by') }}</p>
       <p class="footer-note footer-legal">{{ t('footer.gender_note') }}</p>
       <p class="footer-note footer-legal">{{ t('footer.business_info_pre') }}<a href="mailto:amir81358@gmail.com">amir81358@gmail.com</a></p>
       <p class="footer-note footer-legal">{{ t('footer.copyright', year=current_year) }}</p>
