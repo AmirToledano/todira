@@ -44,6 +44,12 @@ jobs:
           WHERE NOT is_delisted AND duplicate_of_id IS NULL AND price IS NOT NULL AND rooms IS NOT NULL
             AND latitude IS NOT NULL AND city IS NOT NULL
           ORDER BY first_seen_at DESC LIMIT 24;
+          \echo '== newest rent (city|rooms|price|deal|lat|lng)'
+          SELECT city, rooms, price, deal_type, round(latitude, 2), round(longitude, 2)
+          FROM listings
+          WHERE NOT is_delisted AND duplicate_of_id IS NULL AND price IS NOT NULL AND rooms IS NOT NULL
+            AND latitude IS NOT NULL AND city IS NOT NULL AND deal_type = 'rent'
+          ORDER BY first_seen_at DESC LIMIT 24;
           SQL
           PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
           kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < /tmp/q.sql
