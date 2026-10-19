@@ -735,6 +735,25 @@ async def _fetch_and_apply_yad2_detail_updates(
     return applied_count
 
 
+_BACKFILL_BATCH = 40
+_RUN_BUDGET_ENV_VAR = "SCRAPER_RUN_BUDGET_SECONDS"
+_DEFAULT_RUN_BUDGET_SECONDS = 26 * 60
+_RUN_STARTED_AT: float | None = None
+
+
+def _run_time_left() -> float:
+    """Seconds this run may still spend on catch-up work (SCRAPER_RUN_BUDGET_SECONDS from the run's start, default 26
+    minutes), so a run on a 30-minute schedule ends before the next one is due. Unlimited outside run_once."""
+    if _RUN_STARTED_AT is None:
+        return float("inf")
+    raw = os.environ.get(_RUN_BUDGET_ENV_VAR, "").strip()
+    try:
+        budget = float(raw) if raw else _DEFAULT_RUN_BUDGET_SECONDS
+    except ValueError:
+        budget = _DEFAULT_RUN_BUDGET_SECONDS
+    return budget - (time.monotonic() - _RUN_STARTED_AT)
+
+
 async def _backfill_missing_yad2_descriptions(session) -> int:
     """Real gap found live 2026-09-26 (diagnose-description-coverage-per-source.yaml): only 6.2%
     description coverage among the 470 most-recent active Yad2 listings, despite Bright Data being
@@ -782,7 +801,18 @@ async def _backfill_missing_yad2_descriptions(session) -> int:
     if not id_url_pairs:
         return 0
 
-    return await _fetch_and_apply_yad2_detail_updates(session, id_url_pairs, log_context="backfill")
+    # 2026-10-19 (owner: scan every 30 minutes): the catch-up took 10 of a run's 40 minutes, after the alerts. It now
+    # works in batches and stops when the run reaches its time budget, so a run ends before the next one is due; what
+    # is left is picked up by the next run (newest first, as before).
+    applied = 0
+    for start in range(0, len(id_url_pairs), _BACKFILL_BATCH):
+        if _run_time_left() <= 0:
+            logger.info("Yad2 details backfill: run time budget reached after %d of %d", start, len(id_url_pairs))
+            break
+        applied += await _fetch_and_apply_yad2_detail_updates(
+            session, id_url_pairs[start:start + _BACKFILL_BATCH], log_context="backfill"
+        )
+    return applied
 
 
 _TEXT_FEATURES_MAX_ENV_VAR = "TEXT_FEATURES_MAX_PER_RUN"
@@ -2505,6 +2535,8 @@ class _StepTimer:
 
 
 def run_once() -> dict[str, int]:
+    global _RUN_STARTED_AT
+    _RUN_STARTED_AT = time.monotonic()
     fetched = 0
     errors = 0
     all_normalized_items = []

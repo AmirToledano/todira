@@ -170,7 +170,9 @@ scraper:
   # static, so the same reputation-decay mechanism that caused the original multi-day Radware block
   # could in principle return under sustained heavier real use — watch pod logs for a returning
   # 302/Radware pattern, not a ZenRows dashboard number, if trouble shows up.
-  schedule: "0 9-22 * * *"
+  # 2026-10-19 (owner): every 30 minutes, 09:00-22:30 Israel time. A run now ends in under 26 minutes (shorter Yad2 tile
+  # pause, catch-up work stopped at SCRAPER_RUN_BUDGET_SECONDS), so runs never overlap (concurrencyPolicy: Forbid).
+  schedule: "0,30 9-22 * * *"
   # 2026-09-13: real ZenRows dashboard check (owner's own screenshot) found only 7,218 credits
   # left on the Build 45k plan, renewing 2026-10-01 (~18 days away) — 87% of the plan already used.
   # At the schedule/sources active before tonight (8 runs/day, full 7-region Yad2 sweep + all-42-

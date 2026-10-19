@@ -1084,7 +1084,9 @@ _TILE_MAX_REQUESTS_ENV_VAR = "YAD2_TILE_MAX_REQUESTS"
 _TILE_MAX_SECONDS_ENV_VAR = "YAD2_TILE_MAX_SECONDS"
 TILE_MARKER_CAP = 190  # a response this full is treated as capped (the API's own limit is 200)
 _TILE_MAX_DEPTH = 10  # was 6: a 4 km leaf in central Beer Sheva still held more than 200 ads, so each sweep saw a different arbitrary 200
-_TILE_PAUSE_SECONDS = 0.7
+# 2026-10-19 (owner: scan every 30 minutes): 0.7 -> 0.4. The two sweeps (~1,300 requests) took 22 minutes of a 40-minute
+# run; now ~15, so the whole run fits in half an hour. A failed or challenged tile still waits 4x this before retrying.
+_TILE_PAUSE_SECONDS = 0.4
 _TILE_MAX_CONSECUTIVE_FAILURES = 5
 _DEFAULT_TILE_MAX_REQUESTS = 1500
 _DEFAULT_TILE_MAX_SECONDS = 1500  # wall-clock cap: a sweep that runs this long stops and counts as incomplete

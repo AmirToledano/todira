@@ -273,3 +273,28 @@ def test_text_catch_up_reads_in_batches_until_nothing_is_left(monkeypatch):
     selects = [stmt for stmt in session.executed_stmts if str(stmt).lstrip().upper().startswith("SELECT")]
     assert len(selects) == 3
     assert [stmt.compile().params.get("param_1") for stmt in selects] == [2, 2, 1]
+
+
+def test_backfill_stops_when_the_run_reaches_its_time_budget(monkeypatch):
+    """2026-10-19 (owner: scan every 30 minutes): the catch-up works in batches and stops at the run's time budget,
+    so a run ends before the next one is due; the rest waits for the next run."""
+    monkeypatch.setenv(scraper_main._BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR, "100")
+    monkeypatch.setattr(scraper_main, "_BACKFILL_BATCH", 2)
+    rows = [(i, f"https://yad2.co.il/item/{i}") for i in range(1, 7)]
+    left = iter([100.0, 100.0, -1.0])  # time for two batches, then the budget is gone
+    monkeypatch.setattr(scraper_main, "_run_time_left", lambda: next(left))
+    session = _QueueSession([_Result(rows)] + [None] * 4)
+    fetched = []
+
+    def _fetch(url):
+        fetched.append(url)
+        return _UPDATES
+
+    with patch.object(_detail, "fetch_updates", _fetch):
+        assert asyncio.run(_backfill(session)) == 4
+    assert len(fetched) == 4
+
+
+def test_the_run_budget_is_unlimited_outside_a_run(monkeypatch):
+    monkeypatch.setattr(scraper_main, "_RUN_STARTED_AT", None)
+    assert scraper_main._run_time_left() == float("inf")
