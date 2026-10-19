@@ -48,7 +48,12 @@ spec:
           restartPolicy: Never
           containers:
             - name: facebook-scraper
+              # 2026-10-19: the image with a headless browser (scraper/Dockerfile.facebook) when CI built one.
+              {{- if and .Values.facebookImage .Values.facebookImage.repository }}
+              image: "{{ .Values.facebookImage.repository }}:{{ .Values.facebookImage.tag | default "latest" }}"
+              {{- else }}
               image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
+              {{- end }}
               env:
                 # 2026-10-14: at most two glibc malloc arenas, so a multi-threaded Python process keeps less freed memory
                 # to itself on the 2 GB server (the default allows 8 per CPU).
@@ -71,6 +76,13 @@ spec:
                 # it's actually configured" pattern as every optional cap in this file.
                 - name: SCRAPE_SOURCES
                   value: "facebook_marketplace,facebook_groups"
+                # 2026-10-19 (owner approved): the groups feed in a browser session - every joined group, no id list.
+                - name: FACEBOOK_GROUPS_BROWSER
+                  value: {{ .Values.scraper.facebookGroups.browser | default false | quote }}
+                - name: FACEBOOK_GROUPS_SCROLLS
+                  value: {{ .Values.scraper.facebookGroups.scrolls | default 14 | quote }}
+                - name: FACEBOOK_MARKETPLACE_HOURS
+                  value: {{ .Values.scraper.facebook.marketplaceHours | default "" | quote }}
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef:
