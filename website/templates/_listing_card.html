@@ -7,7 +7,7 @@
      data-listing-id="{{ l.id }}"
      {% if l.latitude is defined and l.longitude is defined and l.latitude is not none and l.longitude is not none %}data-lat="{{ l.latitude }}" data-lng="{{ l.longitude }}"{% endif %}
      {% if l.posted_at is defined and l.posted_at is not none %}data-posted-at="{{ l.posted_at.isoformat() }}"{% endif %}
-     {% if l.description %}data-description-full="{{ l.description }}"{% endif %}
+     {% if l.description %}data-description-full="{{ l.description|public_desc }}"{% endif %}
      {# Other sites the SAME apartment was posted on (main.py's _attach_also_on) — read by the detail view. #}
      {% if l.also_on %}data-also-on='{{ l.also_on | tojson }}'{% endif %}
      {# Full photo list for the detail modal's own gallery (2026-09-24) — the card's own
@@ -147,7 +147,7 @@
     }.get(l.property_type) %}
     <div class="feature-badges">
       {% if _type_label %}<span class="feature-badge">{{ _type_label }} 🏠</span>{% endif %}
-      {% if l.rooms %}<span class="feature-badge">{{ l.rooms|rooms_label }} {{ t('card.rooms') }} 🛏️</span>{% endif %}
+      {% if l.rooms %}<span class="feature-badge">{{ l.rooms|rooms_label }} {{ t('card.rooms') }} 🛏️</span>{% elif l.description|shared_room %}<span class="feature-badge">{{ t('card.room_in_shared') }} 🛏️</span>{% endif %}
       {% if l.floor is not none %}<span class="feature-badge">{{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %} 🏢</span>{% endif %}
       {% if l.size_sqm %}<span class="feature-badge">{{ l.size_sqm }} {{ t('card.sqm') }} 📐</span>{% endif %}
       {% if l.move_in_date %}<span class="feature-badge">{{ t('card.move_in_date', date=l.move_in_date.strftime('%d.%m.%y')) }} 📅</span>{% elif l.move_in_note %}<span class="feature-badge">{{ t('card.move_in_date', date=(t('card.move_in_immediate') if l.move_in_note == 'מיידית' else (t('card.move_in_flexible') if l.move_in_note == 'גמיש' else l.move_in_note))) }} 📅</span>{% endif %}
@@ -168,7 +168,7 @@
        name/phone/agency) — this project's Listing model doesn't store that at all (see
        normalize.py's enrich_from_detail; only a derived is_broker_listing boolean is kept), so
        there's nothing to accidentally leak by widening this gate. #}
-    {% if l.description %}<p class="listing-desc">{{ l.description[:140] }}</p>{% endif %}
+    {% if l.description %}<p class="listing-desc">{{ (l.description|public_desc)[:140] }}</p>{% endif %}
     {# 2026-09-26 real owner request, matching dorin.app's own "פרטי איש קשר" section: only shown
        in the detail view (.detail-only, see style.css — hidden on the small grid card, shown once
        cloned into .apt-detail-body), never on the grid card itself. Same has_access gate as the

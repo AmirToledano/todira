@@ -71,6 +71,7 @@ from todira_common.access import (
     has_paid_access,
 )
 from todira_common.channel_link import generate_link_code
+from todira_common.public_text import is_room_in_shared_flat, public_description
 from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECOND_NAMES
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
@@ -230,6 +231,9 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 # 2026-10-17: listing cards printed "2.0 חדרים" (rooms is NUMERIC(3,1)) and "4900 ₪" with no thousands separator,
 # while the bot's cards and the home page already say "2 חדרים" / "4,900 ₪".
 templates.env.filters["rooms_label"] = lambda rooms: f"{float(rooms):g}" if rooms else "?"
+# 2026-10-19 (owner): an ad's text never shows who posted it or how to reach them - see todira_common.public_text.
+templates.env.filters["public_desc"] = public_description
+templates.env.filters["shared_room"] = is_room_in_shared_flat
 templates.env.filters["ils"] = lambda amount: f"{int(amount):,} ₪"
 
 

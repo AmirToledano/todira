@@ -1635,6 +1635,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Ville non indiquée", "ar": "المدينة غير محددة",
     },
     "card.rooms": {"he": "חדרים", "en": "rooms", "ru": "комнат", "fr": "pièces", "ar": "غرف"},
+    "card.room_in_shared": {
+        "he": "חדר בדירת שותפים", "en": "Room in a shared flat", "ru": "Комната в квартире с соседями",
+        "fr": "Chambre en colocation", "ar": "غرفة في شقة مشتركة",
+    },
     "card.floor": {"he": "קומה", "en": "floor", "ru": "этаж", "fr": "étage", "ar": "طابق"},
     "card.sqm": {"he": "מ\"ר", "en": "sqm", "ru": "кв.м", "fr": "m²", "ar": "م²"},
     "card.amenity_parking": {"he": "חניה", "en": "parking", "ru": "парковка", "fr": "parking", "ar": "موقف سيارات"},

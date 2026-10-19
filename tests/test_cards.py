@@ -65,7 +65,7 @@ def test_basic_caption_includes_core_fields():
     assert f"🛏️ {_b('חדרים:')} 4" in caption
     assert f'📐 {_b("שטח:")} 160 מ"ר' in caption
     assert f"💰 {_b('מחיר:')} 16,000₪" in caption
-    assert f"📍{_b('ירושלים')} - ניות" in caption
+    assert f"{_b('ירושלים')} - ניות</a>" in caption  # 2026-10-19: a map link even without a street
     assert "🏷️" not in caption  # the old "🏷️ {source}" footer line is gone
     # location must come before price in the actual rendered order, not just be present somewhere
     assert caption.index("📍") < caption.index("💰")
@@ -108,9 +108,15 @@ def test_location_street_is_a_google_maps_link_on_telegram():
     assert "דיזנגוף+10" in caption or "%D7%93%D7%99%D7%96%D7%A0%D7%92%D7%95%D7%A3" in caption
 
 
-def test_location_without_street_has_no_maps_link():
+def test_location_without_street_still_has_a_maps_link():
+    # 2026-10-19 (owner: "no blue Google location" on group posts): a neighbourhood or a city alone is linked too.
     caption = format_caption(make_listing(), has_access=True)
-    assert "google.com/maps" not in caption
+    assert 'google.com/maps/search/?api=1&query=%D7%A0%D7%99%D7%95%D7%AA' in caption
+
+
+def test_a_listing_naming_no_place_has_no_location_line():
+    caption = format_caption(make_listing(city=None, neighborhood=None), has_access=True)
+    assert "📍" not in caption and "google.com/maps" not in caption
 
 
 def test_street_with_a_literal_quote_mark_renders_plain_not_as_quot_entity():
@@ -920,7 +926,10 @@ def test_rooms_print_without_a_trailing_zero():
     assert f"🛏️ {_b('חדרים:')} 3\n" in format_caption(make_listing(rooms=Decimal("3.0")), has_access=True)
     assert f"🛏️ {_b('חדרים:')} 2.5\n" in format_caption(make_listing(rooms=Decimal("2.5")), has_access=True)
     assert f"🛏️ {_b('חדרים:')} 4\n" in format_caption(make_listing(rooms=4), has_access=True)
-    assert f"🛏️ {_b('חדרים:')} ?\n" in format_caption(make_listing(rooms=None), has_access=True)
+    # 2026-10-19 (owner: "חדרים: ?" is not acceptable): an unknown count is left out, a room in a shared flat is said.
+    assert "חדרים:" not in format_caption(make_listing(rooms=None), has_access=True)
+    shared = make_listing(rooms=None, description="מתפנה חדר בדירת 4 חדרים מקסימה בכרמל")
+    assert f"🛏️ {_b('חדר בדירת שותפים')}" in format_caption(shared, has_access=True)
 
 
 def test_trial_ended_notice_replaces_the_generic_lock_line():

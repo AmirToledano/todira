@@ -132,7 +132,13 @@ _SEEKER_RE = re.compile(
     r"(?<![א-ת])(?:מחפש|מחפשת|מחפשים|מחפשות|דרוש|דרושה|מעוניין|מעוניינת|מעוניינים)(?![א-ת])"
     r"[^.\n]{0,40}(?<![א-ת])(?:דירה|דירת|חדר|יחידה|יחידת|סאבלט|סבלט|שותף|שותפה|בית|להשכרה|לשכירות)",
 )
-_OFFER_RE = re.compile(r"(?<![א-ת])(?:להשכרה|למכירה|מפנה|מפנים|מתפנה|פנויה|משכיר|משכירה|מוכר|מוכרת|סאבלט|סבלט)(?![א-ת])")
+# 2026-10-19 (owner: "מחפשת להשכרה דירה... חדר גג 2 חדרים" went out as a flat): "להשכרה", "למכירה" and "סאבלט" are
+# words a seeker writes too ("מחפשת להשכרה", "מחפש סאבלט"), so only a verb that offers overrides a seeker's words, and
+# "מחפשים שותף/ה" or "מחפשים מחליף/ה" is someone offering their room.
+_OFFER_RE = re.compile(
+    r"(?<![א-ת])(?:מפנה|מפנים|מפנות|מתפנה|מתפנית|משכיר|משכירה|משכירים|מוכר|מוכרת|מוכרים|"
+    r"(?:מחפש|מחפשת|מחפשים|מחפשות)\s+(?:שותף|שותפה|שותפים|שותפות|מחליף|מחליפה|מחליפים|דייר|דיירת|דיירים))(?![א-ת])"
+)
 _STREET_RE = re.compile(
     r"(?<![א-ת])(?:ב?רחוב|ב?רח['׳]|ב?שד['׳]|ב?שדרות)\s+([א-ת][א-ת\"'׳״\- ]{1,24}?)\s*(\d{1,3})?(?=[\s,.!\n]|$)"
 )
@@ -147,6 +153,32 @@ def looks_like_seeker(text: str) -> bool:
     return bool(_SEEKER_RE.search(head)) and not _OFFER_RE.search(head)
 
 
+# 2026-10-19 (owner: "חדר בדירת שותפות בכרמל... על ציר מוריה" came with no place at all): group posts often name only
+# the neighbourhood. Well-known ones that belong to one city, written after ב/ה or alone.
+_GROUP_NEIGHBOURHOODS = {
+    "כרמל": "חיפה", "מרכז הכרמל": "חיפה", "ציר מוריה": "חיפה", "שדרות מוריה": "חיפה", "דניה": "חיפה",
+    "נווה שאנן": "חיפה", "רמות רמז": "חיפה", "בת גלים": "חיפה", "קרית חיים": "חיפה", "קריית חיים": "חיפה",
+    "קרית שמואל": "חיפה", "קריית שמואל": "חיפה", "הדר הכרמל": "חיפה", "רמת אביב": "תל אביב יפו",
+    "פלורנטין": "תל אביב יפו", "נווה צדק": "תל אביב יפו", "הצפון הישן": "תל אביב יפו", "הצפון החדש": "תל אביב יפו",
+    "לב העיר תל אביב": "תל אביב יפו", "יד אליהו": "תל אביב יפו", "שכונת התקווה": "תל אביב יפו", "יפו": "תל אביב יפו",
+    "נחלאות": "ירושלים", "רחביה": "ירושלים", "קטמון": "ירושלים", "בקעה": "ירושלים", "גילה": "ירושלים",
+    "פסגת זאב": "ירושלים", "הר חומה": "ירושלים", "קרית יובל": "ירושלים", "קריית יובל": "ירושלים",
+    "בית הכרם": "ירושלים", "רמת אשכול": "ירושלים", "תלפיות": "ירושלים",
+}
+_NEIGHBOURHOOD_RE = re.compile(
+    r"(?<![א-ת])(?:ב|ה|בה)?(" + "|".join(sorted(map(re.escape, _GROUP_NEIGHBOURHOODS), key=len, reverse=True)) + r")(?![א-ת])"
+)
+
+
+def _place_from_neighbourhood(text: str) -> tuple[str, str] | None:
+    """(city, neighbourhood) from the first well-known neighbourhood the post names, else None."""
+    found = _NEIGHBOURHOOD_RE.search(text[:600])
+    if not found:
+        return None
+    name = found.group(1)
+    return _GROUP_NEIGHBOURHOODS[name], name
+
+
 def parse_place_and_deal(text: str) -> dict[str, Any]:
     """raw_item keys "city", "street" and "dealHint" ("rent"/"sale"/"sublet") as far as the post states them."""
     from todira_common import search_text
@@ -157,6 +189,10 @@ def parse_place_and_deal(text: str) -> dict[str, Any]:
     found = search_text.parse(text)
     if found["cities"]:
         fields["city"] = found["cities"][0]
+    else:
+        place = _place_from_neighbourhood(text)
+        if place:
+            fields["city"], fields["neighborhood"] = place
     if found["deal_type"]:
         fields["dealHint"] = found["deal_type"]
     street = _STREET_RE.search(text)

@@ -98,7 +98,7 @@ def test_fetch_post_detail_extracts_real_message_ignoring_comment_noise(monkeypa
     assert result is not None
     assert result["id"] == "4728400380727033"
     assert "יחידת הורים אחרונה" in result["description"]
-    assert "Avivit Zissholz" in result["description"]
+    assert "Avivit Zissholz" not in result["description"]  # 2026-10-19: the poster's name is never shown
     assert "@Israel" not in result["description"]  # comment noise never leaks into the listing text
     assert result["dateAdded"] == "2026-09-20T05:27:13+00:00"
     assert result["price"] is None

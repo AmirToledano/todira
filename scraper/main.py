@@ -2351,8 +2351,11 @@ def _delist_group_posts_that_are_not_listings() -> int:
                 table.c.description.is_not(None),
             )
         ).all()
-        bad = [row.id for row in rows
-               if not facebook_groups_text_parser.looks_like_listing(row.description.split("\n\n(מפרסם/ת:")[0])]
+        bad = []
+        for row in rows:
+            text = row.description.split("\n\n(מפרסם/ת:")[0]
+            if facebook_groups_text_parser.looks_like_seeker(text) or not facebook_groups_text_parser.looks_like_listing(text):
+                bad.append(row.id)
         if bad:
             session.execute(
                 table.update().where(table.c.id.in_(bad))

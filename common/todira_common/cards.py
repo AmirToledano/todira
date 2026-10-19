@@ -22,6 +22,7 @@ from telegram.error import Forbidden, RetryAfter, TelegramError
 
 from todira_common.access import ACCESS_SUBSCRIPTION_EXPIRED, ACCESS_TRIAL_ENDED
 from todira_common.bot_strings import BOT_STRINGS, bot_text
+from todira_common.public_text import is_room_in_shared_flat, public_description
 from todira_common.language import DEFAULT_LANG
 from todira_common.models import Listing
 
@@ -195,12 +196,11 @@ def feature_list(listing: Listing, lang: str) -> list[str]:
 
 
 def _google_maps_url(listing: Listing) -> str | None:
-    """A plain Google Maps search-URL — no API key needed, works for any address string. None
-    when there's no street to point at (a bare city/neighborhood isn't precise enough to be worth
-    a map link)."""
-    if not listing.street:
-        return None
+    """A plain Google Maps search-URL — no API key needed, works for any address string. None when the listing names
+    no place at all. 2026-10-19 (owner): a neighbourhood or a city alone gets the link too, so every card has one."""
     parts = [p for p in (listing.street, listing.neighborhood, listing.city) if p]
+    if not parts:
+        return None
     return f"https://www.google.com/maps/search/?api=1&query={quote(', '.join(parts))}"
 
 
@@ -256,6 +256,9 @@ def _build_body_lines(
         maps_url = _google_maps_url(listing)
         street_text = street_link(street_display, maps_url) if maps_url else street_display
         location = f"{location} {street_text}" if location else street_text
+    elif location:
+        maps_url = _google_maps_url(listing)
+        location = street_link(location, maps_url) if maps_url else location
     if location:
         lines.append(f"📍{location}")
 
@@ -265,7 +268,11 @@ def _build_body_lines(
         # 2026-10-19 (owner): say it, rather than leaving the price line out.
         lines.append(f"💰 {bold(bot_text('card.price_label', lang))} {bot_text('card.price_unknown', lang)}")
 
-    lines.append(f"🛏️ {bold(bot_text('card.rooms_label', lang))} {_format_rooms(listing.rooms)}")
+    # 2026-10-19 (owner: "חדרים: ?" on a room in a shared flat): a room is called that, and an unknown count is left out.
+    if listing.rooms:
+        lines.append(f"🛏️ {bold(bot_text('card.rooms_label', lang))} {_format_rooms(listing.rooms)}")
+    elif is_room_in_shared_flat(listing.description):
+        lines.append(f"🛏️ {bold(bot_text('card.room_in_shared', lang))}")
 
     if listing.size_sqm:
         area_value = bot_text("kb.sqm_value", lang, value=listing.size_sqm)
@@ -526,7 +533,7 @@ def format_caption(
     # quote=False here too — same reasoning as _build_body_lines' own escape= above, this is
     # message text, never an attribute value.
     body += _truncated_description_block(
-        listing.description or "", remaining, lambda s: html.escape(s, quote=False)
+        public_description(listing.description), remaining, lambda s: html.escape(s, quote=False)
     )
 
     return _with_width_pad_if_short(_fit_to_limit(header, body, footer, CAPTION_LIMIT), CAPTION_LIMIT)

@@ -1247,6 +1247,10 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "לחידוש המנוי >>", "en": "Renew my access >>", "ru": "Продлить доступ >>",
         "fr": "Renouveler mon accès >>", "ar": "تجديد الاشتراك >>",
     },
+    "card.room_in_shared": {
+        "he": "חדר בדירת שותפים", "en": "a room in a shared flat", "ru": "комната в квартире с соседями",
+        "fr": "chambre en colocation", "ar": "غرفة في شقة مشتركة",
+    },
     "card.price_unknown": {
         "he": "לא צוין", "en": "not listed", "ru": "не указана", "fr": "non indiqué", "ar": "غير محدد",
     },

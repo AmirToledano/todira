@@ -300,14 +300,8 @@ def fetch_post_detail(group_id: str, post_id: str) -> dict[str, Any] | None:
         if story is not None:
             break
 
-    author_name: str | None = None
     posted_at_iso: str | None = None
     if story is not None:
-        feedback = story.get("feedback")
-        if isinstance(feedback, dict):
-            owning_profile = feedback.get("owning_profile")
-            if isinstance(owning_profile, dict) and isinstance(owning_profile.get("name"), str):
-                author_name = owning_profile["name"].strip()
         creation_time = story.get("creation_time")
         if isinstance(creation_time, int):
             # normalize.py's _parse_datetime expects an ISO string (dt.datetime.fromisoformat), not
@@ -316,9 +310,8 @@ def fetch_post_detail(group_id: str, post_id: str) -> dict[str, Any] | None:
             # through raw, which would silently fail to parse and leave posted_at as None.
             posted_at_iso = dt.datetime.fromtimestamp(creation_time, tz=dt.timezone.utc).isoformat()
 
+    # 2026-10-19 (owner): who posted is never shown - reaching the poster goes through Todira only.
     description = message
-    if author_name:
-        description = f"{message}\n\n(מפרסם/ת: {author_name})"
 
     result: dict[str, Any] = {
         "id": str(post_id),
@@ -350,7 +343,7 @@ def raw_item_from_feed_post(post: dict[str, Any]) -> dict[str, Any]:
     is needed. On top of price/rooms/floor/size and amenities, the free text also gives the city, the street and the
     kind of deal (facebook_groups_text_parser.parse_place_and_deal); the post's own photos come along."""
     text = post["text"]
-    description = f"{text}\n\n(מפרסם/ת: {post['author']})" if post.get("author") else text
+    description = text  # the poster's name is never shown (2026-10-19, owner)
     created = post.get("creation_time")
     result: dict[str, Any] = {
         "id": str(post["post_id"]),
