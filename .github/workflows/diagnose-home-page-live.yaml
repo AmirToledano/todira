@@ -16,6 +16,10 @@ jobs:
         run: |
           home=$(curl -s -w '\n%{http_code}' https://todira.app/?lang=he)
           echo "home: HTTP $(echo "$home" | tail -1), new page marker: $(echo "$home" | grep -c 'static/home.js'), old page marker: $(echo "$home" | grep -c 'id=\"root\"')"
+          echo "one portrait for both themes: $(echo "$home" | grep -c 'class=\"lp-portrait\"'), dark-only image left: $(echo "$home" | grep -c 'todi-hero-dark')"
+          v=$(echo "$home" | grep -o 'home.js?v=[^"]*' | head -1 | cut -d= -f2)
+          echo "dot map in home.js: $(curl -s "https://todira.app/static/home.js?v=$v" | grep -c 'var OUTLINE')"
+          echo "instant menu in style.css: $(curl -s "https://todira.app/static/style.css?v=$v" | grep -c 'nav-panel-in')"
           classic=$(curl -s https://todira.app/?design=classic)
           echo "classic: old page marker: $(echo "$classic" | grep -c 'id=\"root\"')"
           for f in home.css home.js fonts/karantina-hebrew-700-normal.woff2 todi-hero-light.webp; do
