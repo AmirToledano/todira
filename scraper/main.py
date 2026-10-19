@@ -2488,6 +2488,19 @@ async def _scrape_sources_concurrently(
     )
 
 
+class _StepTimer:
+    """2026-10-19 (owner: scan every 30 minutes): a run took 41-43 minutes with 17 silent minutes after the Yad2 sweep.
+    Each step's time is logged, so the slow one shows in the pod logs."""
+
+    def __init__(self) -> None:
+        self._last = time.monotonic()
+
+    def lap(self, step: str) -> None:
+        now = time.monotonic()
+        logger.info("step timing: %s took %.0fs", step, now - self._last)
+        self._last = now
+
+
 def run_once() -> dict[str, int]:
     fetched = 0
     errors = 0
@@ -2518,6 +2531,7 @@ def run_once() -> dict[str, int]:
     # The scraped items now live only in all_normalized_items, so they can be freed right after the upsert below.
     results = normalized_items = seen_external_ids = scraped_city_names = None
 
+    timer = _StepTimer()
     with get_session() as session:
         new_ids, price_change_pairs = _upsert_listings(session, all_normalized_items)
         all_normalized_items.clear()
@@ -2526,6 +2540,7 @@ def run_once() -> dict[str, int]:
         price_change_pairs = price_change_pairs + _STREAMED_PRICE_PAIRS
         new_ids = _apply_tile_seed_policy(session, new_ids)
         new_ids = _quiet_backlog(session, new_ids)
+        timer.lap("upsert")
 
         # Before anything reads the new listings back out (delisting check doesn't touch them, but
         # the notification step below does) — enriching first means notifications already carry
@@ -2533,9 +2548,11 @@ def run_once() -> dict[str, int]:
         # fast, if Bright Data isn't configured yet, or for any Komo/Homeless-sourced new_ids (see
         # that function's own docstring — it filters to source == Source.YAD2 internally).
         enriched_count = asyncio.run(_enrich_new_listings_via_bright_data(session, new_ids))
+        timer.lap("enrich new listings")
         # Same real gap, same catch-up pattern, Homeless's own source — see this function's own
         # docstring for the live-confirmed 28.6%-coverage number this closes.
         homeless_backfilled_count = asyncio.run(_backfill_missing_homeless_descriptions(session))
+        timer.lap("homeless descriptions")
 
         delisted_count = 0
         for source, (seen_external_ids, scraped_city_names, all_succeeded) in (
@@ -2560,6 +2577,7 @@ def run_once() -> dict[str, int]:
         seen_external_ids = scraped_city_names = None
         per_source_delisting_input.clear()
         _release_freed_memory()
+        timer.lap("delisting")
 
         # 2026-10-18 (owner: "the bot sent me the same apartments many times"): measured live, most repeats were the
         # same Yad2 ad posted again under a new id (~3 days apart), or a flat already sent from another site. Both
@@ -2576,6 +2594,7 @@ def run_once() -> dict[str, int]:
         except Exception:
             session.rollback()
             logger.exception("linking duplicates before the alerts failed")
+        timer.lap("city names and duplicates")
         new_listings = (
             list(session.scalars(
                 select(Listing).where(_col_in(Listing.id, new_ids), Listing.duplicate_of_id.is_(None))
@@ -2589,6 +2608,7 @@ def run_once() -> dict[str, int]:
             session, exclude_ids={listing.id for listing in new_listings}
         )
         retried_unnotified_count = len(retry_listings)
+        timer.lap("loading listings to alert")
         new_listings = new_listings + retry_listings
         retry_ids = {listing.id for listing in retry_listings}
         price_change_ids = [listing_id for listing_id, _old_price in price_change_pairs]
@@ -2670,6 +2690,7 @@ def run_once() -> dict[str, int]:
                     asyncio.run(run_notifications(session, new_listings, price_change_events, retry_ids=retry_ids))
                 )
         finally:
+            timer.lap("alerts")
             # 2026-10-09: the catch-up on older Yad2 listings whose details were never read (up to
             # BRIGHT_DATA_BACKFILL_MAX_PER_RUN per run, rentals first) runs AFTER the notifications, so a long backlog
             # never delays an alert. Fail-soft: a problem here must not take the run down.
@@ -2677,6 +2698,7 @@ def run_once() -> dict[str, int]:
                 summary["bright_data_backfilled"] = asyncio.run(_backfill_missing_yad2_descriptions(session))
             except Exception:
                 logger.exception("Yad2 details backfill step failed")
+            timer.lap("yad2 details backfill")
             try:
                 summary["text_features_filled"] = _fill_missing_fields_from_descriptions(session)
             except Exception:
@@ -2686,6 +2708,7 @@ def run_once() -> dict[str, int]:
             except Exception:
                 session.rollback()
                 logger.exception("Facebook rooms/size step failed")
+            timer.lap("text features")
             # Runs even when the notification step above raised (the exception still propagates
             # afterwards). Fail-soft — never takes the scraper run down. Only on the main scraper
             # (SCRAPE_SOURCES unset): the Facebook CronJob also runs this function, and two jobs must
@@ -2708,6 +2731,7 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("cross-site duplicates step failed")
+                timer.lap("reminders, expiry and duplicates")
 
     return summary
 
