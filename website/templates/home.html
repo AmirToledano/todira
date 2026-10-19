@@ -1,14 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ t('meta.title_home') }}{% endblock %}
 {% block extra_head %}
-<link rel="preload" as="image" href="/static/todira-brand.webp?v=5">
-{# schema.org JSON-LD (2026-09-07 audit fix) — nothing on the site told search engines what
-   kind of thing "טודירה" IS (a named product/organization, not just a page title), so a search
-   result for the brand name had no structured basis for a rich result (logo, sitelinks
-   search box, knowledge-panel-style info). Organization + WebSite on the home page only —
-   schema.org's own guidance is to place site-identity markup once, not per-page.
-   Unaffected by the React swap below — this block still renders server-side either way, so
-   crawlers see it immediately without needing to execute any JS. #}
+{# 2026-10-19 redesign (owner approved mockup 3). The previous React home page is templates/home_classic.html, served
+   when HOME_DESIGN=classic (or with ?design=classic to look at it); the whole site as it was is also kept on the
+   archive/site-classic-2026-10-19 branch. #}
+<link rel="preload" as="image" href="/static/todi-hero-light.webp?v={{ static_version }}">
+<link rel="preload" as="font" type="font/woff2" href="/static/fonts/karantina-hebrew-700-normal.woff2" crossorigin>
+<link rel="stylesheet" href="/static/home.css?v={{ static_version }}">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -29,73 +27,97 @@
   ]
 }
 </script>
-{% for css_url in landing_css_urls %}<link rel="stylesheet" href="{{ css_url }}">{% endfor %}
-{% if landing_js_url %}<link rel="modulepreload" href="{{ landing_js_url }}">{% endif %}
-{# 2026-10-14 owner report: opening the site showed the long plain .seo-fallback page for a split second before React
-   replaced it. The fallback stays in the HTML for crawlers that don't run JS, but a browser that runs JS keeps it
-   invisible (its space reserved, so nothing jumps) until React swaps in the real page. If the bundle never runs, the
-   class comes off after a few seconds and the plain page shows instead of a blank one. #}
-<style>html.landing-pending .seo-fallback { visibility: hidden; }</style>
-<script>
-  document.documentElement.classList.add('landing-pending');
-  setTimeout(function () { document.documentElement.classList.remove('landing-pending'); }, 6000);
-</script>
 {% endblock %}
 {% block content %}
-{# 2026-09-25: the marketing content below (hero/features/FAQ/etc — everything that used to be
-   plain server-rendered HTML here) is now a small isolated React+Framer Motion build
-   (website/landing-react/), deliberately scoped to ONLY this page — every other route
-   (/apartments, /login, /account, /upgrade, webhooks, admin) is untouched, still the original
-   Jinja2/vanilla CSS+JS this whole site is built on. See website/landing-react/README (or the
-   owner conversation this came from) for why: real "$10k agency" visual polish without the risk
-   of rewriting the entire product days before launch.
+<div class="lp">
+  <section class="lp-hero">
+    <div class="lp-wrap lp-hero-grid">
+      <div class="lp-hero-copy">
+        <h1>{{ t('landing.h1') }}</h1>
+        <p class="lp-lede">{{ t('landing.lede') }}</p>
+        <div class="lp-actions">
+          <a class="lp-btn" href="https://t.me/AmirDirotBot" target="_blank" rel="noopener">{{ t('landing.cta') }}</a>
+          <a class="lp-textlink" href="#lp-how">{{ t('landing.how_link') }}</a>
+        </div>
+        <p class="lp-fine">{{ t('landing.trial_note') }}</p>
+      </div>
+      <div class="lp-todi">
+        <img class="lp-portrait lp-light-only" src="/static/todi-hero-light.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024">
+        <img class="lp-portrait lp-dark-only" src="/static/todi-hero-dark.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="540" height="610">
+        <div class="lp-notif" id="lp-notif" aria-hidden="true" hidden>
+          <img src="/static/apple-touch-icon.png" alt="">
+          <div class="lp-notif-who"><b>טודירה</b><span>{{ t('landing.notif_now') }}</span></div>
+          <div class="lp-notif-what" id="lp-notif-what"></div>
+          <div class="lp-notif-detail" id="lp-notif-detail"></div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-   The header/nav/hamburger/lang-switcher/auth-box above this block and the footer below it
-   (base.html) are completely unchanged — only what used to be inside THIS content block became
-   React. window.__TODIRA_PAGE__ carries the few values the React app needs that only the server
-   already knows (the viewer's resolved language/direction — same resolution _render() already
-   did for this exact request, so the two can never disagree); lang/dir are drawn from fixed
-   server-side whitelists (SUPPORTED_LANGS / "rtl"|"ltr" in i18n.py), not visitor input.
-   2026-09-25: renamed from window.__TODIRA_HOME__ to this page-agnostic name when a second React
-   island (about.html) was added — every React page injects the same shape here rather than each
-   page needing its own differently-named global. #}
-<div id="root">
-{# 2026-10-07 SEO: the page's real content used to exist only after the React bundle ran, so a crawler that does not
-   execute JS (many do not; Google renders it later and less reliably) saw an empty page with no <h1>. This is the same
-   text, server-rendered from the same i18n keys; React's createRoot().render() replaces everything inside #root the moment
-   it mounts, so a visitor with JS never sees both. #}
-  <div class="seo-fallback" style="max-width:760px;margin:40px auto;padding:0 20px">
-    <h1>{{ t('home.h1') }}</h1>
-    <p>{{ t('home.lead') }}</p>
-    {% for n in (1, 2, 3) %}
-    <h2>{{ t('home.feature' ~ n ~ '_title') }}</h2>
-    <p>{{ t('home.feature' ~ n ~ '_body') }}</p>
+  <section class="lp-live" id="lp-live" hidden>
+    <div class="lp-wrap lp-live-grid">
+      <div class="lp-live-head">
+        <h2>{{ t('landing.live_pre') }} <b id="lp-n-new">0</b> {{ t('landing.live_mid') }}<b id="lp-n-cities">0</b> {{ t('landing.live_post') }}</h2>
+        <p class="lp-legend"><span class="lp-new">{{ t('landing.legend_new') }}</span><span class="lp-old">{{ t('landing.legend_old') }}</span></p>
+      </div>
+      <div class="lp-live-feed">
+        <ul class="lp-feed" id="lp-feed" aria-label="{{ t('landing.feed_label') }}"></ul>
+        <p class="lp-feed-note">{{ t('landing.feed_note') }}</p>
+      </div>
+      <div class="lp-map lp-sweep" id="lp-map"></div>
+    </div>
+  </section>
+
+  <section class="lp-paper lp-wrap" id="lp-how">
+    <h2 class="lp-big">{{ t('landing.how_link') }}</h2>
+    <div class="lp-how">
+      <ol class="lp-steps" id="lp-steps">
+        {% for n in (1, 2, 3) %}
+        <li class="on"><span class="lp-n">{{ n }}</span><h3>{{ t('landing.step' ~ n ~ '_title') }}</h3><p>{{ t('landing.step' ~ n ~ '_body') }}</p></li>
+        {% endfor %}
+      </ol>
+      <div class="lp-phone" aria-label="{{ t('landing.demo_label') }}">
+        <div class="lp-phone-head"><img src="/static/apple-touch-icon.png" alt=""><div><b>טודירה</b><span>{{ t('landing.demo_bot') }}</span></div></div>
+        <div class="lp-phone-body" id="lp-demo">
+          <div class="lp-bubble lp-own" id="lp-d-ask">{{ t('landing.demo1_ask') }}</div>
+          <div class="lp-bubble lp-bot" id="lp-d-got">{{ t('landing.demo_got') }}<div class="lp-chips" id="lp-d-chips">{% for chip in t('landing.demo1_chips').split('|') %}<span>{{ chip }}</span>{% endfor %}</div></div>
+          <div class="lp-bubble lp-bot" id="lp-d-alert"><div class="lp-alert-title" id="lp-d-title">{{ t('landing.demo1_title') }}</div><div class="lp-alert-price" id="lp-d-price">{{ t('landing.demo1_price') }}</div><span id="lp-d-detail">{{ t('landing.demo1_detail') }}</span><br><span class="lp-alert-link" id="lp-d-street">{{ t('landing.demo1_street') }}</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-paper lp-wrap" id="lp-price">
+    <div class="lp-prices">
+      <div>
+        <h2 class="lp-big">{{ t('landing.price_title') }}</h2>
+        <p>{{ t('landing.price_p1') }}</p>
+        <p>{{ t('landing.price_p2') }}</p>
+      </div>
+      <dl class="lp-plans">
+        {% for plan in landing_plans %}
+        <dt>{{ t(plan.name_key) }}</dt><dd>{{ plan.price }} ₪</dd><dd class="lp-per">{{ t('landing.per_day', price=plan.per_day) }}</dd>
+        {% endfor %}
+      </dl>
+    </div>
+  </section>
+
+  <section class="lp-paper lp-wrap lp-faq">
+    <h2 class="lp-big">{{ t('landing.faq_title') }}</h2>
+    {% for n in (1, 2, 4) %}
+    <details{% if loop.first %} open{% endif %}><summary>{{ t('home.faq' ~ n ~ '_q') }}</summary><p>{{ t('home.faq' ~ n ~ '_a') }}</p></details>
     {% endfor %}
-    <h2>{{ t('home.how_title') }}</h2>
-    <ol>
-      {% for n in (1, 2, 3) %}<li><strong>{{ t('home.step' ~ n ~ '_title') }}</strong> {{ t('home.step' ~ n ~ '_body') }}</li>{% endfor %}
-    </ol>
-    <h2>{{ t('home.faq_title') }}</h2>
-    {% for n in (1, 2, 3, 4) %}
-    <h3>{{ t('home.faq' ~ n ~ '_q') }}</h3>
-    <p>{{ t('home.faq' ~ n ~ '_a') }}</p>
-    {% endfor %}
-  </div>
+  </section>
+
+  <section class="lp-end">
+    <div class="lp-wrap lp-end-inner">
+      <div><img src="/static/apple-touch-icon.png" alt=""><h2>{{ t('landing.end_title') }}</h2></div>
+      <a class="lp-btn" href="https://t.me/AmirDirotBot" target="_blank" rel="noopener">{{ t('landing.cta') }}</a>
+    </div>
+  </section>
 </div>
 <script>
-  window.__TODIRA_PAGE__ = {
-    lang: "{{ lang }}",
-    dir: "{{ dir }}",
-    {# 2026-10-15: live numbers (main.py's _home_live_stats) - integers only, or null; refreshed by the page every minute. #}
-    liveStats: {{ live_stats | tojson }}
-  };
+  window.__TODIRA_LANDING__ = {{ landing_js | tojson }};
 </script>
-{% if landing_js_url %}
-<script type="module" src="{{ landing_js_url }}"></script>
-{% else %}
-{# Fresh checkout before `npm run build` has run in website/landing-react/ — fails visibly
-   instead of silently rendering a blank page, so this is never mistaken for the page just
-   loading slowly. cd website/landing-react && npm install && npm run build. #}
-<p style="text-align:center;padding:60px 20px;color:var(--text-muted)">landing-react bundle not built yet — run `npm run build` in website/landing-react/.</p>
-{% endif %}
+<script src="/static/home.js?v={{ static_version }}" defer></script>
 {% endblock %}

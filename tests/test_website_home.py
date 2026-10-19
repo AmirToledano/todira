@@ -39,8 +39,8 @@ def test_home_mounts_the_react_bundle(client):
     controls: the React bundle is referenced and mounted. What the React app then renders is a
     frontend concern, verified separately (manual/Playwright checks during development, not this
     Python suite — this repo's test suite has no browser-rendering dependency anywhere else
-    either)."""
-    resp = client.get("/")
+    either). 2026-10-19: that page is now the classic one (home_classic.html), served with ?design=classic."""
+    resp = client.get("/?design=classic")
 
     assert resp.status_code == 200
     assert 'id="root"' in resp.text
@@ -99,7 +99,7 @@ def test_home_page_has_valid_organization_and_website_json_ld(client):
 def test_home_server_renders_crawlable_content(client):
     """2026-10-07 SEO: the home page's content used to exist only after the React bundle ran, so a crawler that does
     not execute JS saw no <h1> at all. The same text is now server-rendered inside #root (React replaces it on mount)."""
-    resp = client.get("/")
+    resp = client.get("/?design=classic")
 
     assert resp.status_code == 200
     assert resp.text.count("<h1>") == 1
@@ -169,7 +169,7 @@ def test_home_stats_api_and_page_injection(client):
     stats = {"new_24h": 5, "active": 50, "cities": 3, "last_scan_minutes": 4}
     with patch.object(website_main, "_home_live_stats", lambda: stats):
         api = client.get("/api/home-stats")
-        page = client.get("/?lang=he")
+        page = client.get("/?lang=he&design=classic")
 
     assert api.status_code == 200 and api.json() == stats
     assert 'liveStats: {"active": 50, "cities": 3, "last_scan_minutes": 4, "new_24h": 5}' in page.text
@@ -178,7 +178,7 @@ def test_home_stats_api_and_page_injection(client):
 def test_home_stats_api_says_unavailable_and_the_page_falls_back(client):
     with patch.object(website_main, "_home_live_stats", lambda: None):
         api = client.get("/api/home-stats")
-        page = client.get("/?lang=he")
+        page = client.get("/?lang=he&design=classic")
 
     assert api.status_code == 503
     assert "liveStats: null" in page.text

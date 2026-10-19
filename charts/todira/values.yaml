@@ -89,6 +89,9 @@ website:
   # owned root domain via Porkbun as of 2026-09-07, replacing the old todira.duckdns.org
   # subdomain)
   domain: todira.app
+  # 2026-10-19: the home page design. "" = the redesign (templates/home.html); "classic" = the previous page, kept so it
+  # can come back with this one line. Anyone can also look at the old page with /?design=classic.
+  homeDesign: ""
   # 2026-10-05: the owner's Takbull hosted payment page for the FREE flow (three one-time passes: ₪19.90 = 7 days, ₪29.90 = 14, ₪49.90 = 30;
   # see website/takbull_client.py hosted_page_configured). Empty = flow off (/upgrade keeps its current behaviour).
   # The webhook decides the days from the AMOUNT paid; an amount that matches no pass is left pending. Also needs the GitHub secret TAKBULL_WEBHOOK_SECRET and the same secret

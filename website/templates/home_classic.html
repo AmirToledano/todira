@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}{{ t('meta.title_home') }}{% endblock %}
+{% block extra_head %}
+<link rel="preload" as="image" href="/static/todira-brand.webp?v=5">
+{# schema.org JSON-LD (2026-09-07 audit fix) — nothing on the site told search engines what
+   kind of thing "טודירה" IS (a named product/organization, not just a page title), so a search
+   result for the brand name had no structured basis for a rich result (logo, sitelinks
+   search box, knowledge-panel-style info). Organization + WebSite on the home page only —
+   schema.org's own guidance is to place site-identity markup once, not per-page.
+   Unaffected by the React swap below — this block still renders server-side either way, so
+   crawlers see it immediately without needing to execute any JS. #}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "name": "טודירה",
+      "url": "{{ request.base_url }}",
+      "logo": "{{ request.base_url }}static/android-chrome-512x512.png",
+      "sameAs": ["https://t.me/AmirDirotBot"]
+    },
+    {
+      "@type": "WebSite",
+      "name": "טודירה",
+      "url": "{{ request.base_url }}",
+      "inLanguage": ["he", "en", "ru", "fr", "ar"]
+    }
+  ]
+}
+</script>
+{% for css_url in landing_css_urls %}<link rel="stylesheet" href="{{ css_url }}">{% endfor %}
+{% if landing_js_url %}<link rel="modulepreload" href="{{ landing_js_url }}">{% endif %}
+{# 2026-10-14 owner report: opening the site showed the long plain .seo-fallback page for a split second before React
+   replaced it. The fallback stays in the HTML for crawlers that don't run JS, but a browser that runs JS keeps it
+   invisible (its space reserved, so nothing jumps) until React swaps in the real page. If the bundle never runs, the
+   class comes off after a few seconds and the plain page shows instead of a blank one. #}
+<style>html.landing-pending .seo-fallback { visibility: hidden; }</style>
+<script>
+  document.documentElement.classList.add('landing-pending');
+  setTimeout(function () { document.documentElement.classList.remove('landing-pending'); }, 6000);
+</script>
+{% endblock %}
+{% block content %}
+{# 2026-09-25: the marketing content below (hero/features/FAQ/etc — everything that used to be
+   plain server-rendered HTML here) is now a small isolated React+Framer Motion build
+   (website/landing-react/), deliberately scoped to ONLY this page — every other route
+   (/apartments, /login, /account, /upgrade, webhooks, admin) is untouched, still the original
+   Jinja2/vanilla CSS+JS this whole site is built on. See website/landing-react/README (or the
+   owner conversation this came from) for why: real "$10k agency" visual polish without the risk
+   of rewriting the entire product days before launch.
+
+   The header/nav/hamburger/lang-switcher/auth-box above this block and the footer below it
+   (base.html) are completely unchanged — only what used to be inside THIS content block became
+   React. window.__TODIRA_PAGE__ carries the few values the React app needs that only the server
+   already knows (the viewer's resolved language/direction — same resolution _render() already
+   did for this exact request, so the two can never disagree); lang/dir are drawn from fixed
+   server-side whitelists (SUPPORTED_LANGS / "rtl"|"ltr" in i18n.py), not visitor input.
+   2026-09-25: renamed from window.__TODIRA_HOME__ to this page-agnostic name when a second React
+   island (about.html) was added — every React page injects the same shape here rather than each
+   page needing its own differently-named global. #}
+<div id="root">
+{# 2026-10-07 SEO: the page's real content used to exist only after the React bundle ran, so a crawler that does not
+   execute JS (many do not; Google renders it later and less reliably) saw an empty page with no <h1>. This is the same
+   text, server-rendered from the same i18n keys; React's createRoot().render() replaces everything inside #root the moment
+   it mounts, so a visitor with JS never sees both. #}
+  <div class="seo-fallback" style="max-width:760px;margin:40px auto;padding:0 20px">
+    <h1>{{ t('home.h1') }}</h1>
+    <p>{{ t('home.lead') }}</p>
+    {% for n in (1, 2, 3) %}
+    <h2>{{ t('home.feature' ~ n ~ '_title') }}</h2>
+    <p>{{ t('home.feature' ~ n ~ '_body') }}</p>
+    {% endfor %}
+    <h2>{{ t('home.how_title') }}</h2>
+    <ol>
+      {% for n in (1, 2, 3) %}<li><strong>{{ t('home.step' ~ n ~ '_title') }}</strong> {{ t('home.step' ~ n ~ '_body') }}</li>{% endfor %}
+    </ol>
+    <h2>{{ t('home.faq_title') }}</h2>
+    {% for n in (1, 2, 3, 4) %}
+    <h3>{{ t('home.faq' ~ n ~ '_q') }}</h3>
+    <p>{{ t('home.faq' ~ n ~ '_a') }}</p>
+    {% endfor %}
+  </div>
+</div>
+<script>
+  window.__TODIRA_PAGE__ = {
+    lang: "{{ lang }}",
+    dir: "{{ dir }}",
+    {# 2026-10-15: live numbers (main.py's _home_live_stats) - integers only, or null; refreshed by the page every minute. #}
+    liveStats: {{ live_stats | tojson }}
+  };
+</script>
+{% if landing_js_url %}
+<script type="module" src="{{ landing_js_url }}"></script>
+{% else %}
+{# Fresh checkout before `npm run build` has run in website/landing-react/ — fails visibly
+   instead of silently rendering a blank page, so this is never mistaken for the page just
+   loading slowly. cd website/landing-react && npm install && npm run build. #}
+<p style="text-align:center;padding:60px 20px;color:var(--text-muted)">landing-react bundle not built yet — run `npm run build` in website/landing-react/.</p>
+{% endif %}
+{% endblock %}
