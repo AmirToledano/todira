@@ -38,6 +38,7 @@ class _FakeUser:
         self.id = id
         self.telegram_user_id = telegram_user_id
         self.google_sub = overrides.get("google_sub")
+        self.google_email = overrides.get("google_email")
         self.first_name = overrides.get("first_name", "Test")
         self.telegram_username = overrides.get("telegram_username")
         self.created_at = overrides.get("created_at", _NOW)
@@ -125,6 +126,28 @@ def test_admin_users_lists_and_shows_access_state_for_owner():
 
     assert resp.status_code == 200
     assert "אין גישה" in resp.text  # the expired-trial user shows as having no access
+
+
+def test_admin_users_splits_telegram_google_and_both_on_one_page():
+    # 2026-10-19 (owner): one page, tabs per sign-up channel; someone with both is one card with both badges.
+    owner = _FakeUser(id=1, telegram_user_id=_OWNER_TG_ID)
+    tg = _FakeUser(id=2, telegram_user_id=222, telegram_username="tguser")
+    google = _FakeUser(id=3, google_sub="g-3", google_email="g3@example.com")
+    both = _FakeUser(id=4, telegram_user_id=444, google_sub="g-4", google_email="both@example.com")
+    fake_session = _FakeSession(users_by_pk={1: owner}, all_users=[owner, tg, google, both])
+
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    with patch.object(website_main, "get_session", _fake_get_session), patch.object(
+        website_main, "_require_owner", lambda request, session: owner
+    ):
+        resp = TestClient(website_main.app, raise_server_exceptions=True).get("/admin/users")
+
+    html = resp.text
+    assert 'טלגרם בלבד <b>2</b>' in html and 'גוגל בלבד <b>1</b>' in html and 'טלגרם וגוגל <b>1</b>' in html
+    assert html.count('data-kind="both"') == 1 and "both@example.com" in html and "@tguser" in html
 
 
 def test_toggle_free_access_flips_the_flag_and_redirects():
