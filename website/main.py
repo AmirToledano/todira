@@ -85,7 +85,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import Float, case, cast, delete, func, or_, select
+from sqlalchemy import Float, case, cast, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import defer
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -663,18 +663,124 @@ def home_stats():
     return JSONResponse(stats, headers={"Cache-Control": "public, max-age=60"})
 
 
+# 2026-10-19 (owner approved the redesign, and asked to keep the old home page ready to come back): the new page is
+# templates/home.html; HOME_DESIGN=classic serves the previous React page (templates/home_classic.html) to everyone,
+# and ?design=classic shows it to whoever opens that link.
+_HOME_DESIGN_ENV_VAR = "HOME_DESIGN"
+_HOME_MAP_TTL_SECONDS = 600
+_home_map_cache: dict = {"at": 0.0, "value": None}
+_home_map_lock = threading.Lock()
+# Map labels for the five places the home page names; the dots themselves come from the listings.
+_HOME_MAP_CITIES = (
+    ("landing.city_haifa", 32.79, 34.99), ("landing.city_tel_aviv", 32.08, 34.78),
+    ("landing.city_jerusalem", 31.77, 35.21), ("landing.city_beer_sheva", 31.25, 34.79),
+    ("landing.city_eilat", 29.56, 34.95),
+)
+_LANDING_STRING_KEYS = ("notif_title", "notif_detail", "rooms_n", "rooms_1", "map_label")
+
+
+def _home_map_data() -> dict | None:
+    """What the home page's live map shows, counted from the listings and cached for ten minutes: how many live
+    listings sit in each map square of about 2.5 km (and how many of those came in during the last 24 hours), the
+    24-hour totals, and the newest rentals (city, rooms, price and a position rounded to about 1 km). Aggregates and
+    listing basics only. None when the database can't be read."""
+    with _home_map_lock:
+        if _home_map_cache["value"] is not None and time.monotonic() - _home_map_cache["at"] < _HOME_MAP_TTL_SECONDS:
+            return _home_map_cache["value"]
+    try:
+        with get_session() as session:
+            live = (Listing.is_delisted.is_(False), Listing.duplicate_of_id.is_(None))
+            fresh = Listing.first_seen_at >= func.now() - dt.timedelta(hours=24)
+            lat_cell = func.round(Listing.latitude * 40) / 40
+            lng_cell = func.round(Listing.longitude * 40) / 40
+            grid = session.execute(
+                select(lat_cell, lng_cell, func.count(), func.count().filter(fresh))
+                .where(*live, Listing.latitude.between(29.4, 33.4), Listing.longitude.between(34.2, 35.9))
+                .group_by(text("1"), text("2"))
+            ).all()
+            new_24h, cities_24h = session.execute(
+                select(func.count(), func.count(func.distinct(Listing.city))).where(*live, fresh)
+            ).one()
+            recent = session.execute(
+                select(Listing.city, Listing.rooms, Listing.price, Listing.latitude, Listing.longitude)
+                .where(
+                    *live, Listing.deal_type == "rent", Listing.price >= 1000, Listing.rooms.is_not(None),
+                    Listing.latitude.is_not(None), Listing.city.is_not(None),
+                )
+                .order_by(Listing.first_seen_at.desc())
+                .limit(30)
+            ).all()
+    except Exception:
+        logger.warning("could not read the home page's map data", exc_info=True)
+        return None
+    value = {
+        "grid": [[round(float(a), 3), round(float(b), 3), int(c), int(d)] for a, b, c, d in grid if a is not None],
+        "new_24h": int(new_24h or 0),
+        "cities_24h": int(cities_24h or 0),
+        "recent": [
+            {"city": city, "rooms": float(rooms), "price": int(price),
+             "lat": round(float(lat), 2), "lng": round(float(lng), 2)}
+            for city, rooms, price, lat, lng in recent
+        ],
+    }
+    with _home_map_lock:
+        _home_map_cache.update(at=time.monotonic(), value=value)
+    return value
+
+
+@app.get("/api/home-map")
+def home_map():
+    data = _home_map_data()
+    if data is None:
+        return JSONResponse({"error": "unavailable"}, status_code=503, headers={"Cache-Control": "no-store"})
+    return JSONResponse(data, headers={"Cache-Control": "public, max-age=300"})
+
+
+def _landing_plans() -> list[dict]:
+    plans = []
+    for plan, days, name_key in (("pass_7", 7, "upgrade.pass_name_7"), ("pass_14", 14, "upgrade.pass_name_14"),
+                                 ("pass_30", 30, "upgrade.pass_name_30")):
+        price = PLAN_PRICES_ILS[plan]
+        plans.append({"name_key": name_key, "price": f"{price:.2f}", "per_day": f"{price / days:.2f}"})
+    return plans
+
+
+def _landing_js(lang: str) -> dict:
+    t = make_translator(lang)
+    return {
+        "lang": lang,
+        "strings": {key: t(f"landing.{key}") for key in _LANDING_STRING_KEYS},
+        "cities": [{"name": t(key), "lat": lat, "lng": lng} for key, lat, lng in _HOME_MAP_CITIES],
+        "demos": [
+            {
+                "ask": t(f"landing.demo{n}_ask"), "chips": t(f"landing.demo{n}_chips").split("|"),
+                "title": t(f"landing.demo{n}_title"), "price": t(f"landing.demo{n}_price"),
+                "detail": t(f"landing.demo{n}_detail"), "street": t(f"landing.demo{n}_street"),
+            }
+            for n in range(1, 6)
+        ],
+    }
+
+
 @app.get("/")
 def home(request: Request):
-    landing_assets = _landing_react_assets()
-    return _render(
-        request,
-        "home.html",
-        {
-            "landing_js_url": landing_assets.get("js", ""),
-            "landing_css_urls": landing_assets.get("css", []),
-            "live_stats": _home_live_stats(),
-        },
+    classic = (
+        request.query_params.get("design") == "classic"
+        or os.environ.get(_HOME_DESIGN_ENV_VAR, "").strip().lower() == "classic"
     )
+    if classic:
+        landing_assets = _landing_react_assets()
+        return _render(
+            request,
+            "home_classic.html",
+            {
+                "landing_js_url": landing_assets.get("js", ""),
+                "landing_css_urls": landing_assets.get("css", []),
+                "live_stats": _home_live_stats(),
+            },
+        )
+    lang = get_lang(request)
+    return _render(request, "home.html", {"landing_plans": _landing_plans(), "landing_js": _landing_js(lang)})
 
 
 @app.get("/robots.txt")

@@ -38,6 +38,9 @@ spec:
             # to itself on the 2 GB server (the default allows 8 per CPU).
             - name: MALLOC_ARENA_MAX
               value: "2"
+            # 2026-10-19: "classic" brings back the previous home page (templates/home_classic.html); empty = the new one.
+            - name: HOME_DESIGN
+              value: {{ .Values.website.homeDesign | default "" | quote }}
             # 2026-09-24: cache-busting for /static/style.css (see base.html's own <link> and
             # website/main.py's STATIC_VERSION) — real owner report the same night several deploys
             # in a row each changed style.css, and the owner's own real mobile browser kept showing
