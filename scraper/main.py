@@ -737,12 +737,14 @@ async def _fetch_and_apply_yad2_detail_updates(
 
 _BACKFILL_BATCH = 40
 _RUN_BUDGET_ENV_VAR = "SCRAPER_RUN_BUDGET_SECONDS"
-_DEFAULT_RUN_BUDGET_SECONDS = 26 * 60
+# 2026-10-19: first run on the 30-minute schedule stopped the catch-up at 26 minutes and still ran ~1.5 more (text
+# features, reminders), ending 27.5 minutes after it started - too close to the next slot. 22 leaves room for those steps.
+_DEFAULT_RUN_BUDGET_SECONDS = 22 * 60
 _RUN_STARTED_AT: float | None = None
 
 
 def _run_time_left() -> float:
-    """Seconds this run may still spend on catch-up work (SCRAPER_RUN_BUDGET_SECONDS from the run's start, default 26
+    """Seconds this run may still spend on catch-up work (SCRAPER_RUN_BUDGET_SECONDS from the run's start, default 22
     minutes), so a run on a 30-minute schedule ends before the next one is due. Unlimited outside run_once."""
     if _RUN_STARTED_AT is None:
         return float("inf")
