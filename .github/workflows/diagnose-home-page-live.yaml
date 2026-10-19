@@ -18,7 +18,7 @@ jobs:
           echo "home: HTTP $(echo "$home" | tail -1), new page marker: $(echo "$home" | grep -c 'static/home.js'), old page marker: $(echo "$home" | grep -c 'id=\"root\"')"
           classic=$(curl -s https://todira.app/?design=classic)
           echo "classic: old page marker: $(echo "$classic" | grep -c 'id=\"root\"')"
-          for f in home.css home.js fonts/karantina-hebrew-700-normal.woff2 todi-hero-light.webp todi-hero-dark.webp; do
+          for f in home.css home.js fonts/karantina-hebrew-700-normal.woff2 todi-hero-light.webp; do
             echo "$f: $(curl -s -o /dev/null -w '%{http_code} %{size_download}' https://todira.app/static/$f)"
           done
           curl -s https://todira.app/api/home-map -o /tmp/m.json -w 'home-map: HTTP %{http_code}\n'

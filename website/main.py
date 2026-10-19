@@ -671,10 +671,11 @@ _HOME_MAP_TTL_SECONDS = 600
 _home_map_cache: dict = {"at": 0.0, "value": None}
 _home_map_lock = threading.Lock()
 # Map labels for the five places the home page names; the dots themselves come from the listings.
+# name, position, and which side of the city its label sits on ("w" out to sea, "e" inland)
 _HOME_MAP_CITIES = (
-    ("landing.city_haifa", 32.79, 34.99), ("landing.city_tel_aviv", 32.08, 34.78),
-    ("landing.city_jerusalem", 31.77, 35.21), ("landing.city_beer_sheva", 31.25, 34.79),
-    ("landing.city_eilat", 29.56, 34.95),
+    ("landing.city_haifa", 32.79, 34.99, "w"), ("landing.city_tel_aviv", 32.08, 34.78, "w"),
+    ("landing.city_jerusalem", 31.77, 35.21, "e"), ("landing.city_beer_sheva", 31.25, 34.79, "e"),
+    ("landing.city_eilat", 29.56, 34.95, "w"),
 )
 _LANDING_STRING_KEYS = ("notif_title", "notif_detail", "rooms_n", "rooms_1", "map_label")
 
@@ -750,7 +751,7 @@ def _landing_js(lang: str) -> dict:
     return {
         "lang": lang,
         "strings": {key: t(f"landing.{key}") for key in _LANDING_STRING_KEYS},
-        "cities": [{"name": t(key), "lat": lat, "lng": lng} for key, lat, lng in _HOME_MAP_CITIES],
+        "cities": [{"name": t(key), "lat": lat, "lng": lng, "side": side} for key, lat, lng, side in _HOME_MAP_CITIES],
         "demos": [
             {
                 "ask": t(f"landing.demo{n}_ask"), "chips": t(f"landing.demo{n}_chips").split("|"),
