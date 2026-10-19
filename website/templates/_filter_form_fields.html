@@ -67,7 +67,7 @@
         </label>
         {% endif %}{% endfor %}
       </div>
-      <script type="application/json" id="f-localities-data">{{ {"extra": extra_localities_list or [], "regions": (city_regions_list or [])|list}|tojson }}</script>
+      <script type="application/json" id="f-localities-data">{{ {"extra": extra_localities_list or [], "regions": (city_regions_list or [])|list, "other": (other_locality_names or [])|list}|tojson }}</script>
     </div>
     <div class="field-hint">{{ t('filter.cities_hint') }}</div>
   </div>
@@ -206,7 +206,7 @@
   function _localities() {
     if (!localitiesData) {
       var el = document.getElementById('f-localities-data');
-      localitiesData = el ? JSON.parse(el.textContent) : { extra: [], regions: [] };
+      localitiesData = el ? JSON.parse(el.textContent) : { extra: [], regions: [], other: [] };
     }
     return localitiesData;
   }
@@ -266,7 +266,14 @@
     data.extra.forEach(function (name) {
       if (added >= 40 || shown[name] || !_nameMatches(name, q)) return;
       grid.appendChild(_cityChip(name, false));
+      shown[name] = true;
       added += 1;
+    });
+    // A place's second name ("זרעית", "גוש חלב") shows the place itself.
+    (data.other || []).forEach(function (pair) {
+      if (shown[pair[1]] || !_nameMatches(pair[0], q)) return;
+      grid.appendChild(_cityChip(pair[1], false));
+      shown[pair[1]] = true;
     });
   }
   // An area chip selects every locality in it (each one then shows as a selected chip).
