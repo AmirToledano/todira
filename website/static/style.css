@@ -2275,3 +2275,14 @@ body.apt-modal-open { overflow: hidden; }
 }
 .apt-access-notice p { margin: 0; flex: 1 1 260px; font-weight: 600; line-height: 1.5; }
 .apt-access-notice .btn { white-space: nowrap; }
+
+/* 2026-10-19: /admin/users split by sign-up channel (admin_users.html). */
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.admin-tab {
+  border: 1px solid var(--teal, #0e8a82); background: transparent; color: inherit; border-radius: 999px;
+  padding: 7px 14px; font: inherit; font-size: .9rem; cursor: pointer;
+}
+.admin-tab b { margin-inline-start: 4px; }
+.admin-tab.active { background: var(--teal, #0e8a82); color: #fff; }
+.admin-message-card[hidden] { display: none; }
+.admin-chan { font-weight: 600; }

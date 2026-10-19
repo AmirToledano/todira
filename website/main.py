@@ -1933,8 +1933,14 @@ def admin_users(request: Request):
             {
                 "id": u.id,
                 "label": u.first_name or u.telegram_username or f"#{u.id}",
-                "channel": "טלגרם" if u.telegram_user_id else "—",
+                # 2026-10-19 (owner): split by sign-up channel on one page - Telegram only, Google only, or both (one card).
+                "kind": ("both" if u.telegram_user_id and u.google_sub else "telegram" if u.telegram_user_id
+                         else "google" if u.google_sub else "none"),
+                "has_telegram": u.telegram_user_id is not None,
+                "telegram_username": u.telegram_username,
                 "has_google": u.google_sub is not None,
+                "google_email": u.google_email,
+                "created_at": u.created_at,
                 "free_access_granted": u.free_access_granted,
                 "has_access": has_full_access(u, is_owner=_is_owner_id(u.telegram_user_id)),
                 "trial_ends_at": u.trial_ends_at,
@@ -1944,7 +1950,8 @@ def admin_users(request: Request):
             for u in users
         ]
 
-    return _render(request, "admin_users.html", {"rows": rows})
+    counts = {kind: sum(1 for r in rows if r["kind"] == kind) for kind in ("telegram", "google", "both", "none")}
+    return _render(request, "admin_users.html", {"rows": rows, "counts": counts})
 
 
 @app.post("/admin/users/{user_id}/toggle-free-access")

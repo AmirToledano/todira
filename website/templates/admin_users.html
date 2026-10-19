@@ -17,12 +17,19 @@
     <p>אין עדיין משתמשים</p>
   </div>
 {% else %}
-  <div class="admin-message-list">
+  {# 2026-10-19 (owner): one page, split by how each person signed up. Someone with both is ONE card with both badges. #}
+  <div class="admin-tabs" role="tablist">
+    <button type="button" class="admin-tab active" data-filter="all">הכל <b>{{ rows|length }}</b></button>
+    <button type="button" class="admin-tab" data-filter="telegram">✈️ טלגרם בלבד <b>{{ counts.telegram }}</b></button>
+    <button type="button" class="admin-tab" data-filter="google">🔵 גוגל בלבד <b>{{ counts.google }}</b></button>
+    <button type="button" class="admin-tab" data-filter="both">🔗 טלגרם וגוגל <b>{{ counts.both }}</b></button>
+    {% if counts.none %}<button type="button" class="admin-tab" data-filter="none">❔ בלי ערוץ <b>{{ counts.none }}</b></button>{% endif %}
+  </div>
+  <div class="admin-message-list" id="admin-user-list">
     {% for r in rows %}
-    <div class="admin-message-card">
+    <div class="admin-message-card" data-kind="{{ r.kind }}">
       <div class="amc-header">
         <span class="amc-source">{{ r.label }}</span>
-        <span class="amc-date">{{ r.channel }}{% if r.has_google %} · 🔗 Google{% endif %}</span>
         {% if r.has_access %}
           <span class="amc-status amc-status-ok">יש גישה{% if r.in_trial %} (ניסיון){% endif %} ✅</span>
         {% else %}
@@ -30,6 +37,11 @@
         {% endif %}
       </div>
       <div class="amc-meta">
+        {% if r.has_telegram %}<span class="admin-chan admin-chan-tg">✈️ טלגרם{% if r.telegram_username %} · @{{ r.telegram_username }}{% endif %}</span>{% endif %}
+        {% if r.has_google %}<span class="admin-chan admin-chan-g">🔵 גוגל{% if r.google_email %} · {{ r.google_email }}{% endif %}</span>{% endif %}
+      </div>
+      <div class="amc-meta">
+        {% if r.created_at %}<span>נרשם {{ r.created_at | il_date }}</span>{% endif %}
         {% if r.trial_ends_at %}<span>ניסיון עד {{ r.trial_ends_at | il_date }}</span>{% endif %}
         {% if r.paid_until %}<span>שולם עד {{ r.paid_until | il_date }}</span>{% endif %}
       </div>
@@ -41,5 +53,19 @@
     </div>
     {% endfor %}
   </div>
+  <script>
+    (function () {
+      var tabs = document.querySelectorAll('.admin-tab');
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          tabs.forEach(function (t) { t.classList.toggle('active', t === tab); });
+          var filter = tab.getAttribute('data-filter');
+          document.querySelectorAll('#admin-user-list .admin-message-card').forEach(function (card) {
+            card.hidden = filter !== 'all' && card.getAttribute('data-kind') !== filter;
+          });
+        });
+      });
+    })();
+  </script>
 {% endif %}
 {% endblock %}
