@@ -38,9 +38,9 @@ export default function CinematicStat() {
     <section ref={ref} className="tl-cinematic" aria-hidden="true">
       <motion.div style={reduceMotion ? undefined : { scale, opacity }}>
         <motion.div className="tl-cinematic-figure" style={reduceMotion ? undefined : { filter }}>
-          {live ? <CountUp value={stats.new_24h} duration={2.2} /> : t("home.stat_uptime_value")}
+          <CountUp value={stats.new_24h} duration={2.2} />
         </motion.div>
-        <p className="tl-cinematic-caption">{live ? t("home.live_cinematic_caption") : t("home.stat_uptime_label")}</p>
+        <p className="tl-cinematic-caption">{t("home.live_cinematic_caption")}</p>
       </motion.div>
 
       <style>{`

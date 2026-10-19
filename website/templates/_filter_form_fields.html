@@ -258,7 +258,7 @@
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'check-chip region-chip';
-      button.textContent = '🗺️ ' + name + ' · ' + pair[1].length;
+      button.textContent = name + ' (' + pair[1].length + ')';
       button.onclick = function () { selectRegion(pair[1], button); };
       grid.insertBefore(button, grid.firstChild);
     });

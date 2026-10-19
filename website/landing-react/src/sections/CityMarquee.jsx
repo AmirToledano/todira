@@ -15,7 +15,6 @@ export default function CityMarquee() {
         {track.map((city, i) => (
           <span className="tl-marquee-item" key={i}>
             {city}
-            <span className="tl-marquee-dot">•</span>
           </span>
         ))}
       </div>
@@ -32,9 +31,8 @@ export default function CityMarquee() {
         .tl-marquee-item {
           display: inline-flex; align-items: center; gap: 20px;
           font-family: 'Rubik', sans-serif; font-weight: 700; font-size: 1.05rem;
-          color: var(--text-muted); white-space: nowrap; padding-inline-end: 20px;
+          color: var(--text-muted); white-space: nowrap; padding-inline-end: 44px;
         }
-        .tl-marquee-dot { color: var(--gold); font-size: .8rem; }
         @keyframes tl-marquee-scroll {
           from { transform: translateX(0); }
           to { transform: translateX(-50%); }

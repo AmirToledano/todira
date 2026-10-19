@@ -6,10 +6,10 @@
 {% from "_onboarding_steps.html" import onboarding_steps with context %}
 {% if welcome %}
 {{ onboarding_steps(1) }}
-<div class="welcome-banner reveal">{{ t('filter.welcome_banner') }} 🎉</div>
+<div class="welcome-banner reveal">{{ t('filter.welcome_banner') }}</div>
 {% endif %}
 {% if cities_error %}
-<div class="field-error-banner reveal" id="cities-error-banner">{{ t('filter.cities_required_error') }} ⚠️</div>
+<div class="field-error-banner reveal" id="cities-error-banner">{{ t('filter.cities_required_error') }}</div>
 {% endif %}
 <div class="page-banner reveal">
   <div class="pb-text">
