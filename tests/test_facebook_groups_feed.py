@@ -49,3 +49,17 @@ def test_cookie_header_becomes_browser_cookies():
     cookies = feed.cookies_from_header("c_user=1; xs=abc=def; ")
     assert [(c["name"], c["value"]) for c in cookies] == [("c_user", "1"), ("xs", "abc=def")]
     assert all(c["domain"] == ".facebook.com" for c in cookies)
+
+
+def test_an_ad_for_a_service_is_not_a_listing():
+    # 2026-10-19 (owner): a guarantees-company post with a "10,000 ₪" voucher reached everyone as a flat.
+    ad = ("מתנה לחגים מערבויות ישיר 🎁 כל מי שמנפיק אצלנו ערבות ללא פיקדון לשכר דירה נכנס להגרלה על שובר מתנה של "
+          "10,000 ש\"ח למחסני חשמל. https://www.arvuyotyashir.co.il/?utm_source=x")
+    assert not parser.looks_like_listing(ad, parser.parse_listing_fields(ad))
+    assert not parser.looks_like_listing("מישהו מכיר אינסטלטור טוב? 300 ש\"ח")
+
+
+def test_real_flats_on_offer_are_listings():
+    for text in ("להשכרה דירת 3 חדרים ברמת גן 6,200 ש\"ח", "מתפנה יחידת דיור בגבעתיים, 4,000 ₪, כניסה מיידית",
+                 "סאבלט בחיפה לחודש, 2 חד׳", "דירה יפה למכירה 2.1 מיליון"):
+        assert parser.looks_like_listing(text, parser.parse_listing_fields(text)), text
