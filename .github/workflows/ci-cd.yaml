@@ -89,7 +89,16 @@ jobs:
       packages: write
     strategy:
       matrix:
-        service: [bot, scraper, website]
+        # 2026-10-19: "facebook" is the scraper with a headless browser, used only by the Facebook CronJob.
+        include:
+          - service: bot
+            file: bot/Dockerfile
+          - service: scraper
+            file: scraper/Dockerfile
+          - service: website
+            file: website/Dockerfile
+          - service: facebook
+            file: scraper/Dockerfile.facebook
     steps:
       - uses: actions/checkout@v4
 
@@ -102,7 +111,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.service }}/Dockerfile
+          file: ${{ matrix.file }}
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-${{ matrix.service }}:${{ github.sha }}
@@ -167,6 +176,8 @@ jobs:
             --set botImage.tag="${{ github.sha }}" \
             --set scraperImage.repository="${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-scraper" \
             --set scraperImage.tag="${{ github.sha }}" \
+            --set facebookImage.repository="${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-facebook" \
+            --set facebookImage.tag="${{ github.sha }}" \
             --set websiteImage.repository="${{ env.REGISTRY }}/${{ needs.vars.outputs.image_owner }}/todira-website" \
             --set websiteImage.tag="${{ github.sha }}" \
             --set postgres.password="${{ secrets.POSTGRES_PASSWORD }}" \

@@ -120,3 +120,48 @@ def rooms_and_size(text: str | None) -> dict[str, Any]:
     if sqm_match and _SQM_RANGE[0] <= int(sqm_match.group(1)) <= _SQM_RANGE[1]:
         fields["square_meters"] = int(sqm_match.group(1))
     return fields
+
+
+
+# --- 2026-10-19: where it is, what kind of deal, and is it an ad at all -----------------------------------------------
+# The groups feed (scraper/facebook_browser/feed.py) brings posts from every joined group, so the post itself has to say
+# the city and whether it is a rental, a sale or a sublet - the same free reader the bot uses for a user's own message
+# (todira_common.search_text) reads both. A post by someone LOOKING for a flat is not a listing.
+
+_SEEKER_RE = re.compile(
+    r"(?<![א-ת])(?:מחפש|מחפשת|מחפשים|מחפשות|דרוש|דרושה|מעוניין|מעוניינת|מעוניינים)(?![א-ת])"
+    r"[^.\n]{0,40}(?<![א-ת])(?:דירה|דירת|חדר|יחידה|יחידת|סאבלט|סבלט|שותף|שותפה|בית|להשכרה|לשכירות)",
+)
+_OFFER_RE = re.compile(r"(?<![א-ת])(?:להשכרה|למכירה|מפנה|מפנים|מתפנה|פנויה|משכיר|משכירה|מוכר|מוכרת|סאבלט|סבלט)(?![א-ת])")
+_STREET_RE = re.compile(
+    r"(?<![א-ת])(?:ב?רחוב|ב?רח['׳]|ב?שד['׳]|ב?שדרות)\s+([א-ת][א-ת\"'׳״\- ]{1,24}?)\s*(\d{1,3})?(?=[\s,.!\n]|$)"
+)
+
+
+def looks_like_seeker(text: str) -> bool:
+    """True for "מחפשת דירת 2 חדרים בגבעתיים" - someone asking, not offering. A post that also clearly offers
+    ("מפנה דירה, מחפשים מחליף") is an offer."""
+    if not text:
+        return False
+    head = text[:200]
+    return bool(_SEEKER_RE.search(head)) and not _OFFER_RE.search(head)
+
+
+def parse_place_and_deal(text: str) -> dict[str, Any]:
+    """raw_item keys "city", "street" and "dealHint" ("rent"/"sale"/"sublet") as far as the post states them."""
+    from todira_common import search_text
+
+    if not text:
+        return {}
+    fields: dict[str, Any] = {}
+    found = search_text.parse(text)
+    if found["cities"]:
+        fields["city"] = found["cities"][0]
+    if found["deal_type"]:
+        fields["dealHint"] = found["deal_type"]
+    street = _STREET_RE.search(text)
+    if street:
+        name = street.group(1).strip(" -")
+        if 2 <= len(name) <= 24:
+            fields["street"] = f"{name} {street.group(2)}" if street.group(2) else name
+    return fields

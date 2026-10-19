@@ -64,6 +64,11 @@
 botImage:
   repository: ghcr.io/CHANGE-ME/todira-bot
   tag: latest
+# 2026-10-19: set by CI/CD (the scraper plus a headless browser, scraper/Dockerfile.facebook).
+facebookImage:
+  repository: ""
+  tag: ""
+
 scraperImage:
   repository: ghcr.io/CHANGE-ME/todira-scraper
   tag: latest
@@ -342,7 +347,11 @@ scraper:
     # correlated request-pattern across this project's whole infrastructure, one of several small
     # mitigations discussed tonight alongside FACEBOOK_MAX_NEW_DETAIL_FETCHES_PER_RUN's own cap and
     # scraper/main.py's own _FACEBOOK_DETAIL_FETCH_PACING_SECONDS jitter between requests).
-    schedule: "0 9,15,21 * * *"
+    # 2026-10-19 (owner: as fast as possible without getting blocked): every 2 hours at half past, 08:30-22:30, for the
+    # groups feed (one human-paced browser session per run). Marketplace stays at its earlier 3 runs a day
+    # (marketplaceHours below), so its traffic does not grow.
+    schedule: "30 8-22/2 * * *"
+    marketplaceHours: "8,14,20"
     # 2026-09-15: turned ON — explicit owner go-ahead ("מרקטפלייס תדליק ביחד עם הריצה הבאה"),
     # FACEBOOK_COOKIES already confirmed set on the real k8s secret (diagnostic workflow runs
     # earlier tonight). First real production run(s) against the dedicated account start at the
@@ -374,6 +383,11 @@ scraper:
     # confirmed group id goes live now; more will be added here once the owner sends the rest of
     # the group links (explicitly not sent yet as of this change).
     trackedIds: "1665476640352771"
+    # 2026-10-19 (owner approved a browser): read the account's groups feed in one headless-browser session per run -
+    # every joined group (26 today), ~30 posts per 12-14 scrolls - instead of the ~2 posts a plain page load shows.
+    # Needs the facebook image (scraper/Dockerfile.facebook). Set false to go back to the plain page load.
+    browser: true
+    scrolls: 14
     # 2026-09-24: same shape, for a SALE-focused group's own id(s) — see scraper/main.py's own
     # _FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR comment. A group id belongs in EITHER this or
     # trackedIds above, never both — it decides whether that group's posts normalize as

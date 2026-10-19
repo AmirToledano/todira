@@ -341,3 +341,31 @@ def fetch_post_detail(group_id: str, post_id: str) -> dict[str, Any] | None:
     # message text — never touches description/url/id/dateAdded.
     result.update(facebook_groups_text_parser.parse_listing_fields(message))
     return result
+
+
+
+def raw_item_from_feed_post(post: dict[str, Any]) -> dict[str, Any]:
+    """2026-10-19: the normalize()-ready flat dict for one post read from the groups feed (scraper/facebook_browser/
+    feed.py) - same shape fetch_post_detail returns, built from what the feed already carries, so no per-post page load
+    is needed. On top of price/rooms/floor/size and amenities, the free text also gives the city, the street and the
+    kind of deal (facebook_groups_text_parser.parse_place_and_deal); the post's own photos come along."""
+    text = post["text"]
+    description = f"{text}\n\n(מפרסם/ת: {post['author']})" if post.get("author") else text
+    created = post.get("creation_time")
+    result: dict[str, Any] = {
+        "id": str(post["post_id"]),
+        "url": f"{_GROUPS_BASE}{post['group_id']}/posts/{post['post_id']}/",
+        "description": description,
+        "dateAdded": dt.datetime.fromtimestamp(created, tz=dt.timezone.utc).isoformat() if created else None,
+        "price": None,
+        "rooms": None,
+        "floor": None,
+        "square_meters": None,
+        "city": None,
+        "neighborhood": None,
+        "street": None,
+        "images": list(post.get("image_urls") or []),
+    }
+    result.update(facebook_groups_text_parser.parse_listing_fields(text))
+    result.update(facebook_groups_text_parser.parse_place_and_deal(text))
+    return result

@@ -1,0 +1,13 @@
+# 2026-10-19: the Facebook CronJob's own image - the scraper plus a headless Chromium for the groups feed
+# (scraper/facebook_browser/feed.py). Kept separate so the main scraper image (every hour) stays small.
+# Debian 12: Playwright 1.48 installs Chromium's system libraries there (Debian 13 lacks some font packages it asks for).
+FROM python:3.12-slim-bookworm
+WORKDIR /app
+COPY common/todira_common ./todira_common
+COPY scraper/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt playwright==1.48.0 \
+    && python -m playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+COPY scraper/ .
+ENV PYTHONPATH=/app
+CMD ["python", "-u", "main.py"]

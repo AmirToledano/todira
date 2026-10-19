@@ -1,7 +1,7 @@
 name: Probe — Facebook groups feed in a real browser session (counts only)
 
 # 2026-10-19, owner approved ("מאשר דפדפן לפייסבוק"): get MANY Facebook group posts without getting the account blocked.
-# Today the scraper does plain page loads that show ~2 posts each. This runs scraper/facebook_browser/probe_feed.py ONCE in
+# Today the scraper does plain page loads that show ~2 posts each. This runs scripts/probes/facebook_groups_feed_probe.py ONCE in
 # a throwaway pod with headless Chromium: one groups-feed session, slow human-like scrolling, reading the posts
 # Facebook's own page receives. Counts only in this public log. Stops at a login/checkpoint page.
 on:
@@ -30,7 +30,7 @@ jobs:
         run: |
           kubectl delete pod fb-browser-probe -n todira --ignore-not-found --wait=true
           kubectl delete configmap fb-browser-probe -n todira --ignore-not-found
-          kubectl create configmap fb-browser-probe -n todira --from-file=probe_feed.py=scraper/facebook_browser/probe_feed.py
+          kubectl create configmap fb-browser-probe -n todira --from-file=probe_feed.py=scripts/probes/facebook_groups_feed_probe.py
           cat <<PODYAML | kubectl apply -n todira -f -
           apiVersion: v1
           kind: Pod

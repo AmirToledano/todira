@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import datetime as dt
+from zoneinfo import ZoneInfo
 import gc
 import json
 import logging
@@ -32,7 +33,7 @@ from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
 from facebook_client import fetch_search_results as fetch_facebook_results
 from facebook_groups_client import FacebookGroupsFetchError
-from facebook_groups_client import fetch_home_feed_post_ids
+from facebook_groups_client import fetch_home_feed_post_ids, raw_item_from_feed_post
 from facebook_groups_client import fetch_post_detail as fetch_facebook_group_post_detail
 import homeless_client
 from homeless_client import HomelessFetchError
@@ -300,6 +301,26 @@ def _facebook_groups_tracked_ids() -> set[str]:
 def _facebook_groups_sale_tracked_ids() -> set[str]:
     raw = os.environ.get(_FACEBOOK_GROUPS_SALE_TRACKED_IDS_ENV_VAR, "").strip()
     return {s.strip() for s in raw.split(",") if s.strip()}
+
+
+# 2026-10-19 (owner approved a browser for Facebook): read the dedicated account's GROUPS FEED in one headless-browser
+# session per run (scraper/facebook_browser/feed.py) - every joined group, ~30 posts in 12 scrolls vs ~2 from the plain
+# home-feed page load. Only in the image that has the browser (scraper/Dockerfile.facebook), so it is an explicit switch.
+_FACEBOOK_GROUPS_BROWSER_ENV_VAR = "FACEBOOK_GROUPS_BROWSER"
+_FACEBOOK_GROUPS_SCROLLS_ENV_VAR = "FACEBOOK_GROUPS_SCROLLS"
+_DEFAULT_FACEBOOK_GROUPS_SCROLLS = 14
+
+
+def _facebook_groups_browser_enabled() -> bool:
+    return os.environ.get(_FACEBOOK_GROUPS_BROWSER_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
+
+
+def _facebook_groups_scrolls() -> int:
+    raw = os.environ.get(_FACEBOOK_GROUPS_SCROLLS_ENV_VAR, "").strip()
+    try:
+        return max(1, min(40, int(raw))) if raw else _DEFAULT_FACEBOOK_GROUPS_SCROLLS
+    except ValueError:
+        return _DEFAULT_FACEBOOK_GROUPS_SCROLLS
 
 
 def _facebook_groups_max_new_detail_fetches_per_run() -> int:
@@ -2120,6 +2141,17 @@ def _scrape_facebook() -> tuple[list, set[str], int, int, bool]:
     real request exposure. A failure fetching one category's search results (FacebookFetchError)
     is logged and counted but does not abort the other category — same "one failed sub-fetch
     doesn't kill the whole run" convention as _scrape_yad2's per-region loop."""
+    # 2026-10-19: the Facebook job now runs every 2 hours for the groups feed; Marketplace keeps its own 3 runs a day
+    # (FACEBOOK_MARKETPLACE_HOURS, Israel time) so the account's Marketplace traffic does not grow with it.
+    hours = os.environ.get("FACEBOOK_MARKETPLACE_HOURS", "").strip()
+    if hours:
+        allowed = {int(h) for h in hours.split(",") if h.strip().isdigit()}
+        if dt.datetime.now(ZoneInfo("Asia/Jerusalem")).hour not in allowed:
+            logger.info("Facebook Marketplace: not one of its hours (%s) - skipped this run", hours)
+            _PARTIAL_VIEW_SOURCES.add(Source.FACEBOOK_MARKETPLACE)
+            return [], set(), 0, 0, True
+        _PARTIAL_VIEW_SOURCES.discard(Source.FACEBOOK_MARKETPLACE)
+
     fetched = 0
     errors = 0
     normalized_items = []
@@ -2225,6 +2257,8 @@ def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
     rent_group_ids = _facebook_groups_tracked_ids()
     sale_group_ids = _facebook_groups_sale_tracked_ids()
     tracked_group_ids = rent_group_ids | sale_group_ids
+    if _facebook_groups_browser_enabled():
+        return _scrape_facebook_groups_feed(sale_group_ids)
     if not tracked_group_ids:
         return normalized_items, seen_external_ids, fetched, errors, True
 
@@ -2277,6 +2311,56 @@ def _scrape_facebook_groups() -> tuple[list, set[str], int, int, bool]:
             errors += 1
 
     return normalized_items, seen_external_ids, fetched, errors, True
+
+
+def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[str], int, int, bool]:
+    """The browser route of _scrape_facebook_groups (2026-10-19): one groups-feed session covers EVERY group the
+    dedicated account joined - no tracked-id list needed - and each post's text, time and photos come with the feed,
+    so there is no per-post page load. A post becomes a listing only when it reads as an offer with something concrete
+    (a price or a room count); someone looking for a flat is skipped. Its deal type comes from its own words, else from
+    the group (FACEBOOK_GROUPS_SALE_TRACKED_IDS), else rent."""
+    from facebook_browser.feed import collect_group_posts
+
+    # A scroll sees the newest few dozen posts, not every live one - "not seen this run" never means "gone" here.
+    # Group posts leave with the monthly expiry instead (_delete_expired_listings).
+    _PARTIAL_VIEW_SOURCES.add(Source.FACEBOOK_GROUPS)
+    normalized_items: list = []
+    seen_external_ids: set[str] = set()
+    cookie = os.environ.get("FACEBOOK_COOKIES", "").strip()
+    if not cookie:
+        logger.error("FACEBOOK_COOKIES is not set - skipping the Facebook groups feed")
+        return normalized_items, seen_external_ids, 0, 1, False
+    try:
+        posts = collect_group_posts(cookie, _facebook_groups_scrolls())
+    except FacebookGroupsFetchError:
+        logger.exception("Facebook groups feed failed - skipping this source this run")
+        return normalized_items, seen_external_ids, 0, 1, False
+
+    known_ids = _fetch_known_external_ids(Source.FACEBOOK_GROUPS)
+    skipped_seekers = skipped_vague = errors = 0
+    for post in posts:
+        seen_external_ids.add(post["post_id"])
+        if post["post_id"] in known_ids:
+            continue
+        if facebook_groups_text_parser.looks_like_seeker(post["text"]):
+            skipped_seekers += 1
+            continue
+        raw_item = raw_item_from_feed_post(post)
+        if raw_item.get("price") is None and raw_item.get("rooms") is None:
+            skipped_vague += 1
+            continue
+        hint = raw_item.pop("dealHint", None)
+        deal_type = hint if hint in DealType.ALL else (DealType.SALE if post["group_id"] in sale_group_ids else DealType.RENT)
+        normalized = normalize(raw_item, source=Source.FACEBOOK_GROUPS, deal_type=deal_type)
+        if normalized is not None:
+            normalized_items.append(normalized)
+        else:
+            errors += 1
+    logger.info(
+        "Facebook groups feed: %d posts, %d new listings, %d looking-for posts skipped, %d without price or rooms skipped",
+        len(posts), len(normalized_items), skipped_seekers, skipped_vague,
+    )
+    return normalized_items, seen_external_ids, len(posts), errors, True
 
 
 # 2026-09-13: one entry per source this project scrapes — each a (source, scrape_fn) pair, where
