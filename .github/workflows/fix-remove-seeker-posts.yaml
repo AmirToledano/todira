@@ -1,0 +1,41 @@
+name: Fix — take down stored group posts from people looking for a flat (one-off)
+
+# 2026-10-19 owner screenshot: a group post from someone LOOKING for a flat ("מחפשת להשכרה דירה...") went out as a listing.
+# Marks every live Facebook-group row whose text starts with "מחפש/ת/ים/ות" (and offers nothing) as delisted, right away,
+# instead of waiting for the next Facebook run, where _delist_group_posts_that_are_not_listings now also checks
+# looks_like_seeker. Prints counts only.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Delist them
+        run: |
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== live Facebook-group rows from people looking for a flat, before'
+          SELECT count(*) FROM listings WHERE source = 'facebook_groups' AND NOT is_delisted
+            AND description ~ '^\s*(אני\s+)?(מחפש|מחפשת|מחפשים|מחפשות)(?![א-ת])'
+            AND description !~ '(מחפש|מחפשת|מחפשים|מחפשות)\s+(שותף|שותפה|שותפים|שותפות|מחליף|מחליפה|מחליפים|דייר|דיירת)'
+            AND description !~ '(מפנה|מפנים|מתפנה|משכיר|משכירה|מוכר|מוכרת)';
+          UPDATE listings SET is_delisted = true, delisted_at = now()
+          WHERE source = 'facebook_groups' AND NOT is_delisted
+            AND description ~ '^\s*(אני\s+)?(מחפש|מחפשת|מחפשים|מחפשות)(?![א-ת])'
+            AND description !~ '(מחפש|מחפשת|מחפשים|מחפשות)\s+(שותף|שותפה|שותפים|שותפות|מחליף|מחליפה|מחליפים|דייר|דיירת)'
+            AND description !~ '(מפנה|מפנים|מתפנה|משכיר|משכירה|מוכר|מוכרת)';
+          \echo '== after'
+          SELECT count(*) FROM listings WHERE source = 'facebook_groups' AND NOT is_delisted
+            AND description ~ '^\s*(אני\s+)?(מחפש|מחפשת|מחפשים|מחפשות)(?![א-ת])'
+            AND description !~ '(מחפש|מחפשת|מחפשים|מחפשות)\s+(שותף|שותפה|שותפים|שותפות|מחליף|מחליפה|מחליפים|דייר|דיירת)'
+            AND description !~ '(מפנה|מפנים|מתפנה|משכיר|משכירה|מוכר|מוכרת)';
+          SQL
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < /tmp/q.sql
