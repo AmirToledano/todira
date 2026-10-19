@@ -36,7 +36,7 @@ def test_the_free_text_becomes_a_listing_with_city_street_price_and_deal():
     assert item["city"] == "רמת גן" and item["street"] == "הרצל 12" and item["price"] == 6200
     assert item["rooms"] == 3.0 and item["floor"] == 2 and item["balcony"] is True and item["dealHint"] == "rent"
     assert item["url"] == "https://www.facebook.com/groups/111/posts/999/"
-    assert item["images"] == ["https://scontent.xx/photo1.jpg"] and "(מפרסם/ת: Dana)" in item["description"]
+    assert item["images"] == ["https://scontent.xx/photo1.jpg"] and "Dana" not in item["description"]
 
 
 def test_someone_looking_for_a_flat_is_not_a_listing():
