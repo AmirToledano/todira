@@ -1,13 +1,17 @@
-name: Diagnose scraper - timeline of the last runs, when the Yad2 item API warnings happened (read-only, times only)
+name: Diagnose — where a main scraper run spends its time (read-only)
 
-# Read-only, manual-only. Prints, for the last 2 main scraper pods, the clock time of: each phase line (tile sweeps, Homeless crawl, backlog, run
-# summary) and each "Yad2 item API" warning with its URL masked, so we can see in which phase the bot-protection answers happen (while the sweep is
-# running, during the notifications, or in the catch-up). Times and masked message types only.
+# 2026-10-19 (owner: scan every 30 minutes): a run takes 41-43 minutes, so a 30-minute schedule would only skip every
+# second run. This prints the timeline of the newest COMPLETED main scraper run: each log line's time and the first
+# words of its message (logger name and level kept), so the slow steps show. Notifier lines are left out entirely,
+# and every line is cut short, so no user detail reaches these public logs. Read-only.
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
-  check:
+  timeline:
     runs-on: ubuntu-latest
     steps:
       - uses: azure/setup-kubectl@v4
@@ -19,12 +23,12 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
 
-      - name: Timeline of the last two runs
+      - name: Timeline of the newest completed run
         run: |
-          PODS=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
-          for POD in $(echo $PODS | tr ' ' '\n' | tail -2); do
-            echo "=== $POD ($(kubectl get pod $POD -n todira -o jsonpath='{.status.phase} started {.status.startTime}'))"
-            kubectl logs -n todira "$POD" 2>&1 \
-              | grep -E "tile sweep|Homeless rolling|backlog:|Scraper run summary|Yad2 item API|Scraping .* source|older backlog|Sending|notif" \
-              | sed -E 's/^[0-9-]+ ([0-9:]+),[0-9]+ /\1 /; s/https?:[^ ]+/<url>/g; s/\{.*\}/{summary}/' | cut -c1-190 | head -60
-          done
+          POD=$(kubectl get pods -n todira -l app=todira-scraper --field-selector=status.phase=Succeeded \
+            --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          if [ -z "$POD" ]; then echo "No completed scraper pod found"; exit 0; fi
+          echo "pod: $POD"
+          kubectl logs -n todira "$POD" --tail=5000 \
+            | grep -v -i "notifier" \
+            | cut -c1-140
