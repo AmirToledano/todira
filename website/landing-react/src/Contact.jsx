@@ -28,6 +28,7 @@ export default function Contact() {
           message,
           uid: uid != null ? String(uid) : "",
           consent,
+          topic: topic || "",
         }),
       });
       // Validation failures come back as 200 {ok:false, error:...} — see /api/contact's own

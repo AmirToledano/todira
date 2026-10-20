@@ -15,6 +15,7 @@ import html
 import logging
 import os
 
+from todira_common import owner_inbox
 from todira_common.db import get_session
 from todira_common.models import ContactMessage
 from todira_common.support import looks_like_help_request
@@ -65,25 +66,24 @@ async def escalate_to_owner(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     if not OWNER_TELEGRAM_USER_ID:
         return False
-    try:
-        # user.first_name/username and the message text itself are all attacker-controlled (any
-        # Telegram user can set their own name or type anything) — escaped before going into an
-        # HTML-parsed message so they can't break the owner notification's formatting or inject a
-        # fake link/tag into what the owner reads as trusted app text.
-        display_name = html.escape(user.first_name or "משתמש")
-        username_part = f" (@{html.escape(user.username)})" if user.username else ""
-        await context.bot.send_message(
-            chat_id=OWNER_TELEGRAM_USER_ID,
-            text=(
-                f"🙋 <b>בקשת תמיכה תוך כדי שיחה עם הבוט</b>\n"
-                f"מאת: {display_name}{username_part} "
-                f"(Telegram user ID: {user.id})\n\n{html.escape(text)}"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramError:
-        logger.exception("Failed to forward mid-conversation help request to the owner")
-        return False
-
-    await asyncio.to_thread(_mark_notified_sync, contact_message_id)
-    return True
+    # user.first_name/username and the message text itself are all attacker-controlled (any
+    # Telegram user can set their own name or type anything) — escaped before going into an
+    # HTML-parsed message so they can't break the owner notification's formatting or inject a
+    # fake link/tag into what the owner reads as trusted app text.
+    display_name = html.escape(user.first_name or "משתמש")
+    username_part = f" (@{html.escape(user.username)})" if user.username else ""
+    owner_text = (
+        f"🙋 <b>בקשת תמיכה תוך כדי שיחה עם הבוט</b>\n"
+        f"מאת: {display_name}{username_part} "
+        f"(Telegram user ID: {user.id})\n\n{html.escape(text)}"
+    )
+    # 2026-10-20: the owner's inbox group first when he has one, then his private chat (todira_common/owner_inbox.py)
+    for chat_id in await asyncio.to_thread(owner_inbox.owner_chat_ids, OWNER_TELEGRAM_USER_ID):
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=owner_text, parse_mode=ParseMode.HTML)
+        except TelegramError:
+            logger.exception("Failed to forward mid-conversation help request to the owner")
+            continue
+        await asyncio.to_thread(_mark_notified_sync, contact_message_id)
+        return True
+    return False
