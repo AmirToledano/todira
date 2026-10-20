@@ -12,11 +12,16 @@
    window.__TODIRA_PAGE__ alongside lang/dir for the React form to read and forward on submit. The
    header/nav/footer (base.html) stay exactly as they were; only this content block became React. #}
 <div id="root"></div>
+{# 2026-10-20 (owner): a signed-in visitor finds their own name and email already in the form, and the message is
+   tied to their account even when the link carried no uid. Only the visitor's own details, from their session. #}
+{% set contact_uid = uid or (current_user.telegram_user_id if current_user else None) %}
 <script>
   window.__TODIRA_PAGE__ = {
     lang: "{{ lang }}",
     dir: "{{ dir }}",
-    uid: {{ uid if uid else 'null' }}
+    uid: {{ contact_uid | tojson }},
+    topic: {{ topic | tojson }},
+    prefill: {{ ({"name": current_user.first_name or "", "email": current_user.email or ""} if current_user else {}) | tojson }}
   };
 </script>
 {% if landing_js_url %}

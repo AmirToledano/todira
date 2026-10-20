@@ -1482,18 +1482,32 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
   box-shadow: var(--shadow-lg); display: flex; align-items: center; justify-content: center;
 }
 #a11y-toggle:hover { background: var(--teal-dark); }
+/* 2026-10-20 (owner): a small "feedback" bubble above the accessibility button on every page, to /contact */
+.feedback-bubble {
+  position: absolute; bottom: 62px; left: 0; white-space: nowrap; text-decoration: none;
+  background: var(--card); color: var(--heading); border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: var(--shadow-lg); padding: 7px 14px; font-size: .8rem; font-weight: 700;
+}
+.feedback-bubble:hover { border-color: var(--teal); }
+#a11y-widget:has(#a11y-panel:not([hidden])) .feedback-bubble { display: none; }
 #a11y-panel {
-  position: absolute; bottom: 64px; left: 0; width: 280px; max-width: calc(100vw - 32px);
+  position: absolute; bottom: 64px; left: 0; width: 340px; max-width: calc(100vw - 32px);
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg); padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  box-shadow: var(--shadow-lg); padding: 14px;
+  /* 2026-10-20 (owner, iPhone): one chip per row made the panel taller than the screen, its top hid under Safari's
+     bars and a swipe inside it bounced back. Two chips per row halve its height; the cap below uses the visible
+     height (dvh, which shrinks when Safari shows its bars), and a swipe inside it no longer drags the page. */
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-content: start;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   /* 2026-09-12 fix: with ~16 toggle chips plus the font/reset/statement rows, the panel's own
      content is taller than a phone viewport with the toggle button + some breathing room left
      above/below it — with no cap here the panel simply grew past the top of the screen, and the
      chips that scrolled off were completely unreachable (no scrollbar, nothing to grab). Capping
      height and scrolling internally means every control stays reachable at any viewport height,
      not just tall ones. */
-  max-height: calc(100vh - 96px); overflow-y: auto;
+  max-height: calc(100vh - 96px); max-height: calc(100dvh - 96px); overflow-y: auto;
 }
+#a11y-panel > :not(.a11y-toggle-chip), #a11y-panel > #a11y-speak { grid-column: 1 / -1; }
 /* `display: flex` above (an author style) always beats the browser's own default
    `[hidden] { display: none }` UA rule, regardless of specificity — the SAME bug this project
    already hit once with `.check-chip[hidden]` (see that rule's own comment). Without this, toggling
@@ -1618,7 +1632,7 @@ html.a11y-keyboard-nav *:focus {
   /* Same overflow problem as the base #a11y-panel rule above, worse on a small phone: less room
      above the toggle button to begin with, so the height cap needs to be tighter here too — plus
      shrinking the chips themselves a bit so fewer of them actually need scrolling to reach. */
-  #a11y-panel { width: calc(100vw - 20px); max-height: calc(100vh - 80px); gap: 6px; padding: 10px; }
+  #a11y-panel { width: calc(100vw - 20px); max-height: calc(100vh - 80px); max-height: calc(100dvh - 80px); gap: 6px; padding: 10px; }
   .a11y-toggle-chip { padding: 7px 10px; font-size: .82rem; }
 }
 

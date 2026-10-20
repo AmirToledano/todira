@@ -12,11 +12,16 @@ import CountUp from "../CountUp";
    built with a scroll-linked Framer Motion transform instead: real content (home.stat_uptime_*,
    the same "24/7 / the bot never sleeps" stat already shown in Stats.jsx), not new invented copy,
    given one dramatic full-bleed moment of its own rather than a small card among four others. */
+// 2026-10-15 (owner): the big figure is the live count of new listings in the last 24 hours. Since its fixed "24/7"
+// fallback was dropped (#854) the section shows only when that count is there; without it, it is left out instead of
+// reading stats.new_24h from null, which took the whole page down with it.
 export default function CinematicStat() {
-  const ref = useRef(null);
-  // 2026-10-15 (owner): the big figure is the live count of new listings in the last 24 hours when available.
   const stats = useLiveStats();
-  const live = stats && stats.new_24h > 0;
+  return stats && stats.new_24h > 0 ? <CinematicFigure stats={stats} /> : null;
+}
+
+function CinematicFigure({ stats }) {
+  const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
   const scale = useTransform(scrollYProgress, [0, 0.5, 1], [0.82, 1, 0.82]);
   const opacity = useTransform(scrollYProgress, [0, 0.3, 0.7, 1], [0.25, 1, 1, 0.25]);
