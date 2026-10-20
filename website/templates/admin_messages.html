@@ -5,7 +5,7 @@
 
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>תיבת הודעות 📬</h1>
+    <h1>תיבת הודעות</h1>
     <p>כל הפניות מטופס "צור קשר" באתר ומהודעות חופשיות שנשלחו לבוט — במקום אחד.</p>
   </div>
   <div class="pb-count"><b>{{ messages|length }}</b><span>הודעות</span></div>
@@ -13,7 +13,7 @@
 
 {% if not messages %}
   <div class="empty-state">
-    <div class="glyph" aria-hidden="true">📭</div>
+    <div class="glyph" aria-hidden="true">{{ icon('inbox') }}</div>
     <p>אין עדיין הודעות</p>
   </div>
 {% else %}
@@ -21,18 +21,18 @@
     {% for m in messages %}
     <div class="admin-message-card">
       <div class="amc-header">
-        <span class="amc-source">{{ '🌐 אתר' if m.source == 'website' else ('🤖 בוט טלגרם' if m.source == 'telegram_bot' else '❔ לא ידוע') }}</span>
+        <span class="amc-source">{% if m.source == 'website' %}{{ icon('globe') }} אתר{% elif m.source == 'telegram_bot' %}{{ icon('bot') }} בוט טלגרם{% else %}{{ icon('circle-help') }} לא ידוע{% endif %}</span>
         <span class="amc-date">{{ m.created_at | il_datetime }}</span>
         {% if m.notified_owner %}
-          <span class="amc-status amc-status-ok" title="נשלחה התראה בטלגרם">נשלחה התראה ✅</span>
+          <span class="amc-status amc-status-ok" title="נשלחה התראה בטלגרם">{{ icon('circle-check') }} נשלחה התראה</span>
         {% else %}
-          <span class="amc-status amc-status-warn" title="ההתראה לטלגרם לא נשלחה">לא נשלחה התראה ⚠️</span>
+          <span class="amc-status amc-status-warn" title="ההתראה לטלגרם לא נשלחה">{{ icon('circle-alert') }} לא נשלחה התראה</span>
         {% endif %}
       </div>
       {% if m.name or m.email %}
         <div class="amc-meta">
-          {% if m.name %}<span>{{ m.name }} 👤</span>{% endif %}
-          {% if m.email %}<span>{{ m.email }} ✉️</span>{% endif %}
+          {% if m.name %}<span>{{ icon('user') }} {{ m.name }}</span>{% endif %}
+          {% if m.email %}<span>{{ icon('mail') }} {{ m.email }}</span>{% endif %}
         </div>
       {% endif %}
       {% if m.telegram_user_id %}

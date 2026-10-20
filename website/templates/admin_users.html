@@ -5,7 +5,7 @@
 
 <div class="page-banner reveal">
   <div class="pb-text">
-    <h1>ניהול משתמשים 👥</h1>
+    <h1>ניהול משתמשים</h1>
     <p>גישה חופשית ידנית, ללא קשר לתשלום — לא משנה דרך איזה ערוץ המשתמש נרשם.</p>
   </div>
   <div class="pb-count"><b>{{ rows|length }}</b><span>משתמשים</span></div>
@@ -13,17 +13,17 @@
 
 {% if not rows %}
   <div class="empty-state">
-    <div class="glyph" aria-hidden="true">👤</div>
+    <div class="glyph" aria-hidden="true">{{ icon('users') }}</div>
     <p>אין עדיין משתמשים</p>
   </div>
 {% else %}
   {# 2026-10-19 (owner): one page, split by how each person signed up. Someone with both is ONE card with both badges. #}
   <div class="admin-tabs" role="tablist">
     <button type="button" class="admin-tab active" data-filter="all">הכל <b>{{ rows|length }}</b></button>
-    <button type="button" class="admin-tab" data-filter="telegram">✈️ טלגרם בלבד <b>{{ counts.telegram }}</b></button>
-    <button type="button" class="admin-tab" data-filter="google">🔵 גוגל בלבד <b>{{ counts.google }}</b></button>
-    <button type="button" class="admin-tab" data-filter="both">🔗 טלגרם וגוגל <b>{{ counts.both }}</b></button>
-    {% if counts.none %}<button type="button" class="admin-tab" data-filter="none">❔ בלי ערוץ <b>{{ counts.none }}</b></button>{% endif %}
+    <button type="button" class="admin-tab" data-filter="telegram">{{ icon('send') }} טלגרם בלבד <b>{{ counts.telegram }}</b></button>
+    <button type="button" class="admin-tab" data-filter="google">{{ icon('mail') }} גוגל בלבד <b>{{ counts.google }}</b></button>
+    <button type="button" class="admin-tab" data-filter="both">{{ icon('link-2') }} טלגרם וגוגל <b>{{ counts.both }}</b></button>
+    {% if counts.none %}<button type="button" class="admin-tab" data-filter="none">{{ icon('circle-help') }} בלי ערוץ <b>{{ counts.none }}</b></button>{% endif %}
   </div>
   <div class="admin-message-list" id="admin-user-list">
     {% for r in rows %}
@@ -31,14 +31,14 @@
       <div class="amc-header">
         <span class="amc-source">{{ r.label }}</span>
         {% if r.has_access %}
-          <span class="amc-status amc-status-ok">יש גישה{% if r.in_trial %} (ניסיון){% endif %} ✅</span>
+          <span class="amc-status amc-status-ok">{{ icon('circle-check') }} יש גישה{% if r.in_trial %} (ניסיון){% endif %}</span>
         {% else %}
-          <span class="amc-status amc-status-warn">אין גישה ⚠️</span>
+          <span class="amc-status amc-status-warn">{{ icon('circle-alert') }} אין גישה</span>
         {% endif %}
       </div>
       <div class="amc-meta">
-        {% if r.has_telegram %}<span class="admin-chan admin-chan-tg">✈️ טלגרם{% if r.telegram_username %} · @{{ r.telegram_username }}{% endif %}</span>{% endif %}
-        {% if r.has_google %}<span class="admin-chan admin-chan-g">🔵 גוגל{% if r.google_email %} · {{ r.google_email }}{% endif %}</span>{% endif %}
+        {% if r.has_telegram %}<span class="admin-chan admin-chan-tg">{{ icon('send') }} טלגרם{% if r.telegram_username %}, @{{ r.telegram_username }}{% endif %}</span>{% endif %}
+        {% if r.has_google %}<span class="admin-chan admin-chan-g">{{ icon('mail') }} גוגל{% if r.google_email %}, {{ r.google_email }}{% endif %}</span>{% endif %}
       </div>
       <div class="amc-meta">
         {% if r.created_at %}<span>נרשם {{ r.created_at | il_date }}</span>{% endif %}
@@ -47,7 +47,7 @@
       </div>
       <form method="post" action="/admin/users/{{ r.id }}/toggle-free-access" style="margin-top:10px">
         <button type="submit" class="btn outline" style="padding:8px 16px;font-size:.85rem">
-          {{ "🚫 בטל גישה חופשית" if r.free_access_granted else "🎁 תן גישה חופשית לצמיתות" }}
+          {% if r.free_access_granted %}{{ icon('ban') }} בטל גישה חופשית{% else %}{{ icon('gift') }} תן גישה חופשית לצמיתות{% endif %}
         </button>
       </form>
     </div>

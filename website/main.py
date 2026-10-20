@@ -92,6 +92,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 
+from icons import icon
 from i18n import (
     DEFAULT_LANG,
     FURNITURE_LABELS,
@@ -235,6 +236,8 @@ templates.env.filters["rooms_label"] = lambda rooms: f"{float(rooms):g}" if room
 templates.env.filters["public_desc"] = public_description
 templates.env.filters["shared_room"] = is_room_in_shared_flat
 templates.env.filters["ils"] = lambda amount: f"{int(amount):,} ₪"
+# 2026-10-20 (owner): line icons instead of the remaining emoji, everywhere but the listing cards (icons.py)
+templates.env.globals["icon"] = icon
 
 
 def _israel_date(value, fmt: str = "%d.%m.%Y") -> str:

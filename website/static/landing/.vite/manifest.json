@@ -6,6 +6,13 @@
       "_i18n-_qkrshGg.js"
     ]
   },
+  "_Icon-DoZXlfIO.js": {
+    "file": "assets/Icon-DoZXlfIO.js",
+    "name": "Icon",
+    "imports": [
+      "_i18n-_qkrshGg.js"
+    ]
+  },
   "_i18n-_WmKtGK-.css": {
     "file": "assets/i18n-_WmKtGK-.css",
     "src": "_i18n-_WmKtGK-.css"
@@ -46,12 +53,13 @@
     ]
   },
   "contact.html": {
-    "file": "assets/contact-DQt4TDKC.js",
+    "file": "assets/contact-OUowgP7x.js",
     "name": "contact",
     "src": "contact.html",
     "isEntry": true,
     "imports": [
-      "_i18n-_qkrshGg.js"
+      "_i18n-_qkrshGg.js",
+      "_Icon-DoZXlfIO.js"
     ]
   },
   "index.html": {
@@ -68,12 +76,13 @@
     ]
   },
   "login.html": {
-    "file": "assets/login-CZlkjeDz.js",
+    "file": "assets/login-CHGqZ_8s.js",
     "name": "login",
     "src": "login.html",
     "isEntry": true,
     "imports": [
-      "_i18n-_qkrshGg.js"
+      "_i18n-_qkrshGg.js",
+      "_Icon-DoZXlfIO.js"
     ]
   },
   "privacy.html": {

@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import Icon from "./Icon";
 import { t, uid, next, telegramBotUrl } from "./i18n";
 
 const easePremium = [0.16, 1, 0.3, 1];
@@ -19,7 +20,7 @@ export default function Login() {
     >
       <div className="login-head">
         <span className="crown" aria-hidden="true">
-          👑
+          <Icon name="crown" />
         </span>
         <h1>{t("login.h1")}</h1>
         <p>{t("login.subtitle")}</p>

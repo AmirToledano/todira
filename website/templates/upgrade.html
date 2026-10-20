@@ -75,15 +75,15 @@
   {# 2026-10-13 (owner request): one short list instead of two paragraphs that repeated "one-time, no renewal, we'll
      remind you" (the old upgrade.pass_onetime_hint + upgrade.payment_hint_takbull_onetime). #}
   <ul class="upgrade-pass-facts">
-    <li><span aria-hidden="true">🔒</span>{{ t('upgrade.pass_fact_secure') }}</li>
-    <li><span aria-hidden="true">⚡</span>{{ t('upgrade.pass_fact_instant') }}</li>
-    <li><span aria-hidden="true">🔔</span>{{ t('upgrade.pass_fact_onetime') }}</li>
+    <li>{{ icon('lock') }}{{ t('upgrade.pass_fact_secure') }}</li>
+    <li>{{ icon('zap') }}{{ t('upgrade.pass_fact_instant') }}</li>
+    <li>{{ icon('bell') }}{{ t('upgrade.pass_fact_onetime') }}</li>
   </ul>
 </form>
 {% else %}
 <div class="upgrade-plan-card reveal">
   <div class="upgrade-plan-badge">{{ t('upgrade.plan_badge_label') }}</div>
-  <div class="upgrade-plan-icon" aria-hidden="true">👑</div>
+  <div class="upgrade-plan-icon" aria-hidden="true">{{ icon('crown') }}</div>
   <h2 class="upgrade-plan-name">{{ t('upgrade.plan_subscription') }}</h2>
   <p class="upgrade-plan-subtitle">{{ t('upgrade.plan_subtitle') }}</p>
   <p class="upgrade-plan-price">₪{{ subscription_price }}<span class="upgrade-plan-price-suffix">{{ t('upgrade.per_month_suffix') }}</span></p>

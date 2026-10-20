@@ -16,7 +16,7 @@
 
 {% if not listings %}
   <div class="empty-state">
-    <div class="glyph" aria-hidden="true">💌</div>
+    <div class="glyph" aria-hidden="true">{{ icon('heart') }}</div>
     <p>{{ t('liked.empty_title') }}</p>
     <p class="hint">{{ t('liked.empty_hint') }}</p>
   </div>

@@ -2,7 +2,7 @@
 {% block title %}{{ t('meta.title_generic') }}{% endblock %}
 {% block content %}
 <div class="empty-state">
-  <div class="glyph" aria-hidden="true">🔑</div>
+  <div class="glyph" aria-hidden="true">{{ icon('key-round') }}</div>
   <p>{{ t('need_uid.body', target=t('need_uid.target_' ~ target)) }}</p>
   <a class="btn gold" href="/login">{{ t('need_uid.cta') }}</a>
 </div>

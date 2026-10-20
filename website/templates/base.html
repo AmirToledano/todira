@@ -102,7 +102,7 @@
   </div>
   {% if preview_as_free %}
   <div class="preview-banner">
-    מצב תצוגה מקדימה פעיל 🕵️ — אתה רואה את האתר בדיוק כמו משתמש רגיל בלי מנוי.
+    {{ icon('eye') }} מצב תצוגה מקדימה פעיל: אתה רואה את האתר בדיוק כמו משתמש רגיל בלי מנוי.
     <a href="/preview/toggle?next={{ request.url.path | urlencode }}">כבה תצוגה מקדימה וחזור לגישה מלאה</a>
   </div>
   {% endif %}
@@ -190,7 +190,7 @@
   {% endif %}
   <header class="site">
     <div class="header-inner">
-      <a class="brand" href="/"><span class="crown">👑</span> טודירה <span class="brand-home-hint">{{ t('nav.brand_home_hint') }}</span></a>
+      <a class="brand" href="/"><span class="crown">{{ icon('crown') }}</span> טודירה <span class="brand-home-hint">{{ t('nav.brand_home_hint') }}</span></a>
       <!-- 2026-09-09 (owner's own report): the hamburger-only header, at every screen width
            including a wide desktop monitor, was a big part of why the site read as "a phone app
            build" rather than a real website — real sites show their nav, they don't hide it
@@ -212,7 +212,7 @@
         <a class="auth-login-toolbar" href="/login?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
         {% endif %}
         <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ t('a11y.theme_toggle_label') }}">
-          <span id="theme-toggle-icon" aria-hidden="true">🌙</span>
+          <span id="theme-toggle-icon" aria-hidden="true">{{ icon('sun') }}{{ icon('moon') }}</span>
         </button>
         <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-panel" aria-label="{{ t('a11y.main_nav_label') }}">
           <span class="nav-toggle-lines"><span></span><span></span><span></span></span>
@@ -230,8 +230,8 @@
           {% endif %}
           <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
           {% if is_owner %}
-          <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}">📬</a>
-          <a href="/admin/users" class="{{ 'active' if active_page == 'admin_users' else '' }}">👥</a>
+          <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}" aria-label="תיבת הודעות">{{ icon('inbox') }}</a>
+          <a href="/admin/users" class="{{ 'active' if active_page == 'admin_users' else '' }}" aria-label="ניהול משתמשים">{{ icon('users') }}</a>
           {% endif %}
         </nav>
         <div class="nav-panel-foot">
@@ -251,7 +251,7 @@
                header-actions above), not buried behind the hamburger — 2026-09-06 request. #}
             {% if is_real_owner %}
             <a class="auth-logout" href="/preview/toggle?next={{ request.url.path | urlencode }}">
-              {{ 'בטל תצוגה מקדימה 👁️' if preview_as_free else 'תצוגה מקדימה 👁️' }}
+              {{ icon('eye') }} {{ 'בטל תצוגה מקדימה' if preview_as_free else 'תצוגה מקדימה' }}
             </a>
             {% endif %}
           </div>
@@ -264,7 +264,7 @@
   </main>
   <footer class="site-footer">
     <div class="footer-inner">
-      <a class="brand" href="/"><span class="crown">👑</span> טודירה</a>
+      <a class="brand" href="/"><span class="crown">{{ icon('crown') }}</span> טודירה</a>
       <nav class="footer-nav">
         <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.apartments') }}</a>
         <a href="/liked{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.liked') }}</a>
@@ -287,7 +287,7 @@
     {% if active_page != 'contact' %}
     <a class="feedback-bubble" href="/contact?topic=feedback{{ '&uid=' ~ uid if uid else '' }}">{{ t('feedback.bubble') }}</a>
     {% endif %}
-    <button type="button" id="a11y-toggle" aria-expanded="false" aria-controls="a11y-panel" aria-label="{{ t('a11y.widget_toggle_label') }}">♿</button>
+    <button type="button" id="a11y-toggle" aria-expanded="false" aria-controls="a11y-panel" aria-label="{{ t('a11y.widget_toggle_label') }}">{{ icon('accessibility') }}</button>
     <div id="a11y-panel" role="dialog" aria-label="{{ t('a11y.panel_title') }}" hidden>
       <div class="a11y-panel-head">
         <strong>{{ t('a11y.panel_title') }}</strong>
@@ -370,16 +370,12 @@
         if (explicit === 'dark' || explicit === 'light') { return explicit; }
         return systemPrefersDark() ? 'dark' : 'light';
       }
-      function syncIcon() {
-        // Shows the mode that's currently ACTIVE (moon = night mode on), not what clicking does.
-        icon.textContent = currentTheme() === 'dark' ? '🌙' : '☀️';
-      }
-      syncIcon();
+      // The icon shows the mode that's currently ACTIVE (moon = night mode on), not what clicking does - both icons are
+      // in the button and style.css shows the right one for the theme (2026-10-20, was emoji text set from here).
 
       function applyTheme(next) {
         root.setAttribute('data-theme', next);
         try { localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* still works this visit */ }
-        syncIcon();
       }
 
       btn.addEventListener('click', function () {

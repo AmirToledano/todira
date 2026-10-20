@@ -4,7 +4,7 @@
 {% from "_onboarding_steps.html" import onboarding_steps with context %}
 {{ onboarding_steps(3) }}
 <div class="onboarding-card reveal">
-  <div class="glyph" aria-hidden="true">👑</div>
+  <div class="glyph" aria-hidden="true">{{ icon('crown') }}</div>
   <h1>{{ t('onboarding.trial_title') }}</h1>
   <p>{{ t('onboarding.trial_body', date=trial_ends_at | il_date) }}</p>
   <a class="btn gold" href="{{ '/apartments?uid=' ~ uid if uid else '/apartments' }}">{{ t('onboarding.trial_cta') }}</a>

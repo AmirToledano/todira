@@ -5,7 +5,7 @@
 
 <div class="empty-state reveal">
   {% if paid %}
-    <div class="glyph" aria-hidden="true">✅</div>
+    <div class="glyph" aria-hidden="true">{{ icon('circle-check') }}</div>
     <p>{{ t('upgrade_success.paid_message') }}</p>
     <a class="btn gold" href="/apartments{{ '?uid=' ~ uid if uid else '' }}">{{ t('upgrade_success.view_apartments_cta') }}</a>
   {% else %}
