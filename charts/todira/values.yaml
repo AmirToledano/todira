@@ -355,7 +355,9 @@ scraper:
     # 2026-10-19 (owner: as fast as possible without getting blocked): every 2 hours at half past, 08:30-22:30, for the
     # groups feed (one human-paced browser session per run). Marketplace stays at its earlier 3 runs a day
     # (marketplaceHours below), so its traffic does not grow.
-    schedule: "30 8-22/2 * * *"
+    # 2026-10-20 (owner: every hour, as long as the account stays safe): hourly, 08:30-22:30. A login/checkpoint page
+    # pauses the groups feed for 24 hours by itself and tells the owner (scraper/main.py _pause_facebook_groups).
+    schedule: "30 8-22 * * *"
     marketplaceHours: "8,14,20"
     # 2026-09-15: turned ON — explicit owner go-ahead ("מרקטפלייס תדליק ביחד עם הריצה הבאה"),
     # FACEBOOK_COOKIES already confirmed set on the real k8s secret (diagnostic workflow runs

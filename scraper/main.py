@@ -29,6 +29,7 @@ from todira_common.cities import LOCALITY_SET, canonicalize_city
 from todira_common.db import get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common import app_flags
+from todira_common.owner_alert import alert_owner
 from todira_common.models import Listing, SentNotification
 import facebook_client
 import facebook_groups_text_parser
@@ -2460,6 +2461,38 @@ def _fill_stored_group_cities(group_cities: dict[str, str]) -> int:
     return filled
 
 
+# 2026-10-20 (owner: "every hour, as long as it does not get the account into trouble"): the groups feed now runs
+# hourly. If Facebook ever shows its login/checkpoint page, the feed stops for a day instead of knocking again every
+# hour, and the owner hears about it in his inbox group.
+_FACEBOOK_GROUPS_PAUSE_FLAG = "facebook_groups_paused_until"
+_FACEBOOK_GROUPS_PAUSE = dt.timedelta(hours=24)
+
+
+def _facebook_groups_paused() -> bool:
+    with get_session() as session:
+        raw = app_flags.get_flag(session, _FACEBOOK_GROUPS_PAUSE_FLAG)
+    if not raw:
+        return False
+    try:
+        until = dt.datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    if until > dt.datetime.now(dt.timezone.utc):
+        logger.warning("Facebook groups feed is paused until %s (Facebook asked to log in) - skipped", raw)
+        return True
+    return False
+
+
+def _pause_facebook_groups() -> None:
+    until = dt.datetime.now(dt.timezone.utc) + _FACEBOOK_GROUPS_PAUSE
+    with get_session() as session:
+        app_flags.set_flag(session, _FACEBOOK_GROUPS_PAUSE_FLAG, until.isoformat())
+    alert_owner(
+        "⚠️ <b>פייסבוק ביקש התחברות מחדש בחשבון הסריקה.</b>\n"
+        "עצרתי את הקריאה מהקבוצות ל־24 שעות כדי לא להסתבך. כדאי להיכנס לחשבון מהטלפון ולבדוק שהכל תקין."
+    )
+
+
 def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[str], int, int, bool]:
     """The browser route of _scrape_facebook_groups (2026-10-19): one groups-feed session covers EVERY group the
     dedicated account joined - no tracked-id list needed - and each post's text, time and photos come with the feed,
@@ -2477,10 +2510,14 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
     if not cookie:
         logger.error("FACEBOOK_COOKIES is not set - skipping the Facebook groups feed")
         return normalized_items, seen_external_ids, 0, 1, False
+    if _facebook_groups_paused():
+        return normalized_items, seen_external_ids, 0, 0, True
     try:
         posts = collect_group_posts(cookie, _facebook_groups_scrolls())
-    except FacebookGroupsFetchError:
+    except FacebookGroupsFetchError as exc:
         logger.exception("Facebook groups feed failed - skipping this source this run")
+        if "login/checkpoint" in str(exc):
+            _pause_facebook_groups()
         return normalized_items, seen_external_ids, 0, 1, False
 
     try:
