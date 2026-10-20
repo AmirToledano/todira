@@ -1323,6 +1323,11 @@ summary:focus-visible {
   position: absolute; top: 6px; inset-inline-end: 10px; background: none; border: 0; color: inherit;
   font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 4px 8px;
 }
+.trial-gift-banner .trial-gift-short { display: none; }
+/* after the notice is closed: one thin line with the end date, no close button */
+.trial-gift-banner.compact { padding: 5px 16px; }
+.trial-gift-banner.compact .trial-gift-full, .trial-gift-banner.compact .trial-gift-close { display: none; }
+.trial-gift-banner.compact .trial-gift-short { display: block; font-size: .8rem; }
 .inapp-banner[hidden] { display: none; }
 .inapp-banner {
   position: relative; background: var(--teal-dark); color: #fff8ea; text-align: center;
