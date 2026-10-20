@@ -233,6 +233,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Cadeau: nous avons prolongé votre essai! Accès complet jusqu'au {date}.",
         "ar": "هدية: مددنا فترتك التجريبية! لديك وصول كامل حتى {date}.",
     },
+    "trial_gift.short": {
+        "he": "תקופת הניסיון שלך: עד {date}",
+        "en": "Your free trial: until {date}",
+        "ru": "Ваш пробный период: до {date}",
+        "fr": "Votre essai gratuit: jusqu'au {date}",
+        "ar": "فترتك التجريبية: حتى {date}",
+    },
     "inapp.close": {"he": "סגור", "en": "Close", "ru": "Закрыть", "fr": "Fermer", "ar": "إغلاق"},
     "nav.liked": {
         "he": "שמורות", "en": "Saved", "ru": "Сохранённые", "fr": "Enregistrés", "ar": "المحفوظة",

@@ -94,3 +94,12 @@ def test_everyone_registered_before_gets_access_until_26_10_at_10_israel_time():
     assert "2026-10-26 07:00:00+00" in migration  # 10:00 Israel time (UTC+3)
     assert "trial_ends_at < " in migration  # never shortens a later trial
     assert "pass_test" in migration
+
+
+def test_a_closed_gift_notice_leaves_a_thin_line_with_the_date():
+    """Owner, 2026-10-20: closing the notice used to hide the end date for good. Closing now leaves one short line."""
+    base = (_ROOT / "website" / "templates" / "base.html").read_text()
+    assert "trial_gift.short" in base and "classList.add('compact')" in base
+    assert "banner.hidden = true" not in base.split("trial-gift-banner", 1)[1].split("</script>", 1)[0]
+    for lang, text in i18n.TRANSLATIONS["trial_gift.short"].items():
+        assert "{date}" in text and "—" not in text, lang
