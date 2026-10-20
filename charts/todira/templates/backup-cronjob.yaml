@@ -55,6 +55,8 @@ spec:
                   set -eu
                   pg_dump --format=plain --no-owner --no-privileges | gzip > /shared/backup.sql.gz
                   echo "pg_dump wrote $(du -h /shared/backup.sql.gz | cut -f1) to /shared/backup.sql.gz"
+                  # 2026-10-20: where a failure alert goes - the owner's inbox group when he has one (see the upload step)
+                  psql -tAc "select value from app_flags where key = 'owner_inbox_chat_id'" > /shared/inbox_chat_id 2>/dev/null || true
               volumeMounts:
                 - name: shared
                   mountPath: /shared
@@ -113,11 +115,17 @@ spec:
                       NL=$'\n'
                       ERROR_SUMMARY=$(echo "$ERROR_OUTPUT" | head -c 300)
                       ALERT_TEXT="🚨 טודירה: גיבוי הדאטהבייס ל-S3 נכשל היום.${NL}שגיאה: ${ERROR_SUMMARY}${NL}כדאי לבדוק (kubectl logs on the {{ .Release.Name }}-backup CronJob)."
-                      curl -fsS --max-time 10 \
-                        "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-                        --data-urlencode "chat_id=$OWNER_TELEGRAM_USER_ID" \
-                        --data-urlencode "text=$ALERT_TEXT" \
-                        > /dev/null || echo "also failed to send the Telegram alert" >&2
+                      # the owner's inbox group first, his private chat if that fails (todira_common/owner_inbox.py)
+                      INBOX=$(tr -d '[:space:]' < /shared/inbox_chat_id 2>/dev/null || true)
+                      SENT=0
+                      for CHAT in $INBOX $OWNER_TELEGRAM_USER_ID; do
+                        if curl -fsS --max-time 10 \
+                          "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+                          --data-urlencode "chat_id=$CHAT" \
+                          --data-urlencode "text=$ALERT_TEXT" \
+                          > /dev/null; then SENT=1; break; fi
+                      done
+                      [ "$SENT" = 1 ] || echo "also failed to send the Telegram alert" >&2
                     fi
                     exit 1
                   fi

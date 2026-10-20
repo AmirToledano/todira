@@ -25,9 +25,47 @@ spec:
             app: {{ .Release.Name }}-healthcheck
         spec:
           restartPolicy: Never
+          # 2026-10-20 (owner): alerts go to his inbox group (the app_flags row the bot saves when he adds it to one),
+          # not his muted private chat. Read here, before the check; it never fails, even with the database down -
+          # then the alert simply goes to the private chat as before.
+          initContainers:
+            - name: owner-inbox
+              image: {{ .Values.postgres.image }}
+              env:
+                - name: PGHOST
+                  value: "{{ .Release.Name }}-postgres"
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  value: {{ .Values.postgres.user | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.postgres.dbname | quote }}
+                - name: PGCONNECT_TIMEOUT
+                  value: "5"
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: postgres-password
+              command: ["sh", "-c"]
+              args:
+                - psql -tAc "select value from app_flags where key = 'owner_inbox_chat_id'" > /shared/inbox_chat_id 2>/dev/null || true
+              volumeMounts:
+                - name: shared
+                  mountPath: /shared
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.healthcheck.requests.cpu }}
+                  memory: {{ .Values.resources.healthcheck.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.healthcheck.limits.cpu }}
+                  memory: {{ .Values.resources.healthcheck.limits.memory }}
           containers:
             - name: healthcheck
               image: curlimages/curl:8.10.1
+              volumeMounts:
+                - name: shared
+                  mountPath: /shared
               env:
                 - name: WEBSITE_URL
                   value: "https://{{ .Values.website.domain }}"
@@ -55,13 +93,16 @@ spec:
                     echo "OK: $WEBSITE_URL/healthz"
                   else
                     echo "FAILED: $WEBSITE_URL/healthz did not return a healthy response" >&2
-                    if [ -n "$OWNER_TELEGRAM_USER_ID" ]; then
-                      curl -fsS --max-time 10 \
+                    INBOX=$(tr -d '[:space:]' < /shared/inbox_chat_id 2>/dev/null || true)
+                    SENT=0
+                    for CHAT in $INBOX $OWNER_TELEGRAM_USER_ID; do
+                      if curl -fsS --max-time 10 \
                         "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-                        --data-urlencode "chat_id=$OWNER_TELEGRAM_USER_ID" \
+                        --data-urlencode "chat_id=$CHAT" \
                         --data-urlencode "text=🚨 טודירה: $WEBSITE_URL/healthz לא הגיב תקין. כדאי לבדוק את השרת." \
-                        > /dev/null || echo "also failed to send the Telegram alert" >&2
-                    fi
+                        > /dev/null; then SENT=1; break; fi
+                    done
+                    [ "$SENT" = 1 ] || echo "also failed to send the Telegram alert" >&2
                     exit 1
                   fi
               resources:
@@ -71,3 +112,6 @@ spec:
                 limits:
                   cpu: {{ .Values.resources.healthcheck.limits.cpu }}
                   memory: {{ .Values.resources.healthcheck.limits.memory }}
+          volumes:
+            - name: shared
+              emptyDir: {}
