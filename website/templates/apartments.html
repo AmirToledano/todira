@@ -44,7 +44,7 @@
      it's the outermost chip, past every other toolbar element. #}
   <button type="button" class="chip chip-toggle" id="apt-toolbar-map-toggle" aria-pressed="false"
           data-show-label="{{ t('apartments.map_reopen_label') }}" data-hide-label="{{ t('apartments.map_hide_label') }}">
-    <span aria-hidden="true">🗺️</span> <span id="apt-toolbar-map-toggle-label">{{ t('apartments.map_reopen_label') }}</span>
+    {{ icon('map') }} <span id="apt-toolbar-map-toggle-label">{{ t('apartments.map_reopen_label') }}</span>
   </button>
 </div>
 
@@ -96,7 +96,7 @@
       {% endif %}
     </div>
     <details class="apt-map-settings" id="apt-map-settings">
-      <summary class="apt-map-settings-btn" aria-label="{{ t('apartments.map_settings_label') }}">⚙️</summary>
+      <summary class="apt-map-settings-btn" aria-label="{{ t('apartments.map_settings_label') }}">{{ icon('settings-2') }}</summary>
       <div class="apt-map-settings-panel">
         <label for="apt-map-age-select">{{ t('apartments.map_age_filter_label') }}</label>
         <select id="apt-map-age-select">
@@ -130,7 +130,7 @@
    <div class="apt-listings-pane-inner">
     {% if not listings %}
       <div class="empty-state">
-        <div class="glyph" aria-hidden="true">🔍</div>
+        <div class="glyph" aria-hidden="true">{{ icon('search') }}</div>
         <p>{{ t('apartments.empty_title') }}</p>
         <p class="hint">{{ t('apartments.empty_hint') }}</p>
       </div>
@@ -247,7 +247,7 @@
     <button type="button" class="apt-contact-modal-close" id="apt-contact-modal-close"
             aria-label="{{ t('apartments.detail_close_label') }}">✕</button>
     <div class="apt-contact-modal-body">
-      <div class="apt-contact-modal-icon" aria-hidden="true">👑</div>
+      <div class="apt-contact-modal-icon" aria-hidden="true">{{ icon('crown') }}</div>
       <h2 class="apt-contact-modal-title" id="apt-contact-modal-title">{{ t('card.contact_modal_title') }}</h2>
       <p class="apt-contact-modal-text">{{ t('card.contact_modal_body') }}</p>
       <a class="apt-contact-modal-upgrade-btn" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">

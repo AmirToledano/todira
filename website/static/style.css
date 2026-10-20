@@ -2292,3 +2292,25 @@ body.apt-modal-open { overflow: hidden; }
 .admin-tab.active { background: var(--teal, #0e8a82); color: #fff; }
 .admin-message-card[hidden] { display: none; }
 .admin-chan { font-weight: 600; }
+
+/* ---------- line icons (2026-10-20, owner: icons instead of the remaining emoji, everywhere but the listing cards;
+   website/icons.py, the same shapes in landing-react/src/Icon.jsx) ---------- */
+.ic { width: 1.15em; height: 1.15em; vertical-align: -0.2em; flex-shrink: 0; }
+.brand .crown .ic { width: 1.35rem; height: 1.35rem; color: var(--gold-light, #f6cf72); vertical-align: -0.18em; }
+.theme-toggle .ic { width: 20px; height: 20px; color: #fff; vertical-align: middle; }
+.theme-toggle .ic-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .ic-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .ic-moon { display: inline-block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-toggle .ic-sun { display: none; }
+  :root:not([data-theme="light"]) .theme-toggle .ic-moon { display: inline-block; }
+}
+#a11y-toggle .ic { width: 28px; height: 28px; }
+.empty-state .glyph .ic, .onboarding-card .glyph .ic { width: 52px; height: 52px; stroke-width: 1.5; color: var(--teal); }
+.login-head .crown .ic { width: 2.4rem; height: 2.4rem; color: var(--teal); }
+.field .field-icon { width: 1rem; height: 1rem; color: var(--teal); vertical-align: -0.15em; }
+.upgrade-plan-icon .ic { width: 30px; height: 30px; color: var(--teal); }
+.apt-contact-modal-icon .ic { width: 30px; height: 30px; color: #fff; }
+.upgrade-pass-facts li .ic { color: var(--teal); align-self: center; }
+.apt-map-settings-btn .ic { width: 18px; height: 18px; }
+.preview-banner .ic { width: 1em; height: 1em; }

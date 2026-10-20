@@ -5,7 +5,7 @@
 {% set trial_url = "/onboarding/trial?uid=" ~ uid if uid else "/onboarding/trial" %}
 {{ onboarding_steps(2) }}
 <div class="onboarding-card reveal">
-  <div class="glyph" aria-hidden="true">🔔</div>
+  <div class="glyph" aria-hidden="true">{{ icon('bell') }}</div>
   <h1>{{ t('onboarding.notifications_title') }}</h1>
   <p>{{ t('onboarding.notifications_body') }}</p>
   {% if already_connected %}

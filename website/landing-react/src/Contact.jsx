@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import Icon from "./Icon";
 import { t, uid, telegramBotUrl, topic, prefill } from "./i18n";
 
 const easePremium = [0.16, 1, 0.3, 1];
@@ -78,7 +79,7 @@ export default function Contact() {
         {status === "sent" ? (
           <div className="empty-state">
             <div className="glyph" aria-hidden="true">
-              📬
+              <Icon name="mail-check" />
             </div>
             <p>
               <strong>{t("contact.success_title")}</strong>

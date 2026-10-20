@@ -115,8 +115,9 @@ def test_owner_sees_messages(client):
     assert resp.status_code == 200
     assert "שלום מהאתר" in resp.text
     assert "שלום מהבוט" in resp.text
-    assert "🌐 אתר" in resp.text
-    assert "🤖 בוט" in resp.text
+    # 2026-10-20: line icons instead of emoji (website/icons.py)
+    assert "ic-globe" in resp.text and "אתר" in resp.text
+    assert "ic-bot" in resp.text and "בוט טלגרם" in resp.text
 
 
 @contextmanager

@@ -16,7 +16,7 @@
 
 {% if not listings %}
   <div class="empty-state">
-    <div class="glyph" aria-hidden="true">🙈</div>
+    <div class="glyph" aria-hidden="true">{{ icon('eye-off') }}</div>
     <p>{{ t('hidden.empty_title') }}</p>
     <p class="hint">{{ t('hidden.empty_hint') }}</p>
   </div>
