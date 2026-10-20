@@ -13,6 +13,7 @@ from handlers.filter_conversation import build_filter_conversation_handler
 from handlers.language import build_language_handlers
 from handlers.liked import build_hidden_handler, build_liked_handler, build_reaction_handler
 from handlers.onboarding import build_onboarding_handler
+from handlers.owner_inbox import build_owner_inbox_handlers
 from handlers.profile import build_profile_handlers
 from telegram import BotCommand, Update
 from telegram.ext import Application, ContextTypes, PicklePersistence
@@ -113,6 +114,9 @@ def main() -> None:
         Application.builder().token(token).persistence(persistence).post_init(_post_init).build()
     )
 
+    # 2026-10-20: the owner's inbox group (handlers/owner_inbox.py) - its guard runs before every handler below
+    for handler, group in build_owner_inbox_handlers():
+        application.add_handler(handler, group=group)
     application.add_handler(build_onboarding_handler())
     application.add_handler(build_filter_conversation_handler())
     application.add_handler(build_apartments_handler())
@@ -129,7 +133,7 @@ def main() -> None:
     application.add_error_handler(_error_handler)
 
     logger.info("Starting bot polling...")
-    application.run_polling(allowed_updates=["message", "callback_query"])
+    application.run_polling(allowed_updates=["message", "callback_query", "my_chat_member"])
 
 
 if __name__ == "__main__":

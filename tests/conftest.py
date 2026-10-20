@@ -100,3 +100,12 @@ def _clear_website_match_id_caches():
     _clear()
     yield
     _clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_owner_inbox_group(monkeypatch):
+    """Messages for the owner try his inbox group first (todira_common/owner_inbox.py, read from the database). Tests
+    start with no group - so they never reach for a database - and the ones about the group set it themselves."""
+    from todira_common import owner_inbox
+
+    monkeypatch.setattr(owner_inbox, "inbox_chat_id", lambda fresh=False: None)

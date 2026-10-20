@@ -53,7 +53,7 @@ from urllib.parse import quote as url_quote, urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
-from todira_common import listing_enrichment
+from todira_common import listing_enrichment, owner_inbox
 from todira_common.access import (
     CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
@@ -286,17 +286,20 @@ OWNER_BIT_PHONE = os.environ.get("OWNER_BIT_PHONE", "").strip()
 OWNER_PAYBOX_URL = os.environ.get("OWNER_PAYBOX_URL", "").strip()
 
 
-def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: int | None) -> bool:
+def _notify_owner_sync(
+    name: str, email: str, message: str, telegram_user_id: int | None, feedback: bool = False
+) -> bool:
     """Best-effort — returns whether the Telegram push succeeded. Never raises: a broken/missing
     token or chat id must never lose the contact message itself (already committed to the DB by
-    the caller before this runs)."""
+    the caller before this runs). 2026-10-20: goes to the owner's inbox group when he has one, and to
+    his private chat otherwise or when that fails (todira_common/owner_inbox.py)."""
     if not TELEGRAM_BOT_TOKEN or not OWNER_TELEGRAM_USER_ID:
         return False
     # name/email/message are all attacker-controlled (anyone can submit the /contact form) —
     # escaped before going into an HTML-parsed Telegram message so they can't break the owner
     # notification's formatting or inject a fake link/tag into what the owner reads as trusted
     # app text. Found live 2026-09-07, same bug class fixed in support.py.
-    lines = ["📬 <b>הודעה חדשה מהאתר (טודירה)</b>"]
+    lines = ["💬 <b>משוב חדש על האתר</b>" if feedback else "📬 <b>הודעה חדשה מהאתר (טודירה)</b>"]
     if name:
         lines.append(f"שם: {html.escape(name)}")
     if email:
@@ -305,31 +308,33 @@ def _notify_owner_sync(name: str, email: str, message: str, telegram_user_id: in
         lines.append(f"Telegram user ID: {telegram_user_id}")
     lines.append("")
     lines.append(html.escape(message))
-    try:
-        resp = httpx.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json={
-                "chat_id": OWNER_TELEGRAM_USER_ID,
-                "text": "\n".join(lines),
-                "parse_mode": "HTML",
-            },
-            timeout=10.0,
-        )
-        if resp.status_code != 200:
-            # Telegram rejecting the call (e.g. "chat not found" for a wrong/never-messaged-the-
-            # bot OWNER_TELEGRAM_USER_ID) is a normal HTTP response, not an httpx exception - was
-            # previously swallowed here with no log line at all, making a bad ID silently
-            # indistinguishable from "working fine." Logged (not raised) since this stays best-
-            # effort: the contact message itself is already safely in the DB by the time this runs.
-            logger.warning(
-                "Telegram rejected the /contact owner-notify push: status=%d body=%s",
-                resp.status_code,
-                resp.text[:500],
+    for chat_id in owner_inbox.owner_chat_ids(OWNER_TELEGRAM_USER_ID):
+        try:
+            resp = httpx.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": "\n".join(lines),
+                    "parse_mode": "HTML",
+                },
+                timeout=10.0,
             )
-        return resp.status_code == 200
-    except httpx.HTTPError:
-        logger.exception("Failed to push /contact submission to Telegram")
-        return False
+        except httpx.HTTPError:
+            logger.exception("Failed to push /contact submission to Telegram")
+            continue
+        if resp.status_code == 200:
+            return True
+        # Telegram rejecting the call (e.g. "chat not found" for a wrong/never-messaged-the-
+        # bot OWNER_TELEGRAM_USER_ID) is a normal HTTP response, not an httpx exception - was
+        # previously swallowed here with no log line at all, making a bad ID silently
+        # indistinguishable from "working fine." Logged (not raised) since this stays best-
+        # effort: the contact message itself is already safely in the DB by the time this runs.
+        logger.warning(
+            "Telegram rejected the /contact owner-notify push: status=%d body=%s",
+            resp.status_code,
+            resp.text[:500],
+        )
+    return False
 
 
 def _current_user_summary(request: Request) -> dict | None:
@@ -1273,9 +1278,12 @@ class ContactSubmission(BaseModel):
     message: str = ""
     uid: str = ""
     consent: bool = False
+    topic: str = ""  # "feedback" when the form was opened from the feedback bubble
 
 
-async def _process_contact_message(name: str, email: str, message: str, uid_raw: str, consent: bool) -> dict:
+async def _process_contact_message(
+    name: str, email: str, message: str, uid_raw: str, consent: bool, topic: str = ""
+) -> dict:
     """Validates, saves to ContactMessage, and best-effort notifies the owner via Telegram — the
     core of the old form-encoded POST /contact, now the body of POST /api/contact below (the only
     caller once /contact became a React island). Returns {"ok": True} on success, or
@@ -1317,7 +1325,7 @@ async def _process_contact_message(name: str, email: str, message: str, uid_raw:
     # call can't leave the request hanging forever; the message is already safely in the DB above
     # regardless of whether this succeeds.
     notified = await asyncio.to_thread(
-        _notify_owner_sync, name.strip(), email.strip(), message, telegram_user_id
+        _notify_owner_sync, name.strip(), email.strip(), message, telegram_user_id, topic == "feedback"
     )
     if notified:
         await asyncio.to_thread(_mark_notified_sync, contact_message_id)
@@ -1334,7 +1342,7 @@ async def contact_submit(payload: ContactSubmission) -> dict:
     responses for expected, recoverable input errors (an actual 5xx still means something
     unexpected broke)."""
     return await _process_contact_message(
-        payload.name, payload.email, payload.message, payload.uid, payload.consent
+        payload.name, payload.email, payload.message, payload.uid, payload.consent, payload.topic
     )
 
 
