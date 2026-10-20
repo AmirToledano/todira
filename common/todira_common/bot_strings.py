@@ -85,6 +85,26 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "🔗 هل تريد أيضاً تسجيل الدخول عبر الموقع (Google)؟ <a href=\"{account_url}\">فتح حسابي</a>"
         ),
     },
+    # 2026-10-20 (owner): invite a friend, 5 more days (todira_common/invite.py, bot/handlers/invite.py)
+    "invite.text": {
+        "he": "🎁 <b>רוצה עוד 5 ימים בחינם?</b>\nשלח לחבר את הקישור הזה. כשהוא נכנס לבוט בפעם הראשונה, "
+        "נוסיף לך 5 ימי גישה מלאה. אפשר להזמין כמה חברים שרוצים.\n\n{link}",
+        "en": "🎁 <b>Want 5 more days free?</b>\nSend this link to a friend. When they open the bot for the first time, "
+        "you get 5 more days of full access. Invite as many friends as you like.\n\n{link}",
+        "ru": "🎁 <b>Хотите ещё 5 дней бесплатно?</b>\nОтправьте эту ссылку другу. Когда он впервые откроет бота, "
+        "вы получите ещё 5 дней полного доступа. Приглашать можно сколько угодно друзей.\n\n{link}",
+        "fr": "🎁 <b>5 jours de plus offerts ?</b>\nEnvoie ce lien à un ami. Quand il ouvre le bot pour la première fois, "
+        "tu reçois 5 jours d'accès complet en plus. Invite autant d'amis que tu veux.\n\n{link}",
+        "ar": "🎁 <b>تريد 5 أيام إضافية مجاناً؟</b>\nأرسل هذا الرابط لصديق. عندما يفتح البوت لأول مرة، "
+        "تحصل على 5 أيام إضافية من الوصول الكامل. يمكنك دعوة أي عدد من الأصدقاء.\n\n{link}",
+    },
+    "invite.joined": {
+        "he": "🎉 חבר שהזמנת הצטרף לטודירה! הוספנו לך 5 ימים, ויש לך גישה מלאה עד {date}.",
+        "en": "🎉 A friend you invited joined Todira! We added 5 days: you have full access until {date}.",
+        "ru": "🎉 Друг, которого вы пригласили, присоединился к Тодире! Мы добавили 5 дней: полный доступ до {date}.",
+        "fr": "🎉 Un ami que tu as invité a rejoint Todira ! On t'a ajouté 5 jours : accès complet jusqu'au {date}.",
+        "ar": "🎉 صديق دعوته انضم إلى تودّيرا! أضفنا لك 5 أيام: لديك وصول كامل حتى {date}.",
+    },
     "start.linked": {
         "he": "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת — מעכשיו תקבל עדכונים גם כאן בטלגרם.",
         "en": "🎉 Connected! You're already registered with me — from now on you'll get updates "

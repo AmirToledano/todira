@@ -19,6 +19,7 @@ import logging
 import os
 
 from config import WEBSITE_URL
+from handlers.invite import reward_inviter
 from todira_common.access import has_full_access
 from todira_common.channel_link import CODE_PREFIX as CHANNEL_LINK_CODE_PREFIX
 from todira_common.channel_link import resolve_link_code
@@ -205,3 +206,5 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         _upsert_or_link_user_sync, tg_user, start_payload
     )
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+    # 2026-10-20: a friend who came through someone's invite link earns that person 5 more days (handlers/invite.py)
+    await reward_inviter(update, context, start_payload)
