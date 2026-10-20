@@ -12,9 +12,11 @@ import json
 import logging
 import os
 import random
+import re
 import sys
 import time
 import types
+from collections import Counter
 from typing import Callable
 
 from sqlalchemy import Text, all_, any_, bindparam, case, func, select
@@ -2399,6 +2401,65 @@ def _delist_group_posts_that_are_not_listings() -> int:
     return len(bad)
 
 
+# 2026-10-20 (owner: "as many flats as possible, with great care"): a third of the stored group posts had no city, so
+# they matched almost no one's search. Many groups are about one city; a post that names no city takes its group's
+# city, but only for a group whose earlier posts that did name a city agree on one: at least _GROUP_CITY_MIN_POSTS of
+# them, and at least _GROUP_CITY_MIN_SHARE naming the same city.
+_GROUP_CITY_MIN_POSTS = 6
+_GROUP_CITY_MIN_SHARE = 0.85
+_GROUP_ID_IN_URL_RE = re.compile(r"/groups/(\d+)/posts/")
+
+
+def _group_cities() -> dict[str, str]:
+    """{group id: city} for the groups whose stored posts agree on one city (see above)."""
+    table = Listing.__table__
+    with get_session() as session:
+        rows = session.execute(
+            select(table.c.url, table.c.city).where(
+                table.c.source == Source.FACEBOOK_GROUPS, table.c.city.is_not(None), table.c.url.is_not(None)
+            )
+        ).all()
+    return _dominant_group_cities(rows)
+
+
+def _dominant_group_cities(rows) -> dict[str, str]:
+    """{group id: city} from stored (url, city) pairs - see _group_cities."""
+    per_group: dict[str, Counter] = {}
+    for url, city in rows:
+        found = _GROUP_ID_IN_URL_RE.search(url or "")
+        if found and city:
+            per_group.setdefault(found.group(1), Counter())[city] += 1
+    cities = {}
+    for group_id, counts in per_group.items():
+        total = sum(counts.values())
+        city, top = counts.most_common(1)[0]
+        if total >= _GROUP_CITY_MIN_POSTS and top / total >= _GROUP_CITY_MIN_SHARE:
+            cities[group_id] = city
+    return cities
+
+
+def _fill_stored_group_cities(group_cities: dict[str, str]) -> int:
+    """Stored live group posts that name no city take their group's city too. Returns how many."""
+    if not group_cities:
+        return 0
+    table = Listing.__table__
+    filled = 0
+    with get_session() as session:
+        rows = session.execute(
+            select(table.c.id, table.c.url).where(
+                table.c.source == Source.FACEBOOK_GROUPS, table.c.city.is_(None), table.c.is_delisted.is_(False)
+            )
+        ).all()
+        for listing_id, url in rows:
+            found = _GROUP_ID_IN_URL_RE.search(url or "")
+            if found and found.group(1) in group_cities:
+                session.execute(table.update().where(table.c.id == listing_id).values(city=group_cities[found.group(1)]))
+                filled += 1
+        if filled:
+            session.commit()
+    return filled
+
+
 def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[str], int, int, bool]:
     """The browser route of _scrape_facebook_groups (2026-10-19): one groups-feed session covers EVERY group the
     dedicated account joined - no tracked-id list needed - and each post's text, time and photos come with the feed,
@@ -2427,7 +2488,15 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
     except Exception:
         logger.exception("re-checking stored Facebook group posts failed")
     known_ids = _fetch_known_external_ids(Source.FACEBOOK_GROUPS)
-    skipped_seekers = skipped_vague = errors = 0
+    group_cities: dict[str, str] = {}
+    try:
+        group_cities = _group_cities()
+        stored_filled = _fill_stored_group_cities(group_cities)
+        if stored_filled:
+            logger.info("Facebook groups: %d stored posts took their group's city", stored_filled)
+    except Exception:
+        logger.exception("reading the groups' cities failed")
+    skipped_seekers = skipped_vague = errors = city_from_group = 0
     for post in posts:
         seen_external_ids.add(post["post_id"])
         if post["post_id"] in known_ids:
@@ -2441,6 +2510,9 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
         ):
             skipped_vague += 1  # no price or rooms, or not a flat on offer at all (an ad for a service, chatter)
             continue
+        if not raw_item.get("city") and post["group_id"] in group_cities:
+            raw_item["city"] = group_cities[post["group_id"]]
+            city_from_group += 1
         hint = raw_item.pop("dealHint", None)
         deal_type = hint if hint in DealType.ALL else (DealType.SALE if post["group_id"] in sale_group_ids else DealType.RENT)
         normalized = normalize(raw_item, source=Source.FACEBOOK_GROUPS, deal_type=deal_type)
@@ -2449,8 +2521,10 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
         else:
             errors += 1
     logger.info(
-        "Facebook groups feed: %d posts, %d new listings, %d looking-for posts skipped, %d without price or rooms skipped",
+        "Facebook groups feed: %d posts, %d new listings, %d looking-for posts skipped, %d without price or rooms skipped, "
+        "%d already known, %d took their group's city",
         len(posts), len(normalized_items), skipped_seekers, skipped_vague,
+        sum(1 for post in posts if post["post_id"] in known_ids), city_from_group,
     )
     return normalized_items, seen_external_ids, len(posts), errors, True
 
