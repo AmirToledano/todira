@@ -1,0 +1,64 @@
+name: Diagnose — how many Facebook flats come in and what is left out (read-only)
+
+# 2026-10-20 (owner: "as many flats as possible, with great care"). Before loosening anything: per run, how many group
+# posts the feed saw, how many became listings, how many were skipped as "looking for" or as vague, and how many were
+# already known (does each run overlap the previous one, or are posts missed in between); plus the stored Facebook
+# listings by day and how many lack a price, rooms or a city. Counts only - never a post's text, a name or an id.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  volume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Per run, from the Facebook scraper pods Kubernetes still keeps
+        run: |
+          for pod in $(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+            echo "=== run started $(kubectl get pod -n todira "$pod" -o jsonpath='{.status.startTime} {.status.phase}')"
+            # only lines made of counts; anything that looks like a link is cut out
+            kubectl logs -n todira "$pod" --tail=400 2>&1 \
+              | grep -E "stories seen|Facebook groups feed:|Facebook Marketplace|stored posts are not flats|Scraper run summary" \
+              | sed -E 's/^[0-9-]+ [0-9:,]+ //; s#https?://[^ ]+#<link>#g' | cut -c1-400
+          done
+      - name: Stored Facebook listings
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \pset format unaligned
+          \pset footer off
+          \echo '== per source: live | new 24h | new 7d | live without price | without rooms | without city | delisted 7d'
+          SELECT source,
+                 count(*) FILTER (WHERE NOT is_delisted),
+                 count(*) FILTER (WHERE first_seen_at > now() - interval '24 hours'),
+                 count(*) FILTER (WHERE first_seen_at > now() - interval '7 days'),
+                 count(*) FILTER (WHERE NOT is_delisted AND price IS NULL),
+                 count(*) FILTER (WHERE NOT is_delisted AND rooms IS NULL),
+                 count(*) FILTER (WHERE NOT is_delisted AND city IS NULL),
+                 count(*) FILTER (WHERE is_delisted AND delisted_at > now() - interval '7 days')
+          FROM listings WHERE source IN ('facebook_groups', 'facebook_marketplace') GROUP BY source ORDER BY source;
+          \echo '== new group posts per day (Israel date | new | of them rent | sale | with price | with rooms | duplicates of another site)'
+          SELECT (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date,
+                 count(*),
+                 count(*) FILTER (WHERE deal_type = 'rent'),
+                 count(*) FILTER (WHERE deal_type = 'sale'),
+                 count(*) FILTER (WHERE price IS NOT NULL),
+                 count(*) FILTER (WHERE rooms IS NOT NULL),
+                 count(*) FILTER (WHERE duplicate_of_id IS NOT NULL)
+          FROM listings WHERE source = 'facebook_groups' AND first_seen_at > now() - interval '8 days'
+          GROUP BY 1 ORDER BY 1;
+          \echo '== alerts sent for group posts in the last 7 days (rows in sent_notifications)'
+          SELECT count(*) FROM sent_notifications n JOIN listings l ON l.id = n.listing_id
+          WHERE l.source = 'facebook_groups' AND n.sent_at > now() - interval '7 days';
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < /tmp/q.sql
