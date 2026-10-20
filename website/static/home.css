@@ -216,7 +216,7 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-phone-head img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
 .lp-phone-head b { display: block; color: var(--lp-heading); line-height: 1.2; }
 .lp-phone-head span { font-size: 13px; color: var(--lp-muted); }
-.lp-phone-body { padding: 16px 14px; min-height: 360px; display: flex; flex-direction: column; gap: 10px; transition: opacity .35s; }
+.lp-phone-body { padding: 16px 14px; min-height: 484px; display: flex; flex-direction: column; gap: 10px; transition: opacity .35s; }
 .lp-phone-body.fading { opacity: 0; }
 .lp-bubble { max-width: 88%; padding: 10px 14px; border-radius: 16px; font-size: 16px; line-height: 1.45; background: var(--lp-surface); color: var(--lp-text); }
 .lp-bubble.lp-own { align-self: flex-start; background: var(--lp-own); color: var(--lp-own-text); border-start-end-radius: 4px; min-height: 44px; }
@@ -226,8 +226,17 @@ body:has(.lp) .site-ambient { display: none; }
 @keyframes lp-blink { 50% { opacity: 0; } }
 .lp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .lp-chips span { border: 1px solid var(--lp-teal); color: var(--lp-teal); border-radius: 999px; padding: 2px 12px; font-size: 14px; font-weight: 600; }
-.lp-alert-title { font-weight: 800; }
-.lp-alert-price { font-family: "Karantina", "Rubik", sans-serif; font-weight: 700; font-size: 34px; line-height: 1; margin: 6px 0 2px; color: var(--lp-heading); }
+/* the alert is the bot's real Telegram message: its lines, then its three buttons underneath */
+.lp-alert { align-self: flex-end; width: 94%; display: grid; gap: 4px; }
+.lp-alert[hidden] { display: none; }
+.lp-alert .lp-bubble { max-width: none; border-start-start-radius: 4px; }
+.lp-tg p { margin: 0; font-size: 15px; line-height: 1.55; }
+.lp-tg .lp-tg-features { margin-top: 10px; }
+.lp-tg-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.lp-tg-buttons span {
+  text-align: center; font-size: 13px; font-weight: 600; padding: 7px 4px; border-radius: 10px;
+  background: var(--lp-surface); color: var(--lp-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .lp-alert-link { color: var(--lp-link); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- prices, questions, end ---------- */
@@ -258,7 +267,7 @@ body:has(.lp) .site-ambient { display: none; }
   html:not(.a11y-no-motion) .lp-ring.go { animation: lp-ping 1.5s ease-out 2 both; }
   html:not(.a11y-no-motion) .lp-feed li.fresh { animation: lp-drop .45s ease-out; }
   html:not(.a11y-no-motion) .lp-chips span { animation: lp-pop .3s ease-out both; }
-  html:not(.a11y-no-motion) .lp-bubble.arrive { animation: lp-drop .4s ease-out; }
+  html:not(.a11y-no-motion) .lp-bubble.arrive, html:not(.a11y-no-motion) .lp-alert.arrive { animation: lp-drop .4s ease-out; }
 }
 @keyframes lp-glint { 0%, 100% { transform: scale(.2) rotate(0deg); opacity: 0; } 45% { transform: scale(1) rotate(45deg); opacity: 1; } 70% { transform: scale(.4) rotate(90deg); opacity: 0; } }
 @keyframes lp-ping { from { transform: scale(.4); opacity: 1; } to { transform: scale(2.8); opacity: 0; } }

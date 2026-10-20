@@ -34,10 +34,25 @@
     function fillDemo(d) {
       chips.innerHTML = "";
       d.chips.forEach(function (c) { var s = document.createElement("span"); s.textContent = c; chips.appendChild(s); });
-      document.getElementById("lp-d-title").textContent = d.title;
-      document.getElementById("lp-d-price").textContent = d.price;
-      document.getElementById("lp-d-detail").textContent = d.detail;
-      document.getElementById("lp-d-street").textContent = d.street;
+      // the bot's real message, line for line (main.py _demo_alert)
+      var a = d.alert, card = document.getElementById("lp-d-card"), buttons = document.getElementById("lp-d-buttons");
+      var line = function (emoji, label, value, cls) {
+        var p = document.createElement("p");
+        if (cls) { p.className = cls; }
+        p.appendChild(document.createTextNode(emoji + " "));
+        var b = document.createElement("b"); b.textContent = label; p.appendChild(b);
+        if (value) { p.appendChild(document.createTextNode(" " + value)); }
+        card.appendChild(p);
+      };
+      card.textContent = "";
+      if (a.prefix) { line("🏢", a.prefix, ""); }
+      var place = document.createElement("p"), link = document.createElement("span");
+      link.className = "lp-alert-link"; link.textContent = a.place;
+      place.appendChild(document.createTextNode("📍")); place.appendChild(link); card.appendChild(place);
+      a.rows.forEach(function (r) { line(r[0], r[1], r[2]); });
+      line("🔑", a.features_label, a.features.join(" | "), "lp-tg-features");
+      buttons.textContent = "";
+      a.buttons.forEach(function (label) { var b = document.createElement("span"); b.textContent = label; buttons.appendChild(b); });
     }
     function play() {
       var d = demos[idx % demos.length]; idx++;
