@@ -343,7 +343,7 @@ def _current_user_summary(request: Request) -> dict | None:
         row = session.execute(
             select(
                 User.telegram_user_id, User.first_name, User.telegram_username, User.created_at,
-                User.trial_ends_at, User.paid_until, User.free_access_granted,
+                User.trial_ends_at, User.paid_until, User.free_access_granted, User.google_email,
             ).where(User.id == user_id)
         ).first()
     if row is None:
@@ -352,6 +352,7 @@ def _current_user_summary(request: Request) -> dict | None:
         "telegram_user_id": row.telegram_user_id,
         "first_name": row.first_name,
         "telegram_username": row.telegram_username,
+        "email": getattr(row, "google_email", None),
         "trial_gift_until": _trial_gift_until(row),
     }
 
@@ -1240,7 +1241,7 @@ def auth_logout(request: Request):
 
 
 @app.get("/contact")
-def contact(request: Request, uid: int | None = None):
+def contact(request: Request, uid: int | None = None, topic: str | None = None):
     """2026-09-25: sixth page moved into a React island (website/landing-react/contact.html) —
     same pattern as about()/accessibility()/privacy()/terms() above, but unlike those (read-only
     legal/info content), this page has a real form that must reach the server. Unlike a native
@@ -1260,6 +1261,8 @@ def contact(request: Request, uid: int | None = None):
             "landing_js_url": contact_assets.get("js", ""),
             "landing_css_urls": contact_assets.get("css", []),
             "uid": uid,
+            # 2026-10-20: the "feedback" bubble on every page opens this form with its own title (see base.html)
+            "topic": "feedback" if topic == "feedback" else None,
         },
     )
 

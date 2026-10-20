@@ -1,0 +1,1 @@
+import{_t as e,u as t}from"./i18n-_qkrshGg.js";var n=e();function r({style:e,animate:r,duration:i}){return(0,n.jsx)(t.div,{className:`tl-blob`,style:e,animate:r,transition:{duration:i,repeat:1/0,repeatType:`mirror`,ease:`easeInOut`}})}export{r as t};

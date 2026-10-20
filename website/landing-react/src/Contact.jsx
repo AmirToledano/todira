@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { t, uid, telegramBotUrl } from "./i18n";
+import { t, uid, telegramBotUrl, topic, prefill } from "./i18n";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
 // idle -> submitting -> "sent" | "error" (errorKind: "empty" | "consent" | "generic")
 export default function Contact() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [name, setName] = useState(prefill.name || "");
+  const [email, setEmail] = useState(prefill.email || "");
+  const feedback = topic === "feedback";
   const [message, setMessage] = useState("");
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState("idle");
@@ -62,8 +63,8 @@ export default function Contact() {
         transition={{ duration: 0.6, ease: easePremium }}
       >
         <div className="pb-text">
-          <h1>{t("contact.title")}</h1>
-          <p>{t("contact.subtitle")}</p>
+          <h1>{t(feedback ? "contact.feedback_title" : "contact.title")}</h1>
+          <p>{t(feedback ? "contact.feedback_subtitle" : "contact.subtitle")}</p>
         </div>
       </motion.div>
 
@@ -106,7 +107,7 @@ export default function Contact() {
                 <textarea
                   id="c-message"
                   rows={6}
-                  placeholder={t("contact.message_placeholder")}
+                  placeholder={t(feedback ? "contact.feedback_placeholder" : "contact.message_placeholder")}
                   required
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}

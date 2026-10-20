@@ -284,6 +284,9 @@
   </footer>
 
   <div id="a11y-widget">
+    {% if active_page != 'contact' %}
+    <a class="feedback-bubble" href="/contact?topic=feedback{{ '&uid=' ~ uid if uid else '' }}">{{ t('feedback.bubble') }}</a>
+    {% endif %}
     <button type="button" id="a11y-toggle" aria-expanded="false" aria-controls="a11y-panel" aria-label="{{ t('a11y.widget_toggle_label') }}">♿</button>
     <div id="a11y-panel" role="dialog" aria-label="{{ t('a11y.panel_title') }}" hidden>
       <div class="a11y-panel-head">

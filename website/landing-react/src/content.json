@@ -664,6 +664,27 @@
     "fr": "Ouvrir le bot Telegram",
     "ar": "افتح البوت على تيليجرام"
   },
+  "contact.feedback_title": {
+    "he": "משוב על האתר",
+    "en": "Feedback on the site",
+    "ru": "Отзыв о сайте",
+    "fr": "Votre avis sur le site",
+    "ar": "رأيك في الموقع"
+  },
+  "contact.feedback_subtitle": {
+    "he": "מה עובד טוב ומה כדאי לשפר? כל הערה עוזרת לנו.",
+    "en": "What works well and what should we improve? Every note helps.",
+    "ru": "Что работает хорошо, а что стоит улучшить? Нам поможет любое замечание.",
+    "fr": "Qu'est-ce qui marche bien, et que faut-il améliorer? Chaque remarque nous aide.",
+    "ar": "ما الذي يعمل جيدًا وما الذي يستحق التحسين؟ كل ملاحظة تساعدنا."
+  },
+  "contact.feedback_placeholder": {
+    "he": "מה אהבת? מה חסר או לא עבד?",
+    "en": "What did you like? What was missing or didn't work?",
+    "ru": "Что понравилось? Чего не хватило или что не сработало?",
+    "fr": "Qu'avez-vous aimé? Qu'est-ce qui manquait ou n'a pas marché?",
+    "ar": "ما الذي أعجبك؟ ما الذي كان ناقصًا أو لم يعمل؟"
+  },
   "contact.title": {
     "he": "צור קשר",
     "en": "Contact us",
