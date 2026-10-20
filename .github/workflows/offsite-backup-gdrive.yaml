@@ -133,7 +133,18 @@ jobs:
           OWNER_TELEGRAM_USER_ID: ${{ secrets.OWNER_TELEGRAM_USER_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$OWNER_TELEGRAM_USER_ID" ] || exit 0
-          curl -fsS --max-time 10 -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${OWNER_TELEGRAM_USER_ID}" \
-            --data-urlencode "text=🚨 טודירה: הגיבוי הלילי לגוגל דרייב נכשל. פרטים: ${RUN_URL}" || true
+          [ -n "$TELEGRAM_BOT_TOKEN" ] || exit 0
+          # 2026-10-20: the owner's inbox group first (the app_flags row the bot saves; never printed, these logs are
+          # public), his private chat if that fails or the server can't be reached.
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' --request-timeout=20s 2>/dev/null || true)
+          INBOX=""
+          if [ -n "$PG" ]; then
+            INBOX=$(kubectl exec -n todira "$PG" --request-timeout=20s -- sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"select value from app_flags where key = 'owner_inbox_chat_id'\"" 2>/dev/null | tr -d '[:space:]' || true)
+          fi
+          [ -n "$INBOX" ] && echo "::add-mask::$INBOX"
+          for CHAT in $INBOX $OWNER_TELEGRAM_USER_ID; do
+            curl -fsS --max-time 10 -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${CHAT}" \
+              --data-urlencode "text=🚨 טודירה: הגיבוי הלילי לגוגל דרייב נכשל. פרטים: ${RUN_URL}" && break
+          done
+          true

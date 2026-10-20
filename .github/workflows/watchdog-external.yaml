@@ -2,7 +2,8 @@ name: Watchdog — site, bot and scraper, checked from outside every hour
 
 # 2026-10-16 (owner: "what else is there" before launch). The in-cluster healthcheck CronJob only checks the website
 # from inside the same server, so it can never report the server itself being down, and nothing watched the bot or
-# the scraper. This runs on GitHub's machines every hour and DMs the owner on Telegram ONLY when something is wrong:
+# the scraper. This runs on GitHub's machines every hour and tells the owner on Telegram (his inbox group, else his
+# private chat) ONLY when something is wrong:
 #   - the website does not answer /healthz (3 tries, 20 s apart - a deploy restart is not an alert);
 #   - the bot is not running;
 #   - the last main scraper run failed, or (10:00-23:00 Israel time, when it runs hourly) no scan finished for 2.5 h.
@@ -57,6 +58,16 @@ jobs:
           LAST=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{range .items[*]}{.status.phase}{" "}{.metadata.creationTimestamp}{"\n"}{end}' --request-timeout=20s 2>/dev/null | tail -1)
           echo "last scraper pod (phase started): ${LAST:-none}"
           echo "scraper_failed=$(echo "$LAST" | awk '{print ($1 == "Failed") ? 1 : 0}')" >> "$GITHUB_OUTPUT"
+          # 2026-10-20: the owner's inbox group (the app_flags row the bot saves), kept in a file - never printed or
+          # passed through outputs, so it stays out of these public logs. Empty when the server can't be reached.
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' --request-timeout=20s 2>/dev/null || true)
+          INBOX=""
+          if [ -n "$PG" ]; then
+            INBOX=$(kubectl exec -n todira "$PG" --request-timeout=20s -- sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"select value from app_flags where key = 'owner_inbox_chat_id'\"" 2>/dev/null | tr -d '[:space:]' || true)
+          fi
+          [ -n "$INBOX" ] && echo "::add-mask::$INBOX"
+          printf '%s' "$INBOX" > "$RUNNER_TEMP/owner_inbox"
+          echo "owner inbox group: $([ -n "$INBOX" ] && echo found || echo none)"
 
       - name: Tell the owner if something is wrong
         env:
@@ -89,7 +100,12 @@ jobs:
             exit 0
           fi
           echo "problems found - telling the owner"
-          [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$OWNER_TELEGRAM_USER_ID" ] || exit 0
+          [ -n "$TELEGRAM_BOT_TOKEN" ] || exit 0
           text="$(printf '🚨 טודירה - משהו לא תקין:\n%s\nפרטים: %s' "$problems" "$RUN_URL" | sed 's/^ *//')"
-          curl -fsS --max-time 10 -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${OWNER_TELEGRAM_USER_ID}" --data-urlencode "text=${text}" || true
+          # the owner's inbox group first, his private chat if that fails (or the server could not be read)
+          INBOX=$(cat "$RUNNER_TEMP/owner_inbox" 2>/dev/null || true)
+          for CHAT in $INBOX $OWNER_TELEGRAM_USER_ID; do
+            curl -fsS --max-time 10 -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=${text}" && break
+          done
+          true
