@@ -80,7 +80,17 @@
         <div class="lp-phone-body" id="lp-demo">
           <div class="lp-bubble lp-own" id="lp-d-ask">{{ t('landing.demo1_ask') }}</div>
           <div class="lp-bubble lp-bot" id="lp-d-got">{{ t('landing.demo_got') }}<div class="lp-chips" id="lp-d-chips">{% for chip in t('landing.demo1_chips').split('|') %}<span>{{ chip }}</span>{% endfor %}</div></div>
-          <div class="lp-bubble lp-bot" id="lp-d-alert"><div class="lp-alert-title" id="lp-d-title">{{ t('landing.demo1_title') }}</div><div class="lp-alert-price" id="lp-d-price">{{ t('landing.demo1_price') }}</div><span id="lp-d-detail">{{ t('landing.demo1_detail') }}</span><br><span class="lp-alert-link" id="lp-d-street">{{ t('landing.demo1_street') }}</span></div>
+          {# 2026-10-20 (owner): the bot's real message, line for line (main.py _demo_alert) #}
+          {% set alert = landing_js.demos[0].alert %}
+          <div class="lp-alert" id="lp-d-alert">
+            <div class="lp-bubble lp-bot lp-tg" id="lp-d-card">
+              {% if alert.prefix %}<p>🏢 <b>{{ alert.prefix }}</b></p>{% endif %}
+              <p>📍<span class="lp-alert-link">{{ alert.place }}</span></p>
+              {% for row in alert.rows %}<p>{{ row[0] }} <b>{{ row[1] }}</b> {{ row[2] }}</p>{% endfor %}
+              <p class="lp-tg-features">🔑 <b>{{ alert.features_label }}</b> {{ alert.features | join(' | ') }}</p>
+            </div>
+            <div class="lp-tg-buttons" id="lp-d-buttons">{% for label in alert.buttons %}<span>{{ label }}</span>{% endfor %}</div>
+          </div>
         </div>
       </div>
     </div>

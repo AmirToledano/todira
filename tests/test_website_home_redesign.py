@@ -79,6 +79,23 @@ def test_the_page_carries_five_example_chats_for_the_demo(client):
     assert [c["name"] for c in data["cities"]][0] == "Haifa"
 
 
+def test_the_demo_alert_is_the_bots_real_message():
+    """Owner, 2026-10-20: the demo's alert shows the full message the bot sends, with its labels, emoji and buttons."""
+    from todira_common.bot_strings import bot_text
+
+    for lang in website_i18n.SUPPORTED_LANGS:
+        alerts = [demo["alert"] for demo in website_main._landing_js(lang)["demos"]]
+        assert len(alerts) == 5
+        first = alerts[0]
+        assert first["rows"][0] == ["💰", bot_text("card.price_label", lang), "7,300₪"]
+        assert first["features_label"] == bot_text("card.features_label", lang)
+        assert first["buttons"] == [bot_text(k, lang) for k in ("card.like_button", "card.hide_button", "card.found_button")]
+        assert first["place"] == T["landing.demo1_street"][lang]
+        assert alerts[2]["prefix"] == bot_text("card.sublet", lang)  # the sublet example says so, like the bot does
+    html = TestClient(website_main.app).get("/?lang=he").text
+    assert "🌿מרפסת" in html and 'id="lp-d-buttons"' in html
+
+
 def test_dark_mode_shows_the_same_portrait_with_its_words(client):
     """Owner, 2026-10-19: the dark page showed a different picture of Todi; both themes use the one portrait with
     the words on it now."""

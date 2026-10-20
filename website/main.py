@@ -73,6 +73,7 @@ from todira_common.access import (
 from todira_common.channel_link import generate_link_code
 from todira_common.public_text import is_room_in_shared_flat, public_description
 from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECOND_NAMES
+from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
@@ -755,6 +756,47 @@ def _landing_plans() -> list[dict]:
     return plans
 
 
+# 2026-10-20 (owner): the demo's alert is the bot's real message - the same lines, labels and emoji as
+# todira_common/cards.py (_build_body_lines, feature_list, listing_keyboard), in the visitor's language. The facts of
+# each example conversation (landing.demoN_*); the place line is landing.demoN_street.
+_DEMO_FEATURES = {
+    "has_parking": ("🚗", "card.feature_parking"), "has_elevator": ("🛗", "card.feature_elevator"),
+    "has_balcony": ("🌿", "card.feature_balcony"), "pets_allowed": ("🐾", "card.feature_pets_allowed"),
+    "is_renovated": ("✨", "card.feature_renovated"), "safe_room": ("🛡️", "card.feature_safe_room"),
+    "furnished": ("🛋️", "card.feature_furnished"),
+}
+_LANDING_DEMO_FACTS = (
+    {"price": 7300, "rooms": 3, "size": 75, "floor": (2, 4), "now": True, "features": ("has_balcony", "is_renovated")},
+    {"price": 3600, "rooms": 2, "size": 55, "floor": (3, 4), "now": True, "features": ("pets_allowed", "has_balcony")},
+    {"price": 5500, "rooms": 2, "size": 45, "floor": (1, 3), "now": True, "features": ("furnished",), "sublet": True},
+    {"price": 4700, "rooms": 4, "size": 90, "floor": (1, 3), "now": False, "features": ("has_parking", "safe_room")},
+    {"price": 2890000, "rooms": 4, "size": 105, "floor": (2, 4), "now": False,
+     "features": ("has_elevator", "has_parking", "safe_room")},
+)
+
+
+def _demo_alert(facts: dict, place: str, lang: str) -> dict:
+    def label(key: str, **kwargs) -> str:
+        return bot_text(key, lang, **kwargs)
+
+    rows = [
+        ["💰", label("card.price_label"), f"{facts['price']:,}₪"],
+        ["🛏️", label("card.rooms_label"), str(facts["rooms"])],
+        ["📐", label("card.area_label"), label("kb.sqm_value", value=facts["size"])],
+        ["🏢", label("card.floor_label"), f"{facts['floor'][0]} {label('card.floor_of')} {facts['floor'][1]}"],
+    ]
+    if facts["now"]:
+        rows.append(["📅", label("card.move_in_label"), label("card.move_in_immediate")])
+    return {
+        "prefix": label("card.sublet") if facts.get("sublet") else None,
+        "place": place,
+        "rows": rows,
+        "features_label": label("card.features_label"),
+        "features": [emoji + label(key) for emoji, key in (_DEMO_FEATURES[f] for f in facts["features"])],
+        "buttons": [label("card.like_button"), label("card.hide_button"), label("card.found_button")],
+    }
+
+
 def _landing_js(lang: str) -> dict:
     t = make_translator(lang)
     return {
@@ -764,10 +806,9 @@ def _landing_js(lang: str) -> dict:
         "demos": [
             {
                 "ask": t(f"landing.demo{n}_ask"), "chips": t(f"landing.demo{n}_chips").split("|"),
-                "title": t(f"landing.demo{n}_title"), "price": t(f"landing.demo{n}_price"),
-                "detail": t(f"landing.demo{n}_detail"), "street": t(f"landing.demo{n}_street"),
+                "alert": _demo_alert(facts, t(f"landing.demo{n}_street"), lang),
             }
-            for n in range(1, 6)
+            for n, facts in enumerate(_LANDING_DEMO_FACTS, start=1)
         ],
     }
 
