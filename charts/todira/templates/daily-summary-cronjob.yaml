@@ -1,0 +1,48 @@
+# 2026-10-20 (owner): a short summary of yesterday every morning in his inbox group - website/daily_summary.py.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-daily-summary
+  labels:
+    app: {{ .Release.Name }}-daily-summary
+spec:
+  schedule: {{ .Values.dailySummary.schedule | quote }}
+  timeZone: "Asia/Jerusalem"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-daily-summary
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: daily-summary
+              image: "{{ .Values.websiteImage.repository }}:{{ .Values.websiteImage.tag | default "latest" }}"
+              command: ["python", "daily_summary.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: database-url
+                - name: TELEGRAM_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: telegram-bot-token
+                - name: OWNER_TELEGRAM_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: owner-telegram-user-id
+                      optional: true
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.dailySummary.requests.cpu }}
+                  memory: {{ .Values.resources.dailySummary.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.dailySummary.limits.cpu }}
+                  memory: {{ .Values.resources.dailySummary.limits.memory }}
