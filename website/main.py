@@ -43,6 +43,7 @@ import logging
 import math
 import mimetypes
 import os
+import re
 import secrets
 import threading
 import time
@@ -53,7 +54,7 @@ from urllib.parse import quote as url_quote, urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
-from todira_common import listing_enrichment, owner_inbox
+from todira_common import activity, listing_enrichment, owner_inbox
 from todira_common.access import (
     CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
@@ -90,6 +91,7 @@ from sqlalchemy import Float, case, cast, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import defer
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 
@@ -227,6 +229,40 @@ mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 app = FastAPI(title="טודירה")
+
+# 2026-10-21 (owner: "when I ask, I want to know whether there was activity"): one count per person per day for the
+# pages people open (todira_common/activity.py). Pages only - not files, the JSON the pages fetch, webhooks or admin -
+# and never search engines or link previews. Added before SessionMiddleware so it runs inside it and sees who is
+# signed in; the count is written in the background, after the page has gone out.
+_NOT_A_PAGE_VISIT = ("/static", "/api", "/webhooks", "/admin", "/healthz", "/favicon", "/robots", "/sitemap")
+_NOT_A_PERSON = re.compile(r"bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|curl|python|headless", re.I)
+
+
+def _activity_who(request: Request) -> str | None:
+    if request.method != "GET" or request.url.path.startswith(_NOT_A_PAGE_VISIT):
+        return None
+    user_agent = request.headers.get("user-agent", "")
+    if not user_agent or _NOT_A_PERSON.search(user_agent):
+        return None
+    user_id = request.session.get("user_id")
+    if user_id is not None:
+        return f"u{user_id}"
+    forwarded = request.headers.get("x-forwarded-for", "")
+    address = forwarded.split(",")[0].strip() or (request.client.host if request.client else "")
+    return activity.visitor_key(address, user_agent, SESSION_SECRET_KEY, activity.today())
+
+
+class _ActivityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if response.status_code < 400 and response.headers.get("content-type", "").startswith("text/html"):
+            who = _activity_who(request)
+            if who:
+                asyncio.get_running_loop().run_in_executor(None, activity.record, activity.SITE_VISIT, who)
+        return response
+
+
+app.add_middleware(_ActivityMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")

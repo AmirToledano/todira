@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 
+from handlers.activity import build_activity_handler
 from handlers.apartments import build_apartments_handler
 from handlers.contact_fallback import build_contact_fallback_handler
 from handlers.filter_conversation import build_filter_conversation_handler
@@ -114,6 +115,8 @@ def main() -> None:
         Application.builder().token(token).persistence(persistence).post_init(_post_init).build()
     )
 
+    # 2026-10-21: counts messages and button presses per person per day (handlers/activity.py), before anything else
+    application.add_handler(*build_activity_handler())
     # 2026-10-20: the owner's inbox group (handlers/owner_inbox.py) - its guard runs before every handler below
     for handler, group in build_owner_inbox_handlers():
         application.add_handler(handler, group=group)

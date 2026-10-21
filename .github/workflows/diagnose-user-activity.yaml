@@ -3,6 +3,7 @@ name: Diagnose — do people really use the bot and the site day to day (read-on
 # 2026-10-21 (owner: "do people actually use the bot or the site every day?"). Counts only, the owner's own account left
 # out: sign-ups, filter changes (bot or site), saved/hidden listings, alerts sent, contact messages, payments, and how
 # many different people used /start or /filter in the bot since its pod started. Never a name, an id or a message.
+# 2026-10-21: plus messages to the bot, button presses and site visits per day (activity_days, todira_common/activity.py).
 on:
   workflow_dispatch: {}
 
@@ -82,6 +83,15 @@ jobs:
           \echo '== contact messages: 7d | 30d'
           SELECT count(*) FILTER (WHERE created_at > now() - interval '7 days'), count(*) FILTER (WHERE created_at > now() - interval '30 days')
           FROM contact_messages WHERE telegram_user_id IS DISTINCT FROM :owner;
+          \echo '== bot and site per Israel day, last 14 days (counted since 2026-10-21): people who wrote to the bot | messages | people who pressed buttons | presses | signed-in site visitors | anonymous site visitors | page views'
+          WITH me AS (SELECT 't' || :owner AS t, (SELECT 'u' || id FROM users WHERE telegram_user_id = :owner) AS u),
+               a AS (SELECT * FROM activity_days, me WHERE who <> me.t AND who IS DISTINCT FROM me.u AND day > (now() AT TIME ZONE 'Asia/Jerusalem')::date - 14)
+          SELECT day,
+                 count(*) FILTER (WHERE kind = 'bot_message'), coalesce(sum(hits) FILTER (WHERE kind = 'bot_message'), 0),
+                 count(*) FILTER (WHERE kind = 'bot_button'), coalesce(sum(hits) FILTER (WHERE kind = 'bot_button'), 0),
+                 count(*) FILTER (WHERE kind = 'site_visit' AND who LIKE 'u%'), count(*) FILTER (WHERE kind = 'site_visit' AND who LIKE 'v%'),
+                 coalesce(sum(hits) FILTER (WHERE kind = 'site_visit'), 0)
+          FROM a GROUP BY day ORDER BY day;
           \echo '== payments by status: all time | 30d'
           SELECT pay.status, count(*), count(*) FILTER (WHERE pay.created_at > now() - interval '30 days')
           FROM payments pay JOIN people p ON p.id = pay.user_id GROUP BY pay.status ORDER BY pay.status;

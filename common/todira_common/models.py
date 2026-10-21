@@ -490,3 +490,15 @@ class AppFlag(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ActivityDay(Base):
+    """One row per (Israel day, kind, person): how many bot messages, bot button presses or site visits that person
+    made that day. Counts only - see todira_common/activity.py (2026-10-21)."""
+
+    __tablename__ = "activity_days"
+
+    day: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, primary_key=True)
+    who: Mapped[str] = mapped_column(Text, primary_key=True)
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")

@@ -109,3 +109,11 @@ def _no_owner_inbox_group(monkeypatch):
     from todira_common import owner_inbox
 
     monkeypatch.setattr(owner_inbox, "inbox_chat_id", lambda fresh=False: None)
+
+
+# 2026-10-21: activity counting (todira_common/activity.py) writes to the database; tests never count anything.
+@pytest.fixture(autouse=True)
+def _no_activity_counting(monkeypatch):
+    from todira_common import activity
+
+    monkeypatch.setattr(activity, "record", lambda *args, **kwargs: None)
