@@ -1,0 +1,90 @@
+name: Diagnose — do people really use the bot and the site day to day (read-only)
+
+# 2026-10-21 (owner: "do people actually use the bot or the site every day?"). Counts only, the owner's own account left
+# out: sign-ups, filter changes (bot or site), saved/hidden listings, alerts sent, contact messages, payments, and how
+# many different people used /start or /filter in the bot since its pod started. Never a name, an id or a message.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  activity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Read the owner's id (masked, kept in a file)
+        run: |
+          OWNER=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$OWNER"
+          printf '%s' "${OWNER:-0}" > "$RUNNER_TEMP/owner"
+      - name: Bot use since the bot pod started (different people per day, owner excluded)
+        run: |
+          OWNER=$(cat "$RUNNER_TEMP/owner")
+          POD=$(kubectl get pods -n todira -l app=todira-bot --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          echo "bot pod started: $(kubectl get pod -n todira "$POD" -o jsonpath='{.status.startTime}')"
+          echo "== day | command | different people"
+          kubectl logs -n todira "$POD" 2>/dev/null \
+            | grep -E "^[0-9-]+ .*(/start|/filter) invoked by telegram_user_id=" \
+            | sed -E 's/^([0-9-]+) .*(\/start|\/filter) invoked by telegram_user_id=([0-9]+).*/\1 \2 \3/' \
+            | awk -v o="$OWNER" '$3 != o { k = $1 " " $2; if (!seen[k " " $3]++) n[k]++ } END { for (k in n) print k, n[k] }' \
+            | sort
+      - name: From the database (owner excluded)
+        run: |
+          OWNER=$(cat "$RUNNER_TEMP/owner")
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          {
+          echo "\\set owner $OWNER"
+          cat <<'SQL'
+          \pset format unaligned
+          \pset footer off
+          CREATE TEMP VIEW people AS SELECT * FROM users WHERE telegram_user_id IS DISTINCT FROM :owner;
+          \echo '== accounts: total | with Telegram | Google only | joined 24h | joined 7d | joined 30d | paused | alerts off'
+          SELECT count(*), count(*) FILTER (WHERE telegram_user_id IS NOT NULL), count(*) FILTER (WHERE telegram_user_id IS NULL),
+                 count(*) FILTER (WHERE created_at > now() - interval '24 hours'), count(*) FILTER (WHERE created_at > now() - interval '7 days'),
+                 count(*) FILTER (WHERE created_at > now() - interval '30 days'), count(*) FILTER (WHERE NOT is_active),
+                 count(*) FILTER (WHERE NOT notifications_enabled)
+          FROM people;
+          \echo '== access now: in trial | paid | free granted | trial over and not paid'
+          SELECT count(*) FILTER (WHERE trial_ends_at > now() AND (paid_until IS NULL OR paid_until < now())),
+                 count(*) FILTER (WHERE paid_until > now()), count(*) FILTER (WHERE free_access_granted),
+                 count(*) FILTER (WHERE trial_ends_at <= now() AND (paid_until IS NULL OR paid_until <= now()) AND NOT free_access_granted)
+          FROM people;
+          \echo '== different people who changed their search (bot or site): 24h | 7d | 30d'
+          SELECT count(DISTINCT f.user_id) FILTER (WHERE f.updated_at > now() - interval '24 hours'),
+                 count(DISTINCT f.user_id) FILTER (WHERE f.updated_at > now() - interval '7 days'),
+                 count(DISTINCT f.user_id) FILTER (WHERE f.updated_at > now() - interval '30 days')
+          FROM filters f JOIN people p ON p.id = f.user_id;
+          \echo '== saved / hidden listings per action: people 7d | clicks 7d | people 30d | clicks 30d'
+          SELECT a.action,
+                 count(DISTINCT a.user_id) FILTER (WHERE a.created_at > now() - interval '7 days'),
+                 count(*) FILTER (WHERE a.created_at > now() - interval '7 days'),
+                 count(DISTINCT a.user_id) FILTER (WHERE a.created_at > now() - interval '30 days'),
+                 count(*) FILTER (WHERE a.created_at > now() - interval '30 days')
+          FROM user_listing_actions a JOIN people p ON p.id = a.user_id GROUP BY a.action ORDER BY a.action;
+          \echo '== per Israel day, last 14 days: new accounts | changed search | saved/hid | alerts sent | people who got alerts'
+          WITH d AS (SELECT generate_series((now() AT TIME ZONE 'Asia/Jerusalem')::date - 13, (now() AT TIME ZONE 'Asia/Jerusalem')::date, interval '1 day')::date AS day)
+          SELECT d.day,
+                 (SELECT count(*) FROM people WHERE (created_at AT TIME ZONE 'Asia/Jerusalem')::date = d.day),
+                 (SELECT count(DISTINCT f.user_id) FROM filters f JOIN people p ON p.id = f.user_id WHERE (f.updated_at AT TIME ZONE 'Asia/Jerusalem')::date = d.day),
+                 (SELECT count(DISTINCT a.user_id) FROM user_listing_actions a JOIN people p ON p.id = a.user_id WHERE (a.created_at AT TIME ZONE 'Asia/Jerusalem')::date = d.day),
+                 (SELECT count(*) FROM sent_notifications n JOIN people p ON p.id = n.user_id WHERE (n.sent_at AT TIME ZONE 'Asia/Jerusalem')::date = d.day),
+                 (SELECT count(DISTINCT n.user_id) FROM sent_notifications n JOIN people p ON p.id = n.user_id WHERE (n.sent_at AT TIME ZONE 'Asia/Jerusalem')::date = d.day)
+          FROM d ORDER BY d.day;
+          \echo '== contact messages: 7d | 30d'
+          SELECT count(*) FILTER (WHERE created_at > now() - interval '7 days'), count(*) FILTER (WHERE created_at > now() - interval '30 days')
+          FROM contact_messages WHERE telegram_user_id IS DISTINCT FROM :owner;
+          \echo '== payments by status: all time | 30d'
+          SELECT pay.status, count(*), count(*) FILTER (WHERE pay.created_at > now() - interval '30 days')
+          FROM payments pay JOIN people p ON p.id = pay.user_id GROUP BY pay.status ORDER BY pay.status;
+          SQL
+          } > "$RUNNER_TEMP/q.sql"
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < "$RUNNER_TEMP/q.sql"
