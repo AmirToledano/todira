@@ -781,13 +781,18 @@
   })();
 </script>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
-<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'">
+{# 2026-10-22 (owner: "the listings page takes a few seconds to open"): the server builds it in well under a second, but
+   the map's scripts and style sheets from the CDN were blocking, so the browser painted nothing until they downloaded -
+   and the cards stay invisible until base.html's reveal script, further down, runs and the page paints. The scripts are
+   deferred now and the map starts on DOMContentLoaded (deferred scripts always run before it); the style sheets load
+   without blocking (media="print" until loaded). The map pane starts collapsed, so it is styled long before it opens. #}
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" media="print" onload="this.media='all'">
+<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" defer></script>
 <script>
-  (function () {
+  document.addEventListener('DOMContentLoaded', function () {
     // 2026-09-24: switched from MapLibre GL JS to Leaflet — real production report (owner's own
     // screenshots) that MapLibre's own map.on('load') fired and syncPins() ran correctly (the pin
     // count text updated as new cards loaded), yet the map canvas itself stayed visually blank —
@@ -1056,6 +1061,6 @@
         }
       }
     })();
-  })();
+  });
 </script>
 {% endblock %}

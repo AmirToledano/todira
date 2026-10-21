@@ -151,3 +151,22 @@ def test_dark_theme_does_not_change_the_page_height():
     css = (Path(__file__).resolve().parent.parent / "website" / "static" / "home.css").read_text()
     dark_rules = [line for line in css.splitlines() if "dark" in line and ".lp-portrait" in line and "{" in line]
     assert dark_rules and all("margin" not in rule for rule in dark_rules)
+
+
+def test_apartments_page_does_not_wait_for_the_map():
+    """2026-10-22 (owner: the listings page takes seconds): the map's CDN scripts and style sheets must never block the
+    listings from showing."""
+    html = (Path(__file__).resolve().parent.parent / "website" / "templates" / "apartments.html").read_text()
+    for line in html.splitlines():
+        if "cdn.jsdelivr.net/npm/leaflet" in line and "<script" in line:
+            assert " defer" in line, line
+        if "cdn.jsdelivr.net/npm/leaflet" in line and "<link" in line:
+            assert 'media="print"' in line, line
+
+
+def test_compact_json_stays_safe_inside_a_script_tag():
+    import json
+
+    out = str(website_main._json_compact({"a": "</script><b>'&", "b": "אבג"}))
+    assert "</script>" not in out and "<" not in out and "אבג" in out
+    assert json.loads(out) == {"a": "</script><b>'&", "b": "אבג"}

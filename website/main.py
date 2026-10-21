@@ -91,6 +91,7 @@ from sqlalchemy import Float, case, cast, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import defer
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from markupsafe import Markup
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
@@ -273,6 +274,16 @@ templates.env.filters["rooms_label"] = lambda rooms: f"{float(rooms):g}" if room
 templates.env.filters["public_desc"] = public_description
 templates.env.filters["shared_room"] = is_room_in_shared_flat
 templates.env.filters["ils"] = lambda amount: f"{int(amount):,} ₪"
+
+
+def _json_compact(value) -> Markup:
+    """Like Jinja's tojson (safe inside <script>), but Hebrew stays as letters instead of \\u05d0 escapes and without
+    spaces. 2026-10-22: the locality list on /apartments and /filter was 112 KB as tojson, a third of the page."""
+    text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return Markup(text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027"))
+
+
+templates.env.filters["json_compact"] = _json_compact
 # 2026-10-20 (owner): line icons instead of the remaining emoji, everywhere but the listing cards (icons.py)
 templates.env.globals["icon"] = icon
 
