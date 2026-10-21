@@ -1,12 +1,11 @@
-"""/invite and the reward when a friend joins (2026-10-20, owner: "whoever brings a friend gets 5 more days").
-The rules are in todira_common/invite.py."""
+"""/invite, and noting who invited a new friend (2026-10-20, owner: "whoever brings a friend gets 5 more days").
+The rules are in todira_common/invite.py: since 2026-10-21 the days come when the friend first pays (website webhook)."""
 from __future__ import annotations
 
 import asyncio
 import datetime as dt
 import html
 import logging
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from telegram import Update
@@ -37,7 +36,7 @@ async def invite_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
-def _reward_inviter_sync(telegram_user_id: int, payload: str | None) -> tuple[int, str] | None:
+def _note_invite_sync(telegram_user_id: int, payload: str | None) -> tuple[int, str] | None:
     """(inviter's Telegram id, message to send them) when this /start was a new friend's, else None."""
     if not payload or not payload.startswith(invite.PREFIX):
         return None
@@ -46,19 +45,19 @@ def _reward_inviter_sync(telegram_user_id: int, payload: str | None) -> tuple[in
         new_user = session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
         if new_user is None:
             return None
-        inviter = invite.apply_invite(session, new_user, payload, now)
+        inviter_id = invite.record_invite(session, new_user, payload, now)
+        inviter = session.get(User, inviter_id) if inviter_id is not None else None
         if inviter is None or inviter.telegram_user_id is None:
             return None
-        until = invite.access_end(inviter, now).astimezone(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y")
-        logger.info("invite: a new friend joined - the inviter got %s more days", invite.INVITE_BONUS.days)
-        return inviter.telegram_user_id, bot_text("invite.joined", inviter.language or DEFAULT_LANG, date=until)
+        logger.info("invite: a new friend joined through an invite link")
+        return inviter.telegram_user_id, bot_text("invite.joined", inviter.language or DEFAULT_LANG)
 
 
-async def reward_inviter(update: Update, context: ContextTypes.DEFAULT_TYPE, payload: str | None) -> None:
+async def note_invite(update: Update, context: ContextTypes.DEFAULT_TYPE, payload: str | None) -> None:
     try:
-        result = await asyncio.to_thread(_reward_inviter_sync, update.effective_user.id, payload)
+        result = await asyncio.to_thread(_note_invite_sync, update.effective_user.id, payload)
     except Exception:
-        logger.exception("invite: could not reward the inviter")
+        logger.exception("invite: could not note the invite")
         return
     if result is None:
         return

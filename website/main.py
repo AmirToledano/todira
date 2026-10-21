@@ -53,7 +53,7 @@ from urllib.parse import quote as url_quote, urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
-from todira_common import listing_enrichment, owner_inbox
+from todira_common import invite, listing_enrichment, owner_inbox
 from todira_common.access import (
     CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
@@ -2828,8 +2828,30 @@ async def _process_takbull_payload(body: dict) -> Response:
             # gateway_transaction_id stopped this one) - nothing is granted twice.
             session.rollback()
             logger.info("Takbull webhook for payment_id=%s lost a race with its own repeat - already credited", payment.id)
+        else:
+            _reward_inviter_after_payment(session, user)
 
     return Response(status_code=200)
+
+
+def _reward_inviter_after_payment(session, payer: User) -> None:
+    """2026-10-21 (owner): whoever invited this payer gets their days on the payer's first payment, and is told so
+    (todira_common/invite.py). Best effort: the payment itself is already saved."""
+    try:
+        now = dt.datetime.now(dt.timezone.utc)
+        inviter = invite.reward_for_payment(session, payer, now)
+        if inviter is None or inviter.telegram_user_id is None or not TELEGRAM_BOT_TOKEN:
+            return
+        until = invite.access_end(inviter, now).astimezone(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y")
+        text = bot_text("invite.paid", inviter.language or "he", date=until)
+        httpx.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": inviter.telegram_user_id, "text": text},
+            timeout=10.0,
+        )
+        logger.info("invite: a friend paid - the inviter got %s more days", invite.INVITE_BONUS.days)
+    except Exception:
+        logger.exception("invite: could not reward the inviter after a payment")
 
 
 def _already_credited_takbull_charge(session, body: dict, payment_id: int | None) -> bool:
