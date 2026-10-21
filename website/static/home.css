@@ -137,10 +137,14 @@ body:has(.lp) .site-ambient { display: none; }
           mask-image: linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%);
 }
 /* 2026-10-21: a cut-out version on the green was tried and dropped (owner: it looked cut out and blurry; the source
-   picture is only 640px wide). The dark theme keeps the framed card. */
-:root[data-theme="dark"] .lp-portrait { -webkit-mask-image: none; mask-image: none; border-radius: 22px; margin: 40px 0; box-shadow: 0 24px 50px rgba(0, 0, 0, .35); }
+   picture is only 640px wide). The dark theme keeps the framed card.
+   2026-10-22 (owner: "the whole site moves up or down when switching dark/light"): the card used to get its breathing
+   room from margins, which made the dark page 80px taller (30px on phones). It is scaled down instead - a transform
+   takes no room - so both themes have exactly the same layout. It shrinks toward the line of its title, so the title
+   and the notification above it stay exactly where they are in the light theme. */
+:root[data-theme="dark"] .lp-portrait { -webkit-mask-image: none; mask-image: none; border-radius: 22px; transform: scale(.9); transform-origin: 50% 80%; box-shadow: 0 24px 50px rgba(0, 0, 0, .35); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .lp-portrait { -webkit-mask-image: none; mask-image: none; border-radius: 22px; margin: 40px 0; box-shadow: 0 24px 50px rgba(0, 0, 0, .35); }
+  :root:not([data-theme="light"]) .lp-portrait { -webkit-mask-image: none; mask-image: none; border-radius: 22px; transform: scale(.9); transform-origin: 50% 80%; box-shadow: 0 24px 50px rgba(0, 0, 0, .35); }
 }
 
 /* one phone notification at a time: it drops in from the top, stays, and slides back up for the next one */
@@ -296,5 +300,3 @@ body:has(.lp) .site-ambient { display: none; }
   .lp-how, .lp-prices { grid-template-columns: 1fr; gap: 30px; }
   .lp-paper { padding: 58px 20px 24px; }
 }
-@media (max-width: 860px) and (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lp-portrait { margin: 0 0 30px; } }
-@media (max-width: 860px) { :root[data-theme="dark"] .lp-portrait { margin: 0 0 30px; } }

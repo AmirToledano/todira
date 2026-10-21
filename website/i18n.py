@@ -3464,7 +3464,7 @@ TRANSLATIONS.update({
     "landing.price_title": {"he": "כמה זה עולה", "en": "What it costs", "ru": "Сколько это стоит", "fr": "Combien ça coûte",
                             "ar": "كم يكلف"},
     "landing.price_p1": {
-        "he": "10 הימים הראשונים בחינם. אחר כך בוחרים לכמה זמן צריך, ומשלמים פעם אחת דרך תקבול, בביט או באשראי.",
+        "he": "10 הימים הראשונים בחינם. אחר כך בוחרים לכמה זמן צריך, ומשלמים פעם אחת דרך תשלום מאובטח, בביט או באשראי.",
         "en": "The first 10 days are free. After that you pick how long you need and pay once through Takbull, with Bit or a credit card.",
         "ru": "Первые 10 дней бесплатно. Потом выбираете нужный срок и платите один раз через Takbull, через Bit или картой.",
         "fr": "Les 10 premiers jours sont gratuits. Ensuite vous choisissez la durée et payez une seule fois via Takbull, par Bit ou carte bancaire.",

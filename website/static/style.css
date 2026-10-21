@@ -39,6 +39,12 @@ html.theme-transition-active::view-transition-new(root) {
 @keyframes theme-reveal {
   to { clip-path: circle(150% at var(--theme-x, 50%) var(--theme-y, 50%)); }
 }
+/* 2026-10-22 (owner: the circle is nice but the page also "jumps" a moment): while the circle reveals the new theme,
+   no element runs its own colour/size transition - otherwise buttons and cards fade from the old colours a second
+   time behind the circle. (The bigger jump was the dark page being taller; home.css keeps both themes the same size.) */
+html.theme-transition-active *, html.theme-transition-active *::before, html.theme-transition-active *::after {
+  transition: none !important;
+}
 /* Reduced-motion note: base.html's script already skips startViewTransition entirely when
    prefers-reduced-motion matches (checked in JS, not just CSS, so the pseudo-elements this rule
    targets are never even created), but this stays as a second line of defense — the general
