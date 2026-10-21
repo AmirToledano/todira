@@ -135,3 +135,11 @@ def test_map_api_returns_the_cached_data(client):
         resp = client.get("/api/home-map")
     assert resp.status_code == 200 and resp.json() == data
     assert "max-age=300" in resp.headers["cache-control"]
+
+
+def test_phone_notification_does_not_inherit_the_desktop_bottom():
+    """2026-10-21 (owner screenshot): the desktop placement's `bottom` stayed on phones together with `top: 0`, and the
+    card stretched over the whole picture. The phone rule has to clear it."""
+    css = (Path(__file__).resolve().parent.parent / "website" / "static" / "home.css").read_text()
+    phone_rule = next(line for line in css.splitlines() if ".lp-notif { top: 0;" in line)
+    assert "bottom: auto" in phone_rule
