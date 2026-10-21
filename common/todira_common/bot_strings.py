@@ -85,6 +85,34 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "🔗 هل تريد أيضاً تسجيل الدخول عبر الموقع (Google)؟ <a href=\"{account_url}\">فتح حسابي</a>"
         ),
     },
+    # 2026-10-20 (owner): invite a friend, 5 more days (todira_common/invite.py, bot/handlers/invite.py).
+    # 2026-10-21 (owner): the days come when the friend pays, the friend keeps the regular free trial.
+    "invite.text": {
+        "he": "🎁 <b>רוצה עוד 5 ימים בחינם?</b>\nשלח לחבר את הקישור הזה. החבר מקבל 10 ימי ניסיון בחינם כמו כולם, "
+        "ואם הוא ממשיך בתשלום, נוסיף לך 5 ימי גישה מלאה. אפשר להזמין כמה חברים שרוצים.\n\n{link}",
+        "en": "🎁 <b>Want 5 more days free?</b>\nSend this link to a friend. They get the regular 10-day free trial, "
+        "and if they go on to pay, you get 5 more days of full access. Invite as many friends as you like.\n\n{link}",
+        "ru": "🎁 <b>Хотите ещё 5 дней бесплатно?</b>\nОтправьте эту ссылку другу. Он получит обычные 10 дней бесплатно, "
+        "а если продолжит с оплатой, вы получите ещё 5 дней полного доступа. Приглашать можно сколько угодно друзей.\n\n{link}",
+        "fr": "🎁 <b>5 jours de plus offerts ?</b>\nEnvoie ce lien à un ami. Il a les 10 jours d'essai gratuits habituels, "
+        "et s'il continue en payant, tu reçois 5 jours d'accès complet en plus. Invite autant d'amis que tu veux.\n\n{link}",
+        "ar": "🎁 <b>تريد 5 أيام إضافية مجاناً؟</b>\nأرسل هذا الرابط لصديق. يحصل على 10 أيام تجربة مجانية كالمعتاد، "
+        "وإذا استمر بالدفع، تحصل على 5 أيام إضافية من الوصول الكامل. يمكنك دعوة أي عدد من الأصدقاء.\n\n{link}",
+    },
+    "invite.joined": {
+        "he": "👋 חבר שהזמנת הצטרף לטודירה! כשהוא ימשיך בתשלום, נוסיף לך 5 ימים.",
+        "en": "👋 A friend you invited joined Todira! When they go on to pay, we'll add 5 days for you.",
+        "ru": "👋 Друг, которого вы пригласили, присоединился к Тодире! Когда он оплатит, мы добавим вам 5 дней.",
+        "fr": "👋 Un ami que tu as invité a rejoint Todira ! Quand il passera au payant, on t'ajoutera 5 jours.",
+        "ar": "👋 صديق دعوته انضم إلى تودّيرا! عندما يدفع، سنضيف لك 5 أيام.",
+    },
+    "invite.paid": {
+        "he": "🎉 חבר שהזמנת המשיך בתשלום! הוספנו לך 5 ימים, ויש לך גישה מלאה עד {date}.",
+        "en": "🎉 A friend you invited went on to pay! We added 5 days: you have full access until {date}.",
+        "ru": "🎉 Друг, которого вы пригласили, оплатил доступ! Мы добавили 5 дней: полный доступ до {date}.",
+        "fr": "🎉 Un ami que tu as invité est passé au payant ! On t'a ajouté 5 jours : accès complet jusqu'au {date}.",
+        "ar": "🎉 صديق دعوته دفع! أضفنا لك 5 أيام: لديك وصول كامل حتى {date}.",
+    },
     "start.linked": {
         "he": "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת — מעכשיו תקבל עדכונים גם כאן בטלגרם.",
         "en": "🎉 Connected! You're already registered with me — from now on you'll get updates "
