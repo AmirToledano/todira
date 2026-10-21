@@ -67,7 +67,7 @@
         </label>
         {% endif %}{% endfor %}
       </div>
-      <script type="application/json" id="f-localities-data">{{ {"extra": extra_localities_list or [], "regions": (city_regions_list or [])|list, "other": (other_locality_names or [])|list}|tojson }}</script>
+      <script type="application/json" id="f-localities-data">{{ {"extra": extra_localities_list or [], "regions": (city_regions_list or [])|list, "other": (other_locality_names or [])|list}|json_compact }}</script>
     </div>
     <div class="field-hint">{{ t('filter.cities_hint') }}</div>
   </div>
