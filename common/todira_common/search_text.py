@@ -35,14 +35,14 @@ from todira_common.matching import safe_range_update
 # in Hebrew (with and without the usual spelling variants; ב/ו/ל/ש prefixes match on their own, these are plain
 # substrings) and in the other languages the bot speaks. Anything still not understood gets the bot's question.
 _SUBLET = re.compile(
-    r"סאבלט|סבלט|סב-לט|סב לט|סאב לט|סאב-לט|סאבלאט|סבלאט|לטווח קצר|לתקופה קצרה|"
-    r"\bsublet\b|\bsub-let\b|\bsub let\b|субаренд|sous-location|sous location",
+    r"סאבלט|סבלט|סב-לט|סב לט|סאב לט|סאב-לט|סאבלאט|סבלאט|לטווח קצר|לתקופה קצרה|לכמה חודשים|לחודש או חודשיים|לחודשיים|"
+    r"\bsublet\b|\bsub-let\b|\bsub let\b|\bshort[\s-]term\b|субаренд|краткосроч|sous-location|sous location",
     re.IGNORECASE,
 )
 _SALE = re.compile(
     r"לקנות|קנייה|קניה|לקניה|לקנייה|קנית דירה|קניית|קונה דירה|קונים דירה|אני קונה|"
     r"למכירה|מכירה|מכירת|לרכוש|רכישה|רכישת|רוכש|רוכשת|רוכשים|"
-    r"להשקעה|השקעה|משכנתא|משכנתה|דירה בבעלות|"
+    r"להשקעה|השקעה|משכנתא|משכנתה|דירה בבעלות|מחיר למשתכן|"
     r"\bbuy\b|\bbuying\b|\bpurchase\b|\bfor sale\b|\bto own\b|"
     r"купить|покупк|продаж|acheter|achat|à vendre|a vendre|شراء|للبيع|اشتري|أشتري",
     re.IGNORECASE,
@@ -225,10 +225,10 @@ _REGIONS_BY_KEY = {locality_key(spelling): region for region in REGIONS for spel
 
 _NUMBER_WORDS = {
     "אחד": 1, "אחת": 1, "שניים": 2, "שתיים": 2, "שני": 2, "שתי": 2, "שלושה": 3, "שלוש": 3, "ארבעה": 4, "ארבע": 4,
-    "חמישה": 5, "חמש": 5, "שישה": 6, "שש": 6,
+    "חמישה": 5, "חמש": 5, "שישה": 6, "שש": 6, "שבעה": 7, "שבע": 7, "שמונה": 8,
 }
 _NUM = r"\d+(?:[.,]\d+)?"
-_ROOM_WORD = r"(?:חדרים|חדר|חד'|חד׳|rooms?|bedrooms?|br)\b"
+_ROOM_WORD = r"(?:חדרים|חדר|חד'|חד׳|חדר'|חד\b|rooms?|bedrooms?|br|комнат\w*|комн|غرف\w*|pièces?)\b"
 
 
 def _to_float(raw: str) -> float:
@@ -241,7 +241,7 @@ def _rooms(text: str) -> tuple[float | None, float | None]:
         t = re.sub(rf"(?<![א-ת]){word}(?![א-ת])(?=\s*(?:וחצי\s*)?חדר)", str(value), t)
     t = re.sub(r"(\d+)\s*וחצי(?=\s*חדר)", lambda m: f"{m.group(1)}.5", t)
     t = re.sub(r"(?<![\d.])חדר\s+וחצי", "1.5 חדרים", t)
-    if re.search(r"סטודיו|דירת\s+חדר(?!\S)|studio", t, re.IGNORECASE):
+    if re.search(r"סטודיו|סטודיות|דירת\s+חדר(?!\S)|חדר\s+אחד\b|studio|студи", t, re.IGNORECASE):
         return 1.0, 1.5
     m = re.search(rf"({_NUM})\s*(?:-|–|עד|או|to)\s*({_NUM})\s*{_ROOM_WORD}", t, re.IGNORECASE)
     if m:
@@ -263,7 +263,7 @@ def _rooms(text: str) -> tuple[float | None, float | None]:
     return None, None
 
 
-_CURRENCY = r"(?:₪|ש\"ח|ש״ח|שח\b|שקל(?:ים)?\b|nis\b|ils\b)"
+_CURRENCY = r"(?:₪|ש\"ח|ש״ח|ש'ח|שח\b|שקל(?:ים)?\b|שקלים|שק\b|nis\b|ils\b|shekels?\b|шекел\w*|شيكل)"
 _NOT_PRICE_UNIT = re.compile(r"^\s*(?:מ\"ר|מ״ר|מטר|מ'|sqm|m2|קומה|קומות|חדר|חד'|ימים|יום|דקות|ק\"מ|%|\+)", re.IGNORECASE)
 
 
@@ -294,7 +294,12 @@ def _prices(text: str) -> tuple[float | None, float | None]:
         high = _amount(m.group(3), m.group(4) or "")
         if low and high and 500 <= low <= high:
             return low, high
-    m = re.search(rf"(?:עד|מקסימום|תקציב(?:\s+של)?(?:\s+עד)?|לא יותר מ-?|up to|max(?:imum)?|budget)\s*{_AMOUNT}", t, re.IGNORECASE)
+    m = re.search(
+        rf"(?:עד|מקסימום|מקס|גג|לכל\s+היותר|תקרה(?:\s+של)?|תקציב(?:\s+של)?(?:\s+עד)?|לא יותר מ-?|לא מעל|up to|max(?:imum)?|budget|"
+        rf"до|не\s+дороже|حتى)\s*{_AMOUNT}",
+        t,
+        re.IGNORECASE,
+    )
     if m:
         value = _amount(m.group(1), m.group(2) or "")
         rest = t[m.end():]
@@ -324,29 +329,51 @@ def _prices(text: str) -> tuple[float | None, float | None]:
 # listing's description (todira_common.matching: any of them). The others are the same structured switches /filter's
 # buttons set, matched against the listing's own fields. Negative forms come before positive ones ("לא מרוהטת").
 _FEATURES: list[tuple[str, str, str | None, object]] = [
-    (r"מרפסת|מרפסות", "מרפסת", "require_balcony", True),
-    (r"חניה|חנייה|חניות", "חניה", "require_parking", True),
-    (r"מעלית", "מעלית", "require_elevator", True),
-    (r"ממ\"ד|ממ״ד|ממד\b|מרחב מוגן", 'ממ"ד', "safe_room_pref", "safe_room_only"),
-    (r"משופצת|משופץ|אחרי שיפוץ", "משופצת", "require_renovated", True),
-    (r"(?:לא|ללא|בלי)\s+ריהוט|לא\s+מרוהטת|לא\s+מרוהט", "בלי ריהוט", "furniture_pref", "unfurnished"),
-    (r"מרוהטת|מרוהט|עם\s+ריהוט|ריהוט\s+מלא", "מרוהטת", "furniture_pref", "furnished"),
-    (r"בעלי חיים|חיות מחמד|חיית מחמד|כלב|חתול", "בעלי חיים", "require_pets_allowed", True),
-    (r"(?:ללא|בלי|לא\s+דרך|לא\s+דרך\s+ה?|בלי\s+דמי|ללא\s+דמי)\s*(?:תיווך|מתווכ\w*)|מבעלים|ישירות\s+מבעל|מבעל\s+הבית",
+    # 2026-10-21 (owner: "add a huge list of words a person might use"): every feature has its common spellings, slang
+    # and the words the bot's other languages use. Short English words are wrapped in \b so "cat" never matches
+    # "location".
+    (r"מרפסת|מרפסות|מרפסונת|גזוזטרה|\bbalcon(?:y|ies)\b|\bterraces?\b|балкон|лоджи|شرفة|بلكون|balcon",
+     "מרפסת", "require_balcony", True),
+    (r"חניה|חנייה|חניות|חניון|מקום\s+חני|\bparking\b|\bgarage\b|парковк|паркинг|موقف|parking",
+     "חניה", "require_parking", True),
+    (r"מעלית|מעליות|\belevators?\b|\blifts?\b|лифт|مصعد|ascenseur", "מעלית", "require_elevator", True),
+    (r"ממ\"ד|ממ״ד|ממ'ד|ממד\b|מרחב\s+מוגן|חדר\s+מוגן|חדר\s+ביטחון|\bsafe\s*room\b|\bmamad\b|мамад|безопасн\w*\s+комнат",
+     'ממ"ד', "safe_room_pref", "safe_room_only"),
+    (r"משופצת|משופץ|משופצות|אחרי\s+שיפוץ|לאחר\s+שיפוץ|שופצה|שופץ|שיפוץ\s+מלא|מחודשת|\brenovated\b|\bremodel(?:l)?ed\b|"
+     r"с\s+ремонтом|после\s+ремонта|евроремонт|مرمم|rénové", "משופצת", "require_renovated", True),
+    (r"(?:לא|ללא|בלי)\s+(?:ריהוט|רהיטים)|לא\s+מרוהטת|לא\s+מרוהט|דירה\s+ריקה|\bunfurnished\b|без\s+мебели|غير\s+مفروش|non\s+meublé",
+     "בלי ריהוט", "furniture_pref", "unfurnished"),
+    (r"מרוהטת|מרוהט|מרוהטות|עם\s+ריהוט|עם\s+רהיטים|ריהוט\s+מלא|כולל\s+ריהוט|ריהוט\s+חלקי|\bfurnished\b|меблирован|с\s+мебелью|"
+     r"مفروش|meublé", "מרוהטת", "furniture_pref", "furnished"),
+    (r"בעלי\s+חיים|בע\"ח|בע״ח|(?<![א-ת])חיות(?![א-ת])|חיית\s+מחמד|כלב|כלבה|כלבים|חתול|חתולה|חתולים|\bpets?\b|\bdogs?\b|\bcats?\b|"
+     r"животн|собак|кошк|حيوان|animaux|chien", "בעלי חיים", "require_pets_allowed", True),
+    (r"(?:ללא|בלי|לא\s+דרך|לא\s+דרך\s+ה?|בלי\s+דמי|ללא\s+דמי)\s*(?:תיווך|מתווכ\w*|עמל\w*)|מבעלים|מהבעלים|מבעל\s+הבית|"
+     r"ישירות\s+מ(?:ה)?בעל|מיד\s+ראשונה|\bno\s+(?:brokers?|agents?|agency|fees?)\b|\bby\s+owner\b|\bfrom\s+(?:the\s+)?owner\b|"
+     r"без\s+посредник|без\s+комисси|от\s+собственника|от\s+хозяина|بدون\s+سمسار|sans\s+agence",
      "ללא תיווך", "no_brokers", True),
-    (r"קומת\s+קרקע|קומה\s+0\b|קומת\s+כניסה", "קומת קרקע", "ground_floor_only", True),
-    (r"שותפים|שותפות|לשותפ", "מתאים לשותפים", "require_roommate_friendly", True),
-    (r"דירת\s+גן|דירות\s+גן", "דירת גן", "property_types", "garden_apartment"),
-    (r"פנטהאוז|פנטהאוס|פנטהאוס|דירת\s+גג|penthouse", "פנטהאוז", "property_types", "penthouse"),
-    (r"יחידת\s+דיור|יח[\"״]ד", "יחידת דיור", "property_types", "housing_unit"),
-    (r"בית\s+פרטי|קוטג|וילה|דו[\s-]?משפחתי|חד[\s-]?משפחתי", "בית פרטי", "property_types", "private_house"),
-    (r"מחסן", "מחסן", None, None),
-    (r"גינה|חצר", "גינה", None, None),
-    (r"מיזוג|מזגן|מזגנים", "מיזוג", None, None),
-    (r"נגישה|נגישות", "נגישה", None, None),
+    (r"קומת\s+קרקע|קומה\s+0\b|קומת\s+כניסה|קומה\s+ראשונה\s+מהקרקע|\bground\s+floor\b|rez[\s-]de[\s-]chaussée",
+     "קומת קרקע", "ground_floor_only", True),
+    (r"(?<!מ)(?:שותפים|שותפות|שותף|שותפה)|לשותפ|\broom\s*mates?\b|\bflat\s*mates?\b|\bshared\s+(?:apartment|flat)\b|colocation",
+     "מתאים לשותפים", "require_roommate_friendly", True),
+    (r"דירת\s+גן|דירות\s+גן|\bgarden\s+(?:apartment|flat)\b", "דירת גן", "property_types", "garden_apartment"),
+    (r"פנטהאוז|פנטהאוס|פנטאוז|פנטהאוס|פנטהאוז|דירת\s+גג|דירות\s+גג|\bpenthouse\b|\broof\s*top\s+apartment\b|пентхаус",
+     "פנטהאוז", "property_types", "penthouse"),
+    (r"יחידת\s+דיור|יחידות\s+דיור|יח[\"״]ד|יחידה\s+נפרדת|יחידת\s+מרתף|\bhousing\s+unit\b|\bgranny\s+flat\b",
+     "יחידת דיור", "property_types", "housing_unit"),
+    (r"בית\s+פרטי|בתים\s+פרטיים|קוטג|וילה|וילות|דו[\s-]?משפחתי|חד[\s-]?משפחתי|צמוד\s+קרקע|צמודי\s+קרקע|בית\s+קרקע|"
+     r"\bhouse\b|\bvilla\b|\bcottage\b|частный\s+дом|коттедж|вилла|فيلا|بيت\s+خاص|maison",
+     "בית פרטי", "property_types", "private_house"),
+    (r"מחסן|מחסנים|\bstorage\b|кладов", "מחסן", None, None),
+    (r"גינה|גינות|חצר|דשא|\bgarden\b|\byard\b|\bbackyard\b|сад|двор|حديقة|jardin", "גינה", None, None),
+    (r"מיזוג|מזגן|מזגנים|מיזוג\s+מרכזי|\bair\s*condition\w*|\ba/c\b|кондиционер|مكيف|climatis", "מיזוג", None, None),
+    (r"נגישה|נגיש|נגישות|לנכים|כיסא\s+גלגלים|\baccessible\b|\bwheelchair\b|доступн\w*\s+для", "נגישה", None, None),
 ]
 # "בלי מעלית", "לא צריך חניה": the feature is not a requirement.
-_NEGATION_BEFORE = re.compile(r"(?:בלי|ללא|לא\s+צריך|לא\s+חייב(?:ת)?|אין\s+צורך\s+ב|לא\s+משנה)\s*-?\s*$")
+_NEGATION_BEFORE = re.compile(
+    r"(?:בלי|ללא|לא\s+צריך|לא\s+חייב(?:ת)?|אין\s+צורך\s+ב|לא\s+משנה(?:\s+לי)?|לא\s+חשוב(?:\s+לי)?|לא\s+מעניין(?:\s+אותי)?|לא\s+הכרחי|\bwithout|\bno|\bnot\s+needed|"
+    r"без|не\s+нуж\w*|بدون)\s*-?\s*$",
+    re.IGNORECASE,
+)
 
 
 def _features(text: str) -> tuple[dict, list[str], list[str]]:
