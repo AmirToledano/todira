@@ -143,3 +143,11 @@ def test_phone_notification_does_not_inherit_the_desktop_bottom():
     css = (Path(__file__).resolve().parent.parent / "website" / "static" / "home.css").read_text()
     phone_rule = next(line for line in css.splitlines() if ".lp-notif { top: 0;" in line)
     assert "bottom: auto" in phone_rule
+
+
+def test_dark_theme_does_not_change_the_page_height():
+    """2026-10-22 (owner: the whole site moved up or down when switching dark/light): the dark card got its spacing from
+    margins, 80px more page. It may only change how it looks (a transform), never take more room."""
+    css = (Path(__file__).resolve().parent.parent / "website" / "static" / "home.css").read_text()
+    dark_rules = [line for line in css.splitlines() if "dark" in line and ".lp-portrait" in line and "{" in line]
+    assert dark_rules and all("margin" not in rule for rule in dark_rules)
