@@ -1,0 +1,62 @@
+name: Diagnose — how long the /apartments page takes on the server (read-only)
+
+# 2026-10-22 (owner: "the listings page takes a few seconds to open"). Times the page inside the website pod itself
+# (no network), for up to 8 users with a search: the first load (match scan) and the second (cached), plus the match
+# scan alone. Prints only timings and counts - never a user, an id or a listing.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  speed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Time the page inside the website pod
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          cat > "$RUNNER_TEMP/t.py" <<'PY'
+          import statistics, sys, time
+          sys.path.insert(0, "/app")
+          import logging; logging.disable(logging.CRITICAL)
+          import main
+          from todira_common import activity
+          main._fill_missing_descriptions_in_background = lambda listings: None  # no background fetching from a check
+          activity.record = lambda *a, **k: None  # a check is not a visit
+          from fastapi.testclient import TestClient
+          from sqlalchemy import select
+          from todira_common.db import get_session
+          from todira_common.listing_matches import matching_listing_rows
+          from todira_common.models import Filter, User
+          from todira_common.uid_token import generate_uid_token
+
+          with get_session() as s:
+              users = s.execute(select(User.id, User.telegram_user_id).join(Filter, Filter.user_id == User.id)
+                                .where(User.telegram_user_id.is_not(None)).limit(8)).all()
+          client = TestClient(main.app)
+          scan, first, second, sizes, counts = [], [], [], [], []
+          for uid, tg in users:
+              with get_session() as s:
+                  f = s.scalar(select(Filter).where(Filter.user_id == uid))
+                  t = time.perf_counter(); rows = matching_listing_rows(s, f, set()); scan.append(time.perf_counter() - t)
+                  counts.append(len(rows))
+              token = generate_uid_token(tg)
+              t = time.perf_counter(); r = client.get(f"/apartments?t={token}"); first.append(time.perf_counter() - t)
+              sizes.append(len(r.content))
+              t = time.perf_counter(); client.get(f"/apartments?t={token}"); second.append(time.perf_counter() - t)
+          def show(name, xs):
+              print(f"{name}: n={len(xs)} median={statistics.median(xs):.2f}s max={max(xs):.2f}s")
+          show("match scan only", scan); show("page, first load", first); show("page, second load (cached)", second)
+          print("matching listings per search: median", statistics.median(counts), "max", max(counts))
+          print("page size: median", int(statistics.median(sizes) / 1024), "KB")
+          PY
+          kubectl exec -i -n todira "$POD" -- python - < "$RUNNER_TEMP/t.py"
