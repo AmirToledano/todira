@@ -283,7 +283,7 @@ body:has(.lp) .site-ambient { display: none; }
   /* 2026-10-20 (owner): on a phone the notification sat on Todi's chest, the middle of the picture. It now drops in
      at the top, over the plain backdrop above the crown, the way a phone's own notifications come down. */
   .lp-todi { justify-self: center; max-width: 360px; padding-top: 82px; }
-  .lp-notif { top: 0; inset-inline: 0; margin-inline: auto; width: min(300px, 86%); }
+  .lp-notif { top: 0; bottom: auto; inset-inline: 0; margin-inline: auto; width: min(300px, 86%); }
   .lp-live { padding: 60px 0 64px; }
   .lp-live-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); column-gap: 14px; grid-template-areas: "head head" "feed map"; }
   .lp-live-grid .lp-map { max-width: none; }
