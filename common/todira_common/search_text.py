@@ -31,13 +31,26 @@ from todira_common.matching import safe_range_update
 
 # --- deal type ---------------------------------------------------------------------------------------------------------
 
-_SUBLET = re.compile(r"סאבלט|סבלט|סב-לט|\bsublet\b|\bsub-let\b", re.IGNORECASE)
+# 2026-10-21 (owner: "אני רוצה השכרה" was not understood - only "להשכרה" was): every way people write the kind of deal,
+# in Hebrew (with and without the usual spelling variants; ב/ו/ל/ש prefixes match on their own, these are plain
+# substrings) and in the other languages the bot speaks. Anything still not understood gets the bot's question.
+_SUBLET = re.compile(
+    r"סאבלט|סבלט|סב-לט|סב לט|סאב לט|סאב-לט|סאבלאט|סבלאט|לטווח קצר|לתקופה קצרה|"
+    r"\bsublet\b|\bsub-let\b|\bsub let\b|субаренд|sous-location|sous location",
+    re.IGNORECASE,
+)
 _SALE = re.compile(
-    r"לקנות|קנייה|קניה|לקניה|לקנייה|למכירה|מכירה|לרכוש|רכישה|רוכש|רוכשת|\bbuy\b|\bbuying\b|\bpurchase\b|\bfor sale\b",
+    r"לקנות|קנייה|קניה|לקניה|לקנייה|קנית דירה|קניית|קונה דירה|קונים דירה|אני קונה|"
+    r"למכירה|מכירה|מכירת|לרכוש|רכישה|רכישת|רוכש|רוכשת|רוכשים|"
+    r"להשקעה|השקעה|משכנתא|משכנתה|דירה בבעלות|"
+    r"\bbuy\b|\bbuying\b|\bpurchase\b|\bfor sale\b|\bto own\b|"
+    r"купить|покупк|продаж|acheter|achat|à vendre|a vendre|شراء|للبيع|اشتري|أشتري",
     re.IGNORECASE,
 )
 _RENT = re.compile(
-    r"שכירות|להשכרה|לשכור|שוכר|שוכרת|שכ\"ד|שכ״ד|שכד\b|\brent\b|\brental\b|\brenting\b",
+    r"שכירות|השכרה|השכרת|השכרות|להשכיר דירה|לשכור|שוכר|שוכרת|שוכרים|שכירה|שכ\"ד|שכ״ד|שכד\b|שכר דירה|"
+    r"\brent\b|\brental\b|\brenting\b|\bto let\b|\blease\b|"
+    r"аренд|снять|сниму|снимать|louer|loyer|إيجار|ايجار|استئجار|للإيجار|للايجار",
     re.IGNORECASE,
 )
 
