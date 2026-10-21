@@ -42,7 +42,9 @@
         <p class="lp-fine">{{ t('landing.trial_note') }}</p>
       </div>
       <div class="lp-todi">
-        <img class="lp-portrait" src="/static/todi-hero-light.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024">
+        <img class="lp-portrait lp-portrait-light" src="/static/todi-hero-light.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024">
+        {# 2026-10-21 (owner): on the dark theme, Todi and the title cut out of the beige, standing on the green #}
+        <img class="lp-portrait lp-portrait-dark" src="/static/todi-hero-dark.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024" loading="lazy">
         <div class="lp-notif" id="lp-notif" aria-hidden="true" hidden>
           <img src="/static/apple-touch-icon.png" alt="">
           <div class="lp-notif-who"><b>טודירה</b><span>{{ t('landing.notif_now') }}</span></div>
