@@ -190,3 +190,20 @@ def test_city_check_is_on_the_home_page_and_its_button_goes_through_login(client
     assert 'id="lp-mycity"' in html and 'id="lp-city-in"' in html
     assert 'href="/login?next=/apartments"' in html
     assert '"city_names"' in html and '"city_result_n"' in html
+
+
+def test_city_view_shows_every_flat_of_that_city_and_keeps_the_saved_filter():
+    """2026-10-22 (owner): the home page's "see the flats in <city>" opened the user's own filter instead."""
+    from types import SimpleNamespace
+
+    saved = SimpleNamespace(id=7, user_id=3, deal_type="sale", cities=["חיפה"], price_max=5000, require_parking=True)
+    view = website_main._city_view_filter(saved, "ירושלים")
+    assert view.cities == ["ירושלים"] and view.deal_type == "sale" and view.user_id == 3
+    assert view.price_max is None and view.require_parking is False and view.keywords == []
+    assert view.safe_room_pref == "any" and view.furniture_pref == "any"
+    assert saved.cities == ["חיפה"] and saved.price_max == 5000  # the saved search is untouched
+
+
+def test_home_city_button_goes_to_that_city_through_login():
+    js = (Path(__file__).resolve().parent.parent / "website" / "static" / "home.js").read_text()
+    assert '"/login?next=" + encodeURIComponent("/apartments?city="' in js

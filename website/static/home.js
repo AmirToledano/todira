@@ -109,6 +109,8 @@
       var n = byCity[city] || 0;
       out.textContent = fill(n === 0 ? S.city_result_0 : n === 1 ? S.city_result_1 : S.city_result_n, { city: city, n: fmt(n) });
       go.textContent = fill(S.city_go, { city: city });
+      // signed in: /login goes straight on; otherwise it asks to sign in first, then shows that city's flats
+      go.href = "/login?next=" + encodeURIComponent("/apartments?city=" + encodeURIComponent(city));
       go.hidden = n === 0;
     };
     input.addEventListener("input", show);
