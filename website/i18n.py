@@ -3389,6 +3389,13 @@ TRANSLATIONS.update({
                           "ar": "الخريطة والأرقام تتحدث من النظام."},
     # 2026-10-22 (owner): how many new flats came in in your city, and when the last one came in - for every visitor;
     # the flats themselves need signing in. {city} and {n} are filled in by home.js.
+    "apartments.city_view_note": {"he": "מציגים עכשיו את כל הדירות ב{city}, בלי הסינון שלך. הסינון השמור שלך לא השתנה.",
+                                   "en": "Showing every flat in {city} now, without your filter. Your saved filter is unchanged.",
+                                   "ru": "Сейчас показаны все квартиры: {city}, без вашего фильтра. Сохранённый фильтр не изменился.",
+                                   "fr": "Tous les logements à {city}, sans votre filtre. Votre filtre enregistré ne change pas.",
+                                   "ar": "نعرض الآن كل الشقق في {city}، بدون الفلتر الخاص بك. الفلتر المحفوظ لم يتغير."},
+    "apartments.city_view_back": {"he": "חזרה לדירות לפי הסינון שלי", "en": "Back to my filter", "ru": "Вернуться к моему фильтру",
+                                   "fr": "Revenir à mon filtre", "ar": "العودة إلى الفلتر الخاص بي"},
     "landing.city_label": {"he": "כמה דירות חדשות נכנסו בעיר שלכם?", "en": "How many new flats came in where you live?",
                            "ru": "Сколько новых квартир появилось в вашем городе?",
                            "fr": "Combien de nouveaux logements dans votre ville ?", "ar": "كم شقة جديدة دخلت في مدينتك؟"},

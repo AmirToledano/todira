@@ -50,6 +50,7 @@ import time
 from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import quote as url_quote, urlencode
 from zoneinfo import ZoneInfo
 
@@ -87,7 +88,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import Float, case, cast, delete, func, or_, select, text
+from sqlalchemy import ARRAY, Boolean, Float, case, cast, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import defer
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -1741,6 +1742,18 @@ def go_to_listing_source(request: Request, listing_id: int):
         return RedirectResponse(listing.url, status_code=302)
 
 
+def _city_view_filter(base, city: str) -> SimpleNamespace:
+    """2026-10-22 (owner): the home page's "see the flats in <city>" button. Every live listing of the user's deal type
+    in that one city, none of their other criteria - and their saved search is not touched. Shaped like a Filter row
+    (every column, at its empty value) so the match scan and its cache read it the same way."""
+    values = {}
+    for column in Filter.__table__.columns:
+        values[column.key] = [] if isinstance(column.type, ARRAY) else False if isinstance(column.type, Boolean) else None
+    values.update(id=base.id, user_id=base.user_id, deal_type=base.deal_type or "rent", cities=[city],
+                  safe_room_pref="any", furniture_pref="any")
+    return SimpleNamespace(**values)
+
+
 @app.get("/apartments")
 def apartments(
     request: Request,
@@ -1748,6 +1761,7 @@ def apartments(
     offset: int = 0,
     fragment: bool = False,
     listing: int | None = None,
+    city: str | None = None,
 ):
     with get_session() as session:
         user = _resolve_user(request, session, uid)
@@ -1764,7 +1778,9 @@ def apartments(
         # 2026-10-14: measured live at 16-27 s per page (and per infinite-scroll batch) - see listing_matches.py's
         # MATCH_COLUMNS comment. The match scan now reads light rows only, and its result (just the ordered ids) is
         # kept for a couple of minutes per user + filter + hidden set, so scrolling loads only the next 24 listings.
-        match_ids = _cached_match_ids(session, user.id, user.filter, hidden_ids)
+        city_view = city if city in LOCALITY_SET else None
+        match_filter = _city_view_filter(user.filter, city_view) if city_view else user.filter
+        match_ids = _cached_match_ids(session, user.id, match_filter, hidden_ids)
         page_items = [
             listing
             for listing in load_listings(session, match_ids[offset : offset + APARTMENTS_PAGE_SIZE])
@@ -1807,6 +1823,7 @@ def apartments(
         "liked_ids": liked_ids,
         "hidden_ids": set(),
         "deep_link_listing": deep_link_listing,
+        "city_view": city_view,
     }
     if fragment:
         # AJAX "load more" request (see apartments.html's own script) — just the next batch of

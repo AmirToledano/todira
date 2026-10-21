@@ -21,6 +21,14 @@
   <a class="btn gold" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t('apartments.notice_renew_btn' if access_state == 'subscription_expired' else 'apartments.notice_upgrade_btn') }}</a>
 </div>
 {% endif %}
+{% if city_view %}
+{# 2026-10-22 (owner): reached from the home page's "see the flats in <city>" - every flat there, the saved search
+   untouched (main.py _city_view_filter). #}
+<div class="apt-access-notice apt-city-view">
+  <p>{{ t('apartments.city_view_note', city=city_view) }}</p>
+  <a class="btn gold" href="/apartments">{{ t('apartments.city_view_back') }}</a>
+</div>
+{% endif %}
 <div class="apt-toolbar reveal">
   <h1 class="apt-toolbar-title">{{ t('apartments.title') }}</h1>
   {% if user and user.filter %}
