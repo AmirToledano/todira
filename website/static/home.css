@@ -143,7 +143,9 @@ body:has(.lp) .site-ambient { display: none; }
 
 /* one phone notification at a time: it drops in from the top, stays, and slides back up for the next one */
 .lp-notif {
-  position: absolute; top: 46%; inset-inline-end: -64px; width: min(300px, 80%);
+  /* 2026-10-21 (owner: on a computer it sat on Todi's face): on wide screens it sits on the cape above the picture's title, centred and
+     inside its width, so it never covers the face or reaches the text. Phones put it above the crown (max-width: 860px). */
+  position: absolute; bottom: 21%; inset-inline: 0; margin-inline: auto; width: min(300px, 84%);
   background: #fff; color: #1E2A29; border-radius: 18px; padding: 11px 14px;
   box-shadow: 0 14px 34px rgba(23, 60, 64, .22); display: grid; grid-template-columns: 38px 1fr; gap: 0 10px;
 }
