@@ -98,11 +98,10 @@ def test_the_demo_alert_is_the_bots_real_message():
 
 def test_dark_mode_shows_the_same_portrait_with_its_words(client):
     """Owner, 2026-10-19: the dark page showed a different picture of Todi; both themes use the one portrait with
-    the words on it. 2026-10-21 (owner): on the dark theme it is that same portrait cut out of its beige background."""
+    the words on it (a cut-out dark version was tried on 2026-10-21 and dropped)."""
     html = client.get("/?lang=he").text
-    assert "lp-portrait-light" in html and "todi-hero-light.webp" in html
-    assert "lp-portrait-dark" in html and "todi-hero-dark.webp" in html
-    assert (Path(__file__).resolve().parent.parent / "website" / "static" / "todi-hero-dark.webp").exists()
+    assert html.count('class="lp-portrait"') == 1 and "todi-hero-light.webp" in html
+    assert "todi-hero-dark" not in html
 
 
 def test_every_map_label_says_which_side_of_its_city_it_sits_on():
