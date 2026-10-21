@@ -80,6 +80,63 @@
     .then(function (data) { if (data) { live(data); } })
     .catch(function () { /* the rest of the page stands on its own */ });
 
+  /* ---------- your city: how many came in in the last 24 hours, and when the last one came in ----------
+     2026-10-22 (owner): for every visitor, signed in or not - the flats themselves need signing in (the button goes
+     through /login, which skips straight on for someone already signed in). */
+  function cityCheck(data) {
+    var box = document.getElementById("lp-mycity");
+    if (!box || !data.by_city) { return; }
+    var byCity = data.by_city;
+    var names = (L.city_names || []).slice();
+    Object.keys(byCity).forEach(function (c) { if (names.indexOf(c) < 0) { names.push(c); } });
+    var list = document.getElementById("lp-city-list");
+    names.forEach(function (c) { var o = document.createElement("option"); o.value = c; list.appendChild(o); });
+    var norm = function (v) { return String(v || "").replace(/["'׳״\-]/g, " ").replace(/\s+/g, " ").trim(); };
+    var find = function (v) {
+      v = norm(v);
+      if (!v) { return null; }
+      var exact = names.filter(function (c) { return norm(c) === v; });
+      if (exact.length) { return exact[0]; }
+      var starts = names.filter(function (c) { return norm(c).indexOf(v) === 0; });
+      return starts.length === 1 && v.length >= 2 ? starts[0] : null;
+    };
+    var input = document.getElementById("lp-city-in");
+    var out = document.getElementById("lp-city-out");
+    var go = document.getElementById("lp-city-go");
+    var show = function () {
+      var city = find(input.value);
+      if (!city) { out.textContent = ""; go.hidden = true; return; }
+      var n = byCity[city] || 0;
+      out.textContent = fill(n === 0 ? S.city_result_0 : n === 1 ? S.city_result_1 : S.city_result_n, { city: city, n: fmt(n) });
+      go.textContent = fill(S.city_go, { city: city });
+      go.hidden = n === 0;
+    };
+    input.addEventListener("input", show);
+    input.addEventListener("change", show);
+
+    // the last one in: its age is counted from its real time, again every half minute
+    var last = document.getElementById("lp-last");
+    var latest = data.latest;
+    var at = latest && Date.parse(latest.at);
+    var age = function () {
+      var min = Math.max(0, Math.floor((Date.now() - at) / 60000));
+      var vals = { city: latest.city };
+      if (min < 1) { return fill(S.last_now, vals); }
+      if (min === 1) { return fill(S.last_min_1, vals); }
+      if (min < 60) { vals.n = fmt(min); return fill(S.last_min_n, vals); }
+      var h = Math.floor(min / 60);
+      if (h === 1) { return fill(S.last_hour_1, vals); }
+      vals.n = fmt(h); return fill(S.last_hour_n, vals);
+    };
+    if (at && !isNaN(at)) {
+      last.textContent = age();
+      setInterval(function () { last.textContent = age(); }, 30000);
+    } else {
+      last.hidden = true;
+    }
+    box.hidden = false;
+  }
+
   /* ---------- the map ----------
      One even grid of dots in the shape of the country, so the Negev and the Arava are there even where few people
      list. It is painted once on a canvas: a dot grows and deepens with the live listings around it and glows gold
@@ -294,6 +351,7 @@
       }, 0.6);
     });
     onView(mapEl, map.reveal, 0.15);
+    cityCheck(data);
 
     // the feed: the newest rentals; each one lights its own place on the map
     var feed = document.getElementById("lp-feed");

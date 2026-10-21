@@ -64,6 +64,16 @@
         <p class="lp-feed-note">{{ t('landing.feed_note') }}</p>
       </div>
       <div class="lp-map" id="lp-map"></div>
+      {# 2026-10-22 (owner): how many came in in your city and when the last one came in, for everyone; the flats
+         themselves need signing in (home.js fills it from /api/home-map) #}
+      <div class="lp-mycity" id="lp-mycity" hidden>
+        <p class="lp-last" id="lp-last" aria-live="polite"></p>
+        <label class="lp-mycity-label" for="lp-city-in">{{ t('landing.city_label') }}</label>
+        <input class="lp-mycity-in" id="lp-city-in" list="lp-city-list" placeholder="{{ t('landing.city_placeholder') }}" autocomplete="off">
+        <datalist id="lp-city-list"></datalist>
+        <p class="lp-mycity-out" id="lp-city-out" aria-live="polite"></p>
+        <a class="lp-btn lp-mycity-go" id="lp-city-go" href="/login?next=/apartments" hidden></a>
+      </div>
     </div>
   </section>
 

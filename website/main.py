@@ -734,7 +734,11 @@ _HOME_MAP_CITIES = (
     ("landing.city_jerusalem", 31.77, 35.21, "e"), ("landing.city_beer_sheva", 31.25, 34.79, "e"),
     ("landing.city_eilat", 29.56, 34.95, "w"),
 )
-_LANDING_STRING_KEYS = ("notif_title", "notif_detail", "rooms_n", "rooms_1", "map_label")
+_LANDING_STRING_KEYS = (
+    "notif_title", "notif_detail", "rooms_n", "rooms_1", "map_label",
+    "city_result_n", "city_result_1", "city_result_0", "city_go", "last_now", "last_min_1", "last_min_n", "last_hour_1",
+    "last_hour_n",
+)
 
 
 def _home_map_data() -> dict | None:
@@ -759,6 +763,15 @@ def _home_map_data() -> dict | None:
             new_24h, cities_24h = session.execute(
                 select(func.count(), func.count(func.distinct(Listing.city))).where(*live, fresh)
             ).one()
+            # 2026-10-22 (owner): "how many came in today in my city" and "the last one came in N minutes ago" for
+            # every visitor, signed in or not - counts and a city name only, the listings themselves stay behind login.
+            by_city = session.execute(
+                select(Listing.city, func.count()).where(*live, fresh, Listing.city.is_not(None)).group_by(Listing.city)
+            ).all()
+            latest = session.execute(
+                select(Listing.first_seen_at, Listing.city)
+                .where(*live, Listing.city.is_not(None)).order_by(Listing.first_seen_at.desc()).limit(1)
+            ).first()
             recent = session.execute(
                 select(Listing.city, Listing.rooms, Listing.price, Listing.latitude, Listing.longitude)
                 .where(
@@ -780,6 +793,8 @@ def _home_map_data() -> dict | None:
              "lat": round(float(lat), 2), "lng": round(float(lng), 2)}
             for city, rooms, price, lat, lng in recent
         ],
+        "by_city": {city: int(n) for city, n in by_city},
+        "latest": {"at": latest[0].isoformat(), "city": latest[1]} if latest and latest[0] else None,
     }
     with _home_map_lock:
         _home_map_cache.update(at=time.monotonic(), value=value)
@@ -850,6 +865,7 @@ def _landing_js(lang: str) -> dict:
         "lang": lang,
         "strings": {key: t(f"landing.{key}") for key in _LANDING_STRING_KEYS},
         "cities": [{"name": t(key), "lat": lat, "lng": lng, "side": side} for key, lat, lng, side in _HOME_MAP_CITIES],
+        "city_names": sorted(CITIES),
         "demos": [
             {
                 "ask": t(f"landing.demo{n}_ask"), "chips": t(f"landing.demo{n}_chips").split("|"),
