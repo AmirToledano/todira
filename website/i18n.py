@@ -3348,7 +3348,7 @@ TRANSLATIONS.update({
     "landing.h1": {"he": "הדירות באות אליך", "en": "The flats come to you", "ru": "Квартиры сами приходят к вам",
                    "fr": "Les appartements viennent à vous", "ar": "الشقق تأتي إليك"},
     "landing.lede": {
-        "he": "כותבים לבוט מה מחפשים, במילים שלכם. מאותו רגע כל דירה חדשה שמתאימה נשלחת אליכם לטלגרם.",
+        "he": "כותבים לבוט מה מחפשים, במילים שלכם ובשפה חופשית, מאותו רגע כל דירה חדשה שמתאימה נשלחת אליכם לטלגרם.",
         "en": "Tell the bot what you're looking for, in your own words. From then on, every new flat that fits is sent to you on Telegram.",
         "ru": "Напишите боту своими словами, что вы ищете. С этого момента каждая новая подходящая квартира приходит вам в Telegram.",
         "fr": "Dites au bot ce que vous cherchez, avec vos mots. Dès lors, chaque nouvel appartement qui vous correspond vous est envoyé sur Telegram.",
@@ -3358,7 +3358,7 @@ TRANSLATIONS.update({
                     "fr": "Ouvrir le bot dans Telegram", "ar": "افتحوا البوت في تيليغرام"},
     "landing.how_link": {"he": "איך זה עובד", "en": "How it works", "ru": "Как это работает", "fr": "Comment ça marche",
                          "ar": "كيف يعمل"},
-    "landing.trial_note": {"he": "10 ימים ראשונים בחינם, בלי כרטיס אשראי.", "en": "First 10 days free, no credit card.",
+    "landing.trial_note": {"he": "10 ימים ראשונים בחינם, ללא אמצעי תשלום.", "en": "First 10 days free, no credit card.",
                            "ru": "Первые 10 дней бесплатно, без банковской карты.",
                            "fr": "Les 10 premiers jours sont gratuits, sans carte bancaire.",
                            "ar": "أول 10 أيام مجانًا، بدون بطاقة ائتمان."},
