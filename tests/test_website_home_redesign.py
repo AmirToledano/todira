@@ -170,3 +170,23 @@ def test_compact_json_stays_safe_inside_a_script_tag():
     out = str(website_main._json_compact({"a": "</script><b>'&", "b": "אבג"}))
     assert "</script>" not in out and "<" not in out and "אבג" in out
     assert json.loads(out) == {"a": "</script><b>'&", "b": "אבג"}
+
+
+_CITY_KEYS = ("city_label", "city_placeholder", "city_result_n", "city_result_1", "city_result_0", "city_go", "last_now",
+              "last_min_1", "last_min_n", "last_hour_1", "last_hour_n")
+
+
+def test_city_check_texts_exist_in_every_language():
+    """2026-10-22 (owner): how many came in in your city and when the last one came in, for every visitor."""
+    for key in _CITY_KEYS:
+        entry = T[f"landing.{key}"]
+        assert set(entry) >= {"he", "en", "ru", "fr", "ar"}, key
+        if key not in ("city_label", "city_placeholder"):
+            assert all("{city}" in text for text in entry.values()), key
+
+
+def test_city_check_is_on_the_home_page_and_its_button_goes_through_login(client):
+    html = client.get("/?lang=he").text
+    assert 'id="lp-mycity"' in html and 'id="lp-city-in"' in html
+    assert 'href="/login?next=/apartments"' in html
+    assert '"city_names"' in html and '"city_result_n"' in html
