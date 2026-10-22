@@ -1,0 +1,70 @@
+name: Diagnose — the path from trial end to payment, before 26.10 (read-only)
+
+# 2026-10-23 (owner): about 20 trials end on 26.10. Checks, without touching anything or anyone: who ends when and whether
+# they will get the reminder, that the payment settings are present on the website (true/false only, never a value), that
+# the checkout pages answer, and the recent payment rows. Counts only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Read the owner's id (masked, kept in a file)
+        run: |
+          OWNER=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$OWNER"
+          printf '%s' "${OWNER:-0}" > "$RUNNER_TEMP/owner"
+      - name: Trials and payments
+        run: |
+          OWNER=$(cat "$RUNNER_TEMP/owner")
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          {
+          echo "\\set owner $OWNER"
+          cat <<'SQL'
+          \pset format unaligned
+          \pset footer off
+          \echo '== trials ending, by Israel day (owner excluded): day | users | with Telegram | active | alerts on | reminder already sent | paid | free access'
+          SELECT (trial_ends_at AT TIME ZONE 'Asia/Jerusalem')::date, count(*), count(telegram_user_id), count(*) FILTER (WHERE is_active),
+                 count(*) FILTER (WHERE notifications_enabled), count(trial_reminder_sent_at),
+                 count(*) FILTER (WHERE paid_until > now()), count(*) FILTER (WHERE free_access_granted)
+          FROM users WHERE trial_ends_at > now() - interval '2 days' AND trial_ends_at < now() + interval '10 days'
+            AND (telegram_user_id IS NULL OR telegram_user_id <> :owner)
+          GROUP BY 1 ORDER BY 1;
+          \echo '== trial end hour (Israel) for those ending in the next 5 days: hour | users'
+          SELECT extract(hour FROM trial_ends_at AT TIME ZONE 'Asia/Jerusalem'), count(*) FROM users
+          WHERE trial_ends_at BETWEEN now() AND now() + interval '5 days' AND (telegram_user_id IS NULL OR telegram_user_id <> :owner) GROUP BY 1 ORDER BY 1;
+          \echo '== payments by status and plan, last 30 days: status | plan | count'
+          SELECT status, plan, count(*) FROM payments WHERE created_at > now() - interval '30 days' GROUP BY 1, 2 ORDER BY 1, 2;
+          SQL
+          } > "$RUNNER_TEMP/q.sql"
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < "$RUNNER_TEMP/q.sql"
+      - name: Website payment settings (set or not) and checkout pages
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$POD" -- python3 -c "
+          import os
+          for k in ['TAKBULL_PAYMENT_PAGE_URL','TAKBULL_PAYMENT_PAGE_URL_PASS_7','TAKBULL_PAYMENT_PAGE_URL_PASS_14','TAKBULL_PAYMENT_PAGE_URL_PASS_30','TAKBULL_WEBHOOK_SECRET','TAKBULL_TEST_AMOUNT_ILS']:
+              print(k, 'set' if os.environ.get(k, '').strip() else 'EMPTY')
+          import takbull_client as t
+          print('hosted page flow on:', t.hosted_page_configured(), '| recurring api on:', t.recurring_api_configured())
+          "
+          for k in TAKBULL_PAYMENT_PAGE_URL TAKBULL_PAYMENT_PAGE_URL_PASS_7 TAKBULL_PAYMENT_PAGE_URL_PASS_14 TAKBULL_PAYMENT_PAGE_URL_PASS_30; do
+            URL=$(kubectl exec -n todira "$POD" -- printenv "$k" 2>/dev/null || true)
+            [ -z "$URL" ] && { echo "$k: not set"; continue; }
+            echo "::add-mask::$URL"
+            echo "$k checkout page: HTTP $(curl -s -o /dev/null -L -m 20 -w '%{http_code}' "$URL")"
+          done
+          echo "/upgrade (signed out): HTTP $(curl -s -o /dev/null -m 20 -w '%{http_code}' https://todira.app/upgrade)"
+          echo "/pricing-free home: HTTP $(curl -s -o /dev/null -m 20 -w '%{http_code}' https://todira.app/)"
