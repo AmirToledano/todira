@@ -1,0 +1,75 @@
+name: Diagnose — new flats vs alerts, and how each source catches removed ads and price changes (read-only)
+
+# 2026-10-22 (owner): "yesterday 2,569 new flats but only 1,819 alerts - my own search is all of Israel, rent". And: are
+# removed ads taken down, and are price changes caught, for every source? Counts only - never an ad, a user or an id.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Read the owner's id (masked, kept in a file)
+        run: |
+          OWNER=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$OWNER"
+          printf '%s' "${OWNER:-0}" > "$RUNNER_TEMP/owner"
+      - name: Counts
+        run: |
+          OWNER=$(cat "$RUNNER_TEMP/owner")
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          {
+          echo "\\set owner $OWNER"
+          cat <<'SQL'
+          \pset format unaligned
+          \pset footer off
+          CREATE TEMP VIEW y AS SELECT * FROM listings
+            WHERE first_seen_at >= (date_trunc('day', now() AT TIME ZONE 'Asia/Jerusalem') - interval '1 day') AT TIME ZONE 'Asia/Jerusalem'
+              AND first_seen_at < date_trunc('day', now() AT TIME ZONE 'Asia/Jerusalem') AT TIME ZONE 'Asia/Jerusalem';
+          CREATE TEMP VIEW me AS SELECT u.id FROM users u WHERE u.telegram_user_id = :owner;
+          \echo '== yesterday (Israel): new non-duplicate flats per deal type | of them already taken down'
+          SELECT deal_type, count(*), count(*) FILTER (WHERE is_delisted) FROM y WHERE duplicate_of_id IS NULL GROUP BY deal_type ORDER BY 2 DESC;
+          \echo '== yesterday: duplicates (same flat on another site, never sent again)'
+          SELECT count(*) FROM y WHERE duplicate_of_id IS NOT NULL;
+          \echo '== yesterday alerts by reason (all users) | to the owner'
+          SELECT reason, count(*), count(*) FILTER (WHERE user_id IN (SELECT id FROM me)) FROM sent_notifications
+            WHERE sent_at >= (date_trunc('day', now() AT TIME ZONE 'Asia/Jerusalem') - interval '1 day') AT TIME ZONE 'Asia/Jerusalem'
+              AND sent_at < date_trunc('day', now() AT TIME ZONE 'Asia/Jerusalem') AT TIME ZONE 'Asia/Jerusalem'
+            GROUP BY reason ORDER BY 2 DESC;
+          \echo '== owner search: deal type | cities set | price set | rooms set | other limits set'
+          SELECT f.deal_type, coalesce(array_length(f.cities, 1), 0), (f.price_min IS NOT NULL OR f.price_max IS NOT NULL),
+                 (f.rooms_min IS NOT NULL OR f.rooms_max IS NOT NULL),
+                 (f.require_parking OR f.require_elevator OR f.require_balcony OR f.require_pets_allowed OR f.require_renovated
+                  OR f.require_has_photos OR f.require_price OR f.no_brokers OR f.ground_floor_only OR f.min_area_sqm IS NOT NULL
+                  OR coalesce(array_length(f.keywords, 1), 0) > 0 OR coalesce(array_length(f.property_types, 1), 0) > 0
+                  OR f.map_region_kind IS NOT NULL OR f.safe_room_pref <> 'any' OR f.furniture_pref <> 'any')
+          FROM filters f WHERE f.user_id IN (SELECT id FROM me);
+          \echo '== yesterday new rent flats the owner did NOT get, by what they lack: total | no city | no price | no rooms | taken down | came in 23:00-07:00'
+          SELECT count(*), count(*) FILTER (WHERE city IS NULL), count(*) FILTER (WHERE price IS NULL), count(*) FILTER (WHERE rooms IS NULL),
+                 count(*) FILTER (WHERE is_delisted),
+                 count(*) FILTER (WHERE extract(hour FROM first_seen_at AT TIME ZONE 'Asia/Jerusalem') >= 23 OR extract(hour FROM first_seen_at AT TIME ZONE 'Asia/Jerusalem') < 7)
+          FROM y WHERE deal_type = 'rent' AND duplicate_of_id IS NULL
+            AND id NOT IN (SELECT listing_id FROM sent_notifications WHERE user_id IN (SELECT id FROM me));
+          \echo '== per source: live | live not re-seen 1d | 3d | 7d | oldest live (days) | taken down last 7d | price changed last 7d'
+          SELECT source, count(*) FILTER (WHERE NOT is_delisted),
+                 count(*) FILTER (WHERE NOT is_delisted AND scraped_at < now() - interval '1 day'),
+                 count(*) FILTER (WHERE NOT is_delisted AND scraped_at < now() - interval '3 days'),
+                 count(*) FILTER (WHERE NOT is_delisted AND scraped_at < now() - interval '7 days'),
+                 round(extract(epoch FROM now() - min(first_seen_at) FILTER (WHERE NOT is_delisted)) / 86400),
+                 count(*) FILTER (WHERE is_delisted AND delisted_at > now() - interval '7 days'),
+                 count(*) FILTER (WHERE price_changed_at > now() - interval '7 days')
+          FROM listings WHERE duplicate_of_id IS NULL GROUP BY source ORDER BY 2 DESC;
+          SQL
+          } > "$RUNNER_TEMP/q.sql"
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < "$RUNNER_TEMP/q.sql"
