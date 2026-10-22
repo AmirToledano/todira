@@ -55,7 +55,7 @@ from urllib.parse import quote as url_quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
-from todira_common import activity, listing_enrichment, owner_inbox, share
+from todira_common import activity, listing_enrichment, owner_inbox, share, testimonials
 from todira_common.access import (
     CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
@@ -978,7 +978,34 @@ def home(request: Request):
             },
         )
     lang = get_lang(request)
-    return _render(request, "home.html", {"landing_plans": _landing_plans(), "landing_js": _landing_js(lang)})
+    return _render(
+        request,
+        "home.html",
+        {
+            "landing_plans": _landing_plans(),
+            "landing_js": _landing_js(lang),
+            "testimonials": _home_testimonials(),
+            "founder_photo": _FOUNDER_PHOTO if (BASE_DIR / "static" / _FOUNDER_PHOTO).is_file() else None,
+        },
+    )
+
+
+# 2026-10-22 (owner): "why I founded Todira" on the home page - with the owner's photo once he sends one (dropped in as
+# static/founder.jpg; until then the section is text only).
+_FOUNDER_PHOTO = "founder.jpg"
+
+
+def _home_testimonials() -> list:
+    """Testimonials the owner approved for the site (todira_common/testimonials.py). Never breaks the home page."""
+    try:
+        with get_session() as session:
+            rows = testimonials.shown_testimonials(session)
+            for row in rows:
+                session.expunge(row)
+            return rows
+    except Exception:
+        logger.warning("could not load testimonials", exc_info=True)
+        return []
 
 
 @app.get("/robots.txt")
@@ -2258,7 +2285,21 @@ def admin_messages(request: Request):
             select(ContactMessage).order_by(ContactMessage.created_at.desc()).limit(200)
         ).all()
 
-    return _render(request, "admin_messages.html", {"messages": messages})
+        shown_ids = {m.id for m in messages if m.source == testimonials.SOURCE and testimonials.is_shown(session, m.id)}
+
+    return _render(request, "admin_messages.html", {"messages": messages, "shown_ids": shown_ids})
+
+
+@app.post("/admin/messages/{message_id}/show")
+def admin_testimonial_show(request: Request, message_id: int, show: str = Form("1")):
+    """2026-10-22: the owner decides which testimonials appear on the home page."""
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+        row = session.get(ContactMessage, message_id)
+        if row is not None and row.source == testimonials.SOURCE:
+            testimonials.set_shown(session, message_id, show == "1")
+    return RedirectResponse("/admin/messages", status_code=303)
 
 
 def _require_owner(request: Request, session) -> User | None:

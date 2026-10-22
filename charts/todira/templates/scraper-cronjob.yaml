@@ -77,6 +77,9 @@ spec:
                       optional: true
                 - name: WEBSITE_URL
                   value: "https://{{ .Values.website.domain }}"
+                # 2026-10-22: the "share this flat" button on listing cards (owner approved the wording).
+                - name: BOT_SHARE_BUTTON
+                  value: "1"
                 # On-demand listing-description enrichment via Bright Data (scraper/
                 # bright_data_client.py, 2026-09-05) — all optional; unset means
                 # fetch_listing_description always returns None, same as before this feature

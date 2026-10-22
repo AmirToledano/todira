@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from telegram import Bot
 from telegram.error import Forbidden
 
+from todira_common import testimonials
 from todira_common.bot_strings import bot_text
 from todira_common.language import DEFAULT_LANG
 from todira_common.models import User
@@ -163,6 +164,59 @@ async def _run(session: Session, now: dt.datetime) -> int:
     return sent
 
 
+FOUND_ASK_AFTER = dt.timedelta(days=2)
+FOUND_ASK_WITHIN = dt.timedelta(days=10)
+
+
+def _due_found_users(session: Session, now: dt.datetime) -> list[User]:
+    """2026-10-22 (owner): "did you find a flat?" a couple of days after a pass or the free trial ended without a new
+    one (todira_common/testimonials.py). Mornings only (09:00-12:00 Israel); at most once per 60 days per user."""
+    ended = or_(
+        (User.paid_until.is_not(None)) & (User.paid_until <= now - FOUND_ASK_AFTER)
+        & (User.paid_until > now - FOUND_ASK_WITHIN),
+        (User.paid_until.is_(None)) & (User.trial_ends_at <= now - FOUND_ASK_AFTER)
+        & (User.trial_ends_at > now - FOUND_ASK_WITHIN),
+    )
+    conditions = [User.telegram_user_id.is_not(None), User.free_access_granted.is_(False), ended]
+    if OWNER_TELEGRAM_USER_ID.isdigit():
+        conditions.append(User.telegram_user_id != int(OWNER_TELEGRAM_USER_ID))
+    users = session.scalars(select(User).where(*conditions)).all()
+    return [user for user in users if not testimonials.asked_recently(session, user.id, now)]
+
+
+async def _run_found(session: Session, now: dt.datetime) -> int:
+    if not 9 <= now.astimezone(_ISRAEL).hour < 12:
+        return 0
+    users = _due_found_users(session, now)
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not users or not token:
+        return 0
+    sent = 0
+    bot = Bot(token=token)
+    await bot.initialize()
+    try:
+        for user in users:
+            lang = user.language or DEFAULT_LANG
+            try:
+                await bot.send_message(
+                    chat_id=user.telegram_user_id,
+                    text=bot_text("found_ask.question", lang),
+                    reply_markup=testimonials.found_keyboard(lang),
+                )
+            except Forbidden:
+                pass  # blocked the bot - marked asked below so it isn't tried again
+            except Exception:
+                logger.exception("found question: Telegram send failed for user_id=%s", user.id)
+                continue
+            else:
+                sent += 1
+            testimonials.mark_asked(session, user.id, now)
+            await asyncio.sleep(0.3)
+    finally:
+        await bot.shutdown()
+    return sent
+
+
 def run_renewal_reminders(session: Session) -> dict[str, int]:
     """Returns {"renewal_reminders_sent": n} for the run summary."""
     now = dt.datetime.now(dt.timezone.utc)
@@ -172,4 +226,9 @@ def run_renewal_reminders(session: Session) -> dict[str, int]:
     except Exception:
         session.rollback()
         logger.exception("trial reminder step failed")
+    try:
+        summary["found_questions_sent"] = asyncio.run(_run_found(session, now))
+    except Exception:
+        session.rollback()
+        logger.exception("found question step failed")
     return summary
