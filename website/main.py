@@ -51,7 +51,7 @@ from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import quote as url_quote, urlencode
+from urllib.parse import quote as url_quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -240,27 +240,92 @@ _NOT_A_PAGE_VISIT = ("/static", "/api", "/webhooks", "/admin", "/healthz", "/fav
 _NOT_A_PERSON = re.compile(r"bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|curl|python|headless", re.I)
 
 
-def _activity_who(request: Request) -> str | None:
-    if request.method != "GET" or request.url.path.startswith(_NOT_A_PAGE_VISIT):
+# 2026-10-22 (owner: "you are probably counting my own visits"): a browser the owner has ever been signed in on carries
+# this cookie, so it is never counted - signed in or not. It only hides a browser from the counts; it grants nothing.
+_OWNER_COOKIE = "todira_owner"
+_owner_user_id_cache: dict = {"at": 0.0, "id": None}
+
+
+def _owner_user_id() -> int | None:
+    if not OWNER_TELEGRAM_USER_ID or not OWNER_TELEGRAM_USER_ID.strip().isdigit():
         return None
+    if time.monotonic() - _owner_user_id_cache["at"] > 600:
+        try:
+            with get_session() as session:
+                _owner_user_id_cache["id"] = session.scalar(
+                    select(User.id).where(User.telegram_user_id == int(OWNER_TELEGRAM_USER_ID))
+                )
+        except Exception:
+            logger.warning("could not look up the owner's account", exc_info=True)
+        _owner_user_id_cache["at"] = time.monotonic()
+    return _owner_user_id_cache["id"]
+
+
+def _is_owner_browser(request: Request) -> bool:
+    if request.cookies.get(_OWNER_COOKIE) == "1":
+        return True
+    owner = _owner_user_id()
+    return owner is not None and request.session.get("user_id") == owner
+
+
+def _is_person(request: Request) -> bool:
     user_agent = request.headers.get("user-agent", "")
-    if not user_agent or _NOT_A_PERSON.search(user_agent):
-        return None
+    return bool(user_agent) and not _NOT_A_PERSON.search(user_agent)
+
+
+def _visitor(request: Request) -> str:
+    """The person behind a request: "u<user id>" when signed in, else an anonymous key that changes every day."""
     user_id = request.session.get("user_id")
     if user_id is not None:
         return f"u{user_id}"
     forwarded = request.headers.get("x-forwarded-for", "")
     address = forwarded.split(",")[0].strip() or (request.client.host if request.client else "")
-    return activity.visitor_key(address, user_agent, SESSION_SECRET_KEY, activity.today())
+    return activity.visitor_key(address, request.headers.get("user-agent", ""), SESSION_SECRET_KEY, activity.today())
+
+
+def _activity_who(request: Request) -> str | None:
+    if request.method != "GET" or request.url.path.startswith(_NOT_A_PAGE_VISIT):
+        return None
+    if not _is_person(request) or _is_owner_browser(request):
+        return None
+    return _visitor(request)
+
+
+# Where a visit came from (2026-10-22): the referring site's kind, counted once per person per day. Only the kind is kept.
+_REFERRER_KINDS = (
+    ("instagram", "instagram"), ("facebook", "facebook"), ("fb.", "facebook"), ("google", "google"),
+    ("t.me", "telegram"), ("telegram", "telegram"), ("whatsapp", "whatsapp"), ("wa.me", "whatsapp"),
+    ("tiktok", "tiktok"), ("linkedin", "linkedin"), ("bing", "bing"),
+)
+
+
+def _referrer_kind(request: Request) -> str | None:
+    referer = request.headers.get("referer", "")
+    if not referer:
+        return None
+    host = (urlsplit(referer).hostname or "").lower()
+    if not host or host == (request.url.hostname or "").lower():
+        return None
+    for marker, kind in _REFERRER_KINDS:
+        if marker in host:
+            return kind
+    return "other"
 
 
 class _ActivityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         if response.status_code < 400 and response.headers.get("content-type", "").startswith("text/html"):
+            owner = _owner_user_id()
+            if owner is not None and request.session.get("user_id") == owner and request.cookies.get(_OWNER_COOKIE) != "1":
+                response.set_cookie(_OWNER_COOKIE, "1", max_age=2 * 365 * 24 * 3600, httponly=True, samesite="lax", secure=True)
             who = _activity_who(request)
             if who:
-                asyncio.get_running_loop().run_in_executor(None, activity.record, activity.SITE_VISIT, who)
+                loop = asyncio.get_running_loop()
+                loop.run_in_executor(None, activity.record, activity.SITE_VISIT, who)
+                kind = _referrer_kind(request)
+                if kind:
+                    loop.run_in_executor(None, activity.record, f"site_from_{kind}", who)
         return response
 
 
@@ -800,6 +865,23 @@ def _home_map_data() -> dict | None:
     with _home_map_lock:
         _home_map_cache.update(at=time.monotonic(), value=value)
     return value
+
+
+# 2026-10-22 (owner: do visitors press the bot buttons, and who): every tracked button sends one small beacon
+# (base.html). Counted per person per day like the visits - a second press by the same person adds to their count, so
+# repeats show up as more presses than people. The owner's browsers are never counted.
+_CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go"}
+
+
+@app.post("/api/click")
+async def track_click(request: Request):
+    try:
+        what = str((await request.form()).get("what") or "")
+    except Exception:
+        what = ""
+    if what in _CLICK_TARGETS and _is_person(request) and not _is_owner_browser(request):
+        asyncio.get_running_loop().run_in_executor(None, activity.record, f"click_{what}", _visitor(request))
+    return Response(status_code=204)
 
 
 @app.get("/api/home-map")

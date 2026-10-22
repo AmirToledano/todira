@@ -270,7 +270,7 @@
         <a href="/liked{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.liked') }}</a>
         <a href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.filter') }}</a>
         <a href="/contact{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.contact') }}</a>
-        <a href="https://t.me/AmirDirotBot" target="_blank">{{ t('nav.bot') }}</a>
+        <a href="https://t.me/AmirDirotBot?start=site_menu" target="_blank" data-track="bot_menu">{{ t('nav.bot') }}</a>
         <a href="/about">{{ t('footer.about') }}</a>
         <a href="/terms">{{ t('footer.terms') }}</a>
         <a href="/privacy">{{ t('footer.privacy') }}</a>
@@ -576,6 +576,17 @@
       } else if (speakBtn) {
         speakBtn.disabled = true;
       }
+    })();
+    (function () {
+      // 2026-10-22 (owner): count presses on the buttons that lead to the bot (main.py /api/click) - one tiny beacon,
+      // sent even as the page navigates away; it never delays or blocks the link.
+      document.addEventListener('click', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('[data-track]') : null;
+        if (!el || !navigator.sendBeacon) { return; }
+        var body = new FormData();
+        body.append('what', el.getAttribute('data-track'));
+        try { navigator.sendBeacon('/api/click', body); } catch (err) { /* counting must never break a click */ }
+      }, true);
     })();
     (function () {
       var els = document.querySelectorAll('.reveal');

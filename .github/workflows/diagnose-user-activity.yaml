@@ -4,6 +4,8 @@ name: Diagnose — do people really use the bot and the site day to day (read-on
 # out: sign-ups, filter changes (bot or site), saved/hidden listings, alerts sent, contact messages, payments, and how
 # many different people used /start or /filter in the bot since its pod started. Never a name, an id or a message.
 # 2026-10-21: plus messages to the bot, button presses and site visits per day (activity_days, todira_common/activity.py).
+# 2026-10-22: plus presses on the site's bot buttons, who then arrived in the bot, and where visitors came from. The
+# owner's browsers are left out of the site counts (main.py _is_owner_browser).
 on:
   workflow_dispatch: {}
 
@@ -92,6 +94,15 @@ jobs:
                  count(*) FILTER (WHERE kind = 'site_visit' AND who LIKE 'u%'), count(*) FILTER (WHERE kind = 'site_visit' AND who LIKE 'v%'),
                  coalesce(sum(hits) FILTER (WHERE kind = 'site_visit'), 0)
           FROM a GROUP BY day ORDER BY day;
+          CREATE TEMP VIEW act AS SELECT a.* FROM activity_days a
+            WHERE a.who <> 't' || :owner AND a.who IS DISTINCT FROM (SELECT 'u' || id FROM users WHERE telegram_user_id = :owner)
+              AND a.day > (now() AT TIME ZONE 'Asia/Jerusalem')::date - 14;
+          \echo '== button presses (2026-10-22 on): day | button | people | presses (more presses than people = repeats)'
+          SELECT day, substr(kind, 7), count(*), sum(hits) FROM act WHERE kind LIKE 'click\_%' GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== arrived in the bot from a site button: day | which button | people'
+          SELECT day, substr(kind, 16), count(*) FROM act WHERE kind LIKE 'bot\_start\_site\_%' GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== where site visitors came from: day | from | people'
+          SELECT day, substr(kind, 11), count(*) FROM act WHERE kind LIKE 'site\_from\_%' GROUP BY 1, 2 ORDER BY 1, 3 DESC;
           \echo '== payments by status: all time | 30d'
           SELECT pay.status, count(*), count(*) FILTER (WHERE pay.created_at > now() - interval '30 days')
           FROM payments pay JOIN people p ON p.id = pay.user_id GROUP BY pay.status ORDER BY pay.status;
