@@ -1301,6 +1301,31 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "🙈 הסתר", "en": "🙈 Hide", "ru": "🙈 Скрыть", "fr": "🙈 Masquer",
         "ar": "🙈 إخفاء",
     },
+    # 2026-10-22 (owner approved): "did you find a flat?" - asked on pause and after a pass/trial ends
+    # (todira_common/testimonials.py), and the testimonial request after a "yes".
+    "found_ask.question": {
+        "he": "היי, רק שאלה קטנה: מצאתם דירה?",
+        "en": "Hi, just a quick question: did you find a flat?",
+        "ru": "Привет, небольшой вопрос: вы нашли квартиру?",
+        "fr": "Salut, petite question : vous avez trouvé un appartement ?",
+        "ar": "مرحبًا، سؤال صغير: هل وجدتم شقة؟",
+    },
+    "found_ask.yes_btn": {"he": "כן! 🎉", "en": "Yes! 🎉", "ru": "Да! 🎉", "fr": "Oui ! 🎉", "ar": "نعم! 🎉"},
+    "found_ask.no_btn": {"he": "עדיין מחפש", "en": "Still looking", "ru": "Ещё ищу", "fr": "Je cherche encore",
+                         "ar": "ما زلت أبحث"},
+    "found_ask.yes_reply": {
+        "he": "איזה כיף! תכתבו לנו משפט אחד על איך היה, ואם מותר לנו להציג אותו באתר עם השם הפרטי שלכם.",
+        "en": "That's great! Write us one sentence about how it went, and whether we may show it on the site with your first name.",
+        "ru": "Как здорово! Напишите нам одно предложение о том, как всё прошло, и можно ли показать его на сайте с вашим именем.",
+        "fr": "Super ! Écrivez-nous une phrase sur votre expérience, et dites-nous si on peut l'afficher sur le site avec votre prénom.",
+        "ar": "رائع! اكتبوا لنا جملة واحدة عن تجربتكم، وهل يمكننا عرضها في الموقع مع اسمكم الأول.",
+    },
+    "found_ask.no_reply": {
+        "he": "בהצלחה בחיפוש! 🍀", "en": "Good luck with the search! 🍀", "ru": "Удачи в поисках! 🍀",
+        "fr": "Bonne chance pour la recherche ! 🍀", "ar": "بالتوفيق في البحث! 🍀",
+    },
+    "found_ask.thanks": {"he": "תודה רבה! 🙏", "en": "Thank you so much! 🙏", "ru": "Большое спасибо! 🙏",
+                         "fr": "Merci beaucoup ! 🙏", "ar": "شكرًا جزيلًا! 🙏"},
     # 2026-10-22: the card's share button (off until the owner approves - cards.py's _bot_share_enabled).
     "card.share_button": {
         "he": "📤 שיתוף הדירה", "en": "📤 Share this flat", "ru": "📤 Поделиться", "fr": "📤 Partager",

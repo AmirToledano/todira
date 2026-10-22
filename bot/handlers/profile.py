@@ -13,6 +13,7 @@ from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
 from todira_common.models import Filter, SentNotification, User
+from handlers.testimonial import ask_found
 
 
 def _profile_text(user: User, filter_row: Filter | None, notifications_sent: int, lang: str) -> str:
@@ -97,7 +98,8 @@ def _toggle_profile_sync(tg_user, query_data: str):
             )
             or 0
         )
-        return _profile_text(user, filter_row, notifications_sent, lang), _keyboard(user, lang)
+        just_paused = query_data == "profile:toggle_active" and not user.is_active
+        return _profile_text(user, filter_row, notifications_sent, lang), _keyboard(user, lang), just_paused, user.id, lang
 
 
 async def profile_toggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -106,9 +108,12 @@ async def profile_toggle_callback(update: Update, context: ContextTypes.DEFAULT_
     if result is None:
         await query.answer()
         return
-    text, markup = result
+    text, markup, just_paused, user_id, lang = result
     await query.answer()
     await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    if just_paused:
+        # 2026-10-22 (owner): pausing the alerts is a good moment to ask whether they found a flat.
+        await ask_found(context.bot, update.effective_chat.id, user_id, lang)
 
 
 def build_profile_handlers() -> list:

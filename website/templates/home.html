@@ -121,6 +121,30 @@
     </div>
   </section>
 
+  {% if testimonials %}
+  {# 2026-10-22: real testimonials, each approved by the owner (todira_common/testimonials.py). #}
+  <section class="lp-paper lp-wrap lp-said">
+    <h2 class="lp-big">{{ t('landing.said_title') }}</h2>
+    <div class="lp-said-list">
+      {% for item in testimonials %}
+      <figure><blockquote>{{ item.message }}</blockquote>{% if item.name %}<figcaption>{{ item.name }}</figcaption>{% endif %}</figure>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# 2026-10-22 (owner approved the text): why the owner built Todira. #}
+  <section class="lp-paper lp-wrap lp-founder">
+    {% if founder_photo %}<img class="lp-founder-photo" src="/static/{{ founder_photo }}" alt="{{ t('landing.founder_photo_alt') }}" loading="lazy">{% endif %}
+    <div>
+      <h2 class="lp-big">{{ t('landing.founder_title') }}</h2>
+      <p>{{ t('landing.founder_p1') }}</p>
+      <p>{{ t('landing.founder_p2') }}</p>
+      <p>{{ t('landing.founder_p3') }} <a href="/contact">{{ t('landing.founder_contact') }}</a></p>
+      <p class="lp-founder-sign">{{ t('landing.founder_sign') }}</p>
+    </div>
+  </section>
+
   <section class="lp-paper lp-wrap lp-faq">
     <h2 class="lp-big">{{ t('landing.faq_title') }}</h2>
     {% for n in (1, 6, 2, 7, 5, 4, 8) %}

@@ -23,6 +23,7 @@ from todira_common.listing_matches import shown_listing_id
 from todira_common.models import Listing, UserListingAction
 from todira_common.users import get_or_create_user
 from todira_common.uid_token import signed_login_query
+from handlers.testimonial import _user_lang_sync, ask_for_testimonial
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,13 @@ async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     await query.answer(toast)
+    if action == "found":
+        # 2026-10-22: someone who says they found a flat is asked for a short testimonial (handlers/testimonial.py).
+        try:
+            lang = await asyncio.to_thread(_user_lang_sync, update.effective_user.id)
+            await ask_for_testimonial(context.bot, update.effective_chat.id, context, lang)
+        except Exception:
+            logger.exception("Could not ask user %s for a testimonial", update.effective_user.id)
 
 
 def build_reaction_handler() -> CallbackQueryHandler:

@@ -72,6 +72,9 @@ spec:
                   optional: true
             - name: WEBSITE_URL
               value: "https://{{ .Values.website.domain }}"
+            # 2026-10-22: the "share this flat" button on listing cards (owner approved the wording).
+            - name: BOT_SHARE_BUTTON
+              value: "1"
             # bot/handlers/contact_fallback.py's forward-to-owner path — was missing here entirely
             # until 2026-09-01 (the website Deployment had it, the bot Deployment never did), so
             # the fallback silently never sent anything even once the secret existed.

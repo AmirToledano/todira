@@ -21,7 +21,7 @@
     {% for m in messages %}
     <div class="admin-message-card">
       <div class="amc-header">
-        <span class="amc-source">{% if m.source == 'website' %}{{ icon('globe') }} אתר{% elif m.source == 'telegram_bot' %}{{ icon('bot') }} בוט טלגרם{% else %}{{ icon('circle-help') }} לא ידוע{% endif %}</span>
+        <span class="amc-source">{% if m.source == 'website' %}{{ icon('globe') }} אתר{% elif m.source == 'telegram_bot' %}{{ icon('bot') }} בוט טלגרם{% elif m.source == 'testimonial' %}⭐ המלצה{% else %}{{ icon('circle-help') }} לא ידוע{% endif %}</span>
         <span class="amc-date">{{ m.created_at | il_datetime }}</span>
         {% if m.notified_owner %}
           <span class="amc-status amc-status-ok" title="נשלחה התראה בטלגרם">{{ icon('circle-check') }} נשלחה התראה</span>
@@ -39,6 +39,15 @@
         <div class="amc-meta"><span>Telegram ID: {{ m.telegram_user_id }}</span></div>
       {% endif %}
       <p class="amc-body">{{ m.message }}</p>
+      {% if m.source == 'testimonial' %}
+      <form method="post" action="/admin/messages/{{ m.id }}/show">
+        {% if m.id in shown_ids %}
+        <input type="hidden" name="show" value="0"><span>מוצגת בדף הבית</span> <button type="submit" class="btn outline">להסיר מהאתר</button>
+        {% else %}
+        <input type="hidden" name="show" value="1"><button type="submit" class="btn gold">להציג בדף הבית</button>
+        {% endif %}
+      </form>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

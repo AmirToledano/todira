@@ -42,6 +42,7 @@ from todira_common.models import Filter
 from todira_common.uid_token import signed_login_query
 from todira_common.users import get_or_create_user
 from handlers.onboarding import _EMPTY_STATE, _save_filter_sync
+from handlers.testimonial import take_testimonial
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
 from telegram import Update
@@ -257,6 +258,10 @@ async def _reply_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
 
 async def handle_stray_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text or ""
+
+    # 2026-10-22: the reply to "write us one sentence about how it went" (handlers/testimonial.py).
+    if await take_testimonial(update, context):
+        return
 
     # looks_like_help_request stays checked FIRST, before touching this module's own get_session
     # at all — same precedence bot/handlers/support.py's own docstring already establishes,

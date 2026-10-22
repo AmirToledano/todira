@@ -111,6 +111,9 @@ spec:
                       optional: true
                 - name: WEBSITE_URL
                   value: "https://{{ .Values.website.domain }}"
+                # 2026-10-22: the "share this flat" button on listing cards (owner approved the wording).
+                - name: BOT_SHARE_BUTTON
+                  value: "1"
                 # The dedicated scraping account's real session cookie — see
                 # set-facebook-cookies-secret.yaml's own header comment for how this key is set
                 # (typed directly into that workflow's own GitHub Actions form, never through a

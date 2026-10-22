@@ -142,3 +142,21 @@ def test_monthly_pass_shows_the_real_saving():
     assert by_plan["pass_7"]["saving"] is None
     assert by_plan["pass_14"]["saving"] == 10
     assert by_plan["pass_30"]["saving"] == 35
+
+
+def test_home_shows_why_i_built_todira_and_approved_testimonials(client):
+    quote = SimpleNamespace(message="מצאתי דירה בזכות הבוט", name="דנה")
+    with (
+        patch.object(website_main, "_home_testimonials", lambda: [quote]),
+        patch.object(website_main, "_home_map_data", lambda: {"by_city": {}, "latest": None, "points": [], "count": 0}),
+    ):
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert "למה הקמתי את טודירה" in resp.text
+    assert "מה אומרים עלינו" in resp.text and "מצאתי דירה בזכות הבוט" in resp.text
+
+
+def test_home_without_testimonials_has_no_empty_section(client):
+    with patch.object(website_main, "_home_testimonials", lambda: []):
+        resp = client.get("/")
+    assert "מה אומרים עלינו" not in resp.text
