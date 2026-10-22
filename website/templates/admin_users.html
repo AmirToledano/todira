@@ -45,6 +45,20 @@
         {% if r.trial_ends_at %}<span>ניסיון עד {{ r.trial_ends_at | il_date }}</span>{% endif %}
         {% if r.paid_until %}<span>שולם עד {{ r.paid_until | il_date }}</span>{% endif %}
       </div>
+      {# 2026-10-22 (owner): give any number of days, and take them back. #}
+      {% if r.gift %}
+      <div class="amc-meta"><span>{{ icon('gift') }} קיבל {{ r.gift.days }} ימי מתנה{% if r.trial_ends_at %}, גישה עד {{ r.trial_ends_at | il_date }}{% endif %}</span></div>
+      {% endif %}
+      <form method="post" action="/admin/users/{{ r.id }}/gift-days" class="admin-gift-form" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label for="gift-{{ r.id }}">כמה ימים לתת</label>
+        <input id="gift-{{ r.id }}" type="number" name="days" min="1" max="365" value="7" required inputmode="numeric" style="width:80px">
+        <button type="submit" class="btn gold" style="padding:8px 16px;font-size:.85rem">{{ icon('gift') }} תן ימים</button>
+      </form>
+      {% if r.gift %}
+      <form method="post" action="/admin/users/{{ r.id }}/gift-days/cancel" style="margin-top:8px" onsubmit="return confirm('לבטל את {{ r.gift.days }} ימי המתנה?')">
+        <button type="submit" class="btn outline" style="padding:8px 16px;font-size:.85rem">{{ icon('ban') }} בטל ימי מתנה</button>
+      </form>
+      {% endif %}
       <form method="post" action="/admin/users/{{ r.id }}/toggle-free-access" style="margin-top:10px">
         <button type="submit" class="btn outline" style="padding:8px 16px;font-size:.85rem">
           {% if r.free_access_granted %}{{ icon('ban') }} בטל גישה חופשית{% else %}{{ icon('gift') }} תן גישה חופשית לצמיתות{% endif %}

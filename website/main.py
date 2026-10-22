@@ -79,7 +79,8 @@ from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
-from todira_common.models import ContactMessage, Filter, Listing, Payment, User, UserListingAction
+from todira_common.app_flags import get_flag, set_flag
+from todira_common.models import AppFlag, ContactMessage, Filter, Listing, Payment, User, UserListingAction
 from todira_common.uid_token import generate_handoff_token, verify_handoff_token, verify_uid_token
 from fastapi import FastAPI, Form, Request
 
@@ -2341,12 +2342,64 @@ def admin_users(request: Request):
                 "trial_ends_at": u.trial_ends_at,
                 "paid_until": u.paid_until,
                 "in_trial": u.trial_ends_at is not None and now < u.trial_ends_at,
+                "gift": _gift_days_info(session, u.id),
             }
             for u in users
         ]
 
     counts = {kind: sum(1 for r in rows if r["kind"] == kind) for kind in ("telegram", "google", "both", "none")}
     return _render(request, "admin_users.html", {"rows": rows, "counts": counts})
+
+
+# 2026-10-22 (owner): give a user any number of days from /admin/users, and take them back. Days are added to the
+# user's free access (trial_ends_at), counted from whichever is later: now, their trial end or their paid period end -
+# so a paying user keeps every day they paid for. The app flag "gift_days:<user id>" keeps how many days were given and
+# the user's trial end before the first gift, which "cancel" restores.
+GIFT_DAYS_MAX = 365
+
+
+def _gift_days_info(session, user_id: int) -> dict | None:
+    raw = get_flag(session, f"gift_days:{user_id}")
+    if not raw:
+        return None
+    try:
+        info = json.loads(raw)
+        return {"days": int(info["days"]), "before": info.get("before")}
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+@app.post("/admin/users/{user_id}/gift-days")
+def admin_gift_days(request: Request, user_id: int, days: int = Form(...)):
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+        target = session.get(User, user_id)
+        if target is not None and 1 <= days <= GIFT_DAYS_MAX:
+            now = dt.datetime.now(dt.timezone.utc)
+            info = _gift_days_info(session, user_id)
+            before = info["before"] if info else (target.trial_ends_at.isoformat() if target.trial_ends_at else None)
+            start = max(value for value in (now, target.trial_ends_at, target.paid_until) if value is not None)
+            target.trial_ends_at = start + dt.timedelta(days=days)
+            target.trial_reminder_sent_at = None  # remind again before the new end
+            set_flag(session, f"gift_days:{user_id}",
+                     json.dumps({"days": (info["days"] if info else 0) + days, "before": before}))
+            session.commit()
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/gift-days/cancel")
+def admin_cancel_gift_days(request: Request, user_id: int):
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+        target = session.get(User, user_id)
+        info = _gift_days_info(session, user_id)
+        if target is not None and info is not None:
+            target.trial_ends_at = dt.datetime.fromisoformat(info["before"]) if info["before"] else None
+            session.execute(delete(AppFlag).where(AppFlag.key == f"gift_days:{user_id}"))
+            session.commit()
+    return RedirectResponse("/admin/users", status_code=303)
 
 
 @app.post("/admin/users/{user_id}/toggle-free-access")
