@@ -76,3 +76,45 @@ def test_site_counts_pages_for_people_only(monkeypatch):
     client.get("/static/style.css", headers=browser)
     assert [kind for kind, _ in seen] == [activity.SITE_VISIT]
     assert seen[0][1].startswith("v")
+
+
+def test_clicks_are_counted_for_known_buttons_only_and_never_for_the_owner(monkeypatch):
+    site = _website()
+    seen = []
+    monkeypatch.setattr(activity, "record", lambda kind, who: seen.append((kind, who)))
+    from fastapi.testclient import TestClient
+
+    client = TestClient(site.app)
+    browser = {"user-agent": "Mozilla/5.0 (iPhone) Safari"}
+    assert client.post("/api/click", data={"what": "bot_hero"}, headers=browser).status_code == 204
+    client.post("/api/click", data={"what": "anything_else"}, headers=browser)
+    client.post("/api/click", data={"what": "bot_hero"}, headers={"user-agent": "Googlebot/2.1"})
+    client.cookies.set("todira_owner", "1")
+    client.post("/api/click", data={"what": "bot_end"}, headers=browser)
+    client.get("/contact", headers=browser)  # the owner's browser: no visit either
+    assert [kind for kind, _ in seen] == ["click_bot_hero"]
+
+
+def test_visits_record_where_they_came_from(monkeypatch):
+    site = _website()
+    seen = []
+    monkeypatch.setattr(activity, "record", lambda kind, who: seen.append((kind, who)))
+    from fastapi.testclient import TestClient
+
+    client = TestClient(site.app)
+    ua = "Mozilla/5.0 (iPhone) Safari"
+    client.get("/contact", headers={"user-agent": ua, "referer": "https://l.instagram.com/?u=x"})
+    client.get("/contact", headers={"user-agent": ua, "referer": "http://testserver/"})  # inside the site
+    kinds = [kind for kind, _ in seen]
+    assert kinds.count(activity.SITE_VISIT) == 2 and kinds.count("site_from_instagram") == 1
+
+
+def test_bot_counts_arrivals_from_the_site(monkeypatch):
+    sys.path.insert(0, str(_ROOT / "bot"))
+    from handlers import activity as bot_activity
+
+    seen = []
+    monkeypatch.setattr(activity, "record", lambda kind, who: seen.append((kind, who)))
+    asyncio.run(bot_activity.count_activity(_bot_update(ChatType.PRIVATE, text="/start site_hero"), None))
+    asyncio.run(bot_activity.count_activity(_bot_update(ChatType.PRIVATE, text="/start inv_1_abc"), None))
+    assert seen == [(activity.BOT_MESSAGE, "t42"), ("bot_start_site_hero", "t42"), (activity.BOT_MESSAGE, "t42")]

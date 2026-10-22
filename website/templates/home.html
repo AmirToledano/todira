@@ -36,7 +36,7 @@
         <h1>{{ t('landing.h1') }}</h1>
         <p class="lp-lede">{{ t('landing.lede') }}</p>
         <div class="lp-actions">
-          <a class="lp-btn" href="https://t.me/AmirDirotBot" target="_blank" rel="noopener">{{ t('landing.cta') }}</a>
+          <a class="lp-btn" href="https://t.me/AmirDirotBot?start=site_hero" target="_blank" rel="noopener" data-track="bot_hero">{{ t('landing.cta') }}</a>
           <a class="lp-textlink" href="#lp-how">{{ t('landing.how_link') }}</a>
         </div>
         <p class="lp-fine">{{ t('landing.trial_note') }}</p>
@@ -72,7 +72,7 @@
         <input class="lp-mycity-in" id="lp-city-in" list="lp-city-list" placeholder="{{ t('landing.city_placeholder') }}" autocomplete="off">
         <datalist id="lp-city-list"></datalist>
         <p class="lp-mycity-out" id="lp-city-out" aria-live="polite"></p>
-        <a class="lp-btn lp-mycity-go" id="lp-city-go" href="/login?next=/apartments" hidden></a>
+        <a class="lp-btn lp-mycity-go" id="lp-city-go" href="/login?next=/apartments" data-track="city_go" hidden></a>
       </div>
     </div>
   </section>
@@ -131,7 +131,7 @@
   <section class="lp-end">
     <div class="lp-wrap lp-end-inner">
       <div><img src="/static/apple-touch-icon.png" alt=""><h2>{{ t('landing.end_title') }}</h2></div>
-      <a class="lp-btn" href="https://t.me/AmirDirotBot" target="_blank" rel="noopener">{{ t('landing.cta') }}</a>
+      <a class="lp-btn" href="https://t.me/AmirDirotBot?start=site_end" target="_blank" rel="noopener" data-track="bot_end">{{ t('landing.cta') }}</a>
     </div>
   </section>
 </div>
