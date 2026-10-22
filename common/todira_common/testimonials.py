@@ -11,8 +11,6 @@ import datetime as dt
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
 from todira_common.app_flags import get_flag, set_flag
 from todira_common.bot_strings import bot_text
 from todira_common.models import AppFlag, ContactMessage
@@ -21,7 +19,10 @@ SOURCE = "testimonial"
 ASK_AGAIN_AFTER = dt.timedelta(days=60)
 
 
-def found_keyboard(lang: str) -> InlineKeyboardMarkup:
+def found_keyboard(lang: str):
+    # Imported here, not at the top: the website imports this module too, and its image has no Telegram library.
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
     return InlineKeyboardMarkup(
         [[
             InlineKeyboardButton(bot_text("found_ask.yes_btn", lang), callback_data="tq:yes"),

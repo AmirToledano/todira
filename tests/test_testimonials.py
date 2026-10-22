@@ -60,3 +60,18 @@ def test_asked_recently_window():
         assert not testimonials.asked_recently(None, 1, now)
     with patch.object(testimonials, "get_flag", lambda session, key: None):
         assert not testimonials.asked_recently(None, 1, now)
+
+
+def test_testimonials_module_imports_without_the_telegram_library():
+    # 2026-10-22: the website image has no Telegram library; importing this at module level crashed the website pod.
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; sys.modules['telegram'] = None\n"
+        "import todira_common.testimonials, todira_common.share\n"
+        "print('ok')"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                            env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
+    assert result.stdout.strip() == "ok", result.stderr
