@@ -137,3 +137,74 @@ def test_komo_delisting_covers_every_city_it_has_live_ads_in(monkeypatch):
     """2026-10-22: Komo's id list is nationwide; delisting was scoped only to the cities of that run's NEW ads."""
     src = (_SCRAPER_DIR / "main.py").read_text()
     assert "scraped_city_names |= _live_cities(Source.KOMO)" in src
+
+
+def test_yad2_published_verdict_from_the_item_endpoint():
+    assert scraper_main._yad2_still_published(None) is None  # could not ask
+    assert scraper_main._yad2_still_published({}) is False  # 404/410 or no record
+    assert scraper_main._yad2_still_published({"statusId": 1}) is True
+    assert scraper_main._yad2_still_published({"statusId": 2}) is False
+    assert scraper_main._yad2_still_published({"price": 5000}) is True  # a record without a status
+
+
+def test_yad2_asks_before_hiding_and_keeps_what_is_still_published(monkeypatch):
+    """2026-10-22: 47 of 60 Yad2 ads hidden as taken down were still published."""
+    from todira_common import yad2_item_api
+
+    class _Rows:
+        def __init__(self, rows=()):
+            self.rows = list(rows)
+
+        def fetchall(self):
+            return self.rows
+
+        def all(self):
+            return self.rows
+
+    candidates = [(1, "https://www.yad2.co.il/item/aaa"), (2, "https://www.yad2.co.il/item/bbb"),
+                  (3, "https://www.yad2.co.il/item/ccc"), (4, "https://www.yad2.co.il/item/ddd")]
+    answers = {"aaa": {"statusId": 1}, "bbb": {}, "ccc": None, "ddd": {"statusId": 1}}
+
+    class _Session:
+        def __init__(self):
+            self.executed = []
+
+        def execute(self, stmt):
+            self.executed.append(stmt)
+            return _Rows(candidates if stmt.is_select else [])
+
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(yad2_item_api, "is_enabled", lambda: True)
+    monkeypatch.setattr(yad2_item_api, "fetch_item", lambda token: answers[token])
+    session = _Session()
+    assert scraper_main._mark_delisted_yad2_verified(session, {"x"}, {"חיפה"}) == 1  # only bbb is gone
+    updates = [str(s.compile()) for s in session.executed if not s.is_select]
+    params = [s.compile().params for s in session.executed if not s.is_select]
+    # un-delist the seen, hide the week-old, hide the gone, mark the published as seen
+    assert any("delisted_at" in u for u in updates) and any(p.get("id_1") == [2] for p in params)
+    assert any(p.get("id_1") == [1] and "scraped_at" in u for u, p in zip(updates, params))
+    # stopped at the first unanswered ad (ccc): ddd was never asked, never touched
+    assert not any(p.get("id_1") and 4 in p["id_1"] for p in params)
+
+
+def test_komo_recheck_walks_the_whole_list_in_turn(monkeypatch):
+    flags = {}
+    monkeypatch.setattr(scraper_main.app_flags, "get_flag", lambda s, k: flags.get(k))
+    monkeypatch.setattr(scraper_main.app_flags, "set_flag", lambda s, k, v: flags.__setitem__(k, v))
+
+    class _Ctx:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(scraper_main, "get_session", lambda: _Ctx())
+    monkeypatch.setenv("KOMO_RECHECK_PER_RUN", "2")
+    ids = ["1", "2", "3", "4", "5"]
+    assert scraper_main._komo_recheck_slice(ids) == ["1", "2"]
+    assert scraper_main._komo_recheck_slice(ids) == ["3", "4"]
+    assert scraper_main._komo_recheck_slice(ids) == ["5"]
+    assert scraper_main._komo_recheck_slice(ids) == ["1", "2"]  # a new lap
