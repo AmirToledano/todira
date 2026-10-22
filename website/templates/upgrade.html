@@ -50,6 +50,7 @@
       <p class="upgrade-plan-subtitle">{{ t('upgrade.pass_days', days=card.days) }}</p>
       <p class="upgrade-plan-price">₪{{ card.price }}</p>
       <p class="upgrade-pass-perday">{{ t('upgrade.pass_per_day', price=card.per_day) }}</p>
+      {% if card.saving %}<p class="upgrade-pass-saving">{{ t('upgrade.pass_saving', amount=card.saving) }}</p>{% endif %}
       <ul class="upgrade-plan-checklist">
         <li>{{ t('upgrade.checklist_scan') }}</li>
         <li>{{ t('upgrade.checklist_alert') }}</li>

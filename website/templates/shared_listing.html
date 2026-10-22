@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{# 2026-10-22 (owner): the page a shared listing link opens (main.py's shared_listing) - open to anyone. Shows what the
+   card shows (photos, price, place, size, description) and never the original ad or who posted it. #}
+{% if l %}
+  {% set _place = l.city or t('card.no_city') %}
+  {% set _title = t('share.page_title', city=_place, rooms=(l.rooms|rooms_label), price=(l.price|ils if l.price else t('card.no_price'))) if l.rooms else t('share.page_title_norooms', city=_place, price=(l.price|ils if l.price else t('card.no_price'))) %}
+{% else %}
+  {% set _title = t('share.gone_title') %}
+{% endif %}
+{% block title %}{{ _title }}{% endblock %}
+{% block og_meta %}
+  <meta property="og:title" content="{{ _title }}">
+  <meta property="og:description" content="{{ t('share.og_description') }}">
+  {% if l and l.image_urls %}
+  <meta property="og:image" content="{{ l.image_urls[0] }}">
+  {% else %}
+  <meta property="og:image" content="{{ request.base_url }}static/og-image.jpg?v=1">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  {% endif %}
+{% endblock %}
+{% block twitter_meta %}
+  <meta name="twitter:title" content="{{ _title }}">
+  <meta name="twitter:description" content="{{ t('share.og_description') }}">
+  <meta name="twitter:image" content="{{ l.image_urls[0] if l and l.image_urls else request.base_url ~ 'static/og-image.jpg?v=1' }}">
+{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<div class="shared-listing">
+  {% if l %}
+  <article class="sl-card">
+    <div class="sl-photos">
+      {% if l.image_urls %}
+        {% for img in l.image_urls[:8] %}
+        <img src="{{ img }}" data-nophoto {% if not loop.first %}loading="lazy" {% endif %}decoding="async" alt="{{ t('card.photo_alt', city=_place, rooms=(l.rooms|rooms_label)) }}">
+        {% endfor %}
+      {% else %}
+        <img src="/static/dachshunds/todi_detective.jpg" alt="">
+      {% endif %}
+    </div>
+    {% if not l.image_urls %}<div class="no-image-caption">{{ t('card.no_image_caption') }}</div>{% endif %}
+    <div class="sl-body">
+      <div class="sl-price">{{ l.price|ils if l.price else t('card.no_price') }}</div>
+      <div class="listing-loc">
+        <span class="loc-city">{{ _place }}</span>
+        {% if l.neighborhood %}<span class="loc-sep">, </span><span class="loc-area">{{ l.neighborhood }}</span>{% endif %}
+        {% if l.street %}<span class="loc-sep">, </span><span class="loc-street">{{ l.street }}</span>{% endif %}
+      </div>
+      <div class="feature-badges">
+        {% if l.rooms %}<span class="feature-badge">{{ l.rooms|rooms_label }} {{ t('card.rooms') }} 🛏️</span>{% endif %}
+        {% if l.floor is not none %}<span class="feature-badge">{{ t('card.floor') }} {{ l.floor }}{% if l.floor_total %}/{{ l.floor_total }}{% endif %} 🏢</span>{% endif %}
+        {% if l.size_sqm %}<span class="feature-badge">{{ l.size_sqm }} {{ t('card.sqm') }} 📐</span>{% endif %}
+        {% if l.has_parking %}<span class="feature-badge">{{ t('card.amenity_parking') }} 🚗</span>{% endif %}
+        {% if l.has_elevator %}<span class="feature-badge">{{ t('card.amenity_elevator') }} 🛗</span>{% endif %}
+        {% if l.has_balcony %}<span class="feature-badge">{{ t('card.amenity_balcony') }} 🌿</span>{% endif %}
+        {% if l.safe_room_type in ('safe_room', 'building_shelter') %}<span class="feature-badge">{{ t('card.amenity_safe_room') }} 🛡️</span>{% endif %}
+      </div>
+      {% if l.description %}
+      <h2 class="sl-heading">{{ t('apartments.detail_description_heading') }}</h2>
+      <p class="sl-desc">{{ l.description|public_desc }}</p>
+      {% endif %}
+      <a class="btn outline block" href="/login?next={{ login_next|urlencode }}">{{ t('share.see_on_site') }}</a>
+      <button type="button" class="sl-share-btn" data-share-url="{{ share_link }}" data-share-text="{{ _title }}" data-copied="{{ t('share.copied') }}">{{ t('share.button') }}</button>
+    </div>
+  </article>
+  {% else %}
+  <div class="empty-state">
+    <img class="sl-gone-img" src="/static/dachshunds/todi_detective.jpg" alt="">
+    <p>{{ t('share.gone_body') }}</p>
+  </div>
+  {% endif %}
+  <section class="sl-cta">
+    <h2>{{ t('share.cta_title') }}</h2>
+    <p>{{ t('share.cta_body') }}</p>
+    <a class="btn gold block" href="https://t.me/AmirDirotBot?start=site_share" target="_blank" rel="noopener" data-track="bot_share">{{ t('share.cta_button') }}</a>
+  </section>
+</div>
+{% endblock %}

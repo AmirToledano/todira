@@ -9,10 +9,11 @@ import datetime as dt
 import html
 import io
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import httpx
 from PIL import Image
@@ -20,6 +21,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import Forbidden, RetryAfter, TelegramError
 
+from todira_common import share
 from todira_common.access import ACCESS_SUBSCRIPTION_EXPIRED, ACCESS_TRIAL_ENDED
 from todira_common.bot_strings import BOT_STRINGS, bot_text
 from todira_common.public_text import is_room_in_shared_flat, public_description
@@ -661,19 +663,27 @@ class _Blocked:
 BLOCKED = _Blocked()
 
 
+def _bot_share_enabled() -> bool:
+    """2026-10-22: the card's share button stays off until the owner approves its wording (BOT_SHARE_BUTTON=1)."""
+    return os.environ.get("BOT_SHARE_BUTTON", "").strip() == "1"
+
+
 def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+    rows = [
         [
-            [
-                InlineKeyboardButton(
-                    bot_text("card.like_button", lang), callback_data=f"like:{listing_id}"
-                ),
-                InlineKeyboardButton(
-                    bot_text("card.hide_button", lang), callback_data=f"hide:{listing_id}"
-                ),
-                InlineKeyboardButton(
-                    bot_text("card.found_button", lang), callback_data=f"found:{listing_id}"
-                ),
-            ]
+            InlineKeyboardButton(
+                bot_text("card.like_button", lang), callback_data=f"like:{listing_id}"
+            ),
+            InlineKeyboardButton(
+                bot_text("card.hide_button", lang), callback_data=f"hide:{listing_id}"
+            ),
+            InlineKeyboardButton(
+                bot_text("card.found_button", lang), callback_data=f"found:{listing_id}"
+            ),
         ]
-    )
+    ]
+    if _bot_share_enabled():
+        # Telegram's own share sheet, with Todira's page for this flat (todira_common/share.py), never the original ad.
+        query = urlencode({"url": share.share_url(listing_id), "text": bot_text("card.share_text", lang)})
+        rows.append([InlineKeyboardButton(bot_text("card.share_button", lang), url=f"https://t.me/share/url?{query}")])
+    return InlineKeyboardMarkup(rows)

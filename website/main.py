@@ -55,7 +55,7 @@ from urllib.parse import quote as url_quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
-from todira_common import activity, listing_enrichment, owner_inbox
+from todira_common import activity, listing_enrichment, owner_inbox, share
 from todira_common.access import (
     CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
@@ -352,6 +352,7 @@ def _json_compact(value) -> Markup:
 templates.env.filters["json_compact"] = _json_compact
 # 2026-10-20 (owner): line icons instead of the remaining emoji, everywhere but the listing cards (icons.py)
 templates.env.globals["icon"] = icon
+templates.env.globals["share_path"] = share.share_path
 
 
 def _israel_date(value, fmt: str = "%d.%m.%Y") -> str:
@@ -870,7 +871,7 @@ def _home_map_data() -> dict | None:
 # 2026-10-22 (owner: do visitors press the bot buttons, and who): every tracked button sends one small beacon
 # (base.html). Counted per person per day like the visits - a second press by the same person adds to their count, so
 # repeats show up as more presses than people. The owner's browsers are never counted.
-_CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go"}
+_CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share"}
 
 
 @app.post("/api/click")
@@ -1824,6 +1825,31 @@ def go_to_listing_source(request: Request, listing_id: int):
         return RedirectResponse(listing.url, status_code=302)
 
 
+@app.get("/s/{token}")
+def shared_listing(request: Request, token: str):
+    """2026-10-22 (owner): the page a shared listing link opens - for anyone, no account needed. The flat's photos,
+    price, place, size and description, never the original ad or who posted it, and a way into the bot. A listing
+    that is gone (or a link we did not sign) still gets the page, with a "no longer available" note."""
+    listing_id = share.listing_id_from_token(token)
+    listing = None
+    if listing_id is not None:
+        with get_session() as session:
+            listing = session.get(Listing, listing_id)
+            if listing is not None:
+                session.expunge(listing)
+    available = listing is not None and not listing.is_delisted
+    if _is_person(request) and not _is_owner_browser(request):
+        activity.record("share_view", _visitor(request))
+    context = {
+        "l": listing if available else None,
+        "share_link": str(request.base_url).rstrip("/") + share.share_path(listing_id) if available else None,
+        "login_next": f"/apartments?listing={listing_id}" if available else "/apartments",
+    }
+    response = _render(request, "shared_listing.html", context, status_code=200 if available else 404)
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
 def _city_view_filter(base, city: str) -> SimpleNamespace:
     """2026-10-22 (owner): the home page's "see the flats in <city>" button. Every live listing of the user's deal type
     in that one city, none of their other criteria - and their saved search is not touched. Shaped like a Filter row
@@ -2368,9 +2394,14 @@ def _pass_plan_cards() -> list[dict]:
     """The one-time access passes shown on /upgrade, cheapest first: plan key, days, price and price per day. The
     longest pass is flagged as the best value."""
     cards = []
+    shortest = PASS_PLANS[0]
+    shortest_per_day = PLAN_PRICES_ILS[shortest] / PLAN_DURATIONS[shortest].days
     for plan in PASS_PLANS:
         days = PLAN_DURATIONS[plan].days
         price = PLAN_PRICES_ILS[plan]
+        # 2026-10-22 (owner: "write the real saving on the monthly plan"): what the same days would cost by buying the
+        # shortest pass again and again, minus this pass's price, rounded to whole shekels. None for the shortest pass.
+        saving = int((shortest_per_day * days - price).quantize(Decimal("1"))) if plan != shortest else None
         cards.append(
             {
                 "plan": plan,
@@ -2378,6 +2409,7 @@ def _pass_plan_cards() -> list[dict]:
                 "price": price,
                 "per_day": (price / days).quantize(Decimal("0.01")),
                 "best": plan == PASS_PLANS[-1],
+                "saving": saving if saving and saving > 0 else None,
             }
         )
     return cards

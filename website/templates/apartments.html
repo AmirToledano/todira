@@ -452,10 +452,27 @@
     // detailed view). Built from the listing's full image-URL list (stashed on the card as JSON —
     // see _listing_card.html's own comment), independent of which carousel slide(s) happened to
     // already be loaded on the card itself: one big main photo, a clickable thumbnail strip below.
-    function buildGallery(imageUrls, altText) {
+    function buildGallery(imageUrls, altText, onNoPhotos) {
       var wrap = document.createElement('div');
       wrap.className = 'apt-modal-gallery';
+      // 2026-10-22: a photo link that no longer loads is dropped (its thumbnail too) and the next one shown; when
+      // none loads, the gallery becomes the Todi illustration and onNoPhotos shows the no-photos caption.
+      var failed = {};
       var main = document.createElement('img');
+      main.addEventListener('error', function () {
+        var src = main.getAttribute('src');
+        if (src === '/static/dachshunds/todi_detective.jpg') { return; }
+        failed[src] = true;
+        var next = imageUrls.filter(function (u) { return !failed[u]; })[0];
+        if (next) {
+          main.src = next;
+        } else {
+          main.src = '/static/dachshunds/todi_detective.jpg';
+          var strip = wrap.querySelector('.apt-modal-gallery-thumbs');
+          if (strip) { strip.remove(); }
+          if (onNoPhotos) { onNoPhotos(); }
+        }
+      });
       main.className = 'apt-modal-gallery-main';
       main.loading = 'lazy';
       main.decoding = 'async';
@@ -479,6 +496,7 @@
           thumbImg.loading = 'lazy';
           thumbImg.decoding = 'async';
           thumbImg.alt = '';
+          thumbImg.addEventListener('error', function () { failed[url] = true; thumb.remove(); });
           thumb.appendChild(thumbImg);
           thumb.addEventListener('click', function () {
             main.src = url;
@@ -521,7 +539,10 @@
           var urls = JSON.parse(card.dataset.imageUrls);
           if (urls.length) {
             var firstSlide = oldCover.querySelector('.cover-slide');
-            oldCover.replaceWith(buildGallery(urls, firstSlide ? firstSlide.alt : ''));
+            oldCover.replaceWith(buildGallery(urls, firstSlide ? firstSlide.alt : '', function () {
+              var caption = clone.querySelector('.no-image-caption');
+              if (caption) { caption.hidden = false; }
+            }));
           }
         } catch (e) { /* malformed/missing data — leave the cloned carousel as a fallback */ }
       }
