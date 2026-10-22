@@ -47,6 +47,16 @@ jobs:
           WHERE trial_ends_at BETWEEN now() AND now() + interval '5 days' AND (telegram_user_id IS NULL OR telegram_user_id <> :owner) GROUP BY 1 ORDER BY 1;
           \echo '== payments by status and plan, last 30 days: status | plan | count'
           SELECT status, plan, count(*) FROM payments WHERE created_at > now() - interval '30 days' GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== pending payments, owner vs others: Israel day | owner | others | others with a later paid payment'
+          SELECT (p.created_at AT TIME ZONE 'Asia/Jerusalem')::date,
+                 count(*) FILTER (WHERE u.telegram_user_id = :owner), count(*) FILTER (WHERE u.telegram_user_id IS DISTINCT FROM :owner),
+                 count(*) FILTER (WHERE u.telegram_user_id IS DISTINCT FROM :owner AND EXISTS (
+                   SELECT 1 FROM payments q WHERE q.user_id = p.user_id AND q.status = 'paid' AND q.created_at > p.created_at))
+          FROM payments p JOIN users u ON u.id = p.user_id
+          WHERE p.status = 'pending' AND p.created_at > now() - interval '30 days' GROUP BY 1 ORDER BY 1;
+          \echo '== Google-only users (no Telegram) whose trial ends in the next 10 days: total | trial gift email sent'
+          SELECT count(*), count(trial_gift_emailed_at) FROM users
+          WHERE telegram_user_id IS NULL AND trial_ends_at BETWEEN now() AND now() + interval '10 days';
           SQL
           } > "$RUNNER_TEMP/q.sql"
           kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < "$RUNNER_TEMP/q.sql"
