@@ -1,0 +1,36 @@
+name: Diagnose — which image each app runs and why a new version did not roll out (read-only)
+
+# 2026-10-22: the home page still served the version from before #899 after a successful deploy. Prints deployment
+# images, pod status/age, recent events for the website and the website's own last log lines (no secrets).
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  rollout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: State
+        run: |
+          echo "== deployments: name | image | ready | updated"
+          kubectl get deploy -n todira -o jsonpath='{range .items[*]}{.metadata.name}{" | "}{.spec.template.spec.containers[0].image}{" | "}{.status.readyReplicas}{"/"}{.spec.replicas}{" | "}{.status.updatedReplicas}{"\n"}{end}'
+          echo "== pods"
+          kubectl get pods -n todira -o wide | grep -v -E 'Completed|backup' || true
+          echo "== website pods: image"
+          kubectl get pods -n todira -l app=todira-website -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{" "}{.spec.containers[0].image}{" started "}{.status.startTime}{"\n"}{end}'
+          echo "== recent events (website, warnings)"
+          kubectl get events -n todira --sort-by=.lastTimestamp | grep -i -E 'website|Warning|Failed|BackOff|Insufficient' | tail -25 || true
+          echo "== helm history"
+          kubectl get secrets -n todira -l owner=helm -o jsonpath='{range .items[*]}{.metadata.labels.version}{" "}{.metadata.labels.status}{"\n"}{end}' | sort -n | tail -5
+          echo "== node memory"
+          kubectl top node 2>/dev/null || true
