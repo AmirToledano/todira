@@ -131,3 +131,9 @@ def test_seen_listings_are_marked_as_seen_even_when_not_restored():
     assert params["source_1"] == Source.KOMO and sorted(params["seen_ids"]) == ["a", "b"]
     assert "scraped_at" in sql and "is_delisted" in sql and "make_interval" in sql
     assert scraper_main._touch_seen_listings(_Session(), Source.KOMO, set()) == 0
+
+
+def test_komo_delisting_covers_every_city_it_has_live_ads_in(monkeypatch):
+    """2026-10-22: Komo's id list is nationwide; delisting was scoped only to the cities of that run's NEW ads."""
+    src = (_SCRAPER_DIR / "main.py").read_text()
+    assert "scraped_city_names |= _live_cities(Source.KOMO)" in src
