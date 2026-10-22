@@ -1,0 +1,33 @@
+name: Diagnose — do the site's button-click counts reach the server (read-only)
+
+# 2026-10-22: no click rows yet in activity_days. Counts POST /api/click requests in the website's own access log and
+# their status codes - nothing else from the log is printed.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  clicks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Count
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-website -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl logs -n todira "$POD" --since=12h > "$RUNNER_TEMP/log" 2>/dev/null || true
+            echo "== log lines (12h): $(wc -l < "$RUNNER_TEMP/log")"
+            echo "== POST /api/click by status"
+            grep -o '"POST /api/click HTTP/[0-9.]*" [0-9]*' "$RUNNER_TEMP/log" | awk '{print $NF}' | sort | uniq -c || true
+            echo "== GET / (home) by status"
+            grep -o '"GET / HTTP/[0-9.]*" [0-9]*' "$RUNNER_TEMP/log" | awk '{print $NF}' | sort | uniq -c || true
+            echo "== GET /s/ (shared listing) count: $(grep -c '"GET /s/' "$RUNNER_TEMP/log" || true)"
+          done
