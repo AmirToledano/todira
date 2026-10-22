@@ -108,3 +108,26 @@ def test_mark_delisted_only_delists_after_the_min_staleness_window():
     undelist_sql = str(undelist_stmt.compile())
     assert "scraped_at" in delist_sql and "make_interval" in delist_sql
     assert "scraped_at" not in undelist_sql
+
+
+def test_seen_listings_are_marked_as_seen_even_when_not_restored():
+    """2026-10-22: a known Komo ad is never re-fetched, so its scraped_at stayed at the day it was first stored and the
+    month rule deleted ads that were still published. Every live ad a run saw gets scraped_at = now (skipping rows
+    already refreshed in the last hour), scoped to that one source."""
+
+    class _Result(_FakeUpdateResult):
+        rowcount = 7
+
+    class _Session(_RecordingSession):
+        def execute(self, stmt):
+            self.executed.append(stmt)
+            return _Result()
+
+    session = _Session()
+    assert scraper_main._touch_seen_listings(session, Source.KOMO, {"a", "b"}) == 7
+    (stmt,) = session.executed
+    params = stmt.compile().params
+    sql = str(stmt.compile())
+    assert params["source_1"] == Source.KOMO and sorted(params["seen_ids"]) == ["a", "b"]
+    assert "scraped_at" in sql and "is_delisted" in sql and "make_interval" in sql
+    assert scraper_main._touch_seen_listings(_Session(), Source.KOMO, set()) == 0
