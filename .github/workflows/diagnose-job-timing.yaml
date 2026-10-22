@@ -1,0 +1,34 @@
+name: Diagnose — when the scraper jobs run, for how long, and whether they overlap (read-only)
+
+# 2026-10-22: the node went NotReady 10 times in 47 hours, at least once while the main scraper and the Facebook scraper
+# (both started at :30, both allowed 1.5 GiB on a 1.9 GiB node) ran together. Start, end and duration of every job
+# Kubernetes still keeps, plus the node's memory now. No logs, no secrets.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  timing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Jobs and node
+        run: |
+          echo "== jobs: name | start (UTC) | end (UTC) | succeeded | failed"
+          kubectl get jobs -n todira -o jsonpath='{range .items[*]}{.metadata.name}{" | "}{.status.startTime}{" | "}{.status.completionTime}{" | "}{.status.succeeded}{" | "}{.status.failed}{"\n"}{end}' | grep -E "scraper" | sort -t'|' -k2
+          echo "== cronjob schedules"
+          kubectl get cronjobs -n todira -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.schedule}{" "}{.spec.timeZone}{"\n"}{end}'
+          echo "== node memory"
+          kubectl top node 2>/dev/null || true
+          kubectl top pods -n todira 2>/dev/null || true
+          echo "== NotReady events (cluster-wide, as far back as kept)"
+          kubectl get events -A --field-selector reason=NodeNotReady -o jsonpath='{range .items[*]}{.lastTimestamp}{" x"}{.count}{"\n"}{end}' 2>/dev/null | sort | uniq | tail -20
