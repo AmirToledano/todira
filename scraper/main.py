@@ -1049,6 +1049,33 @@ def _mark_delisted(
     return len(newly_delisted)
 
 
+def _touch_seen_listings(session, source: str, seen_external_ids: set[str]) -> int:
+    """Marks every live listing of `source` that this run saw as seen now (scraped_at), even when it was not re-stored.
+
+    2026-10-22 (owner asked whether old ads linger): Komo's nationwide id list shows which ads are still published, but a
+    known Komo ad is never re-fetched (its page costs a credit), so its scraped_at stayed at the day it was first stored.
+    Live: 9,764 of 12,070 live Komo ads looked "not seen for a week". The month rule (_expired_listings_condition) then
+    deleted ads that were still published, and the next run fetched and stored them again (a credit each) as new rows.
+    Rows already refreshed in the last hour (every Yad2 ad a run re-stores) are skipped, so this rewrites only what
+    needs it. Returns how many rows were touched."""
+    if not seen_external_ids:
+        return 0
+    table = Listing.__table__
+    seen_array = bindparam("seen_ids", list(seen_external_ids), type_=ARRAY(Text))
+    touched = session.execute(
+        table.update()
+        .where(
+            table.c.source == source,
+            table.c.is_delisted.is_(False),
+            table.c.external_id == any_(seen_array),
+            table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, 0, 1),
+        )
+        .values(scraped_at=func.now())
+    ).rowcount or 0
+    session.commit()
+    return touched
+
+
 # 2026-10-14 (owner): "delete listings after a month (the longest pass is a month anyway) so they don't take space; and
 # if they're published again they should come up as new". A listing is deleted a month after we first saw it - once it
 # is no longer published on the source (delisted for a week, or not seen at all for a month). A still-published ad is
@@ -2706,6 +2733,9 @@ def run_once() -> dict[str, int]:
         for source, (seen_external_ids, scraped_city_names, all_succeeded) in (
             per_source_delisting_input.items()
         ):
+            touched = _touch_seen_listings(session, source, seen_external_ids)
+            if touched:
+                logger.info("%s: %d listing(s) still published were marked as seen this run", source, touched)
             if source in _PARTIAL_VIEW_SOURCES:
                 if source == Source.HOMELESS:
                     delisted_count += _delist_stale_homeless(
