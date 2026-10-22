@@ -1,0 +1,34 @@
+name: Diagnose — does the site assistant answer (read-only)
+
+# 2026-10-23: asks the live site assistant two sample questions from inside the website pod (uses 2 of its free daily
+# requests) and prints the answers. Never prints the key.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Ask
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$POD" -- python3 -c "
+          import logging; logging.basicConfig(level=logging.WARNING)
+          import assistant
+          from todira_common.access import PLAN_PRICES_ILS
+          print('key set:', assistant.configured(), '| public:', assistant.enabled())
+          for q in ['כמה זה עולה ואפשר לבטל?', 'מאיפה אתם מביאים את הדירות? יש לכם הנחה?']:
+              print('Q:', q)
+              print('A:', assistant.answer([{'role': 'user', 'text': q}], 'he', PLAN_PRICES_ILS, None))
+          "
