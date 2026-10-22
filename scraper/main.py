@@ -1049,6 +1049,16 @@ def _mark_delisted(
     return len(newly_delisted)
 
 
+def _live_cities(source: str) -> set[str]:
+    """Every city `source` has a live listing in."""
+    with get_session() as session:
+        return set(
+            session.scalars(
+                select(Listing.city).where(Listing.source == source, Listing.is_delisted.is_(False), Listing.city.is_not(None)).distinct()
+            )
+        )
+
+
 def _touch_seen_listings(session, source: str, seen_external_ids: set[str]) -> int:
     """Marks every live listing of `source` that this run saw as seen now (scraped_at), even when it was not re-stored.
 
@@ -2702,6 +2712,11 @@ def run_once() -> dict[str, int]:
         scraped_city_names = {item.city for item in normalized_items if item.city}
         if source == Source.YAD2:
             scraped_city_names |= _STREAMED_CITIES
+        elif source == Source.KOMO:
+            # 2026-10-22: Komo's id list is nationwide (see _scrape_komo), but the cities above come only from this
+            # run's NEW ads - so a removed Komo ad stayed live unless its city happened to get a new ad that same run
+            # (live: 594 of 12,060 never re-seen). Every city Komo has live ads in is covered by the list.
+            scraped_city_names |= _live_cities(Source.KOMO)
         per_source_delisting_input[source] = (seen_external_ids, scraped_city_names, all_succeeded)
     # The scraped items now live only in all_normalized_items, so they can be freed right after the upsert below.
     results = normalized_items = seen_external_ids = scraped_city_names = None
