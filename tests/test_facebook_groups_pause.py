@@ -66,4 +66,5 @@ def test_another_failure_does_not_pause(flags, monkeypatch):
 
 def test_the_feed_runs_every_hour():
     values = (Path(__file__).resolve().parent.parent / "charts" / "todira" / "values.yaml").read_text()
-    assert 'schedule: "30 8-22 * * *"' in values
+    # hourly, at :24 - between the main scraper's :00 and :30 runs (2026-10-22)
+    assert 'schedule: "24 8-22 * * *"' in values
