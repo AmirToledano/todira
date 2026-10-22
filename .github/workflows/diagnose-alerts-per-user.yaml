@@ -1,0 +1,53 @@
+name: Diagnose — how many alerts a user gets per day (read-only)
+
+# 2026-10-23 (owner, weighing WhatsApp for paying users): real numbers for what per-message sending would cost.
+# Counts only - never a user, an id or a listing. The owner is left out.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Read the owner's id (masked, kept in a file)
+        run: |
+          OWNER=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.owner-telegram-user-id}' | base64 -d)
+          echo "::add-mask::$OWNER"
+          printf '%s' "${OWNER:-0}" > "$RUNNER_TEMP/owner"
+      - name: Counts
+        run: |
+          OWNER=$(cat "$RUNNER_TEMP/owner")
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          {
+          echo "\\set owner $OWNER"
+          cat <<'SQL'
+          \pset format unaligned
+          \pset footer off
+          CREATE TEMP VIEW d AS
+            SELECT s.user_id, (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, count(*) AS n,
+                   count(DISTINCT date_trunc('hour', s.sent_at) + floor(extract(minute FROM s.sent_at) / 30) * interval '30 min') AS runs
+            FROM sent_notifications s JOIN users u ON u.id = s.user_id
+            WHERE s.sent_at > now() - interval '7 days' AND u.telegram_user_id <> :owner
+            GROUP BY 1, 2;
+          \echo '== last 7 days, per user-day (owner excluded): user-days | avg alerts | median | 90th pct | max | avg half-hour slots with alerts'
+          SELECT count(*), round(avg(n), 1), percentile_cont(0.5) WITHIN GROUP (ORDER BY n), percentile_cont(0.9) WITHIN GROUP (ORDER BY n), max(n), round(avg(runs), 1) FROM d;
+          \echo '== per user: alerts per day on average, bucketed | users'
+          SELECT CASE WHEN a < 5 THEN '0-5' WHEN a < 20 THEN '5-20' WHEN a < 50 THEN '20-50' WHEN a < 150 THEN '50-150' ELSE '150+' END, count(*)
+          FROM (SELECT user_id, avg(n) a FROM d GROUP BY 1) x GROUP BY 1 ORDER BY 1;
+          \echo '== per user: searches with no city set (whole country) | with a city'
+          SELECT count(*) FILTER (WHERE coalesce(array_length(f.cities, 1), 0) = 0), count(*) FILTER (WHERE coalesce(array_length(f.cities, 1), 0) > 0)
+          FROM filters f JOIN users u ON u.id = f.user_id WHERE u.telegram_user_id <> :owner;
+          SQL
+          } > "$RUNNER_TEMP/q.sql"
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < "$RUNNER_TEMP/q.sql"
