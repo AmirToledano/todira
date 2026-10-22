@@ -123,7 +123,7 @@
 
   <section class="lp-paper lp-wrap lp-faq">
     <h2 class="lp-big">{{ t('landing.faq_title') }}</h2>
-    {% for n in (1, 2, 4) %}
+    {% for n in (1, 6, 2, 7, 5, 4, 8) %}
     <details{% if loop.first %} open{% endif %}><summary>{{ t('home.faq' ~ n ~ '_q') }}</summary><p>{{ t('home.faq' ~ n ~ '_a') }}</p></details>
     {% endfor %}
   </section>

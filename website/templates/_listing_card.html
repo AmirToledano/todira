@@ -98,7 +98,9 @@
     </div>
     {% if l.image_urls|length > 1 %}<span class="photo-count-badge">{{ l.image_urls|length }} 📷</span>{% endif %}
   </div>
-  {% if not l.image_urls %}<div class="no-image-caption">{{ t('card.no_image_caption') }}</div>{% endif %}
+  {# Also rendered (hidden) for a listing that has photo links: if none of them loads, base.html's photo script
+     shows the Todi illustration and this caption instead of an empty box. #}
+  <div class="no-image-caption"{% if l.image_urls %} hidden{% endif %}>{{ t('card.no_image_caption') }}</div>
   <div class="listing-body">
     {# 2026-09-24 real owner request, matching dorin.app's own card: a previous-price + %-change
        badge next to the current price, when scraper/main.py._upsert_listings detected a real
@@ -194,6 +196,8 @@
       {% else %}
       <button type="button" class="contact-btn contact-btn-phone contact-locked-btn">{{ t('card.contact_btn') }}</button>
       {% endif %}
+      {# 2026-10-22 (owner): share this flat - the link opens Todira's own page for it (main.py's shared_listing). #}
+      <button type="button" class="sl-share-btn" data-share-url="{{ share_path(l.id) }}" data-share-text="{{ t('share.page_title', city=(l.city or t('card.no_city')), rooms=(l.rooms|rooms_label), price=(l.price|ils if l.price else t('card.no_price'))) if l.rooms else t('share.page_title_norooms', city=(l.city or t('card.no_city')), price=(l.price|ils if l.price else t('card.no_price'))) }}" data-copied="{{ t('share.copied') }}">{{ t('share.button') }}</button>
     </div>
     <div class="listing-footer">
       {% if l.posted_at %}<span class="posted">{{ posted_ago(l.posted_at) }}</span>{% else %}<span></span>{% endif %}

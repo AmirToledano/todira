@@ -149,7 +149,7 @@
     <div class="ld-similar">
       {% for s in similar %}
       <a class="ld-similar-card" href="/apartments?listing={{ s.id }}">
-        <img src="{{ s.image_urls[0] if s.image_urls else '/static/dachshunds/todi_detective.jpg' }}" loading="lazy" decoding="async" alt="">
+        <img src="{{ s.image_urls[0] if s.image_urls else '/static/dachshunds/todi_detective.jpg' }}" data-nophoto loading="lazy" decoding="async" alt="">
         <span class="ld-similar-price">{{ ("{:,}".format(s.price) ~ ' ₪') if s.price else t('card.no_price') }}</span>
         <span class="ld-similar-meta">{% if s.rooms is not none %}{{ t('details.similar_rooms', rooms=('%g' | format(s.rooms))) }}, {% endif %}{{ s.neighborhood or s.city }}</span>
       </a>

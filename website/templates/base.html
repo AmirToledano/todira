@@ -58,6 +58,7 @@
   <meta name="description" content="{{ t('meta.description') }}">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="טודירה">
+  {% block og_meta %}
   <meta property="og:title" content="{{ og_t('meta.title_home') }}">
   <meta property="og:description" content="{{ og_t('meta.description') }}">
   <!-- og-image.jpg (2026-09-07): a proper 1200x630 landscape crop, not the raw tall-portrait
@@ -67,11 +68,14 @@
   <meta property="og:image" content="{{ request.base_url }}static/og-image.jpg?v=1">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  {% endblock %}
   <meta property="og:url" content="{{ request.url }}">
   <meta name="twitter:card" content="summary_large_image">
+  {% block twitter_meta %}
   <meta name="twitter:title" content="{{ og_t('meta.title_home') }}">
   <meta name="twitter:description" content="{{ og_t('meta.description') }}">
   <meta name="twitter:image" content="{{ request.base_url }}static/og-image.jpg?v=1">
+  {% endblock %}
   <!-- canonical + hreflang (2026-09-07): language here is a ?lang= query param/cookie, not a
        distinct URL path — without these, search engines had no signal that /apartments?lang=en
        and /apartments (Hebrew) are the same page in different languages rather than duplicate
@@ -589,6 +593,36 @@
       }, true);
     })();
     (function () {
+      // 2026-10-22 (owner): "share this flat" (listing detail view and the shared-listing page). The phone's own share
+      // sheet where there is one, otherwise the link is copied and the button says so for a moment.
+      document.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-share-url]') : null;
+        if (!btn) { return; }
+        e.preventDefault();
+        var url = new URL(btn.getAttribute('data-share-url'), window.location.origin).href;
+        var text = btn.getAttribute('data-share-text') || '';
+        if (navigator.sendBeacon) {
+          var body = new FormData();
+          body.append('what', 'share');
+          try { navigator.sendBeacon('/api/click', body); } catch (err) { /* counting must never break a click */ }
+        }
+        if (navigator.share) {
+          navigator.share({ title: text, text: text, url: url }).catch(function () {});
+          return;
+        }
+        function copied() {
+          var label = btn.textContent;
+          btn.textContent = btn.getAttribute('data-copied') || label;
+          setTimeout(function () { btn.textContent = label; }, 2000);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(copied, function () { window.prompt('', url); });
+        } else {
+          window.prompt('', url);
+        }
+      });
+    })();
+    (function () {
       var els = document.querySelectorAll('.reveal');
       if (!('IntersectionObserver' in window) || !els.length) {
         els.forEach(function (el) { el.classList.add('is-visible'); });
@@ -708,6 +742,38 @@
       document.addEventListener('scroll', function (e) {
         if (e.target && e.target.classList && e.target.classList.contains('listing-cover')) { swiped(e.target); }
       }, { passive: true, capture: true });
+      // 2026-10-22 (owner: a card with a "2 photos" badge showed an empty grey box): a listing photo whose link no
+      // longer loads is dropped and the next one is tried; when none is left the card gets the same Todi illustration
+      // and caption as a listing posted without photos, and the detail view stops trying those links.
+      var NOPHOTO = '/static/dachshunds/todi_detective.jpg';
+      function brokenPhoto(img) {
+        var src = img.getAttribute('src') || '';
+        if (src === BLANK || src.indexOf(NOPHOTO) !== -1) { return; }
+        if (img.hasAttribute('data-nophoto')) { img.src = NOPHOTO; return; }
+        var cover = img.closest && img.closest('.listing-cover');
+        if (!cover || !img.classList.contains('cover-slide')) { return; }
+        var card = cover.closest('.listing-card');
+        img.remove();
+        var next = cover.querySelector('img.cover-slide');
+        if (next) { show(next); return; }
+        var fallback = document.createElement('img');
+        fallback.className = 'cover-slide';
+        fallback.src = NOPHOTO;
+        fallback.alt = '';
+        cover.appendChild(fallback);
+        if (!card) { return; }
+        delete card.dataset.imageUrls;
+        var badge = card.querySelector('.photo-count-badge');
+        if (badge) { badge.remove(); }
+        var caption = card.querySelector('.no-image-caption');
+        if (caption) { caption.hidden = false; }
+      }
+      document.addEventListener('error', function (e) {
+        if (e.target && e.target.tagName === 'IMG') { brokenPhoto(e.target); }
+      }, true);
+      document.querySelectorAll('.listing-cover img.cover-slide, img[data-nophoto]').forEach(function (img) {
+        if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) { brokenPhoto(img); }
+      });
       if (!('IntersectionObserver' in window)) { return; }
       var io = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {

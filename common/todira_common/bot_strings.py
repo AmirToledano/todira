@@ -1301,6 +1301,18 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "🙈 הסתר", "en": "🙈 Hide", "ru": "🙈 Скрыть", "fr": "🙈 Masquer",
         "ar": "🙈 إخفاء",
     },
+    # 2026-10-22: the card's share button (off until the owner approves - cards.py's _bot_share_enabled).
+    "card.share_button": {
+        "he": "📤 שיתוף הדירה", "en": "📤 Share this flat", "ru": "📤 Поделиться", "fr": "📤 Partager",
+        "ar": "📤 مشاركة الشقة",
+    },
+    "card.share_text": {
+        "he": "מצאתי דירה בטודירה ששווה לראות",
+        "en": "Found a flat on Todira worth a look",
+        "ru": "Нашёл квартиру в Todira, стоит посмотреть",
+        "fr": "J'ai trouvé un appartement sur Todira qui vaut le coup d'œil",
+        "ar": "وجدت شقة في توديرا تستحق النظر",
+    },
     "card.found_button": {
         "he": "🎉 מצאתי דירה!", "en": "🎉 Found an apartment!", "ru": "🎉 Нашёл квартиру!",
         "fr": "🎉 J'ai trouvé un appartement !", "ar": "🎉 وجدت شقة!",
