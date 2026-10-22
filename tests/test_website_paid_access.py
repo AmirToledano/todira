@@ -7,6 +7,7 @@ main.py shares a basename with scraper/main.py so it can't go through a bare `im
 from __future__ import annotations
 
 import datetime as dt
+import json
 import importlib.util
 import os
 import sys
@@ -409,3 +410,49 @@ def test_upgrade_submit_rejects_missing_terms_agreement():
 # the request), so the header's _current_user_summary runs a column lookup via session.execute(). The
 # fake has no such lookup; "no row" is the right answer for it.
 _FakeSession.execute = lambda self, *args, **kwargs: type("_NoRow", (), {"first": lambda s: None})()
+
+
+def _owner_client(fake_session, owner, flags):
+    @contextmanager
+    def _fake_get_session():
+        yield fake_session
+
+    return (
+        patch.object(website_main, "get_session", _fake_get_session),
+        patch.object(website_main, "_require_owner", lambda request, session: owner),
+        patch.object(website_main, "get_flag", lambda session, key: flags.get(key)),
+        patch.object(website_main, "set_flag", lambda session, key, value: flags.__setitem__(key, value)),
+    )
+
+
+def test_gift_days_extend_from_the_later_of_now_trial_and_paid_period():
+    # 2026-10-22 (owner): give any number of days from /admin/users; a paying user keeps every paid day.
+    owner = _FakeUser(id=1, telegram_user_id=_OWNER_TG_ID)
+    paid_until = _NOW + dt.timedelta(days=5)
+    target = _FakeUser(id=2, telegram_user_id=222, trial_ends_at=_NOW - dt.timedelta(days=3), paid_until=paid_until)
+    fake_session = _FakeSession(users_by_pk={1: owner, 2: target})
+    flags = {}
+    patches = _owner_client(fake_session, owner, flags)
+    with patches[0], patches[1], patches[2], patches[3]:
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        assert c.post("/admin/users/2/gift-days", data={"days": "10"}).status_code == 303
+        assert target.trial_ends_at == paid_until + dt.timedelta(days=10)
+        c.post("/admin/users/2/gift-days", data={"days": "4"})
+        assert target.trial_ends_at == paid_until + dt.timedelta(days=14)
+        assert '"days": 14' in flags["gift_days:2"]
+        c.post("/admin/users/2/gift-days", data={"days": "999"})  # over the limit: nothing changes
+        assert target.trial_ends_at == paid_until + dt.timedelta(days=14)
+
+
+def test_cancel_gift_days_restores_the_original_trial_end():
+    owner = _FakeUser(id=1, telegram_user_id=_OWNER_TG_ID)
+    original = _NOW - dt.timedelta(days=3)
+    target = _FakeUser(id=2, telegram_user_id=222, trial_ends_at=_NOW + dt.timedelta(days=20))
+    fake_session = _FakeSession(users_by_pk={1: owner, 2: target})
+    fake_session.execute = lambda stmt: None
+    flags = {"gift_days:2": json.dumps({"days": 20, "before": original.isoformat()})}
+    patches = _owner_client(fake_session, owner, flags)
+    with patches[0], patches[1], patches[2], patches[3]:
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        assert c.post("/admin/users/2/gift-days/cancel").status_code == 303
+    assert target.trial_ends_at == original
