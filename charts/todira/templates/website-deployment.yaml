@@ -85,6 +85,16 @@ spec:
                   name: {{ .Release.Name }}-bot-secret
                   key: gemini-api-key
                   optional: true
+            # 2026-10-23: the site assistant (website/assistant.py) - its own free-tier Gemini project, so it never uses
+            # the bot's quota. Public only once assistant.enabled is true; the owner's browser always sees it.
+            - name: GEMINI_SITE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-bot-secret
+                  key: gemini-site-api-key
+                  optional: true
+            - name: ASSISTANT_ENABLED
+              value: {{ ternary "1" "0" (.Values.assistant.enabled | default false) | quote }}
             # Google Sign-In (website/main.py's /auth/google/start + /auth/google/callback) —
             # optional/unset by default so a deploy before the owner creates a Google Cloud OAuth
             # Client doesn't break; the route itself 400s cleanly until both are set.
