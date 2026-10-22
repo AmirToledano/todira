@@ -20,6 +20,9 @@ jobs:
           v=$(echo "$home" | grep -o 'home.js?v=[^"]*' | head -1 | cut -d= -f2)
           echo "dot map in home.js: $(curl -s "https://todira.app/static/home.js?v=$v" | grep -c 'var OUTLINE')"
           echo "instant menu in style.css: $(curl -s "https://todira.app/static/style.css?v=$v" | grep -c 'nav-panel-in')"
+          echo "2026-10-22 sections: founder $(echo "$home" | grep -c 'lp-founder'), testimonials $(echo "$home" | grep -c 'lp-said'), new FAQ $(echo "$home" | grep -c 'מה אם לא מצאתי דירה'), founder css $(curl -s "https://todira.app/static/home.css?v=$v" | grep -c 'lp-founder')"
+          echo "cache headers on home: $(curl -sI https://todira.app/?lang=he | grep -i -E '^(cache-control|cf-cache-status|age):' | tr '\r\n' '  ')"
+          echo "shared listing route (unsigned link should be 404): $(curl -s -o /dev/null -w '%{http_code}' https://todira.app/s/1-0000000000)"
           classic=$(curl -s https://todira.app/?design=classic)
           echo "classic: old page marker: $(echo "$classic" | grep -c 'id=\"root\"')"
           for f in home.css home.js fonts/karantina-hebrew-700-normal.woff2 todi-hero-light.webp; do
