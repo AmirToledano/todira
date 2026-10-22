@@ -36,8 +36,11 @@ for sub in sorted(p for p in root.iterdir() if p.is_dir() and (p / "__init__.py"
 
 missing: dict[str, list[str]] = {}
 for module in modules:
-    if module in ("main", "__main__"):
-        continue  # entry points start the app
+    if module == "__main__":
+        continue
+    # main.py IS checked (2026-10-22: website/main.py imported a todira_common module that needs the Telegram library,
+    # which the website image doesn't have, and the pod crash-looped). Every service's main.py only starts its app
+    # under `if __name__ == "__main__"`, so importing it is safe.
     try:
         importlib.import_module(module)
     except ModuleNotFoundError as exc:
