@@ -84,6 +84,7 @@ from todira_common.models import AppFlag, ContactMessage, Filter, Listing, Payme
 from todira_common.uid_token import generate_handoff_token, verify_handoff_token, verify_uid_token
 from fastapi import FastAPI, Form, Request
 
+import assistant
 import takbull_client
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -615,6 +616,9 @@ def _render(
             # that would've silently gone stale every January 1st; now resolved fresh on every
             # request instead of needing a manual edit once a year.
             "current_year": dt.datetime.now(dt.timezone.utc).year,
+            # 2026-10-23: the site assistant's chat bubble (assistant.py) - public once ASSISTANT_ENABLED=1, and always
+            # for the owner's own browser so he can try it on the live site first.
+            "assistant_visible": assistant.configured() and (assistant.enabled() or _is_owner_browser(request)),
         },
         status_code=status_code,
     )
@@ -884,6 +888,67 @@ async def track_click(request: Request):
     if what in _CLICK_TARGETS and _is_person(request) and not _is_owner_browser(request):
         asyncio.get_running_loop().run_in_executor(None, activity.record, f"click_{what}", _visitor(request))
     return Response(status_code=204)
+
+
+def _assistant_user_context(request: Request) -> str | None:
+    """What the site assistant may know about a signed-in visitor: their first name, their access dates and their
+    search. Nothing else (no contact details, no payments)."""
+    user_id = request.session.get("user_id")
+    if user_id is None:
+        return None
+    with get_session() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            return None
+        now = dt.datetime.now(dt.timezone.utc)
+        lines = []
+        if user.first_name:
+            lines.append(f"שם פרטי: {user.first_name}")
+        if user.free_access_granted:
+            lines.append("גישה: גישה חופשית מלאה")
+        elif user.paid_until and user.paid_until > now:
+            lines.append(f"גישה: שילם, הגישה עד {_israel_date(user.paid_until)}")
+        elif user.trial_ends_at and user.trial_ends_at > now:
+            lines.append(f"גישה: בתקופת ניסיון חינם עד {_israel_date(user.trial_ends_at)}")
+        else:
+            lines.append("גישה: תקופת הניסיון או הגישה ששולמה הסתיימה. אפשר לשדרג ב-/upgrade")
+        lines.append("מחובר לבוט בטלגרם: " + ("כן" if user.telegram_user_id else "לא, נרשם רק דרך גוגל"))
+        f = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        if f is None:
+            lines.append("חיפוש: עוד לא הוגדר. אפשר להגדיר בבוט או ב-/filter")
+        else:
+            deal = {"rent": "השכרה", "sale": "קנייה", "sublet": "סאבלט"}.get(f.deal_type or "", f.deal_type or "")
+            parts = [deal, ", ".join(f.cities or []) or "כל הארץ"]
+            if f.price_min or f.price_max:
+                parts.append(f"מחיר {f.price_min or 0} עד {f.price_max or 'ללא הגבלה'}")
+            if f.rooms_min or f.rooms_max:
+                parts.append(f"חדרים {f.rooms_min or ''} עד {f.rooms_max or ''}")
+            lines.append("החיפוש שלו: " + ", ".join(p for p in parts if p))
+        return "\n".join(lines)
+
+
+@app.post("/api/assistant")
+async def assistant_reply(request: Request):
+    """2026-10-23: one answer from the site assistant (assistant.py). The page sends the chat so far; nothing is stored."""
+    if not assistant.configured() or not (assistant.enabled() or _is_owner_browser(request)):
+        return JSONResponse({"error": "off"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    turns = assistant.clean_history(body.get("messages") if isinstance(body, dict) else None)
+    lang = get_lang(request)
+    t = make_translator(lang)
+    if not turns:
+        return JSONResponse({"error": "empty"}, status_code=400)
+    if not assistant.take_quota(_visitor(request)):
+        return JSONResponse({"reply": t("assistant.limit")})
+    loop = asyncio.get_running_loop()
+    user_context = await loop.run_in_executor(None, _assistant_user_context, request)
+    reply = await loop.run_in_executor(None, assistant.answer, turns, lang, PLAN_PRICES_ILS, user_context)
+    if _is_person(request) and not _is_owner_browser(request):
+        loop.run_in_executor(None, activity.record, "assistant_question", _visitor(request))
+    return JSONResponse({"reply": reply or t("assistant.unavailable")}, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/home-map")

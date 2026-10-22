@@ -1,0 +1,32 @@
+{# 2026-10-23: the site assistant (assistant.py, static/assistant.js). Rendered only when assistant_visible. #}
+<div id="assistant" class="asst" data-endpoint="/api/assistant"
+     data-thinking="{{ t('assistant.thinking') }}" data-unavailable="{{ t('assistant.unavailable') }}">
+  <button type="button" class="asst-open" aria-expanded="false" aria-controls="asst-panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3.75h5.25M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/></svg>
+    <span>{{ t('assistant.open') }}</span>
+  </button>
+  <section id="asst-panel" class="asst-panel" role="dialog" aria-label="{{ t('assistant.title') }}" hidden>
+    <header class="asst-head">
+      <img src="/static/apple-touch-icon.png" alt="" width="36" height="36">
+      <div><b>{{ t('assistant.title') }}</b><span>{{ t('assistant.subtitle') }}</span></div>
+      <button type="button" class="asst-close" aria-label="{{ t('assistant.close') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="asst-log" aria-live="polite">
+      <p class="asst-msg asst-bot">{{ t('assistant.greeting') }}</p>
+      <div class="asst-chips">
+        <button type="button" class="asst-chip">{{ t('assistant.chip1') }}</button>
+        <button type="button" class="asst-chip">{{ t('assistant.chip2') }}</button>
+        <button type="button" class="asst-chip">{{ t('assistant.chip3') }}</button>
+      </div>
+    </div>
+    <form class="asst-form">
+      <textarea name="q" rows="1" maxlength="600" placeholder="{{ t('assistant.placeholder') }}" aria-label="{{ t('assistant.placeholder') }}"></textarea>
+      <button type="submit" class="asst-send" aria-label="{{ t('assistant.send') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.27 3.13a59.77 59.77 0 0118.22 8.87 59.77 59.77 0 01-18.22 8.88L6 12zm0 0h7.5"/></svg>
+      </button>
+    </form>
+  </section>
+</div>
+<script src="/static/assistant.js?v={{ static_version }}" defer></script>
