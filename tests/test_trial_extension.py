@@ -67,7 +67,8 @@ def test_each_chat_gets_it_once_and_blocked_chats_are_counted():
 
 
 def _row(**overrides):
-    values = dict(created_at=NOW - dt.timedelta(days=3), trial_ends_at=NOW + dt.timedelta(days=4), paid_until=None,
+    # created before the change, whatever today is (was NOW - 3 days, which stopped being "before" on 22.10)
+    values = dict(created_at=website_main.TRIAL_GIFT_CUTOFF - dt.timedelta(days=3), trial_ends_at=NOW + dt.timedelta(days=4), paid_until=None,
                   free_access_granted=False)
     values.update(overrides)
     return SimpleNamespace(**values)
