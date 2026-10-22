@@ -357,7 +357,10 @@ scraper:
     # (marketplaceHours below), so its traffic does not grow.
     # 2026-10-20 (owner: every hour, as long as the account stays safe): hourly, 08:30-22:30. A login/checkpoint page
     # pauses the groups feed for 24 hours by itself and tells the owner (scraper/main.py _pause_facebook_groups).
-    schedule: "30 8-22 * * *"
+    # 2026-10-22: at :24, in the gap between the main scraper's runs (it starts at :00 and :30 and takes 20-23 minutes;
+    # this one takes about 6). Both started at :30 before, each allowed 1.5 GiB on a 1.9 GiB node, and the node went
+    # NotReady while they ran together (10 times in 47 hours; seen live at 13:34 Israel time on 22.10).
+    schedule: "24 8-22 * * *"
     marketplaceHours: "8,14,20"
     # 2026-09-15: turned ON — explicit owner go-ahead ("מרקטפלייס תדליק ביחד עם הריצה הבאה"),
     # FACEBOOK_COOKIES already confirmed set on the real k8s secret (diagnostic workflow runs
