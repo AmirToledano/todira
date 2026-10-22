@@ -1,0 +1,48 @@
+name: Diagnose — do Komo listing photos load in a browser (read-only)
+
+# 2026-10-22 (owner): a Komo card with a "2 photos" badge showed an empty grey box instead of a photo. Takes 40 live
+# Komo listings' photo links and loads each one the way a visitor's browser would (with and without our site as the
+# referrer). Prints only counts per result - never a link, an ad or a user.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  komo-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Load sample photos
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          echo "== live Komo listings: total | with photos | first photo host"
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F " | "' <<'SQL'
+          SELECT count(*), count(*) FILTER (WHERE coalesce(array_length(image_urls, 1), 0) > 0),
+                 string_agg(DISTINCT substring(image_urls[1] from '^https?://[^/]+'), ', ')
+          FROM listings WHERE source = 'komo' AND NOT is_delisted;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' > "$RUNNER_TEMP/urls" <<'SQL'
+          SELECT u FROM (SELECT image_urls[1] AS u FROM listings
+            WHERE source = 'komo' AND NOT is_delisted AND coalesce(array_length(image_urls, 1), 0) > 0
+            ORDER BY first_seen_at DESC LIMIT 40) s;
+          SQL
+          UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
+          : > "$RUNNER_TEMP/a"; : > "$RUNNER_TEMP/b"
+          while read -r u; do
+            [ -z "$u" ] && continue
+            curl -s -o /dev/null -m 20 -A "$UA" -H 'Referer: https://todira.app/' -w '%{http_code} %{content_type}\n' "$u" >> "$RUNNER_TEMP/a" || echo "fail" >> "$RUNNER_TEMP/a"
+            curl -s -o /dev/null -m 20 -A "$UA" -w '%{http_code} %{content_type}\n' "$u" >> "$RUNNER_TEMP/b" || echo "fail" >> "$RUNNER_TEMP/b"
+          done < "$RUNNER_TEMP/urls"
+          echo "== with our site as referrer: count | status | type"
+          sort "$RUNNER_TEMP/a" | uniq -c
+          echo "== no referrer: count | status | type"
+          sort "$RUNNER_TEMP/b" | uniq -c
