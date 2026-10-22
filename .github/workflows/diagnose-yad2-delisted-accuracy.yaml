@@ -35,6 +35,8 @@ jobs:
               return [m.group(1) for (u,) in cur.fetchall() for m in [re.search(r"/item/([A-Za-z0-9]+)", u)] if m]
           groups = {
               "hidden as taken down in the last 2 days (random 60)": tokens("is_delisted and delisted_at > now() - interval '2 days'", "random()", 60),
+              # 2026-10-22: hidden only after verify-before-hide went live (#891, deployed ~10:40 UTC).
+              "hidden in the last 4 hours (random 60)": tokens("is_delisted and delisted_at > now() - interval '4 hours'", "random()", 60),
               "live (random 20, control)": tokens("not is_delisted and duplicate_of_id is null", "random()", 20),
           }
           for label, toks in groups.items():
