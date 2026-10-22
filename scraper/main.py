@@ -1049,6 +1049,115 @@ def _mark_delisted(
     return len(newly_delisted)
 
 
+# 2026-10-22 (owner: never hide a flat that is still published). Yad2's map sweeps return a capped sample, so "not seen
+# for 3 hours" was a weak signal: diagnose-yad2-delisted-accuracy.yaml asked Yad2 itself about 60 ads hidden that way in
+# the previous two days and 47 of them were still published (statusId=1, like 19 of 20 live ads). For Yad2, an ad unseen
+# for a day is now asked about on Yad2's own per-ad endpoint (todira_common/yad2_item_api.py, free) before it is hidden:
+# gone (404/410, or a status other than 1) - hidden; still published - marked seen, asked again after another day; no
+# answer (blocked, network) - left as it is, the next run tries again. An ad unseen for a whole week is hidden without
+# asking, so a run of failed answers can never keep a removed ad up for long.
+_YAD2_DELIST_AFTER_HOURS = 24
+_YAD2_VERIFY_PER_RUN_ENV_VAR = "YAD2_DELIST_VERIFY_PER_RUN"
+_DEFAULT_YAD2_VERIFY_PER_RUN = 150
+_YAD2_DELIST_UNVERIFIED_AFTER_DAYS = 7
+
+
+def _yad2_verify_per_run() -> int:
+    raw = os.environ.get(_YAD2_VERIFY_PER_RUN_ENV_VAR, "").strip()
+    return int(raw) if raw.isdigit() else _DEFAULT_YAD2_VERIFY_PER_RUN
+
+
+def _yad2_still_published(item: dict | None) -> bool | None:
+    """True / False / None (could not tell) from yad2_item_api.fetch_item's answer."""
+    if item is None:
+        return None
+    if not item:
+        return False
+    status = item.get("statusId")
+    return status in (1, "1") if status is not None else True
+
+
+def _mark_delisted_yad2_verified(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
+    """Yad2's delisting pass (see the comment above). Returns how many ads were hidden."""
+    from todira_common import yad2_item_api
+
+    table = Listing.__table__
+    seen_array = bindparam("seen_ids", list(seen_external_ids), type_=ARRAY(Text))
+    session.execute(  # an ad seen again is live again
+        table.update()
+        .where(
+            table.c.source == Source.YAD2,
+            table.c.is_delisted.is_(True),
+            table.c.city.in_(scraped_city_names),
+            table.c.external_id == any_(seen_array),
+        )
+        .values(is_delisted=False, delisted_at=None)
+    )
+    unseen = (
+        table.c.source == Source.YAD2,
+        table.c.is_delisted.is_(False),
+        table.c.city.in_(scraped_city_names),
+        table.c.external_id != all_(seen_array),
+    )
+    hidden = session.execute(  # unseen for a week: hidden without asking
+        table.update()
+        .where(*unseen, table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, _YAD2_DELIST_UNVERIFIED_AFTER_DAYS))
+        .values(is_delisted=True, delisted_at=func.now())
+        .returning(table.c.id)
+    ).fetchall()
+    session.commit()
+    hidden_count = len(hidden)
+
+    limit = _yad2_verify_per_run()
+    if not limit or not yad2_item_api.is_enabled():
+        return hidden_count
+    candidates = session.execute(
+        select(table.c.id, table.c.url)
+        .where(*unseen, table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, 0, _YAD2_DELIST_AFTER_HOURS))
+        .order_by(table.c.scraped_at.asc())
+        .limit(limit)
+    ).all()
+    gone, alive = [], []
+    for listing_id, url in candidates:
+        token = yad2_item_api.token_from_url(url)
+        if not token:
+            continue
+        verdict = _yad2_still_published(yad2_item_api.fetch_item(token))
+        if verdict is None:
+            break  # Yad2 is not answering right now - the rest wait for the next run
+        (alive if verdict else gone).append(listing_id)
+    if gone:
+        session.execute(table.update().where(table.c.id.in_(gone)).values(is_delisted=True, delisted_at=func.now()))
+    if alive:
+        session.execute(table.update().where(table.c.id.in_(alive)).values(scraped_at=func.now()))
+    session.commit()
+    logger.info("Yad2 delisting: asked Yad2 about %d unseen ad(s) - %d gone (hidden), %d still published (kept)",
+                len(gone) + len(alive), len(gone), len(alive))
+    return hidden_count + len(gone)
+
+
+# 2026-10-22: a Marketplace search shows only its newest few dozen ads, so an ad missing from one run says little - but one
+# missing from every feed for a week is no longer offered (live: 54 of 83 Marketplace ads had not been seen for 7+ days and
+# were still shown). Hidden then, whatever city it is in.
+_MARKETPLACE_STALE_DAYS = 7
+
+
+def _delist_unseen_for(session, source: str, days: int) -> int:
+    table = Listing.__table__
+    hidden = session.execute(
+        table.update()
+        .where(
+            table.c.source == source,
+            table.c.is_delisted.is_(False),
+            table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, days),
+        )
+        .values(is_delisted=True, delisted_at=func.now())
+        .returning(table.c.id)
+    ).fetchall()
+    session.commit()
+    return len(hidden)
+
+
 def _live_cities(source: str) -> set[str]:
     """Every city `source` has a live listing in."""
     with get_session() as session:
@@ -1743,10 +1852,29 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
     if _KOMO_BACKLOG_IDS:
         logger.info("Komo: %d of %d ad(s) fetched this run are older backlog (stored quietly)", len(_KOMO_BACKLOG_IDS), len(ids_to_fetch))
 
+    # 2026-10-22 (owner: catch every price change): a known Komo ad's page is free to read (komo_client talks to Komo
+    # directly, no paid proxy), so each run re-reads a slice of the ads still on Komo's list, walking the whole list in
+    # turn; a changed price then goes through _upsert_listings like any other source's (price-drop alerts included).
+    recheck_ids = _komo_recheck_slice(sorted((seen_external_ids & known_ids) - set(ids_to_fetch)))
     fetched = len(ids_to_fetch)
     details = asyncio.run(
-        _fetch_concurrently(ids_to_fetch, fetch_komo_listing_detail, _KOMO_DETAIL_FETCH_CONCURRENCY)
+        _fetch_concurrently(ids_to_fetch + recheck_ids, fetch_komo_listing_detail, _KOMO_DETAIL_FETCH_CONCURRENCY)
     )
+    recheck_details = details[len(ids_to_fetch):]
+    details = details[:len(ids_to_fetch)]
+    rechecked = 0
+    for modaa_num, detail in zip(recheck_ids, recheck_details):
+        if detail is None:
+            continue  # unreadable now - its turn comes again on the next lap
+        coords = coords_by_id.get(modaa_num)
+        if coords is not None:
+            detail["latitude"], detail["longitude"] = coords
+        normalized = normalize(detail, source=Source.KOMO, deal_type=DealType.SALE if modaa_num in sale_ids else DealType.RENT)
+        if normalized is not None:
+            normalized_items.append(normalized)
+            rechecked += 1
+    if recheck_ids:
+        logger.info("Komo: re-read %d of %d known ad(s) this run for price changes", rechecked, len(recheck_ids))
     newly_failed: set[str] = set()
     for modaa_num, detail in zip(ids_to_fetch, details):
         if detail is None:
@@ -1953,6 +2081,31 @@ def _delist_stale_homeless(session, seen_external_ids: set[str], healthy_deal_ty
 # _KOMO_BACKLOG_ID_GAP below the highest known id is old by definition and is stored quietly, like the other backlogs.
 _KOMO_BACKLOG_ID_GAP = 1500
 _KOMO_BACKLOG_IDS: set[str] = set()
+
+
+_KOMO_RECHECK_PER_RUN_ENV_VAR = "KOMO_RECHECK_PER_RUN"
+_DEFAULT_KOMO_RECHECK_PER_RUN = 200
+_KOMO_RECHECK_CURSOR_FLAG = "komo_recheck_cursor"
+
+
+def _komo_recheck_slice(known_live_ids: list[str]) -> list[str]:
+    """The next slice of known, still-listed Komo ads to re-read (see _scrape_komo), from a cursor kept in app_flags so
+    the whole list is covered in turn (about a day and a half for 12,000 ads at 200 a run)."""
+    raw = os.environ.get(_KOMO_RECHECK_PER_RUN_ENV_VAR, "").strip()
+    per_run = int(raw) if raw.isdigit() else _DEFAULT_KOMO_RECHECK_PER_RUN
+    if not per_run or not known_live_ids:
+        return []
+    try:
+        with get_session() as session:
+            cursor = int(app_flags.get_flag(session, _KOMO_RECHECK_CURSOR_FLAG) or 0)
+            if cursor >= len(known_live_ids):
+                cursor = 0
+            chosen = known_live_ids[cursor:cursor + per_run]
+            app_flags.set_flag(session, _KOMO_RECHECK_CURSOR_FLAG, str(cursor + len(chosen)))
+    except Exception:
+        logger.warning("Komo: could not read the re-check cursor - no re-check this run", exc_info=True)
+        return []
+    return chosen
 
 
 def _komo_backlog_ids(candidate_ids: list[str], known_ids: set[str]) -> set[str]:
@@ -2751,13 +2904,17 @@ def run_once() -> dict[str, int]:
             touched = _touch_seen_listings(session, source, seen_external_ids)
             if touched:
                 logger.info("%s: %d listing(s) still published were marked as seen this run", source, touched)
+            if source == Source.FACEBOOK_MARKETPLACE:
+                delisted_count += _delist_unseen_for(session, source, _MARKETPLACE_STALE_DAYS)
             if source in _PARTIAL_VIEW_SOURCES:
                 if source == Source.HOMELESS:
                     delisted_count += _delist_stale_homeless(
                         session, seen_external_ids, _homeless_healthy_deal_types(_HOMELESS_CURSOR_STATE)
                     )
                 continue  # this source's run sees only part of its list on purpose - no "not seen = gone" delisting
-            if all_succeeded and seen_external_ids:
+            if all_succeeded and seen_external_ids and source == Source.YAD2:
+                delisted_count += _mark_delisted_yad2_verified(session, seen_external_ids, scraped_city_names)
+            elif all_succeeded and seen_external_ids:
                 delisted_count += _mark_delisted(session, source, seen_external_ids, scraped_city_names)
             elif not all_succeeded:
                 logger.warning(
