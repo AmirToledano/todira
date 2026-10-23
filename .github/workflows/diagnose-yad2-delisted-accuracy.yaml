@@ -66,6 +66,26 @@ jobs:
               print(f"== {label}: asked={len(toks)}", flush=True)
               for shape, n in shapes.most_common():
                   print(f"==   {n}x {shape}", flush=True)
+          # 2026-10-23: live ads that the per-ad endpoint answers 404 for - are they still on Yad2's own map (seen by our
+          # sweep in the last 2 hours), or really gone (not seen for a day)? Counts only.
+          cur.execute("select url, extract(epoch from now() - scraped_at)/3600 from listings where source='yad2' and not is_delisted "
+                      "and duplicate_of_id is null order by random() limit 80")
+          ages = collections.Counter()
+          for u, age_h in cur.fetchall():
+              m = re.search(r"/item/([A-Za-z0-9]+)", u)
+              if not m:
+                  continue
+              time.sleep(0.5)
+              try:
+                  r = cr.get(f"https://gw.yad2.co.il/realestate-item/{m.group(1)}", headers=H, impersonate="chrome", timeout=30, allow_redirects=False)
+                  code = r.status_code
+              except Exception as e:
+                  code = type(e).__name__
+              seen = "seen <2h" if age_h < 2 else "seen 2-24h" if age_h < 24 else "seen >24h"
+              ages[(code, seen)] += 1
+          print("== live ads (random 80): endpoint answer | last seen by our map sweep | count", flush=True)
+          for (code, seen), n in sorted(ages.items(), key=str):
+              print(f"==   {code} | {seen} | {n}", flush=True)
           PYEOF
           kubectl create configmap "$POD_NAME-script" -n todira --from-file=pod.py=/tmp/pod.py
           cat > /tmp/pod.yaml << EOF
@@ -76,7 +96,7 @@ jobs:
             namespace: todira
           spec:
             restartPolicy: Never
-            activeDeadlineSeconds: 400
+            activeDeadlineSeconds: 600
             containers:
               - name: diag
                 image: python:3.12-slim
@@ -100,7 +120,7 @@ jobs:
       - name: Wait, print results, clean up (always)
         if: always()
         run: |
-          for i in $(seq 1 140); do
+          for i in $(seq 1 200); do
             PHASE=$(kubectl get pod "$POD_NAME" -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
             if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
             sleep 3
