@@ -2355,7 +2355,7 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
   display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 999px; border: 0; cursor: pointer;
   background: var(--teal); color: #fff; font: inherit; font-weight: 700; font-size: .95rem; box-shadow: var(--shadow-md, 0 6px 20px rgba(0,0,0,.18));
 }
-.asst-open svg { width: 20px; height: 20px; }
+.asst-open svg { width: 24px; height: 24px; }
 .asst-open:hover { background: var(--teal-dark); }
 .asst.is-open .asst-open { display: none; }
 .asst-panel {
