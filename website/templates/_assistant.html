@@ -2,7 +2,17 @@
 <div id="assistant" class="asst" data-endpoint="/api/assistant"
      data-thinking="{{ t('assistant.thinking') }}" data-unavailable="{{ t('assistant.unavailable') }}">
   <button type="button" class="asst-open" aria-expanded="false" aria-controls="asst-panel">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3.75h5.25M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/></svg>
+    {# 2026-10-23 (owner): a paw in a chat bubble with a small AI sparkle. The first icon (kept here in case he prefers it):
+       a plain chat bubble with two lines, heroicons chat-bubble-oval-left-ellipsis outline - path
+       "M7.5 8.25h9m-9 3.75h5.25M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z", stroke-width 1.8. #}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+      <path stroke-linejoin="round" d="M20 12.6c0 4.2-3.7 7.6-8.3 7.6a9 9 0 01-2.35-.31A5.5 5.5 0 015.6 21a4.1 4.1 0 00.9-1.86c.08-.42-.12-.83-.43-1.13C4.75 16.8 3.4 14.9 3.4 12.6c0-4.2 3.7-7.6 8.3-7.6"/>
+      <g fill="currentColor" stroke="none">
+        <ellipse cx="11.7" cy="14.3" rx="2.5" ry="2.05"/><circle cx="8.6" cy="11.6" r="1.1"/><circle cx="10.65" cy="9.85" r="1.15"/>
+        <circle cx="12.85" cy="9.85" r="1.15"/><circle cx="14.85" cy="11.6" r="1.1"/>
+        <path d="M18.6 2.2l.75 2.05 2.05.75-2.05.75-.75 2.05-.75-2.05-2.05-.75 2.05-.75z"/>
+      </g>
+    </svg>
     <span>{{ t('assistant.open') }}</span>
   </button>
   <section id="asst-panel" class="asst-panel" role="dialog" aria-label="{{ t('assistant.title') }}" hidden>

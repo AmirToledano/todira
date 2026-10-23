@@ -501,5 +501,6 @@ backup:
   s3Region: "eu-north-1"
 
 # 2026-10-23: the site assistant's chat bubble (website/assistant.py). false = only the owner's browser sees it.
+# Turned on for everyone the same day, after the owner tried it on the live site and approved its texts.
 assistant:
-  enabled: false
+  enabled: true
