@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 
 from sqlalchemy import func, select
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 from telegram.constants import ParseMode
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
+from config import WEBSITE_URL
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
@@ -41,6 +42,10 @@ def _keyboard(user: User, lang: str) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton(active_label, callback_data="profile:toggle_active")],
             [InlineKeyboardButton(notif_label, callback_data="profile:toggle_notifications")],
+            # 2026-10-24 (owner): the website's "my account" page, opened inside Telegram and signed in (website /tg)
+            [InlineKeyboardButton(
+                bot_text("profile.btn_account", lang), web_app=WebAppInfo(url=f"{WEBSITE_URL}/tg?next=%2Faccount")
+            )],
             # handled by handlers/language.py (pattern ^lang:)
             [InlineKeyboardButton(bot_text("profile.btn_language", lang), callback_data="lang:menu")],
         ]
