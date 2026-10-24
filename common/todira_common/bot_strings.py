@@ -284,6 +284,13 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Tu peux toujours élargir ton filtre (prix, étage, exigences, etc.) avec /filter ⚙️",
         "ar": "يمكنك دائماً توسيع تفضيلاتك (السعر، الطابق، المتطلبات وغيرها) عبر /filter ⚙️",
     },
+    "card.below_area_price": {
+        "he": "🔥 {pct}% מתחת למחיר באזור",
+        "en": "🔥 {pct}% below the area price",
+        "ru": "🔥 на {pct}% ниже цен в районе",
+        "fr": "🔥 {pct}% sous le prix du quartier",
+        "ar": "🔥 أقل بـ {pct}% من سعر المنطقة",
+    },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
         "en": "👀 There are currently {total} matching apartments — all of them here: "
