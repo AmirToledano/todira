@@ -20,12 +20,16 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
 import handlers.apartments as apartments_module
 
+apartments_module._lang_sync = lambda telegram_user_id: "he"
+
 
 def _make_update():
     user = SimpleNamespace(id=555)
     chat = SimpleNamespace(id=555)
-    message = SimpleNamespace(reply_text=AsyncMock())
-    return SimpleNamespace(effective_user=user, effective_chat=chat, message=message)
+    # 2026-10-24: /apartments answers at once with a placeholder, then edits in the count
+    placeholder = SimpleNamespace(edit_text=AsyncMock())
+    message = SimpleNamespace(reply_text=AsyncMock(return_value=placeholder))
+    return SimpleNamespace(effective_user=user, effective_chat=chat, message=message, placeholder=placeholder)
 
 
 def _make_context():
@@ -38,7 +42,7 @@ def test_no_filter_tells_user_to_set_one_up():
     with patch.object(apartments_module, "_count_matches_sync", return_value=(None, "he")):
         asyncio.run(apartments_module.apartments(update, context))
     update.message.reply_text.assert_awaited_once()
-    assert "/filter" in update.message.reply_text.await_args.args[0]
+    assert "/filter" in update.placeholder.edit_text.await_args.args[0]
 
 
 def test_no_matches_tells_user_none_found_currently_and_still_links_the_website():
@@ -47,7 +51,7 @@ def test_no_matches_tells_user_none_found_currently_and_still_links_the_website(
     with patch.object(apartments_module, "_count_matches_sync", return_value=(0, "he")):
         asyncio.run(apartments_module.apartments(update, context))
     update.message.reply_text.assert_awaited_once()
-    text = update.message.reply_text.await_args.args[0]
+    text = update.placeholder.edit_text.await_args.args[0]
     assert "לא נמצאו" in text
     assert "/apartments?t=TOKEN555" in text
 
@@ -60,7 +64,7 @@ def test_matches_sends_true_total_count_and_website_link_not_cards():
     with patch.object(apartments_module, "_count_matches_sync", return_value=(3794, "he")):
         asyncio.run(apartments_module.apartments(update, context))
     update.message.reply_text.assert_awaited_once()
-    text = update.message.reply_text.await_args.args[0]
+    text = update.placeholder.edit_text.await_args.args[0]
     assert "3794" in text
     assert "/apartments?t=TOKEN555" in text
 

@@ -55,26 +55,33 @@ def _count_matches_sync(tg_user) -> tuple[int | None, str]:
         return len(matching_listing_rows(session, filter_row, hidden_listing_ids(session, user.id))), lang
 
 
+def _lang_sync(telegram_user_id: int) -> str:
+    from handlers.testimonial import _user_lang_sync
+
+    return _user_lang_sync(telegram_user_id)
+
+
 async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: PTB processes
     # updates one at a time by default, so a blocking DB call on the event loop freezes every
     # other user's interaction with the bot too, not just this one.
+    # 2026-10-24 (owner: "/apartments takes so long it feels stuck"): a broad search can match tens of thousands of
+    # listings, and counting them takes a while. The map button goes out right away; the count fills in when ready.
+    lang = await asyncio.to_thread(_lang_sync, update.effective_user.id)
+    placeholder = await update.message.reply_text(
+        bot_text("apartments.counting", lang), reply_markup=mini_app_keyboard(WEBSITE_URL, lang)
+    )
     total, lang = await asyncio.to_thread(_count_matches_sync, update.effective_user)
     if total is None:
-        await update.message.reply_text(bot_text("apartments.no_filter_yet", lang))
+        await placeholder.edit_text(bot_text("apartments.no_filter_yet", lang))
         return
 
     apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
-    if total:
-        await update.message.reply_text(
-            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url),
-            reply_markup=mini_app_keyboard(WEBSITE_URL, lang),
-        )
-    else:
-        await update.message.reply_text(
-            bot_text("apartments.no_matches", lang, apartments_url=apartments_url),
-            reply_markup=mini_app_keyboard(WEBSITE_URL, lang),
-        )
+    key = "onboarding.matches_found" if total else "apartments.no_matches"
+    await placeholder.edit_text(
+        bot_text(key, lang, total=total, apartments_url=apartments_url),
+        reply_markup=mini_app_keyboard(WEBSITE_URL, lang),
+    )
 
 
 def build_apartments_handler() -> CommandHandler:

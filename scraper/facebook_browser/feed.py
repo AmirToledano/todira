@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 import time
@@ -28,6 +29,22 @@ _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
 _MAX_IMAGES = 10
+
+# 2026-10-24 (owner-approved, memory): the browser held ~550 MB of a 2 GB node while it ran. FB_LIGHT_BROWSER=0 turns
+# these savings off if Facebook ever treats the lighter browser differently.
+_LIGHT_ARGS = ["--renderer-process-limit=1", "--js-flags=--max-old-space-size=384", "--disable-extensions", "--mute-audio"]
+_HEAVY_RESOURCE_TYPES = {"image", "media", "font"}
+
+
+def _light_browser() -> bool:
+    return os.environ.get("FB_LIGHT_BROWSER", "1").strip() != "0"
+
+
+def _skip_heavy_files(route) -> None:
+    if route.request.resource_type in _HEAVY_RESOURCE_TYPES:
+        route.abort()
+    else:
+        route.continue_()
 
 
 def cookies_from_header(header: str) -> list[dict[str, Any]]:
@@ -142,7 +159,10 @@ def collect_group_posts(cookie_header: str, scrolls: int) -> list[dict[str, Any]
             browser = p.chromium.launch(
                 headless=True,
                 # /dev/shm is 64 MB in a pod; --disable-dev-shm-usage keeps Chromium off it on the 2 GB node
-                args=["--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage", "--disable-gpu"],
+                args=[
+                    "--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage", "--disable-gpu",
+                    *(_LIGHT_ARGS if _light_browser() else []),
+                ],
             )
             try:
                 context = browser.new_context(
@@ -150,6 +170,10 @@ def collect_group_posts(cookie_header: str, scrolls: int) -> list[dict[str, Any]
                     viewport={"width": 1366, "height": 900},
                 )
                 context.add_cookies(cookies_from_header(cookie_header))
+                if _light_browser():
+                    # The posts and their photo URLs come from Facebook's own JSON responses (on_response above); the
+                    # picture, video and font files themselves are never read, so they aren't downloaded at all.
+                    context.route("**/*", _skip_heavy_files)
                 page = context.new_page()
                 page.on("response", on_response)
                 page.goto(GROUPS_FEED_URL, wait_until="domcontentloaded", timeout=60000)

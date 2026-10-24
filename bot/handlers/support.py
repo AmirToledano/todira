@@ -87,3 +87,56 @@ async def escalate_to_owner(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await asyncio.to_thread(_mark_notified_sync, contact_message_id)
         return True
     return False
+
+
+# 2026-10-24 (owner): /support - the next message the user writes goes straight to the owner's inbox group.
+from telegram.ext import CommandHandler, ConversationHandler, MessageHandler, filters  # noqa: E402
+
+from todira_common.bot_strings import bot_text  # noqa: E402
+
+AWAIT_SUPPORT_TEXT = 0
+
+
+def _lang_sync(telegram_user_id: int) -> str:
+    from handlers.testimonial import _user_lang_sync
+
+    return _user_lang_sync(telegram_user_id)
+
+
+async def support_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = await asyncio.to_thread(_lang_sync, update.effective_user.id)
+    await update.message.reply_text(bot_text("support.prompt", lang))
+    return AWAIT_SUPPORT_TEXT
+
+
+async def support_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = await asyncio.to_thread(_lang_sync, update.effective_user.id)
+    await escalate_to_owner(update, context, update.message.text or "")
+    await update.message.reply_text(bot_text("support.sent", lang))
+    return ConversationHandler.END
+
+
+async def support_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = await asyncio.to_thread(_lang_sync, update.effective_user.id)
+    await update.message.reply_text(bot_text("support.cancelled", lang))
+    return ConversationHandler.END
+
+
+async def _support_other_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Another command while /support waits for text: drop the wait and let that command run normally next time."""
+    return ConversationHandler.END
+
+
+def build_support_handler() -> ConversationHandler:
+    return ConversationHandler(
+        entry_points=[CommandHandler("support", support_start)],
+        states={AWAIT_SUPPORT_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, support_text)]},
+        fallbacks=[
+            CommandHandler("cancel", support_cancel),
+            MessageHandler(filters.COMMAND, _support_other_command),
+        ],
+        name="support_conversation",
+        persistent=True,
+        allow_reentry=True,
+        conversation_timeout=None,
+    )
