@@ -26,7 +26,7 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from todira_common import text_features, yad2_detail
+from todira_common import area_price, text_features, yad2_detail
 from todira_common.access import access_state, has_full_access
 from todira_common.cards import BLOCKED, format_caption, send_listing_card
 from todira_common.enums import ListingAction, NotificationReason, Source
@@ -70,6 +70,16 @@ def _access_state_for(user: User) -> str:
 # sending shipped — found live via that same backfill run (4 of 17 real match notifications
 # silently dropped; see send_listing_card's own RetryAfter-retry, added alongside this).
 SEND_DELAY_SECONDS = 1.1
+
+
+def _below_area_pct(session: Session, listing: Listing) -> int | None:
+    """The card's "below the area price" tag (todira_common.area_price), or None. A failed lookup never stops a send."""
+    try:
+        with session.begin_nested():  # a savepoint: a failed query can't spoil the run's own transaction
+            return area_price.below_area_pct(session, listing)
+    except Exception:
+        logger.warning("area price lookup failed for listing %s", listing.id, exc_info=True)
+        return None
 
 
 def _candidate_filters(session: Session, listing: Listing) -> list[Filter]:
@@ -233,6 +243,7 @@ async def _notify_new_matches(
         to_notify.append((filter_row, user))
 
     await _complete_card_fields(session, listing, [user for _f, user in to_notify])
+    below_pct = _below_area_pct(session, listing) if to_notify else None
 
     for filter_row, user in to_notify:
         user_lang = user.language or DEFAULT_LANG
@@ -243,6 +254,7 @@ async def _notify_new_matches(
             view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
             lang=user_lang,
             access_state=_access_state_for(user),
+            below_area_pct=below_pct,
         )
         if not user.is_active:
             continue  # turned off earlier in this run: the chat turned out to be blocked
@@ -335,6 +347,7 @@ async def _notify_price_change(
         to_notify.append(user)
 
     await _complete_card_fields(session, listing, to_notify)
+    below_pct = _below_area_pct(session, listing) if to_notify else None
 
     for user in to_notify:
         user_lang = user.language or DEFAULT_LANG
@@ -342,6 +355,7 @@ async def _notify_price_change(
             listing,
             has_access=_has_access_for(user),
             price_change_from=old_price,
+            below_area_pct=below_pct,
             upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
             view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
             lang=user_lang,

@@ -304,6 +304,12 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ru": "🔔 Чтобы успевать первыми, убедитесь, что уведомления бота не отключены.",
         "fr": "🔔 Pour être le premier, vérifiez que les notifications du bot ne sont pas en sourdine.",
         "ar": "🔔 لتكون أول من يصل، تأكد من أن إشعارات البوت غير مكتومة.",
+    "card.below_area_price": {
+        "he": "🔥 {pct}% מתחת למחיר באזור",
+        "en": "🔥 {pct}% below the area price",
+        "ru": "🔥 на {pct}% ниже цен в районе",
+        "fr": "🔥 {pct}% sous le prix du quartier",
+        "ar": "🔥 أقل بـ {pct}% من سعر المنطقة",
     },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
