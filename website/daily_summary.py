@@ -1,7 +1,9 @@
 """Morning summary for the owner (2026-10-20, owner: "a short message every morning in the inbox group").
 
 Daily job (daily-summary CronJob, charts/todira): counts for yesterday (Israel time) - sign-ups, payments, alerts sent,
-new listings, messages from people - plus where things stand now (paying, on the free trial). Sent to the owner's
+new listings, messages from people, site visitors and where they came from, clicks to the bot, questions to the site
+assistant, people active in the bot - plus where things stand now (paying, on the free trial, whose trial ends this
+week). Sent to the owner's
 inbox group (todira_common/owner_inbox.py), or his private chat when there is no group. Counts only.
 """
 from __future__ import annotations
@@ -15,12 +17,19 @@ import httpx
 from sqlalchemy import func, select
 from todira_common import owner_inbox
 from todira_common.db import get_session
-from todira_common.models import ContactMessage, Listing, Payment, SentNotification, User
+from todira_common.models import ActivityDay, ContactMessage, Listing, Payment, SentNotification, User
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
+
+# The referrer kinds main.py's _referrer_kind records as site_from_<kind>.
+_SOURCE_NAMES = {
+    "instagram": "אינסטגרם", "facebook": "פייסבוק", "google": "גוגל", "telegram": "טלגרם", "whatsapp": "וואטסאפ",
+    "tiktok": "טיקטוק", "linkedin": "לינקדאין", "bing": "בינג", "other": "אחר",
+}
+TRIAL_DAYS_AHEAD = 7
 
 
 def yesterday_bounds(now: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
@@ -40,8 +49,35 @@ def collect(session, now: dt.datetime) -> dict:
             Payment.status == "paid", Payment.paid_at >= start, Payment.paid_at < end
         )
     ).one()
+    day = start.date()
+
+    def people(*kinds: str) -> int:
+        return count(select(func.count(func.distinct(ActivityDay.who))).where(
+            ActivityDay.day == day, ActivityDay.kind.in_(kinds)))
+
+    sources = {
+        kind.removeprefix("site_from_"): n
+        for kind, n in session.execute(
+            select(ActivityDay.kind, func.count()).where(
+                ActivityDay.day == day, ActivityDay.kind.like("site_from_%")).group_by(ActivityDay.kind)
+        ).all()
+    }
+    trial_ends = session.scalars(select(User.trial_ends_at).where(
+        User.trial_ends_at > now, User.trial_ends_at <= now + dt.timedelta(days=TRIAL_DAYS_AHEAD),
+        (User.paid_until.is_(None)) | (User.paid_until <= now), User.free_access_granted.is_(False))).all()
+    ending: dict[dt.date, int] = {}
+    for ends_at in trial_ends:
+        local = ends_at.astimezone(ISRAEL).date()
+        ending[local] = ending.get(local, 0) + 1
     return {
         "date": start.strftime("%d.%m"),
+        "visitors": people("site_visit"),
+        "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
+        "bot_clicks": people("click_bot_hero", "click_bot_end", "click_bot_menu", "click_bot_nofilter", "click_bot_share"),
+        "assistant_questions": count(select(func.coalesce(func.sum(ActivityDay.hits), 0)).where(
+            ActivityDay.day == day, ActivityDay.kind == "assistant_question")),
+        "bot_active": people("bot_message", "bot_button"),
+        "trial_ending": [(d.strftime("%d.%m"), n) for d, n in sorted(ending.items())],
         "signups": count(select(func.count()).select_from(User).where(User.created_at >= start, User.created_at < end)),
         "payments": paid_rows[0],
         "income": paid_rows[1],
@@ -71,6 +107,18 @@ def summary_text(c: dict) -> str:
         f"🔔 התראות שנשלחו: <b>{c['alerts']:,}</b> ל־{c['alerted_users']} משתמשים",
         f"🏠 דירות חדשות: <b>{c['new_listings']:,}</b>",
         f"📬 פניות: <b>{c['messages']}</b>",
+        f"🤖 פעילים בבוט: <b>{c.get('bot_active', 0)}</b>",
+    ]
+    sources = c.get("sources") or {}
+    where = ", ".join(f"{_SOURCE_NAMES.get(k, k)} {n}" for k, n in sources.items())
+    lines.append(f"🌐 נכנסו לאתר: <b>{c.get('visitors', 0)}</b>" + (f" (הגיעו מ: {where})" if where else ""))
+    lines.append(f"👆 עברו מהאתר לבוט: <b>{c.get('bot_clicks', 0)}</b>")
+    lines.append(f"💬 שאלות לעוזר באתר: <b>{c.get('assistant_questions', 0)}</b>")
+    ending = c.get("trial_ending") or []
+    if ending:
+        days = ", ".join(f"{d} ({n})" for d, n in ending)
+        lines.append(f"⏳ ניסיון נגמר השבוע: <b>{sum(n for _, n in ending)}</b> ({days})")
+    lines += [
         "",
         f"📊 עכשיו: {c['paying_now']} משלמים, {c['trial_now']} בתקופת ניסיון, {c['users_total']} משתמשים בסך הכל",
     ]
