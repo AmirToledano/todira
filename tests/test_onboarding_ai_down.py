@@ -54,7 +54,7 @@ def _run(update, context, ai=_no_ai, saved=None):
 
     def _save(tg_user, state):
         saved.append(dict(state))
-        return 3
+        return {"total": 3, "per_day": 0, "samples": [], "access": "full"}
 
     with (
         patch.object(onboarding.gemini_client, "parse_onboarding_message", side_effect=ai),
@@ -100,7 +100,7 @@ def test_tapping_a_deal_button_completes_and_saves():
     )
     saved = []
     with (
-        patch.object(onboarding, "_save_filter_sync", lambda u, s: saved.append(dict(s)) or 0),
+        patch.object(onboarding, "_save_filter_sync", lambda u, s: saved.append(dict(s)) or {"total": 0, "per_day": 0, "samples": [], "access": "full"}),
         patch.object(onboarding, "signed_login_query", lambda uid: "t=x"),
     ):
         result = asyncio.run(onboarding._handle_button(update, context))

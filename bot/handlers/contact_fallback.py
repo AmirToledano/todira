@@ -302,7 +302,7 @@ async def handle_stray_message(update: Update, context: ContextTypes.DEFAULT_TYP
     search_text.merge_into(state, found)
     search_text.infer_deal_type(state)
     if search_text.is_complete(state):
-        total = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
+        total = (await asyncio.to_thread(_save_filter_sync, update.effective_user, state))["total"]
         await update.message.reply_text(
             bot_text("onboarding.understood", lang, summary=search_text.summary(state, lang))
             + "\n" + _matches_text(update.effective_user.id, total, lang)

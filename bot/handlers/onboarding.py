@@ -25,11 +25,15 @@ still ends the conversation immediately instead of re-onboarding them.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
+import os
 
 import ai_gate
 from config import WEBSITE_URL
 from todira_common import cities, gemini_client, search_text
+from todira_common.access import access_state
 from todira_common.bot_strings import bot_text
+from todira_common.cards import format_caption, send_listing_card
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import safe_range_update
@@ -37,6 +41,7 @@ from todira_common.models import Filter
 from todira_common.users import get_or_create_user
 from todira_common.uid_token import signed_login_query
 from handlers.apartments import find_new_matches_to_show
+from todira_common.listing_matches import load_listings
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
 from sqlalchemy import select
@@ -117,7 +122,14 @@ async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAUL
     return ConversationHandler.END
 
 
-def _save_filter_sync(tg_user, state: dict) -> int:
+# 2026-10-24 (owner, after looking at other apartment bots): right after the search is saved the new user sees a few
+# real matches from the last two days, how many new apartments a day to expect, and a reminder not to mute the bot.
+SAMPLE_COUNT = 3
+SAMPLE_WINDOW = dt.timedelta(days=2)
+RATE_WINDOW_DAYS = 7
+
+
+def _save_filter_sync(tg_user, state: dict) -> dict:
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
         # 2026-10-13: features with their own filter switch (balcony, parking, no brokers, property type, min size...)
@@ -148,9 +160,17 @@ def _save_filter_sync(tg_user, state: dict) -> int:
         # when the true number (checked directly against the DB) was 3,642. A second owner request
         # the same day, after seeing that real number: no cap at all, not even a bigger one —
         # someone whose filter matches thousands should see all of them via the link.
-        total, _new_to_show = find_new_matches_to_show(session, user.id, filter_row)
+        total, new_to_show = find_new_matches_to_show(session, user.id, filter_row)
+        now = dt.datetime.now(dt.timezone.utc)
+        recent_week = [m for m in new_to_show if m.first_seen_at and m.first_seen_at >= now - dt.timedelta(days=RATE_WINDOW_DAYS)]
+        per_day = round(len(recent_week) / RATE_WINDOW_DAYS)
+        sample_ids = [m.id for m in recent_week if m.first_seen_at >= now - SAMPLE_WINDOW][:SAMPLE_COUNT]
+        owner_id = os.environ.get("OWNER_TELEGRAM_USER_ID", "").strip()
+        access = access_state(user, is_owner=bool(owner_id) and owner_id == str(tg_user.id))
         session.commit()
-        return total
+        samples = load_listings(session, sample_ids)
+        session.expunge_all()
+        return {"total": total, "per_day": per_day, "samples": samples, "access": access}
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -306,7 +326,8 @@ async def _handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def _finish(update, context, state: dict, lang: str) -> int:
     message = update.effective_message
-    total = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
+    saved = await asyncio.to_thread(_save_filter_sync, update.effective_user, state)
+    total = saved["total"]
 
     context.user_data.pop("onboarding", None)
     context.user_data.pop("onboarding_asked", None)
@@ -326,6 +347,24 @@ async def _finish(update, context, state: dict, lang: str) -> int:
         await message.reply_text(
             bot_text("onboarding.no_matches_yet", lang, apartments_url=apartments_url)
         )
+
+    if saved["samples"]:
+        await message.reply_text(bot_text("onboarding.samples_intro", lang))
+        upgrade_url = f"{WEBSITE_URL}/upgrade?{signed_login_query(update.effective_user.id)}"
+        for listing in saved["samples"]:
+            await send_listing_card(
+                context.bot,
+                message.chat_id,
+                listing,
+                format_caption(
+                    listing, has_access=saved["access"] == "full", upgrade_url=upgrade_url, lang=lang,
+                    access_state=saved["access"],
+                ),
+                lang,
+            )
+    tail = [bot_text("onboarding.per_day", lang, per_day=saved["per_day"])] if saved["per_day"] >= 1 else []
+    tail.append(bot_text("onboarding.unmute_hint", lang))
+    await message.reply_text("\n\n".join(tail))
 
     return ConversationHandler.END
 

@@ -64,12 +64,20 @@ BOT_COMMANDS = [
 ]
 
 
+BOT_SHORT_DESCRIPTION = "כל דירה חדשה להשכרה או למכירה, ישר לטלגרם, דקות אחרי שעלתה 🏠"
+
+
 async def _heartbeat_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     Path(HEARTBEAT_PATH).touch()
 
 
 async def _post_init(application: Application) -> None:
     await application.bot.set_my_commands(BOT_COMMANDS)
+    # 2026-10-24 (owner approved): the "about" line on the bot's profile page was empty.
+    try:
+        await application.bot.set_my_short_description(BOT_SHORT_DESCRIPTION)
+    except Exception:
+        logger.warning("Could not set the bot's short description", exc_info=True)
     if application.job_queue is not None:
         # first=0 so the file exists immediately, not only after the first interval elapses —
         # otherwise a liveness probe that starts checking right at container boot could see a
