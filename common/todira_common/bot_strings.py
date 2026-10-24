@@ -304,18 +304,21 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ru": "🔔 Чтобы успевать первыми, убедитесь, что уведомления бота не отключены.",
         "fr": "🔔 Pour être le premier, vérifiez que les notifications du bot ne sont pas en sourdine.",
         "ar": "🔔 لتكون أول من يصل، تأكد من أن إشعارات البوت غير مكتومة.",
+    },
     "card.below_area_price": {
         "he": "🔥 {pct}% מתחת למחיר באזור",
         "en": "🔥 {pct}% below the area price",
         "ru": "🔥 на {pct}% ниже цен в районе",
         "fr": "🔥 {pct}% sous le prix du quartier",
         "ar": "🔥 أقل بـ {pct}% من سعر المنطقة",
+    },
     "voice.not_understood": {
         "he": "לא הצלחתי להבין את ההקלטה 🙈 אפשר לנסות שוב, או לכתוב לי.",
         "en": "I couldn't make out the recording 🙈 Try again, or type it.",
         "ru": "Не удалось разобрать запись 🙈 Попробуйте ещё раз или напишите текстом.",
         "fr": "Je n'ai pas compris l'enregistrement 🙈 Réessayez, ou écrivez-moi.",
         "ar": "لم أتمكن من فهم التسجيل 🙈 حاول مرة أخرى، أو اكتب لي.",
+    },
     "kb.mini_app": {
         "he": "🗺️ מפה ודירות", "en": "🗺️ Map & apartments", "ru": "🗺️ Карта и квартиры", "fr": "🗺️ Carte et appartements",
         "ar": "🗺️ الخريطة والشقق",

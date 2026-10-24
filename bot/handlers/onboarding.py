@@ -33,8 +33,7 @@ from config import WEBSITE_URL
 from todira_common import cities, gemini_client, search_text
 from todira_common.access import access_state
 from todira_common.bot_strings import bot_text
-from todira_common.cards import format_caption, send_listing_card
-from todira_common.cards import mini_app_keyboard
+from todira_common.cards import format_caption, mini_app_keyboard, send_listing_card
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import safe_range_update

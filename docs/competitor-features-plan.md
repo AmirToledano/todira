@@ -5,6 +5,8 @@ Approved bot wording is in the 24.10 conversation; site-only items need no extra
 ## Done
 - End of onboarding: up to 3 real matches from the last 2 days, "about N new apartments a day", unmute reminder.
 - Bot profile short description ("about").
+- Price tag on bot cards (item 1), campaign links (3), voice messages (4), Mini App button on /apartments and onboarding
+  replies (5), site sort and report form (6).
 
 ## To do, in order
 1. Price tag on cards (bot + site): "🔥 {pct}% מתחת למחיר באזור" when price is at least 20% under the area average.
