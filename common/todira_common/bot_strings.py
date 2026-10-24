@@ -284,6 +284,27 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Tu peux toujours élargir ton filtre (prix, étage, exigences, etc.) avec /filter ⚙️",
         "ar": "يمكنك دائماً توسيع تفضيلاتك (السعر، الطابق، المتطلبات وغيرها) عبر /filter ⚙️",
     },
+    "onboarding.samples_intro": {
+        "he": "🏠 ככה זה ייראה: הנה דירות מהיומיים האחרונים שמתאימות לך",
+        "en": "🏠 Here's what it looks like: apartments from the last two days that match your search",
+        "ru": "🏠 Вот как это выглядит: квартиры за последние два дня, подходящие под ваш поиск",
+        "fr": "🏠 Voici à quoi ça ressemble : des appartements des deux derniers jours qui correspondent à votre recherche",
+        "ar": "🏠 هكذا سيبدو الأمر: شقق من اليومين الأخيرين تطابق بحثك",
+    },
+    "onboarding.per_day": {
+        "he": "📊 בערך {per_day} דירות חדשות ביום מתאימות לחיפוש שלך.",
+        "en": "📊 About {per_day} new apartments a day match your search.",
+        "ru": "📊 Примерно {per_day} новых квартир в день подходят под ваш поиск.",
+        "fr": "📊 Environ {per_day} nouveaux appartements par jour correspondent à votre recherche.",
+        "ar": "📊 حوالي {per_day} شقة جديدة يومياً تطابق بحثك.",
+    },
+    "onboarding.unmute_hint": {
+        "he": "🔔 כדי להגיע ראשונים, ודאו שההתראות מהבוט לא מושתקות.",
+        "en": "🔔 To be first, make sure the bot's notifications aren't muted.",
+        "ru": "🔔 Чтобы успевать первыми, убедитесь, что уведомления бота не отключены.",
+        "fr": "🔔 Pour être le premier, vérifiez que les notifications du bot ne sont pas en sourdine.",
+        "ar": "🔔 لتكون أول من يصل، تأكد من أن إشعارات البوت غير مكتومة.",
+    },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
         "en": "👀 There are currently {total} matching apartments — all of them here: "
