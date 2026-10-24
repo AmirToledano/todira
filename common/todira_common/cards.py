@@ -464,8 +464,12 @@ def format_caption(
     view_url: str | None = None,
     lang: str = DEFAULT_LANG,
     access_state: str | None = None,
+    below_area_pct: int | None = None,
 ) -> str:
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
+
+    `below_area_pct` (2026-10-24): when set (todira_common.area_price.below_area_pct), a "🔥 N% under the area price"
+    line opens the card.
 
     `access_state` (todira_common.access.access_state): for a viewer WITHOUT access, ACCESS_TRIAL_ENDED or
     ACCESS_SUBSCRIPTION_EXPIRED makes the footer say which one ended; None keeps the generic lock line. Ignored when
@@ -503,6 +507,8 @@ def format_caption(
         lang=lang,
     )
 
+    if below_area_pct:
+        lines.insert(0, bold(bot_text("card.below_area_price", lang, pct=below_area_pct)))
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:
@@ -687,3 +693,12 @@ def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboar
         query = urlencode({"url": share.share_url(listing_id), "text": bot_text("card.share_text", lang)})
         rows.append([InlineKeyboardButton(bot_text("card.share_button", lang), url=f"https://t.me/share/url?{query}")])
     return InlineKeyboardMarkup(rows)
+
+
+def mini_app_keyboard(website_url: str, lang: str = DEFAULT_LANG, next_path: str = "/apartments") -> InlineKeyboardMarkup:
+    """2026-10-24 (owner-approved): one button that opens the site inside Telegram as a Mini App, already signed in
+    (website/main.py's /tg)."""
+    from telegram import WebAppInfo
+
+    url = f"{website_url}/tg?{urlencode({'next': next_path})}"
+    return InlineKeyboardMarkup([[InlineKeyboardButton(bot_text("kb.mini_app", lang), web_app=WebAppInfo(url=url))]])

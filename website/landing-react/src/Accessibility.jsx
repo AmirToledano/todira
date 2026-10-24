@@ -76,7 +76,7 @@ export default function Accessibility() {
         <h2>{tr("accessibility.s4_title")}</h2>
         <p>
           {tr("accessibility.s4_body_pre")}
-          <a href="mailto:amir81358@gmail.com">amir81358@gmail.com</a>
+          <a href="mailto:amir@todira.app">amir@todira.app</a>
           {tr("accessibility.s4_body_post")}
         </p>
       </motion.div>

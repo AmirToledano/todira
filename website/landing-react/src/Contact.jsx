@@ -146,6 +146,9 @@ export default function Contact() {
         transition={{ duration: 0.5, delay: 0.2, ease: easePremium }}
       >
         <h2 className="section-title">{t("contact.other_ways_title")}</h2>
+        <a className="btn outline" href="mailto:support@todira.app">
+          {t("contact.email_way")}
+        </a>
         <a className="btn outline" href={telegramBotUrl} target="_blank" rel="noreferrer">
           {t("contact.telegram_way")}
         </a>

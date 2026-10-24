@@ -1027,3 +1027,10 @@ def test_the_expiry_notice_sits_above_its_own_link_line():
     notice_at = caption.index("תקופת הניסיון הסתיימה")
     link_at = caption.index('href="https://todira.app/upgrade?t=x"')
     assert notice_at < link_at and "👇" in caption[notice_at:link_at]
+
+
+def test_below_area_price_tag_opens_the_card_only_when_given():
+    tagged = format_caption(make_listing(), has_access=True, below_area_pct=28)
+    assert _b("🔥 28% מתחת למחיר באזור") in tagged
+    assert tagged.index("🔥") < tagged.index("📍")
+    assert "🔥" not in format_caption(make_listing(), has_access=True)

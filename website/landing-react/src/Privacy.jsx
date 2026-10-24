@@ -112,7 +112,7 @@ export default function Privacy() {
         <h2>{tr("privacy.s10_title")}</h2>
         <p>
           {tr("privacy.s10_body_pre")}
-          <a href="mailto:amir81358@gmail.com">amir81358@gmail.com</a>
+          <a href="mailto:amir@todira.app">amir@todira.app</a>
           {tr("privacy.s10_body_post")}
         </p>
       </motion.div>

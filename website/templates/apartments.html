@@ -40,6 +40,14 @@
   </form>
   {% endif %}
   <span class="apt-toolbar-count"><b>{{ total_count }}</b> {{ t('apartments.results_label') }}</span>
+  <label class="apt-sort">
+    <span class="sr-only">{{ t('apartments.sort_label') }}</span>
+    <select onchange="var u=new URL(location.href);u.searchParams.set('sort',this.value);u.searchParams.delete('offset');location.href=u.toString();">
+      {% for key in ('new', 'old', 'cheap', 'expensive') %}
+      <option value="{{ key }}" {{ 'selected' if sort == key else '' }}>{{ t('apartments.sort_' ~ key) }}</option>
+      {% endfor %}
+    </select>
+  </label>
   {# 2026-09-24 real owner report: the map used to be open by default and permanently took up a
      large, fixed chunk of page height regardless of state — "takes a lot of room, gets in the way
      of the listings." Single toggle now lives HERE, in the always-visible slim toolbar, rather

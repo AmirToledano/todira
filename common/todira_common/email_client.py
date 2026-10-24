@@ -14,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 RESEND_API_URL = "https://api.resend.com/emails"
-DEFAULT_FROM = "טודירה <hello@todira.app>"
+DEFAULT_FROM = "טודירה <support@todira.app>"  # 2026-10-24: an address that forwards to the owner, so replies arrive
 
 
 def enabled() -> bool:

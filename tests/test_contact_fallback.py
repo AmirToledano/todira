@@ -432,7 +432,7 @@ def test_a_user_without_a_search_who_writes_a_full_one_gets_it_saved():
     with (
         patch.object(contact_fallback, "get_session", lambda: no_filter_session),
         patch.object(contact_fallback, "get_or_create_user", lambda s, u: SimpleNamespace(id=1, language="he")),
-        patch.object(contact_fallback, "_save_filter_sync", return_value=4) as save_mock,
+        patch.object(contact_fallback, "_save_filter_sync", return_value={"total": 4, "per_day": 0, "samples": [], "access": "full"}) as save_mock,
     ):
         _run(contact_fallback.handle_stray_message(update, context))
     state = save_mock.call_args.args[1]

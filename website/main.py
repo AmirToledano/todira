@@ -51,11 +51,11 @@ from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import quote as url_quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote as url_quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
-from todira_common import activity, listing_enrichment, owner_inbox, share, testimonials
+from todira_common import activity, area_price, listing_enrichment, owner_inbox, share, testimonials
 from todira_common.access import (
     CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
@@ -90,7 +90,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import ARRAY, Boolean, Float, case, cast, delete, func, or_, select, text
+from sqlalchemy import ARRAY, Boolean, case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import defer
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -328,6 +328,10 @@ class _ActivityMiddleware(BaseHTTPMiddleware):
                 kind = _referrer_kind(request)
                 if kind:
                     loop.run_in_executor(None, activity.record, f"site_from_{kind}", who)
+                # 2026-10-24: todira.app/?src=<name> for a post or ad's own link (same names as the bot's start links)
+                src = request.query_params.get("src", "")
+                if re.fullmatch(r"[a-z0-9_]{2,40}", src):
+                    loop.run_in_executor(None, activity.record, f"src_{src}", who)
         return response
 
 
@@ -723,6 +727,72 @@ def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
     return time.time() - auth_date <= 60 * 60 * 24
 
 
+def verify_webapp_init_data(init_data: str, bot_token: str) -> dict | None:
+    """The Telegram user a Mini App launch belongs to, or None: Telegram's own check
+    (https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) - HMAC-SHA256 over the sorted
+    fields with the key HMAC-SHA256("WebAppData", bot token) - and at most a day old."""
+    if not init_data or not bot_token:
+        return None
+    fields = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = fields.pop("hash", "")
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    computed = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not received_hash or not hmac.compare_digest(computed, received_hash):
+        return None
+    try:
+        if time.time() - int(fields.get("auth_date", "0")) > 60 * 60 * 24:
+            return None
+        user = json.loads(fields.get("user", ""))
+    except ValueError:
+        return None
+    return user if isinstance(user, dict) and isinstance(user.get("id"), int) else None
+
+
+# 2026-10-24 (owner): the site inside Telegram. The bot's "🗺️ מפה ודירות" button opens /tg as a Mini App; the page hands
+# Telegram's signed launch data to /auth/tg-webapp, which signs the visitor in, then goes on to `next` (a local path).
+_TG_APP_PAGE = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>טודירה</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script></head>
+<body style="font-family:system-ui;text-align:center;padding-top:40vh">טוען...
+<script>
+(function () {
+  var next = new URLSearchParams(location.search).get('next') || '/apartments';
+  if (next.charAt(0) !== '/' || next.charAt(1) === '/') { next = '/apartments'; }
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  var body = new URLSearchParams({ init_data: tg ? tg.initData : '' });
+  fetch('/auth/tg-webapp', { method: 'POST', body: body, credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { location.replace(d.ok ? next : '/login?next=' + encodeURIComponent(next)); })
+    .catch(function () { location.replace('/login?next=' + encodeURIComponent(next)); });
+})();
+</script></body></html>"""
+
+
+@app.get("/tg")
+def telegram_mini_app() -> Response:
+    return Response(_TG_APP_PAGE, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/tg-webapp")
+async def telegram_mini_app_auth(request: Request):
+    form = await request.form()
+    tg_user = verify_webapp_init_data(str(form.get("init_data") or ""), TELEGRAM_BOT_TOKEN or "")
+    if tg_user is None:
+        return JSONResponse({"ok": False})
+
+    def _user_pk() -> int | None:
+        with get_session() as session:
+            return session.scalar(select(User.id).where(User.telegram_user_id == tg_user["id"]))
+
+    user_pk = await asyncio.to_thread(_user_pk)
+    if user_pk is None:
+        return JSONResponse({"ok": False})
+    request.session["user_id"] = user_pk
+    return JSONResponse({"ok": True})
+
+
 @app.get("/healthz")
 def healthz() -> Response:
     """Kubernetes liveness/readiness probe target (see website-deployment.yaml) — added 2026-09-08
@@ -877,6 +947,45 @@ def _home_map_data() -> dict | None:
 # (base.html). Counted per person per day like the visits - a second press by the same person adds to their count, so
 # repeats show up as more presses than people. The owner's browsers are never counted.
 _CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share"}
+
+
+# 2026-10-24 (owner): "report a mistake" on the listing view - goes to the owner's inbox like a /contact message.
+_REPORT_REASONS = {
+    "taken": "כבר לא רלוונטית (הושכרה / נמכרה)",
+    "price": "המחיר שגוי",
+    "details": "פרטים שגויים (חדרים, כתובת, תמונות)",
+    "other": "אחר",
+}
+
+
+@app.post("/api/report")
+async def report_listing(request: Request):
+    user_id = request.session.get("user_id")
+    try:
+        form = await request.form()
+        listing_id = int(str(form.get("listing") or ""))
+    except (ValueError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    reason = str(form.get("reason") or "")
+    note = str(form.get("note") or "").strip()[:300]
+    if user_id is None or reason not in _REPORT_REASONS:
+        return JSONResponse({"ok": False}, status_code=400)
+    text = f"🚩 דיווח על מודעה {listing_id}: {_REPORT_REASONS[reason]}" + (f"\n{note}" if note else "")
+    text += f"\n{WEBSITE_URL}/apartments?listing={listing_id}"
+
+    def _save_and_notify() -> None:
+        with get_session() as session:
+            user = session.get(User, user_id)
+            tg_id = user.telegram_user_id if user else None
+            row = ContactMessage(message=text, telegram_user_id=tg_id, source="report")
+            session.add(row)
+            session.commit()
+            if _notify_owner_sync("", "", text, tg_id):
+                row.notified_owner = True
+                session.commit()
+
+    await asyncio.to_thread(_save_and_notify)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/click")
@@ -1660,7 +1769,7 @@ def _filter_fingerprint(filter_row) -> tuple:
     return tuple((column.key, repr(getattr(filter_row, column.key, None))) for column in Filter.__table__.columns)
 
 
-def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[int]:
+def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[tuple[int, int | None]]:
     key = (user_id, _filter_fingerprint(filter_row), frozenset(hidden_ids))
     now = time.monotonic()
     with _match_ids_lock:
@@ -1668,13 +1777,26 @@ def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -
         if hit is not None and now - hit[0] < _MATCH_IDS_TTL:
             _match_ids_cache.move_to_end(key)
             return hit[1]
-    ids = [row.id for row in matching_listing_rows(session, filter_row, hidden_ids)]
+    ids = [(row.id, row.price) for row in matching_listing_rows(session, filter_row, hidden_ids)]
     with _match_ids_lock:
         _match_ids_cache[key] = (now, ids)
         _match_ids_cache.move_to_end(key)
         while len(_match_ids_cache) > _MATCH_IDS_MAX_ENTRIES:
             _match_ids_cache.popitem(last=False)
     return ids
+
+
+# 2026-10-24 (owner): sorting /apartments. The match scan is newest first; the others reorder that list.
+_SORTS = ("new", "old", "cheap", "expensive")
+
+
+def _sorted_ids(rows: list[tuple[int, int | None]], sort: str) -> list[int]:
+    if sort == "old":
+        rows = rows[::-1]
+    elif sort in ("cheap", "expensive"):
+        priced = sorted((r for r in rows if r[1]), key=lambda r: r[1], reverse=sort == "expensive")
+        rows = priced + [r for r in rows if not r[1]]  # no price last either way
+    return [listing_id for listing_id, _price in rows]
 
 
 def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
@@ -1747,79 +1869,7 @@ def _attach_also_on(session, listings, lang: str | None) -> None:
 # on, a small map, and similar listings nearby. Only real data: a section with nothing to show is left out.
 _ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 _SIMILAR_LISTINGS_SHOWN = 4
-_AREA_COMPARE_MIN_LISTINGS = 5
-# Below this many comparable listings the page says the comparison rests on little data.
-_AREA_COMPARE_SOLID_LISTINGS = 10
-_AREA_COMPARE_WINDOW = dt.timedelta(days=30)
-# Yad2's catch-all "rest of the city" bucket is not a real neighborhood, so it is compared with the whole city.
-_NOT_A_NEIGHBORHOOD = {"שאר העיר"}
-# Sizes outside this range are typos; they are left out of the price-per-m² median.
-_PLAUSIBLE_SQM = (15, 500)
-
-
-def _area_price_comparison(session, listing: Listing) -> dict | None:
-    """How this listing's asking price compares with the same kind of listing around it - computed only from listings we
-    collected ourselves, nothing estimated or looked up elsewhere (2026-10-14 owner request: "as real and honest as it
-    can be").
-
-    The peers: other listings (never this one, never a cross-site duplicate of the same flat) with the same deal type and
-    room count, seen live in the last _AREA_COMPARE_WINDOW (so ones taken down recently - often because they were let -
-    still count), a shared room only against shared rooms. In the same neighborhood when it has at least
-    _AREA_COMPARE_MIN_LISTINGS of them, otherwise the whole city; fewer than that anywhere and there's no comparison.
-    The median, not the average, so one mistyped price can't drag it. When this listing has a size, the median price per
-    m² of the same peers (those with a plausible size) is returned too: a big flat can cost more and still be cheaper
-    per m². These are asking prices from the ads, not the prices flats were finally let or sold for."""
-    if not listing.price or not listing.city:
-        return None
-    conditions = [
-        Listing.duplicate_of_id.is_(None),
-        Listing.deal_type == listing.deal_type,
-        Listing.price.is_not(None),
-        Listing.price > 0,
-        Listing.id != listing.id,
-        Listing.city == listing.city,
-        Listing.scraped_at >= func.now() - _AREA_COMPARE_WINDOW,
-    ]
-    if listing.duplicate_of_id is not None:
-        conditions.append(Listing.id != listing.duplicate_of_id)
-    if listing.rooms is not None:
-        conditions.append(Listing.rooms == listing.rooms)
-    if listing.property_type == "shared_room":
-        conditions.append(Listing.property_type == "shared_room")
-    else:
-        conditions.append(or_(Listing.property_type.is_(None), Listing.property_type != "shared_room"))
-    scopes = []
-    if listing.neighborhood and listing.neighborhood not in _NOT_A_NEIGHBORHOOD:
-        scopes.append((listing.neighborhood, [*conditions, Listing.neighborhood == listing.neighborhood]))
-    scopes.append((listing.city, conditions))
-    for area, where in scopes:
-        median, count = session.execute(
-            select(func.percentile_cont(0.5).within_group(Listing.price), func.count()).where(*where)
-        ).one()
-        if not median or count < _AREA_COMPARE_MIN_LISTINGS:
-            continue
-        median = float(median)
-        result = {
-            "area": area,
-            "median": int(round(median, -1)),
-            "count": count,
-            "diff_pct": int(round((listing.price - median) / median * 100)),
-            "solid": count >= _AREA_COMPARE_SOLID_LISTINGS,
-            "sqm_median": None,
-        }
-        low, high = _PLAUSIBLE_SQM
-        if listing.size_sqm and low <= listing.size_sqm <= high:
-            per_sqm = cast(Listing.price, Float) / Listing.size_sqm
-            sqm_median, sqm_count = session.execute(
-                select(func.percentile_cont(0.5).within_group(per_sqm), func.count()).where(
-                    *where, Listing.size_sqm.between(low, high)
-                )
-            ).one()
-            if sqm_median and sqm_count >= _AREA_COMPARE_MIN_LISTINGS:
-                result["sqm_median"] = int(round(float(sqm_median)))
-                result["sqm_count"] = sqm_count
-        return result
-    return None
+_area_price_comparison = area_price.area_price_comparison
 
 
 def _similar_listings(session, listing: Listing, hidden_ids: set[int]) -> list[Listing]:
@@ -1963,6 +2013,7 @@ def apartments(
     fragment: bool = False,
     listing: int | None = None,
     city: str | None = None,
+    sort: str = "new",
 ):
     with get_session() as session:
         user = _resolve_user(request, session, uid)
@@ -1981,7 +2032,8 @@ def apartments(
         # kept for a couple of minutes per user + filter + hidden set, so scrolling loads only the next 24 listings.
         city_view = city if city in LOCALITY_SET else None
         match_filter = _city_view_filter(user.filter, city_view) if city_view else user.filter
-        match_ids = _cached_match_ids(session, user.id, match_filter, hidden_ids)
+        sort = sort if sort in _SORTS else "new"
+        match_ids = _sorted_ids(_cached_match_ids(session, user.id, match_filter, hidden_ids), sort)
         page_items = [
             listing
             for listing in load_listings(session, match_ids[offset : offset + APARTMENTS_PAGE_SIZE])
@@ -2025,6 +2077,7 @@ def apartments(
         "hidden_ids": set(),
         "deep_link_listing": deep_link_listing,
         "city_view": city_view,
+        "sort": sort,
     }
     if fragment:
         # AJAX "load more" request (see apartments.html's own script) — just the next batch of

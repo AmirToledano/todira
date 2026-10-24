@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from handlers.activity import build_activity_handler
+from handlers.voice import build_voice_handler
 from handlers.apartments import build_apartments_handler
 from handlers.contact_fallback import build_contact_fallback_handler
 from handlers.filter_conversation import build_filter_conversation_handler
@@ -64,12 +65,20 @@ BOT_COMMANDS = [
 ]
 
 
+BOT_SHORT_DESCRIPTION = "כל דירה חדשה להשכרה או למכירה, ישר לטלגרם, דקות אחרי שעלתה 🏠"
+
+
 async def _heartbeat_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     Path(HEARTBEAT_PATH).touch()
 
 
 async def _post_init(application: Application) -> None:
     await application.bot.set_my_commands(BOT_COMMANDS)
+    # 2026-10-24 (owner approved): the "about" line on the bot's profile page was empty.
+    try:
+        await application.bot.set_my_short_description(BOT_SHORT_DESCRIPTION)
+    except Exception:
+        logger.warning("Could not set the bot's short description", exc_info=True)
     if application.job_queue is not None:
         # first=0 so the file exists immediately, not only after the first interval elapses —
         # otherwise a liveness probe that starts checking right at container boot could see a
@@ -121,6 +130,8 @@ def main() -> None:
     # 2026-10-20: the owner's inbox group (handlers/owner_inbox.py) - its guard runs before every handler below
     for handler, group in build_owner_inbox_handlers():
         application.add_handler(handler, group=group)
+    # 2026-10-24: voice messages become text first (handlers/voice.py), then go through every handler below
+    application.add_handler(*build_voice_handler())
     application.add_handler(build_onboarding_handler())
     application.add_handler(build_filter_conversation_handler())
     application.add_handler(build_apartments_handler())

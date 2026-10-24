@@ -8,6 +8,8 @@ import asyncio
 
 from sqlalchemy import select
 from telegram import Update
+
+from todira_common.cards import mini_app_keyboard
 from telegram.ext import CommandHandler, ContextTypes
 
 from config import WEBSITE_URL
@@ -59,11 +61,13 @@ async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
     if total:
         await update.message.reply_text(
-            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)
+            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url),
+            reply_markup=mini_app_keyboard(WEBSITE_URL, lang),
         )
     else:
         await update.message.reply_text(
-            bot_text("apartments.no_matches", lang, apartments_url=apartments_url)
+            bot_text("apartments.no_matches", lang, apartments_url=apartments_url),
+            reply_markup=mini_app_keyboard(WEBSITE_URL, lang),
         )
 
 

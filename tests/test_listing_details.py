@@ -316,3 +316,33 @@ def test_details_order_facts_then_features_then_area_price(client):
     middle = html.index('data-slot="middle"')
     assert top < html.index("פרטי הנכס") < after_desc
     assert after_desc < html.index("פיצ׳רים בדירה") < html.index("ld-insight") < middle
+
+
+def test_apartments_sort_orders():
+    rows = [(3, 5000), (2, None), (1, 4000)]  # newest first, as the match scan returns them
+    assert website_main._sorted_ids(rows, "new") == [3, 2, 1]
+    assert website_main._sorted_ids(rows, "old") == [1, 2, 3]
+    assert website_main._sorted_ids(rows, "cheap") == [1, 3, 2]
+    assert website_main._sorted_ids(rows, "expensive") == [3, 1, 2]
+
+
+def test_report_needs_a_signed_in_visitor_and_a_known_reason():
+    from fastapi.testclient import TestClient
+
+    client = TestClient(website_main.app)
+    assert client.post("/api/report", data={"listing": "5", "reason": "taken"}).status_code == 400
+def test_mini_app_init_data_check():
+    import hashlib
+    import hmac
+    import json
+    import time
+    from urllib.parse import urlencode
+
+    token = "123:abc"
+    fields = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 42, "first_name": "A"})}
+    check = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    good = urlencode({**fields, "hash": hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()})
+    assert website_main.verify_webapp_init_data(good, token)["id"] == 42
+    assert website_main.verify_webapp_init_data(good, "other:token") is None
+    assert website_main.verify_webapp_init_data(good.replace("42", "43"), token) is None

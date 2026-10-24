@@ -333,11 +333,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # every page's footer (base.html renders this sitewide). Same no-`| safe`-anywhere,
     # split-around-the-markup convention this file already uses for privacy.s5_pre/_post etc.
     "footer.business_info_pre": {
-        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. ליצירת קשר: ",
-        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. Contact: ",
-        "ru": "Todira управляется Амиром Толедано, освобождённый предприниматель (עוסק פטור) № 211530563. Контакт: ",
-        "fr": "Todira est exploité par Amir Toledano, entrepreneur exonéré (עוסק פטור) n° 211530563. Contact: ",
-        "ar": "توديرا يُدار من قبل أمير توليدانو، تاجر معفى رقم 211530563. للتواصل: ",
+        "he": "ליצירת קשר: ",
+        "en": "Contact: ",
+        "ru": "Контакт: ",
+        "fr": "Contact : ",
+        "ar": "للتواصل: ",
     },
     "footer.about": {
         "he": "אודות", "en": "About", "ru": "О нас", "fr": "À propos", "ar": "من نحن",
@@ -981,6 +981,59 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Все квартиры, прошедшие ваш фильтр, отсортированы от новых к старым",
         "fr": "Tous les appartements ayant passé votre filtre, triés du plus récent au plus ancien",
         "ar": "كل شقة اجتازت فلترك، مرتبة من الأحدث إلى الأقدم",
+    },
+    "details.report_title": {
+        "he": "דיווח על טעות במודעה", "en": "Report a mistake", "ru": "Сообщить об ошибке", "fr": "Signaler une erreur",
+        "ar": "الإبلاغ عن خطأ",
+    },
+    "details.report_taken": {
+        "he": "כבר לא רלוונטית (הושכרה / נמכרה)", "en": "No longer available", "ru": "Уже неактуально", "fr": "N'est plus disponible",
+        "ar": "لم تعد متاحة",
+    },
+    "details.report_price": {
+        "he": "המחיר שגוי", "en": "Wrong price", "ru": "Неверная цена", "fr": "Prix erroné",
+        "ar": "السعر خاطئ",
+    },
+    "details.report_details": {
+        "he": "פרטים שגויים (חדרים, כתובת, תמונות)", "en": "Wrong details (rooms, address, photos)", "ru": "Неверные детали", "fr": "Détails erronés",
+        "ar": "تفاصيل خاطئة",
+    },
+    "details.report_other": {
+        "he": "אחר", "en": "Other", "ru": "Другое", "fr": "Autre",
+        "ar": "أخرى",
+    },
+    "details.report_note": {
+        "he": "פרטים נוספים (לא חובה)", "en": "More details (optional)", "ru": "Подробности (необязательно)", "fr": "Précisions (facultatif)",
+        "ar": "تفاصيل إضافية (اختياري)",
+    },
+    "details.report_send": {
+        "he": "שליחת דיווח", "en": "Send report", "ru": "Отправить", "fr": "Envoyer",
+        "ar": "إرسال",
+    },
+    "details.report_thanks": {
+        "he": "תודה! נבדוק את זה.", "en": "Thanks! We'll check it.", "ru": "Спасибо! Мы проверим.", "fr": "Merci ! Nous allons vérifier.",
+        "ar": "شكراً! سنتحقق من ذلك.",
+    },
+    "details.report_failed": {
+        "he": "משהו השתבש. אפשר לנסות שוב.", "en": "Something went wrong. Please try again.", "ru": "Что-то пошло не так.", "fr": "Une erreur est survenue.",
+        "ar": "حدث خطأ ما.",
+    },
+    "apartments.sort_label": {
+        "he": "מיון", "en": "Sort", "ru": "Сортировка", "fr": "Trier", "ar": "ترتيب",
+    },
+    "apartments.sort_new": {
+        "he": "החדשות קודם", "en": "Newest first", "ru": "Сначала новые", "fr": "Plus récents", "ar": "الأحدث أولاً",
+    },
+    "apartments.sort_old": {
+        "he": "הישנות קודם", "en": "Oldest first", "ru": "Сначала старые", "fr": "Plus anciens", "ar": "الأقدم أولاً",
+    },
+    "apartments.sort_cheap": {
+        "he": "מהזול ליקר", "en": "Price: low to high", "ru": "Сначала дешёвые", "fr": "Prix croissant",
+        "ar": "السعر: من الأقل",
+    },
+    "apartments.sort_expensive": {
+        "he": "מהיקר לזול", "en": "Price: high to low", "ru": "Сначала дорогие", "fr": "Prix décroissant",
+        "ar": "السعر: من الأعلى",
     },
     "apartments.results_label": {
         "he": "תוצאות", "en": "results", "ru": "результатов", "fr": "résultats", "ar": "نتائج",
@@ -2392,6 +2445,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Другие способы связи", "fr": "Autres moyens de nous contacter",
         "ar": "طرق أخرى للتواصل",
     },
+    "contact.email_way": {
+        "he": "אימייל: support@todira.app", "en": "Email: support@todira.app", "ru": "Email: support@todira.app",
+        "fr": "E-mail : support@todira.app", "ar": "البريد: support@todira.app",
+    },
     "contact.telegram_way": {
         "he": "טלגרם: תכתוב ישר לבוט", "en": "Telegram, message the bot directly",
         "ru": "Telegram, напишите боту напрямую", "fr": "Telegram, écrivez directement au bot",
@@ -2599,8 +2656,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # split into pre/post around a real mailto: link (Privacy.jsx) — same clickable-email fix as
     # footer.business_info_pre above.
     "privacy.s10_body_pre": {
-        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע, ניתן לפנות באימייל ",
-        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. For questions about privacy, or to request data deletion, please email ",
+        "he": "לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע, ניתן לפנות באימייל ",
+        "en": "For questions about privacy, or to request data deletion, please email ",
     },
     "privacy.s10_body_post": {
         "he": " או דרך הבוט בטלגרם.",
