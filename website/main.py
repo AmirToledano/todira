@@ -328,6 +328,10 @@ class _ActivityMiddleware(BaseHTTPMiddleware):
                 kind = _referrer_kind(request)
                 if kind:
                     loop.run_in_executor(None, activity.record, f"site_from_{kind}", who)
+                # 2026-10-24: todira.app/?src=<name> for a post or ad's own link (same names as the bot's start links)
+                src = request.query_params.get("src", "")
+                if re.fullmatch(r"[a-z0-9_]{2,40}", src):
+                    loop.run_in_executor(None, activity.record, f"src_{src}", who)
         return response
 
 
