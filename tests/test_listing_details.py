@@ -331,3 +331,18 @@ def test_report_needs_a_signed_in_visitor_and_a_known_reason():
 
     client = TestClient(website_main.app)
     assert client.post("/api/report", data={"listing": "5", "reason": "taken"}).status_code == 400
+def test_mini_app_init_data_check():
+    import hashlib
+    import hmac
+    import json
+    import time
+    from urllib.parse import urlencode
+
+    token = "123:abc"
+    fields = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 42, "first_name": "A"})}
+    check = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    good = urlencode({**fields, "hash": hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()})
+    assert website_main.verify_webapp_init_data(good, token)["id"] == 42
+    assert website_main.verify_webapp_init_data(good, "other:token") is None
+    assert website_main.verify_webapp_init_data(good.replace("42", "43"), token) is None

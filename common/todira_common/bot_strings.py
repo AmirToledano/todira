@@ -316,6 +316,9 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Не удалось разобрать запись 🙈 Попробуйте ещё раз или напишите текстом.",
         "fr": "Je n'ai pas compris l'enregistrement 🙈 Réessayez, ou écrivez-moi.",
         "ar": "لم أتمكن من فهم التسجيل 🙈 حاول مرة أخرى، أو اكتب لي.",
+    "kb.mini_app": {
+        "he": "🗺️ מפה ודירות", "en": "🗺️ Map & apartments", "ru": "🗺️ Карта и квартиры", "fr": "🗺️ Carte et appartements",
+        "ar": "🗺️ الخريطة والشقق",
     },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",

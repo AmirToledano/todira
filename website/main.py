@@ -51,7 +51,7 @@ from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import quote as url_quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote as url_quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -725,6 +725,72 @@ def _verify_telegram_auth(params: dict, bot_token: str) -> bool:
     except ValueError:
         return False
     return time.time() - auth_date <= 60 * 60 * 24
+
+
+def verify_webapp_init_data(init_data: str, bot_token: str) -> dict | None:
+    """The Telegram user a Mini App launch belongs to, or None: Telegram's own check
+    (https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) - HMAC-SHA256 over the sorted
+    fields with the key HMAC-SHA256("WebAppData", bot token) - and at most a day old."""
+    if not init_data or not bot_token:
+        return None
+    fields = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = fields.pop("hash", "")
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    computed = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not received_hash or not hmac.compare_digest(computed, received_hash):
+        return None
+    try:
+        if time.time() - int(fields.get("auth_date", "0")) > 60 * 60 * 24:
+            return None
+        user = json.loads(fields.get("user", ""))
+    except ValueError:
+        return None
+    return user if isinstance(user, dict) and isinstance(user.get("id"), int) else None
+
+
+# 2026-10-24 (owner): the site inside Telegram. The bot's "🗺️ מפה ודירות" button opens /tg as a Mini App; the page hands
+# Telegram's signed launch data to /auth/tg-webapp, which signs the visitor in, then goes on to `next` (a local path).
+_TG_APP_PAGE = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>טודירה</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script></head>
+<body style="font-family:system-ui;text-align:center;padding-top:40vh">טוען...
+<script>
+(function () {
+  var next = new URLSearchParams(location.search).get('next') || '/apartments';
+  if (next.charAt(0) !== '/' || next.charAt(1) === '/') { next = '/apartments'; }
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  var body = new URLSearchParams({ init_data: tg ? tg.initData : '' });
+  fetch('/auth/tg-webapp', { method: 'POST', body: body, credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { location.replace(d.ok ? next : '/login?next=' + encodeURIComponent(next)); })
+    .catch(function () { location.replace('/login?next=' + encodeURIComponent(next)); });
+})();
+</script></body></html>"""
+
+
+@app.get("/tg")
+def telegram_mini_app() -> Response:
+    return Response(_TG_APP_PAGE, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/tg-webapp")
+async def telegram_mini_app_auth(request: Request):
+    form = await request.form()
+    tg_user = verify_webapp_init_data(str(form.get("init_data") or ""), TELEGRAM_BOT_TOKEN or "")
+    if tg_user is None:
+        return JSONResponse({"ok": False})
+
+    def _user_pk() -> int | None:
+        with get_session() as session:
+            return session.scalar(select(User.id).where(User.telegram_user_id == tg_user["id"]))
+
+    user_pk = await asyncio.to_thread(_user_pk)
+    if user_pk is None:
+        return JSONResponse({"ok": False})
+    request.session["user_id"] = user_pk
+    return JSONResponse({"ok": True})
 
 
 @app.get("/healthz")
