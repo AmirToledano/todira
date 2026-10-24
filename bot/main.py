@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from handlers.activity import build_activity_handler
+from handlers.voice import build_voice_handler
 from handlers.apartments import build_apartments_handler
 from handlers.contact_fallback import build_contact_fallback_handler
 from handlers.filter_conversation import build_filter_conversation_handler
@@ -121,6 +122,8 @@ def main() -> None:
     # 2026-10-20: the owner's inbox group (handlers/owner_inbox.py) - its guard runs before every handler below
     for handler, group in build_owner_inbox_handlers():
         application.add_handler(handler, group=group)
+    # 2026-10-24: voice messages become text first (handlers/voice.py), then go through every handler below
+    application.add_handler(*build_voice_handler())
     application.add_handler(build_onboarding_handler())
     application.add_handler(build_filter_conversation_handler())
     application.add_handler(build_apartments_handler())

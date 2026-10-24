@@ -284,6 +284,13 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Tu peux toujours élargir ton filtre (prix, étage, exigences, etc.) avec /filter ⚙️",
         "ar": "يمكنك دائماً توسيع تفضيلاتك (السعر، الطابق، المتطلبات وغيرها) عبر /filter ⚙️",
     },
+    "voice.not_understood": {
+        "he": "לא הצלחתי להבין את ההקלטה 🙈 אפשר לנסות שוב, או לכתוב לי.",
+        "en": "I couldn't make out the recording 🙈 Try again, or type it.",
+        "ru": "Не удалось разобрать запись 🙈 Попробуйте ещё раз или напишите текстом.",
+        "fr": "Je n'ai pas compris l'enregistrement 🙈 Réessayez, ou écrivez-moi.",
+        "ar": "لم أتمكن من فهم التسجيل 🙈 حاول مرة أخرى، أو اكتب لي.",
+    },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
         "en": "👀 There are currently {total} matching apartments — all of them here: "

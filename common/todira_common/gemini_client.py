@@ -353,3 +353,27 @@ def chat_with_existing_user(
     if result.get("filter_changed") and "cities" in result:
         result["cities"] = _known_cities_only(result.get("cities"), known_cities)
     return result
+
+
+def transcribe_voice(audio: bytes, mime_type: str = "audio/ogg") -> str | None:
+    """The words of a short voice message (2026-10-24, owner: "voice messages"), or None when there's no key, the model
+    fails, or nothing was said. The text then goes through the same path as a typed message."""
+    client = _get_client()
+    if client is None or not audio:
+        return None
+    prompt = (
+        "Transcribe this voice message word for word, in the language it was spoken (usually Hebrew). "
+        "Reply with the transcript only. If there is no speech, reply with an empty string."
+    )
+    for attempt in (1, 2):
+        try:
+            response = client.models.generate_content(
+                model=_model_for_attempt(_MODEL, attempt),
+                contents=[types.Part.from_bytes(data=audio, mime_type=mime_type), prompt],
+                config=types.GenerateContentConfig(temperature=0, http_options=types.HttpOptions(timeout=20_000)),
+            )
+            text = (response.text or "").strip()
+            return text or None
+        except Exception:
+            logger.warning("voice transcription attempt %s failed", attempt, exc_info=True)
+    return None
