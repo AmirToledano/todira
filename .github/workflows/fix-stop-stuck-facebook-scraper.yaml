@@ -1,0 +1,37 @@
+name: Fix — stop a Facebook scraper run that has been going too long
+
+# 2026-10-24: a Facebook run (normally about 6 minutes) hung for over an hour, ran into the main scraper, and the node
+# swapped until the website restarted and the node went NotReady. Deletes Facebook scraper jobs that are still running
+# after 20 minutes; the cronjob's own activeDeadlineSeconds does the same from now on. Prints names and ages only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Stop long Facebook runs
+        run: |
+          now=$(date -u +%s)
+          kubectl get jobs -n todira -l app=todira-facebook-scraper -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.startTime}{" "}{.status.active}{"\n"}{end}' > /tmp/jobs || true
+          [ -s /tmp/jobs ] || kubectl get jobs -n todira -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.startTime}{" "}{.status.active}{"\n"}{end}' | grep facebook-scraper > /tmp/jobs || true
+          while read -r name start active; do
+            [ -n "$name" ] && [ "${active:-0}" -ge 1 ] 2>/dev/null || continue
+            age=$(( (now - $(date -u -d "$start" +%s)) / 60 ))
+            echo "$name running for $age minutes"
+            if [ "$age" -ge 20 ]; then
+              kubectl delete job -n todira "$name" --wait=false && echo "  stopped"
+            fi
+          done < /tmp/jobs
+          kubectl get pods -n todira -o wide | grep -v -E 'Completed|backup' || true
