@@ -62,6 +62,13 @@ def collect(session, now: dt.datetime) -> dict:
                 ActivityDay.day == day, ActivityDay.kind.like("site_from_%")).group_by(ActivityDay.kind)
         ).all()
     }
+    campaigns = {
+        kind.removeprefix("src_"): n
+        for kind, n in session.execute(
+            select(ActivityDay.kind, func.count()).where(
+                ActivityDay.day == day, ActivityDay.kind.like("src\\_%")).group_by(ActivityDay.kind)
+        ).all()
+    }
     trial_ends = session.scalars(select(User.trial_ends_at).where(
         User.trial_ends_at > now, User.trial_ends_at <= now + dt.timedelta(days=TRIAL_DAYS_AHEAD),
         (User.paid_until.is_(None)) | (User.paid_until <= now), User.free_access_granted.is_(False))).all()
@@ -73,6 +80,7 @@ def collect(session, now: dt.datetime) -> dict:
         "date": start.strftime("%d.%m"),
         "visitors": people("site_visit"),
         "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
+        "campaigns": dict(sorted(campaigns.items(), key=lambda kv: -kv[1])),
         "bot_clicks": people("click_bot_hero", "click_bot_end", "click_bot_menu", "click_bot_nofilter", "click_bot_share"),
         "assistant_questions": count(select(func.coalesce(func.sum(ActivityDay.hits), 0)).where(
             ActivityDay.day == day, ActivityDay.kind == "assistant_question")),
@@ -112,6 +120,9 @@ def summary_text(c: dict) -> str:
     sources = c.get("sources") or {}
     where = ", ".join(f"{_SOURCE_NAMES.get(k, k)} {n}" for k, n in sources.items())
     lines.append(f"🌐 נכנסו לאתר: <b>{c.get('visitors', 0)}</b>" + (f" (הגיעו מ: {where})" if where else ""))
+    campaigns = c.get("campaigns") or {}
+    if campaigns:
+        lines.append("🔗 הגיעו מקישורים: " + ", ".join(f"{k} {n}" for k, n in campaigns.items()))
     lines.append(f"👆 עברו מהאתר לבוט: <b>{c.get('bot_clicks', 0)}</b>")
     lines.append(f"💬 שאלות לעוזר באתר: <b>{c.get('assistant_questions', 0)}</b>")
     ending = c.get("trial_ending") or []

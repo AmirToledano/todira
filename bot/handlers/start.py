@@ -17,8 +17,10 @@ import asyncio
 import html
 import logging
 import os
+import re
 
 from config import WEBSITE_URL
+from todira_common import activity
 from todira_common.access import has_full_access
 from todira_common.channel_link import CODE_PREFIX as CHANNEL_LINK_CODE_PREFIX
 from todira_common.channel_link import resolve_link_code
@@ -190,9 +192,23 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
         return "normal", note + _welcome(tg_user, lang)
 
 
+# 2026-10-24 (owner): a link of its own for every post or ad, t.me/AmirDirotBot?start=<name>, so the morning summary
+# can tell which one brought people. Any other short lowercase payload that isn't a link code is such a name.
+_SOURCE_PAYLOAD = re.compile(r"^[a-z0-9_]{2,40}$")
+
+
+def _record_source(tg_user_id: int, start_payload: str | None) -> None:
+    if not start_payload or not _SOURCE_PAYLOAD.match(start_payload):
+        return
+    if start_payload.startswith((CHANNEL_LINK_CODE_PREFIX, GOOGLE_LINK_TOKEN_PREFIX)):
+        return
+    activity.record(f"src_{start_payload}", f"t{tg_user_id}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tg_user = update.effective_user
     start_payload = context.args[0] if context.args else None
+    asyncio.get_running_loop().run_in_executor(None, _record_source, tg_user.id, start_payload)
     logger.info(
         "/start invoked by telegram_user_id=%s (start_payload=%s)", tg_user.id, bool(start_payload)
     )

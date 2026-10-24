@@ -62,3 +62,12 @@ def test_it_goes_to_the_inbox_group_first(monkeypatch):
 def test_the_job_is_scheduled_in_the_morning():
     values = (Path(__file__).resolve().parent.parent / "charts" / "todira" / "values.yaml").read_text()
     assert 'dailySummary:\n  schedule: "52 8 * * *"' in values
+
+
+def test_campaign_links_line():
+    text = daily_summary.summary_text({
+        "date": "24.10", "signups": 1, "payments": 0, "income": 0, "alerts": 0, "alerted_users": 0,
+        "new_listings": 0, "messages": 0, "paying_now": 0, "trial_now": 1, "users_total": 1,
+        "campaigns": {"fb_group_post": 3, "ig_bio": 1},
+    })
+    assert "🔗 הגיעו מקישורים: fb_group_post 3, ig_bio 1" in text
