@@ -1,0 +1,28 @@
+name: Diagnose — the bot's public profile texts (read-only)
+
+# 2026-10-24 (owner: does our bot show the "What can this bot do?" text before Start, like other bots?). Prints the
+# bot's description, short description, command menu and menu button, for Hebrew and the default language.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read profile
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          api() { curl -fsS --max-time 10 "https://api.telegram.org/bot${TOKEN}/$1" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("result"), ensure_ascii=False))'; }
+          for lang in "" he en; do
+            q=""; [ -n "$lang" ] && q="?language_code=$lang"
+            echo "== language: ${lang:-default}"
+            echo "description: $(api getMyDescription$q)"
+            echo "short description: $(api getMyShortDescription$q)"
+            echo "commands: $(api getMyCommands$q)"
+          done
+          echo "menu button: $(api getChatMenuButton)"
