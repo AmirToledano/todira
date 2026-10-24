@@ -40,6 +40,10 @@ spec:
       # visibly, never trigger a silent, unbounded retry that re-runs requests against the live
       # Facebook account from scratch.
       backoffLimit: 0
+      # 2026-10-24: a run takes about 6 minutes, but one hung for over an hour (its browser stuck at ~550 MiB), ran into
+      # the main scraper's run, and the node swapped until the website failed its health checks and restarted. A run
+      # still going after 20 minutes is stopped.
+      activeDeadlineSeconds: 1200
       template:
         metadata:
           labels:
