@@ -157,5 +157,16 @@
     </div>
   </section>
   {% endif %}
+  <details class="ld-report">
+    <summary>{{ t('details.report_title') }}</summary>
+    <form class="ld-report-form" onsubmit="event.preventDefault();var f=this;fetch('/api/report',{method:'POST',body:new FormData(f),credentials:'same-origin'}).then(function(r){f.innerHTML='<p class=&quot;ld-line ld-muted&quot;>'+(r.ok?f.dataset.thanks:f.dataset.failed)+'</p>';});" data-thanks="{{ t('details.report_thanks') }}" data-failed="{{ t('details.report_failed') }}">
+      <input type="hidden" name="listing" value="{{ l.id }}">
+      <select name="reason" required>
+        {% for key in ('taken', 'price', 'details', 'other') %}<option value="{{ key }}">{{ t('details.report_' ~ key) }}</option>{% endfor %}
+      </select>
+      <input type="text" name="note" maxlength="300" placeholder="{{ t('details.report_note') }}">
+      <button type="submit" class="btn outline">{{ t('details.report_send') }}</button>
+    </form>
+  </details>
 </div>
 </div>

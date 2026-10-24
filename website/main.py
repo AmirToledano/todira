@@ -879,6 +879,45 @@ def _home_map_data() -> dict | None:
 _CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share"}
 
 
+# 2026-10-24 (owner): "report a mistake" on the listing view - goes to the owner's inbox like a /contact message.
+_REPORT_REASONS = {
+    "taken": "כבר לא רלוונטית (הושכרה / נמכרה)",
+    "price": "המחיר שגוי",
+    "details": "פרטים שגויים (חדרים, כתובת, תמונות)",
+    "other": "אחר",
+}
+
+
+@app.post("/api/report")
+async def report_listing(request: Request):
+    user_id = request.session.get("user_id")
+    try:
+        form = await request.form()
+        listing_id = int(str(form.get("listing") or ""))
+    except (ValueError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    reason = str(form.get("reason") or "")
+    note = str(form.get("note") or "").strip()[:300]
+    if user_id is None or reason not in _REPORT_REASONS:
+        return JSONResponse({"ok": False}, status_code=400)
+    text = f"🚩 דיווח על מודעה {listing_id}: {_REPORT_REASONS[reason]}" + (f"\n{note}" if note else "")
+    text += f"\n{WEBSITE_URL}/apartments?listing={listing_id}"
+
+    def _save_and_notify() -> None:
+        with get_session() as session:
+            user = session.get(User, user_id)
+            tg_id = user.telegram_user_id if user else None
+            row = ContactMessage(message=text, telegram_user_id=tg_id, source="report")
+            session.add(row)
+            session.commit()
+            if _notify_owner_sync("", "", text, tg_id):
+                row.notified_owner = True
+                session.commit()
+
+    await asyncio.to_thread(_save_and_notify)
+    return JSONResponse({"ok": True})
+
+
 @app.post("/api/click")
 async def track_click(request: Request):
     try:
@@ -1660,7 +1699,7 @@ def _filter_fingerprint(filter_row) -> tuple:
     return tuple((column.key, repr(getattr(filter_row, column.key, None))) for column in Filter.__table__.columns)
 
 
-def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[int]:
+def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[tuple[int, int | None]]:
     key = (user_id, _filter_fingerprint(filter_row), frozenset(hidden_ids))
     now = time.monotonic()
     with _match_ids_lock:
@@ -1668,13 +1707,26 @@ def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -
         if hit is not None and now - hit[0] < _MATCH_IDS_TTL:
             _match_ids_cache.move_to_end(key)
             return hit[1]
-    ids = [row.id for row in matching_listing_rows(session, filter_row, hidden_ids)]
+    ids = [(row.id, row.price) for row in matching_listing_rows(session, filter_row, hidden_ids)]
     with _match_ids_lock:
         _match_ids_cache[key] = (now, ids)
         _match_ids_cache.move_to_end(key)
         while len(_match_ids_cache) > _MATCH_IDS_MAX_ENTRIES:
             _match_ids_cache.popitem(last=False)
     return ids
+
+
+# 2026-10-24 (owner): sorting /apartments. The match scan is newest first; the others reorder that list.
+_SORTS = ("new", "old", "cheap", "expensive")
+
+
+def _sorted_ids(rows: list[tuple[int, int | None]], sort: str) -> list[int]:
+    if sort == "old":
+        rows = rows[::-1]
+    elif sort in ("cheap", "expensive"):
+        priced = sorted((r for r in rows if r[1]), key=lambda r: r[1], reverse=sort == "expensive")
+        rows = priced + [r for r in rows if not r[1]]  # no price last either way
+    return [listing_id for listing_id, _price in rows]
 
 
 def _fill_missing_descriptions_in_background(listings: list[Listing]) -> None:
@@ -1963,6 +2015,7 @@ def apartments(
     fragment: bool = False,
     listing: int | None = None,
     city: str | None = None,
+    sort: str = "new",
 ):
     with get_session() as session:
         user = _resolve_user(request, session, uid)
@@ -1981,7 +2034,8 @@ def apartments(
         # kept for a couple of minutes per user + filter + hidden set, so scrolling loads only the next 24 listings.
         city_view = city if city in LOCALITY_SET else None
         match_filter = _city_view_filter(user.filter, city_view) if city_view else user.filter
-        match_ids = _cached_match_ids(session, user.id, match_filter, hidden_ids)
+        sort = sort if sort in _SORTS else "new"
+        match_ids = _sorted_ids(_cached_match_ids(session, user.id, match_filter, hidden_ids), sort)
         page_items = [
             listing
             for listing in load_listings(session, match_ids[offset : offset + APARTMENTS_PAGE_SIZE])
@@ -2025,6 +2079,7 @@ def apartments(
         "hidden_ids": set(),
         "deep_link_listing": deep_link_listing,
         "city_view": city_view,
+        "sort": sort,
     }
     if fragment:
         # AJAX "load more" request (see apartments.html's own script) — just the next batch of
