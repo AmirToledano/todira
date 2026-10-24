@@ -87,10 +87,11 @@ def test_apartments_db_load_does_not_block_the_event_loop(monkeypatch):
         return 0, "he"
 
     monkeypatch.setattr(apartments_module, "_count_matches_sync", _slow_load)
+    monkeypatch.setattr(apartments_module, "_lang_sync", lambda telegram_user_id: "he")
 
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=USER_ID),
-        message=SimpleNamespace(reply_text=AsyncMock()),
+        message=SimpleNamespace(reply_text=AsyncMock(return_value=SimpleNamespace(edit_text=AsyncMock()))),
     )
     context = SimpleNamespace()
 

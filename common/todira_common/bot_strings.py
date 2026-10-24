@@ -38,7 +38,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "💬 למשל: <i>\"דירת 3 חדרים בתל אביב עד 8,000 ₪ עם מרפסת\"</i>\n"
             "🎤 אפשר גם להקליט לי הודעה קולית, או לבחור הכל בכפתורים דרך /filter.\n\n⠀\n"
             "📋 <b>פקודות:</b>\n/filter — הגדרת/עדכון הסינון שלך\n/apartments — "
-            "כל הדירות שמתאימות לך, כולל מפה, בלי לצאת מטלגרם\n/liked — הדירות ששמרת\n/hidden — הדירות שהסתרת\n"
+            "כל הדירות שמתאימות לך, כולל מפה, בלי לצאת מטלגרם\n/liked — הדירות ששמרת\n/hidden — הדירות שהסתרת\n/support — פנייה אלינו\n"
             "/profile — הפרופיל, ההגדרות והחשבון שלך באתר\n/language — שינוי שפה · Language\n\n"
             "🔗 רוצה גם להתחבר באתר (Google)? <a href=\"{account_url}\">לכניסה לאזור האישי</a>"
         ),
@@ -51,7 +51,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "💬 For example: <i>\"3 rooms in Tel Aviv up to ₪8,000 with a balcony\"</i>\n"
             "🎤 You can also send a voice message, or pick everything with buttons via /filter.\n\n⠀\n"
             "📋 <b>Commands:</b>\n/filter — set/update your filter\n/apartments — every matching listing, with a map, "
-            "without leaving Telegram\n/liked — listings you saved\n/hidden — listings you hid\n"
+            "without leaving Telegram\n/liked — listings you saved\n/hidden — listings you hid\n/support — contact us\n"
             "/profile — your profile, settings and website account\n/language — change language · שפה\n\n"
             "🔗 Want to also sign in on the website (Google)? <a href=\"{account_url}\">Open my account</a>"
         ),
@@ -64,7 +64,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "💬 Например: <i>«3 комнаты в Тель-Авиве до 8 000 ₪ с балконом»</i>\n"
             "🎤 Можно также отправить голосовое сообщение или выбрать всё кнопками через /filter.\n\n⠀\n"
             "📋 <b>Команды:</b>\n/filter — настроить/изменить фильтр\n/apartments — последние подходящие "
-            "объявления\n/liked — сохранённые объявления\n/hidden — скрытые объявления\n/profile — ваш профиль и настройки\n/language — сменить язык · שפה\n\n"
+            "объявления\n/liked — сохранённые объявления\n/hidden — скрытые объявления\n/support — написать нам\n/profile — ваш профиль и настройки\n/language — сменить язык · שפה\n\n"
             "🔗 Хотите также входить на сайте (Google)? <a href=\"{account_url}\">Открыть личный кабинет</a>"
         ),
         "fr": (
@@ -76,7 +76,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "💬 Par exemple : <i>« 3 pièces à Tel Aviv jusqu'à 8 000 ₪ avec balcon »</i>\n"
             "🎤 Tu peux aussi m'envoyer un message vocal, ou tout choisir avec les boutons via /filter.\n\n⠀\n"
             "📋 <b>Commandes :</b>\n/filter — définir/modifier ton filtre\n/apartments — les dernières "
-            "annonces correspondantes\n/liked — les annonces enregistrées\n/hidden — les annonces masquées\n/profile — ton profil et "
+            "annonces correspondantes\n/liked — les annonces enregistrées\n/hidden — les annonces masquées\n/support — nous écrire\n/profile — ton profil et "
             "tes réglages\n/language — changer de langue · שפה\n\n"
             "🔗 Tu veux aussi te connecter sur le site (Google) ? <a href=\"{account_url}\">Ouvrir mon espace</a>"
         ),
@@ -88,7 +88,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "💬 مثلاً: <i>\"3 غرف في تل أبيب حتى 8,000 ₪ مع شرفة\"</i>\n"
             "🎤 يمكنك أيضاً إرسال رسالة صوتية، أو اختيار كل شيء بالأزرار عبر /filter.\n\n⠀\n"
             "📋 <b>الأوامر:</b>\n/filter — ضبط/تحديث تفضيلاتك\n/apartments — أحدث الإعلانات "
-            "المطابقة\n/liked — الإعلانات المحفوظة\n/hidden — الإعلانات المخفية\n/profile — ملفك الشخصي وإعداداتك\n/language — تغيير اللغة · שפה\n\n"
+            "المطابقة\n/liked — الإعلانات المحفوظة\n/hidden — الإعلانات المخفية\n/support — تواصل معنا\n/profile — ملفك الشخصي وإعداداتك\n/language — تغيير اللغة · שפה\n\n"
             "🔗 هل تريد أيضاً تسجيل الدخول عبر الموقع (Google)؟ <a href=\"{account_url}\">فتح حسابي</a>"
         ),
     },
@@ -333,6 +333,28 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     "profile.btn_account": {
         "he": "🧾 החשבון שלי באתר", "en": "🧾 My account on the site", "ru": "🧾 Мой аккаунт на сайте",
         "fr": "🧾 Mon compte sur le site", "ar": "🧾 حسابي على الموقع",
+    },
+    "support.prompt": {
+        "he": "✍️ כתבו כאן מה תרצו לשאול או לספר, וההודעה תגיע ישר אלינו. אפשר גם להקליט.\nלביטול: /cancel",
+        "en": "✍️ Write what you'd like to ask or tell us, and it comes straight to us. You can also record it.\nTo cancel: /cancel",
+        "ru": "✍️ Напишите свой вопрос или сообщение, и оно сразу придёт к нам. Можно и голосом.\nОтмена: /cancel",
+        "fr": "✍️ Écris ta question ou ton message, il nous arrive directement. Tu peux aussi l'enregistrer.\nAnnuler : /cancel",
+        "ar": "✍️ اكتب ما تريد أن تسأله أو تخبرنا به، وسيصلنا مباشرة. يمكنك أيضاً التسجيل.\nللإلغاء: /cancel",
+    },
+    "support.sent": {
+        "he": "✅ קיבלנו! ההודעה הועברה, ונחזור אליך כאן בטלגרם בהקדם.",
+        "en": "✅ Got it! Your message was passed on, and we'll get back to you here on Telegram soon.",
+        "ru": "✅ Получили! Сообщение передано, мы скоро ответим здесь, в Telegram.",
+        "fr": "✅ Bien reçu ! Ton message a été transmis, on te répond bientôt ici sur Telegram.",
+        "ar": "✅ وصلتنا! تم تحويل رسالتك، وسنرد عليك هنا في تيليجرام قريباً.",
+    },
+    "support.cancelled": {
+        "he": "בוטל 👍", "en": "Cancelled 👍", "ru": "Отменено 👍", "fr": "Annulé 👍", "ar": "تم الإلغاء 👍",
+    },
+    "apartments.counting": {
+        "he": "⏳ סופר את הדירות שמתאימות לך...", "en": "⏳ Counting the apartments that match you...",
+        "ru": "⏳ Считаю подходящие квартиры...", "fr": "⏳ Je compte les appartements qui te correspondent...",
+        "ar": "⏳ أعدّ الشقق المطابقة لك...",
     },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
