@@ -16,7 +16,12 @@ from config import WEBSITE_URL
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
-from todira_common.listing_matches import find_matching_listings, find_new_matches_to_show
+from todira_common.listing_matches import (
+    find_matching_listings,
+    find_new_matches_to_show,
+    hidden_listing_ids,
+    matching_listing_rows,
+)
 from todira_common.models import Filter, User
 from todira_common.uid_token import signed_login_query
 
@@ -46,7 +51,8 @@ def _count_matches_sync(tg_user) -> tuple[int | None, str]:
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
         if filter_row is None:
             return None, lang
-        return len(find_matching_listings(session, user.id, filter_row)), lang
+        # 2026-10-24: light rows - counting with full Listing objects ran the bot out of memory on a broad search
+        return len(matching_listing_rows(session, filter_row, hidden_listing_ids(session, user.id))), lang
 
 
 async def apartments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

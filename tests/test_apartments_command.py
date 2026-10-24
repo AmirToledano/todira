@@ -101,8 +101,9 @@ def test_count_matches_sync_returns_true_uncapped_total(monkeypatch):
             return False
 
     monkeypatch.setattr(apartments_module, "get_session", _FakeSession)
+    monkeypatch.setattr(apartments_module, "hidden_listing_ids", lambda *a, **kw: set())
     monkeypatch.setattr(
-        apartments_module, "find_matching_listings", lambda *a, **kw: list(range(3794))
+        apartments_module, "matching_listing_rows", lambda *a, **kw: list(range(3794))
     )
     tg_user = SimpleNamespace(id=555)
 

@@ -171,10 +171,12 @@ def find_new_matches_to_show(
             select(SentNotification.listing_id).where(SentNotification.user_id == user_id)
         )
     )
-    new_to_show = load_listings(session, [
-        m.id for m in matches
+    # 2026-10-24: light rows (id, first_seen_at, ...), not full Listing objects - loading every match in full put the
+    # bot over its memory limit for a broad search (OOMKilled twice in 20 minutes).
+    new_to_show = [
+        m for m in matches
         if m.id not in already_shown_ids and (since is None or m.first_seen_at >= since)
-    ])
+    ]
     for listing in new_to_show:
         session.add(
             SentNotification(user_id=user_id, listing_id=listing.id, reason=NotificationReason.NEW)
