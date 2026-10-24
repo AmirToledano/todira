@@ -323,6 +323,10 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "🗺️ מפה ודירות", "en": "🗺️ Map & apartments", "ru": "🗺️ Карта и квартиры", "fr": "🗺️ Carte et appartements",
         "ar": "🗺️ الخريطة والشقق",
     },
+    "profile.btn_account": {
+        "he": "🧾 החשבון שלי באתר", "en": "🧾 My account on the site", "ru": "🧾 Мой аккаунт на сайте",
+        "fr": "🧾 Mon compte sur le site", "ar": "🧾 حسابي على الموقع",
+    },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
         "en": "👀 There are currently {total} matching apartments — all of them here: "
