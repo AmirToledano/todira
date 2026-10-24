@@ -35,9 +35,11 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "אני <b>טודירה</b> 🏠 הבוט שמחפש לך דירה.\n"
             "אני סורק את שוק הדירות כל הזמן, ושולח לך הודעה <b>ברגע</b> שעולה דירה שמתאימה לחיפוש שלך 🔔\n\n"
             "✍️ <b>אפשר פשוט לכתוב לי מה מחפשים</b>, במילים שלך, ואני אבין לבד.\n"
-            "💬 למשל: <i>\"דירת 3 חדרים בתל אביב עד 8,000 ₪ עם מרפסת\"</i>\n\n⠀\n"
+            "💬 למשל: <i>\"דירת 3 חדרים בתל אביב עד 8,000 ₪ עם מרפסת\"</i>\n"
+            "🎤 אפשר גם להקליט לי הודעה קולית, או לבחור הכל בכפתורים דרך /filter.\n\n⠀\n"
             "📋 <b>פקודות:</b>\n/filter — הגדרת/עדכון הסינון שלך\n/apartments — "
-            "הדירות התואמות האחרונות\n/liked — הדירות ששמרת\n/profile — הפרופיל וההגדרות שלך\n/language — שינוי שפה · Language\n\n"
+            "כל הדירות שמתאימות לך, כולל מפה, בלי לצאת מטלגרם\n/liked — הדירות ששמרת\n/hidden — הדירות שהסתרת\n"
+            "/profile — הפרופיל, ההגדרות והחשבון שלך באתר\n/language — שינוי שפה · Language\n\n"
             "🔗 רוצה גם להתחבר באתר (Google)? <a href=\"{account_url}\">לכניסה לאזור האישי</a>"
         ),
         "en": (
@@ -46,9 +48,11 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "I scan the housing market around the clock and message you <b>the moment</b> a listing matches your "
             "search 🔔\n\n"
             "✍️ <b>Just tell me what you're looking for</b>, in your own words, and I'll understand.\n"
-            "💬 For example: <i>\"3 rooms in Tel Aviv up to ₪8,000 with a balcony\"</i>\n\n⠀\n"
-            "📋 <b>Commands:</b>\n/filter — set/update your filter\n/apartments — the latest matching listings\n"
-            "/liked — listings you saved\n/profile — your profile and settings\n/language — change language · שפה\n\n"
+            "💬 For example: <i>\"3 rooms in Tel Aviv up to ₪8,000 with a balcony\"</i>\n"
+            "🎤 You can also send a voice message, or pick everything with buttons via /filter.\n\n⠀\n"
+            "📋 <b>Commands:</b>\n/filter — set/update your filter\n/apartments — every matching listing, with a map, "
+            "without leaving Telegram\n/liked — listings you saved\n/hidden — listings you hid\n"
+            "/profile — your profile, settings and website account\n/language — change language · שפה\n\n"
             "🔗 Want to also sign in on the website (Google)? <a href=\"{account_url}\">Open my account</a>"
         ),
         "ru": (
@@ -57,9 +61,10 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "Я постоянно слежу за рынком жилья и пишу вам <b>сразу</b>, как появляется объявление под ваш "
             "поиск 🔔\n\n"
             "✍️ <b>Просто напишите, что вы ищете</b>, своими словами, и я пойму.\n"
-            "💬 Например: <i>«3 комнаты в Тель-Авиве до 8 000 ₪ с балконом»</i>\n\n⠀\n"
+            "💬 Например: <i>«3 комнаты в Тель-Авиве до 8 000 ₪ с балконом»</i>\n"
+            "🎤 Можно также отправить голосовое сообщение или выбрать всё кнопками через /filter.\n\n⠀\n"
             "📋 <b>Команды:</b>\n/filter — настроить/изменить фильтр\n/apartments — последние подходящие "
-            "объявления\n/liked — сохранённые объявления\n/profile — ваш профиль и настройки\n/language — сменить язык · שפה\n\n"
+            "объявления\n/liked — сохранённые объявления\n/hidden — скрытые объявления\n/profile — ваш профиль и настройки\n/language — сменить язык · שפה\n\n"
             "🔗 Хотите также входить на сайте (Google)? <a href=\"{account_url}\">Открыть личный кабинет</a>"
         ),
         "fr": (
@@ -68,9 +73,10 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "Je scrute le marché immobilier en continu et je te préviens <b>dès qu'une annonce</b> correspond à "
             "ta recherche 🔔\n\n"
             "✍️ <b>Écris-moi simplement ce que tu cherches</b>, avec tes propres mots, et je comprendrai.\n"
-            "💬 Par exemple : <i>« 3 pièces à Tel Aviv jusqu'à 8 000 ₪ avec balcon »</i>\n\n⠀\n"
+            "💬 Par exemple : <i>« 3 pièces à Tel Aviv jusqu'à 8 000 ₪ avec balcon »</i>\n"
+            "🎤 Tu peux aussi m'envoyer un message vocal, ou tout choisir avec les boutons via /filter.\n\n⠀\n"
             "📋 <b>Commandes :</b>\n/filter — définir/modifier ton filtre\n/apartments — les dernières "
-            "annonces correspondantes\n/liked — les annonces enregistrées\n/profile — ton profil et "
+            "annonces correspondantes\n/liked — les annonces enregistrées\n/hidden — les annonces masquées\n/profile — ton profil et "
             "tes réglages\n/language — changer de langue · שפה\n\n"
             "🔗 Tu veux aussi te connecter sur le site (Google) ? <a href=\"{account_url}\">Ouvrir mon espace</a>"
         ),
@@ -79,9 +85,10 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "أنا <b>Todira</b> 🏠، البوت الذي يبحث لك عن شقة.\n"
             "أراقب سوق الشقق باستمرار وأرسل لك رسالة <b>فور</b> ظهور شقة تطابق بحثك 🔔\n\n"
             "✍️ <b>اكتب لي ببساطة ما تبحث عنه</b> بكلماتك الخاصة، وسأفهم.\n"
-            "💬 مثلاً: <i>\"3 غرف في تل أبيب حتى 8,000 ₪ مع شرفة\"</i>\n\n⠀\n"
+            "💬 مثلاً: <i>\"3 غرف في تل أبيب حتى 8,000 ₪ مع شرفة\"</i>\n"
+            "🎤 يمكنك أيضاً إرسال رسالة صوتية، أو اختيار كل شيء بالأزرار عبر /filter.\n\n⠀\n"
             "📋 <b>الأوامر:</b>\n/filter — ضبط/تحديث تفضيلاتك\n/apartments — أحدث الإعلانات "
-            "المطابقة\n/liked — الإعلانات المحفوظة\n/profile — ملفك الشخصي وإعداداتك\n/language — تغيير اللغة · שפה\n\n"
+            "المطابقة\n/liked — الإعلانات المحفوظة\n/hidden — الإعلانات المخفية\n/profile — ملفك الشخصي وإعداداتك\n/language — تغيير اللغة · שפה\n\n"
             "🔗 هل تريد أيضاً تسجيل الدخول عبر الموقع (Google)؟ <a href=\"{account_url}\">فتح حسابي</a>"
         ),
     },
@@ -97,15 +104,15 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     },
     "start.link_conflict": {
         "he": "לחשבון הטלגרם הזה כבר יש חשבון נפרד אצלי, אז אי אפשר לחבר אותו לחשבון אחר. אם זו "
-        "טעות, כתוב/י לנו דרך /contact.",
+        "טעות, כתוב/י לנו דרך todira.app/contact.",
         "en": "This Telegram account already has its own separate account with me, so it can't be "
-        "linked to another one. If this is a mistake, message us via /contact.",
+        "linked to another one. If this is a mistake, message us via todira.app/contact.",
         "ru": "У этого аккаунта Telegram уже есть отдельный аккаунт у меня, поэтому привязать его "
-        "к другому нельзя. Если это ошибка — напишите нам через /contact.",
+        "к другому нельзя. Если это ошибка — напишите нам через todira.app/contact.",
         "fr": "Ce compte Telegram a déjà son propre compte séparé chez moi, il ne peut donc pas "
-        "être lié à un autre. Si c'est une erreur, écris-nous via /contact.",
+        "être lié à un autre. Si c'est une erreur, écris-nous via todira.app/contact.",
         "ar": "هذا الحساب على تيليجرام لديه بالفعل حساب منفصل عندي، لذا لا يمكن ربطه بحساب آخر. "
-        "إذا كان هذا خطأ، راسلنا عبر /contact.",
+        "إذا كان هذا خطأ، راسلنا عبر todira.app/contact.",
     },
     "start.google_linked_note": {
         "he": "🔗 חשבון ה-Google שלך קושר בהצלחה לחשבון הזה — מעכשיו אפשר להתחבר איתו באתר, מכל "
