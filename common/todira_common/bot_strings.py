@@ -310,6 +310,12 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ru": "🔥 на {pct}% ниже цен в районе",
         "fr": "🔥 {pct}% sous le prix du quartier",
         "ar": "🔥 أقل بـ {pct}% من سعر المنطقة",
+    "voice.not_understood": {
+        "he": "לא הצלחתי להבין את ההקלטה 🙈 אפשר לנסות שוב, או לכתוב לי.",
+        "en": "I couldn't make out the recording 🙈 Try again, or type it.",
+        "ru": "Не удалось разобрать запись 🙈 Попробуйте ещё раз или напишите текстом.",
+        "fr": "Je n'ai pas compris l'enregistrement 🙈 Réessayez, ou écrivez-moi.",
+        "ar": "لم أتمكن من فهم التسجيل 🙈 حاول مرة أخرى، أو اكتب لي.",
     },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
