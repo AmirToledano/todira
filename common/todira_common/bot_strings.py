@@ -284,6 +284,10 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Tu peux toujours élargir ton filtre (prix, étage, exigences, etc.) avec /filter ⚙️",
         "ar": "يمكنك دائماً توسيع تفضيلاتك (السعر، الطابق، المتطلبات وغيرها) عبر /filter ⚙️",
     },
+    "kb.mini_app": {
+        "he": "🗺️ מפה ודירות", "en": "🗺️ Map & apartments", "ru": "🗺️ Карта и квартиры", "fr": "🗺️ Carte et appartements",
+        "ar": "🗺️ الخريطة والشقق",
+    },
     "onboarding.matches_found": {
         "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
         "en": "👀 There are currently {total} matching apartments — all of them here: "

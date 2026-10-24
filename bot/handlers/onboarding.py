@@ -30,6 +30,7 @@ import ai_gate
 from config import WEBSITE_URL
 from todira_common import cities, gemini_client, search_text
 from todira_common.bot_strings import bot_text
+from todira_common.cards import mini_app_keyboard
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import safe_range_update
@@ -320,7 +321,8 @@ async def _finish(update, context, state: dict, lang: str) -> int:
     apartments_url = f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}"
     if total:
         await message.reply_text(
-            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)
+            bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url),
+            reply_markup=mini_app_keyboard(WEBSITE_URL, lang),
         )
     else:
         await message.reply_text(

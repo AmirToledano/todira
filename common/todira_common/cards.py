@@ -687,3 +687,12 @@ def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboar
         query = urlencode({"url": share.share_url(listing_id), "text": bot_text("card.share_text", lang)})
         rows.append([InlineKeyboardButton(bot_text("card.share_button", lang), url=f"https://t.me/share/url?{query}")])
     return InlineKeyboardMarkup(rows)
+
+
+def mini_app_keyboard(website_url: str, lang: str = DEFAULT_LANG, next_path: str = "/apartments") -> InlineKeyboardMarkup:
+    """2026-10-24 (owner-approved): one button that opens the site inside Telegram as a Mini App, already signed in
+    (website/main.py's /tg)."""
+    from telegram import WebAppInfo
+
+    url = f"{website_url}/tg?{urlencode({'next': next_path})}"
+    return InlineKeyboardMarkup([[InlineKeyboardButton(bot_text("kb.mini_app", lang), web_app=WebAppInfo(url=url))]])

@@ -316,3 +316,20 @@ def test_details_order_facts_then_features_then_area_price(client):
     middle = html.index('data-slot="middle"')
     assert top < html.index("פרטי הנכס") < after_desc
     assert after_desc < html.index("פיצ׳רים בדירה") < html.index("ld-insight") < middle
+
+
+def test_mini_app_init_data_check():
+    import hashlib
+    import hmac
+    import json
+    import time
+    from urllib.parse import urlencode
+
+    token = "123:abc"
+    fields = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 42, "first_name": "A"})}
+    check = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    good = urlencode({**fields, "hash": hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()})
+    assert website_main.verify_webapp_init_data(good, token)["id"] == 42
+    assert website_main.verify_webapp_init_data(good, "other:token") is None
+    assert website_main.verify_webapp_init_data(good.replace("42", "43"), token) is None
