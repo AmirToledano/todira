@@ -333,11 +333,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # every page's footer (base.html renders this sitewide). Same no-`| safe`-anywhere,
     # split-around-the-markup convention this file already uses for privacy.s5_pre/_post etc.
     "footer.business_info_pre": {
-        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. ליצירת קשר: ",
-        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. Contact: ",
-        "ru": "Todira управляется Амиром Толедано, освобождённый предприниматель (עוסק פטור) № 211530563. Контакт: ",
-        "fr": "Todira est exploité par Amir Toledano, entrepreneur exonéré (עוסק פטור) n° 211530563. Contact: ",
-        "ar": "توديرا يُدار من قبل أمير توليدانو، تاجر معفى رقم 211530563. للتواصل: ",
+        "he": "ליצירת קשר: ",
+        "en": "Contact: ",
+        "ru": "Контакт: ",
+        "fr": "Contact : ",
+        "ar": "للتواصل: ",
     },
     "footer.about": {
         "he": "אודות", "en": "About", "ru": "О нас", "fr": "À propos", "ar": "من نحن",
@@ -2445,6 +2445,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Другие способы связи", "fr": "Autres moyens de nous contacter",
         "ar": "طرق أخرى للتواصل",
     },
+    "contact.email_way": {
+        "he": "אימייל: support@todira.app", "en": "Email: support@todira.app", "ru": "Email: support@todira.app",
+        "fr": "E-mail : support@todira.app", "ar": "البريد: support@todira.app",
+    },
     "contact.telegram_way": {
         "he": "טלגרם: תכתוב ישר לבוט", "en": "Telegram, message the bot directly",
         "ru": "Telegram, напишите боту напрямую", "fr": "Telegram, écrivez directement au bot",
@@ -2652,8 +2656,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # split into pre/post around a real mailto: link (Privacy.jsx) — same clickable-email fix as
     # footer.business_info_pre above.
     "privacy.s10_body_pre": {
-        "he": "טודירה מופעל על ידי אמיר טולדנו, עוסק פטור מס׳ 211530563. לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע, ניתן לפנות באימייל ",
-        "en": "Todira is operated by Amir Toledano, exempt dealer (עוסק פטור) no. 211530563. For questions about privacy, or to request data deletion, please email ",
+        "he": "לשאלות בנוגע לפרטיות, או לבקשת מחיקת מידע, ניתן לפנות באימייל ",
+        "en": "For questions about privacy, or to request data deletion, please email ",
     },
     "privacy.s10_body_post": {
         "he": " או דרך הבוט בטלגרם.",
