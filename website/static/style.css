@@ -1675,6 +1675,9 @@ html[data-theme="dark"] .account-cancel-confirm { color: #f28b82; }
 .apt-toolbar-no-brokers { margin-inline-start: auto; }
 .apt-toolbar-count { font-size: .85rem; color: var(--text-muted); white-space: nowrap; }
 .apt-toolbar-count b { color: var(--teal); font-family: 'Rubik', sans-serif; }
+.apt-sort select { font: inherit; font-size: .85rem; color: var(--text); background: transparent;
+  border: 1px solid var(--border, #d0d7de); border-radius: 8px; padding: 4px 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- /apartments map+filter workspace (2026-09-24, dorin.app-style layout) ----------
    direction: ltr on the outer flex container keeps the map physically on the LEFT and the filter
@@ -2396,3 +2399,10 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
   .asst-panel:not([hidden]) { animation: asst-in .18s ease-out; }
   @keyframes asst-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 }
+
+/* 2026-10-24: "report a mistake" at the end of the listing view */
+.ld-report { margin-top: 18px; font-size: .9rem; }
+.ld-report summary { cursor: pointer; color: var(--text-muted); }
+.ld-report-form { display: grid; gap: 8px; margin-top: 10px; }
+.ld-report-form select, .ld-report-form input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: transparent; color: var(--text); }
