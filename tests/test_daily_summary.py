@@ -31,6 +31,19 @@ def test_the_message_has_the_numbers_and_nothing_personal():
     assert "5 משלמים, 60 בתקופת ניסיון, 140 משתמשים" in text
 
 
+def test_the_message_has_the_site_and_trial_lines():
+    text = daily_summary.summary_text({
+        "date": "23.10", "signups": 0, "payments": 0, "income": 0, "alerts": 10, "alerted_users": 2,
+        "new_listings": 5, "messages": 0, "paying_now": 0, "trial_now": 24, "users_total": 26,
+        "visitors": 15, "sources": {"instagram": 2, "other": 1}, "bot_clicks": 3, "assistant_questions": 4,
+        "bot_active": 6, "trial_ending": [("26.10", 3), ("27.10", 11)],
+    })
+    assert "נכנסו לאתר: <b>15</b> (הגיעו מ: אינסטגרם 2, אחר 1)" in text
+    assert "עברו מהאתר לבוט: <b>3</b>" in text and "שאלות לעוזר באתר: <b>4</b>" in text
+    assert "פעילים בבוט: <b>6</b>" in text
+    assert "ניסיון נגמר השבוע: <b>14</b> (26.10 (3), 27.10 (11))" in text
+
+
 def test_it_goes_to_the_inbox_group_first(monkeypatch):
     from todira_common import owner_inbox
 
