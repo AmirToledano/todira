@@ -30,6 +30,6 @@ jobs:
           POD=$(kubectl get pods -n todira -l app=todira-bot --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
           [ -z "$POD" ] && { echo "no bot pod"; exit 0; }
           echo "=== error-ish lines (last 1500) ==="
-          kubectl logs -n todira "$POD" --tail=1500 | grep -i -E "error|exception|traceback|conflict|timed out|forbidden|unauthorized|retry" | sed -E 's/[0-9]{6,}/<n>/g' | tail -40 || true
+          kubectl logs -n todira "$POD" --tail=1500 | grep -i -E "error|exception|traceback|conflict|timed out|forbidden|unauthorized|retry" | sed -E 's/[0-9]{6,}/<n>/g' | sed -E "s/(first_name|last_name|username)=[^,)]*/\1=<x>/g" | cut -c1-220 | tail -40 || true
           echo "=== last 25 lines ==="
           kubectl logs -n todira "$POD" --tail=25 | sed -E 's/[0-9]{6,}/<n>/g' | cut -c1-220
