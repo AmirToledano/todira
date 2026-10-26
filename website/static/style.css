@@ -2406,3 +2406,22 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .ld-report-form { display: grid; gap: 8px; margin-top: 10px; }
 .ld-report-form select, .ld-report-form input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
   background: transparent; color: var(--text); }
+
+/* 2026-10-24: rent calculator (/calculator) */
+.calc { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+.calc-title { margin: 0 0 6px; }
+.calc-lead, .calc-note { color: var(--text-muted); }
+.calc-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; display: grid; gap: 14px; margin: 18px 0; }
+.calc-row { display: grid; gap: 6px; }
+.calc-row input[type=range] { width: 100%; accent-color: var(--teal); }
+.calc-rooms { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.calc-result { display: grid; justify-items: center; gap: 4px; padding: 18px; border-radius: 14px; background: var(--surface-tint); margin-bottom: 14px; }
+.calc-result-label { color: var(--text-muted); font-size: .9rem; }
+.calc-budget { font-family: 'Rubik', sans-serif; font-size: 2.4rem; font-weight: 800; color: var(--teal); }
+.calc-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.calc-table th, .calc-table td { padding: 9px 6px; border-bottom: 1px solid var(--border); text-align: start; }
+.calc-table th { color: var(--text-muted); font-weight: 500; font-size: .85rem; }
+.calc-tag { font-size: .8rem; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.calc-tag.fits { background: #d9f2e4; color: #17603a; }
+.calc-tag.tight { background: #fdf0d2; color: #7a5300; }
+.calc-tag.over { background: var(--surface-tint); color: var(--text-muted); }
