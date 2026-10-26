@@ -1224,7 +1224,7 @@ def apple_pay_domain_association() -> Response:
 # since the set of genuinely public marketing/legal pages changes rarely; every one of these
 # already renders in all 5 languages via base.html's own hreflang alternates (added alongside
 # this), so the sitemap itself only needs to list each page once, not once per language.
-_SITEMAP_PATHS = ("/", "/login", "/contact", "/about", "/terms", "/privacy", "/accessibility")
+_SITEMAP_PATHS = ("/", "/login", "/contact", "/calculator", "/about", "/terms", "/privacy", "/accessibility")
 
 
 @app.get("/sitemap.xml")
@@ -1285,6 +1285,55 @@ def login(request: Request, next: str = "/apartments", uid: int | None = None):
             "uid": uid,
         },
     )
+
+
+# 2026-10-24 (owner-approved, from a competitor review): a rent calculator - "how much can I afford, and where".
+# Monthly income and share for rent give a budget; the table is the median asking rent per city for the chosen room
+# count, from live rent listings seen in the last 30 days (cross-site duplicates once, shared rooms left out).
+_CALC_TTL_SECONDS = 3600
+_CALC_MIN_LISTINGS = 10
+_CALC_CITIES = 24
+_calc_cache: dict = {"at": 0.0, "value": None}
+_calc_lock = threading.Lock()
+
+
+def _rent_medians() -> dict | None:
+    """{"3": [["תל אביב", 6800, 412], ...], ...} - rooms bucket to (city, median rent, listings) by listing count."""
+    with _calc_lock:
+        if _calc_cache["value"] is not None and time.monotonic() - _calc_cache["at"] < _CALC_TTL_SECONDS:
+            return _calc_cache["value"]
+    bucket = case((Listing.rooms >= 5, 5), else_=func.floor(Listing.rooms))
+    try:
+        with get_session() as session:
+            rows = session.execute(
+                select(Listing.city, bucket, func.percentile_cont(0.5).within_group(Listing.price), func.count())
+                .where(
+                    Listing.deal_type == "rent", Listing.duplicate_of_id.is_(None), Listing.city.is_not(None),
+                    Listing.price.between(1000, 40000), Listing.rooms.between(1, 12),
+                    or_(Listing.property_type.is_(None), Listing.property_type != "shared_room"),
+                    Listing.scraped_at >= func.now() - dt.timedelta(days=30),
+                )
+                .group_by(Listing.city, bucket)
+            ).all()
+    except Exception:
+        logger.warning("could not read the rent calculator's medians", exc_info=True)
+        return None
+    value: dict[str, list] = {}
+    for city, rooms, median, count in rows:
+        if rooms is None or count < _CALC_MIN_LISTINGS:
+            continue
+        key = str(min(5, max(1, int(rooms))))
+        value.setdefault(key, []).append([city, int(round(float(median), -1)), int(count)])
+    for key in value:
+        value[key] = sorted(value[key], key=lambda r: -r[2])[:_CALC_CITIES]
+    with _calc_lock:
+        _calc_cache.update(at=time.monotonic(), value=value)
+    return value
+
+
+@app.get("/calculator")
+def rent_calculator(request: Request):
+    return _render(request, "calculator.html", {"medians": _rent_medians() or {}})
 
 
 @app.get("/about")
