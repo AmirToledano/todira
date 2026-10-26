@@ -2407,6 +2407,40 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .ld-report-form select, .ld-report-form input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
   background: transparent; color: var(--text); }
 
+/* 2026-10-26: owner dashboard (/admin) */
+.dash { max-width: 920px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 16px; }
+.dash-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px; }
+.dash-head h1 { margin: 0; }
+.dash-time, .dash-muted { color: var(--text-muted); font-size: .88rem; }
+.dash-nav { margin-inline-start: auto; display: flex; gap: 12px; }
+.dash-nav a { display: inline-flex; align-items: center; gap: 6px; }
+.dash-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.dash-kpi { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: grid; gap: 2px; }
+.dash-kpi b { font-family: 'Rubik', sans-serif; font-size: 1.9rem; color: var(--teal); }
+.dash-kpi span { color: var(--text-muted); font-size: .88rem; }
+.dash-note { margin: 0; font-size: .9rem; }
+.dash-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+.dash-card h2 { margin: 0 0 12px; font-size: 1.15rem; }
+.dash-card h3 { margin: 0 0 6px; font-size: .95rem; }
+.dash-table-wrap { overflow-x: auto; }
+.dash-table { width: 100%; border-collapse: collapse; }
+.dash-table th, .dash-table td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: start; white-space: nowrap; }
+.dash-table thead th { color: var(--text-muted); font-weight: 500; }
+.dash-table td { font-variant-numeric: tabular-nums; }
+.dash-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+.dash-sources ul { margin: 0; padding-inline-start: 18px; }
+.dash-health { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.dash-health .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-inline-end: 8px; background: #2e9e62; }
+.dash-health .bad .dot { background: #d64545; }
+.dash-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.dash-switch > div { display: grid; gap: 2px; }
+.dash-toggle { min-width: 76px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font: inherit; cursor: pointer; }
+.dash-toggle.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+.dash-msg { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.dash-msg p { margin: 4px 0 0; white-space: pre-wrap; }
+.dash-input, .dash-links input { width: 100%; font: inherit; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); }
+.dash-links { display: grid; gap: 8px; margin-top: 10px; }
+.dash-links label { display: grid; gap: 4px; font-size: .9rem; }
 /* 2026-10-24: rent calculator (/calculator) */
 .calc { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
 .calc-title { margin: 0 0 6px; }

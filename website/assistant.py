@@ -50,7 +50,9 @@ _counts_day: dt.date | None = None
 
 
 def enabled() -> bool:
-    return os.environ.get(ENABLED_ENV, "").strip() == "1"
+    from todira_common import switches
+
+    return switches.is_on("assistant", os.environ.get(ENABLED_ENV, "").strip() == "1")
 
 
 def configured() -> bool:

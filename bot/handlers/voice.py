@@ -19,6 +19,10 @@ MAX_SECONDS = 120
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from todira_common import switches
+
+    if not await asyncio.to_thread(switches.is_on, "voice", True):
+        return  # switched off from the owner's dashboard: the recording goes on to the other handlers as before
     message = update.message
     media = message.voice or message.audio
     lang = await asyncio.to_thread(_user_lang_sync, update.effective_user.id)

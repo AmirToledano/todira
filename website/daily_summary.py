@@ -38,8 +38,10 @@ def yesterday_bounds(now: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
     return today - dt.timedelta(days=1), today
 
 
-def collect(session, now: dt.datetime) -> dict:
-    start, end = yesterday_bounds(now)
+def collect(session, now: dt.datetime, start: dt.datetime | None = None, end: dt.datetime | None = None) -> dict:
+    """Yesterday by default; the owner's dashboard (main.py /admin) also asks for today and the last 7 days."""
+    if start is None or end is None:
+        start, end = yesterday_bounds(now)
 
     def count(stmt) -> int:
         return session.scalar(stmt) or 0
@@ -49,24 +51,25 @@ def collect(session, now: dt.datetime) -> dict:
             Payment.status == "paid", Payment.paid_at >= start, Payment.paid_at < end
         )
     ).one()
-    day = start.date()
+    day = start.astimezone(ISRAEL).date()
+    last_day = (end - dt.timedelta(microseconds=1)).astimezone(ISRAEL).date()
 
     def people(*kinds: str) -> int:
         return count(select(func.count(func.distinct(ActivityDay.who))).where(
-            ActivityDay.day == day, ActivityDay.kind.in_(kinds)))
+            ActivityDay.day.between(day, last_day), ActivityDay.kind.in_(kinds)))
 
     sources = {
         kind.removeprefix("site_from_"): n
         for kind, n in session.execute(
             select(ActivityDay.kind, func.count()).where(
-                ActivityDay.day == day, ActivityDay.kind.like("site_from_%")).group_by(ActivityDay.kind)
+                ActivityDay.day.between(day, last_day), ActivityDay.kind.like("site_from_%")).group_by(ActivityDay.kind)
         ).all()
     }
     campaigns = {
         kind.removeprefix("src_"): n
         for kind, n in session.execute(
             select(ActivityDay.kind, func.count()).where(
-                ActivityDay.day == day, ActivityDay.kind.like("src\\_%")).group_by(ActivityDay.kind)
+                ActivityDay.day.between(day, last_day), ActivityDay.kind.like("src\\_%")).group_by(ActivityDay.kind)
         ).all()
     }
     trial_ends = session.scalars(select(User.trial_ends_at).where(
@@ -83,7 +86,7 @@ def collect(session, now: dt.datetime) -> dict:
         "campaigns": dict(sorted(campaigns.items(), key=lambda kv: -kv[1])),
         "bot_clicks": people("click_bot_hero", "click_bot_end", "click_bot_menu", "click_bot_nofilter", "click_bot_share"),
         "assistant_questions": count(select(func.coalesce(func.sum(ActivityDay.hits), 0)).where(
-            ActivityDay.day == day, ActivityDay.kind == "assistant_question")),
+            ActivityDay.day.between(day, last_day), ActivityDay.kind == "assistant_question")),
         "bot_active": people("bot_message", "bot_button"),
         "trial_ending": [(d.strftime("%d.%m"), n) for d, n in sorted(ending.items())],
         "signups": count(select(func.count()).select_from(User).where(User.created_at >= start, User.created_at < end)),

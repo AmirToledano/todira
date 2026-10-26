@@ -234,6 +234,7 @@
           {% endif %}
           <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
           {% if is_owner %}
+          <a href="/admin" class="{{ 'active' if active_page == 'admin' else '' }}" aria-label="דשבורד">{{ icon('settings-2') }}</a>
           <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}" aria-label="תיבת הודעות">{{ icon('inbox') }}</a>
           <a href="/admin/users" class="{{ 'active' if active_page == 'admin_users' else '' }}" aria-label="ניהול משתמשים">{{ icon('users') }}</a>
           {% endif %}

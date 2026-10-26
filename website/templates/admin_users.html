@@ -25,9 +25,10 @@
     <button type="button" class="admin-tab" data-filter="both">{{ icon('link-2') }} טלגרם וגוגל <b>{{ counts.both }}</b></button>
     {% if counts.none %}<button type="button" class="admin-tab" data-filter="none">{{ icon('circle-help') }} בלי ערוץ <b>{{ counts.none }}</b></button>{% endif %}
   </div>
+  <input type="search" class="dash-input" id="admin-user-search" placeholder="חיפוש לפי שם, שם משתמש או מייל" style="margin:10px 0">
   <div class="admin-message-list" id="admin-user-list">
     {% for r in rows %}
-    <div class="admin-message-card" data-kind="{{ r.kind }}">
+    <div class="admin-message-card" data-kind="{{ r.kind }}" data-search="{{ (r.label ~ ' ' ~ (r.telegram_username or '') ~ ' ' ~ (r.google_email or ''))|lower }}">
       <div class="amc-header">
         <span class="amc-source">{{ r.label }}</span>
         {% if r.has_access %}
@@ -64,6 +65,11 @@
           {% if r.free_access_granted %}{{ icon('ban') }} בטל גישה חופשית{% else %}{{ icon('gift') }} תן גישה חופשית לצמיתות{% endif %}
         </button>
       </form>
+      <form method="post" action="/admin/users/{{ r.id }}/toggle-active" style="margin-top:8px">
+        <button type="submit" class="btn outline" style="padding:8px 16px;font-size:.85rem">
+          {% if r.is_active %}{{ icon('bell') }} השהה התראות למשתמש{% else %}{{ icon('bell') }} החזר התראות למשתמש (מושהה עכשיו){% endif %}
+        </button>
+      </form>
     </div>
     {% endfor %}
   </div>
@@ -82,4 +88,28 @@
     })();
   </script>
 {% endif %}
+<script>
+(function () {
+  var box = document.getElementById('admin-user-search');
+  if (!box) { return; }
+  box.addEventListener('input', function () {
+    var q = box.value.trim().toLowerCase();
+    document.querySelectorAll('#admin-user-list [data-search]').forEach(function (card) {
+      card.style.display = !q || card.dataset.search.indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+})();
+</script>
+<script>
+(function () {
+  var box = document.getElementById('admin-user-search');
+  if (!box) { return; }
+  box.addEventListener('input', function () {
+    var q = box.value.trim().toLowerCase();
+    document.querySelectorAll('#admin-user-list [data-search]').forEach(function (card) {
+      card.style.display = !q || card.dataset.search.indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+})();
+</script>
 {% endblock %}

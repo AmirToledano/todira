@@ -2659,6 +2659,11 @@ _FACEBOOK_GROUPS_PAUSE = dt.timedelta(hours=24)
 
 
 def _facebook_groups_paused() -> bool:
+    from todira_common import switches
+
+    if not switches.is_on("facebook", True):
+        logger.warning("Facebook groups feed is switched off from the owner's dashboard - skipped")
+        return True
     with get_session() as session:
         raw = app_flags.get_flag(session, _FACEBOOK_GROUPS_PAUSE_FLAG)
     if not raw:

@@ -671,7 +671,9 @@ BLOCKED = _Blocked()
 
 def _bot_share_enabled() -> bool:
     """2026-10-22: the card's share button stays off until the owner approves its wording (BOT_SHARE_BUTTON=1)."""
-    return os.environ.get("BOT_SHARE_BUTTON", "").strip() == "1"
+    from todira_common import switches
+
+    return switches.is_on("share_button", os.environ.get("BOT_SHARE_BUTTON", "").strip() == "1")
 
 
 def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboardMarkup:
