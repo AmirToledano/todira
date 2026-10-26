@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% set active_page = "admin" %}
+{% block title %}דשבורד{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+{# 2026-10-26 (owner): everything he needs in one place. Data from main.py's admin_dashboard. #}
+<div class="dash">
+  <header class="dash-head">
+    <h1>דשבורד</h1>
+    <span class="dash-time">נכון ל-{{ hour_he }}</span>
+    <nav class="dash-nav">
+      <a href="/admin/users">{{ icon('users') }} משתמשים</a>
+      <a href="/admin/messages">{{ icon('inbox') }} הודעות</a>
+    </nav>
+  </header>
+
+  {% set n = now_counts %}
+  <section class="dash-kpis">
+    <div class="dash-kpi"><b>{{ n.paying_now }}</b><span>משלמים עכשיו</span></div>
+    <div class="dash-kpi"><b>{{ n.trial_now }}</b><span>בתקופת ניסיון</span></div>
+    <div class="dash-kpi"><b>{{ n.users_total }}</b><span>משתמשים בסך הכל</span></div>
+    <div class="dash-kpi"><b>{{ n.trial_ending | sum(attribute=1) if n.trial_ending else 0 }}</b><span>ניסיון נגמר השבוע</span></div>
+  </section>
+  {% if n.trial_ending %}
+  <p class="dash-note">ניסיון נגמר: {% for d, c in n.trial_ending %}{{ d }} ({{ c }}){% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+
+  <section class="dash-card">
+    <h2>מספרים</h2>
+    <div class="dash-table-wrap">
+    <table class="dash-table">
+      <thead><tr><th></th>{% for label, _ in periods %}<th>{{ label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% set rows = [
+          ('נרשמו', 'signups'), ('תשלומים', 'payments'), ('הכנסות (₪)', 'income'),
+          ('נכנסו לאתר', 'visitors'), ('עברו מהאתר לבוט', 'bot_clicks'), ('פעילים בבוט', 'bot_active'),
+          ('שאלות לעוזר באתר', 'assistant_questions'), ('פניות', 'messages'),
+          ('התראות שנשלחו', 'alerts'), ('דירות חדשות', 'new_listings'),
+        ] %}
+        {% for label, key in rows %}
+        <tr><th>{{ label }}</th>{% for _, c in periods %}<td>{{ '{:,}'.format(c[key] | int) }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="dash-sources">
+      {% for label, c in periods %}
+      <div>
+        <h3>{{ label }}: מאיפה הגיעו</h3>
+        {% if c.sources or c.campaigns %}
+          <ul>
+          {% for k, v in c.sources.items() %}<li>{{ k }} <b>{{ v }}</b></li>{% endfor %}
+          {% for k, v in c.campaigns.items() %}<li>🔗 {{ k }} <b>{{ v }}</b></li>{% endfor %}
+          </ul>
+        {% else %}<p class="dash-muted">אין עדיין</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="dash-card">
+    <h2>מה רץ</h2>
+    <ul class="dash-health">
+      {% for label, minutes, warn_after in health %}
+      <li class="{{ 'bad' if minutes is none or minutes > warn_after else 'ok' }}">
+        <span class="dot"></span>{{ label }}:
+        <b>{% if minutes is none %}אין{% elif minutes < 60 %}לפני {{ minutes }} דקות{% elif minutes < 1440 %}לפני {{ minutes // 60 }} שעות{% else %}לפני {{ minutes // 1440 }} ימים{% endif %}</b>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if fb_paused_until %}<p class="dash-note">פייסבוק ביקש התחברות. הסריקה מושהית עד {{ fb_paused_until[:16].replace('T', ' ') }} (UTC).</p>{% endif %}
+    <p class="dash-muted">בשעות הלילה אין סריקות, אז ״לפני כמה שעות״ בלילה זה תקין.</p>
+  </section>
+
+  <section class="dash-card" id="switches">
+    <h2>מתגים</h2>
+    {% for s in switch_rows %}
+    <form class="dash-switch" method="post" action="/admin/switches/{{ s.name }}">
+      <input type="hidden" name="on" value="{{ '0' if s.on else '1' }}">
+      <div><b>{{ s.label }}</b><span class="dash-muted">{{ s.about }}</span></div>
+      <button type="submit" class="dash-toggle {{ 'on' if s.on else '' }}" aria-pressed="{{ 'true' if s.on else 'false' }}">
+        {{ 'פועל' if s.on else 'כבוי' }}
+      </button>
+    </form>
+    {% endfor %}
+    <p class="dash-muted">שינוי נכנס לתוקף תוך חצי דקה.</p>
+  </section>
+
+  <section class="dash-card">
+    <h2>הודעות אחרונות <span class="dash-muted">({{ messages_week }} בשבוע האחרון)</span></h2>
+    {% for m in messages %}
+    <div class="dash-msg">
+      <span class="dash-muted">{{ m.created_at.astimezone(israel_tz).strftime('%d.%m %H:%M') if m.created_at else '' }}{% if m.name %}, {{ m.name }}{% endif %}</span>
+      <p>{{ m.message[:220] }}{% if m.message|length > 220 %}...{% endif %}</p>
+    </div>
+    {% else %}<p class="dash-muted">אין הודעות</p>{% endfor %}
+    <a class="btn outline" href="/admin/messages">לכל ההודעות</a>
+  </section>
+
+  <section class="dash-card">
+    <h2>קישור לפרסום</h2>
+    <p class="dash-muted">שם קצר באנגלית לכל פוסט או מודעה. בהודעת הבוקר ובדשבורד תראה כמה הגיעו מכל קישור.</p>
+    <input id="dash-src" class="dash-input" placeholder="למשל fb_group_tlv" maxlength="40" dir="ltr">
+    <div class="dash-links" id="dash-links" hidden>
+      <label>לבוט <input readonly dir="ltr" id="dash-link-bot"></label>
+      <label>לאתר <input readonly dir="ltr" id="dash-link-site"></label>
+    </div>
+  </section>
+</div>
+<script>
+(function () {
+  var src = document.getElementById('dash-src');
+  src.addEventListener('input', function () {
+    var name = src.value.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40);
+    var ok = name.length >= 2;
+    document.getElementById('dash-links').hidden = !ok;
+    document.getElementById('dash-link-bot').value = ok ? 't.me/AmirDirotBot?start=' + name : '';
+    document.getElementById('dash-link-site').value = ok ? 'todira.app/?src=' + name : '';
+  });
+  document.querySelectorAll('.dash-links input').forEach(function (i) {
+    i.addEventListener('focus', function () { i.select(); });
+  });
+})();
+</script>
+{% endblock %}

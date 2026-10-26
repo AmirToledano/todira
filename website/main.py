@@ -80,7 +80,7 @@ from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
 from todira_common.app_flags import get_flag, set_flag
-from todira_common.models import AppFlag, ContactMessage, Filter, Listing, Payment, User, UserListingAction
+from todira_common.models import AppFlag, ContactMessage, Filter, Listing, Payment, SentNotification, User, UserListingAction
 from todira_common.uid_token import generate_handoff_token, verify_handoff_token, verify_uid_token
 from fastapi import FastAPI, Form, Request
 
@@ -2387,6 +2387,89 @@ def preview_toggle(request: Request, next: str = "/account"):
     return RedirectResponse(_safe_next(next), status_code=303)
 
 
+# 2026-10-26 (owner: "a dashboard so I can control things too, with everything I need"): one owner-only page with the
+# numbers of the morning summary for today, yesterday and the last 7 days, whether the scrapers and alerts are running,
+# the newest messages, on/off switches (todira_common/switches.py) and a campaign-link maker. Same gate as /admin/users.
+def _israel_day_start(now: dt.datetime) -> dt.datetime:
+    return now.astimezone(_ISRAEL_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _minutes_ago(when: dt.datetime | None, now: dt.datetime) -> int | None:
+    return None if when is None else max(0, int((now - when).total_seconds() // 60))
+
+
+@app.get("/admin")
+def admin_dashboard(request: Request):
+    import daily_summary
+    from todira_common import switches
+
+    now = dt.datetime.now(dt.timezone.utc)
+    today = _israel_day_start(now)
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+        periods = [
+            ("היום", daily_summary.collect(session, now, today, now)),
+            ("אתמול", daily_summary.collect(session, now, today - dt.timedelta(days=1), today)),
+            ("7 ימים", daily_summary.collect(session, now, today - dt.timedelta(days=6), now)),
+        ]
+        last_listing = session.scalar(select(func.max(Listing.scraped_at)))
+        last_new = session.scalar(select(func.max(Listing.first_seen_at)))
+        last_facebook = session.scalar(
+            select(func.max(Listing.first_seen_at)).where(Listing.source.like("facebook%"))
+        )
+        last_alert = session.scalar(select(func.max(SentNotification.sent_at)))
+        fb_paused_until = get_flag(session, "facebook_groups_paused_until")
+        messages = session.scalars(select(ContactMessage).order_by(ContactMessage.created_at.desc()).limit(6)).all()
+        messages_week = session.scalar(
+            select(func.count()).select_from(ContactMessage).where(ContactMessage.created_at >= now - dt.timedelta(days=7))
+        )
+    health = [
+        ("סריקה אחרונה שראתה דירה", _minutes_ago(last_listing, now), 45),
+        ("דירה חדשה אחרונה", _minutes_ago(last_new, now), 90),
+        ("דירה אחרונה מפייסבוק", _minutes_ago(last_facebook, now), 180),
+        ("התראה אחרונה שנשלחה", _minutes_ago(last_alert, now), 180),
+    ]
+    switch_rows = [
+        {"name": name, "label": label, "about": about,
+         "on": switches.is_on(name, {"assistant": assistant.enabled(), "share_button": _bot_share_default()}.get(name, True))}
+        for name, (label, about) in switches.SWITCHES.items()
+    ]
+    return _render(request, "admin_dashboard.html", {
+        "periods": periods, "now_counts": periods[0][1], "health": health, "fb_paused_until": fb_paused_until,
+        "messages": messages, "messages_week": messages_week, "switch_rows": switch_rows,
+        "hour_he": now.astimezone(_ISRAEL_TZ).strftime("%H:%M"), "israel_tz": _ISRAEL_TZ,
+    })
+
+
+def _bot_share_default() -> bool:
+    return os.environ.get("BOT_SHARE_BUTTON", "").strip() == "1"
+
+
+@app.post("/admin/switches/{name}")
+def admin_switch(request: Request, name: str, on: str = Form("1")):
+    from todira_common import switches
+
+    with get_session() as session:
+        if _require_owner(request, session) is None or name not in switches.SWITCHES:
+            return _render(request, "404.html", {}, status_code=404)
+        switches.set_switch(session, name, on == "1")
+    return RedirectResponse("/admin#switches", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/toggle-active")
+def admin_toggle_active(request: Request, user_id: int):
+    """2026-10-26: pause or resume one user's alerts from the dashboard (the same switch as the bot's /profile)."""
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+        user = session.get(User, user_id)
+        if user is not None:
+            user.is_active = not user.is_active
+            session.commit()
+    return RedirectResponse("/admin/users", status_code=303)
+
+
 @app.get("/admin/messages")
 def admin_messages(request: Request):
     """Owner-only inbox for every message from BOTH contact channels — the website's /contact
@@ -2456,6 +2539,7 @@ def admin_users(request: Request):
                 "google_email": u.google_email,
                 "created_at": u.created_at,
                 "free_access_granted": u.free_access_granted,
+                "is_active": getattr(u, "is_active", True),
                 "has_access": has_full_access(u, is_owner=_is_owner_id(u.telegram_user_id)),
                 "trial_ends_at": u.trial_ends_at,
                 "paid_until": u.paid_until,
