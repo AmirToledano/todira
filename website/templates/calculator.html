@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ t('calc.title') }} | טודירה{% endblock %}
+{% block content %}
+{# 2026-10-24 (owner-approved): rent calculator. Medians come from main.py's _rent_medians (our own live listings). #}
+<div class="calc">
+  <h1 class="calc-title">{{ t('calc.title') }}</h1>
+  <p class="calc-lead">{{ t('calc.lead') }}</p>
+
+  <div class="calc-card">
+    <label class="calc-row">
+      <span>{{ t('calc.income') }} <b id="calc-income-out"></b></span>
+      <input id="calc-income" type="range" min="4000" max="50000" step="500" value="15000">
+    </label>
+    <label class="calc-row">
+      <span>{{ t('calc.share') }} <b id="calc-share-out"></b></span>
+      <input id="calc-share" type="range" min="15" max="50" step="1" value="30">
+    </label>
+    <div class="calc-rooms" role="group" aria-label="{{ t('calc.rooms') }}">
+      <span>{{ t('calc.rooms') }}</span>
+      {% for r in ('1', '2', '3', '4', '5') %}
+      <button type="button" class="chip chip-toggle{{ ' active' if r == '3' else '' }}" data-rooms="{{ r }}">{{ r }}{{ '+' if r == '5' else '' }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="calc-result">
+    <span class="calc-result-label">{{ t('calc.budget') }}</span>
+    <span class="calc-budget" id="calc-budget"></span>
+    <span class="calc-fit" id="calc-fit"></span>
+  </div>
+
+  <table class="calc-table">
+    <thead><tr><th>{{ t('calc.city') }}</th><th>{{ t('calc.median') }}</th><th></th></tr></thead>
+    <tbody id="calc-rows"></tbody>
+  </table>
+  <p class="calc-note">{{ t('calc.note') }}</p>
+
+  <a class="btn gold block" href="https://t.me/AmirDirotBot?start=calculator" target="_blank" rel="noopener" data-track="bot_end">{{ t('calc.cta') }}</a>
+</div>
+<script>
+(function () {
+  var medians = {{ medians | tojson }};
+  var L = {
+    fits: {{ t('calc.fits') | tojson }}, tight: {{ t('calc.tight') | tojson }}, over: {{ t('calc.over') | tojson }},
+    fitLine: {{ t('calc.fit_line') | tojson }}, empty: {{ t('calc.empty') | tojson }}
+  };
+  var income = document.getElementById('calc-income'), share = document.getElementById('calc-share');
+  var rooms = '3';
+  function ils(n) { return '₪' + Math.round(n).toLocaleString('en-US'); }
+  function draw() {
+    var budget = income.value * share.value / 100;
+    document.getElementById('calc-income-out').textContent = ils(income.value);
+    document.getElementById('calc-share-out').textContent = share.value + '%';
+    document.getElementById('calc-budget').textContent = ils(budget);
+    var rows = (medians[rooms] || []).slice().sort(function (a, b) { return a[1] - b[1]; });
+    var body = document.getElementById('calc-rows');
+    body.innerHTML = '';
+    var fit = 0;
+    rows.forEach(function (r) {
+      var cls = r[1] <= budget ? 'fits' : (r[1] <= budget * 1.1 ? 'tight' : 'over');
+      if (cls === 'fits') { fit += 1; }
+      var tr = document.createElement('tr');
+      [r[0], ils(r[1]), L[cls]].forEach(function (v, i) {
+        var td = document.createElement('td');
+        if (i === 2) { var s = document.createElement('span'); s.className = 'calc-tag ' + cls; s.textContent = v; td.appendChild(s); }
+        else { td.textContent = v; }
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    document.getElementById('calc-fit').textContent = rows.length
+      ? L.fitLine.replace('{fit}', fit).replace('{total}', rows.length) : L.empty;
+  }
+  income.addEventListener('input', draw);
+  share.addEventListener('input', draw);
+  document.querySelectorAll('[data-rooms]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      rooms = b.dataset.rooms;
+      document.querySelectorAll('[data-rooms]').forEach(function (x) { x.classList.toggle('active', x === b); });
+      draw();
+    });
+  });
+  draw();
+})();
+</script>
+{% endblock %}
