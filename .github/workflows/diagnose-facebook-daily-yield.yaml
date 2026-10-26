@@ -1,0 +1,33 @@
+name: Diagnose — Facebook listings per day and the last runs' memory (read-only)
+
+# 2026-10-26: after the lighter Facebook browser (#927, 24.10 night) - did the number of new Facebook listings a day stay
+# the same, and how did the last runs end. Counts and pod states only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  yield:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: New Facebook listings per Israel day (last 8 days)
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+            SELECT (first_seen_at AT TIME ZONE '"'"'Asia/Jerusalem'"'"')::date AS day, source, count(*)
+            FROM listings WHERE source LIKE '"'"'facebook%'"'"' AND first_seen_at > now() - interval '"'"'8 days'"'"'
+            GROUP BY 1, 2 ORDER BY 1, 2;"'
+      - name: Recent Facebook scraper jobs
+        run: |
+          kubectl get jobs -n todira -o custom-columns='NAME:.metadata.name,START:.status.startTime,DONE:.status.completionTime,OK:.status.succeeded,FAILED:.status.failed' | grep -E 'NAME|facebook' | tail -12
+          kubectl get pods -n todira -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,REASON:.status.containerStatuses[0].state.terminated.reason' | grep -E 'NAME|facebook' | tail -12
