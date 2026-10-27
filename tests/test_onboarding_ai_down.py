@@ -159,3 +159,19 @@ def test_a_purchase_budget_means_buying():
     update = _update("דירה ברמת גן עד 2.5 מיליון")
     _, saved = _run(update, _context())
     assert saved[0]["deal_type"] == "sale"
+
+
+def test_a_search_with_too_many_flats_ends_with_the_one_question():
+    update = _update("מחפש שכירות בתל אביב, 3 חדרים, עד 8,500 ש\"ח")
+
+    def _save(tg_user, state):
+        return {"total": 900, "per_day": 50, "samples": [], "access": "full", "narrow": ("parking", 12)}
+
+    with (
+        patch.object(onboarding, "_save_filter_sync", _save),
+        patch.object(onboarding, "signed_login_query", lambda uid: "t=x"),
+    ):
+        asyncio.run(onboarding._handle_freetext(update, _context()))
+    last = update.message.reply_text.await_args_list[-1]
+    assert last.args[0] == "זה הרבה 🙂 רק 12 מהן עם חניה. חניה זה חובה?"
+    assert [b.callback_data for row in last.kwargs["reply_markup"].inline_keyboard for b in row] == ["mm:parking", "mm:no"]
