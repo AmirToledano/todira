@@ -50,5 +50,4 @@ jobs:
                  count(*) FILTER (WHERE posted_at > first_seen_at + interval '3 days') AS date_moved
           FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL GROUP BY 1 ORDER BY 2 DESC;
           SQL
-          kubectl cp /tmp/q.sql "todira/$PG:/tmp/q.sql"
-          kubectl exec -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/q.sql'
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
