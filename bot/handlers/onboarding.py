@@ -41,6 +41,7 @@ from todira_common.models import Filter
 from todira_common.users import get_or_create_user
 from todira_common.uid_token import signed_login_query
 from handlers.apartments import find_new_matches_to_show
+from handlers.many_matches import pick_question, question_markup
 from todira_common.listing_matches import load_listings
 from handlers.start import start
 from handlers.support import escalate_to_owner, looks_like_help_request
@@ -164,13 +165,14 @@ def _save_filter_sync(tg_user, state: dict) -> dict:
         now = dt.datetime.now(dt.timezone.utc)
         recent_week = [m for m in new_to_show if m.first_seen_at and m.first_seen_at >= now - dt.timedelta(days=RATE_WINDOW_DAYS)]
         per_day = round(len(recent_week) / RATE_WINDOW_DAYS)
+        narrow = pick_question(recent_week, RATE_WINDOW_DAYS, filter_row)
         sample_ids = [m.id for m in recent_week if m.first_seen_at >= now - SAMPLE_WINDOW][:SAMPLE_COUNT]
         owner_id = os.environ.get("OWNER_TELEGRAM_USER_ID", "").strip()
         access = access_state(user, is_owner=bool(owner_id) and owner_id == str(tg_user.id))
         session.commit()
         samples = load_listings(session, sample_ids)
         session.expunge_all()
-        return {"total": total, "per_day": per_day, "samples": samples, "access": access}
+        return {"total": total, "per_day": per_day, "samples": samples, "access": access, "narrow": narrow}
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -366,6 +368,9 @@ async def _finish(update, context, state: dict, lang: str) -> int:
     tail = [bot_text("onboarding.per_day", lang, per_day=saved["per_day"])] if saved["per_day"] >= 1 else []
     tail.append(bot_text("onboarding.unmute_hint", lang))
     await message.reply_text("\n\n".join(tail))
+    if saved.get("narrow"):
+        feature, after = saved["narrow"]
+        await message.reply_text(bot_text(f"many.q_{feature}", lang, n=after), reply_markup=question_markup(feature, lang))
 
     return ConversationHandler.END
 
