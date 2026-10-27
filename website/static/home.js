@@ -27,8 +27,6 @@
     var got = document.getElementById("lp-d-got");
     var chips = document.getElementById("lp-d-chips");
     var alertB = document.getElementById("lp-d-alert");
-    var steps = Array.prototype.slice.call(document.querySelectorAll("#lp-steps li"));
-    var on = function (i) { steps.forEach(function (s, k) { s.classList.toggle("on", k === i); }); };
     if (reduce) { return; }  // the first conversation is already in the page, complete
     var idx = 0;
     function fillDemo(d) {
@@ -58,15 +56,15 @@
       var d = demos[idx % demos.length]; idx++;
       fillDemo(d);
       got.hidden = true; alertB.hidden = true; got.classList.remove("arrive"); alertB.classList.remove("arrive");
-      ask.textContent = ""; on(0); body.classList.remove("fading");
+      ask.textContent = ""; body.classList.remove("fading");
       var caret = document.createElement("span"); caret.className = "lp-caret";
       var i = 0;
       (function type() {
         ask.textContent = d.ask.slice(0, i); ask.appendChild(caret);
         if (i++ < d.ask.length) { setTimeout(type, 50); return; }
         caret.remove();
-        setTimeout(function () { on(1); got.hidden = false; got.classList.add("arrive"); }, 700);
-        setTimeout(function () { on(2); alertB.hidden = false; alertB.classList.add("arrive"); }, 2500);
+        setTimeout(function () { got.hidden = false; got.classList.add("arrive"); }, 700);
+        setTimeout(function () { alertB.hidden = false; alertB.classList.add("arrive"); }, 2500);
         setTimeout(function () { body.classList.add("fading"); }, 7600);
         setTimeout(play, 8000);
       })();
