@@ -49,5 +49,28 @@ jobs:
           SELECT split_part(source, '_', 1) AS site, count(*) AS n, count(*) FILTER (WHERE posted_at IS NOT NULL) AS with_date,
                  count(*) FILTER (WHERE posted_at > first_seen_at + interval '3 days') AS date_moved
           FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL GROUP BY 1 ORDER BY 2 DESC;
+          \echo '== live ads (first seen last 14 days) that match an OLDER delisted ad of the same site: same city, rooms, floor, street with number, price within 5%'
+          WITH a AS (
+            SELECT id, source, deal_type, city, rooms, floor, price, first_seen_at, is_delisted, duplicate_of_id,
+                   md5(trim(coalesce(description, ''))) AS h, length(trim(coalesce(description, ''))) AS dl,
+                   lower(regexp_replace(trim(street), '\s+', ' ', 'g')) AS st
+            FROM listings WHERE city IS NOT NULL AND rooms IS NOT NULL AND floor IS NOT NULL AND price IS NOT NULL
+              AND street ~ '[0-9]'
+          )
+          SELECT n.deal_type, split_part(n.source, '_', 1) AS site,
+                 count(DISTINCT n.id) AS any_text,
+                 count(DISTINCT n.id) FILTER (WHERE n.h = o.h AND n.dl >= 40) AS same_text
+          FROM a n JOIN a o ON o.source = n.source AND o.deal_type = n.deal_type AND o.city = n.city AND o.rooms = n.rooms
+               AND o.floor = n.floor AND o.st = n.st AND o.id <> n.id AND o.is_delisted
+               AND o.first_seen_at < n.first_seen_at - interval '2 days'
+               AND abs(o.price - n.price) <= greatest(greatest(o.price, n.price) * 0.05, 150)
+          WHERE NOT n.is_delisted AND n.duplicate_of_id IS NULL AND n.first_seen_at > now() - interval '14 days'
+          GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== for scale: live ads first seen in the last 14 days, by deal and site'
+          SELECT deal_type, split_part(source, '_', 1) AS site, count(*) FROM listings
+          WHERE NOT is_delisted AND duplicate_of_id IS NULL AND first_seen_at > now() - interval '14 days' GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== delisted ads kept, by age'
+          SELECT count(*) FILTER (WHERE first_seen_at > now() - interval '30 days') AS under_30d, count(*) AS all_delisted
+          FROM listings WHERE is_delisted;
           SQL
           kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
