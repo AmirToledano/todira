@@ -156,10 +156,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav.apartments": {
         "he": "דירות", "en": "Apartments", "ru": "Квартиры", "fr": "Appartements", "ar": "الشقق",
     },
-    "nav.brand_home_hint": {
-        "he": "(לעמוד הבית)", "en": "(home page)", "ru": "(на главную)",
-        "fr": "(page d'accueil)", "ar": "(الصفحة الرئيسية)",
-    },
     # 2026-10-17: banner for visitors inside a social app's built-in browser (main.py _in_app_browser).
     "inapp.text": {
         "he": "פתחת את טודירה מתוך {app}. בדפדפן הרגיל הכל עובד הכי טוב, ותישאר מחובר.",

@@ -225,12 +225,8 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-paper { padding: 76px 20px 40px; }
 .lp-big { font-family: "Karantina", "Rubik", sans-serif; font-weight: 700; font-size: clamp(54px, 8vw, 88px); line-height: .9; margin: 0 0 34px; color: var(--lp-heading); }
 .lp-how { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: start; }
-.lp-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 30px; }
-.lp-steps li { display: grid; grid-template-columns: 64px 1fr; gap: 6px 18px; opacity: .45; transition: opacity .4s; }
-.lp-steps li.on { opacity: 1; }
-.lp-n { grid-row: span 2; font-family: "Karantina", "Rubik", sans-serif; font-weight: 700; font-size: 78px; line-height: .8; color: var(--lp-teal); }
-.lp-steps h3 { margin: 0; font-size: 22px; font-weight: 800; color: var(--lp-heading); }
-.lp-steps p { margin: 0; color: var(--lp-muted); max-width: 46ch; }
+.lp-how-text p { margin: 0 0 18px; font-size: 19px; line-height: 1.6; color: var(--lp-muted); max-width: 46ch; }
+.lp-how-text b { color: var(--lp-heading); font-weight: 800; }
 
 .lp-phone { background: var(--lp-surface-2); border: 1px solid var(--lp-rule); border-radius: 26px; overflow: hidden; max-width: 380px; justify-self: center; width: 100%; }
 .lp-phone-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--lp-surface); border-bottom: 1px solid var(--lp-rule); }
