@@ -192,8 +192,13 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
     elif not _in_range(listing_row.price, filter_row.price_min, filter_row.price_max):
         failed.append("price_range")
 
+    # 2026-10-27: "show also listings without rooms / size" lets an unknown value through; a known one is still checked.
+    keep_unknown = getattr(filter_row, "include_missing_details", False)
     if filter_row.rooms_min is not None or filter_row.rooms_max is not None:
-        if listing_row.rooms is None or not _in_range(
+        if listing_row.rooms is None:
+            if not keep_unknown:
+                failed.append("rooms_range")
+        elif not _in_range(
             listing_row.rooms, filter_row.rooms_min, filter_row.rooms_max
         ):
             failed.append("rooms_range")
@@ -208,7 +213,10 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
             failed.append("floor_range")
 
     if filter_row.min_area_sqm is not None:
-        if listing_row.size_sqm is None or listing_row.size_sqm < filter_row.min_area_sqm:
+        if listing_row.size_sqm is None:
+            if not keep_unknown:
+                failed.append("min_area_sqm")
+        elif listing_row.size_sqm < filter_row.min_area_sqm:
             failed.append("min_area_sqm")
 
     if filter_row.keywords and listing_row.description:

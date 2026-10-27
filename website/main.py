@@ -3791,6 +3791,36 @@ def _ordered(low, high):
     return low, high
 
 
+_FILTER_FORM_CHECKS = (
+    "ground_floor_only", "require_parking", "require_elevator", "require_balcony", "require_pets_allowed",
+    "require_renovated", "require_roommate_friendly", "require_has_photos", "no_brokers", "flexible_match",
+    "include_missing_details",
+)
+
+
+def _apply_filter_form(f, form: dict) -> None:
+    """Writes the site's filter form (filter_update's fields, by name) onto `f`. Shared by the save and by
+    /api/filter-preview's live count, so the two never read the form differently."""
+    f.cities = [] if form.get("all_cities") is not None else [c for c in form.get("cities") or [] if c in LOCALITY_SET]
+    f.price_min, f.price_max = _ordered(
+        _parse_int_or_none(form.get("price_min", "")), _parse_int_or_none(form.get("price_max", ""))
+    )
+    f.rooms_min, f.rooms_max = _ordered(
+        _parse_float_or_none(form.get("rooms_min", "")), _parse_float_or_none(form.get("rooms_max", ""))
+    )
+    f.property_types = [p for p in form.get("property_types") or [] if p in PROPERTY_TYPE_LABELS[DEFAULT_LANG]]
+    f.floor_min, f.floor_max = _ordered(
+        _parse_int_or_none(form.get("floor_min", "")), _parse_int_or_none(form.get("floor_max", ""))
+    )
+    for name in _FILTER_FORM_CHECKS:
+        setattr(f, name, form.get(name) is not None)
+    safe_room_pref, furniture_pref = form.get("safe_room_pref", "any"), form.get("furniture_pref", "any")
+    f.safe_room_pref = safe_room_pref if safe_room_pref in SAFE_ROOM_LABELS[DEFAULT_LANG] else "any"
+    f.furniture_pref = furniture_pref if furniture_pref in FURNITURE_LABELS[DEFAULT_LANG] else "any"
+    f.min_area_sqm = _parse_int_or_none(form.get("min_area_sqm", ""))
+    f.keywords = [k.strip() for k in (form.get("keywords") or "").split(",") if k.strip()]
+
+
 @app.post("/filter")
 def filter_update(
     request: Request,
@@ -3818,6 +3848,7 @@ def filter_update(
     min_area_sqm: str = Form(""),
     keywords: str = Form(""),
     flexible_match: str | None = Form(None),
+    include_missing_details: str | None = Form(None),
     welcome: str | None = Form(None),
 ):
     """2026-09-26 dorin.app-style onboarding addition (real owner request, 33-page PDF walkthrough)
@@ -3856,26 +3887,7 @@ def filter_update(
             error_url += ("&" if "?" in error_url else "?") + "welcome=1&error=cities"
             return RedirectResponse(error_url, status_code=303)
 
-        f: Filter = user.filter
-        f.cities = [] if all_cities is not None else [c for c in cities if c in LOCALITY_SET]
-        f.price_min, f.price_max = _ordered(_parse_int_or_none(price_min), _parse_int_or_none(price_max))
-        f.rooms_min, f.rooms_max = _ordered(_parse_float_or_none(rooms_min), _parse_float_or_none(rooms_max))
-        f.property_types = [p for p in property_types if p in PROPERTY_TYPE_LABELS[DEFAULT_LANG]]
-        f.floor_min, f.floor_max = _ordered(_parse_int_or_none(floor_min), _parse_int_or_none(floor_max))
-        f.ground_floor_only = ground_floor_only is not None
-        f.require_parking = require_parking is not None
-        f.require_elevator = require_elevator is not None
-        f.require_balcony = require_balcony is not None
-        f.require_pets_allowed = require_pets_allowed is not None
-        f.require_renovated = require_renovated is not None
-        f.require_roommate_friendly = require_roommate_friendly is not None
-        f.require_has_photos = require_has_photos is not None
-        f.no_brokers = no_brokers is not None
-        f.safe_room_pref = safe_room_pref if safe_room_pref in SAFE_ROOM_LABELS[DEFAULT_LANG] else "any"
-        f.furniture_pref = furniture_pref if furniture_pref in FURNITURE_LABELS[DEFAULT_LANG] else "any"
-        f.min_area_sqm = _parse_int_or_none(min_area_sqm)
-        f.keywords = [k.strip() for k in keywords.split(",") if k.strip()]
-        f.flexible_match = flexible_match is not None
+        _apply_filter_form(user.filter, locals())
         session.commit()
         _mark_matches_seen_in_background(user.id)
 
@@ -3888,6 +3900,75 @@ def filter_update(
     # function's own docstring.
     next_path = "/onboarding/notifications" if welcome is not None else "/apartments"
     return RedirectResponse(_identity_redirect_url(next_path, uid), status_code=303)
+
+
+# 2026-10-27 (owner-approved, plan item 7): while the filter form is being changed, how many listings it would show and
+# how their prices spread - for the count by the save button and the small price chart. Nothing is saved.
+_PRICE_CHART_BARS = 24
+
+
+def _price_chart(prices: list[int]) -> dict | None:
+    """Bars of how many listings sit at each price, between the 3rd and 97th percentile so a few extreme ads don't
+    flatten the rest. None when there are too few prices to draw."""
+    if len(prices) < 10:
+        return None
+    prices = sorted(prices)
+    low, high = prices[len(prices) * 3 // 100], prices[min(len(prices) - 1, len(prices) * 97 // 100)]
+    if high <= low:
+        return None
+    step = max(1, math.ceil((high - low) / _PRICE_CHART_BARS))
+    bars = [0] * _PRICE_CHART_BARS
+    for price in prices:
+        if low <= price <= high:
+            bars[min(_PRICE_CHART_BARS - 1, (price - low) // step)] += 1
+    return {"from": low, "step": step, "bars": bars}
+
+
+@app.post("/api/filter-preview")
+def filter_preview(
+    request: Request,
+    uid: int | None = Form(None),
+    cities: list[str] = Form([]),
+    all_cities: str | None = Form(None),
+    price_min: str = Form(""),
+    price_max: str = Form(""),
+    rooms_min: str = Form(""),
+    rooms_max: str = Form(""),
+    property_types: list[str] = Form([]),
+    floor_min: str = Form(""),
+    floor_max: str = Form(""),
+    ground_floor_only: str | None = Form(None),
+    require_parking: str | None = Form(None),
+    require_elevator: str | None = Form(None),
+    require_balcony: str | None = Form(None),
+    require_pets_allowed: str | None = Form(None),
+    require_renovated: str | None = Form(None),
+    require_roommate_friendly: str | None = Form(None),
+    require_has_photos: str | None = Form(None),
+    no_brokers: str | None = Form(None),
+    safe_room_pref: str = Form("any"),
+    furniture_pref: str = Form("any"),
+    min_area_sqm: str = Form(""),
+    keywords: str = Form(""),
+    flexible_match: str | None = Form(None),
+    include_missing_details: str | None = Form(None),
+):
+    form = dict(locals())
+    with get_session() as session:
+        user = _resolve_user(request, session, uid)
+        if user is None or user.filter is None:
+            return JSONResponse({"error": "no_filter"}, status_code=404)
+        draft = SimpleNamespace(**{column.key: getattr(user.filter, column.key) for column in Filter.__table__.columns})
+        _apply_filter_form(draft, form)
+        low, high = draft.price_min, draft.price_max
+        # the chart shows every price the rest of the filter allows; the count then applies the price range
+        draft.price_min = draft.price_max = None
+        rows = _cached_match_ids(session, user.id, draft, _listing_action_ids(session, user.id, "hidden"))
+    count = sum(1 for _, price in rows if price is None or ((low is None or price >= low) and (high is None or price <= high)))
+    return JSONResponse(
+        {"count": count, "chart": _price_chart([price for _, price in rows if price is not None])},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/onboarding/notifications")
