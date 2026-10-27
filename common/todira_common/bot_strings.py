@@ -312,6 +312,14 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "🔔 Pour être le premier, vérifiez que les notifications du bot ne sont pas en sourdine.",
         "ar": "🔔 لتكون أول من يصل، تأكد من أن إشعارات البوت غير مكتومة.",
     },
+    # 2026-10-27 (owner-approved "פורסם שוב" tag): Listing.reposted_from_at is set
+    "card.reposted": {
+        "he": "🔁 פורסם שוב",
+        "en": "🔁 Posted again",
+        "ru": "🔁 Опубликовано снова",
+        "fr": "🔁 Republiée",
+        "ar": "🔁 نُشر مجددًا",
+    },
     "card.below_area_price": {
         "he": "🔥 {pct}% מתחת למחיר באזור",
         "en": "🔥 {pct}% below the area price",

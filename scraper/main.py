@@ -23,7 +23,7 @@ from sqlalchemy import Text, all_, any_, bindparam, case, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from dedup import find_duplicate_listing, link_missed_duplicates, link_same_site_reposts, promote_live_duplicates
+from dedup import find_duplicate_listing, link_missed_duplicates, link_same_site_reposts, mark_reposts, promote_live_duplicates
 from todira_common import text_features, yad2_detail
 from todira_common.cities import LOCALITY_SET, canonicalize_city
 from todira_common.db import get_session
@@ -2949,6 +2949,12 @@ def run_once() -> dict[str, int]:
         except Exception:
             session.rollback()
             logger.exception("linking duplicates before the alerts failed")
+        reposts_marked = 0
+        try:
+            reposts_marked = mark_reposts(session)
+        except Exception:
+            session.rollback()
+            logger.exception("marking flats posted again failed")
         timer.lap("city names and duplicates")
         new_listings = (
             list(session.scalars(
@@ -2991,6 +2997,7 @@ def run_once() -> dict[str, int]:
             "price_changes": len(price_change_events),
             "delisted": delisted_count,
             "duplicates_linked_before_alerts": duplicates_linked_before_alerts,
+            "reposts_marked": reposts_marked,
             "errors": errors,
         }
         try:

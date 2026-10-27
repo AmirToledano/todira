@@ -257,6 +257,9 @@ class Listing(Base):
     # discarded once the UPDATE ran, so there was nothing left to show on the card afterward.
     previous_price: Mapped[int | None] = mapped_column(Integer)
     price_changed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # 2026-10-27 ("posted again" tag): when this same flat was first seen in an earlier ad of the same site that was since
+    # taken down (scraper/dedup.py mark_reposts). None for a flat seen for the first time.
+    reposted_from_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     # tri-state: NULL = source didn't say, not "false"
     has_parking: Mapped[bool | None] = mapped_column(Boolean)

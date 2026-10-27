@@ -54,7 +54,7 @@ def _listing(**overrides):
         "is_broker_listing": False, "move_in_date": dt.date(2026, 11, 1), "move_in_note": None,
         "description": "דירה יפה", "image_urls": [], "posted_at": _NOW - dt.timedelta(days=3),
         "scraped_at": _NOW - dt.timedelta(minutes=20), "first_seen_at": _NOW - dt.timedelta(days=3),
-        "is_delisted": False, "delisted_at": None, "duplicate_of_id": None, "also_on": [],
+        "is_delisted": False, "delisted_at": None, "duplicate_of_id": None, "also_on": [], "reposted_from_at": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -346,3 +346,9 @@ def test_mini_app_init_data_check():
     assert website_main.verify_webapp_init_data(good, token)["id"] == 42
     assert website_main.verify_webapp_init_data(good, "other:token") is None
     assert website_main.verify_webapp_init_data(good.replace("42", "43"), token) is None
+
+
+def test_details_says_when_the_flat_was_in_an_earlier_removed_ad(client):
+    html = _get_details(client, _listing(reposted_from_at=_NOW - dt.timedelta(days=12))).text
+    assert "הדירה הופיעה במודעה קודמת, שהורדה" in html
+    assert "הדירה הופיעה במודעה קודמת" not in _get_details(client, _listing()).text

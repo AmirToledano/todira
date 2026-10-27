@@ -1563,6 +1563,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Publiée sur le site d'origine",
         "ar": "نُشر في الموقع الأصلي",
     },
+    "details.timeline_first_ad": {
+        "he": "הדירה הופיעה במודעה קודמת, שהורדה",
+        "en": "The flat appeared in an earlier ad, since taken down",
+        "ru": "Квартира была в прежнем объявлении, его сняли",
+        "fr": "Le logement figurait dans une annonce précédente, retirée depuis",
+        "ar": "ظهرت الشقة في إعلان سابق تمت إزالته",
+    },
     "details.timeline_found": {
         "he": "טודירה מצאה אותה",
         "en": "Todira found it",
@@ -1848,6 +1855,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # property — independent of deal_type (rent or sale, doesn't matter), 2026-09-03 request.
     "card.broker_badge": {
         "he": "תיווך", "en": "Broker", "ru": "Посредник", "fr": "Agence", "ar": "وسيط",
+    },
+    # 2026-10-27: the flat was in an earlier ad of the same site that was taken down (Listing.reposted_from_at)
+    "card.reposted_badge": {
+        "he": "פורסם שוב", "en": "Posted again", "ru": "Опубликовано снова", "fr": "Republiée", "ar": "نُشر مجددًا",
     },
     # 2026-09-26: dorin.app-style contact-action buttons on the listing detail view (real owner
     # request, comparing directly against dorin.app's own "פרטי איש קשר" section). Same has_access
