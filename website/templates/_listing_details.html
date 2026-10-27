@@ -110,6 +110,7 @@
   <section class="ld-section">
     <h3 class="apt-modal-section-heading">{{ t('details.timeline_title') }}</h3>
     <ol class="ld-timeline">
+      {% if first_ad_on %}<li><span class="ld-when">{{ first_ad_on.strftime('%d.%m.%Y') }}</span>{{ t('details.timeline_first_ad') }}</li>{% endif %}
       {% if posted_on %}<li><span class="ld-when">{{ posted_on.strftime('%d.%m.%Y') }}</span>{{ t('details.timeline_posted') }}</li>{% endif %}
       {% if first_seen %}<li><span class="ld-when">{{ first_seen.strftime('%d.%m.%Y %H:%M') }}</span>{{ t('details.timeline_found') }}</li>{% endif %}
       {% if l.previous_price and l.price and l.previous_price != l.price and price_changed_on %}

@@ -469,7 +469,7 @@ def format_caption(
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
 
     `below_area_pct` (2026-10-24): when set (todira_common.area_price.below_area_pct), a "🔥 N% under the area price"
-    line opens the card.
+    line opens the card. A flat posted again (Listing.reposted_from_at, 2026-10-27) gets a "🔁 posted again" line.
 
     `access_state` (todira_common.access.access_state): for a viewer WITHOUT access, ACCESS_TRIAL_ENDED or
     ACCESS_SUBSCRIPTION_EXPIRED makes the footer say which one ended; None keeps the generic lock line. Ignored when
@@ -507,6 +507,8 @@ def format_caption(
         lang=lang,
     )
 
+    if getattr(listing, "reposted_from_at", None):
+        lines.insert(0, bot_text("card.reposted", lang))
     if below_area_pct:
         lines.insert(0, bold(bot_text("card.below_area_price", lang, pct=below_area_pct)))
     body = "\n".join(lines)

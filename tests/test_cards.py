@@ -1034,3 +1034,12 @@ def test_below_area_price_tag_opens_the_card_only_when_given():
     assert _b("🔥 28% מתחת למחיר באזור") in tagged
     assert tagged.index("🔥") < tagged.index("📍")
     assert "🔥" not in format_caption(make_listing(), has_access=True)
+
+
+def test_posted_again_line_only_for_a_reposted_flat():
+    import datetime as dt
+
+    plain = format_caption(make_listing(), has_access=True)
+    reposted = format_caption(make_listing(reposted_from_at=dt.datetime(2026, 10, 15, tzinfo=dt.timezone.utc)), has_access=True)
+    assert "פורסם שוב" not in plain
+    assert reposted.startswith("🔁 פורסם שוב")

@@ -332,3 +332,38 @@ def link_same_site_reposts(session) -> int:
     _move_user_state(session, links)
     session.commit()
     return len(links)
+
+
+# 2026-10-27 ("posted again" tag, owner-approved): a new ad for a flat whose earlier ad on the same site was taken down.
+# Measured live (diagnose-reposted-listings.yaml): of 8,780 Yad2 rentals first seen in two weeks, 419 repeat an older,
+# removed Yad2 ad on the same street and house number, floor and rooms at about the same price - roughly 30 a day. Only
+# ads first seen in the last three days are looked at, and an earlier ad must be at least two days older, so a quick
+# delete-and-repost by mistake is not called "posted again". Sizes must agree when both ads have one.
+_REPOSTS_SQL = r"""
+WITH a AS (
+  SELECT id, source, deal_type, city, rooms, floor, price, size_sqm, first_seen_at, is_delisted, duplicate_of_id,
+         reposted_from_at,
+         lower(regexp_replace(regexp_replace(regexp_replace(trim(street), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g'), '\s+', ' ', 'g')) AS st
+  FROM listings
+  WHERE city IS NOT NULL AND rooms IS NOT NULL AND floor IS NOT NULL AND price IS NOT NULL AND street ~ '[0-9]'
+), found AS (
+  SELECT n.id, min(o.first_seen_at) AS first_at
+  FROM a n JOIN a o ON o.source = n.source AND o.deal_type = n.deal_type AND o.city = n.city AND o.rooms = n.rooms
+       AND o.floor = n.floor AND o.st = n.st AND o.id <> n.id AND o.is_delisted
+       AND o.first_seen_at < n.first_seen_at - interval '2 days'
+       AND abs(o.price - n.price) <= greatest(greatest(o.price, n.price) * 0.05, 150)
+       AND (o.size_sqm IS NULL OR n.size_sqm IS NULL OR abs(o.size_sqm - n.size_sqm) <= greatest(2, 0.05 * greatest(o.size_sqm, n.size_sqm)))
+  WHERE NOT n.is_delisted AND n.duplicate_of_id IS NULL AND n.reposted_from_at IS NULL
+    AND n.first_seen_at > now() - interval '3 days'
+  GROUP BY n.id
+)
+UPDATE listings l SET reposted_from_at = found.first_at FROM found WHERE l.id = found.id
+"""
+
+
+def mark_reposts(session) -> int:
+    """Sets reposted_from_at on new live ads that repeat an earlier, removed ad of the same site (see _REPOSTS_SQL).
+    Commits. Returns how many were marked."""
+    marked = session.execute(sql_text(_REPOSTS_SQL)).rowcount or 0
+    session.commit()
+    return marked

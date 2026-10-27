@@ -1989,6 +1989,7 @@ def listing_details(request: Request, listing_id: int, uid: int | None = None):
             "source_name": source_names.get("he" if lang == "he" else "default", listing.source),
             "posted_on": _local_time(listing.posted_at),
             "first_seen": _local_time(listing.first_seen_at),
+            "first_ad_on": _local_time(listing.reposted_from_at),
             "last_seen": _local_time(listing.scraped_at),
             "price_changed_on": _local_time(listing.price_changed_at),
             "delisted_on": _local_time(listing.delisted_at),
