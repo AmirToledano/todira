@@ -1,0 +1,51 @@
+name: Diagnose — market numbers for data posts (read-only)
+
+# 2026-10-27 (owner-approved "data posts", plan item 10): real numbers only, from our own listings. Aggregates only,
+# no listing details.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  numbers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Numbers
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== new rentals per Israel day, last 14 days (all sites, one row per flat)'
+          SELECT (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, count(*)
+          FROM listings WHERE deal_type = 'rent' AND duplicate_of_id IS NULL AND first_seen_at > now() - interval '14 days'
+          GROUP BY 1 ORDER BY 1;
+          \echo '== median monthly rent by city and rooms, rentals first seen in the last 30 days (cities with 40+ ads)'
+          SELECT city, rooms, count(*) AS n, percentile_cont(0.5) WITHIN GROUP (ORDER BY price)::int AS median
+          FROM listings
+          WHERE deal_type = 'rent' AND duplicate_of_id IS NULL AND first_seen_at > now() - interval '30 days'
+            AND price BETWEEN 1000 AND 60000 AND rooms IN (2, 3, 4) AND city IS NOT NULL
+          GROUP BY 1, 2 HAVING count(*) >= 40 ORDER BY count(*) DESC LIMIT 45;
+          \echo '== how long a rental stays up before it is taken down (rentals taken down in the last 30 days), in days'
+          SELECT percentile_cont(0.25) WITHIN GROUP (ORDER BY extract(epoch FROM delisted_at - first_seen_at) / 86400)::numeric(6,1) AS p25,
+                 percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM delisted_at - first_seen_at) / 86400)::numeric(6,1) AS median,
+                 count(*)
+          FROM listings WHERE deal_type = 'rent' AND is_delisted AND delisted_at > now() - interval '30 days'
+            AND delisted_at > first_seen_at;
+          \echo '== hour of the day new rentals come in (Israel time, last 14 days)'
+          SELECT extract(hour FROM first_seen_at AT TIME ZONE 'Asia/Jerusalem')::int AS hour, count(*)
+          FROM listings WHERE deal_type = 'rent' AND duplicate_of_id IS NULL AND first_seen_at > now() - interval '14 days'
+          GROUP BY 1 ORDER BY 1;
+          \echo '== price drops on live rentals'
+          SELECT count(*) FILTER (WHERE previous_price > price) AS dropped, count(*) AS live
+          FROM listings WHERE deal_type = 'rent' AND NOT is_delisted AND duplicate_of_id IS NULL;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
