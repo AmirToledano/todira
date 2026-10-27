@@ -85,6 +85,9 @@
       <input id="f-price-max" type="number" name="price_max" value="{{ f.price_max or '' }}" placeholder="{{ t('filter.price_max_placeholder') }}">
     </div>
   </div>
+  {# 2026-10-27: how the prices of the listings the rest of the form allows spread (filled by the script below) #}
+  <div class="price-chart" id="f-price-chart" role="img" aria-label="{{ t('filter.price_chart_label') }}" hidden></div>
+  <div class="price-chart-scale" id="f-price-scale" aria-hidden="true" hidden><span></span><span></span></div>
 </details>
 
 <details class="filter-section" open>
@@ -98,6 +101,12 @@
       <label for="f-rooms-max">{{ icon('bed-double', 'field-icon') }} {{ t('filter.rooms_max_label') }}</label>
       <input id="f-rooms-max" type="number" step="0.5" name="rooms_max" value="{{ f.rooms_max or '' }}">
     </div>
+  </div>
+  <div class="field">
+    <label class="check-chip">
+      <input type="checkbox" name="include_missing_details" {{ 'checked' if f.include_missing_details }}>
+      {{ t('filter.include_missing_details_label') }}
+    </label>
   </div>
 </details>
 
@@ -201,7 +210,55 @@
    filter and the "all cities" toggle everywhere (a ReferenceError with nothing visible to the
    user). Moved inside the macro body so it actually ships with every render. Safe to inline here
    (not deduped/hoisted) because this macro is only ever called once per page. #}
+<p class="filter-live-count" id="f-live-count" aria-live="polite" hidden
+   data-many="{{ t('filter.live_count', n='{n}') }}" data-one="{{ t('filter.live_count_one') }}" data-zero="{{ t('filter.live_count_zero') }}"></p>
 <script>
+  // 2026-10-27: the live count and the price chart (main.py filter_preview). Asked again a moment after the form stops
+  // changing; an older answer that arrives late is ignored.
+  (function () {
+    var out = document.getElementById('f-live-count');
+    var chart = document.getElementById('f-price-chart');
+    var form = out && out.closest('form');
+    if (!form || !window.fetch || !window.FormData) return;
+    var timer = null, asked = 0;
+    function drawChart(data) {
+      var scale = document.getElementById('f-price-scale');
+      if (!data) { chart.hidden = true; scale.hidden = true; return; }
+      var shekels = function (n) { return '₪' + n.toLocaleString(); };
+      scale.children[0].textContent = shekels(data.from);
+      scale.children[1].textContent = shekels(data.from + data.step * data.bars.length);
+      scale.hidden = false;
+      var low = parseInt(form.elements.price_min.value, 10), high = parseInt(form.elements.price_max.value, 10);
+      var top = Math.max.apply(null, data.bars) || 1;
+      chart.textContent = '';
+      data.bars.forEach(function (n, i) {
+        var from = data.from + i * data.step, to = from + data.step;
+        var bar = document.createElement('span');
+        bar.style.height = Math.max(4, Math.round(n / top * 100)) + '%';
+        if ((!isNaN(low) && to <= low) || (!isNaN(high) && from > high)) bar.className = 'out';
+        chart.appendChild(bar);
+      });
+      chart.hidden = false;
+    }
+    function ask() {
+      var mine = ++asked;
+      fetch('/api/filter-preview', { method: 'POST', body: new FormData(form), credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || mine !== asked) return;
+          var n = data.count;
+          out.textContent = n === 0 ? out.dataset.zero : n === 1 ? out.dataset.one : out.dataset.many.replace('{n}', n.toLocaleString());
+          out.hidden = false;
+          drawChart(data.chart);
+        })
+        .catch(function () {});
+    }
+    function soon() { clearTimeout(timer); timer = setTimeout(ask, 450); }
+    form.addEventListener('input', soon);
+    form.addEventListener('change', soon);
+    ask();
+  })();
+
   var localitiesData = null;
   function _localities() {
     if (!localitiesData) {

@@ -185,6 +185,9 @@ class Filter(Base):
     furniture_pref: Mapped[str] = mapped_column(Text, default="any", server_default="any")
 
     min_area_sqm: Mapped[int | None] = mapped_column(Integer)
+    # 2026-10-27 (owner-approved, plan item 7): a listing that does not say its room count or size still matches a rooms
+    # range / minimum size instead of failing it.
+    include_missing_details: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     no_brokers: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     flexible_match: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 

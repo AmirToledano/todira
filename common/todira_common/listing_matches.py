@@ -92,10 +92,11 @@ def matching_listing_rows(session: Session, filter_row: Filter, hidden_ids: set[
     if price_max is not None:
         query = query.where(or_(Listing.price.is_(None), Listing.price <= price_max))
     rooms_min, rooms_max = getattr(filter_row, "rooms_min", None), getattr(filter_row, "rooms_max", None)
+    unknown_rooms_ok = getattr(filter_row, "include_missing_details", False)
     if rooms_min is not None:
-        query = query.where(Listing.rooms >= rooms_min)
+        query = query.where(or_(Listing.rooms.is_(None), Listing.rooms >= rooms_min) if unknown_rooms_ok else Listing.rooms >= rooms_min)
     if rooms_max is not None:
-        query = query.where(Listing.rooms <= rooms_max)
+        query = query.where(or_(Listing.rooms.is_(None), Listing.rooms <= rooms_max) if unknown_rooms_ok else Listing.rooms <= rooms_max)
     hidden_ids = hidden_ids or set()
     return [
         row

@@ -2213,6 +2213,42 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "fr": "Séparés par des virgules, un appartement correspond si sa description contient au moins un des mots",
         "ar": "مفصولة بفواصل, تُطابق الشقة إذا احتوى وصفها على كلمة واحدة منها على الأقل",
     },
+    # 2026-10-27 (plan item 7): "show also without rooms / size", and the live count while the form changes.
+    "filter.include_missing_details_label": {
+        "he": "להציג גם דירות שלא כתוב בהן מספר חדרים או גודל",
+        "en": "Also show apartments that don't list rooms or size",
+        "ru": "Показывать также квартиры без указания комнат или площади",
+        "fr": "Afficher aussi les logements sans nombre de pièces ni surface",
+        "ar": "عرض أيضًا الشقق التي لا يُذكر فيها عدد الغرف أو المساحة",
+    },
+    "filter.live_count": {
+        "he": "{n} דירות מתאימות עכשיו",
+        "en": "{n} apartments match right now",
+        "ru": "Подходящих квартир сейчас: {n}",
+        "fr": "{n} logements correspondent en ce moment",
+        "ar": "عدد الشقق المطابقة الآن: {n}",
+    },
+    "filter.live_count_one": {
+        "he": "דירה אחת מתאימה עכשיו",
+        "en": "1 apartment matches right now",
+        "ru": "Подходящих квартир сейчас: 1",
+        "fr": "1 logement correspond en ce moment",
+        "ar": "شقة واحدة مطابقة الآن",
+    },
+    "filter.live_count_zero": {
+        "he": "אין כרגע דירות שמתאימות לחיפוש הזה",
+        "en": "No apartments match this search right now",
+        "ru": "Сейчас нет квартир под этот поиск",
+        "fr": "Aucun logement ne correspond à cette recherche pour le moment",
+        "ar": "لا توجد حاليًا شقق مطابقة لهذا البحث",
+    },
+    "filter.price_chart_label": {
+        "he": "כמה דירות יש בכל מחיר",
+        "en": "How many apartments at each price",
+        "ru": "Сколько квартир по каждой цене",
+        "fr": "Nombre de logements par prix",
+        "ar": "عدد الشقق في كل سعر",
+    },
     "filter.flexible_match_label": {
         "he": "התאמה גמישה: תראה לי גם דירות שחסר להן מאפיין אחד",
         "en": "Flexible match, also show apartments that miss just one feature",
