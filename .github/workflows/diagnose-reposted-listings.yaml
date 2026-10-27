@@ -1,0 +1,54 @@
+name: Diagnose — how often a flat is posted again (read-only)
+
+# 2026-10-27 (owner approved a "posted again" tag): what we can see today. A live ad with a later ad of the same site
+# linked to it as the same flat (dedup.link_same_site_reposts), and ads whose site date moved well past when we first
+# saw them. Counts only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  reposts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Counts
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== live root ads with a later same-site copy, by days between them'
+          SELECT r.deal_type,
+                 CASE WHEN c.first_seen_at - r.first_seen_at < interval '1 day' THEN 'a <1d'
+                      WHEN c.first_seen_at - r.first_seen_at < interval '3 days' THEN 'b 1-3d'
+                      WHEN c.first_seen_at - r.first_seen_at < interval '7 days' THEN 'c 3-7d'
+                      ELSE 'd 7d+' END AS gap,
+                 count(DISTINCT r.id) AS roots
+          FROM listings r JOIN listings c ON c.duplicate_of_id = r.id AND c.source = r.source
+          WHERE NOT r.is_delisted AND r.duplicate_of_id IS NULL
+          GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== same, by source (gap at least 3 days)'
+          SELECT split_part(r.source, '_', 1) AS site, count(DISTINCT r.id)
+          FROM listings r JOIN listings c ON c.duplicate_of_id = r.id AND c.source = r.source
+          WHERE NOT r.is_delisted AND r.duplicate_of_id IS NULL AND c.first_seen_at - r.first_seen_at >= interval '3 days'
+          GROUP BY 1 ORDER BY 2 DESC;
+          \echo '== live rentals: all, and with a later same-site copy 3+ days later'
+          SELECT count(*) AS live_rent,
+                 count(*) FILTER (WHERE EXISTS (SELECT 1 FROM listings c WHERE c.duplicate_of_id = l.id AND c.source = l.source
+                                               AND c.first_seen_at - l.first_seen_at >= interval '3 days')) AS posted_again
+          FROM listings l WHERE NOT l.is_delisted AND l.duplicate_of_id IS NULL AND l.deal_type = 'rent';
+          \echo '== live ads whose site date is 3+ days after we first saw them, by source'
+          SELECT split_part(source, '_', 1) AS site, count(*) AS n, count(*) FILTER (WHERE posted_at IS NOT NULL) AS with_date,
+                 count(*) FILTER (WHERE posted_at > first_seen_at + interval '3 days') AS date_moved
+          FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL GROUP BY 1 ORDER BY 2 DESC;
+          SQL
+          kubectl cp /tmp/q.sql "todira/$PG:/tmp/q.sql"
+          kubectl exec -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/q.sql'
