@@ -1,0 +1,44 @@
+name: Diagnose — the 27.10 features working live (read-only)
+
+# 2026-10-28: after "posted again" (#936), the many-matches question (#937) and the filter live count (#935) went live.
+# Counts and log lines only, no listing or user details.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Counts
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== listings marked posted again, by Israel day first seen'
+          SELECT (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, deal_type, count(*)
+          FROM listings WHERE reposted_from_at IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== filters using "show also without rooms / size"'
+          SELECT count(*) FILTER (WHERE include_missing_details) AS using_it, count(*) AS filters FROM filters;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
+      - name: Last scraper run summary and errors
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true)
+          echo "pod: $POD"
+          [ -n "$POD" ] && kubectl logs -n todira "$POD" --tail=400 | grep -E "reposts_marked|posted again|Traceback|ERROR" | tail -20 || true
+      - name: Bot and website errors since the deploy
+        run: |
+          for app in todira-bot todira-website; do
+            echo "== $app"
+            kubectl logs -n todira -l app=$app --since=14h --tail=3000 | grep -E "Traceback|ERROR|many_matches|filter-preview\" 5" | tail -15 || true
+          done
