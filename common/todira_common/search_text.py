@@ -284,6 +284,15 @@ def _amount(raw: str, suffix: str) -> float | None:
 _AMOUNT = r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(מיליון|מליון|אלף|k\b|m\b)?"
 
 
+def parse_amount(text: str) -> float | None:
+    """A whole message that is one amount: "4500", "4,500", "8 אלף", "8k", "5000 ש\"ח", "₪5000", "1.2 מיליון".
+    2026-10-29 (bot review): the bot's number prompts accepted only bare digits."""
+    t = text.strip().replace("₪", " ").strip()
+    t = re.sub(r"\s*(?:ש[\"״'׳]?ח|שקלים|שקל|nis|ils)\.?$", "", t, flags=re.IGNORECASE).strip()
+    m = re.fullmatch(_AMOUNT, t, re.IGNORECASE)
+    return _amount(m.group(1), m.group(2) or "") if m else None
+
+
 def _prices(text: str) -> tuple[float | None, float | None]:
     t = text.replace("–", "-")
     m = re.search(rf"(?:בין|מ-?|from)\s*{_AMOUNT}\s*(?:ל-?|עד|and|to|-)\s*{_AMOUNT}", t, re.IGNORECASE)

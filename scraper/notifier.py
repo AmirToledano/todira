@@ -427,6 +427,10 @@ async def run_notifications(
             matched_count += m
             new_sent_count += s
         for listing, old_price in price_change_events:
+            # 2026-10-29 (bot review): an ad linked as a copy of another (duplicate_of_id) is never its own listing - its
+            # price change used to send the same flat again as a "new" match, even to users who had hidden it.
+            if getattr(listing, "duplicate_of_id", None) is not None:
+                continue
             # a price change can also newly qualify filters that were previously priced out
             m, s, newly_notified = await _notify_new_matches(
                 bot,

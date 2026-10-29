@@ -178,6 +178,17 @@ def _category_view(draft: dict, category: str, lang: str):
     return kb.render_root_summary(draft, lang), kb.root_keyboard(lang)
 
 
+async def _edit_unless_same(query, text: str, **kwargs) -> None:
+    """edit_message_text, but a double tap that would leave the message exactly as it is (Telegram: "message is not
+    modified") is no error - see _show_category's comment. 2026-10-29 (bot review): the number picker and the
+    save-validation message did not have this yet."""
+    try:
+        await query.edit_message_text(text, **kwargs)
+    except BadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+
+
 async def _show_category(
     query, context: ContextTypes.DEFAULT_TYPE, draft: dict, category: str, lang: str
 ) -> int:
@@ -264,7 +275,7 @@ async def _show_numeric_picker(query, draft: dict, field: str, lang: str) -> int
     field_label = bot_text(_NUMERIC_PICKER_LABEL_KEYS[field], lang)
     title = f"{category_title} — {field_label}"
     markup = kb.numeric_preset_keyboard(field, draft[field], FIELD_TO_CATEGORY[field], lang)
-    await query.edit_message_text(title, reply_markup=markup, parse_mode=ParseMode.HTML)
+    await _edit_unless_same(query, title, reply_markup=markup, parse_mode=ParseMode.HTML)
     return MENU
 
 
@@ -316,7 +327,12 @@ def _parse_optional_int(raw: str) -> tuple[bool, int | None]:
     try:
         value = int(raw)
     except ValueError:
-        return False, None
+        # "5000 ש\"ח", "4,500", "8 אלף" (2026-10-29, bot review: these were refused, and the longer ones even went to
+        # the owner as support messages)
+        amount = search_text.parse_amount(raw)
+        if amount is None or amount != int(amount):
+            return False, None
+        value = int(amount)
     if not (-_POSTGRES_INTEGER_MAX - 1 <= value <= _POSTGRES_INTEGER_MAX):
         return False, None
     return True, value
@@ -510,9 +526,7 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
             warning=warning,
             summary=kb.render_root_summary(draft, lang),
         )
-        await query.edit_message_text(
-            text, reply_markup=kb.root_keyboard(lang), parse_mode=ParseMode.HTML
-        )
+        await _edit_unless_same(query, text, reply_markup=kb.root_keyboard(lang), parse_mode=ParseMode.HTML)
         return MENU
 
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB

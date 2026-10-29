@@ -10,6 +10,7 @@ import asyncio
 
 from sqlalchemy import select
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
 from todira_common.bot_strings import bot_text
@@ -76,7 +77,11 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         if key in context.user_data:
             context.user_data[key] = code
     await query.answer()
-    await query.edit_message_text(bot_text("language.changed", code), reply_markup=language_keyboard(code))
+    try:
+        await query.edit_message_text(bot_text("language.changed", code), reply_markup=language_keyboard(code))
+    except BadRequest as exc:  # 2026-10-29: tapping the language already chosen leaves the message as it is
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 def build_language_handlers() -> list:

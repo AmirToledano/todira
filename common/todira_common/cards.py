@@ -11,6 +11,8 @@ import io
 import logging
 import os
 import re
+import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote, urlencode
@@ -549,6 +551,13 @@ def format_caption(
     return _with_width_pad_if_short(_fit_to_limit(header, body, footer, CAPTION_LIMIT), CAPTION_LIMIT)
 
 
+# 2026-10-29 (bot review): one listing matching N users was downloaded and turned into a collage N times (up to 4
+# photo downloads each). The finished picture is kept for a few minutes per listing's photo list and reused.
+_PHOTO_CACHE: "OrderedDict[tuple, tuple[float, bytes]]" = OrderedDict()
+_PHOTO_CACHE_MAX = 32
+_PHOTO_CACHE_SECONDS = 15 * 60
+
+
 async def send_listing_card(
     bot: Bot, chat_id: int, listing: Listing, caption: str, lang: str = DEFAULT_LANG
 ) -> bool:
@@ -583,7 +592,11 @@ async def send_listing_card(
 
     async def _do_send() -> None:
         photo: str | bytes | None = None
-        if image_url is not None:
+        cache_key = tuple(listing.image_urls or ())
+        cached = _PHOTO_CACHE.get(cache_key)
+        if cached is not None and time.monotonic() - cached[0] < _PHOTO_CACHE_SECONDS:
+            photo = cached[1]
+        elif image_url is not None:
             # asyncio.to_thread for both — real network downloads + CPU-bound resizing/encoding;
             # see _build_collage_sync's own docstring for why this must never run directly on the
             # event loop.
@@ -597,6 +610,11 @@ async def send_listing_card(
                 photo = await asyncio.to_thread(
                     _first_downloadable_photo_jpeg_bytes, listing.image_urls
                 )
+            if photo is not None:
+                _PHOTO_CACHE[cache_key] = (time.monotonic(), photo)
+                _PHOTO_CACHE.move_to_end(cache_key)
+                while len(_PHOTO_CACHE) > _PHOTO_CACHE_MAX:
+                    _PHOTO_CACHE.popitem(last=False)
         if photo is None:
             banner_text = bot_text("card.no_photos_banner", lang).rstrip("\n")
             banner = f"\n\n{banner_text}"
