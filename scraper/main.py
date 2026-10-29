@@ -19,14 +19,14 @@ import types
 from collections import Counter
 from typing import Callable
 
-from sqlalchemy import Text, all_, any_, bindparam, case, func, select
+from sqlalchemy import Text, all_, any_, bindparam, case, func, select, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dedup import find_duplicate_listing, link_missed_duplicates, link_same_site_reposts, mark_reposts, promote_live_duplicates
 from todira_common import text_features, yad2_detail
 from todira_common.cities import LOCALITY_SET, canonicalize_city
-from todira_common.db import get_session
+from todira_common.db import get_engine, get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common import app_flags
 from todira_common.owner_alert import alert_owner
@@ -789,6 +789,12 @@ async def _backfill_missing_yad2_descriptions(session) -> int:
     table = Listing.__table__
     max_per_run = _bright_data_backfill_max_per_run()
     if max_per_run <= 0:
+        return 0
+    # 2026-10-29 (owner: "is this still relevant?"): measured live, new Yad2 ads get their details when first seen (7 of
+    # the last day's are missing them); what is left is ~4,000 old sale ads. Runs are past their budget by this point, so
+    # the step only spent its query time and backfilled nothing - it is skipped then, before the query.
+    if _run_time_left() <= 0:
+        logger.info("Yad2 details backfill: skipped, the run is past its time budget")
         return 0
     # Active, visible Yad2 listings whose details were never read. Rentals before sales, newest first: an ad that was
     # posted recently is the one most likely to still be there when somebody opens it.
@@ -3098,7 +3104,41 @@ def run_once() -> dict[str, int]:
     return summary
 
 
+# 2026-10-29 (owner approved, after the node ran out of memory at 16:29): the main run took 32 minutes and was still
+# going when the Facebook run started at :24 - two scrapers at once on the 2 GB node. One database lock is shared by
+# every scraper job, so they never run together: the main run waits for a Facebook run to finish (it then runs anyway
+# after SCRAPER_LOCK_WAIT_SECONDS), and the Facebook run, with SCRAPER_SKIP_IF_BUSY, gives up its turn instead.
+_RUN_LOCK_KEY = 742_100_291
+_RUN_LOCK_WAIT_ENV_VAR = "SCRAPER_LOCK_WAIT_SECONDS"
+_RUN_LOCK_SKIP_ENV_VAR = "SCRAPER_SKIP_IF_BUSY"
+_DEFAULT_RUN_LOCK_WAIT_SECONDS = 600
+_RUN_LOCK_POLL_SECONDS = 10
+
+
+def _take_run_lock():
+    """(connection, got_it). The lock lives as long as the connection - held open for the whole run, gone when the
+    process ends."""
+    try:
+        wait = max(0.0, float(os.environ.get(_RUN_LOCK_WAIT_ENV_VAR, "") or _DEFAULT_RUN_LOCK_WAIT_SECONDS))
+    except ValueError:
+        wait = _DEFAULT_RUN_LOCK_WAIT_SECONDS
+    connection = get_engine().connect()
+    deadline = time.monotonic() + wait
+    while True:
+        got_it = bool(connection.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": _RUN_LOCK_KEY}).scalar())
+        connection.commit()  # the lock belongs to the connection; no transaction is left open while the run goes on
+        if got_it or time.monotonic() >= deadline:
+            return connection, got_it
+        time.sleep(_RUN_LOCK_POLL_SECONDS)
+
+
 if __name__ == "__main__":
+    lock_connection, have_lock = _take_run_lock()
+    if not have_lock:
+        if os.environ.get(_RUN_LOCK_SKIP_ENV_VAR, "").strip().lower() in ("1", "true", "yes"):
+            logger.info("Another scraper run is still going - this run gives up its turn")
+            sys.exit(0)
+        logger.warning("Another scraper run held the lock for too long - running anyway")
     try:
         run_summary = run_once()
     except Exception:

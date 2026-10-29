@@ -44,7 +44,9 @@ spec:
       # the main scraper's run, and the node swapped until the website failed its health checks and restarted. A run
       # still going after 20 minutes is stopped. 2026-10-29 (code review): 20 minutes from :24 ran well into the :30 main run;
       # measured today a run takes about 7.5 minutes (:24 to :31:30), so a run still going after 11 minutes is stopped.
-      activeDeadlineSeconds: 660
+      # Later the same day the run also waits up to 3 minutes for a main run to finish (SCRAPER_LOCK_WAIT_SECONDS below):
+      # 3 + 7.5 + a margin = 14 minutes.
+      activeDeadlineSeconds: 840
       template:
         metadata:
           labels:
@@ -60,6 +62,12 @@ spec:
               image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
               {{- end }}
               env:
+                # 2026-10-29 (owner approved): never alongside the main scraper - wait up to 3 minutes for it to finish,
+                # otherwise skip this hour's run (scraper/main.py _take_run_lock).
+                - name: SCRAPER_SKIP_IF_BUSY
+                  value: "true"
+                - name: SCRAPER_LOCK_WAIT_SECONDS
+                  value: "180"
                 # 2026-10-14: at most two glibc malloc arenas, so a multi-threaded Python process keeps less freed memory
                 # to itself on the 2 GB server (the default allows 8 per CPU).
                 - name: MALLOC_ARENA_MAX
