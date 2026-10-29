@@ -94,6 +94,7 @@ async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # already in-memory on every update anyway.
     context.user_data["onboarding_lang"] = lang
     context.user_data["onboarding"] = dict(_EMPTY_STATE)
+    context.user_data.pop("onboarding_asked", None)  # 2026-10-29: a "which city?" from an abandoned start is no longer asked
     await update.message.reply_text(bot_text("onboarding.intro_prompt", lang))
     return AWAIT_FREETEXT
 
@@ -116,10 +117,13 @@ async def _cancel_for_other_command(update: Update, context: ContextTypes.DEFAUL
     A ConversationHandler can only let ONE handler (in one registration group) actually process a
     given update, so this can't also transparently start /filter's own conversation in the SAME
     update — instead it cleanly ends onboarding's own state and asks the user to resend the
-    command they meant, so IT correctly starts fresh, un-hijacked, from the very next message."""
-    lang = context.user_data.get("onboarding_lang", DEFAULT_LANG)
+    command they meant, so IT correctly starts fresh, un-hijacked, from the very next message.
+
+    2026-10-29: the command now runs by itself - this update is handed to the other handlers once onboarding has
+    ended (the same as handlers/support.py's _pass_on), instead of asking the user to send it again."""
     context.user_data.pop("onboarding", None)
-    await update.message.reply_text(bot_text("onboarding.cancelled_for_other_command", lang))
+    context.user_data.pop("onboarding_asked", None)
+    context.application.create_task(context.application.process_update(update))
     return ConversationHandler.END
 
 
@@ -137,8 +141,7 @@ def _save_filter_sync(tg_user, state: dict) -> dict:
         # are saved as that switch (search_text "fields"), the same as /filter's buttons set them.
         feature_fields = dict(state.get("fields") or {})
         keywords = state["keywords"]
-        filter_row = Filter(
-            user_id=user.id,
+        values = dict(
             deal_type=state["deal_type"],
             cities=state["cities"],
             rooms_min=state["rooms_min"],
@@ -148,7 +151,15 @@ def _save_filter_sync(tg_user, state: dict) -> dict:
             keywords=keywords,
             **feature_fields,
         )
-        session.add(filter_row)
+        # 2026-10-29 (bot review): a search saved meanwhile on the website (onboarding waits with no time limit) made the
+        # INSERT fail on every message - one filter per user. The onboarding answer then updates that search.
+        filter_row = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        if filter_row is None:
+            filter_row = Filter(user_id=user.id, **values)
+            session.add(filter_row)
+        else:
+            for name, value in values.items():
+                setattr(filter_row, name, value)
         session.commit()
         # 2026-09-15: no longer sends the matching listings themselves as Telegram cards here (see
         # _handle_freetext's own comment) — only need the count now. find_new_matches_to_show is
@@ -362,6 +373,7 @@ async def _finish(update, context, state: dict, lang: str) -> int:
                 format_caption(
                     listing, has_access=saved["access"] == "full", upgrade_url=upgrade_url, lang=lang,
                     access_state=saved["access"],
+                    view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(update.effective_user.id)}&listing={listing.id}",
                 ),
                 lang,
             )

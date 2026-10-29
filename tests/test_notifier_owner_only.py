@@ -139,3 +139,36 @@ def test_run_notifications_threads_only_telegram_user_id_through(monkeypatch):
         )
 
     assert calls == [("new", "555")]
+
+
+def test_a_price_change_on_a_copy_of_another_ad_alerts_nobody(monkeypatch):
+    """2026-10-29 (bot review): a duplicate row's price change sent the same flat again as a "new" match."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    copy = SimpleNamespace(id=11, price=4800, duplicate_of_id=10)
+    calls = []
+
+    async def _fake_new(*args, **kwargs):
+        calls.append("new")
+        return 0, 0, set()
+
+    async def _fake_price(*args, **kwargs):
+        calls.append("price")
+        return 0
+
+    class _FakeBot:
+        def __init__(self, token):
+            pass
+
+        async def __aenter__(self):
+            return SimpleNamespace()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    with (
+        patch.object(notifier, "_notify_new_matches", _fake_new),
+        patch.object(notifier, "_notify_price_change", _fake_price),
+        patch.object(notifier, "Bot", _FakeBot),
+    ):
+        asyncio.run(notifier.run_notifications(SimpleNamespace(), [], [(copy, 5000)]))
+    assert calls == []

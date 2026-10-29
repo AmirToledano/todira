@@ -73,7 +73,8 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(bot_text("liked.no_liked_yet", lang))
         return
 
-    upgrade_url = f"{WEBSITE_URL}/upgrade?{signed_login_query(update.effective_user.id)}"
+    login = signed_login_query(update.effective_user.id)
+    upgrade_url = f"{WEBSITE_URL}/upgrade?{login}"
     for listing in results:
         await send_listing_card(
             context.bot,
@@ -83,6 +84,9 @@ async def liked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 listing,
                 has_access=state == ACCESS_FULL,
                 upgrade_url=upgrade_url,
+                # 2026-10-29 (bot review): the card's link opens our own listing page, like an alert's - without it
+                # the link went straight to the original ad
+                view_url=f"{WEBSITE_URL}/apartments?{login}&listing={listing.id}",
                 lang=lang,
                 access_state=state,
             ),
@@ -104,7 +108,8 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(bot_text("liked.no_hidden", lang))
         return
 
-    upgrade_url = f"{WEBSITE_URL}/upgrade?{signed_login_query(update.effective_user.id)}"
+    login = signed_login_query(update.effective_user.id)
+    upgrade_url = f"{WEBSITE_URL}/upgrade?{login}"
     for listing in results:
         await send_listing_card(
             context.bot,
@@ -114,6 +119,9 @@ async def hidden(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 listing,
                 has_access=state == ACCESS_FULL,
                 upgrade_url=upgrade_url,
+                # 2026-10-29 (bot review): the card's link opens our own listing page, like an alert's - without it
+                # the link went straight to the original ad
+                view_url=f"{WEBSITE_URL}/apartments?{login}&listing={listing.id}",
                 lang=lang,
                 access_state=state,
             ),

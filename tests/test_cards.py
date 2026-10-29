@@ -1043,3 +1043,19 @@ def test_posted_again_line_only_for_a_reposted_flat():
     reposted = format_caption(make_listing(reposted_from_at=dt.datetime(2026, 10, 15, tzinfo=dt.timezone.utc)), has_access=True)
     assert "פורסם שוב" not in plain
     assert reposted.startswith("🔁 פורסם שוב")
+
+
+def test_one_listing_sent_to_two_users_builds_its_picture_once():
+    """2026-10-29: the collage was downloaded and built again for every user the listing went to."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from todira_common import cards
+
+    listing = make_listing(image_urls=["https://x/1.jpg", "https://x/2.jpg"])
+    bot = SimpleNamespace(send_photo=AsyncMock())
+    with patch.object(cards, "_build_collage_sync", return_value=b"jpeg") as build:
+        asyncio.run(cards.send_listing_card(bot, 1, listing, "c"))
+        asyncio.run(cards.send_listing_card(bot, 2, listing, "c"))
+    assert build.call_count == 1
+    assert bot.send_photo.await_count == 2

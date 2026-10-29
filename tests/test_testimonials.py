@@ -26,7 +26,7 @@ def test_message_is_not_taken_unless_a_testimonial_was_asked_for():
 
 
 def test_testimonial_is_saved_and_thanked_once():
-    context = SimpleNamespace(user_data={testimonial.AWAITING_KEY: True}, bot=SimpleNamespace(send_message=AsyncMock()))
+    context = SimpleNamespace(user_data={testimonial.AWAITING_KEY: __import__('time').time()}, bot=SimpleNamespace(send_message=AsyncMock()))
     update = _update()
     saved = []
     with (
@@ -75,3 +75,13 @@ def test_testimonials_module_imports_without_the_telegram_library():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                             env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
     assert result.stdout.strip() == "ok", result.stderr
+
+
+def test_a_message_long_after_the_question_is_not_a_testimonial():
+    """2026-10-29: the wait used to never run out - a search typed a week later was saved as a testimonial."""
+    import time
+
+    context = SimpleNamespace(user_data={testimonial.AWAITING_KEY: time.time() - testimonial.AWAITING_SECONDS - 60})
+    update = SimpleNamespace(effective_user=SimpleNamespace(id=1, first_name="x"), message=SimpleNamespace(text="3 חדרים"))
+    assert asyncio.run(testimonial.take_testimonial(update, context)) is False
+    assert testimonial.AWAITING_KEY not in context.user_data

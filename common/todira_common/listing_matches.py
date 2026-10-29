@@ -155,7 +155,7 @@ def find_new_matches_to_show(
     current match count, not bounded by anything — see find_matching_listings' own 2026-09-15
     comment on why that matters here specifically.
 
-    Records each newly-shown listing as a SentNotification (reason=NEW) — the SAME bookkeeping
+    Records each newly-shown listing as a SentNotification (reason=NEW, in bulk - see _record_sent) — the SAME bookkeeping
     the scraper's own notifier uses (scraper/notifier.py) — so a listing shown here is never
     repeated, whether the same user re-saves/tweaks their filter and gets shown matches again, or
     a later scrape run would otherwise push it as a "new match". Found live 2026-09-02: saving a
@@ -178,11 +178,24 @@ def find_new_matches_to_show(
         m for m in matches
         if m.id not in already_shown_ids and (since is None or m.first_seen_at >= since)
     ]
-    for listing in new_to_show:
-        session.add(
-            SentNotification(user_id=user_id, listing_id=listing.id, reason=NotificationReason.NEW)
-        )
+    # 2026-10-29 (bot review): one ORM object per row meant tens of thousands of them in the bot's memory for a broad
+    # search (the same risk as 2026-10-24's out-of-memory); a few bulk INSERTs instead.
+    _record_sent(session, user_id, [listing.id for listing in new_to_show])
     return len(matches), new_to_show
+
+
+_SENT_INSERT_CHUNK = 5000  # 3 parameters a row, 65,535 at most in one statement
+
+
+def _record_sent(session: Session, user_id: int, listing_ids: list[int]) -> None:
+    """Records the listings as sent to the user (reason NEW), skipping any already recorded. Does not commit."""
+    for start in range(0, len(listing_ids), _SENT_INSERT_CHUNK):
+        session.execute(
+            pg_insert(SentNotification)
+            .values([{"user_id": user_id, "listing_id": listing_id, "reason": NotificationReason.NEW}
+                     for listing_id in listing_ids[start:start + _SENT_INSERT_CHUNK]])
+            .on_conflict_do_nothing(constraint="uq_sent_notifications_user_listing_reason")
+        )
 
 
 # How far back the scraper's retry pass looks for listings nobody was told about (scraper/main.py
@@ -200,12 +213,6 @@ def mark_recent_matches_seen(session: Session, user_id: int, filter_row: Filter)
     since = dt.datetime.now(dt.timezone.utc) - RECENT_MATCH_WINDOW
     ids = [row.id for row in matching_listing_rows(session, filter_row, hidden_listing_ids(session, user_id))
            if row.first_seen_at is not None and row.first_seen_at >= since]
-    for start in range(0, len(ids), 5000):  # a week of an open filter is tens of thousands; 3 parameters a row, 65,535 max
-        session.execute(
-            pg_insert(SentNotification)
-            .values([{"user_id": user_id, "listing_id": listing_id, "reason": NotificationReason.NEW}
-                     for listing_id in ids[start:start + 5000]])
-            .on_conflict_do_nothing(constraint="uq_sent_notifications_user_listing_reason")
-        )
+    _record_sent(session, user_id, ids)  # a week of an open filter is tens of thousands
     session.commit()
     return len(ids)

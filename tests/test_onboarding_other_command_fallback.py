@@ -32,13 +32,19 @@ def _make_update():
 
 def test_other_command_ends_onboarding_and_clears_dangling_state():
     update = _make_update()
-    context = SimpleNamespace(user_data={"onboarding": dict(onboarding._EMPTY_STATE)})
+    passed_on = []
+    application = SimpleNamespace(process_update=lambda u: ("process", u), create_task=passed_on.append)
+    context = SimpleNamespace(
+        user_data={"onboarding": dict(onboarding._EMPTY_STATE), "onboarding_asked": "city"}, application=application
+    )
 
     result = asyncio.run(onboarding._cancel_for_other_command(update, context))
 
     assert result == onboarding.ConversationHandler.END
-    assert "onboarding" not in context.user_data
-    update.message.reply_text.assert_awaited_once()
+    assert "onboarding" not in context.user_data and "onboarding_asked" not in context.user_data
+    # 2026-10-29: the command is handed on and runs by itself - no "please send it again"
+    assert passed_on == [("process", update)]
+    update.message.reply_text.assert_not_awaited()
 
 
 def test_other_command_fallback_is_registered_for_every_real_bot_command():

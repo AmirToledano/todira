@@ -33,8 +33,13 @@ class _FakeSession:
     def scalars(self, stmt):
         return self._already_shown_ids
 
-    def add(self, obj):
-        self.added.append(obj)
+    def execute(self, stmt):
+        # 2026-10-29: recorded with bulk INSERTs - read the rows back out of each statement
+        params = stmt.compile().params
+        for n in range(len(params) // 3):
+            self.added.append(SimpleNamespace(
+                user_id=params[f"user_id_m{n}"], listing_id=params[f"listing_id_m{n}"], reason=params[f"reason_m{n}"]
+            ))
 
 
 def _listing(listing_id):

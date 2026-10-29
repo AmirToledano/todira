@@ -117,3 +117,13 @@ def _no_activity_counting(monkeypatch):
     from todira_common import activity
 
     monkeypatch.setattr(activity, "record", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_card_photo_cache():
+    """2026-10-29: send_listing_card keeps finished pictures for a few minutes; every test starts without them."""
+    from todira_common import cards
+
+    cards._PHOTO_CACHE.clear()
+    yield
+    cards._PHOTO_CACHE.clear()

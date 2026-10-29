@@ -6,6 +6,7 @@ import asyncio
 import datetime as dt
 import html
 import logging
+import time
 
 from telegram import Bot, Update
 from telegram.constants import ParseMode
@@ -23,6 +24,9 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 AWAITING_KEY = "awaiting_testimonial"
+# 2026-10-29 (bot review): the wait is saved with the user's data and never ran out, so a search message typed days
+# later was taken as a testimonial and sent to the owner. Only an answer within this time counts.
+AWAITING_SECONDS = 6 * 60 * 60
 
 
 def _user_lang_sync(telegram_user_id: int) -> str:
@@ -54,7 +58,7 @@ async def ask_found(bot: Bot, chat_id: int, user_id: int, lang: str) -> None:
 
 
 async def ask_for_testimonial(bot: Bot, chat_id: int, context: ContextTypes.DEFAULT_TYPE, lang: str) -> None:
-    context.user_data[AWAITING_KEY] = True
+    context.user_data[AWAITING_KEY] = time.time()
     await bot.send_message(chat_id=chat_id, text=bot_text("found_ask.yes_reply", lang))
 
 
@@ -83,7 +87,9 @@ def _save_sync(name: str | None, telegram_user_id: int, message: str) -> int:
 async def take_testimonial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """When the user was just asked for a testimonial, saves this message as one, tells the owner and thanks the user.
     Returns whether the message was taken (the caller then does nothing else with it)."""
-    if not context.user_data.pop(AWAITING_KEY, False):
+    asked_at = context.user_data.pop(AWAITING_KEY, None)
+    # an older saved value is True (== 1, the epoch), so it has run out too
+    if not asked_at or time.time() - float(asked_at) > AWAITING_SECONDS:
         return False
     user = update.effective_user
     text = update.message.text or ""
