@@ -1,0 +1,48 @@
+name: Diagnose — are the scraper's catch-up steps still needed (read-only)
+
+# 2026-10-29 (owner: "is this still relevant, why work blind?"): the text-features step took 230 s of a run. How many listings
+# it still has to read, how many it read lately, and how many old Yad2 ads still lack a description. Counts only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  counts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Counts
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== live ads with a description not yet read for features, by site'
+          SELECT split_part(source, '_', 1) AS site, count(*) FROM listings
+          WHERE NOT is_delisted AND duplicate_of_id IS NULL AND description IS NOT NULL AND text_parsed_at IS NULL GROUP BY 1 ORDER BY 2 DESC;
+          \echo '== read for features per hour (last 6 hours), by site'
+          SELECT date_trunc('hour', text_parsed_at AT TIME ZONE 'Asia/Jerusalem') AS hour, split_part(source, '_', 1) AS site, count(*)
+          FROM listings WHERE text_parsed_at > now() - interval '6 hours' GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== of those read in the last 6 hours: first seen when'
+          SELECT CASE WHEN first_seen_at > now() - interval '1 day' THEN 'a: new (1 day)' WHEN first_seen_at > now() - interval '7 days' THEN 'b: this week'
+                      ELSE 'c: older' END AS age, count(*)
+          FROM listings WHERE text_parsed_at > now() - interval '6 hours' GROUP BY 1 ORDER BY 1;
+          \echo '== live Yad2 ads without a description, by age'
+          SELECT CASE WHEN first_seen_at > now() - interval '1 day' THEN 'a: 1 day' WHEN first_seen_at > now() - interval '7 days' THEN 'b: week'
+                      ELSE 'c: older' END AS age, deal_type, count(*)
+          FROM listings WHERE source = 'yad2' AND NOT is_delisted AND duplicate_of_id IS NULL AND description IS NULL GROUP BY 1, 2 ORDER BY 1, 2;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
+      - name: Last main scraper run summary line
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}'); do
+            echo "== $POD"
+            kubectl logs -n todira "$POD" --tail=60 2>/dev/null | grep -E "step timing|Scraper run summary" | sed -E 's/"[a-z_]*email[^,]*,//g' | tail -14 || true
+          done
