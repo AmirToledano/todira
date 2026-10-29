@@ -1,5 +1,89 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-10-29 — where things stand (read this first)
+
+### What is live
+- **Bot:**
+  - Onboarding from free text or a voice message. It works without the AI: plain rules first, Gemini only as a helper.
+  - At the end of onboarding: 3 real sample matches, "about N new a day", and an unmute reminder.
+  - One narrowing question (balcony, parking or elevator) when a search brings more than 30 new flats a day.
+  - Commands: /filter, /apartments (opens the site inside Telegram as a Mini App), /liked, /hidden, /profile, /support.
+  - /support sends the user's next message to the owner's inbox group.
+- **Cards (bot and site):**
+  - "🔥 N% below the area price" when the price is at least 20% under the area.
+  - "🔁 posted again" when the same flat was in an earlier ad of the same site that was taken down. Marked by
+    `scraper/dedup.mark_reposts`, about 40 to 50 rentals a day.
+  - "Also posted on" across sites.
+- **Site:**
+  - Home page: Todi, a live map, and a demo chat.
+  - /apartments: sort, a report button, and a rich listing view with area price, price history and a timeline.
+  - /filter: a live match count, a price chart, and "show also without rooms / size" (`filters.include_missing_details`).
+  - Other pages: /calculator (rent medians from our own listings), a site assistant on every page, and /admin
+    (a dashboard with switches, users with pause, and messages).
+- **Data:**
+  - Yad2, Komo, Homeless and Facebook groups.
+  - Main scraper every 30 minutes, 09:00 to 22:30. Facebook at :24, 08:00 to 22:00.
+  - A listing is deleted a month after first seen, once it is no longer published.
+- **Payments:**
+  - Takbull hosted page, one-time passes of ₪19.90, ₪29.90 and ₪49.90 (7, 14 and 30 days).
+  - 10-day free trial.
+  - UPAY submitted the "internet customer" request to the card company on 26.10. Approval takes up to 5 business days.
+  - Bit and Apple Pay do not show on the payment page yet. Check again after that approval.
+- **Ops:**
+  - Single t3.small node.
+  - Nightly backup to S3, plus a Google Drive copy (waiting for the owner's keys).
+  - Hourly external watchdog.
+  - Morning summary in the owner's inbox group.
+
+### Code review of the whole project, 2026-10-29 (owner asked); every finding fixed with tests
+- **`/tg` (Mini App):** the page's own check of `next` let "/\\evil.com" through. It now uses the same rule as
+  `_safe_next`.
+- **`/api/filter-preview`:**
+  - It kept full (id, price) lists in the shared /apartments cache, pushing those results out.
+  - It now keeps only prices, as a compact int array, in a cache of its own (32 entries).
+  - The form fields are an explicit list (`_FILTER_FORM_FIELDS`), shared with the save and covered by a test.
+- **/support:**
+  - Another command while it waited for a message was swallowed. Now that command runs.
+  - A message more than 15 minutes after /support goes to the normal handlers instead of becoming a ticket.
+- **Facebook scraper deadline:** 20 → 11 minutes. Runs measured at about 7.5 minutes, and 20 minutes ran into the :30
+  main run.
+- **Site assistant limit:** keyed on the network address only. The User-Agent let one script look like a new visitor
+  on every request.
+- **Dashboard sources and campaigns:** count people, like "visitors". Before, a person counted once per day over a
+  week.
+- **`mark_reposts`:** reads only recent live ads and removed ads in the same cities, instead of normalising every street
+  in the table on each run.
+- **Narrowing question:** not asked for a flexible search, where "only with a balcony" would change nothing.
+- **Voice handler:** moved to its own handler group (-1), with activity at -4 and the owner-inbox handlers at -3 and -2.
+  With the switch off, a recording now really reaches the other handlers.
+
+### Open, waiting on the owner or others
+- **Takbull and UPAY:**
+  - Card company approval (about 2.11).
+  - Then check Bit, Apple Pay and Google Pay.
+  - A ₪1 test payment.
+- **For the owner to check:**
+  - The home page after the "less AI-looking" pass (#932).
+  - The dashboard.
+  - The calculator.
+  - The narrowing question, once the first new user gets it.
+- **Drafts waiting for approval** (kept outside the repo): moving checklist, "what to check in a rental contract" page
+  (recommended instead of a downloadable contract), free posting for owners (two questions for the owner), and four
+  data posts with real numbers.
+- **Not started, on purpose:**
+  - Facebook groups at large scale: risk of blocking the account, so talk to the owner first.
+  - Several searches per user: recommended to drop, waiting for the owner.
+  - The WhatsApp rebuild and the Meta card.
+  - AWS Activate, invite a friend, ARM migration, testimonials form.
+- **Owner rules that still hold:**
+  - Nothing user-facing names listing sources.
+  - New bot texts are approved first.
+  - No "—" in user-facing text.
+  - Messages to users only in the morning.
+  - Merge between scraper runs.
+  - Never run `diagnose-takbull-payment-webhook.yaml`.
+
+
 ## ▶ 2026-10-15 (owner): site copy rewritten in the owner's own voice — revertable in one click
 - Hebrew site texts (home, apartments, cards, filter, contact, about, account, login, upgrade/payment) now speak to one
   person in the singular masculine ("אתה", no "/י" or plural "אתם"), short and casual, the way the owner talks. Legal

@@ -22,7 +22,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     from todira_common import switches
 
     if not await asyncio.to_thread(switches.is_on, "voice", True):
-        return  # switched off from the owner's dashboard: the recording goes on to the other handlers as before
+        return  # switched off from the owner's dashboard: the recording goes on to group 0's handlers as before
     message = update.message
     media = message.voice or message.audio
     lang = await asyncio.to_thread(_user_lang_sync, update.effective_user.id)
@@ -48,5 +48,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 def build_voice_handler() -> tuple[MessageHandler, int]:
-    """(handler, group): after the activity counter and the group guard, before every handler that reads text."""
-    return MessageHandler(filters.ChatType.PRIVATE & (filters.VOICE | filters.AUDIO), handle_voice), 0
+    """(handler, group): after the activity counter and the group guard, before every handler that reads text. A group
+    of its own (2026-10-29, code review): in group 0 a recording it let through with the switch off never reached the
+    other group-0 handlers - the user got no reply at all."""
+    return MessageHandler(filters.ChatType.PRIVATE & (filters.VOICE | filters.AUDIO), handle_voice), -1

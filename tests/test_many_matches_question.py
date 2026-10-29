@@ -47,3 +47,9 @@ def test_every_feature_has_its_question_and_buttons_in_every_language():
             assert "{n}" not in bot_text(f"many.q_{name}", lang, n=5)
             markup = question_markup(name, lang)
             assert [b.callback_data for row in markup.inline_keyboard for b in row] == [f"mm:{name}", "mm:no"]
+
+
+def test_no_question_for_a_flexible_search():
+    rows = _rows(63, has_balcony=True) + _rows(287, has_balcony=False)
+    flexible = SimpleNamespace(require_balcony=False, require_parking=False, require_elevator=False, flexible_match=True)
+    assert pick_question(rows, 7, flexible) is None

@@ -14,6 +14,7 @@ import asyncio
 import html
 import logging
 import os
+import time
 
 from todira_common import owner_inbox
 from todira_common.db import get_session
@@ -103,13 +104,29 @@ def _lang_sync(telegram_user_id: int) -> str:
     return _user_lang_sync(telegram_user_id)
 
 
+# 2026-10-29 (code review): the wait for the support message is saved across restarts, so a /support nobody followed up
+# turned the user's next search message - days later - into a support ticket. After this long it is no longer the answer.
+SUPPORT_WAIT_SECONDS = 15 * 60
+
+
+def _pass_on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Ends the support wait and hands this same update to the bot's other handlers once the wait is over."""
+    context.user_data.pop("support_at", None)
+    context.application.create_task(context.application.process_update(update))
+    return ConversationHandler.END
+
+
 async def support_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = await asyncio.to_thread(_lang_sync, update.effective_user.id)
+    context.user_data["support_at"] = time.time()
     await update.message.reply_text(bot_text("support.prompt", lang))
     return AWAIT_SUPPORT_TEXT
 
 
 async def support_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if time.time() - context.user_data.get("support_at", 0) > SUPPORT_WAIT_SECONDS:
+        return _pass_on(update, context)
+    context.user_data.pop("support_at", None)
     lang = await asyncio.to_thread(_lang_sync, update.effective_user.id)
     await escalate_to_owner(update, context, update.message.text or "")
     await update.message.reply_text(bot_text("support.sent", lang))
@@ -123,8 +140,9 @@ async def support_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def _support_other_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Another command while /support waits for text: drop the wait and let that command run normally next time."""
-    return ConversationHandler.END
+    """Another command while /support waits for text: drop the wait and run that command (2026-10-29: it used to be
+    swallowed - /start or /filter got no reply at all)."""
+    return _pass_on(update, context)
 
 
 def build_support_handler() -> ConversationHandler:

@@ -42,8 +42,9 @@ spec:
       backoffLimit: 0
       # 2026-10-24: a run takes about 6 minutes, but one hung for over an hour (its browser stuck at ~550 MiB), ran into
       # the main scraper's run, and the node swapped until the website failed its health checks and restarted. A run
-      # still going after 20 minutes is stopped.
-      activeDeadlineSeconds: 1200
+      # still going after 20 minutes is stopped. 2026-10-29 (code review): 20 minutes from :24 ran well into the :30 main run;
+      # measured today a run takes about 7.5 minutes (:24 to :31:30), so a run still going after 11 minutes is stopped.
+      activeDeadlineSeconds: 660
       template:
         metadata:
           labels:

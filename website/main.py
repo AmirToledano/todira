@@ -47,6 +47,7 @@ import re
 import secrets
 import threading
 import time
+from array import array
 from collections import OrderedDict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -275,14 +276,17 @@ def _is_person(request: Request) -> bool:
     return bool(user_agent) and not _NOT_A_PERSON.search(user_agent)
 
 
-def _visitor(request: Request) -> str:
-    """The person behind a request: "u<user id>" when signed in, else an anonymous key that changes every day."""
+def _visitor(request: Request, *, address_only: bool = False) -> str:
+    """The person behind a request: "u<user id>" when signed in, else an anonymous key that changes every day.
+    `address_only` (2026-10-29, code review): a key from the network address alone, for limits - a client can send any
+    User-Agent it likes, so a key that includes it let one script look like a new visitor on every request."""
     user_id = request.session.get("user_id")
     if user_id is not None:
         return f"u{user_id}"
     forwarded = request.headers.get("x-forwarded-for", "")
     address = forwarded.split(",")[0].strip() or (request.client.host if request.client else "")
-    return activity.visitor_key(address, request.headers.get("user-agent", ""), SESSION_SECRET_KEY, activity.today())
+    agent = "" if address_only else request.headers.get("user-agent", "")
+    return activity.visitor_key(address, agent, SESSION_SECRET_KEY, activity.today())
 
 
 def _activity_who(request: Request) -> str | None:
@@ -758,7 +762,8 @@ _TG_APP_PAGE = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="
 <script>
 (function () {
   var next = new URLSearchParams(location.search).get('next') || '/apartments';
-  if (next.charAt(0) !== '/' || next.charAt(1) === '/') { next = '/apartments'; }
+  // the same rule as _safe_next: a backslash or a control character is never a page of ours ("/\\evil" is "//evil")
+  if (next.charAt(0) !== '/' || next.charAt(1) === '/' || /[\\\x00-\x1f]/.test(next)) { next = '/apartments'; }
   var tg = window.Telegram && window.Telegram.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
   var body = new URLSearchParams({ init_data: tg ? tg.initData : '' });
@@ -1050,7 +1055,7 @@ async def assistant_reply(request: Request):
     t = make_translator(lang)
     if not turns:
         return JSONResponse({"error": "empty"}, status_code=400)
-    if not assistant.take_quota(_visitor(request)):
+    if not assistant.take_quota(_visitor(request, address_only=True)):
         return JSONResponse({"reply": t("assistant.limit")})
     loop = asyncio.get_running_loop()
     user_context = await loop.run_in_executor(None, _assistant_user_context, request)
@@ -3792,6 +3797,13 @@ def _ordered(low, high):
     return low, high
 
 
+# Every field of the site's filter form, by its Form parameter name (filter_update and filter_preview take the same ones).
+_FILTER_FORM_FIELDS = (
+    "cities", "all_cities", "price_min", "price_max", "rooms_min", "rooms_max", "property_types", "floor_min",
+    "floor_max", "ground_floor_only", "require_parking", "require_elevator", "require_balcony", "require_pets_allowed",
+    "require_renovated", "require_roommate_friendly", "require_has_photos", "no_brokers", "safe_room_pref",
+    "furniture_pref", "min_area_sqm", "keywords", "flexible_match", "include_missing_details",
+)
 _FILTER_FORM_CHECKS = (
     "ground_floor_only", "require_parking", "require_elevator", "require_balcony", "require_pets_allowed",
     "require_renovated", "require_roommate_friendly", "require_has_photos", "no_brokers", "flexible_match",
@@ -3873,6 +3885,7 @@ def filter_update(
     back short of an admin/DB edit. all_cities is a first-class way to reach cities=[] for real:
     when set, it always wins over whatever was also submitted in `cities` (checked or not — the
     front end keeps them mutually exclusive, but the server doesn't trust that alone)."""
+    form = {name: value for name, value in locals().items() if name in _FILTER_FORM_FIELDS}  # first, before any other local
     with get_session() as session:
         # session-first (like every other page), uid as the low-trust fallback for a
         # bot-deep-link visitor with no real login yet — 2026-09-05 fix: this used to require uid
@@ -3888,7 +3901,7 @@ def filter_update(
             error_url += ("&" if "?" in error_url else "?") + "welcome=1&error=cities"
             return RedirectResponse(error_url, status_code=303)
 
-        _apply_filter_form(user.filter, locals())
+        _apply_filter_form(user.filter, form)
         session.commit()
         _mark_matches_seen_in_background(user.id)
 
@@ -3906,6 +3919,9 @@ def filter_update(
 # 2026-10-27 (owner-approved, plan item 7): while the filter form is being changed, how many listings it would show and
 # how their prices spread - for the count by the save button and the small price chart. Nothing is saved.
 _PRICE_CHART_BARS = 24
+_PREVIEW_CACHE_MAX_ENTRIES = 32
+_preview_cache: "OrderedDict[tuple, tuple[float, int, array]]" = OrderedDict()
+_preview_lock = threading.Lock()
 
 
 def _price_chart(prices: list[int]) -> dict | None:
@@ -3954,7 +3970,7 @@ def filter_preview(
     flexible_match: str | None = Form(None),
     include_missing_details: str | None = Form(None),
 ):
-    form = dict(locals())
+    form = {name: value for name, value in locals().items() if name in _FILTER_FORM_FIELDS}
     with get_session() as session:
         user = _resolve_user(request, session, uid)
         if user is None or user.filter is None:
@@ -3964,12 +3980,28 @@ def filter_preview(
         low, high = draft.price_min, draft.price_max
         # the chart shows every price the rest of the filter allows; the count then applies the price range
         draft.price_min = draft.price_max = None
-        rows = _cached_match_ids(session, user.id, draft, _listing_action_ids(session, user.id, "hidden"))
-    count = sum(1 for _, price in rows if price is None or ((low is None or price >= low) and (high is None or price <= high)))
-    return JSONResponse(
-        {"count": count, "chart": _price_chart([price for _, price in rows if price is not None])},
-        headers={"Cache-Control": "no-store"},
-    )
+        hidden_ids = _listing_action_ids(session, user.id, "hidden")
+        key = (user.id, _filter_fingerprint(draft), frozenset(hidden_ids))
+        with _preview_lock:
+            hit = _preview_cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < _MATCH_IDS_TTL:
+            unpriced, prices = hit[1], hit[2]
+        else:
+            # Only the prices are kept (a compact int array), in a cache of their own: the preview runs on every form
+            # change, and keeping full (id, price) lists here pushed /apartments' own cached results out.
+            unpriced, prices = 0, array("i")
+            for row in matching_listing_rows(session, draft, hidden_ids):
+                if row.price is None:
+                    unpriced += 1
+                else:
+                    prices.append(row.price)
+            with _preview_lock:
+                _preview_cache[key] = (time.monotonic(), unpriced, prices)
+                _preview_cache.move_to_end(key)
+                while len(_preview_cache) > _PREVIEW_CACHE_MAX_ENTRIES:
+                    _preview_cache.popitem(last=False)
+    count = unpriced + sum(1 for price in prices if (low is None or price >= low) and (high is None or price <= high))
+    return JSONResponse({"count": count, "chart": _price_chart(list(prices))}, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/onboarding/notifications")
