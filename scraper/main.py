@@ -883,20 +883,22 @@ def _fill_missing_fields_from_descriptions(session) -> int:
     table = Listing.__table__
     columns = [table.c[name] for name in text_features.COLUMNS]
     filled = 0
-    remaining = max_per_run
-    # Batch by batch: every row read is marked read (text_parsed_at), so the next query picks up where this one stopped.
-    while remaining > 0:
-        batch_size = min(remaining, _TEXT_FEATURES_BATCH)
+    # 2026-10-29: measured live, "newest first, LIMIT 2000" let Postgres walk the whole first_seen_at index backwards
+    # (~190,000 rows, ~1 GB read, 40-70 s) to find a few dozen unread ads, even with the partial index
+    # ix_listings_text_unparsed in place - its row estimate is far off between ANALYZE runs. Without a LIMIT the only
+    # sensible plan is that small index: the unread ids come first (light), newest first in Python, then the batches.
+    unread = session.execute(
+        select(table.c.id, table.c.first_seen_at).where(
+            table.c.description.is_not(None),
+            table.c.text_parsed_at.is_(None),
+            table.c.is_delisted.is_(False),
+            table.c.duplicate_of_id.is_(None),
+        )
+    ).all()
+    ids = [row.id for row in sorted(unread, key=lambda row: row.first_seen_at, reverse=True)][:max_per_run]
+    for start in range(0, len(ids), _TEXT_FEATURES_BATCH):
         rows = session.execute(
-            select(table.c.id, table.c.description, *columns)
-            .where(
-                table.c.description.is_not(None),
-                table.c.text_parsed_at.is_(None),
-                table.c.is_delisted.is_(False),
-                table.c.duplicate_of_id.is_(None),
-            )
-            .order_by(table.c.first_seen_at.desc())
-            .limit(batch_size)
+            select(table.c.id, table.c.description, *columns).where(table.c.id.in_(ids[start:start + _TEXT_FEATURES_BATCH]))
         ).all()
         for row in rows:
             listing_like = types.SimpleNamespace(description=row.description, **{name: getattr(row, name) for name in text_features.COLUMNS})
@@ -906,9 +908,6 @@ def _fill_missing_fields_from_descriptions(session) -> int:
             )
             filled += len(updates)
         session.commit()
-        remaining -= len(rows)
-        if len(rows) < batch_size:
-            break
     return filled
 
 
