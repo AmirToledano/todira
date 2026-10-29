@@ -40,8 +40,12 @@ jobs:
           FROM listings WHERE source = 'yad2' AND NOT is_delisted AND duplicate_of_id IS NULL AND description IS NULL GROUP BY 1, 2 ORDER BY 1, 2;
           \echo '== how long the text-features step takes to find its rows (the same query, read-only)'
           EXPLAIN (ANALYZE, BUFFERS) SELECT id, description FROM listings
-          WHERE description IS NOT NULL AND text_parsed_at IS NULL AND NOT is_delisted AND duplicate_of_id IS NULL
+          WHERE description IS NOT NULL AND text_parsed_at IS NULL AND is_delisted IS false AND duplicate_of_id IS NULL
           ORDER BY first_seen_at DESC LIMIT 2000;
+          \echo '== the Facebook rooms/size query of the same step'
+          EXPLAIN (ANALYZE, BUFFERS) SELECT id, description, rooms, size_sqm FROM listings
+          WHERE source IN ('facebook_marketplace', 'facebook_groups') AND is_delisted IS false AND description IS NOT NULL
+            AND (rooms IS NULL OR size_sqm IS NULL);
           \echo '== indexes on listings'
           SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'listings' ORDER BY 1;
           SQL
