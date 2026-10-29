@@ -88,7 +88,7 @@ async def ignore_groups(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 def build_owner_inbox_handlers() -> list[tuple[object, int]]:
     """(handler, group) pairs: the upgrade follower runs first, then the group guard, before every other handler."""
     return [
-        (MessageHandler(filters.StatusUpdate.MIGRATE, on_group_upgraded), -2),
-        (TypeHandler(Update, ignore_groups), -1),
+        (MessageHandler(filters.StatusUpdate.MIGRATE, on_group_upgraded), -3),
+        (TypeHandler(Update, ignore_groups), -2),
         (ChatMemberHandler(on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER), 0),
     ]

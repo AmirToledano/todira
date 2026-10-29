@@ -61,3 +61,11 @@ def test_form_reader_sets_every_checkbox_and_swaps_reversed_ranges():
     assert (f.price_min, f.price_max) == (4000, 7000)
     assert f.include_missing_details is True and f.require_parking is False
     assert f.cities == [] and f.safe_room_pref == "any"
+
+
+def test_the_form_field_list_matches_both_routes():
+    import inspect
+
+    for route in (website_main.filter_update, website_main.filter_preview):
+        params = set(inspect.signature(route).parameters) - {"request", "uid", "welcome"}
+        assert params == set(website_main._FILTER_FORM_FIELDS), route.__name__

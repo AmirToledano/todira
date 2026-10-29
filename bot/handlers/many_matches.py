@@ -34,7 +34,8 @@ def pick_question(rows, days: int, filter_row) -> tuple[str, int] | None:
     """(feature, new apartments a day with it) to ask about, or None. `rows` are the search's matches first seen in the
     last `days` days."""
     per_day = len(rows) / days
-    if per_day <= MANY_PER_DAY:
+    # a flexible search lets one requirement fail, so "only with a balcony" would change nothing (2026-10-29)
+    if per_day <= MANY_PER_DAY or getattr(filter_row, "flexible_match", False):
         return None
     best = None
     for name, column, switch in FEATURES:

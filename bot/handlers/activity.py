@@ -30,4 +30,4 @@ async def count_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def build_activity_handler() -> tuple[TypeHandler, int]:
     """(handler, group): runs before every other handler and never stops the update from reaching them."""
-    return TypeHandler(Update, count_activity), -3
+    return TypeHandler(Update, count_activity), -4

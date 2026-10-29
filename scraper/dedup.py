@@ -299,21 +299,29 @@ def link_missed_duplicates(session) -> int:
 # 261 also carry the very same description text - those are linked here, the newer to the older. The rest are left
 # alone: without the same text they may be two identical flats in one new building.
 _SAME_SITE_REPOSTS_SQL = r"""
-WITH a AS (
-  SELECT id, source, deal_type, city, rooms, floor, price, size_sqm, first_seen_at, md5(trim(description)) AS text_hash,
+WITH n AS (
+  SELECT id, source, deal_type, city, rooms, floor, price, size_sqm, first_seen_at,
          lower(regexp_replace(regexp_replace(regexp_replace(trim(street), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g'), '\s+', ' ', 'g')) AS st
   FROM listings
-  WHERE NOT is_delisted AND duplicate_of_id IS NULL AND city IS NOT NULL AND rooms IS NOT NULL AND floor IS NOT NULL
-    AND price IS NOT NULL AND street ~ '[0-9]' AND length(trim(coalesce(description, ''))) >= 40
-), g AS (
-  SELECT id, price, size_sqm,
-         first_value(id) OVER w AS root_id, first_value(price) OVER w AS root_price, first_value(size_sqm) OVER w AS root_size
-  FROM a WINDOW w AS (PARTITION BY source, deal_type, city, rooms, floor, st, text_hash ORDER BY first_seen_at, id)
+  WHERE NOT is_delisted AND duplicate_of_id IS NULL AND reposted_from_at IS NULL
+    AND first_seen_at > now() - interval '3 days'
+    AND city IS NOT NULL AND rooms IS NOT NULL AND floor IS NOT NULL AND price IS NOT NULL AND street ~ '[0-9]'
+), o AS (
+  SELECT source, deal_type, city, rooms, floor, price, size_sqm, first_seen_at,
+         lower(regexp_replace(regexp_replace(regexp_replace(trim(street), '^(רחוב|רח[''׳]?)\s+', ''), '["''׳`]', '', 'g'), '\s+', ' ', 'g')) AS st
+  FROM listings
+  WHERE is_delisted AND city IN (SELECT city FROM n)
+    AND rooms IS NOT NULL AND floor IS NOT NULL AND price IS NOT NULL AND street ~ '[0-9]'
+), found AS (
+  SELECT n.id, min(o.first_seen_at) AS first_at
+  FROM n JOIN o ON o.source = n.source AND o.deal_type = n.deal_type AND o.city = n.city AND o.rooms = n.rooms
+       AND o.floor = n.floor AND o.st = n.st
+       AND o.first_seen_at < n.first_seen_at - interval '2 days'
+       AND abs(o.price - n.price) <= greatest(greatest(o.price, n.price) * 0.05, 150)
+       AND (o.size_sqm IS NULL OR n.size_sqm IS NULL OR abs(o.size_sqm - n.size_sqm) <= greatest(2, 0.05 * greatest(o.size_sqm, n.size_sqm)))
+  GROUP BY n.id
 )
-SELECT id, root_id FROM g
-WHERE id <> root_id
-  AND abs(price - root_price) <= greatest(greatest(price, root_price) * 0.05, 150)
-  AND (size_sqm IS NULL OR root_size IS NULL OR abs(size_sqm - root_size) <= greatest(2, 0.05 * greatest(size_sqm, root_size)))
+UPDATE listings l SET reposted_from_at = found.first_at FROM found WHERE l.id = found.id
 """
 
 
@@ -338,7 +346,9 @@ def link_same_site_reposts(session) -> int:
 # Measured live (diagnose-reposted-listings.yaml): of 8,780 Yad2 rentals first seen in two weeks, 419 repeat an older,
 # removed Yad2 ad on the same street and house number, floor and rooms at about the same price - roughly 30 a day. Only
 # ads first seen in the last three days are looked at, and an earlier ad must be at least two days older, so a quick
-# delete-and-repost by mistake is not called "posted again". Sizes must agree when both ads have one.
+# delete-and-repost by mistake is not called "posted again". Sizes must agree when both ads have one. Only the recent
+# live ads and the removed ones in the same cities are read (2026-10-29, code review: the first version normalised every
+# street in the table on each run).
 _REPOSTS_SQL = r"""
 WITH a AS (
   SELECT id, source, deal_type, city, rooms, floor, price, size_sqm, first_seen_at, is_delisted, duplicate_of_id,

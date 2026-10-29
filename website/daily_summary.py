@@ -58,17 +58,18 @@ def collect(session, now: dt.datetime, start: dt.datetime | None = None, end: dt
         return count(select(func.count(func.distinct(ActivityDay.who))).where(
             ActivityDay.day.between(day, last_day), ActivityDay.kind.in_(kinds)))
 
+    # people, like "visitors" - over several days one person is one, not one per day (2026-10-29, code review)
     sources = {
         kind.removeprefix("site_from_"): n
         for kind, n in session.execute(
-            select(ActivityDay.kind, func.count()).where(
+            select(ActivityDay.kind, func.count(func.distinct(ActivityDay.who))).where(
                 ActivityDay.day.between(day, last_day), ActivityDay.kind.like("site_from_%")).group_by(ActivityDay.kind)
         ).all()
     }
     campaigns = {
         kind.removeprefix("src_"): n
         for kind, n in session.execute(
-            select(ActivityDay.kind, func.count()).where(
+            select(ActivityDay.kind, func.count(func.distinct(ActivityDay.who))).where(
                 ActivityDay.day.between(day, last_day), ActivityDay.kind.like("src\\_%")).group_by(ActivityDay.kind)
         ).all()
     }
