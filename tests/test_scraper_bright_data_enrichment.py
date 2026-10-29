@@ -281,7 +281,7 @@ def test_backfill_stops_when_the_run_reaches_its_time_budget(monkeypatch):
     monkeypatch.setenv(scraper_main._BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR, "100")
     monkeypatch.setattr(scraper_main, "_BACKFILL_BATCH", 2)
     rows = [(i, f"https://yad2.co.il/item/{i}") for i in range(1, 7)]
-    left = iter([100.0, 100.0, -1.0])  # time for two batches, then the budget is gone
+    left = iter([100.0, 100.0, 100.0, -1.0])  # the check before the query, two batches, then the budget is gone
     monkeypatch.setattr(scraper_main, "_run_time_left", lambda: next(left))
     session = _QueueSession([_Result(rows)] + [None] * 4)
     fetched = []
@@ -293,6 +293,15 @@ def test_backfill_stops_when_the_run_reaches_its_time_budget(monkeypatch):
     with patch.object(_detail, "fetch_updates", _fetch):
         assert asyncio.run(_backfill(session)) == 4
     assert len(fetched) == 4
+
+
+def test_backfill_is_skipped_before_its_query_when_the_run_is_past_its_budget(monkeypatch):
+    """2026-10-29: past the budget the step used to run its query and then backfill nothing."""
+    monkeypatch.setenv(scraper_main._BRIGHT_DATA_BACKFILL_MAX_PER_RUN_ENV_VAR, "100")
+    monkeypatch.setattr(scraper_main, "_run_time_left", lambda: -1.0)
+    session = _QueueSession([])
+    assert asyncio.run(_backfill(session)) == 0
+    assert session.executed_stmts == []
 
 
 def test_the_run_budget_is_unlimited_outside_a_run(monkeypatch):
