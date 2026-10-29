@@ -38,6 +38,12 @@ jobs:
           SELECT CASE WHEN first_seen_at > now() - interval '1 day' THEN 'a: 1 day' WHEN first_seen_at > now() - interval '7 days' THEN 'b: week'
                       ELSE 'c: older' END AS age, deal_type, count(*)
           FROM listings WHERE source = 'yad2' AND NOT is_delisted AND duplicate_of_id IS NULL AND description IS NULL GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== how long the text-features step takes to find its rows (the same query, read-only)'
+          EXPLAIN (ANALYZE, BUFFERS) SELECT id, description FROM listings
+          WHERE description IS NOT NULL AND text_parsed_at IS NULL AND NOT is_delisted AND duplicate_of_id IS NULL
+          ORDER BY first_seen_at DESC LIMIT 2000;
+          \echo '== indexes on listings'
+          SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'listings' ORDER BY 1;
           SQL
           kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
       - name: Last main scraper run summary line
