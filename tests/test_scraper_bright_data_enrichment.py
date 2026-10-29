@@ -235,6 +235,13 @@ def _text_row(row_id, description, **cols):
     return SimpleNamespace(id=row_id, description=description, **base)
 
 
+def _unread(*ids):
+    """The step's first query: the unread ids with when each was first seen (higher id = newer here)."""
+    import datetime as dt
+
+    return _TextResult([SimpleNamespace(id=i, first_seen_at=dt.datetime(2026, 10, 1) + dt.timedelta(hours=i)) for i in ids])
+
+
 def test_text_catch_up_is_off_when_its_cap_is_zero(monkeypatch):
     monkeypatch.setenv(scraper_main._TEXT_FEATURES_MAX_ENV_VAR, "0")
     session = _QueueSession([])
@@ -248,13 +255,13 @@ def test_text_catch_up_fills_only_empty_columns_and_marks_every_row_read(monkeyp
         _text_row(1, "קומה 2 מתוך 5, חניה, מעלית", has_parking=False),  # parking is already known: the text must not touch it
         _text_row(2, "דירה יפה ומוארת"),  # nothing stated: still marked read
     ]
-    session = _QueueSession([_TextResult(rows), None, None])
+    session = _QueueSession([_unread(1, 2), _TextResult(rows), None, None])
     filled = _fill_from_text(session)
-    first = session.executed_stmts[1].compile().params
-    second = session.executed_stmts[2].compile().params
+    first = session.executed_stmts[2].compile().params
+    second = session.executed_stmts[3].compile().params
     assert filled == 3  # floor, floor_total, has_elevator for row 1 (parking is already known); nothing for row 2
     assert "has_parking" not in first and first["floor_total"] == 5 and first["has_elevator"] is True
-    assert "text_parsed_at" in str(session.executed_stmts[1]) and "text_parsed_at" in str(session.executed_stmts[2])
+    assert "text_parsed_at" in str(session.executed_stmts[2]) and "text_parsed_at" in str(session.executed_stmts[3])
     assert "floor" not in second
     assert session.committed is True
 
@@ -263,16 +270,17 @@ def test_text_catch_up_reads_in_batches_until_nothing_is_left(monkeypatch):
     """2026-10-14: descriptions are read a batch at a time (each committed), not all TEXT_FEATURES_MAX_PER_RUN at once."""
     monkeypatch.setenv(scraper_main._TEXT_FEATURES_MAX_ENV_VAR, "5")
     monkeypatch.setattr(scraper_main, "_TEXT_FEATURES_BATCH", 2)
-    batches = [[_text_row(1, "x"), _text_row(2, "x")], [_text_row(3, "x"), _text_row(4, "x")], [_text_row(5, "x")]]
-    queue = []
+    batches = [[_text_row(6, "x"), _text_row(5, "x")], [_text_row(4, "x"), _text_row(3, "x")], [_text_row(2, "x")]]
+    queue = [_unread(1, 2, 3, 4, 5, 6)]  # six unread, the cap is five: the oldest (1) waits for the next run
     for batch in batches:
         queue.append(_TextResult(batch))
         queue.extend([None] * len(batch))
     session = _QueueSession(queue)
     _fill_from_text(session)
     selects = [stmt for stmt in session.executed_stmts if str(stmt).lstrip().upper().startswith("SELECT")]
-    assert len(selects) == 3
-    assert [stmt.compile().params.get("param_1") for stmt in selects] == [2, 2, 1]
+    assert len(selects) == 4  # the unread ids, then three batches
+    assert "LIMIT" not in str(selects[0]).upper()  # 2026-10-29: no LIMIT, so Postgres reads the small partial index
+    assert [stmt.compile().params.get("id_1") for stmt in selects[1:]] == [[6, 5], [4, 3], [2]]
 
 
 def test_backfill_stops_when_the_run_reaches_its_time_budget(monkeypatch):

@@ -56,3 +56,9 @@ jobs:
             echo "== $POD"
             kubectl logs -n todira "$POD" --tail=60 2>/dev/null | grep -E "step timing|Scraper run summary" | sed -E 's/"[a-z_]*email[^,]*,//g' | tail -14 || true
           done
+      - name: Facebook runs - did they wait for the main run or give up their turn
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-facebook-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}'); do
+            echo "== $POD"
+            kubectl logs -n todira "$POD" --tail=400 2>/dev/null | grep -E "gives up its turn|held the lock|Scraping [0-9]+ source" | head -3 || true
+          done
