@@ -53,6 +53,7 @@ export default function Privacy() {
             {tr("privacy.s1_item7_post")}
           </li>
           <li>{tr("privacy.s1_item8")}</li>
+          <li>{tr("privacy.s1_item9")}</li>
         </ul>
       </motion.div>
 
