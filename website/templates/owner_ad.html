@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ t('post.contact_title') }} | טודירה{% endblock %}
+{% block content %}
+<div class="guide post">
+  <h1 class="guide-title">{{ t('post.contact_title') }}</h1>
+  <p class="guide-lead">{{ post.city }}{% if post.street %}, {{ post.street }}{% endif %}, {{ '{:,}'.format(post.price) }} ₪</p>
+  {% if live %}
+  <p class="owner-contact"><b>{{ post.contact_name }}</b></p>
+  <p class="owner-contact" dir="ltr"><a href="tel:{{ post.contact_phone }}">{{ post.contact_phone }}</a></p>
+  {% else %}
+  <p>{{ t('post.contact_gone') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

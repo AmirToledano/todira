@@ -19,7 +19,7 @@ import types
 from collections import Counter
 from typing import Callable
 
-from sqlalchemy import Text, all_, any_, bindparam, case, func, select, text
+from sqlalchemy import Text, all_, any_, bindparam, case, func, select, text, update
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -30,7 +30,7 @@ from todira_common.db import get_engine, get_session
 from todira_common.enums import DealType, NotificationReason, Source
 from todira_common import app_flags
 from todira_common.owner_alert import alert_owner
-from todira_common.models import Listing, SentNotification
+from todira_common.models import Listing, OwnerPost, SentNotification
 import facebook_client
 import facebook_groups_text_parser
 from facebook_client import FacebookFetchError
@@ -1240,6 +1240,34 @@ def _delete_expired_listings(session) -> int:
         if removed < _EXPIRED_DELETE_BATCH:
             break
     return deleted
+
+
+# 2026-10-31: a flat its owner posted on the site (website/owner_posts.py) stays up this long unless the owner takes it
+# down sooner; then it is delisted like any ad that disappeared, and deleted a month later with the rest.
+_OWNER_POST_DAYS = 30
+
+
+def _expire_owner_posts(session) -> int:
+    now = dt.datetime.now(dt.timezone.utc)
+    expired = list(
+        session.scalars(
+            select(Listing).where(
+                Listing.source == Source.OWNER,
+                Listing.is_delisted.is_(False),
+                Listing.first_seen_at < now - dt.timedelta(days=_OWNER_POST_DAYS),
+            )
+        )
+    )
+    for listing in expired:
+        listing.is_delisted, listing.delisted_at = True, now
+    if expired:
+        session.execute(
+            update(OwnerPost)
+            .where(OwnerPost.listing_id.in_([listing.id for listing in expired]))
+            .values(status="removed")
+        )
+    session.commit()
+    return len(expired)
 
 
 def _find_unnotified_recent_listings(session, exclude_ids: set[int]) -> list[Listing]:
@@ -3097,6 +3125,11 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("morning check-in step failed")
+                try:
+                    summary["owner_posts_expired"] = _expire_owner_posts(session)
+                except Exception:
+                    session.rollback()
+                    logger.exception("owner posts expiry step failed")
                 try:
                     summary["expired_listings_deleted"] = _delete_expired_listings(session)
                 except Exception:

@@ -2477,3 +2477,18 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .guide-checklist input { margin-top: 5px; width: 18px; height: 18px; flex: none; accent-color: var(--teal); }
 .guide-checklist input:checked + span { color: var(--text-muted); text-decoration: line-through; }
 .guide .btn.block { margin-top: 26px; }
+
+/* 2026-10-31: free posting for flat owners (templates/post_form.html, post_manage.html, owner_ad.html, admin_posts.html) */
+/* hidden without an off-screen offset: in RTL a far-left box makes the whole page scroll sideways */
+.post-hp { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); opacity: 0; pointer-events: none; }
+.post .field.has-error input, .post .field.has-error select, .post .field.has-error textarea { border-color: #b06a6a; }
+.post .field.has-error label, .post-confirm.has-error { color: #8a3b3b; }
+.post-phone-hint { margin: -10px 0 16px; }
+.post-confirm { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 22px; line-height: 1.5; cursor: pointer; }
+.post-confirm input { margin-top: 4px; width: 18px; height: 18px; flex: none; accent-color: var(--teal); }
+.post-manage-link { word-break: break-all; }
+.owner-contact { font-size: 1.2rem; margin: 6px 0; }
+.admin-post-photos { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.admin-post-photos img { width: 120px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+.admin-post-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.admin-post-actions form { margin: 0; }

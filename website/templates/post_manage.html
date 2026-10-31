@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ t('post.manage_title') }} | טודירה{% endblock %}
+{% block content %}
+<div class="guide post">
+  {% if new %}<h1 class="guide-title">{{ t('post.done') }}</h1>{% else %}<h1 class="guide-title">{{ t('post.manage_title') }}</h1>{% endif %}
+  <p class="guide-lead">{{ post.city }}{% if post.street %}, {{ post.street }}{% endif %}{% if post.rooms %}, {{ post.rooms | float | round(1) | string | replace('.0', '') }} {{ t('post.rooms') }}{% endif %}, {{ '{:,}'.format(post.price) }} ₪</p>
+  <p><b>{{ t('post.status_' ~ post.status) }}</b></p>
+  {% if post.status in ('pending', 'approved') %}
+  <section class="guide-section">
+    <p>{{ t('post.manage_hint') }}</p>
+    <p class="post-manage-link" dir="ltr"><a href="{{ manage_url }}">{{ manage_url }}</a></p>
+    <form method="post" action="/post/manage/{{ post.manage_token }}/take-down">
+      <button type="submit" class="btn">{{ t('post.take_down') }}</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

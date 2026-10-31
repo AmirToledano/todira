@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     SmallInteger,
     Text,
@@ -374,6 +375,42 @@ class HeldAlert(Base):
         BigInteger, ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     held_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OwnerPost(Base):
+    """A flat an owner posted for free on the site (2026-10-31, website/owner_posts.py). "pending" until the owner checks
+    it; "approved" makes it a Listing with source "owner"; "rejected"; "removed" when the poster took it down."""
+
+    __tablename__ = "owner_posts"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending", index=True)
+    reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    city: Mapped[str] = mapped_column(Text, nullable=False)
+    street: Mapped[str | None] = mapped_column(Text)
+    rooms: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    price: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_sqm: Mapped[int | None] = mapped_column(Integer)
+    floor: Mapped[int | None] = mapped_column(Integer)
+    move_in_date: Mapped[dt.date | None] = mapped_column(Date)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    contact_name: Mapped[str] = mapped_column(Text, nullable=False)
+    contact_phone: Mapped[str] = mapped_column(Text, nullable=False)
+    # the secret in the poster's "take it down" link
+    manage_token: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # todira_common.activity's daily visitor key, to slow down one sender posting many
+    visitor: Mapped[str | None] = mapped_column(Text)
+    listing_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("listings.id", ondelete="SET NULL"))
+
+
+class OwnerPostPhoto(Base):
+    __tablename__ = "owner_post_photos"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    post_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("owner_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    jpeg: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
 
 class UserListingAction(Base):

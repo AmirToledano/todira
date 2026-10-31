@@ -74,8 +74,10 @@ class Source:
     # its own per-card source badges (Yad2/Facebook/Komo/Homeless), confirming homeless.co.il as a
     # 4th real source to eventually cover, not a guess. See PROJECT_STATE.md for scraping status.
     HOMELESS = "homeless"
+    # 2026-10-31: a flat its owner posted on our own site (website/owner_posts.py)
+    OWNER = "owner"
 
-    ALL = (YAD2, KOMO, FACEBOOK_MARKETPLACE, FACEBOOK_GROUPS, HOMELESS)
+    ALL = (YAD2, KOMO, FACEBOOK_MARKETPLACE, FACEBOOK_GROUPS, HOMELESS, OWNER)
 
 
 class NotificationReason:

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ t('post.title') }} | טודירה{% endblock %}
+{% block content %}
+{# 2026-10-31 (owner-approved): free posting for flat owners. main.py's post_form/post_submit, website/owner_posts.py. #}
+<div class="guide post">
+  <h1 class="guide-title">{{ t('post.title') }}</h1>
+  <p class="guide-lead">{{ t('post.lead') }}</p>
+  {% if notice %}<p class="field-error-banner" role="alert">{{ notice }}</p>{% endif %}
+
+  <form method="post" action="/post" enctype="multipart/form-data" class="post-form" novalidate>
+    <input type="text" name="website" class="post-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+    <div class="field{{ ' has-error' if 'city' in errors }}">
+      <label for="post-city">{{ t('post.city') }}</label>
+      <input id="post-city" name="city" list="post-localities" value="{{ values.city or '' }}" required autocomplete="off">
+      <datalist id="post-localities">{% for name in localities %}<option value="{{ name }}">{% endfor %}</datalist>
+    </div>
+    <div class="field{{ ' has-error' if 'street' in errors }}">
+      <label for="post-street">{{ t('post.street') }}</label>
+      <input id="post-street" name="street" value="{{ values.street or '' }}" maxlength="80">
+    </div>
+    <div class="field-row">
+      <div class="field{{ ' has-error' if 'rooms' in errors }}">
+        <label for="post-rooms">{{ t('post.rooms') }}</label>
+        <select id="post-rooms" name="rooms" required>
+          <option value=""></option>
+          {% for r in ['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '7', '8'] %}
+          <option value="{{ r }}"{{ ' selected' if values.rooms == r }}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field{{ ' has-error' if 'price' in errors }}">
+        <label for="post-price">{{ t('post.price') }}</label>
+        <input id="post-price" name="price" inputmode="numeric" value="{{ values.price or '' }}" required>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field{{ ' has-error' if 'size' in errors }}">
+        <label for="post-size">{{ t('post.size') }}</label>
+        <input id="post-size" name="size" inputmode="numeric" value="{{ values.size or '' }}">
+      </div>
+      <div class="field{{ ' has-error' if 'floor' in errors }}">
+        <label for="post-floor">{{ t('post.floor') }}</label>
+        <input id="post-floor" name="floor" inputmode="numeric" value="{{ values.floor or '' }}">
+      </div>
+    </div>
+    <div class="field{{ ' has-error' if 'move_in' in errors }}">
+      <label for="post-move-in">{{ t('post.move_in') }}</label>
+      <input id="post-move-in" name="move_in" type="date" value="{{ values.move_in or '' }}">
+    </div>
+    <div class="field{{ ' has-error' if 'description' in errors }}">
+      <label for="post-description">{{ t('post.description') }}</label>
+      <textarea id="post-description" name="description" maxlength="2000" required>{{ values.description or '' }}</textarea>
+      <p class="field-hint">{{ t('post.description_hint') }}</p>
+    </div>
+    <div class="field{{ ' has-error' if 'photos' in errors }}">
+      <label for="post-photos">{{ t('post.photos') }}</label>
+      <input id="post-photos" name="photos" type="file" accept="image/*" multiple data-max="{{ max_photos }}">
+    </div>
+    <div class="field-row">
+      <div class="field{{ ' has-error' if 'name' in errors }}">
+        <label for="post-name">{{ t('post.name') }}</label>
+        <input id="post-name" name="name" value="{{ values.name or '' }}" maxlength="60" required autocomplete="name">
+      </div>
+      <div class="field{{ ' has-error' if 'phone' in errors }}">
+        <label for="post-phone">{{ t('post.phone') }}</label>
+        <input id="post-phone" name="phone" type="tel" dir="ltr" value="{{ values.phone or '' }}" required autocomplete="tel">
+      </div>
+    </div>
+    <p class="field-hint post-phone-hint">{{ t('post.phone_hint') }}</p>
+    <label class="post-confirm{{ ' has-error' if 'confirm' in errors }}">
+      <input type="checkbox" name="confirm" value="1"{{ ' checked' if values.confirm == '1' }}>
+      <span>{{ t('post.confirm') }} <a href="/terms" target="_blank">{{ t('footer.terms') }}</a></span>
+    </label>
+    <button type="submit" class="btn gold block">{{ t('post.submit') }}</button>
+  </form>
+</div>
+<script>
+(function () {
+  var input = document.getElementById('post-photos');
+  input.addEventListener('change', function () {
+    var max = +input.dataset.max;
+    if (input.files.length > max) {
+      var keep = new DataTransfer();
+      for (var i = 0; i < max; i++) { keep.items.add(input.files[i]); }
+      input.files = keep.files;
+    }
+  });
+})();
+</script>
+{% endblock %}

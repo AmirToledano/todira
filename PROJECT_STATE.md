@@ -84,9 +84,13 @@
   - The dashboard.
   - The calculator.
   - The narrowing question, once the first new user gets it.
-- **Drafts approved 2026-10-31:** the two help pages are live. Still to build: free posting for owners (manual check
-  before an ad goes up; the owner's phone shown only to those with access, like the link today). The four data posts
-  are for the owner to post.
+- **Drafts approved 2026-10-31:** the two help pages are live, and free posting for owners is built
+  (`website/owner_posts.py`, migration 0038): /post (photos resized to 1600 px JPEG, kept in `owner_post_photos`;
+  3 posts a day per address; a hidden field for scripts), a note to the owner's inbox group, /admin/posts to approve,
+  reject or take down; an approved post becomes a Listing with source "owner" (alerted by the next run's retry pass);
+  its "original ad" link is /owner-ad/<id>, the poster's name and phone behind the same access gate as /go/<id>; the
+  poster's private /post/manage/<token> link takes it down; `scraper/main.py _expire_owner_posts` after 30 days.
+  Open: the privacy policy does not yet mention the poster's name and phone. The four data posts are for the owner.
 - **Not started, on purpose:**
   - Facebook groups at large scale: risk of blocking the account, so talk to the owner first.
   - Several searches per user: dropped (owner, 2026-10-31).

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}מודעות של בעלי דירות{% endblock %}
+{% block content %}
+{# 2026-10-31: the owner checks every free post before it goes up (website/owner_posts.py). #}
+<div class="guide admin-posts">
+  <h1 class="guide-title">מודעות של בעלי דירות</h1>
+  {% if not posts %}<p class="guide-lead">אין עדיין מודעות.</p>{% endif %}
+  {% for p in posts %}
+  <section class="guide-section" id="post-{{ p.id }}">
+    <h2>{{ p.city }}{% if p.street %}, {{ p.street }}{% endif %}: {{ '{:,}'.format(p.price) }} ₪{% if p.rooms %}, {{ p.rooms | float | round(1) | string | replace('.0', '') }} חדרים{% endif %}</h2>
+    <p class="guide-lead">
+      {{ {'pending': 'ממתינה לבדיקה', 'approved': 'באוויר', 'rejected': 'נדחתה', 'removed': 'הורדה'}[p.status] }},
+      נשלחה {{ p.created_at.astimezone(israel_tz).strftime('%d.%m %H:%M') }}
+      {% if p.size_sqm %}, {{ p.size_sqm }} מ"ר{% endif %}{% if p.floor is not none %}, קומה {{ p.floor }}{% endif %}
+      , כניסה: {{ p.move_in_date.strftime('%d.%m.%Y') if p.move_in_date else 'מיידית' }}
+    </p>
+    <p style="white-space: pre-line">{{ p.description }}</p>
+    <p>{{ p.contact_name }}, <span dir="ltr">{{ p.contact_phone }}</span></p>
+    {% if photos[p.id] %}
+    <div class="admin-post-photos">
+      {% for photo_id in photos[p.id] %}<a href="/owner-photos/{{ photo_id }}.jpg" target="_blank"><img src="/owner-photos/{{ photo_id }}.jpg" alt="" loading="lazy"></a>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="admin-post-actions">
+      {% if p.status == 'pending' %}
+      <form method="post" action="/admin/posts/{{ p.id }}/approve"><button class="btn gold" type="submit">לאשר ולהעלות</button></form>
+      <form method="post" action="/admin/posts/{{ p.id }}/reject"><button class="btn" type="submit">לדחות</button></form>
+      {% elif p.status == 'approved' %}
+      <form method="post" action="/admin/posts/{{ p.id }}/take-down"><button class="btn" type="submit">להוריד</button></form>
+      {% if p.listing_id %}<a class="btn" href="/apartments?listing={{ p.listing_id }}">לראות באתר</a>{% endif %}
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

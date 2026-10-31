@@ -81,12 +81,15 @@ from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
 from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
 from todira_common.app_flags import get_flag, set_flag
-from todira_common.models import AppFlag, ContactMessage, Filter, Listing, Payment, SentNotification, User, UserListingAction
+from todira_common.models import (
+    AppFlag, ContactMessage, Filter, Listing, OwnerPost, OwnerPostPhoto, Payment, SentNotification, User, UserListingAction,
+)
 from todira_common.uid_token import generate_handoff_token, verify_handoff_token, verify_uid_token
 from fastapi import FastAPI, Form, Request
 
 import assistant
 import guides
+import owner_posts
 import takbull_client
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -1231,7 +1234,8 @@ def apple_pay_domain_association() -> Response:
 # already renders in all 5 languages via base.html's own hreflang alternates (added alongside
 # this), so the sitemap itself only needs to list each page once, not once per language.
 _SITEMAP_PATHS = (
-    "/", "/login", "/contact", "/calculator", "/moving-checklist", "/rental-contract-check", "/about", "/terms", "/privacy",
+    "/", "/login", "/contact", "/calculator", "/moving-checklist", "/rental-contract-check", "/post", "/about", "/terms",
+    "/privacy",
     "/accessibility",
 )
 
@@ -1363,6 +1367,170 @@ def _guide_page(request: Request, key: str):
         "cta": guides.text(guides.CTA, lang),
     }
     return _render(request, "guide.html", {"guide": page})
+
+
+def _notify_owner_new_post(post_id: int, city: str, rooms, price: int) -> None:
+    """Best effort, never raises: the post itself is already saved and waits on /admin/posts."""
+    if not TELEGRAM_BOT_TOKEN or not OWNER_TELEGRAM_USER_ID:
+        return
+    text = (
+        f"🏠 <b>מודעה חדשה מבעל דירה, לבדיקה</b>\n{html.escape(city)}, {rooms} חדרים, {price:,} ₪\n"
+        f"{WEBSITE_URL}/admin/posts#post-{post_id}"
+    )
+    for chat_id in owner_inbox.owner_chat_ids(OWNER_TELEGRAM_USER_ID):
+        try:
+            resp = httpx.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+                timeout=10.0,
+            )
+        except httpx.HTTPError:
+            logger.warning("Could not tell the owner about a new owner post", exc_info=True)
+            continue
+        if resp.status_code == 200:
+            return
+
+
+def _post_form(request: Request, values: dict, errors: list[str], notice: str | None = None, status_code: int = 200):
+    return _render(
+        request,
+        "post_form.html",
+        {"values": values, "errors": errors, "notice": notice, "localities": sorted(LOCALITIES),
+         "max_photos": owner_posts.MAX_PHOTOS},
+        status_code=status_code,
+    )
+
+
+@app.get("/post")
+def post_form(request: Request):
+    """2026-10-31 (owner-approved): free posting for flat owners (website/owner_posts.py)."""
+    return _post_form(request, {}, [])
+
+
+@app.post("/post")
+async def post_submit(request: Request):
+    form = await request.form()
+    values = {key: form.get(key) for key in (
+        "city", "street", "rooms", "price", "size", "floor", "move_in", "description", "name", "phone", "confirm"
+    )}
+    values = {key: (value if isinstance(value, str) else "") for key, value in values.items()}
+    if form.get("website"):  # a field people never see: only a script fills it
+        return _post_form(request, {}, [], notice=make_translator(get_lang(request, None))("post.done"))
+    now = dt.datetime.now(dt.timezone.utc)
+    fields, errors = owner_posts.parse(values, LOCALITY_SET, now.astimezone(_ISRAEL_TZ).date())
+    uploads = [item for item in form.getlist("photos") if getattr(item, "filename", "")][: owner_posts.MAX_PHOTOS]
+    # one at a time: a decoded phone photo takes tens of MB, and the site pod is small
+    photos = []
+    for upload in uploads:
+        jpeg = await asyncio.to_thread(owner_posts.resize_photo, await upload.read(owner_posts.MAX_PHOTO_BYTES + 1))
+        if jpeg is None:
+            errors.append("photos")
+            break
+        photos.append(jpeg)
+    if errors:
+        return _post_form(request, values, errors, notice=make_translator(get_lang(request, None))("post.error"), status_code=400)
+    visitor = _visitor(request, address_only=True)
+    with get_session() as session:
+        if owner_posts.posts_today(session, visitor, now) >= owner_posts.POSTS_PER_VISITOR_PER_DAY:
+            return _post_form(request, values, [], notice=make_translator(get_lang(request, None))("post.too_many"), status_code=429)
+        post = owner_posts.create(session, fields, photos, visitor)
+        post_id, token = post.id, post.manage_token
+    await asyncio.to_thread(_notify_owner_new_post, post_id, fields["city"], fields["rooms"], fields["price"])
+    return RedirectResponse(f"/post/manage/{token}?new=1", status_code=303)
+
+
+def _post_by_token(session, token: str):
+    return session.scalar(select(OwnerPost).where(OwnerPost.manage_token == token)) if token else None
+
+
+@app.get("/post/manage/{token}")
+def post_manage(request: Request, token: str):
+    with get_session() as session:
+        post = _post_by_token(session, token)
+        if post is None:
+            return _render(request, "404.html", {}, status_code=404)
+        session.expunge(post)
+    response = _render(request, "post_manage.html", {
+        "post": post, "new": request.query_params.get("new") == "1",
+        "manage_url": f"{WEBSITE_URL}/post/manage/{token}",
+    })
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
+@app.post("/post/manage/{token}/take-down")
+def post_take_down(request: Request, token: str):
+    with get_session() as session:
+        post = _post_by_token(session, token)
+        if post is None:
+            return _render(request, "404.html", {}, status_code=404)
+        if post.status in ("pending", "approved"):
+            owner_posts.take_down(session, post, dt.datetime.now(dt.timezone.utc))
+    return RedirectResponse(f"/post/manage/{token}", status_code=303)
+
+
+@app.get("/owner-photos/{photo_id}.jpg")
+def owner_photo(request: Request, photo_id: int):
+    """An owner post's photo: public once the post is approved (cards and the bot load it), before that only for the
+    owner checking it."""
+    with get_session() as session:
+        row = session.execute(
+            select(OwnerPostPhoto.jpeg, OwnerPost.status)
+            .join(OwnerPost, OwnerPost.id == OwnerPostPhoto.post_id)
+            .where(OwnerPostPhoto.id == photo_id)
+        ).first()
+        if row is None or (row.status != "approved" and _require_owner(request, session) is None):
+            raise StarletteHTTPException(status_code=404)
+    cache = "public, max-age=86400" if row.status == "approved" else "private, no-store"
+    return Response(row.jpeg, media_type="image/jpeg", headers={"Cache-Control": cache})
+
+
+@app.get("/owner-ad/{post_id}")
+def owner_ad(request: Request, post_id: int):
+    """Where an owner listing's "original ad" link leads (Listing.url): the poster's name and phone. The same gate as
+    /go/{id}: people without access go to /upgrade."""
+    with get_session() as session:
+        user = _resolve_user(request, session, None)
+        if user is None or not _effective_access(request, user):
+            return RedirectResponse("/upgrade", status_code=303)
+        post = session.get(OwnerPost, post_id)
+        if post is None:
+            return _render(request, "404.html", {}, status_code=404)
+        session.expunge(post)
+    response = _render(request, "owner_ad.html", {"post": post, "live": post.status == "approved"})
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
+@app.get("/admin/posts")
+def admin_posts(request: Request):
+    with get_session() as session:
+        if _require_owner(request, session) is None:
+            return _render(request, "404.html", {}, status_code=404)
+        posts = session.scalars(
+            select(OwnerPost).order_by((OwnerPost.status == "pending").desc(), OwnerPost.created_at.desc()).limit(60)
+        ).all()
+        photos = {post.id: owner_posts.photo_ids(session, post.id) for post in posts}
+        for post in posts:
+            session.expunge(post)
+    return _render(request, "admin_posts.html", {"posts": posts, "photos": photos, "israel_tz": _ISRAEL_TZ})
+
+
+@app.post("/admin/posts/{post_id}/{decision}")
+def admin_post_decision(request: Request, post_id: int, decision: str):
+    now = dt.datetime.now(dt.timezone.utc)
+    with get_session() as session:
+        if _require_owner(request, session) is None or decision not in ("approve", "reject", "take-down"):
+            return _render(request, "404.html", {}, status_code=404)
+        post = session.get(OwnerPost, post_id)
+        if post is not None:
+            if decision == "approve" and post.status == "pending":
+                owner_posts.approve(session, post, WEBSITE_URL, now)
+            elif decision == "reject" and post.status == "pending":
+                owner_posts.reject(session, post, now)
+            elif decision == "take-down" and post.status == "approved":
+                owner_posts.take_down(session, post, now)
+    return RedirectResponse(f"/admin/posts#post-{post_id}", status_code=303)
 
 
 @app.get("/moving-checklist")
@@ -1905,6 +2073,7 @@ _SOURCE_DISPLAY_NAMES = {
     "homeless": {"he": "הומלס", "default": "Homeless"},
     "facebook_marketplace": {"he": "פייסבוק", "default": "Facebook"},
     "facebook_groups": {"he": "פייסבוק", "default": "Facebook"},
+    "owner": {"he": "טודירה", "default": "Todira"},
 }
 
 
