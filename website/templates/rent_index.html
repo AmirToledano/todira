@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ t('city.index_title') }} | טודירה{% endblock %}
+{% block meta_description %}{{ t('city.index_lead') }}{% endblock %}
+{% block content %}
+{# 2026-10-31: the list of city pages (website/city_pages.py) #}
+<div class="guide rent">
+  <h1 class="guide-title">{{ t('city.index_title') }}</h1>
+  <p class="guide-lead">{{ t('city.index_lead') }}</p>
+  <table class="calc-table rent-table">
+    <thead><tr><th>{{ t('city.col_city') }}</th><th>{{ t('city.col_three') }}</th><th>{{ t('city.col_count') }}</th></tr></thead>
+    <tbody>
+      {% for c in cities %}
+      <tr>
+        <td><a href="/rent/{{ c.city | urlencode }}">{{ c.city }}</a></td>
+        <td>{{ '₪{:,}'.format(c.median3) if c.median3 else '' }}</td>
+        <td>{{ '{:,}'.format(c.count) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="calc-note">{{ t('city.note') }}</p>
+</div>
+{% endblock %}

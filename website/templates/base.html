@@ -55,7 +55,7 @@
   <link rel="manifest" href="/static/site.webmanifest">
   <meta name="theme-color" content="#0e8a82">
   <title>{% block title %}{{ t('meta.title_home') }}{% endblock %}</title>
-  <meta name="description" content="{{ t('meta.description') }}">
+  <meta name="description" content="{% block meta_description %}{{ t('meta.description') }}{% endblock %}">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="טודירה">
   {% block og_meta %}
@@ -277,6 +277,7 @@
         <a href="/contact{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.contact') }}</a>
         <a href="https://t.me/AmirDirotBot?start=site_menu" target="_blank" data-track="bot_menu">{{ t('nav.bot') }}</a>
         <a href="/calculator">{{ t('calc.title') }}</a>
+        <a href="/rent">{{ t('city.link') }}</a>
         <a href="/moving-checklist">{{ t('guide.link_moving') }}</a>
         <a href="/rental-contract-check">{{ t('guide.link_contract') }}</a>
         <a href="/post">{{ t('post.link') }}</a>

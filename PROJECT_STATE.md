@@ -31,6 +31,10 @@
     (`bot/handlers/checkin.py`; "change" opens /filter). 09:00 to 12:00, at most once a week, never the owner.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.
+  - /rent and /rent/<city> (2026-10-31, for Google): per city, from our own rentals of the last 30 days, the median by
+    rooms, 3 rooms by neighbourhood, how fast half the ads went (cohort 14-30 days old, shown under 14 days) and the
+    newest flats (linked to their public /s/ page); a city with fewer than 30 rentals has no page. `website/city_pages.py`,
+    cached an hour, every city page in the sitemap.
   - /moving-checklist (ticks kept in the browser) and /rental-contract-check (legal numbers checked against Kol Zchut
     on 2026-10-31, linked as sources), from `website/guides.py`, 5 languages, in the footer and the sitemap.
   - /apartments: sort, a report button, and a rich listing view with area price, price history and a timeline.
