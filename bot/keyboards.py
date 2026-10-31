@@ -189,6 +189,9 @@ def root_keyboard(lang: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(titles["move"], callback_data="f:cat:move"),
         ],
         [InlineKeyboardButton(titles["adv"], callback_data="f:cat:adv")],
+        # 2026-10-31: the alert hours live on the user, not in the draft, so they open their own menu
+        # (handlers/alert_hours_menu.py) as a new message and are saved at once
+        [InlineKeyboardButton(bot_text("hours.filter_button", lang), callback_data="hours:menu")],
         [
             InlineKeyboardButton(bot_text("kb.save_and_search", lang), callback_data="f:save"),
             InlineKeyboardButton(bot_text("kb.cancel_button", lang), callback_data="f:cancel"),
