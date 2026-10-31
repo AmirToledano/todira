@@ -38,7 +38,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from telegram import ForceReply, Update
 from telegram.constants import ParseMode
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -446,7 +446,9 @@ async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["draft_base"] = copy.deepcopy(saved)
     context.user_data["lang"] = lang
     context.user_data.pop("awaiting", None)
-    sent = await update.message.reply_text(
+    # from /filter, or from the check-in's "change the search" button (_filter_start_from_checkin)
+    message = update.message or update.callback_query.message
+    sent = await message.reply_text(
         kb.render_root_summary(draft, lang),
         reply_markup=kb.root_keyboard(lang),
         parse_mode=ParseMode.HTML,
@@ -456,6 +458,16 @@ async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     # _clear_previous_menu_keyboard's own docstring for the real clutter this fixes.
     context.user_data["menu_message_id"] = sent.message_id
     return MENU
+
+
+async def _filter_start_from_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
+    return await filter_start(update, context)
 
 
 FRIENDLY_VALIDATION_KEYS = {
@@ -911,6 +923,8 @@ def build_filter_conversation_handler() -> ConversationHandler:
         entry_points=[
             CommandHandler("filter", filter_start),
             CommandHandler("setfilter", filter_start),
+            # 2026-10-31: "✏️ change the search" on the morning check-in (handlers/checkin.py)
+            CallbackQueryHandler(_filter_start_from_checkin, pattern=r"^ci:edit$"),
         ],
         states={
             MENU: [

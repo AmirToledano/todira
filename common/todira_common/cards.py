@@ -471,7 +471,8 @@ def format_caption(
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
 
     `below_area_pct` (2026-10-24): when set (todira_common.area_price.below_area_pct), a "🔥 N% under the area price"
-    line opens the card. A flat posted again (Listing.reposted_from_at, 2026-10-27) gets a "🔁 posted again" line.
+    line goes under the features. A flat posted again (Listing.reposted_from_at, 2026-10-27) gets a "🔁 posted again" line
+    there too.
 
     `access_state` (todira_common.access.access_state): for a viewer WITHOUT access, ACCESS_TRIAL_ENDED or
     ACCESS_SUBSCRIPTION_EXPIRED makes the footer say which one ended; None keeps the generic lock line. Ignored when
@@ -509,10 +510,17 @@ def format_caption(
         lang=lang,
     )
 
-    if getattr(listing, "reposted_from_at", None):
-        lines.insert(0, bot_text("card.reposted", lang))
+    # 2026-10-31 (owner): the tags sit under the features line, so a phone's notification preview opens with the
+    # city and the price instead of the tag.
+    tags = []
     if below_area_pct:
-        lines.insert(0, bold(bot_text("card.below_area_price", lang, pct=below_area_pct)))
+        tags.append(bold(bot_text("card.below_area_price", lang, pct=below_area_pct)))
+    if getattr(listing, "reposted_from_at", None):
+        tags.append(bot_text("card.reposted", lang))
+    if tags:
+        if not lines[-1].startswith("🔑"):
+            lines.append("")
+        lines.extend(tags)
     body = "\n".join(lines)
     header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
     if has_access:

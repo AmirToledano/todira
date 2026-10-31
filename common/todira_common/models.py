@@ -17,6 +17,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     Text,
     UniqueConstraint,
     func,
@@ -77,6 +78,13 @@ class User(Base):
     trial_reminder_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # When the one "7 more days" email reached this Google-only user (website/announce_trial_extension_email.py, 2026-10-19).
     trial_gift_emailed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # 2026-10-31 (owner): the hours a person wants alerts in, Israel time, from inclusive to exclusive (NULL = every hour
+    # we scan), and whether on Friday and Saturday too. Matches outside them wait in held_alerts (todira_common.alert_hours).
+    alert_from_hour: Mapped[int | None] = mapped_column(SmallInteger)
+    alert_to_hour: Mapped[int | None] = mapped_column(SmallInteger)
+    alerts_on_weekend: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # When the morning "is the search still right?" message last went out (scraper/checkin.py, 2026-10-31).
+    checkin_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Paid-access fields — 2026-09-04 pricing decision (see common/todira_common/access.py for the
     # actual gate, `has_full_access`). Payment itself is informal/manual for now (a Bit transfer
@@ -354,6 +362,18 @@ class SentNotification(Base):
     sent_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class HeldAlert(Base):
+    """A match that came while the person's alert hours were closed (2026-10-31); sent when they open, then removed."""
+
+    __tablename__ = "held_alerts"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    listing_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    held_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class UserListingAction(Base):

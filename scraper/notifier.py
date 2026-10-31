@@ -21,18 +21,22 @@ import asyncio
 import datetime as dt
 import logging
 import os
+import time
+from collections import deque
+from dataclasses import dataclass
 
-from sqlalchemy import bindparam, select, text
+from sqlalchemy import bindparam, delete, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from telegram import Bot
 
-from todira_common import area_price, text_features, yad2_detail
+from todira_common import alert_hours, area_price, text_features, yad2_detail
 from todira_common.access import access_state, has_full_access
 from todira_common.cards import BLOCKED, format_caption, send_listing_card
 from todira_common.enums import ListingAction, NotificationReason, Source
 from todira_common.language import DEFAULT_LANG
 from todira_common.matching import evaluate
-from todira_common.models import Filter, Listing, SentNotification, User, UserListingAction
+from todira_common.models import Filter, HeldAlert, Listing, SentNotification, User, UserListingAction
 from todira_common.uid_token import signed_login_query
 
 
@@ -199,6 +203,8 @@ async def _notify_new_matches(
     *,
     only_telegram_user_id: str | None = None,
     per_user_budget: dict[int, int] | None = None,
+    queue: list[_Send] | None = None,
+    now: dt.datetime | None = None,
 ) -> tuple[int, int, set[int]]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
@@ -211,7 +217,10 @@ async def _notify_new_matches(
 
     `only_telegram_user_id`: see run_notifications' own docstring — when set, every OTHER user is
     silently skipped (never marked as notified, so they still get the real notification once this
-    restriction is lifted on a later run)."""
+    restriction is lifted on a later run).
+
+    `queue` (2026-10-31): when given, the cards are added to it instead of sent (a morning run, see _send_spread), and
+    the sent count is 0. A person outside their alert hours gets the match held instead (_hold)."""
     matched = 0
     sent = 0
     newly_notified_user_ids: set[int] = set()
@@ -240,6 +249,10 @@ async def _notify_new_matches(
             # listing on every future scrape run, since a failed send never writes a SentNotification
             # row to remember "already tried."
             continue
+        if not alert_hours.in_window(user, now):
+            # 2026-10-31: outside the hours they chose; sent when those open (_release_held)
+            _hold(session, user.id, listing.id)
+            continue
         to_notify.append((filter_row, user))
 
     await _complete_card_fields(session, listing, [user for _f, user in to_notify])
@@ -256,29 +269,134 @@ async def _notify_new_matches(
             access_state=_access_state_for(user),
             below_area_pct=below_pct,
         )
-        if not user.is_active:
-            continue  # turned off earlier in this run: the chat turned out to be blocked
-        sent_ok = await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang)
-        await asyncio.sleep(SEND_DELAY_SECONDS)
-        if sent_ok is BLOCKED:
-            _pause_blocked_user(session, user)
+        job = _Send(user=user, listing=listing, caption=caption, lang=user_lang)
+        if queue is not None:
+            # a morning run: sent later by _send_spread, spaced out per person
+            queue.append(job)
+            if per_user_budget is not None:
+                per_user_budget[user.id] = per_user_budget.get(user.id, 0) + 1
             continue
-        if sent_ok:
-            # One row per user per listing — "has this user already been told about this listing,"
-            # matching _already_notified's own lookup key, so they're never re-notified on a later run.
-            session.add(
-                SentNotification(
-                    user_id=filter_row.user_id,
-                    listing_id=listing.id,
-                    reason=NotificationReason.NEW,
-                )
-            )
-            session.commit()
+        if await _send_one(bot, session, job):
             sent += 1
             newly_notified_user_ids.add(filter_row.user_id)
             if per_user_budget is not None:
                 per_user_budget[user.id] = per_user_budget.get(user.id, 0) + 1
     return matched, sent, newly_notified_user_ids
+
+
+@dataclass
+class _Send:
+    user: User
+    listing: Listing
+    caption: str
+    lang: str
+
+
+async def _send_one(bot: Bot, session: Session, job: _Send) -> bool:
+    """Sends one new-match card and records it. False when it did not go out."""
+    user = job.user
+    if not user.is_active:
+        return False  # turned off earlier in this run: the chat turned out to be blocked
+    sent_ok = await send_listing_card(bot, user.telegram_user_id, job.listing, job.caption, job.lang)
+    await asyncio.sleep(SEND_DELAY_SECONDS)
+    if sent_ok is BLOCKED:
+        _pause_blocked_user(session, user)
+        return False
+    if not sent_ok:
+        return False
+    # One row per user per listing — "has this user already been told about this listing,"
+    # matching _already_notified's own lookup key, so they're never re-notified on a later run.
+    session.add(SentNotification(user_id=user.id, listing_id=job.listing.id, reason=NotificationReason.NEW))
+    session.commit()
+    return True
+
+
+# 2026-10-31 (owner): the first run of the morning sent a person's overnight matches back to back. Before
+# alert_hours.MORNING_UNTIL_HOUR each person's cards are spaced at least MORNING_GAP_SECONDS apart (other people's cards go
+# out in between), and a person with many is squeezed so their last one still goes out within MORNING_SPREAD_MAX_SECONDS.
+MORNING_GAP_SECONDS = 20.0
+MORNING_SPREAD_MAX_SECONDS = 6 * 60
+
+
+async def _send_spread(bot: Bot, session: Session, jobs: list[_Send], *, clock=time.monotonic) -> int:
+    by_user: dict[int, deque[_Send]] = {}
+    for job in jobs:
+        by_user.setdefault(job.user.id, deque()).append(job)
+    gap = {
+        user_id: min(MORNING_GAP_SECONDS, MORNING_SPREAD_MAX_SECONDS / max(len(waiting) - 1, 1))
+        for user_id, waiting in by_user.items()
+    }
+    next_at = dict.fromkeys(by_user, 0.0)
+    sent = 0
+    while True:
+        waiting_ids = [user_id for user_id, waiting in by_user.items() if waiting]
+        if not waiting_ids:
+            return sent
+        now = clock()
+        ready = [user_id for user_id in waiting_ids if next_at[user_id] <= now]
+        if not ready:
+            await asyncio.sleep(min(next_at[user_id] for user_id in waiting_ids) - now)
+            continue
+        user_id = min(ready, key=next_at.__getitem__)
+        job = by_user[user_id].popleft()
+        next_at[user_id] = now + gap[user_id]
+        # the price-change pass of an earlier listing may have told them already
+        if _already_notified(session, user_id, job.listing.id, NotificationReason.NEW):
+            continue
+        if await _send_one(bot, session, job):
+            sent += 1
+
+
+def _hold(session: Session, user_id: int, listing_id: int) -> None:
+    """Keeps a match for a person whose alert hours are closed (todira_common.alert_hours)."""
+    session.execute(
+        pg_insert(HeldAlert).values(user_id=user_id, listing_id=listing_id).on_conflict_do_nothing()
+    )
+    session.commit()
+
+
+# A person who turned off the weekend can come back to a long list on Sunday; the newest are sent, the rest are on the
+# site. A held match is dropped after HELD_MAX_AGE (an ad that old is rarely still free).
+HELD_MAX_PER_USER = 30
+HELD_MAX_AGE = dt.timedelta(days=3)
+
+
+async def _release_held(bot: Bot, session: Session, now: dt.datetime, queue: list[_Send] | None) -> int:
+    """Sends the held matches of everyone whose hours are open now. Returns how many went out (0 for a morning run,
+    whose cards wait in `queue`)."""
+    sent = 0
+    user_ids = list(session.scalars(select(HeldAlert.user_id).distinct()))
+    for user_id in user_ids:
+        user = session.get(User, user_id)
+        if user is None or not alert_hours.in_window(user, now):
+            continue
+        listing_ids = list(
+            session.scalars(
+                select(HeldAlert.listing_id)
+                .join(Listing, Listing.id == HeldAlert.listing_id)
+                .where(
+                    HeldAlert.user_id == user_id,
+                    HeldAlert.held_at >= now - HELD_MAX_AGE,
+                    Listing.is_delisted.is_(False),
+                    Listing.duplicate_of_id.is_(None),
+                )
+                .order_by(Listing.first_seen_at.desc())
+                .limit(HELD_MAX_PER_USER)
+            )
+        )
+        session.execute(delete(HeldAlert).where(HeldAlert.user_id == user_id))
+        session.commit()
+        if not user.is_active or not user.notifications_enabled or user.telegram_user_id is None:
+            continue
+        for listing_id in reversed(listing_ids):  # oldest first, like they would have come
+            listing = session.get(Listing, listing_id)
+            if listing is None:
+                continue
+            _matched, s, _new = await _notify_new_matches(
+                bot, session, listing, only_telegram_user_id=str(user.telegram_user_id), queue=queue, now=now
+            )
+            sent += s
+    return sent
 
 
 async def _notify_price_change(
@@ -341,6 +459,8 @@ async def _notify_price_change(
             continue
         if user.telegram_user_id is None:
             continue  # no Telegram to push to (a website-only account)
+        if not alert_hours.in_window(user):
+            continue  # outside the hours they chose (2026-10-31): a price change is not worth holding
         filter_row = session.scalar(select(Filter).where(Filter.user_id == user_id))
         if filter_row is None or not evaluate(filter_row, listing).matched:
             continue
@@ -391,6 +511,7 @@ async def run_notifications(
     *,
     only_telegram_user_id: str | None = None,
     retry_ids: set[int] | frozenset[int] = frozenset(),
+    spread_morning: bool = True,
 ) -> dict[str, int]:
     """`new_listings`: rows inserted for the first time this run. `price_change_events`:
     (listing, old_price) pairs for existing listings whose price just changed (either direction).
@@ -415,7 +536,14 @@ async def run_notifications(
     price_change_sent_count = 0
 
     retry_budget: dict[int, int] = {}
+    now = dt.datetime.now(dt.timezone.utc)
+    # 2026-10-31: a morning run queues its new-match cards and spaces each person's out (_send_spread)
+    # (`spread_morning` is off for the Facebook run, which has a hard time limit)
+    queue: list[_Send] | None = [] if spread_morning and alert_hours.is_morning(now) else None
+    extra = {"queue": queue} if queue is not None else {}
     async with Bot(token=token) as bot:
+        if only_telegram_user_id is None:
+            new_sent_count += await _release_held(bot, session, now, queue)
         for listing in new_listings:
             m, s, _newly_notified = await _notify_new_matches(
                 bot,
@@ -423,9 +551,12 @@ async def run_notifications(
                 listing,
                 only_telegram_user_id=only_telegram_user_id,
                 per_user_budget=retry_budget if listing.id in retry_ids else None,
+                **extra,
             )
             matched_count += m
             new_sent_count += s
+        if queue:
+            new_sent_count += await _send_spread(bot, session, queue)
         for listing, old_price in price_change_events:
             # 2026-10-29 (bot review): an ad linked as a copy of another (duplicate_of_id) is never its own listing - its
             # price change used to send the same flat again as a "new" match, even to users who had hidden it.
@@ -453,4 +584,5 @@ async def run_notifications(
         "matched": matched_count,
         "notifications_sent": new_sent_count,
         "price_change_notifications_sent": price_change_sent_count,
+        "spread_morning": queue is not None,
     }

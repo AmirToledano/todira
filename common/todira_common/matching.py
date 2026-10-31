@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from todira_common.cities import normalize_spelling
+from todira_common.non_home import is_non_home
 
 
 @dataclass
@@ -85,6 +86,10 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
 
     if filter_row.deal_type != listing_row.deal_type:
         failed.append("deal_type")
+
+    # 2026-10-31: a parking space or a storage room listed among flats (todira_common.non_home) matches no search.
+    if is_non_home(listing_row):
+        failed.append("not_a_home")
 
     # listing_row.property_type is never actually populated by the scraper today (see
     # scraper/normalize.py - nothing sets NormalizedListing.property_type, so it's always None) -

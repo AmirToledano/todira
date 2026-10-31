@@ -16,8 +16,17 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 
 import notifier
+import pytest
 
 _NOW = dt.datetime.now(dt.timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _midday_and_nothing_held(monkeypatch):
+    """run_notifications releases held alerts and, before 10:00, queues cards (2026-10-31); these tests are about
+    neither, and must not depend on the time they run at."""
+    monkeypatch.setattr(notifier, "_release_held", AsyncMock(return_value=0))
+    monkeypatch.setattr(notifier.alert_hours, "is_morning", lambda now=None: False)
 
 
 def _user(**overrides):

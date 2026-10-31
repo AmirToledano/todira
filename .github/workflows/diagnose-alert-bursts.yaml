@@ -1,0 +1,52 @@
+name: Diagnose — half hours in which one person got 20+ alerts (read-only)
+
+# 2026-10-31: in 7 days, 20 half hours had one person getting 20 or more alerts, one of them 768. What those alerts were:
+# new ads or old ones, which site, which reason. People appear as a rank (1 = most alerts), never an id. Counts only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Counts
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          CREATE TEMP TABLE b AS
+          SELECT s.user_id, date_trunc('hour', s.sent_at) + (extract(minute FROM s.sent_at)::int / 30) * interval '30 min' AS slot,
+                 count(*) AS n
+          FROM sent_notifications s WHERE s.sent_at > now() - interval '7 days'
+          GROUP BY 1, 2 HAVING count(*) >= 20;
+          CREATE TEMP TABLE r AS
+          SELECT user_id, dense_rank() OVER (ORDER BY sum(n) DESC) AS person FROM b GROUP BY user_id;
+          \echo '== each burst: person rank, Israel time, alerts, reason, how old the ads were when sent, sites'
+          SELECT r.person, to_char(b.slot AT TIME ZONE 'Asia/Jerusalem', 'MM-DD HH24:MI') AS at, b.n,
+                 string_agg(DISTINCT s.reason, ',') AS reasons,
+                 count(*) FILTER (WHERE s.sent_at - l.first_seen_at < interval '2 hours') AS ad_under_2h,
+                 count(*) FILTER (WHERE s.sent_at - l.first_seen_at BETWEEN interval '2 hours' AND interval '2 days') AS ad_2h_2d,
+                 count(*) FILTER (WHERE s.sent_at - l.first_seen_at > interval '2 days') AS ad_over_2d,
+                 string_agg(DISTINCT split_part(l.source, '_', 1) || '/' || l.deal_type, ',') AS sites
+          FROM b JOIN r USING (user_id)
+          JOIN sent_notifications s ON s.user_id = b.user_id
+               AND s.sent_at >= b.slot AND s.sent_at < b.slot + interval '30 min'
+          JOIN listings l ON l.id = s.listing_id
+          GROUP BY r.person, b.slot, b.n ORDER BY b.slot;
+          \echo '== per burst person: when their filter was last saved, and when they joined (Israel time)'
+          SELECT r.person, to_char(u.created_at AT TIME ZONE 'Asia/Jerusalem', 'MM-DD HH24:MI') AS joined,
+                 to_char(f.updated_at AT TIME ZONE 'Asia/Jerusalem', 'MM-DD HH24:MI') AS filter_saved,
+                 f.deal_type, coalesce(array_length(f.cities, 1), 0) AS cities, f.price_max IS NOT NULL AS has_price_max
+          FROM r JOIN users u ON u.id = r.user_id LEFT JOIN filters f ON f.user_id = u.id ORDER BY r.person;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
