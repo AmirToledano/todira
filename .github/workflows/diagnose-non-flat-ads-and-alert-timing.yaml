@@ -1,0 +1,116 @@
+name: Diagnose — parking/storage ads sent as flats, and when alerts go out (read-only)
+
+# 2026-10-31 (owner): a parking spot in Jerusalem (650 ₪, 14 m²) came as a one-room flat with "70% below the area price".
+# Where such ads come from and how many there are, plus when alerts reach people (the morning burst). Counts and
+# field names only: no ad text, no names, no ids of people.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Counts
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== the Jerusalem ad: site, type, rooms, size, price, raw field names that look like a type'
+          SELECT split_part(source, '_', 1) AS site, source, deal_type, property_type, rooms, size_sqm, price, is_delisted,
+                 (SELECT string_agg(k || '=' || left(v, 40), ' | ') FROM jsonb_each_text(raw_payload) AS e(k, v)
+                  WHERE k ~* '(type|categ|property|kind|sub)') AS type_fields
+          FROM listings
+          WHERE city = 'ירושלים' AND price = 650 AND size_sqm = 14 AND first_seen_at > now() - interval '10 days';
+          \echo '== live ads seen in 30 days whose text STARTS with parking/storage words, by site, deal and price'
+          WITH t AS (
+            SELECT split_part(source, '_', 1) AS site, source, deal_type, price,
+                   lower(left(regexp_replace(coalesce(description, ''), '^[^א-תa-zA-Z]+', ''), 60)) AS head,
+                   coalesce(description, '') AS d
+            FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL AND first_seen_at > now() - interval '30 days'
+          )
+          SELECT site, deal_type,
+                 CASE WHEN head ~ '^(להשכרה |למכירה |להשכיר |מוכר |משכיר )?(מקום |מקומות )?(חניה|חנייה|חניות|חנייות)' THEN 'parking'
+                      WHEN head ~ '^(להשכרה |למכירה |להשכיר )?(מחסן|מחסנים)' THEN 'storage'
+                      ELSE 'other' END AS kind,
+                 count(*) AS n,
+                 count(*) FILTER (WHERE price < 1500) AS under_1500,
+                 count(*) FILTER (WHERE price >= 2500) AS from_2500
+          FROM t GROUP BY 1, 2, 3
+          ORDER BY 3, 1, 2;
+          \echo '== same 30 days: rentals under 1,500 ₪ (any text), by site and whether the text mentions parking/storage anywhere'
+          SELECT split_part(source, '_', 1) AS site,
+                 count(*) AS n,
+                 count(*) FILTER (WHERE description ~ '(חניה|חנייה|חניות)') AS says_parking,
+                 count(*) FILTER (WHERE description ~ '(מחסן)') AS says_storage,
+                 count(*) FILTER (WHERE size_sqm < 20) AS under_20sqm
+          FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL AND deal_type = 'rent' AND price < 1500
+            AND first_seen_at > now() - interval '30 days'
+          GROUP BY 1 ORDER BY 2 DESC;
+          \echo '== how many of those parking-first ads were sent as alerts in 30 days'
+          SELECT split_part(l.source, '_', 1) AS site, count(DISTINCT l.id) AS ads, count(*) AS alerts
+          FROM sent_notifications s JOIN listings l ON l.id = s.listing_id
+          WHERE s.sent_at > now() - interval '30 days'
+            AND lower(left(regexp_replace(coalesce(l.description, ''), '^[^א-תa-zA-Z]+', ''), 60))
+                ~ '^(להשכרה |למכירה |להשכיר |מוכר |משכיר )?(מקום |מקומות )?(חניה|חנייה|חניות|חנייות|מחסן|מחסנים)'
+          GROUP BY 1 ORDER BY 2 DESC;
+          \echo '== alerts by Israel hour, last 7 days'
+          SELECT extract(hour FROM s.sent_at AT TIME ZONE 'Asia/Jerusalem')::int AS hour, count(*) AS alerts,
+                 count(DISTINCT s.user_id) AS people
+          FROM sent_notifications s WHERE s.sent_at > now() - interval '7 days' GROUP BY 1 ORDER BY 1;
+          \echo '== first alert of the day per person: Israel time bucket, last 7 days'
+          WITH f AS (
+            SELECT s.user_id, (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::date AS d, min(s.sent_at AT TIME ZONE 'Asia/Jerusalem')::time AS t
+            FROM sent_notifications s WHERE s.sent_at > now() - interval '7 days' GROUP BY 1, 2
+          )
+          SELECT CASE WHEN t < '08:45' THEN 'a before 08:45' WHEN t < '09:30' THEN 'b 08:45-09:30'
+                      WHEN t < '12:00' THEN 'c 09:30-12:00' ELSE 'd later' END AS first_alert, count(*) AS person_days
+          FROM f GROUP BY 1 ORDER BY 1;
+          \echo '== morning burst: alerts per person sent before 09:35 Israel time, per day, last 7 days'
+          WITH m AS (
+            SELECT s.user_id, (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::date AS d, count(*) AS n
+            FROM sent_notifications s
+            WHERE s.sent_at > now() - interval '7 days'
+              AND (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::time < '09:35'
+            GROUP BY 1, 2
+          )
+          SELECT CASE WHEN n <= 3 THEN 'a 1-3' WHEN n <= 9 THEN 'b 4-9' WHEN n <= 19 THEN 'c 10-19' WHEN n <= 49 THEN 'd 20-49'
+                      ELSE 'e 50+' END AS alerts_before_0935, count(*) AS person_days, max(n) AS most
+          FROM m GROUP BY 1 ORDER BY 1;
+          \echo '== for comparison: the busiest single half hour later in the day, per person-day, last 7 days'
+          WITH h AS (
+            SELECT s.user_id, date_trunc('hour', s.sent_at) + (extract(minute FROM s.sent_at)::int / 30) * interval '30 min' AS slot,
+                   count(*) AS n
+            FROM sent_notifications s
+            WHERE s.sent_at > now() - interval '7 days'
+              AND (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::time >= '10:00'
+            GROUP BY 1, 2
+          )
+          SELECT CASE WHEN n <= 3 THEN 'a 1-3' WHEN n <= 9 THEN 'b 4-9' WHEN n <= 19 THEN 'c 10-19' ELSE 'd 20+' END AS per_half_hour,
+                 count(*) AS slots, max(n) AS most
+          FROM h GROUP BY 1 ORDER BY 1;
+          \echo '== people with alerts in 7 days, and of them how many had a site visit or bot use on a day they got alerts'
+          WITH a AS (
+            SELECT DISTINCT s.user_id, (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::date AS d
+            FROM sent_notifications s WHERE s.sent_at > now() - interval '7 days'
+          )
+          SELECT count(*) AS person_days,
+                 count(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM activity_days ad WHERE ad.day = a.d AND ad.who = 'u' || a.user_id AND ad.kind = 'site_visit'
+                 )) AS with_site_visit,
+                 count(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM activity_days ad JOIN users u ON u.id = a.user_id
+                   WHERE ad.day = a.d AND ad.who = 't' || u.telegram_user_id AND ad.kind IN ('bot_message', 'bot_button')
+                 )) AS with_bot_use
+          FROM a;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
