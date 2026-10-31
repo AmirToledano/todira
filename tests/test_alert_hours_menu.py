@@ -32,7 +32,12 @@ def test_the_filter_menu_has_the_hours_button():
 
 def test_the_menu_shows_the_default_hours_every_day():
     text, markup = menu._menu("he", "08:30", "23:00", True, False)
-    assert text == "⏰ <b>שעות התראות</b>\nעכשיו: כל יום, 08:30 עד 23:00.\nדירה שעולה מחוץ לשעות תגיע כשהן מתחילות."
+    assert text == (
+        "⏰ <b>שעות התראות</b>\n\n"
+        "כרגע, ברירת המחדל של שליחת מודעות אליכם היא כל יום בין השעות 08:30 עד 23:00.\n\n"
+        "שוכרים מעלים דירות גם מחוץ לשעות שליחת המודעות, אז מודעות שעלו מחוץ לשעות השליחה יישלחו בבוקר שלמחרת.\n\n"
+        "אם אתם לא רוצים לקבל מודעות בסופ״ש, לחצו על „📅 גם בשישי ושבת” והמודעות יגיעו רק מראשון עד חמישי."
+    )
     assert _buttons(markup) == [
         ("🕘 לשנות שעות", "hours:from"), ("📅 גם בשישי ושבת: כן", "hours:wk"), ("✔️ סיום", "hours:done"),
     ]
@@ -40,7 +45,9 @@ def test_the_menu_shows_the_default_hours_every_day():
 
 def test_custom_hours_without_the_weekend():
     text, markup = menu._menu("he", "09:00", "20:00", False, True)
-    assert "ראשון עד חמישי, 09:00 עד 20:00" in text
+    assert "כרגע, המודעות נשלחות אליכם מראשון עד חמישי בין השעות 09:00 עד 20:00." in text
+    assert "יישלחו כשהשעות שלכם מתחילות" in text
+    assert "בסופ״ש" not in text  # the weekend is already off
     assert ("↩️ כל השעות", "hours:all") in _buttons(markup)
     assert ("📅 גם בשישי ושבת: לא", "hours:wk") in _buttons(markup)
 
@@ -70,7 +77,7 @@ def test_saving_hours_passes_both_and_shows_the_menu_again():
     with patch.object(menu, "_apply_sync", return_value=("he", "09:00", "20:00", True, True)) as apply:
         asyncio.run(menu._answer(update, SimpleNamespace()))
     apply.assert_called_once_with(555, "t", ["9", "20"])
-    assert "09:00 עד 20:00" in update.callback_query.edit_message_text.await_args.args[0]
+    assert "בין השעות 09:00 עד 20:00" in update.callback_query.edit_message_text.await_args.args[0]
 
 
 def test_a_forged_pair_is_not_saved():

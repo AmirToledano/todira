@@ -48,8 +48,18 @@ def _apply_sync(telegram_user_id: int, action: str, args: list[str]):
 
 
 def _menu(lang: str, start_text: str, end_text: str, weekend: bool, custom: bool) -> tuple[str, InlineKeyboardMarkup]:
+    # 2026-10-31 (owner's wording): the default says so and promises the next morning; a choice of their own says when
+    # their hours start instead, since "the next morning" would be wrong for, say, 16:00 to 23:00
+    is_default = weekend and not custom
     days = bot_text("hours.days_all" if weekend else "hours.days_weekdays", lang)
-    text = bot_text("hours.title", lang, days=days, start=start_text, end=end_text)
+    lines = [
+        bot_text("hours.heading", lang),
+        bot_text("hours.now_default" if is_default else "hours.now_custom", lang, days=days, start=start_text, end=end_text),
+        bot_text("hours.outside_default" if is_default else "hours.outside_custom", lang),
+    ]
+    if weekend:
+        lines.append(bot_text("hours.weekend_hint", lang))
+    text = "\n\n".join(lines)
     rows = [
         [InlineKeyboardButton(bot_text("hours.btn_change", lang), callback_data="hours:from")],
         [InlineKeyboardButton(bot_text("hours.btn_weekend_on" if weekend else "hours.btn_weekend_off", lang),
