@@ -98,11 +98,26 @@ def test_a_script_filling_the_hidden_field_gets_a_thank_you_and_nothing_is_saved
     assert resp.status_code == 200
 
 
-def test_the_contact_page_needs_access(client):
+class _NoDatabase:
+    """Stands in for get_session(): CI has no database driver, and nobody here is signed in."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get(self, model, key):
+        return None
+
+
+def test_the_contact_page_needs_access(client, monkeypatch):
+    monkeypatch.setattr(website_main, "get_session", _NoDatabase)
     resp = client.get("/owner-ad/1")
     assert resp.status_code == 303 and resp.headers["location"] == "/upgrade"
 
 
-def test_admin_posts_is_hidden_from_everyone_else(client):
+def test_admin_posts_is_hidden_from_everyone_else(client, monkeypatch):
+    monkeypatch.setattr(website_main, "get_session", _NoDatabase)
     assert client.get("/admin/posts").status_code == 404
     assert client.post("/admin/posts/1/approve").status_code == 404
