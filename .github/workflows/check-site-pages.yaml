@@ -1,0 +1,24 @@
+name: Check — public site pages answer (read-only)
+
+# 2026-10-31: after a deploy, fetch each public page from outside and print its status and how long it took. No
+# login, no secrets, nothing about users.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pages
+        run: |
+          for path in / /apartments /calculator /moving-checklist /rental-contract-check /post /about /terms /privacy \
+                      /accessibility /contact /login /upgrade /sitemap.xml /owner-ad/1 /admin/posts; do
+            curl -sS -o /tmp/page -w "%{http_code} %{time_total}s $path\n" --max-time 20 "https://todira.app$path" \
+              || echo "failed $path"
+          done
+          echo "--- /post has the form:"
+          curl -sS --max-time 20 "https://todira.app/post?lang=he" | grep -c 'name="phone"' || true
