@@ -1,0 +1,41 @@
+name: Diagnose — alerts sent today, held alerts, chosen hours, check-ins (read-only)
+
+# 2026-10-31: after the morning spacing, held alerts and the check-in went live. Counts only, no people.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Counts
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== alert rows today and yesterday by Israel half hour, with how many people and how many new ads (seen under 2 h)'
+          SELECT to_char(date_trunc('hour', s.sent_at AT TIME ZONE 'Asia/Jerusalem')
+                         + (extract(minute FROM s.sent_at)::int / 30) * interval '30 min', 'MM-DD HH24:MI') AS half_hour,
+                 count(*) AS rows, count(DISTINCT s.user_id) AS people,
+                 count(*) FILTER (WHERE s.sent_at - l.first_seen_at < interval '2 hours') AS fresh_ads,
+                 string_agg(DISTINCT s.reason, ',') AS reasons
+          FROM sent_notifications s JOIN listings l ON l.id = s.listing_id
+          WHERE s.sent_at > date_trunc('day', now() AT TIME ZONE 'Asia/Jerusalem') AT TIME ZONE 'Asia/Jerusalem' - interval '1 day'
+          GROUP BY 1 ORDER BY 1;
+          \echo '== held alerts waiting, people with their own hours, people without the weekend, check-ins sent'
+          SELECT (SELECT count(*) FROM held_alerts) AS held,
+                 (SELECT count(*) FROM users WHERE alert_from_hour IS NOT NULL) AS own_hours,
+                 (SELECT count(*) FROM users WHERE NOT alerts_on_weekend) AS no_weekend,
+                 (SELECT count(*) FROM users WHERE checkin_sent_at IS NOT NULL) AS checkins_sent;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
