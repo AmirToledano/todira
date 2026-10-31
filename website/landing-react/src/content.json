@@ -1004,13 +1004,17 @@
     "he": "אם פנית אלינו דרך טופס יצירת הקשר באתר: שם, אימייל ותוכן הפנייה שהזנת.",
     "en": "If you contacted us via the site's contact form, the name, email, and message content you entered."
   },
+  "privacy.s1_item9": {
+    "he": "אם פרסמת דירה דרך טופס הפרסום באתר: פרטי הדירה, התמונות, והשם ומספר הטלפון שהזנת. השם והטלפון מוצגים רק למשתמשים עם מנוי, כדי שיוכלו לפנות אליך לגבי הדירה.",
+    "en": "If you posted a flat through the site's posting form, the flat's details, the photos, and the name and phone number you entered. The name and phone are shown only to users with a pass, so they can contact you about the flat."
+  },
   "privacy.s2_title": {
     "he": "2. איך המידע משמש",
     "en": "2. How the data is used"
   },
   "privacy.s2_body": {
-    "he": "המידע משמש להפעלת השירות עצמו: התאמת דירות לסינון שלך, שליחת התראות והודעות שירות (כגון תזכורת לפני סיום תקופת הגישה), עיבוד תשלומים, שמירת ההעדפות שלך בין ביקורים, ואבטחה ומניעת שימוש לרעה. מסירת המידע נעשית מרצונך, אך בלי חלקו (למשל מזהה הערוץ שדרכו נשלחות ההתראות) לא נוכל לספק את השירות. המידע אינו נמכר ואינו מועבר לצדדים שלישיים לצורכי שיווק. המודעות עצמן נאספות ממקורות פומביים ברשת, ואיננו שומרים את מספר הטלפון של המפרסם.",
-    "en": "Data is used to operate the service itself: matching apartments to your filter, sending alerts and service messages (such as a reminder before your access period ends), processing payments, remembering your preferences between visits, and security and abuse prevention. Providing the data is voluntary, but without part of it (for example the channel identifier through which alerts are sent) we cannot provide the service. Data is not sold and is not shared with third parties for marketing purposes. The listings themselves are collected from public sources on the web, and we do not store the advertiser's phone number."
+    "he": "המידע משמש להפעלת השירות עצמו: התאמת דירות לסינון שלך, שליחת התראות והודעות שירות (כגון תזכורת לפני סיום תקופת הגישה), עיבוד תשלומים, שמירת ההעדפות שלך בין ביקורים, ואבטחה ומניעת שימוש לרעה. מסירת המידע נעשית מרצונך, אך בלי חלקו (למשל מזהה הערוץ שדרכו נשלחות ההתראות) לא נוכל לספק את השירות. המידע אינו נמכר ואינו מועבר לצדדים שלישיים לצורכי שיווק. המודעות עצמן נאספות ממקורות פומביים ברשת, ואיננו שומרים את מספר הטלפון של המפרסם, חוץ ממודעות שבעלי דירות פרסמו אצלנו בעצמם (ר' סעיף 1).",
+    "en": "Data is used to operate the service itself: matching apartments to your filter, sending alerts and service messages (such as a reminder before your access period ends), processing payments, remembering your preferences between visits, and security and abuse prevention. Providing the data is voluntary, but without part of it (for example the channel identifier through which alerts are sent) we cannot provide the service. Data is not sold and is not shared with third parties for marketing purposes. The listings themselves are collected from public sources on the web, and we do not store the advertiser's phone number, except for ads that owners posted with us themselves (see section 1)."
   },
   "privacy.s3_title": {
     "he": "3. ספקים חיצוניים",
@@ -1069,8 +1073,8 @@
     "en": "You can request full deletion of your stored data at any time by contacting us through the Telegram bot or the "
   },
   "privacy.s5_post": {
-    "he": ". נטפל בבקשה בתוך זמן סביר ולכל היותר 30 ימים. המידע נשמר כל עוד החשבון פעיל ולצורך מתן השירות. שים לב: רשומות תשלום נשמרות לתקופה נוספת (בדרך כלל עד 7 שנים) בהתאם לדרישות חשבונאיות/מיסוי כדין, גם לאחר בקשת מחיקה.",
-    "en": ". We will handle the request within a reasonable time and in any case within 30 days. Data is kept as long as the account is active and as needed to provide the service. Note: payment records are retained for an additional period (usually up to 7 years) as required by applicable accounting/tax law, even after a deletion request."
+    "he": ". נטפל בבקשה בתוך זמן סביר ולכל היותר 30 ימים. המידע נשמר כל עוד החשבון פעיל ולצורך מתן השירות. מודעה שפרסמת אצלנו יורדת כשתבקש, או לבד אחרי 30 יום, ופרטיה, כולל השם, הטלפון והתמונות, נמחקים לגמרי לכל המאוחר 60 יום אחרי ששלחת אותה. שים לב: רשומות תשלום נשמרות לתקופה נוספת (בדרך כלל עד 7 שנים) בהתאם לדרישות חשבונאיות/מיסוי כדין, גם לאחר בקשת מחיקה.",
+    "en": ". We will handle the request within a reasonable time and in any case within 30 days. Data is kept as long as the account is active and as needed to provide the service. A flat you posted with us comes down when you ask, or by itself after 30 days, and its details, including the name, phone and photos, are fully deleted no later than 60 days after you sent it. Note: payment records are retained for an additional period (usually up to 7 years) as required by applicable accounting/tax law, even after a deletion request."
   },
   "privacy.s6_title": {
     "he": "6. זכויותיך",

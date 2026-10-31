@@ -19,7 +19,7 @@ import types
 from collections import Counter
 from typing import Callable
 
-from sqlalchemy import Text, all_, any_, bindparam, case, func, select, text, update
+from sqlalchemy import Text, all_, any_, bindparam, case, func, select, text, update, delete
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -1245,6 +1245,7 @@ def _delete_expired_listings(session) -> int:
 # 2026-10-31: a flat its owner posted on the site (website/owner_posts.py) stays up this long unless the owner takes it
 # down sooner; then it is delisted like any ad that disappeared, and deleted a month later with the rest.
 _OWNER_POST_DAYS = 30
+_OWNER_POST_PURGE_DAYS = 60
 
 
 def _expire_owner_posts(session) -> int:
@@ -1266,6 +1267,13 @@ def _expire_owner_posts(session) -> int:
             .where(OwnerPost.listing_id.in_([listing.id for listing in expired]))
             .values(status="removed")
         )
+    # the privacy policy promises: a post's details, name, phone and photos are gone within 60 days of sending it (an
+    # approved one is down by day 30, so by then it is "removed" too); photos go with it (ON DELETE CASCADE)
+    session.execute(
+        delete(OwnerPost).where(
+            OwnerPost.created_at < now - dt.timedelta(days=_OWNER_POST_PURGE_DAYS), OwnerPost.status != "approved"
+        )
+    )
     session.commit()
     return len(expired)
 

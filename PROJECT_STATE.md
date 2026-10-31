@@ -90,7 +90,9 @@
   reject or take down; an approved post becomes a Listing with source "owner" (alerted by the next run's retry pass);
   its "original ad" link is /owner-ad/<id>, the poster's name and phone behind the same access gate as /go/<id>; the
   poster's private /post/manage/<token> link takes it down; `scraper/main.py _expire_owner_posts` after 30 days.
-  Open: the privacy policy does not yet mention the poster's name and phone. The four data posts are for the owner.
+  The privacy policy says what a poster gives and that a post's details, name, phone and photos are deleted within 60
+  days of sending (`_expire_owner_posts` deletes every non-live post older than that). The four data posts are for the
+  owner.
 - **Not started, on purpose:**
   - Facebook groups at large scale: risk of blocking the account, so talk to the owner first.
   - Several searches per user: dropped (owner, 2026-10-31).
