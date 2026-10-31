@@ -34,6 +34,12 @@
   they finish onboarding both get 7 free days (after any access already held; an inviter is rewarded for up to 10
   friends). The inviter hears about it the next morning (`scraper/checkin.py _announce_referrals`). Sources count all
   invites as `src_invite`.
+- **Public Telegram channel t.me/todira_dirot (2026-10-31, `scraper/channel.py`, main scraper run):** the owner made
+  the bot an admin and left the content to us. A pinned welcome post once; every morning 09:00-12:00 an album of up to 5
+  rentals first seen in the last 24 h that are 5-40% under the 30-day median for the same rooms in the same city (10+
+  peers), private owners first, at most 2 a city, each linked to its /s/ page; Fridays the 3-room median of the 10
+  biggest cities linked to /rent/<city>. Posts end with a link into the bot (`start=channel`, counted as `src_channel`);
+  the owner hates the bot's @name, so it is never written out. Done posts are in the app flag `telegram_channel_posts`.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.
   - /rent and /rent/<city> (2026-10-31, for Google): per city, from our own rentals of the last 30 days, the median by

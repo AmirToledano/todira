@@ -49,6 +49,7 @@ from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import normalize
 from notifier import run_notifications
 from renewal_reminder import run_renewal_reminders
+from channel import run_channel_posts
 from checkin import run_checkins
 from yad2_client import (
     REGION_SLUGS,
@@ -3133,6 +3134,12 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("morning check-in step failed")
+                # 2026-10-31: the public channel t.me/todira_dirot (scraper/channel.py)
+                try:
+                    summary.update(run_channel_posts(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("channel posts step failed")
                 try:
                     summary["owner_posts_expired"] = _expire_owner_posts(session)
                 except Exception:
