@@ -34,6 +34,7 @@ AUTH: three ways in, and all three resolve to the same signed session cookie in 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as dt
 import hashlib
 import hmac
@@ -238,7 +239,13 @@ def _landing_react_assets(entry_name: str = "index.html") -> dict[str, object]:
 mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
-app = FastAPI(title="טודירה")
+@contextlib.asynccontextmanager
+async def _lifespan(_app):
+    _start_keep_warm()  # below, with the calculator
+    yield
+
+
+app = FastAPI(title="טודירה", lifespan=_lifespan)
 
 # 2026-10-21 (owner: "when I ask, I want to know whether there was activity"): one count per person per day for the
 # pages people open (todira_common/activity.py). Pages only - not files, the JSON the pages fetch, webhooks or admin -
@@ -1316,10 +1323,12 @@ _calc_cache: dict = {"at": 0.0, "value": None}
 _calc_lock = threading.Lock()
 
 
-def _rent_medians() -> dict | None:
-    """{"3": [["תל אביב", 6800, 412], ...], ...} - rooms bucket to (city, median rent, listings) by listing count."""
+def _rent_medians(force: bool = False) -> dict | None:
+    """{"3": [["תל אביב", 6800, 412], ...], ...} - rooms bucket to (city, median rent, listings) by listing count.
+    force: read again even when the hour's copy is still fresh (the warm-up thread below)."""
     with _calc_lock:
-        if _calc_cache["value"] is not None and time.monotonic() - _calc_cache["at"] < _CALC_TTL_SECONDS:
+        fresh = _calc_cache["value"] is not None and time.monotonic() - _calc_cache["at"] < _CALC_TTL_SECONDS
+        if fresh and not force:
             return _calc_cache["value"]
     bucket = case((Listing.rooms >= 5, 5), else_=func.floor(Listing.rooms))
     try:
@@ -1348,6 +1357,28 @@ def _rent_medians() -> dict | None:
     with _calc_lock:
         _calc_cache.update(at=time.monotonic(), value=value)
     return value
+
+
+# 2026-10-31: measured from outside right after a deploy, the first visit took 16 s for /rent, 3 to 6 s per city page and
+# 8.6 s for /calculator, then about half a second from the hour's copy. So the website builds them as soon as it starts
+# and again every _WARM_EVERY_SECONDS, before the hour runs out, and no visitor or search engine waits for them.
+_WARM_EVERY_SECONDS = 50 * 60
+_WARM_FIRST_DELAY_SECONDS = 15
+
+
+def _keep_warm() -> None:
+    time.sleep(_WARM_FIRST_DELAY_SECONDS)  # let the pod start answering first
+    while True:
+        try:
+            city_pages.rebuild(get_session)
+        except Exception:
+            logger.warning("could not build the city pages ahead", exc_info=True)
+        _rent_medians(force=True)
+        time.sleep(_WARM_EVERY_SECONDS)
+
+
+def _start_keep_warm() -> None:
+    threading.Thread(target=_keep_warm, name="keep-warm", daemon=True).start()
 
 
 @app.get("/calculator")
