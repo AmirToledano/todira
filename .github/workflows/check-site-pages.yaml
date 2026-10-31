@@ -15,10 +15,19 @@ jobs:
     steps:
       - name: Fetch pages
         run: |
-          for path in / /apartments /calculator /moving-checklist /rental-contract-check /post /about /terms /privacy \
+          for path in / /apartments /calculator /calculator /rent /moving-checklist /rental-contract-check /post /about /terms /privacy \
                       /accessibility /contact /login /upgrade /sitemap.xml /owner-ad/1 /admin/posts; do
             curl -sS -o /tmp/page -w "%{http_code} %{time_total}s $path\n" --max-time 20 "https://todira.app$path" \
               || echo "failed $path"
           done
           echo "--- /post has the form:"
           curl -sS --max-time 20 "https://todira.app/post?lang=he" | grep -c 'name="phone"' || true
+          echo "--- /rent: cities listed, then the first three city pages, then an unknown city (expect 404):"
+          curl -sS --max-time 20 "https://todira.app/rent" | grep -o 'href="/rent/[^"]*"' | sed 's/href="//;s/"$//' > /tmp/cities
+          wc -l < /tmp/cities
+          for path in $(head -3 /tmp/cities) /rent/nowhere; do
+            curl -sS -o /tmp/page -w "%{http_code} %{time_total}s\n" --max-time 20 "https://todira.app$path" || echo "failed"
+            grep -c 'class="rent-' /tmp/page || true
+          done
+          echo "--- sitemap city pages:"
+          curl -sS --max-time 20 "https://todira.app/sitemap.xml" | grep -c '/rent/' || true
