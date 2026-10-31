@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ guide.title }} | טודירה{% endblock %}
+{% block content %}
+{# 2026-10-31 (owner-approved drafts): content and sources live in website/guides.py; main.py's _guide_page fills this. #}
+<article class="guide" data-guide="{{ guide.key }}">
+  <h1 class="guide-title">{{ guide.title }}</h1>
+  <p class="guide-lead">{{ guide.lead }}</p>
+
+  {% for section in guide.sections %}
+  <section class="guide-section">
+    <h2>{{ section.title }}</h2>
+    <ul class="guide-list{{ ' guide-checklist' if guide.checklist else '' }}">
+      {% for item in section["items"] %}
+      <li>
+        {% if guide.checklist %}
+        <label><input type="checkbox"> <span>{{ item | safe }}</span></label>
+        {% else %}
+        {{ item | safe }}
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+
+  {% if guide.sources %}
+  <section class="guide-section guide-sources">
+    <h2>{{ guide.sources_title }}</h2>
+    <ul class="guide-list">
+      {% for label, url in guide.sources %}
+      <li><a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <a class="btn gold block" href="https://t.me/AmirDirotBot?start=guide_{{ guide.key }}" target="_blank" rel="noopener" data-track="bot_end">{{ guide.cta }}</a>
+</article>
+{% if guide.checklist %}
+<script>
+(function () {
+  var key = 'todira-guide-{{ guide.key }}';
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { saved = {}; }
+  document.querySelectorAll('.guide-checklist input[type=checkbox]').forEach(function (box, i) {
+    box.checked = !!saved[i];
+    box.addEventListener('change', function () {
+      saved[i] = box.checked;
+      try { localStorage.setItem(key, JSON.stringify(saved)); } catch (e) { /* private window: ticks just are not kept */ }
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
