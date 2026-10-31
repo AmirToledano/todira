@@ -137,7 +137,7 @@ def test_slow_cities_show_no_days_and_only_live_flats_with_photos_are_newest():
 def test_a_request_uses_the_built_copy_and_only_one_build_runs(monkeypatch):
     builds = []
     monkeypatch.setattr(city_pages, "build", lambda session, now: builds.append(now) or ([{"city": "x"}], {"x": {"t": 1}}))
-    monkeypatch.setitem(city_pages._snapshot, "at", None)
+    monkeypatch.setattr(city_pages, "_snapshot", {"at": None, "index": None, "pages": None})
     assert city_pages.city_index(object()) == [{"city": "x"}]
     assert city_pages.city_page(object(), "x") == {"t": 1} and city_pages.city_page(object(), "y") is None
     assert len(builds) == 1
