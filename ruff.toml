@@ -1,0 +1,2 @@
+# Third-party skills under .claude/skills are kept exactly as their authors published them.
+extend-exclude = [".claude/skills"]
