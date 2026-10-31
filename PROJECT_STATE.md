@@ -39,7 +39,11 @@
   - /rent and /rent/<city> (2026-10-31, for Google): per city, from our own rentals of the last 30 days, the median by
     rooms, 3 rooms by neighbourhood, how fast half the ads went (cohort 14-30 days old, shown under 14 days) and the
     newest flats (linked to their public /s/ page); a city with fewer than 30 rentals has no page. `website/city_pages.py`,
-    cached an hour, every city page in the sitemap.
+    every city page in the sitemap. All cities are built from ONE pass over the window, kept an hour, and rebuilt every
+    50 min (with the /calculator medians) by the website's warm-up thread (`_keep_warm` in main.py, started from the app's
+    lifespan), so no visit waits: the first live visits had taken 16 s (/rent), 3-6 s a city, 8.6 s (/calculator).
+    `diagnose-city-pages-speed.yaml` (EXPLAIN ANALYZE) found the parking/storage SQL test reading every description
+    first; `not_non_home_sql` now puts its cheap half first (13.4 s to 1.1 s; area_price uses it too).
   - /moving-checklist (ticks kept in the browser) and /rental-contract-check (legal numbers checked against Kol Zchut
     on 2026-10-31, linked as sources), from `website/guides.py`, 5 languages, in the footer and the sitemap.
   - /apartments: sort, a report button, and a rich listing view with area price, price history and a timeline.
