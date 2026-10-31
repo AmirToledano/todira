@@ -24,12 +24,15 @@
     other people's in between, every person's last card within 6 minutes (`notifier._send_spread`).
   - `users.alert_from_hour` / `alert_to_hour` / `alerts_on_weekend` (migration 0037, `todira_common/alert_hours.py`): a
     match outside a person's hours is kept in `held_alerts` and sent on the first run inside them (newest 30, up to 3
-    days old). The bot menu to choose the hours waits for the owner's OK on its labels.
+    days old). Chosen in the bot (`bot/handlers/alert_hours_menu.py`, from /filter and the last onboarding message;
+    owner's wording).
   - Morning check-in (`scraper/checkin.py`, owner-approved wording): someone with 5+ alerts on each of the last 3 days
     and no use of the bot or the site gets "is the search still right?" with four buttons
     (`bot/handlers/checkin.py`; "change" opens /filter). 09:00 to 12:00, at most once a week, never the owner.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.
+  - /moving-checklist (ticks kept in the browser) and /rental-contract-check (legal numbers checked against Kol Zchut
+    on 2026-10-31, linked as sources), from `website/guides.py`, 5 languages, in the footer and the sitemap.
   - /apartments: sort, a report button, and a rich listing view with area price, price history and a timeline.
   - /filter: a live match count, a price chart, and "show also without rooms / size" (`filters.include_missing_details`).
   - Other pages: /calculator (rent medians from our own listings), a site assistant on every page, and /admin
@@ -81,12 +84,12 @@
   - The dashboard.
   - The calculator.
   - The narrowing question, once the first new user gets it.
-- **Drafts waiting for approval** (kept outside the repo): moving checklist, "what to check in a rental contract" page
-  (recommended instead of a downloadable contract), free posting for owners (two questions for the owner), and four
-  data posts with real numbers.
+- **Drafts approved 2026-10-31:** the two help pages are live. Still to build: free posting for owners (manual check
+  before an ad goes up; the owner's phone shown only to those with access, like the link today). The four data posts
+  are for the owner to post.
 - **Not started, on purpose:**
   - Facebook groups at large scale: risk of blocking the account, so talk to the owner first.
-  - Several searches per user: recommended to drop, waiting for the owner.
+  - Several searches per user: dropped (owner, 2026-10-31).
   - The WhatsApp rebuild and the Meta card.
   - AWS Activate, invite a friend, ARM migration, testimonials form.
 - **Owner rules that still hold:**

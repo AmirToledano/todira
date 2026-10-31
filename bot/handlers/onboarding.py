@@ -380,6 +380,13 @@ async def _finish(update, context, state: dict, lang: str) -> int:
     tail = [bot_text("onboarding.per_day", lang, per_day=saved["per_day"])] if saved["per_day"] >= 1 else []
     tail.append(bot_text("onboarding.unmute_hint", lang))
     await message.reply_text("\n\n".join(tail))
+    # 2026-10-31 (owner-approved): when alerts come, and a way to choose other hours (handlers/alert_hours_menu.py)
+    await message.reply_text(
+        bot_text("hours.onboarding", lang),
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(bot_text("hours.onboarding_button", lang), callback_data="hours:menu")]]
+        ),
+    )
     if saved.get("narrow"):
         feature, after = saved["narrow"]
         await message.reply_text(bot_text(f"many.q_{feature}", lang, n=after), reply_markup=question_markup(feature, lang))

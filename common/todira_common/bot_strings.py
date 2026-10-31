@@ -1495,6 +1495,93 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "🎉 מצאתי דירה", "en": "🎉 I found a flat", "ru": "🎉 Я нашёл квартиру", "fr": "🎉 J'ai trouvé un appartement",
         "ar": "🎉 وجدت شقة",
     },
+    # 2026-10-31: choosing the hours and days alerts come in (bot/handlers/alert_hours_menu.py)
+    "hours.heading": {
+        "he": "⏰ <b>שעות התראות</b>", "en": "⏰ <b>Alert hours</b>", "ru": "⏰ <b>Часы уведомлений</b>",
+        "fr": "⏰ <b>Heures des alertes</b>", "ar": "⏰ <b>ساعات التنبيهات</b>",
+    },
+    # 2026-10-31: the owner's wording
+    "hours.now_default": {
+        "he": "כרגע, ברירת המחדל של שליחת מודעות אליכם היא כל יום בין השעות {start} עד {end}.",
+        "en": "Right now, by default, listings are sent to you every day between {start} and {end}.",
+        "ru": "Сейчас по умолчанию объявления приходят каждый день с {start} до {end}.",
+        "fr": "Pour l'instant, par défaut, les annonces t'arrivent tous les jours entre {start} et {end}.",
+        "ar": "حالياً، يتم إرسال الإعلانات إليك افتراضياً كل يوم بين {start} و{end}.",
+    },
+    "hours.now_custom": {
+        "he": "כרגע, המודעות נשלחות אליכם {days} בין השעות {start} עד {end}.",
+        "en": "Right now, listings are sent to you {days} between {start} and {end}.",
+        "ru": "Сейчас объявления приходят {days} с {start} до {end}.",
+        "fr": "Pour l'instant, les annonces t'arrivent {days} entre {start} et {end}.",
+        "ar": "حالياً، تصلك الإعلانات {days} بين {start} و{end}.",
+    },
+    "hours.outside_default": {
+        "he": "שוכרים מעלים דירות גם מחוץ לשעות שליחת המודעות, אז מודעות שעלו מחוץ לשעות השליחה יישלחו בבוקר שלמחרת.",
+        "en": "Flats are posted outside these hours too, so listings posted outside them are sent the next morning.",
+        "ru": "Квартиры публикуют и в другое время, поэтому объявления, вышедшие вне этих часов, придут на следующее утро.",
+        "fr": "Des appartements sont publiés aussi en dehors de ces heures : ces annonces t'arrivent le lendemain matin.",
+        "ar": "تُنشر الشقق أيضاً خارج هذه الساعات، لذا تصلك الإعلانات المنشورة خارجها في صباح اليوم التالي.",
+    },
+    "hours.outside_custom": {
+        "he": "שוכרים מעלים דירות גם מחוץ לשעות שליחת המודעות, אז מודעות שעלו מחוץ לשעות השליחה יישלחו כשהשעות שלכם מתחילות.",
+        "en": "Flats are posted outside these hours too, so listings posted outside them are sent when your hours start.",
+        "ru": "Квартиры публикуют и в другое время, поэтому объявления, вышедшие вне этих часов, придут, когда начнутся ваши часы.",
+        "fr": "Des appartements sont publiés aussi en dehors de ces heures : ces annonces t'arrivent quand tes heures commencent.",
+        "ar": "تُنشر الشقق أيضاً خارج هذه الساعات، لذا تصلك الإعلانات المنشورة خارجها عند بدء ساعاتك.",
+    },
+    "hours.weekend_hint": {
+        "he": "אם אתם לא רוצים לקבל מודעות בסופ״ש, לחצו על „📅 גם בשישי ושבת” והמודעות יגיעו רק מראשון עד חמישי.",
+        "en": "Don't want listings at the weekend? Press “📅 Friday and Saturday too” and they will come Sunday to Thursday only.",
+        "ru": "Не хотите объявлений в выходные? Нажмите «📅 И в пятницу и субботу», и они будут приходить только с воскресенья по четверг.",
+        "fr": "Pas d'annonces le week-end ? Appuie sur « 📅 Aussi vendredi et samedi » et elles n'arriveront que du dimanche au jeudi.",
+        "ar": "لا تريد إعلانات في عطلة نهاية الأسبوع؟ اضغط «📅 الجمعة والسبت أيضاً» وستصلك من الأحد إلى الخميس فقط.",
+    },
+    "hours.days_all": {"he": "כל יום", "en": "every day", "ru": "каждый день", "fr": "tous les jours", "ar": "كل يوم"},
+    "hours.days_weekdays": {
+        "he": "מראשון עד חמישי", "en": "Sunday to Thursday", "ru": "с воскресенья по четверг", "fr": "du dimanche au jeudi",
+        "ar": "من الأحد إلى الخميس",
+    },
+    "hours.btn_change": {
+        "he": "🕘 לשנות שעות", "en": "🕘 Change the hours", "ru": "🕘 Изменить часы", "fr": "🕘 Changer les heures",
+        "ar": "🕘 تغيير الساعات",
+    },
+    "hours.btn_weekend_on": {
+        "he": "📅 גם בשישי ושבת: כן", "en": "📅 Friday and Saturday too: yes", "ru": "📅 И в пятницу и субботу: да",
+        "fr": "📅 Aussi vendredi et samedi : oui", "ar": "📅 الجمعة والسبت أيضاً: نعم",
+    },
+    "hours.btn_weekend_off": {
+        "he": "📅 גם בשישי ושבת: לא", "en": "📅 Friday and Saturday too: no", "ru": "📅 И в пятницу и субботу: нет",
+        "fr": "📅 Aussi vendredi et samedi : non", "ar": "📅 الجمعة والسبت أيضاً: لا",
+    },
+    "hours.btn_all": {
+        "he": "↩️ כל השעות", "en": "↩️ All hours", "ru": "↩️ Все часы", "fr": "↩️ Toutes les heures", "ar": "↩️ كل الساعات",
+    },
+    "hours.btn_done": {"he": "✔️ סיום", "en": "✔️ Done", "ru": "✔️ Готово", "fr": "✔️ Terminé", "ar": "✔️ تم"},
+    "hours.ask_from": {
+        "he": "מאיזו שעה לשלוח לך דירות?", "en": "From what time should I send you flats?",
+        "ru": "С какого часа присылать квартиры?", "fr": "À partir de quelle heure t'envoyer des appartements ?",
+        "ar": "من أي ساعة أرسل لك الشقق؟",
+    },
+    "hours.ask_to": {
+        "he": "ועד איזו שעה?", "en": "And until what time?", "ru": "И до какого часа?", "fr": "Et jusqu'à quelle heure ?",
+        "ar": "وحتى أي ساعة؟",
+    },
+    "hours.filter_button": {
+        "he": "⏰ שעות התראות", "en": "⏰ Alert hours", "ru": "⏰ Часы уведомлений", "fr": "⏰ Heures des alertes",
+        "ar": "⏰ ساعات التنبيهات",
+    },
+    # 2026-10-31 (owner-approved): under the last onboarding message
+    "hours.onboarding": {
+        "he": "⏰ ההתראות מגיעות כל יום בין 08:30 ל־23:00, מיד כשדירה עולה. ככה לא מפספסים אף דירה. אפשר לבחור שעות אחרות, או בלי שישי ושבת:",
+        "en": "⏰ Alerts come every day between 08:30 and 23:00, as soon as a flat is posted. That way you miss nothing. You can choose other hours, or no Friday and Saturday:",
+        "ru": "⏰ Уведомления приходят каждый день с 08:30 до 23:00, сразу как выходит квартира. Так ничего не пропустишь. Можно выбрать другие часы или без пятницы и субботы:",
+        "fr": "⏰ Les alertes arrivent tous les jours entre 08:30 et 23:00, dès qu'un appartement est publié. Comme ça tu ne rates rien. Tu peux choisir d'autres heures, ou sans vendredi ni samedi :",
+        "ar": "⏰ تصل التنبيهات كل يوم بين 08:30 و23:00، فور نشر شقة. هكذا لا تفوّت شيئاً. يمكنك اختيار ساعات أخرى، أو بدون الجمعة والسبت:",
+    },
+    "hours.onboarding_button": {
+        "he": "⏰ לבחור שעות", "en": "⏰ Choose hours", "ru": "⏰ Выбрать часы", "fr": "⏰ Choisir les heures",
+        "ar": "⏰ اختيار الساعات",
+    },
     "checkin.paused": {
         "he": "השהיתי את החיפוש עבורך. שלח/י /start כדי לחזור.",
         "en": "I've paused your search. Send /start to come back.",

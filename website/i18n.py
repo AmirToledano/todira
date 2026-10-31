@@ -1014,6 +1014,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "משהו השתבש. אפשר לנסות שוב.", "en": "Something went wrong. Please try again.", "ru": "Что-то пошло не так.", "fr": "Une erreur est survenue.",
         "ar": "حدث خطأ ما.",
     },
+    "guide.link_moving": {"he": "רשימה למעבר דירה", "en": "Moving checklist", "ru": "Чек-лист переезда", "fr": "Check-list du déménagement", "ar": "قائمة الانتقال"},
+    "guide.link_contract": {"he": "מה לבדוק בחוזה", "en": "Checking a lease", "ru": "Проверка договора", "fr": "Vérifier un bail", "ar": "فحص عقد الإيجار"},
     "calc.title": {"he": "מחשבון שכירות", "en": "Rent calculator", "ru": "Калькулятор аренды", "fr": "Calculateur de loyer", "ar": "حاسبة الإيجار"},
     "calc.lead": {"he": "כמה דירה אתם יכולים להרשות לעצמכם, ובאיזו עיר? לפי המחירים של הדירות שמפורסמות עכשיו.", "en": "How much rent can you afford, and where? Based on the apartments listed right now.", "ru": "Какую аренду вы можете себе позволить и где? По квартирам, опубликованным сейчас.", "fr": "Quel loyer pouvez-vous vous permettre, et où ? D'après les appartements publiés en ce moment.", "ar": "كم إيجاراً يمكنك تحمّله وأين؟ حسب الشقق المعروضة الآن."},
     "calc.income": {"he": "הכנסה חודשית נטו:", "en": "Monthly net income:", "ru": "Ежемесячный доход нетто:", "fr": "Revenu mensuel net :", "ar": "الدخل الشهري الصافي:"},

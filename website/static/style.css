@@ -2464,3 +2464,16 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .calc-tag.fits { background: #d9f2e4; color: #17603a; }
 .calc-tag.tight { background: #fdf0d2; color: #7a5300; }
 .calc-tag.over { background: var(--surface-tint); color: var(--text-muted); }
+
+/* 2026-10-31: the moving checklist and the rental-contract page (templates/guide.html) */
+.guide { max-width: 680px; margin: 0 auto; padding: 24px 16px 48px; }
+.guide-title { margin: 0 0 6px; }
+.guide-lead { color: var(--text-muted); margin: 0 0 8px; }
+.guide-section { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 18px; }
+.guide-section h2 { font-size: 1.15rem; margin: 0 0 8px; }
+.guide-list { margin: 0 0 6px; padding-inline-start: 20px; display: grid; gap: 8px; line-height: 1.6; }
+.guide-checklist { list-style: none; padding-inline-start: 0; }
+.guide-checklist label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.guide-checklist input { margin-top: 5px; width: 18px; height: 18px; flex: none; accent-color: var(--teal); }
+.guide-checklist input:checked + span { color: var(--text-muted); text-decoration: line-through; }
+.guide .btn.block { margin-top: 26px; }

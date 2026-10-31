@@ -86,6 +86,7 @@ from todira_common.uid_token import generate_handoff_token, verify_handoff_token
 from fastapi import FastAPI, Form, Request
 
 import assistant
+import guides
 import takbull_client
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -1229,7 +1230,10 @@ def apple_pay_domain_association() -> Response:
 # since the set of genuinely public marketing/legal pages changes rarely; every one of these
 # already renders in all 5 languages via base.html's own hreflang alternates (added alongside
 # this), so the sitemap itself only needs to list each page once, not once per language.
-_SITEMAP_PATHS = ("/", "/login", "/contact", "/calculator", "/about", "/terms", "/privacy", "/accessibility")
+_SITEMAP_PATHS = (
+    "/", "/login", "/contact", "/calculator", "/moving-checklist", "/rental-contract-check", "/about", "/terms", "/privacy",
+    "/accessibility",
+)
 
 
 @app.get("/sitemap.xml")
@@ -1339,6 +1343,36 @@ def _rent_medians() -> dict | None:
 @app.get("/calculator")
 def rent_calculator(request: Request):
     return _render(request, "calculator.html", {"medians": _rent_medians() or {}})
+
+
+def _guide_page(request: Request, key: str):
+    """2026-10-31 (owner-approved drafts): the moving checklist and the rental-contract page (website/guides.py)."""
+    lang = get_lang(request, None)
+    guide = guides.GUIDES[key]
+    page = {
+        "key": key,
+        "checklist": guide["checklist"],
+        "title": guides.text(guide["title"], lang),
+        "lead": guides.text(guide["lead"], lang),
+        "sections": [
+            {"title": guides.text(section["title"], lang), "items": [guides.text(item, lang) for item in section["items"]]}
+            for section in guide["sections"]
+        ],
+        "sources": [(guides.text(label, lang), url) for label, url in guide["sources"]],
+        "sources_title": guides.text(guides.SOURCES_TITLE, lang),
+        "cta": guides.text(guides.CTA, lang),
+    }
+    return _render(request, "guide.html", {"guide": page})
+
+
+@app.get("/moving-checklist")
+def moving_checklist(request: Request):
+    return _guide_page(request, "moving")
+
+
+@app.get("/rental-contract-check")
+def rental_contract_check(request: Request):
+    return _guide_page(request, "contract")
 
 
 @app.get("/about")
