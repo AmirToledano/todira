@@ -1029,10 +1029,15 @@ def test_the_expiry_notice_sits_above_its_own_link_line():
     assert notice_at < link_at and "👇" in caption[notice_at:link_at]
 
 
-def test_below_area_price_tag_opens_the_card_only_when_given():
-    tagged = format_caption(make_listing(), has_access=True, below_area_pct=28)
+def test_below_area_price_tag_sits_under_the_features_only_when_given():
+    """2026-10-31: the notification preview should open with the city and the price, so the tag goes under the
+    features."""
+    tagged = format_caption(
+        make_listing(has_parking=True, description="דירה יפה ומוארת"), has_access=True, below_area_pct=28
+    )
     assert _b("🔥 28% מתחת למחיר באזור") in tagged
-    assert tagged.index("🔥") < tagged.index("📍")
+    assert tagged.startswith("📍")
+    assert tagged.index("🔑") < tagged.index("🔥") < tagged.index("📝")
     assert "🔥" not in format_caption(make_listing(), has_access=True)
 
 
@@ -1040,9 +1045,14 @@ def test_posted_again_line_only_for_a_reposted_flat():
     import datetime as dt
 
     plain = format_caption(make_listing(), has_access=True)
-    reposted = format_caption(make_listing(reposted_from_at=dt.datetime(2026, 10, 15, tzinfo=dt.timezone.utc)), has_access=True)
+    reposted = format_caption(
+        make_listing(has_parking=True, reposted_from_at=dt.datetime(2026, 10, 15, tzinfo=dt.timezone.utc)), has_access=True
+    )
     assert "פורסם שוב" not in plain
-    assert reposted.startswith("🔁 פורסם שוב")
+    assert reposted.startswith("📍")
+    assert reposted.index("🔑") < reposted.index("🔁 פורסם שוב")
+    no_features = format_caption(make_listing(reposted_from_at=dt.datetime(2026, 10, 15, tzinfo=dt.timezone.utc)), has_access=True)
+    assert "\n\n🔁 פורסם שוב" in no_features
 
 
 def test_one_listing_sent_to_two_users_builds_its_picture_once():

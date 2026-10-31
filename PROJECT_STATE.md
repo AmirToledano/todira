@@ -13,6 +13,11 @@
   - "🔥 N% below the area price" when the price is at least 20% under the area.
   - "🔁 posted again" when the same flat was in an earlier ad of the same site that was taken down. Marked by
     `scraper/dedup.mark_reposts`, about 40 to 50 rentals a day.
+  - Since 2026-10-31 both tags sit under the features line, so the phone's notification preview opens with the city
+    and the price (owner).
+  - Parking spaces and storage rooms listed as flats never match a search and are left out of the area price
+    (`todira_common/non_home.py`: the ad opens with "חניה"/"מחסן" and the price or size is that of one). Measured
+    2026-10-31: about 1,300 alerts in 30 days went out for such ads (`diagnose-non-flat-ads-and-alert-timing.yaml`).
   - "Also posted on" across sites.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.

@@ -7,6 +7,7 @@ import datetime as dt
 from sqlalchemy import Float, cast, func, or_, select
 
 from todira_common.models import Listing
+from todira_common.non_home import is_non_home, not_non_home_sql
 
 AREA_COMPARE_MIN_LISTINGS = 5
 # Below this many comparable listings the page says the comparison rests on little data.
@@ -34,7 +35,7 @@ def area_price_comparison(session, listing: Listing) -> dict | None:
     The median, not the average, so one mistyped price can't drag it. When this listing has a size, the median price per
     m² of the same peers (those with a plausible size) is returned too: a big flat can cost more and still be cheaper
     per m². These are asking prices from the ads, not the prices flats were finally let or sold for."""
-    if not listing.price or not listing.city:
+    if not listing.price or not listing.city or is_non_home(listing):
         return None
     conditions = [
         Listing.duplicate_of_id.is_(None),
@@ -44,6 +45,8 @@ def area_price_comparison(session, listing: Listing) -> dict | None:
         Listing.id != listing.id,
         Listing.city == listing.city,
         Listing.scraped_at >= func.now() - AREA_COMPARE_WINDOW,
+        # 2026-10-31: parking spaces and storage rooms listed as one-room flats pulled the one-room median down
+        not_non_home_sql(Listing),
     ]
     if listing.duplicate_of_id is not None:
         conditions.append(Listing.id != listing.duplicate_of_id)
