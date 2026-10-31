@@ -22,6 +22,7 @@ from handlers.testimonial import build_found_answer_handler
 from handlers.many_matches import build_many_matches_handler
 from handlers.checkin import build_checkin_handler
 from handlers.alert_hours_menu import build_alert_hours_handler
+from handlers.invite import build_invite_handlers
 from telegram import BotCommand, Update
 from telegram.ext import Application, ContextTypes, PicklePersistence
 
@@ -148,6 +149,8 @@ def main() -> None:
     application.add_handler(build_many_matches_handler())
     application.add_handler(build_checkin_handler())
     application.add_handler(build_alert_hours_handler())
+    for handler in build_invite_handlers():
+        application.add_handler(handler)
     for handler in build_profile_handlers():
         application.add_handler(handler)
     for handler in build_language_handlers():

@@ -129,5 +129,46 @@ async def _run(session: Session, now: dt.datetime) -> int:
     return sent
 
 
+async def _announce_referrals(session: Session, now: dt.datetime) -> int:
+    """2026-10-31: tells inviters, in the morning, about the free days their friends earned them (todira_common/
+    referrals.py). A blocked chat stops being tried; any other failure is tried again the next run."""
+    if not 9 <= alert_hours.israel_now(now).hour < 12:
+        return 0
+    users = list(session.scalars(select(User).where(User.referral_days_unannounced > 0, User.telegram_user_id.is_not(None))))
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not users or not token:
+        return 0
+    sent = 0
+    bot = Bot(token=token)
+    await bot.initialize()
+    try:
+        for user in users:
+            lang = user.language or DEFAULT_LANG
+            try:
+                await bot.send_message(
+                    chat_id=user.telegram_user_id,
+                    text=bot_text("invite.inviter_note", lang, days=user.referral_days_unannounced),
+                )
+            except Forbidden:
+                pass
+            except Exception:
+                logger.exception("referral note: Telegram send failed for user_id=%s", user.id)
+                continue
+            user.referral_days_unannounced = 0
+            session.commit()
+            sent += 1
+            await asyncio.sleep(0.3)
+    finally:
+        await bot.shutdown()
+    return sent
+
+
 def run_checkins(session: Session, now: dt.datetime | None = None) -> dict[str, int]:
-    return {"checkins_sent": asyncio.run(_run(session, now or dt.datetime.now(dt.timezone.utc)))}
+    now = now or dt.datetime.now(dt.timezone.utc)
+    summary = {"checkins_sent": asyncio.run(_run(session, now))}
+    try:
+        summary["referral_notes_sent"] = asyncio.run(_announce_referrals(session, now))
+    except Exception:
+        session.rollback()
+        logger.exception("referral notes step failed")
+    return summary

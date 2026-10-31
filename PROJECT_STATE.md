@@ -29,6 +29,11 @@
   - Morning check-in (`scraper/checkin.py`, owner-approved wording): someone with 5+ alerts on each of the last 3 days
     and no use of the bot or the site gets "is the search still right?" with four buttons
     (`bot/handlers/checkin.py`; "change" opens /filter). 09:00 to 12:00, at most once a week, never the owner.
+- **Invite a friend (2026-10-31, `todira_common/referrals.py`, migration 0039):** /invite and a /profile button send
+  the user's link (`start=inv_<id>_<sig>`) with a share button; a new user who opens it is stored as invited, and when
+  they finish onboarding both get 7 free days (after any access already held; an inviter is rewarded for up to 10
+  friends). The inviter hears about it the next morning (`scraper/checkin.py _announce_referrals`). Sources count all
+  invites as `src_invite`.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.
   - /rent and /rent/<city> (2026-10-31, for Google): per city, from our own rentals of the last 30 days, the median by

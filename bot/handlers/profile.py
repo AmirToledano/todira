@@ -46,6 +46,8 @@ def _keyboard(user: User, lang: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(
                 bot_text("profile.btn_account", lang), web_app=WebAppInfo(url=f"{WEBSITE_URL}/tg?next=%2Faccount")
             )],
+            # 2026-10-31: invite a friend (handlers/invite.py)
+            [InlineKeyboardButton(bot_text("invite.btn", lang), callback_data="invite:show")],
             # handled by handlers/language.py (pattern ^lang:)
             [InlineKeyboardButton(bot_text("profile.btn_language", lang), callback_data="lang:menu")],
         ]

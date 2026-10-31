@@ -30,7 +30,7 @@ import os
 
 import ai_gate
 from config import WEBSITE_URL
-from todira_common import cities, gemini_client, search_text
+from todira_common import cities, gemini_client, referrals, search_text
 from todira_common.access import access_state
 from todira_common.bot_strings import bot_text
 from todira_common.cards import format_caption, mini_app_keyboard, send_listing_card
@@ -178,12 +178,17 @@ def _save_filter_sync(tg_user, state: dict) -> dict:
         per_day = round(len(recent_week) / RATE_WINDOW_DAYS)
         narrow = pick_question(recent_week, RATE_WINDOW_DAYS, filter_row)
         sample_ids = [m.id for m in recent_week if m.first_seen_at >= now - SAMPLE_WINDOW][:SAMPLE_COUNT]
+        # 2026-10-31: signed up through a friend's invite link, so they and the friend get free days (once)
+        invited_bonus = referrals.reward(session, user, now)
         owner_id = os.environ.get("OWNER_TELEGRAM_USER_ID", "").strip()
         access = access_state(user, is_owner=bool(owner_id) and owner_id == str(tg_user.id))
         session.commit()
         samples = load_listings(session, sample_ids)
         session.expunge_all()
-        return {"total": total, "per_day": per_day, "samples": samples, "access": access, "narrow": narrow}
+        return {
+            "total": total, "per_day": per_day, "samples": samples, "access": access, "narrow": narrow,
+            "invited_bonus": invited_bonus,
+        }
 
 
 async def _handle_freetext(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -378,6 +383,8 @@ async def _finish(update, context, state: dict, lang: str) -> int:
                 lang,
             )
     tail = [bot_text("onboarding.per_day", lang, per_day=saved["per_day"])] if saved["per_day"] >= 1 else []
+    if saved.get("invited_bonus"):
+        tail.append(bot_text("invite.friend_bonus", lang, days=referrals.REWARD_DAYS))
     tail.append(bot_text("onboarding.unmute_hint", lang))
     await message.reply_text("\n\n".join(tail))
     # 2026-10-31 (owner-approved): when alerts come, and a way to choose other hours (handlers/alert_hours_menu.py)
