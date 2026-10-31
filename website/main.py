@@ -88,6 +88,7 @@ from todira_common.uid_token import generate_handoff_token, verify_handoff_token
 from fastapi import FastAPI, Form, Request
 
 import assistant
+import city_pages
 import guides
 import owner_posts
 import takbull_client
@@ -1242,9 +1243,14 @@ _SITEMAP_PATHS = (
 
 @app.get("/sitemap.xml")
 def sitemap_xml(request: Request) -> Response:
-    urls = "".join(
-        f"<url><loc>{request.base_url}{path.lstrip('/')}</loc></url>" for path in _SITEMAP_PATHS
-    )
+    paths = list(_SITEMAP_PATHS) + ["/rent"]
+    try:
+        # 2026-10-31: every city page (website/city_pages.py); the sitemap still answers without them
+        with get_session() as session:
+            paths += [f"/rent/{url_quote(row['city'])}" for row in city_pages.city_index(session)]
+    except Exception:
+        logger.warning("sitemap: could not list the city pages", exc_info=True)
+    urls = "".join(f"<url><loc>{request.base_url}{path.lstrip('/')}</loc></url>" for path in paths)
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
@@ -1531,6 +1537,26 @@ def admin_post_decision(request: Request, post_id: int, decision: str):
             elif decision == "take-down" and post.status == "approved":
                 owner_posts.take_down(session, post, now)
     return RedirectResponse(f"/admin/posts#post-{post_id}", status_code=303)
+
+
+@app.get("/rent")
+def rent_by_city(request: Request):
+    """2026-10-31: the list of city pages (website/city_pages.py)."""
+    with get_session() as session:
+        cities = city_pages.city_index(session)
+    return _render(request, "rent_index.html", {"cities": cities})
+
+
+@app.get("/rent/{city}")
+def rent_in_city(request: Request, city: str):
+    """2026-10-31: what renting costs in one city right now, and its newest flats, for people searching Google."""
+    if city not in LOCALITY_SET:
+        return _render(request, "404.html", {}, status_code=404)
+    with get_session() as session:
+        page = city_pages.city_page(session, city)
+    if page is None:
+        return _render(request, "404.html", {}, status_code=404)
+    return _render(request, "rent_city.html", {"page": page})
 
 
 @app.get("/moving-checklist")

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ t('city.meta_title', city=page.city) }}{% endblock %}
+{% block meta_description %}{{ t('city.meta_description', city=page.city, total='{:,}'.format(page.total)) }}{% endblock %}
+{% block content %}
+{# 2026-10-31: one city's rents, from our own listings of the last 30 days (website/city_pages.py) #}
+<div class="guide rent">
+  <h1 class="guide-title">{{ t('city.title', city=page.city) }}</h1>
+  <p class="guide-lead">{{ t('city.lead', city=page.city, total='{:,}'.format(page.total), week='{:,}'.format(page.week)) }}{% if page.gone_days %} {{ t('city.fast', days=page.gone_days) }}{% endif %}</p>
+
+  {% if page.by_rooms %}
+  <section class="guide-section">
+    <h2>{{ t('city.rooms_title') }}</h2>
+    <table class="calc-table rent-table">
+      <thead><tr><th>{{ t('city.col_rooms') }}</th><th>{{ t('city.col_median') }}</th><th>{{ t('city.col_flats') }}</th></tr></thead>
+      <tbody>
+        {% for r in page.by_rooms %}
+        <tr><td>{{ r.rooms }}{{ '+' if r.rooms == 5 else '' }}</td><td>₪{{ '{:,}'.format(r.median) }}</td><td>{{ r.count }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if page.neighborhoods %}
+  <section class="guide-section">
+    <h2>{{ t('city.neighborhoods_title') }}</h2>
+    <table class="calc-table rent-table">
+      <thead><tr><th>{{ t('city.col_neighborhood') }}</th><th>{{ t('city.col_median') }}</th><th>{{ t('city.col_flats') }}</th></tr></thead>
+      <tbody>
+        {% for n in page.neighborhoods %}
+        <tr><td>{{ n.name }}</td><td>₪{{ '{:,}'.format(n.median) }}</td><td>{{ n.count }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if page.newest %}
+  <section class="guide-section">
+    <h2>{{ t('city.newest_title') }}</h2>
+    <div class="rent-newest">
+      {% for l in page.newest %}
+      <a class="rent-flat" href="{{ l.link }}">
+        <img src="{{ l.photo }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        <span class="rent-flat-price">₪{{ '{:,}'.format(l.price) }}</span>
+        <span class="rent-flat-meta">{% if l.rooms %}{{ t('city.rooms_value', rooms=('%g' % l.rooms)) }}{% endif %}{% if l.neighborhood %}, {{ l.neighborhood }}{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <p class="calc-note">{{ t('city.note') }}</p>
+  <a class="btn gold block" href="https://t.me/AmirDirotBot?start=rent_city" target="_blank" rel="noopener" data-track="bot_end">{{ t('city.cta', city=page.city) }}</a>
+</div>
+{% endblock %}

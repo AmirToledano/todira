@@ -20,7 +20,7 @@ import os
 import re
 
 from config import WEBSITE_URL
-from todira_common import activity
+from todira_common import activity, referrals
 from todira_common.access import has_full_access
 from todira_common.channel_link import CODE_PREFIX as CHANNEL_LINK_CODE_PREFIX
 from todira_common.channel_link import resolve_link_code
@@ -153,6 +153,8 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                 # 2026-10-18 (owner): every new user starts in Hebrew, whatever the phone's language is; /language
                 # switches it (handlers/language.py). The phone language left English speakers' friends stuck in English.
                 language=None,
+                # 2026-10-31: came through a friend's invite link; both get free days once signed up (referrals.reward)
+                referred_by_user_id=_known_inviter(session, start_payload),
             )
             session.add(user)
         else:
@@ -192,6 +194,11 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
         return "normal", note + _welcome(tg_user, lang)
 
 
+def _known_inviter(session, start_payload: str | None) -> int | None:
+    inviter = referrals.inviter_id(start_payload)
+    return inviter if inviter is not None and session.get(User, inviter) is not None else None
+
+
 # 2026-10-24 (owner): a link of its own for every post or ad, t.me/AmirDirotBot?start=<name>, so the morning summary
 # can tell which one brought people. Any other short lowercase payload that isn't a link code is such a name.
 _SOURCE_PAYLOAD = re.compile(r"^[a-z0-9_]{2,40}$")
@@ -199,6 +206,10 @@ _SOURCE_PAYLOAD = re.compile(r"^[a-z0-9_]{2,40}$")
 
 def _record_source(tg_user_id: int, start_payload: str | None) -> None:
     if not start_payload or not _SOURCE_PAYLOAD.match(start_payload):
+        return
+    if start_payload.startswith(referrals.PREFIX):
+        # one name for every invite link, not one per inviter (2026-10-31)
+        activity.record("src_invite", f"t{tg_user_id}")
         return
     if start_payload.startswith((CHANNEL_LINK_CODE_PREFIX, GOOGLE_LINK_TOKEN_PREFIX)):
         return

@@ -86,6 +86,13 @@ class User(Base):
     alerts_on_weekend: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # When the morning "is the search still right?" message last went out (scraper/checkin.py, 2026-10-31).
     checkin_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Invite a friend (todira_common/referrals.py, 2026-10-31): who invited this user, when this user and their inviter got
+    # their free days, and the days an inviter earned that the morning message has not mentioned yet.
+    referred_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    referral_rewarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    referral_days_unannounced: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # Paid-access fields — 2026-09-04 pricing decision (see common/todira_common/access.py for the
     # actual gate, `has_full_access`). Payment itself is informal/manual for now (a Bit transfer
