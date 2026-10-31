@@ -1472,6 +1472,36 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "🎉 מצאתי דירה!", "en": "🎉 Found an apartment!", "ru": "🎉 Нашёл квартиру!",
         "fr": "🎉 J'ai trouvé un appartement !", "ar": "🎉 وجدت شقة!",
     },
+    # 2026-10-31 (owner-approved): the morning check-in for someone who opened nothing in 3 days (scraper/checkin.py)
+    "checkin.text": {
+        "he": "היי 👋 ב־{days} הימים האחרונים שלחתי לך {count} דירות. החיפוש עדיין מתאים לך?",
+        "en": "Hi 👋 In the last {days} days I sent you {count} flats. Is the search still right for you?",
+        "ru": "Привет 👋 За последние {days} дня я отправил тебе {count} квартир. Поиск всё ещё подходит?",
+        "fr": "Salut 👋 Ces {days} derniers jours, je t'ai envoyé {count} appartements. La recherche te convient toujours ?",
+        "ar": "مرحباً 👋 في آخر {days} أيام أرسلت لك {count} شقة. هل ما زال البحث مناسباً لك؟",
+    },
+    "checkin.ok": {
+        "he": "✅ כן, הכל טוב", "en": "✅ Yes, all good", "ru": "✅ Да, всё хорошо", "fr": "✅ Oui, tout va bien",
+        "ar": "✅ نعم، كل شيء جيد",
+    },
+    "checkin.edit": {
+        "he": "✏️ לשנות חיפוש", "en": "✏️ Change the search", "ru": "✏️ Изменить поиск", "fr": "✏️ Modifier la recherche",
+        "ar": "✏️ تغيير البحث",
+    },
+    "checkin.pause": {
+        "he": "⏸️ להשהות", "en": "⏸️ Pause", "ru": "⏸️ Приостановить", "fr": "⏸️ Mettre en pause", "ar": "⏸️ إيقاف مؤقت",
+    },
+    "checkin.found": {
+        "he": "🎉 מצאתי דירה", "en": "🎉 I found a flat", "ru": "🎉 Я нашёл квартиру", "fr": "🎉 J'ai trouvé un appartement",
+        "ar": "🎉 وجدت شقة",
+    },
+    "checkin.paused": {
+        "he": "השהיתי את החיפוש עבורך. שלח/י /start כדי לחזור.",
+        "en": "I've paused your search. Send /start to come back.",
+        "ru": "Я приостановил ваш поиск. Отправьте /start, чтобы вернуться.",
+        "fr": "J'ai mis ta recherche en pause. Envoie /start pour revenir.",
+        "ar": "أوقفت بحثك مؤقتاً. أرسل /start للعودة.",
+    },
 }
 
 

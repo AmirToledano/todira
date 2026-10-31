@@ -19,6 +19,15 @@
     (`todira_common/non_home.py`: the ad opens with "חניה"/"מחסן" and the price or size is that of one). Measured
     2026-10-31: about 1,300 alerts in 30 days went out for such ads (`diagnose-non-flat-ads-and-alert-timing.yaml`).
   - "Also posted on" across sites.
+- **Alerts, 2026-10-31 (owner):**
+  - Morning runs (before 10:00 Israel, main scraper only) queue the cards and space each person's at least 20 s apart,
+    other people's in between, every person's last card within 6 minutes (`notifier._send_spread`).
+  - `users.alert_from_hour` / `alert_to_hour` / `alerts_on_weekend` (migration 0037, `todira_common/alert_hours.py`): a
+    match outside a person's hours is kept in `held_alerts` and sent on the first run inside them (newest 30, up to 3
+    days old). The bot menu to choose the hours waits for the owner's OK on its labels.
+  - Morning check-in (`scraper/checkin.py`, owner-approved wording): someone with 5+ alerts on each of the last 3 days
+    and no use of the bot or the site gets "is the search still right?" with four buttons
+    (`bot/handlers/checkin.py`; "change" opens /filter). 09:00 to 12:00, at most once a week, never the owner.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.
   - /apartments: sort, a report button, and a rich listing view with area price, price history and a timeline.

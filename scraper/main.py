@@ -49,6 +49,7 @@ from komo_client import fetch_listing_detail as fetch_komo_listing_detail
 from normalize import normalize
 from notifier import run_notifications
 from renewal_reminder import run_renewal_reminders
+from checkin import run_checkins
 from yad2_client import (
     REGION_SLUGS,
     REGIONS_ON_MAP_API,
@@ -3054,7 +3055,13 @@ def run_once() -> dict[str, int]:
                     summary["notifications_suspended"] = True
             else:
                 summary.update(
-                    asyncio.run(run_notifications(session, new_listings, price_change_events, retry_ids=retry_ids))
+                    asyncio.run(
+                        run_notifications(
+                            session, new_listings, price_change_events, retry_ids=retry_ids,
+                            # the Facebook run has a hard time limit, so only the main run spaces morning alerts out
+                            spread_morning=not os.environ.get(_SCRAPE_SOURCES_ENV_VAR, "").strip(),
+                        )
+                    )
                 )
         finally:
             timer.lap("alerts")
@@ -3085,6 +3092,11 @@ def run_once() -> dict[str, int]:
                     summary.update(run_renewal_reminders(session))
                 except Exception:
                     logger.exception("renewal reminder step failed")
+                try:
+                    summary.update(run_checkins(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("morning check-in step failed")
                 try:
                     summary["expired_listings_deleted"] = _delete_expired_listings(session)
                 except Exception:
