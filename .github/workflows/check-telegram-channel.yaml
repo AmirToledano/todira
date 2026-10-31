@@ -1,0 +1,44 @@
+name: Check — the public Telegram channel's posts (read-only)
+
+# 2026-10-31: after scraper/channel.py went live. Reads the channel's public web page (what anyone sees) and the main
+# scraper's log lines about the channel. Our own public posts only; nothing about users.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Public channel page
+        run: |
+          curl -sS --max-time 20 "https://t.me/s/todira_dirot" -o /tmp/channel.html || true
+          echo "posts on the page: $(grep -c 'tgme_widget_message_wrap' /tmp/channel.html)"
+          echo "photos: $(grep -c 'tgme_widget_message_photo_wrap' /tmp/channel.html)"
+          echo "--- post texts (tags removed):"
+          python3 - <<'PY'
+          import html, re
+          page = open("/tmp/channel.html", encoding="utf-8").read()
+          for block in re.findall(r'tgme_widget_message_text[^>]*>(.*?)</div>', page, re.S)[-5:]:
+              text = html.unescape(re.sub(r"<br\s*/?>", "\n", block))
+              print(re.sub(r"<[^>]+>", "", text).strip(), "\n---")
+          print("bot name written out:", "@AmirDirotBot" in page)
+          PY
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Main scraper runs since the deploy, channel lines only
+        run: |
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}'); do
+            echo "== $POD $(kubectl get pod -n todira "$POD" -o jsonpath='{.status.phase} {.status.startTime}')"
+            kubectl logs -n todira "$POD" 2>/dev/null > /tmp/log || true
+            grep -o "'channel_posts': '[^']*'" /tmp/log || echo "no channel_posts in the summary (still running, or an older image)"
+            grep -iE "channel:|channel posts step" /tmp/log | cut -c1-300 | tail -10 || true
+          done
