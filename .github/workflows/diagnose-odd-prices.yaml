@@ -1,0 +1,52 @@
+name: Diagnose — rent/sale ads with prices that fit the other deal type (read-only)
+
+# 2026-11-01: in 7 days, 99 rentals over ₪40,000 and 115 sales under ₪200,000. A sale stored as a rental (or the
+# reverse) is missed by every search of the right type. Ids, source, numbers and city only; no ad text.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Queries
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== rentals by price band and source, 7 days'
+          SELECT source, CASE WHEN price < 300 THEN 'a <300' WHEN price < 1000 THEN 'b 300-999' WHEN price <= 40000 THEN 'c normal'
+                 WHEN price < 200000 THEN 'd 40k-200k' WHEN price < 1000000 THEN 'e 200k-1m' ELSE 'f 1m+' END AS band, count(*)
+          FROM listings WHERE deal_type = 'rent' AND first_seen_at > now() - interval '7 days' AND price IS NOT NULL
+          GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== sales by price band and source, 7 days'
+          SELECT source, CASE WHEN price < 20000 THEN 'a <20k' WHEN price < 200000 THEN 'b 20k-200k' ELSE 'c normal' END AS band, count(*)
+          FROM listings WHERE deal_type = 'sale' AND first_seen_at > now() - interval '7 days' AND price IS NOT NULL
+          GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== samples: rentals of 200k+ (id, source, price, rooms, size, city, property_type, broker)'
+          SELECT id, source, price, rooms, size_sqm, city, property_type, is_broker_listing FROM listings
+          WHERE deal_type = 'rent' AND price >= 200000 AND first_seen_at > now() - interval '7 days' ORDER BY id DESC LIMIT 15;
+          \echo '== samples: sales under 20k'
+          SELECT id, source, price, rooms, size_sqm, city, property_type, is_broker_listing FROM listings
+          WHERE deal_type = 'sale' AND price < 20000 AND first_seen_at > now() - interval '7 days' ORDER BY id DESC LIMIT 15;
+          \echo '== samples: rentals 40k-200k'
+          SELECT id, source, price, rooms, size_sqm, city, property_type FROM listings
+          WHERE deal_type = 'rent' AND price > 40000 AND price < 200000 AND first_seen_at > now() - interval '7 days' ORDER BY id DESC LIMIT 10;
+          \echo '== samples: rentals under 300'
+          SELECT id, source, price, rooms, size_sqm, city, property_type FROM listings
+          WHERE deal_type = 'rent' AND price < 300 AND first_seen_at > now() - interval '7 days' ORDER BY id DESC LIMIT 10;
+          \echo '== rentals with no price, by source, 7 days'
+          SELECT source, count(*) FROM listings WHERE deal_type = 'rent' AND price IS NULL AND first_seen_at > now() - interval '7 days'
+          GROUP BY 1 ORDER BY 2 DESC;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
