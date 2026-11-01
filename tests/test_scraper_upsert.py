@@ -356,3 +356,14 @@ def test_new_item_matching_a_duplicate_candidate_is_inserted_but_excluded_from_n
     assert price_changes == []
     insert_stmt = session.executed_stmts[-1]
     assert insert_stmt.compile().params["duplicate_of_id"] == 101
+
+
+def test_a_rental_priced_like_a_sale_is_stored_as_a_sale_and_a_fifty_shekel_rent_without_a_price():
+    """2026-11-01 (todira_common/price_sanity.py): measured on live ads, a "₪16,500,000 rental" and a "₪50 rental"."""
+    sale_like = _make_item("odd-1", "https://example.com/odd-1", price=16_500_000)
+    tiny = _make_item("odd-2", "https://example.com/odd-2", price=50)
+    session = _QueueSession([_CannedResult(None), _CannedResult((1,)), _CannedResult(None), _CannedResult((2,))])
+    _upsert_listings(session, [sale_like, tiny])
+    inserted = [stmt.compile().params for stmt in session.executed_stmts if stmt.is_insert]
+    assert (inserted[0]["deal_type"], inserted[0]["price"]) == ("sale", 16_500_000)
+    assert (inserted[1]["deal_type"], inserted[1]["price"]) == ("rent", None)
