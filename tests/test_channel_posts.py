@@ -54,12 +54,15 @@ class _Session:
 def test_picks_are_cheaper_than_their_peers_private_owners_first():
     peers = [("חיפה", Decimal("3"), 5000)] * 10 + [("עכו", Decimal("3"), 3000)] * 9
     new = [
-        _listing(1, price=4800),  # 4% below: not enough
+        _listing(1, price=4600),  # 8% below: not enough
         _listing(2, price=4000, broker=True),  # 20% below, a broker
         _listing(3, price=4500),  # 10% below, private
-        _listing(4, price=2000),  # 60% below: more likely a wrong price
+        _listing(4, price=3000),  # 40% below: more likely a wrong price
         _listing(5, city="עכו", price=2000),  # only 9 peers
         _listing(6, rooms=4, price=1000),  # no 4-room peers at all
+        _listing(7, price=4000, size=470),  # 470 m² does not fit 3 rooms (2026-11-01, the first post)
+        _listing(8, price=4000, size=None),  # no size, nothing to check it against
+        _listing(9, price=4500),  # the same flat as 3, from another site
     ]
     picks = channel.pick_flats(_Session(peers, new), dt.datetime(2026, 11, 1, 7, tzinfo=dt.timezone.utc))
     assert [(listing.id, round(below, 2)) for listing, below in picks] == [(3, 0.1), (2, 0.2)]

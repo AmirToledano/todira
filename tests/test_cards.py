@@ -898,10 +898,11 @@ def test_move_in_note_is_html_escaped_and_never_beats_a_real_date():
     listing = make_listing(move_in_date=None)
     listing.move_in_note = "<b>x</b>"
     assert "<b>x</b>" not in format_caption(listing, has_access=True)
-    listing.move_in_date = dt.date(2026, 11, 1)
+    # a future date (a fixed 2026-11-01 started failing on that very day: today or earlier is shown as immediate)
+    listing.move_in_date = dt.date.today() + dt.timedelta(days=30)
     listing.move_in_note = "מיידית"
     caption = format_caption(listing, has_access=True)
-    assert "01.11.2026" in caption and "מיידית" not in caption
+    assert listing.move_in_date.strftime("%d.%m.%Y") in caption and "מיידית" not in caption
 
 
 def test_send_listing_card_no_images_puts_the_banner_after_the_details():
