@@ -43,8 +43,10 @@ POST_UNTIL_HOUR = 12
 PICKS = 5
 MAX_PER_CITY = 2
 MIN_PEERS = 10
-MIN_BELOW = 0.05
-MAX_BELOW = 0.40  # cheaper than this is more often a wrong price (a room, a deposit) than a bargain
+# 2026-11-01, after the first morning post: with up to 40% allowed every pick sat at 38-39%, among them a "6 rooms,
+# 470 m²" and the same Eilat flat twice. Too big a gap is more often a wrong price or another kind of home than a bargain.
+MIN_BELOW = 0.10
+MAX_BELOW = 0.30
 NEW_WINDOW = dt.timedelta(hours=24)
 PEER_WINDOW = dt.timedelta(days=30)
 WEEKLY_CITIES = 10
@@ -81,8 +83,15 @@ def _bot_line() -> str:
     return _link(BOT_URL, "רוצים לקבל דירות לפי החיפוש שלכם ברגע שהן עולות? לחצו כאן")
 
 
+def _plausible_size(listing) -> bool:
+    """A size that fits the room count: between 15 and 40 m² a room (plus 30). One with no size is not posted."""
+    rooms = float(listing.rooms)
+    return bool(listing.size_sqm) and 15 * rooms <= listing.size_sqm <= 40 * rooms + 30
+
+
 def pick_flats(session: Session, now: dt.datetime) -> list[tuple[Listing, float]]:
-    """(listing, how much cheaper than its peers, 0.05 to 0.40), best first, for the morning post. Photos not checked."""
+    """(listing, how much cheaper than its peers, MIN_BELOW to MAX_BELOW), best first, for the morning post. Photos not
+    checked."""
     medians: dict[tuple[str, float], list[int]] = defaultdict(list)
     for city, rooms, price in session.execute(
         select(Listing.city, Listing.rooms, Listing.price).where(
@@ -91,18 +100,25 @@ def pick_flats(session: Session, now: dt.datetime) -> list[tuple[Listing, float]
     ):
         medians[(city, float(rooms))].append(price)
     candidates = []
+    seen: set[tuple] = set()
     for listing in session.scalars(
         select(Listing).where(
             *_rentals(now, NEW_WINDOW), Listing.rooms.is_not(None), Listing.is_delisted.is_(False),
             Listing.image_urls != [],
         )
     ):
+        if not _plausible_size(listing):
+            continue
+        same_flat = (listing.city, float(listing.rooms), listing.price, listing.size_sqm)  # one flat on two sites
+        if same_flat in seen:
+            continue
         peers = medians.get((listing.city, float(listing.rooms)), [])
         if len(peers) < MIN_PEERS:
             continue
-        below = 1 - listing.price / statistics.median(peers)
+        below = round(1 - listing.price / statistics.median(peers), 4)  # so 10% is 10%, not 9.999...
         if MIN_BELOW <= below <= MAX_BELOW:
             candidates.append((listing, below))
+            seen.add(same_flat)
     candidates.sort(key=lambda pair: (bool(pair[0].is_broker_listing), -pair[1], -pair[0].id))
     return candidates
 
