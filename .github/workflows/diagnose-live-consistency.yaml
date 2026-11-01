@@ -1,0 +1,90 @@
+name: Diagnose — payments, access, alerts and data consistency (read-only)
+
+# 2026-11-01 (owner: "find wrong payments, wrong things, everything"): counts that should be zero or near it. Payment
+# rows are shown by internal id, plan, amount and dates only; nothing that names a person.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Jobs in the last day
+        run: |
+          kubectl get jobs -n todira --no-headers | awk '{print $1, $2}' | sed -E 's/-[0-9]+ / /' | sort | uniq -c
+      - name: Queries
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== P1 payments by status, plan, amount'
+          SELECT status, plan, amount_ils, count(*) FROM payments GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+          \echo '== P2 paid rows whose amount is not the plan price (id, plan, amount, paid_at)'
+          SELECT id, plan, amount_ils, paid_at FROM payments WHERE status = 'paid' AND NOT (
+            (plan = 'pass_7' AND amount_ils = 19.90) OR (plan = 'pass_14' AND amount_ils = 29.90) OR
+            (plan IN ('pass_30', 'monthly_subscription') AND amount_ils = 49.90) OR (plan = 'pass_test' AND amount_ils = 1.00) OR
+            (plan = 'weekly' AND amount_ils = 1) OR (plan = 'biweekly' AND amount_ils = 25) OR (plan = 'monthly' AND amount_ils = 40));
+          \echo '== P3 paid rows whose user access ends before paid_at + the plan days (id, plan, paid_at, short by)'
+          SELECT p.id, p.plan, p.paid_at,
+                 (p.paid_at + CASE p.plan WHEN 'pass_7' THEN interval '7 days' WHEN 'pass_14' THEN interval '14 days'
+                   WHEN 'pass_test' THEN interval '1 day' WHEN 'weekly' THEN interval '7 days' WHEN 'biweekly' THEN interval '14 days'
+                   ELSE interval '30 days' END) - greatest(coalesce(u.paid_until, '-infinity'), u.trial_ends_at) AS short_by
+          FROM payments p JOIN users u ON u.id = p.user_id
+          WHERE p.status = 'paid' AND p.paid_at IS NOT NULL
+            AND greatest(coalesce(u.paid_until, '-infinity'), u.trial_ends_at) < p.paid_at + CASE p.plan WHEN 'pass_7' THEN interval '7 days'
+                WHEN 'pass_14' THEN interval '14 days' WHEN 'pass_test' THEN interval '1 day' WHEN 'weekly' THEN interval '7 days'
+                WHEN 'biweekly' THEN interval '14 days' ELSE interval '30 days' END - interval '1 hour';
+          \echo '== P4 users with paid_until in the future and no paid payment, not comp (count)'
+          SELECT count(*) FROM users u WHERE u.paid_until > now() AND NOT u.free_access_granted
+            AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.user_id = u.id AND p.status = 'paid');
+          \echo '== P5 pending payments by age, and pending ones that already carry a gateway transaction id'
+          SELECT CASE WHEN created_at > now() - interval '1 hour' THEN 'under 1h' WHEN created_at > now() - interval '1 day' THEN '1h-1d'
+                      ELSE 'over 1d' END AS age, count(*), count(gateway_transaction_id) AS with_txn
+          FROM payments WHERE status = 'pending' GROUP BY 1;
+          \echo '== P6 users with two paid rows within 30 minutes (count of pairs)'
+          SELECT count(*) FROM payments a JOIN payments b ON a.user_id = b.user_id AND a.id < b.id
+          WHERE a.status = 'paid' AND b.status = 'paid' AND abs(extract(epoch FROM b.paid_at - a.paid_at)) < 1800;
+          \echo '== A1 access now: trial, paid, comp, none (users with a Telegram chat, active)'
+          SELECT CASE WHEN free_access_granted THEN 'comp' WHEN paid_until > now() THEN 'paid' WHEN trial_ends_at > now() THEN 'trial'
+                      ELSE 'none' END AS access, count(*)
+          FROM users WHERE telegram_user_id IS NOT NULL AND is_active GROUP BY 1;
+          \echo '== A2 trial or paid end more than 90 days ahead (count)'
+          SELECT count(*) FILTER (WHERE trial_ends_at > now() + interval '90 days') AS trial_far,
+                 count(*) FILTER (WHERE paid_until > now() + interval '90 days') AS paid_far FROM users;
+          \echo '== N1 the same alert recorded twice (user, listing, reason)'
+          SELECT count(*) FROM (SELECT user_id, listing_id, reason FROM sent_notifications GROUP BY 1, 2, 3 HAVING count(*) > 1) d;
+          \echo '== N2 active users with a search and access, by days since their last alert'
+          SELECT CASE WHEN last IS NULL THEN 'never' WHEN last > now() - interval '1 day' THEN 'under 1d'
+                      WHEN last > now() - interval '3 days' THEN '1-3d' ELSE 'over 3d' END AS since, count(*)
+          FROM (SELECT u.id, max(s.sent_at) AS last FROM users u JOIN filters f ON f.user_id = u.id
+                LEFT JOIN sent_notifications s ON s.user_id = u.id
+                WHERE u.is_active AND u.notifications_enabled AND u.telegram_user_id IS NOT NULL
+                  AND (u.free_access_granted OR u.paid_until > now() OR u.trial_ends_at > now())
+                GROUP BY u.id) t GROUP BY 1 ORDER BY 1;
+          \echo '== D1 listings first seen in 7 days: odd values (counts)'
+          SELECT deal_type, count(*) AS total,
+                 count(*) FILTER (WHERE price IS NULL) AS no_price,
+                 count(*) FILTER (WHERE deal_type = 'rent' AND price < 1000) AS rent_under_1000,
+                 count(*) FILTER (WHERE deal_type = 'rent' AND price > 40000) AS rent_over_40000,
+                 count(*) FILTER (WHERE deal_type = 'sale' AND price < 200000) AS sale_under_200k,
+                 count(*) FILTER (WHERE rooms IS NULL) AS no_rooms, count(*) FILTER (WHERE rooms > 12) AS rooms_over_12,
+                 count(*) FILTER (WHERE city IS NULL) AS no_city, count(*) FILTER (WHERE size_sqm > 1000) AS size_over_1000,
+                 count(*) FILTER (WHERE first_seen_at > now() + interval '5 minutes') AS seen_in_future,
+                 count(*) FILTER (WHERE is_delisted <> (delisted_at IS NOT NULL)) AS delisted_mismatch
+          FROM listings WHERE first_seen_at > now() - interval '7 days' GROUP BY 1;
+          \echo '== D2 by source, last 7 days: count and share without photos / description'
+          SELECT source, count(*), round(100.0 * count(*) FILTER (WHERE image_urls = '{}') / count(*)) AS pct_no_photo,
+                 round(100.0 * count(*) FILTER (WHERE description IS NULL OR description = '') / count(*)) AS pct_no_text
+          FROM listings WHERE first_seen_at > now() - interval '7 days' GROUP BY 1 ORDER BY 2 DESC;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql
