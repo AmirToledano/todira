@@ -3132,11 +3132,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "اربط بحسابي الحالي",
     },
     "google_pending.link_hint_with_token": {
-        "he": "שלח /start בבוט, והחיבור יושלם שם מיד, לא משנה באיזה דפדפן תמשיך.",
-        "en": "Send /start to the bot, the connection completes right there, regardless of which browser you use afterward.",
-        "ru": "Отправьте /start боту, подключение завершится сразу там, независимо от того, каким браузером вы будете пользоваться дальше.",
-        "fr": "Envoyez /start au bot, la connexion se termine immédiatement là-bas, quel que soit le navigateur que vous utiliserez ensuite.",
-        "ar": "أرسل /start للبوت, سيكتمل الربط هناك فورًا، بغض النظر عن المتصفح الذي ستستخدمه لاحقًا.",
+        "he": "שלח /start בבוט ולחץ שם \"כן, לחבר\". החיבור יושלם מיד, לא משנה באיזה דפדפן תמשיך.",
+        "en": "Send /start to the bot and tap \"Yes, connect\" there. The connection completes right away, regardless of which browser you use afterward.",
+        "ru": "Отправьте /start боту и нажмите там «Да, подключить». Подключение завершится сразу, независимо от того, каким браузером вы будете пользоваться дальше.",
+        "fr": "Envoyez /start au bot et appuyez sur « Oui, connecter ». La connexion se termine immédiatement, quel que soit le navigateur que vous utiliserez ensuite.",
+        "ar": "أرسل /start للبوت واضغط هناك \"نعم، اربط\". سيكتمل الربط فورًا، بغض النظر عن المتصفح الذي ستستخدمه لاحقًا.",
     },
     "google_pending.link_hint_no_token": {
         "he": "פתח את הבוט פעם אחת. כשתחזור לאתר מאותו דפדפן, נשלים את החיבור לבד.",

@@ -80,7 +80,7 @@ def test_valid_link_code_attaches_telegram_id_to_the_code_owner():
         patch.object(start_module, "get_session", lambda: session),
         patch.object(start_module, "resolve_link_code", lambda s, code: code_user),
     ):
-        outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "ref_abc123")
+        outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "ref_abc123", True)
 
     assert outcome == "linked"
     assert reply == start_module.LINKED
@@ -98,7 +98,7 @@ def test_link_code_keeps_existing_first_name_if_code_owner_already_has_one():
         patch.object(start_module, "get_session", lambda: session),
         patch.object(start_module, "resolve_link_code", lambda s, code: code_user),
     ):
-        start_module._upsert_or_link_user_sync(_tg_user(first_name="Amir"), "ref_abc123")
+        start_module._upsert_or_link_user_sync(_tg_user(first_name="Amir"), "ref_abc123", True)
 
     assert code_user.first_name == "שם קיים"
 
@@ -109,7 +109,7 @@ def test_link_code_conflict_when_telegram_id_already_has_its_own_account():
     session = _QueuedScalarSession(results=[other_existing_user])
     with (
         patch.object(start_module, "get_session", lambda: session),
-        patch.object(start_module, "resolve_link_code", lambda s, code: code_user),
+        patch.object(start_module, "peek_link_code", lambda s, code: code_user),
     ):
         outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "ref_abc123")
 
@@ -123,7 +123,7 @@ def test_unknown_or_expired_code_falls_through_to_normal_upsert():
     session = _QueuedScalarSession(results=[None])  # normal by-telegram-id lookup finds nobody
     with (
         patch.object(start_module, "get_session", lambda: session),
-        patch.object(start_module, "resolve_link_code", lambda s, code: None),
+        patch.object(start_module, "peek_link_code", lambda s, code: None),
     ):
         outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "ref_expired")
 
@@ -211,6 +211,45 @@ def test_owner_never_gets_the_renewal_nudge():
         outcome, _reply = start_module._upsert_or_link_user_sync(_tg_user(id=555), None)
 
     assert outcome == "normal"
+
+
+def test_a_link_code_asks_first_and_changes_nothing():
+    """2026-11-02 (audit): a ref_ link someone else sent attached the tapper's Telegram account to the sender's website
+    account without a word. Now the person is asked, and nothing is made or changed until they say yes."""
+    code_user = SimpleNamespace(id=9, telegram_user_id=None, language="he", google_email="amir.t@gmail.com")
+    session = _QueuedScalarSession(results=[None])  # this Telegram id has no account
+    with (
+        patch.object(start_module, "get_session", lambda: session),
+        patch.object(start_module, "peek_link_code", lambda s, code: code_user),
+        patch.object(start_module, "resolve_link_code") as resolve_mock,
+    ):
+        outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "ref_abc123")
+
+    assert outcome == "confirm_ref:he"
+    assert "(a***@gmail.com)" in reply and "amir.t" not in reply
+    assert code_user.telegram_user_id is None and session.committed is False
+    resolve_mock.assert_not_called()
+
+
+def test_start_sends_the_question_with_yes_and_cancel():
+    update = _make_update()
+    with patch.object(start_module, "_upsert_or_link_user_sync", lambda tg_user, code: ("confirm_ref:he", "Q?")):
+        outcome = asyncio.run(start_module.start(update, _make_context(["ref_abc123"])))
+    assert outcome == "confirm_ref:he"
+    call = update.message.reply_text.await_args
+    assert call.args[0] == "Q?"
+    assert [b.callback_data for b in call.kwargs["reply_markup"].inline_keyboard[0]] == ["lk:r:ref_abc123", "lk:x:he"]
+
+
+def test_yes_links_with_the_code():
+    query = SimpleNamespace(data="lk:r:ref_abc123", answer=AsyncMock(), edit_message_text=AsyncMock())
+    update = SimpleNamespace(callback_query=query, effective_user=_tg_user())
+    calls = []
+    with patch.object(start_module, "_upsert_or_link_user_sync",
+                      lambda tg_user, code, confirmed=False: calls.append((code, confirmed)) or ("linked", "OK")):
+        asyncio.run(start_module.link_answer(update, SimpleNamespace()))
+    assert calls == [("ref_abc123", True)]
+    assert query.edit_message_text.await_args.args[0] == "OK"
 
 
 # --- start(): reply selection off the outcome ---

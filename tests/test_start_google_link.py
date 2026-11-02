@@ -42,23 +42,12 @@ def _tg_user(id=555, username="amirt", first_name="Amir"):
     return SimpleNamespace(id=id, username=username, first_name=first_name)
 
 
-def test_valid_token_links_google_sub_to_a_brand_new_user():
-    session = _QueuedScalarSession(results=[None])  # no existing telegram_user_id row
-    with (
-        patch.object(start_module, "get_session", lambda: session),
-        patch.object(start_module, "resolve_google_link_token", lambda s, tok: "google-sub-1"),
-    ):
-        outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "gl_abc123")
-
-    assert outcome == "normal"
-    assert reply.startswith(start_module.GOOGLE_LINKED_NOTE)
-    assert start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.app/account?t=TOKEN555"
-    ) in reply
-    assert session.committed is True
+# 2026-11-02 (audit): a gl_ link sent to someone else used to attach the sender's Google account to the tapper's
+# Telegram account with no question, so the sender could sign in to it with Google. /start now only asks, and the
+# person's "yes" (link_answer -> _link_google_sync) links it.
 
 
-def test_valid_token_links_google_sub_to_an_existing_unlinked_user():
+def test_start_with_a_google_token_links_nothing_by_itself():
     user = SimpleNamespace(
         id=2, telegram_user_id=555, telegram_username="amirt", first_name="Amir",
         is_active=False, filter=None, google_sub=None, language="he",
@@ -66,47 +55,94 @@ def test_valid_token_links_google_sub_to_an_existing_unlinked_user():
     session = _QueuedScalarSession(results=[user])
     with (
         patch.object(start_module, "get_session", lambda: session),
-        patch.object(start_module, "resolve_google_link_token", lambda s, tok: "google-sub-2"),
+        patch.object(start_module, "resolve_google_link_token") as resolve_mock,
     ):
         outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "gl_abc123")
 
     assert outcome == "normal"
-    assert user.google_sub == "google-sub-2"
-    assert reply.startswith(start_module.GOOGLE_LINKED_NOTE)
+    assert user.google_sub is None
+    resolve_mock.assert_not_called()
+    assert reply == start_module.WELCOME.format(name="Amir", account_url="https://todira.app/account?t=TOKEN555")
 
 
-def test_valid_token_does_not_overwrite_an_existing_different_google_link():
-    user = SimpleNamespace(
-        id=2, telegram_user_id=555, telegram_username="amirt", first_name="Amir",
-        is_active=False, filter=None, google_sub="already-linked-sub", language="he",
-    )
-    session = _QueuedScalarSession(results=[user])
+def test_start_asks_before_linking_a_google_account():
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    update = SimpleNamespace(effective_user=_tg_user(), message=SimpleNamespace(reply_text=AsyncMock()))
+    with (
+        patch.object(start_module, "_upsert_or_link_user_sync", lambda tg_user, code: ("normal", "WELCOME")),
+        patch.object(start_module, "_google_link_prompt_sync", lambda tg_user, token: "he"),
+        patch.object(start_module, "_record_source", lambda *a: None),
+    ):
+        asyncio.run(start_module.start(update, SimpleNamespace(args=["gl_abc123"])))
+
+    first, second = update.message.reply_text.await_args_list
+    assert first.args[0] == "WELCOME"
+    assert second.args[0] == start_module.bot_text("link.confirm_google", "he")
+    buttons = second.kwargs["reply_markup"].inline_keyboard[0]
+    assert [b.callback_data for b in buttons] == ["lk:g:gl_abc123", "lk:x:he"]
+
+
+def _user(**overrides):
+    defaults = dict(id=2, telegram_user_id=555, google_sub=None, language="he")
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def test_yes_links_the_google_account():
+    user = _user()
+    session = _QueuedScalarSession(results=[user, None])  # this person's row, nobody else has that Google account
+    with (
+        patch.object(start_module, "get_session", lambda: session),
+        patch.object(start_module, "resolve_google_link_token", lambda s, tok: "google-sub-1"),
+    ):
+        reply = start_module._link_google_sync(_tg_user(), "gl_abc123")
+    assert user.google_sub == "google-sub-1" and session.committed
+    assert reply == start_module.GOOGLE_LINKED_NOTE.strip()
+
+
+def test_yes_never_overwrites_a_google_link_or_takes_one_another_account_has():
+    linked = _user(google_sub="already-linked-sub")
+    session = _QueuedScalarSession(results=[linked])
     with (
         patch.object(start_module, "get_session", lambda: session),
         patch.object(start_module, "resolve_google_link_token", lambda s, tok: "google-sub-new"),
     ):
-        outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "gl_abc123")
+        assert start_module._link_google_sync(_tg_user(), "gl_abc123") == start_module.bot_text("link.expired", "he")
+    assert linked.google_sub == "already-linked-sub"
 
-    assert outcome == "normal"
-    assert user.google_sub == "already-linked-sub"  # untouched
-    assert not reply.startswith(start_module.GOOGLE_LINKED_NOTE)
-    assert reply == start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.app/account?t=TOKEN555"
-    )
+    user = _user()
+    session = _QueuedScalarSession(results=[user, 99])  # account 99 already has this Google account
+    with (
+        patch.object(start_module, "get_session", lambda: session),
+        patch.object(start_module, "resolve_google_link_token", lambda s, tok: "google-sub-x"),
+    ):
+        assert start_module._link_google_sync(_tg_user(), "gl_abc123") == start_module.bot_text("link.taken", "he")
+    assert user.google_sub is None and not session.committed
 
 
-def test_expired_or_unknown_token_falls_through_with_no_note():
-    session = _QueuedScalarSession(results=[None])
+def test_yes_after_the_token_expired_links_nothing():
+    user = _user()
+    session = _QueuedScalarSession(results=[user])
     with (
         patch.object(start_module, "get_session", lambda: session),
         patch.object(start_module, "resolve_google_link_token", lambda s, tok: None),
     ):
-        outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "gl_expired")
+        assert start_module._link_google_sync(_tg_user(), "gl_old") == start_module.bot_text("link.expired", "he")
+    assert user.google_sub is None
 
-    assert outcome == "normal"
-    assert reply == start_module.WELCOME.format(
-        name="Amir", account_url="https://todira.app/account?t=TOKEN555"
-    )
+
+def test_cancel_changes_nothing():
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    query = SimpleNamespace(data="lk:x:he", answer=AsyncMock(), edit_message_text=AsyncMock())
+    update = SimpleNamespace(callback_query=query, effective_user=_tg_user())
+    with patch.object(start_module, "_link_google_sync") as link_mock:
+        asyncio.run(start_module.link_answer(update, SimpleNamespace()))
+    link_mock.assert_not_called()
+    assert query.edit_message_text.await_args.args[0] == start_module.bot_text("link.cancelled", "he")
 
 
 def test_plain_start_never_calls_resolve_google_link_token():
@@ -118,46 +154,6 @@ def test_plain_start_never_calls_resolve_google_link_token():
         start_module._upsert_or_link_user_sync(_tg_user(), None)
 
     resolve_mock.assert_not_called()
-
-
-def test_channel_link_code_payload_never_calls_resolve_google_link_token():
-    code_user = SimpleNamespace(
-        id=9, telegram_user_id=None, telegram_username=None, first_name=None, is_active=False,
-        language="he",
-    )
-    session = _QueuedScalarSession(results=[None])
-    with (
-        patch.object(start_module, "get_session", lambda: session),
-        patch.object(start_module, "resolve_link_code", lambda s, code: code_user),
-        patch.object(start_module, "resolve_google_link_token") as resolve_mock,
-    ):
-        outcome, _reply = start_module._upsert_or_link_user_sync(_tg_user(), "ref_abc123")
-
-    assert outcome == "linked"
-    resolve_mock.assert_not_called()
-
-
-def test_google_linked_note_is_prepended_before_the_renewal_nudge_too():
-    import datetime as dt
-
-    now = dt.datetime.now(dt.timezone.utc)
-    user = SimpleNamespace(
-        id=2, telegram_user_id=555, telegram_username="amirt", first_name="Amir",
-        is_active=False, filter=SimpleNamespace(cities=["חיפה"]), google_sub=None,
-        trial_ends_at=now - dt.timedelta(days=1), paid_until=None, free_access_granted=False,
-        language="he",
-    )
-    session = _QueuedScalarSession(results=[user])
-    with (
-        patch.object(start_module, "get_session", lambda: session),
-        patch.object(start_module, "resolve_google_link_token", lambda s, tok: "google-sub-3"),
-    ):
-        outcome, reply = start_module._upsert_or_link_user_sync(_tg_user(), "gl_abc123")
-
-    assert outcome == "expired"
-    assert reply.startswith(start_module.GOOGLE_LINKED_NOTE)
-    assert "חיפה" in reply
-    assert user.google_sub == "google-sub-3"
 
 
 @pytest.fixture(autouse=True)

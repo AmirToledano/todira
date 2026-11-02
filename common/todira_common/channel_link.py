@@ -52,3 +52,15 @@ def resolve_link_code(session: Session, raw_text: str) -> User | None:
     user.channel_link_code_expires_at = None
     session.commit()
     return user
+
+
+def peek_link_code(session: Session, raw_text: str) -> User | None:
+    """The user waiting on this code, without using it up: /start asks the person to confirm first (2026-11-02 audit:
+    a ref_ link tapped by someone else attached their Telegram account to the code's owner without asking)."""
+    code = raw_text.strip().lower()
+    if not code.startswith(CODE_PREFIX):
+        return None
+    user = session.scalar(select(User).where(User.channel_link_code == code))
+    if user is None or user.channel_link_code_expires_at is None:
+        return None
+    return user if dt.datetime.now(dt.timezone.utc) <= user.channel_link_code_expires_at else None

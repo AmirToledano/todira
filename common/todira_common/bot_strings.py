@@ -114,6 +114,44 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "هذا الحساب على تيليجرام لديه بالفعل حساب منفصل عندي، لذا لا يمكن ربطه بحساب آخر. "
         "إذا كان هذا خطأ، راسلنا عبر todira.app/contact.",
     },
+    # 2026-11-02 (audit): linking a website account or a Google sign-in to this Telegram account is confirmed first
+    "link.confirm_ref": {
+        "he": "לחבר את חשבון הטלגרם הזה לחשבון שפתחת באתר{email}?\n\nאם לא ביקשת עכשיו לחבר חשבון מהאתר, לחץ \"ביטול\" ושום דבר לא ישתנה.",
+        "en": "Connect this Telegram account to the account you opened on the website{email}?\n\nIf you did not just ask to connect a website account, tap \"Cancel\" and nothing will change.",
+        "ru": "Подключить этот аккаунт Telegram к аккаунту, который вы открыли на сайте{email}?\n\nЕсли вы сейчас не просили подключить аккаунт с сайта, нажмите «Отмена», и ничего не изменится.",
+        "fr": "Connecter ce compte Telegram au compte que tu as ouvert sur le site{email} ?\n\nSi tu n'as pas demandé à l'instant de connecter un compte du site, appuie sur « Annuler » et rien ne changera.",
+        "ar": "ربط حساب Telegram هذا بالحساب الذي فتحته على الموقع{email}؟\n\nإذا لم تطلب الآن ربط حساب من الموقع، اضغط \"إلغاء\" ولن يتغير شيء.",
+    },
+    "link.confirm_google": {
+        "he": "התחברת עכשיו לאתר עם חשבון Google וביקשת לחבר אותו לחשבון הטלגרם הזה?\n\nאם לא, לחץ \"ביטול\" ושום דבר לא ישתנה.",
+        "en": "Did you just sign in on the website with a Google account and ask to connect it to this Telegram account?\n\nIf not, tap \"Cancel\" and nothing will change.",
+        "ru": "Вы только что вошли на сайт через Google и попросили подключить этот аккаунт к этому аккаунту Telegram?\n\nЕсли нет, нажмите «Отмена», и ничего не изменится.",
+        "fr": "Tu viens de te connecter au site avec un compte Google et de demander à le lier à ce compte Telegram ?\n\nSinon, appuie sur « Annuler » et rien ne changera.",
+        "ar": "هل سجلت الدخول الآن إلى الموقع بحساب Google وطلبت ربطه بحساب Telegram هذا؟\n\nإن لم تفعل، اضغط \"إلغاء\" ولن يتغير شيء.",
+    },
+    "link.yes": {"he": "כן, לחבר", "en": "Yes, connect", "ru": "Да, подключить", "fr": "Oui, connecter", "ar": "نعم، اربط"},
+    "link.no": {"he": "ביטול", "en": "Cancel", "ru": "Отмена", "fr": "Annuler", "ar": "إلغاء"},
+    "link.cancelled": {
+        "he": "בוטל, לא חיברתי כלום. כדי להתחיל כרגיל שלח /start",
+        "en": "Cancelled, nothing was connected. To start as usual, send /start",
+        "ru": "Отменено, ничего не подключено. Чтобы начать как обычно, отправьте /start",
+        "fr": "Annulé, rien n'a été connecté. Pour commencer normalement, envoie /start",
+        "ar": "تم الإلغاء، لم يتم ربط أي شيء. للبدء كالمعتاد أرسل /start",
+    },
+    "link.expired": {
+        "he": "הקישור כבר לא בתוקף. התחבר שוב באתר ובקש קישור חדש.",
+        "en": "This link is no longer valid. Sign in again on the website and ask for a new link.",
+        "ru": "Эта ссылка больше не действует. Войдите на сайт снова и запросите новую ссылку.",
+        "fr": "Ce lien n'est plus valide. Reconnecte-toi sur le site et demande un nouveau lien.",
+        "ar": "هذا الرابط لم يعد صالحًا. سجّل الدخول مرة أخرى على الموقع واطلب رابطًا جديدًا.",
+    },
+    "link.taken": {
+        "he": "חשבון ה-Google הזה כבר מחובר לחשבון אחר אצלנו, אז לא חיברתי אותו. אם זו טעות, כתבו לנו דרך todira.app/contact.",
+        "en": "This Google account is already connected to another account here, so I did not connect it. If this is a mistake, message us via todira.app/contact.",
+        "ru": "Этот аккаунт Google уже подключён к другому аккаунту, поэтому я его не подключил. Если это ошибка, напишите нам через todira.app/contact.",
+        "fr": "Ce compte Google est déjà lié à un autre compte ici, je ne l'ai donc pas connecté. Si c'est une erreur, écris-nous via todira.app/contact.",
+        "ar": "حساب Google هذا مرتبط بالفعل بحساب آخر هنا، لذلك لم أربطه. إذا كان هذا خطأ، راسلنا عبر todira.app/contact.",
+    },
     "start.google_linked_note": {
         "he": "🔗 חשבון ה-Google שלך קושר בהצלחה לחשבון הזה — מעכשיו אפשר להתחבר איתו באתר, מכל "
         "דפדפן.\n\n",
