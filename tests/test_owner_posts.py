@@ -121,3 +121,17 @@ def test_admin_posts_is_hidden_from_everyone_else(client, monkeypatch):
     monkeypatch.setattr(website_main, "get_session", _NoDatabase)
     assert client.get("/admin/posts").status_code == 404
     assert client.post("/admin/posts/1/approve").status_code == 404
+
+
+def test_a_huge_picture_is_refused_before_decoding_but_a_big_jpeg_is_read_scaled_down(monkeypatch):
+    """2026-11-02 (audit): a small PNG of 9400x9400 pixels took the site past its memory limit while decoding."""
+    from PIL import Image
+
+    monkeypatch.setattr(owner_posts, "MAX_DECODED_PIXELS", 50_000)
+    monkeypatch.setattr(owner_posts, "PHOTO_MAX_SIDE", 100)
+    png, jpeg = io.BytesIO(), io.BytesIO()
+    Image.new("RGBA", (800, 800), (10, 20, 30, 255)).save(png, "PNG")
+    Image.new("RGB", (800, 800), (10, 20, 30)).save(jpeg, "JPEG")
+    assert owner_posts.resize_photo(png.getvalue()) is None  # 640,000 pixels to decode
+    small = owner_posts.resize_photo(jpeg.getvalue())  # decoded at 1/8: 100x100
+    assert small is not None and Image.open(io.BytesIO(small)).size == (100, 100)

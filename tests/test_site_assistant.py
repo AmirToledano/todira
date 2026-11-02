@@ -74,10 +74,13 @@ def test_daily_caps():
 def test_endpoint_is_off_for_the_public_until_enabled(client, monkeypatch):
     monkeypatch.setenv("GEMINI_SITE_API_KEY", "k")
     monkeypatch.delenv("ASSISTANT_ENABLED", raising=False)
-    with patch.object(website_main, "_is_owner_browser", lambda request: False):
+    with patch.object(website_main, "_is_owner_signed_in", lambda request: False):
         resp = client.post("/api/assistant", json={"messages": [{"role": "user", "text": "hi"}]})
         assert resp.status_code == 404
         assert 'id="assistant"' not in client.get("/").text
+        # 2026-11-02 (audit): the owner's unsigned cookie only hides a browser from the counts; it opens nothing
+        client.cookies.set("todira_owner", "1")
+        assert client.post("/api/assistant", json={"messages": [{"role": "user", "text": "hi"}]}).status_code == 404
 
 
 def test_owner_gets_an_answer_and_the_bubble(client, monkeypatch):
@@ -85,7 +88,7 @@ def test_owner_gets_an_answer_and_the_bubble(client, monkeypatch):
     monkeypatch.delenv("ASSISTANT_ENABLED", raising=False)
     assistant._counts.clear()
     with (
-        patch.object(website_main, "_is_owner_browser", lambda request: True),
+        patch.object(website_main, "_is_owner_signed_in", lambda request: True),
         patch.object(website_main, "_assistant_user_context", lambda request: None),
         patch.object(assistant, "answer", lambda turns, lang, prices, ctx: "תשובה"),
     ):

@@ -8,6 +8,10 @@ _ROOT = Path(__file__).resolve().parent.parent
 # bot/scraper/website Dockerfiles) - so `import todira_common` and e.g. `import normalize` both
 # resolve as top-level modules. Mirror that layout here so tests import the same way production
 # does, without needing package installs.
+import os  # noqa: E402
+
+# 2026-11-02: the site's session cookie is https-only in production; TestClient talks plain http
+os.environ.setdefault("SESSION_COOKIE_SECURE", "0")
 sys.path.insert(0, str(_ROOT / "common"))
 sys.path.insert(0, str(_ROOT / "scraper"))
 sys.path.insert(0, str(_ROOT / "bot"))
