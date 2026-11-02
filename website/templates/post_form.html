@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ t('post.title') }} | טודירה{% endblock %}
+{# 2026-11-02 (growth): its own meta description, so Google does not show the home page's one #}
+{% block meta_description %}{{ t('meta.desc_post') }}{% endblock %}
 {% block content %}
 {# 2026-10-31 (owner-approved): free posting for flat owners. main.py's post_form/post_submit, website/owner_posts.py. #}
 <div class="guide post">

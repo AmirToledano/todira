@@ -3891,3 +3891,48 @@ TRANSLATIONS.update({
     "landing.end_title": {"he": "טודי כבר מחפש", "en": "Todi is already looking", "ru": "Тоди уже ищет",
                           "fr": "Todi cherche déjà", "ar": "تودي يبحث بالفعل"},
 })
+
+# 2026-11-02 (growth): the public channel link, the "other cities" row on city pages and a meta description of its own
+# for each content page (Google shows it under the title). New prefixes on purpose: nothing here is in the React
+# landing's content.json, so no rebuild is needed.
+TRANSLATIONS.update({
+    "channel.footer_link": {"he": "ערוץ הטלגרם שלנו", "en": "Our Telegram channel", "ru": "Наш Telegram-канал",
+                            "fr": "Notre chaîne Telegram", "ar": "قناتنا على تيليغرام"},
+    "channel.page_link": {
+        "he": "הדירות הכי משתלמות של כל בוקר, בערוץ הטלגרם שלנו",
+        "en": "Each morning's best-value flats, on our Telegram channel",
+        "ru": "Самые выгодные квартиры каждого утра, в нашем Telegram-канале",
+        "fr": "Les appartements les plus avantageux de chaque matin, sur notre chaîne Telegram",
+        "ar": "أفضل الشقق من حيث السعر كل صباح، في قناتنا على تيليغرام",
+    },
+    "city.more_cities": {"he": "ערים נוספות", "en": "More cities", "ru": "Другие города", "fr": "Autres villes",
+                         "ar": "مدن أخرى"},
+    "meta.desc_calculator": {
+        "he": "כמה שכירות אתם יכולים להרשות לעצמכם ובאיזו עיר, לפי ההכנסה שלכם ולפי מחירי הדירות שמפורסמות עכשיו.",
+        "en": "How much rent you can afford and in which city, from your income and the prices of flats listed right now.",
+        "ru": "Какую аренду вы можете себе позволить и в каком городе, по вашему доходу и ценам квартир сейчас.",
+        "fr": "Quel loyer vous pouvez vous permettre et dans quelle ville, selon vos revenus et les prix affichés en ce moment.",
+        "ar": "كم إيجاراً يمكنك تحمّله وفي أي مدينة، حسب دخلك وأسعار الشقق المعروضة الآن.",
+    },
+    "meta.desc_moving": {
+        "he": "רשימה למעבר דירה: מה לעשות לפני שחותמים, שבועיים לפני, ביום הכניסה ואחריו. מסמנים כל שורה בדרך.",
+        "en": "A moving checklist: what to do before signing, two weeks before, on moving day and after. Tick each line as you go.",
+        "ru": "Чек-лист переезда: что сделать до подписания, за две недели, в день въезда и после. Отмечайте каждый пункт.",
+        "fr": "Check-list du déménagement : avant de signer, deux semaines avant, le jour J et après. Cochez chaque ligne.",
+        "ar": "قائمة الانتقال: ما تفعله قبل التوقيع، قبل أسبوعين، يوم الدخول وبعده. ضع علامة على كل سطر.",
+    },
+    "meta.desc_contract": {
+        "he": "מה לבדוק בחוזה שכירות לפני שחותמים: מה החוק קובע ומה לבדוק בחוזה עצמו, עם קישורים למקורות.",
+        "en": "What to check in a lease before signing: what the law says and what to look for in the contract, with sources.",
+        "ru": "Что проверить в договоре аренды до подписания: что говорит закон и что смотреть в договоре, со ссылками.",
+        "fr": "Ce qu'il faut vérifier dans un bail avant de signer : ce que dit la loi et le contrat lui-même, avec les sources.",
+        "ar": "ما يجب فحصه في عقد الإيجار قبل التوقيع: ما يقوله القانون وما تفحصه في العقد نفسه، مع المصادر.",
+    },
+    "meta.desc_post": {
+        "he": "יש לך דירה להשכרה? מפרסמים אותה כאן בחינם, ואחרי בדיקה היא נשלחת למי שמחפש בדיוק דירה כזו.",
+        "en": "Have a flat to rent? Post it here for free. Once checked, it goes to the people looking for exactly such a flat.",
+        "ru": "Сдаёте квартиру? Опубликуйте её здесь бесплатно. После проверки она уйдёт тем, кто ищет именно такую.",
+        "fr": "Un appartement à louer ? Publiez-le ici gratuitement. Une fois vérifié, il part à ceux qui cherchent ce type de logement.",
+        "ar": "لديك شقة للإيجار؟ انشرها هنا مجاناً. بعد المراجعة تُرسل لمن يبحث عن شقة كهذه بالضبط.",
+    },
+})
