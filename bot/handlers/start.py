@@ -23,19 +23,19 @@ from config import WEBSITE_URL
 from todira_common import activity, referrals
 from todira_common.access import has_full_access
 from todira_common.channel_link import CODE_PREFIX as CHANNEL_LINK_CODE_PREFIX
-from todira_common.channel_link import resolve_link_code
+from todira_common.channel_link import peek_link_code, resolve_link_code
 from todira_common.db import get_session
 from todira_common.google_link import TOKEN_PREFIX as GOOGLE_LINK_TOKEN_PREFIX
-from todira_common.google_link import resolve_google_link_token
+from todira_common.google_link import peek_google_link_token, resolve_google_link_token
 from todira_common.bot_strings import BOT_STRINGS, bot_text
 from todira_common.language import DEFAULT_LANG
 from todira_common.listing_matches import mark_recent_matches_seen
 from todira_common.models import User
 from todira_common.uid_token import signed_login_query
 from sqlalchemy import select
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.ext import ContextTypes
+from telegram.ext import CallbackQueryHandler, ContextTypes
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def _format_cities(cities: list[str], lang: str) -> str:
     return ", ".join(cities[:-1]) + " ו" + cities[-1]
 
 
-def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, str]:
+def _upsert_or_link_user_sync(tg_user, start_payload: str | None, confirmed: bool = False) -> tuple[str, str]:
     """Returns (outcome, reply_text). outcome is "linked" / "conflict" / "normal" / "expired" —
     tests key off outcome; start() just sends reply_text as-is.
 
@@ -102,13 +102,12 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
         if start_payload and start_payload.startswith(CHANNEL_LINK_CODE_PREFIX)
         else None
     )
-    google_link_token = (
-        start_payload if start_payload and start_payload.startswith(GOOGLE_LINK_TOKEN_PREFIX) else None
-    )
 
     with get_session() as session:
         if link_code:
-            code_user = resolve_link_code(session, link_code)
+            # 2026-11-02 (audit): the person confirms first (link_answer below, confirmed=True). A ref_ link someone else
+            # sent used to attach the tapper's Telegram account to the sender's website account without a word.
+            code_user = resolve_link_code(session, link_code) if confirmed else peek_link_code(session, link_code)
             if code_user is not None:
                 existing = session.scalar(
                     select(User).where(User.telegram_user_id == tg_user.id)
@@ -118,6 +117,10 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
                     # a second one would mean merging two rows' filters/history, which we don't
                     # do automatically. Leave both accounts exactly as they were.
                     return "conflict", bot_text("start.link_conflict", existing.language)
+                if not confirmed and existing is None:
+                    lang = code_user.language or DEFAULT_LANG
+                    email = _masked_email(getattr(code_user, "google_email", None))
+                    return f"confirm_ref:{lang}", bot_text("link.confirm_ref", lang, email=f" ({email})" if email else "")
                 code_user.telegram_user_id = tg_user.id
                 code_user.telegram_username = tg_user.username
                 code_user.first_name = code_user.first_name or tg_user.first_name
@@ -137,11 +140,8 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
             # than erroring, since a plain "/start" with no payload hits this same path with
             # link_code=None every time.
 
-        # Consumed BEFORE the user upsert below so it's single-use regardless of which branch
-        # (new user vs. reactivate) ends up applying it.
-        pending_google_sub = (
-            resolve_google_link_token(session, google_link_token) if google_link_token else None
-        )
+        # 2026-11-02 (audit): a gl_ token is no longer applied here. start() asks the person to confirm first and
+        # link_answer() links it (a gl_ link sent to someone else used to give the sender that person's account).
 
         user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
         is_new = user is None
@@ -165,14 +165,7 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None) -> tuple[str, 
         session.commit()
         lang = user.language or DEFAULT_LANG
 
-        # Don't silently overwrite an existing DIFFERENT Google link — same guard website/main.py's
-        # auth_google_callback already applies for its own session_user_id fallback.
-        google_linked_now = False
-        if pending_google_sub and user.google_sub is None:
-            user.google_sub = pending_google_sub
-            session.commit()
-            google_linked_now = True
-        note = bot_text("start.google_linked_note", lang) if google_linked_now else ""
+        note = ""
 
         if is_new:
             return "normal", note + _welcome(tg_user, lang)
@@ -216,7 +209,66 @@ def _record_source(tg_user_id: int, start_payload: str | None) -> None:
     activity.record(f"src_{start_payload}", f"t{tg_user_id}")
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _masked_email(email: str | None) -> str | None:
+    if not email or "@" not in email:
+        return None
+    name, domain = email.split("@", 1)
+    return f"{name[:1]}***@{domain}"
+
+
+def _confirm_markup(kind: str, payload: str, lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(bot_text("link.yes", lang), callback_data=f"lk:{kind}:{payload}"),
+        InlineKeyboardButton(bot_text("link.no", lang), callback_data=f"lk:x:{lang}"),
+    ]])
+
+
+def _google_link_prompt_sync(tg_user, token: str) -> str | None:
+    """The language to ask in, when this live gl_ token can be linked to this person's account; None otherwise."""
+    with get_session() as session:
+        if not peek_google_link_token(session, token):
+            return None
+        user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
+        if user is None or user.google_sub is not None:
+            return None
+        return user.language or DEFAULT_LANG
+
+
+def _link_google_sync(tg_user, token: str) -> str:
+    with get_session() as session:
+        google_sub = resolve_google_link_token(session, token)
+        user = session.scalar(select(User).where(User.telegram_user_id == tg_user.id))
+        lang = (user.language if user is not None else None) or DEFAULT_LANG
+        if google_sub is None or user is None or user.google_sub is not None:
+            return bot_text("link.expired", lang)
+        if session.scalar(select(User.id).where(User.google_sub == google_sub)) is not None:
+            return bot_text("link.taken", lang)
+        user.google_sub = google_sub
+        session.commit()
+        return bot_text("start.google_linked_note", lang).strip()
+
+
+async def link_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The answer to "connect this account?" (2026-11-02 audit)."""
+    query = update.callback_query
+    await query.answer()
+    parts = (query.data or "").split(":", 2)
+    kind = parts[1] if len(parts) > 1 else ""
+    payload = parts[2] if len(parts) > 2 else ""
+    if kind == "r":
+        _outcome, text = await asyncio.to_thread(_upsert_or_link_user_sync, update.effective_user, payload, True)
+    elif kind == "g":
+        text = await asyncio.to_thread(_link_google_sync, update.effective_user, payload)
+    else:
+        text = bot_text("link.cancelled", payload if payload in BOT_STRINGS["link.no"] else DEFAULT_LANG)
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+
+
+def build_link_answer_handler() -> CallbackQueryHandler:
+    return CallbackQueryHandler(link_answer, pattern=r"^lk:")
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     tg_user = update.effective_user
     start_payload = context.args[0] if context.args else None
     asyncio.get_running_loop().run_in_executor(None, _record_source, tg_user.id, start_payload)
@@ -228,7 +280,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # synchronous DB call made directly on the event loop blocks every OTHER user's button press
     # and command for its entire duration, not just this one. See PROJECT_STATE.md's 2026-08-31
     # "bot-wide blocking DB calls" entry for the investigation that found this.
-    _outcome, reply_text = await asyncio.to_thread(
+    outcome, reply_text = await asyncio.to_thread(
         _upsert_or_link_user_sync, tg_user, start_payload
     )
+    if outcome.startswith("confirm_ref:"):
+        lang = outcome.split(":", 1)[1]
+        await update.message.reply_text(reply_text, reply_markup=_confirm_markup("r", start_payload, lang))
+        return outcome  # no account is made for this Telegram id until the person answers (onboarding stops here)
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+    if start_payload and start_payload.startswith(GOOGLE_LINK_TOKEN_PREFIX):
+        lang = await asyncio.to_thread(_google_link_prompt_sync, tg_user, start_payload)
+        if lang is not None:
+            await update.message.reply_text(
+                bot_text("link.confirm_google", lang), reply_markup=_confirm_markup("g", start_payload, lang)
+            )
+    return outcome

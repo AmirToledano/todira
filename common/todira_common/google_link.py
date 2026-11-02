@@ -56,3 +56,14 @@ def resolve_google_link_token(session: Session, raw_text: str) -> str | None:
     session.delete(pending)
     session.commit()
     return None if expired else google_sub
+
+
+def peek_google_link_token(session: Session, raw_text: str) -> bool:
+    """Whether this is a live token, without using it up: /start asks the person to confirm first (2026-11-02 audit:
+    a gl_ link sent to someone else attached the sender's Google account to the tapper's Telegram account silently,
+    so the sender could then sign in to it with Google)."""
+    token = raw_text.strip()
+    if not token.startswith(TOKEN_PREFIX):
+        return False
+    pending = session.scalar(select(PendingGoogleLink).where(PendingGoogleLink.token == token))
+    return pending is not None and pending.expires_at is not None and dt.datetime.now(dt.timezone.utc) <= pending.expires_at

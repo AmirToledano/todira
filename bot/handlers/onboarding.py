@@ -80,7 +80,9 @@ def _has_filter_sync(tg_user) -> tuple[bool, str]:
 
 
 async def onboarding_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await start(update, context)  # normal welcome + create/reactivate the user row
+    outcome = await start(update, context)  # normal welcome + create/reactivate the user row
+    if isinstance(outcome, str) and outcome.startswith("confirm_ref"):
+        return ConversationHandler.END  # 2026-11-02: waiting for "connect this account?"; making a row now would block it
 
     # asyncio.to_thread — see start.py's _upsert_user_sync comment for why: a synchronous DB call
     # made directly on the event loop blocks every other user's interaction with the bot too.
