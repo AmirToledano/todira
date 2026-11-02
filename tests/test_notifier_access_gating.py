@@ -10,6 +10,8 @@ import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 
@@ -18,6 +20,14 @@ from todira_common.enums import Source
 from todira_common.uid_token import verify_uid_token
 
 _NOW = dt.datetime.now(dt.timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _no_card_today():
+    """2026-11-02 (growth): _send_one asks the DB whether a user without access already had a card today; these fakes
+    have no DB."""
+    with patch.object(notifier, "_had_card_today", return_value=False):
+        yield
 
 
 def _user(**overrides):

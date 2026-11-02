@@ -467,6 +467,7 @@ def format_caption(
     lang: str = DEFAULT_LANG,
     access_state: str | None = None,
     below_area_pct: int | None = None,
+    full_notice: bool = True,
 ) -> str:
     """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
 
@@ -477,6 +478,9 @@ def format_caption(
     `access_state` (todira_common.access.access_state): for a viewer WITHOUT access, ACCESS_TRIAL_ENDED or
     ACCESS_SUBSCRIPTION_EXPIRED makes the footer say which one ended; None keeps the generic lock line. Ignored when
     `has_access` is true.
+
+    `full_notice` (2026-11-02, growth): False drops the long "your trial/subscription ended" notice for the short lock
+    line; scraper/notifier.py sends the long one only on a user's first card of the Israel day.
 
     `has_access` is required, not defaulted. **Policy changed 2026-09-12**: originally (2026-09-05
     request, "אני רוצה שזה יהיה סגור למשתמש... כל האינטרס של מנוי פרימיום זה שהפרטים יהיו מוחבאים
@@ -534,7 +538,7 @@ def format_caption(
         safe_url = html.escape(view_url or listing.url)
         link_text = bot_text("card.full_details_link_html", lang)
         footer_text = f'🔗 <a href="{safe_url}">{link_text}</a>'
-    elif access_state in (ACCESS_TRIAL_ENDED, ACCESS_SUBSCRIPTION_EXPIRED):
+    elif full_notice and access_state in (ACCESS_TRIAL_ENDED, ACCESS_SUBSCRIPTION_EXPIRED):
         # 2026-10-09 owner request: tell the person WHY the link is locked — the free trial ended vs. a paid
         # subscription that ended — instead of the one generic lock line.
         notice_key = _expired_notice_key(access_state)
@@ -567,7 +571,7 @@ _PHOTO_CACHE_SECONDS = 15 * 60
 
 
 async def send_listing_card(
-    bot: Bot, chat_id: int, listing: Listing, caption: str, lang: str = DEFAULT_LANG
+    bot: Bot, chat_id: int, listing: Listing, caption: str, lang: str = DEFAULT_LANG, *, invite: bool = False
 ) -> bool:
     """Sends one listing to one Telegram chat — the ONE place this project actually puts a
     listing on screen, used by the scraper's notifier and every bot handler that shows a listing,
@@ -595,7 +599,7 @@ async def send_listing_card(
     all. A single wait-and-retry (honoring Telegram's own `retry_after` seconds) is enough for a
     burst that size; still gives up and returns False if the second attempt also fails, exactly
     like any other permanent failure (blocked bot, dead chat, bad photo URL)."""
-    keyboard = listing_keyboard(listing.id, lang)
+    keyboard = listing_keyboard(listing.id, lang, invite=invite)
     image_url = listing.image_urls[0] if listing.image_urls else None
 
     async def _do_send() -> None:
@@ -704,7 +708,7 @@ def _bot_share_enabled() -> bool:
     return switches.is_on("share_button", os.environ.get("BOT_SHARE_BUTTON", "").strip() == "1")
 
 
-def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboardMarkup:
+def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG, *, invite: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
@@ -722,6 +726,10 @@ def listing_keyboard(listing_id: int, lang: str = DEFAULT_LANG) -> InlineKeyboar
         # Telegram's own share sheet, with Todira's page for this flat (todira_common/share.py), never the original ad.
         query = urlencode({"url": share.share_url(listing_id), "text": bot_text("card.share_text", lang)})
         rows.append([InlineKeyboardButton(bot_text("card.share_button", lang), url=f"https://t.me/share/url?{query}")])
+    if invite:
+        # 2026-11-02 (growth): a user without access gets the free way back on the card itself, invite a friend
+        # (bot/handlers/invite.py answers "invite:show")
+        rows.append([InlineKeyboardButton(bot_text("card.invite_button", lang), callback_data="invite:show")])
     return InlineKeyboardMarkup(rows)
 
 

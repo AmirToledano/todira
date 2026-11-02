@@ -98,7 +98,7 @@ def test_menu_callback_cancel_clears_the_old_keyboard_explicitly():
 
 def test_handle_save_success_clears_the_old_keyboard_explicitly(monkeypatch):
     # Same real bug/fix as the cancel case above, on _handle_save's own success-path edit.
-    monkeypatch.setattr(filter_conversation, "_save_and_match_sync", lambda *a, **k: 0)
+    monkeypatch.setattr(filter_conversation, "_save_and_match_sync", lambda *a, **k: (0, False))
     draft = _default_draft()
     user = SimpleNamespace(id=555)
     message = SimpleNamespace(reply_text=AsyncMock())

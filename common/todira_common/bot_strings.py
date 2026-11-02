@@ -37,9 +37,9 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>אפשר פשוט לכתוב לי מה מחפשים</b>, במילים שלך, ואני אבין לבד.\n"
             "💬 למשל: <i>\"דירת 3 חדרים בתל אביב עד 8,000 ₪ עם מרפסת\"</i>\n"
             "🎤 אפשר גם להקליט לי הודעה קולית, או לבחור הכל בכפתורים דרך /filter.\n\n⠀\n"
-            "📋 <b>פקודות:</b>\n/filter — הגדרת/עדכון הסינון שלך\n/apartments — "
-            "כל הדירות שמתאימות לך, כולל מפה, בלי לצאת מטלגרם\n/liked — הדירות ששמרת\n/hidden — הדירות שהסתרת\n/support — פנייה אלינו\n"
-            "/profile — הפרופיל, ההגדרות והחשבון שלך באתר\n/language — שינוי שפה · Language\n\n"
+            "📋 <b>פקודות:</b>\n/filter: הגדרת/עדכון הסינון שלך\n/apartments: "
+            "כל הדירות שמתאימות לך, כולל מפה, בלי לצאת מטלגרם\n/liked: הדירות ששמרת\n/hidden: הדירות שהסתרת\n/support: פנייה אלינו\n"
+            "/profile: הפרופיל, ההגדרות והחשבון שלך באתר\n/language: שינוי שפה · Language\n\n"
             "🔗 רוצה גם להתחבר באתר (Google)? <a href=\"{account_url}\">לכניסה לאזור האישי</a>"
         ),
         "en": (
@@ -50,9 +50,9 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>Just tell me what you're looking for</b>, in your own words, and I'll understand.\n"
             "💬 For example: <i>\"3 rooms in Tel Aviv up to ₪8,000 with a balcony\"</i>\n"
             "🎤 You can also send a voice message, or pick everything with buttons via /filter.\n\n⠀\n"
-            "📋 <b>Commands:</b>\n/filter — set/update your filter\n/apartments — every matching listing, with a map, "
-            "without leaving Telegram\n/liked — listings you saved\n/hidden — listings you hid\n/support — contact us\n"
-            "/profile — your profile, settings and website account\n/language — change language · שפה\n\n"
+            "📋 <b>Commands:</b>\n/filter: set/update your filter\n/apartments: every matching listing, with a map, "
+            "without leaving Telegram\n/liked: listings you saved\n/hidden: listings you hid\n/support: contact us\n"
+            "/profile: your profile, settings and website account\n/language: change language · שפה\n\n"
             "🔗 Want to also sign in on the website (Google)? <a href=\"{account_url}\">Open my account</a>"
         ),
         "ru": (
@@ -63,8 +63,8 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>Просто напишите, что вы ищете</b>, своими словами, и я пойму.\n"
             "💬 Например: <i>«3 комнаты в Тель-Авиве до 8 000 ₪ с балконом»</i>\n"
             "🎤 Можно также отправить голосовое сообщение или выбрать всё кнопками через /filter.\n\n⠀\n"
-            "📋 <b>Команды:</b>\n/filter — настроить/изменить фильтр\n/apartments — последние подходящие "
-            "объявления\n/liked — сохранённые объявления\n/hidden — скрытые объявления\n/support — написать нам\n/profile — ваш профиль и настройки\n/language — сменить язык · שפה\n\n"
+            "📋 <b>Команды:</b>\n/filter: настроить/изменить фильтр\n/apartments: последние подходящие "
+            "объявления\n/liked: сохранённые объявления\n/hidden: скрытые объявления\n/support: написать нам\n/profile: ваш профиль и настройки\n/language: сменить язык · שפה\n\n"
             "🔗 Хотите также входить на сайте (Google)? <a href=\"{account_url}\">Открыть личный кабинет</a>"
         ),
         "fr": (
@@ -75,9 +75,9 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>Écris-moi simplement ce que tu cherches</b>, avec tes propres mots, et je comprendrai.\n"
             "💬 Par exemple : <i>« 3 pièces à Tel Aviv jusqu'à 8 000 ₪ avec balcon »</i>\n"
             "🎤 Tu peux aussi m'envoyer un message vocal, ou tout choisir avec les boutons via /filter.\n\n⠀\n"
-            "📋 <b>Commandes :</b>\n/filter — définir/modifier ton filtre\n/apartments — les dernières "
-            "annonces correspondantes\n/liked — les annonces enregistrées\n/hidden — les annonces masquées\n/support — nous écrire\n/profile — ton profil et "
-            "tes réglages\n/language — changer de langue · שפה\n\n"
+            "📋 <b>Commandes :</b>\n/filter: définir/modifier ton filtre\n/apartments: les dernières "
+            "annonces correspondantes\n/liked: les annonces enregistrées\n/hidden: les annonces masquées\n/support: nous écrire\n/profile: ton profil et "
+            "tes réglages\n/language: changer de langue · שפה\n\n"
             "🔗 Tu veux aussi te connecter sur le site (Google) ? <a href=\"{account_url}\">Ouvrir mon espace</a>"
         ),
         "ar": (
@@ -87,20 +87,20 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
             "✍️ <b>اكتب لي ببساطة ما تبحث عنه</b> بكلماتك الخاصة، وسأفهم.\n"
             "💬 مثلاً: <i>\"3 غرف في تل أبيب حتى 8,000 ₪ مع شرفة\"</i>\n"
             "🎤 يمكنك أيضاً إرسال رسالة صوتية، أو اختيار كل شيء بالأزرار عبر /filter.\n\n⠀\n"
-            "📋 <b>الأوامر:</b>\n/filter — ضبط/تحديث تفضيلاتك\n/apartments — أحدث الإعلانات "
-            "المطابقة\n/liked — الإعلانات المحفوظة\n/hidden — الإعلانات المخفية\n/support — تواصل معنا\n/profile — ملفك الشخصي وإعداداتك\n/language — تغيير اللغة · שפה\n\n"
+            "📋 <b>الأوامر:</b>\n/filter: ضبط/تحديث تفضيلاتك\n/apartments: أحدث الإعلانات "
+            "المطابقة\n/liked: الإعلانات المحفوظة\n/hidden: الإعلانات المخفية\n/support: تواصل معنا\n/profile: ملفك الشخصي وإعداداتك\n/language: تغيير اللغة · שפה\n\n"
             "🔗 هل تريد أيضاً تسجيل الدخول عبر الموقع (Google)؟ <a href=\"{account_url}\">فتح حسابي</a>"
         ),
     },
     "start.linked": {
-        "he": "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת — מעכשיו תקבל עדכונים גם כאן בטלגרם.",
-        "en": "🎉 Connected! You're already registered with me — from now on you'll get updates "
+        "he": "🎉 חיברתי! אתה כבר רשום ומעודכן אצלי במערכת. מעכשיו תקבל עדכונים גם כאן בטלגרם.",
+        "en": "🎉 Connected! You're already registered with me. From now on you'll get updates "
         "here on Telegram too.",
-        "ru": "🎉 Подключено! Вы уже зарегистрированы у меня — теперь вы будете получать "
+        "ru": "🎉 Подключено! Вы уже зарегистрированы у меня. Теперь вы будете получать "
         "обновления и здесь, в Telegram.",
-        "fr": "🎉 Connecté ! Tu es déjà enregistré chez moi — tu recevras désormais aussi les mises "
+        "fr": "🎉 Connecté ! Tu es déjà enregistré chez moi. Tu recevras désormais aussi les mises "
         "à jour ici, sur Telegram.",
-        "ar": "🎉 تم الربط! أنت مسجل بالفعل لدي — من الآن ستصلك التحديثات هنا في تيليجرام أيضاً.",
+        "ar": "🎉 تم الربط! أنت مسجل بالفعل لدي. من الآن ستصلك التحديثات هنا في تيليجرام أيضاً.",
     },
     "start.link_conflict": {
         "he": "לחשבון הטלגרם הזה כבר יש חשבון נפרד אצלי, אז אי אפשר לחבר אותו לחשבון אחר. אם זו "
@@ -108,7 +108,7 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "en": "This Telegram account already has its own separate account with me, so it can't be "
         "linked to another one. If this is a mistake, message us via todira.app/contact.",
         "ru": "У этого аккаунта Telegram уже есть отдельный аккаунт у меня, поэтому привязать его "
-        "к другому нельзя. Если это ошибка — напишите нам через todira.app/contact.",
+        "к другому нельзя. Если это ошибка, напишите нам через todira.app/contact.",
         "fr": "Ce compte Telegram a déjà son propre compte séparé chez moi, il ne peut donc pas "
         "être lié à un autre. Si c'est une erreur, écris-nous via todira.app/contact.",
         "ar": "هذا الحساب على تيليجرام لديه بالفعل حساب منفصل عندي، لذا لا يمكن ربطه بحساب آخر. "
@@ -153,78 +153,103 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "حساب Google هذا مرتبط بالفعل بحساب آخر هنا، لذلك لم أربطه. إذا كان هذا خطأ، راسلنا عبر todira.app/contact.",
     },
     "start.google_linked_note": {
-        "he": "🔗 חשבון ה-Google שלך קושר בהצלחה לחשבון הזה — מעכשיו אפשר להתחבר איתו באתר, מכל "
+        "he": "🔗 חשבון ה-Google שלך קושר בהצלחה לחשבון הזה. מעכשיו אפשר להתחבר איתו באתר, מכל "
         "דפדפן.\n\n",
-        "en": "🔗 Your Google account was successfully linked to this account — from now on you can "
+        "en": "🔗 Your Google account was successfully linked to this account. From now on you can "
         "sign in with it on the website, from any browser.\n\n",
-        "ru": "🔗 Ваш аккаунт Google успешно привязан к этому аккаунту — теперь вы можете входить "
+        "ru": "🔗 Ваш аккаунт Google успешно привязан к этому аккаунту. Теперь вы можете входить "
         "с его помощью на сайте, из любого браузера.\n\n",
-        "fr": "🔗 Ton compte Google a bien été lié à ce compte — tu peux désormais te connecter avec "
+        "fr": "🔗 Ton compte Google a bien été lié à ce compte. Tu peux désormais te connecter avec "
         "lui sur le site, depuis n'importe quel navigateur.\n\n",
-        "ar": "🔗 تم ربط حساب Google الخاص بك بهذا الحساب بنجاح — يمكنك الآن تسجيل الدخول به على "
+        "ar": "🔗 تم ربط حساب Google الخاص بك بهذا الحساب بنجاح. يمكنك الآن تسجيل الدخول به على "
         "الموقع، من أي متصفح.\n\n",
     },
+    # 2026-11-02 (growth): the old text said alerts were paused, which was never true (scraper/notifier.py keeps sending
+    # cards to a user without access, with the link locked). Now it says what really happens and how to go on: pay, or
+    # invite a friend for free days (/invite). `_paid` is for someone whose paid period ended, not a free trial.
     "start.renewal_needed": {
-        "he": "היי {name}! 👋 שוב אנחנו?\n\nשמתי לב שתקופת הגישה שלך הסתיימה, אז ההתראות מושהות "
-        "כרגע. {cities_line}רוצה שנחדש את המנוי ונחזור לחפש לך דירה? אפשר ישר כאן: {upgrade_url} "
-        "🔥🏠",
-        "en": "Hi {name}! 👋 Us again?\n\nI noticed your access period has ended, so notifications "
-        "are paused right now. {cities_line}Want to renew your subscription and get back to "
-        "searching? Right here: {upgrade_url} 🔥🏠",
-        "ru": "Привет, {name}! 👋 Снова мы?\n\nЗаметил, что срок вашего доступа закончился, поэтому "
-        "уведомления сейчас приостановлены. {cities_line}Хотите продлить подписку и снова начать "
-        "поиск? Прямо здесь: {upgrade_url} 🔥🏠",
-        "fr": "Salut {name} ! 👋 Encore nous ?\n\nJ'ai remarqué que ta période d'accès est terminée, "
-        "les notifications sont donc en pause. {cities_line}Tu veux renouveler ton abonnement et "
-        "reprendre la recherche ? Juste ici : {upgrade_url} 🔥🏠",
-        "ar": "مرحباً {name}! 👋 نحن مجدداً؟\n\nلاحظت أن فترة وصولك انتهت، لذا الإشعارات متوقفة "
-        "مؤقتاً. {cities_line}هل تريد تجديد اشتراكك والعودة للبحث؟ مباشرة هنا: {upgrade_url} 🔥🏠",
+        "he": "היי {name}! 👋 טוב לראות אותך שוב.\n\nתקופת הניסיון החינמית שלך הסתיימה. {cities_line}דירות חדשות "
+        "ממשיכות להגיע אליך כאן, אבל הקישור לפרטים המלאים ולמודעה המקורית נעול.\n\nכדי להמשיך עם גישה מלאה: "
+        "{upgrade_url} 🔥🏠\nאו להזמין חבר עם /invite, ושניכם מקבלים {days} ימים חינם.",
+        "en": "Hi {name}! 👋 Good to see you again.\n\nYour free trial has ended. {cities_line}New flats still reach "
+        "you here, but the link to the full details and the original ad is locked.\n\nTo continue with full access: "
+        "{upgrade_url} 🔥🏠\nOr invite a friend with /invite, and you both get {days} free days.",
+        "ru": "Привет, {name}! 👋 Рады снова видеть.\n\nВаш бесплатный пробный период закончился. {cities_line}Новые "
+        "квартиры по-прежнему приходят сюда, но ссылка на полные детали и оригинальное объявление закрыта.\n\nЧтобы "
+        "продолжить с полным доступом: {upgrade_url} 🔥🏠\nИли пригласите друга через /invite, и вы оба получите "
+        "{days} бесплатных дней.",
+        "fr": "Salut {name} ! 👋 Content de te revoir.\n\nTa période d'essai gratuite est terminée. {cities_line}Les "
+        "nouveaux appartements continuent d'arriver ici, mais le lien vers les détails complets et l'annonce originale "
+        "est verrouillé.\n\nPour continuer avec l'accès complet : {upgrade_url} 🔥🏠\nOu invite un ami avec /invite, "
+        "et vous recevez tous les deux {days} jours gratuits.",
+        "ar": "مرحباً {name}! 👋 سعيد برؤيتك مجدداً.\n\nانتهت فترتك التجريبية المجانية. {cities_line}الشقق الجديدة ما "
+        "زالت تصلك هنا، لكن رابط التفاصيل الكاملة والإعلان الأصلي مقفل.\n\nللمتابعة مع وصول كامل: {upgrade_url} 🔥🏠"
+        "\nأو ادعُ صديقاً عبر /invite، وتحصلان كلاكما على {days} أيام مجاناً.",
+    },
+    "start.renewal_needed_paid": {
+        "he": "היי {name}! 👋 טוב לראות אותך שוב.\n\nתקופת המנוי שלך הסתיימה. {cities_line}דירות חדשות ממשיכות "
+        "להגיע אליך כאן, אבל הקישור לפרטים המלאים ולמודעה המקורית נעול.\n\nכדי להמשיך עם גישה מלאה: "
+        "{upgrade_url} 🔥🏠\nאו להזמין חבר עם /invite, ושניכם מקבלים {days} ימים חינם.",
+        "en": "Hi {name}! 👋 Good to see you again.\n\nYour subscription has ended. {cities_line}New flats still reach "
+        "you here, but the link to the full details and the original ad is locked.\n\nTo continue with full access: "
+        "{upgrade_url} 🔥🏠\nOr invite a friend with /invite, and you both get {days} free days.",
+        "ru": "Привет, {name}! 👋 Рады снова видеть.\n\nСрок вашей подписки закончился. {cities_line}Новые квартиры "
+        "по-прежнему приходят сюда, но ссылка на полные детали и оригинальное объявление закрыта.\n\nЧтобы продолжить "
+        "с полным доступом: {upgrade_url} 🔥🏠\nИли пригласите друга через /invite, и вы оба получите {days} "
+        "бесплатных дней.",
+        "fr": "Salut {name} ! 👋 Content de te revoir.\n\nTon abonnement est terminé. {cities_line}Les nouveaux "
+        "appartements continuent d'arriver ici, mais le lien vers les détails complets et l'annonce originale est "
+        "verrouillé.\n\nPour continuer avec l'accès complet : {upgrade_url} 🔥🏠\nOu invite un ami avec /invite, et "
+        "vous recevez tous les deux {days} jours gratuits.",
+        "ar": "مرحباً {name}! 👋 سعيد برؤيتك مجدداً.\n\nانتهى اشتراكك. {cities_line}الشقق الجديدة ما زالت تصلك هنا، "
+        "لكن رابط التفاصيل الكاملة والإعلان الأصلي مقفل.\n\nللمتابعة مع وصول كامل: {upgrade_url} 🔥🏠\nأو ادعُ "
+        "صديقاً عبر /invite، وتحصلان كلاكما على {days} أيام مجاناً.",
     },
     "start.renewal_cities_line": {
-        "he": "מתגעגע/ת לעדכונים על {cities}? ",
-        "en": "Missing updates about {cities}? ",
-        "ru": "Скучаете по новостям о {cities}? ",
-        "fr": "Les mises à jour sur {cities} te manquent ? ",
-        "ar": "تفتقد التحديثات عن {cities}؟ ",
+        "he": "החיפוש שלך ב{cities} ממשיך לרוץ. ",
+        "en": "Your search in {cities} is still running. ",
+        "ru": "Ваш поиск ({cities}) продолжает работать. ",
+        "fr": "Ta recherche ({cities}) continue. ",
+        "ar": "بحثك في {cities} مستمر. ",
     },
     "onboarding.intro_prompt": {
-        "he": "ספר/י לי בכמה מילים מה את/ה מחפש/ת — למשל עיר, שכירות/קנייה/סאבלט, תקציב, כמה חדרים, "
+        "he": "ספר/י לי בכמה מילים מה את/ה מחפש/ת: למשל עיר, שכירות/קנייה/סאבלט, תקציב, כמה חדרים, "
         "וכל דבר נוסף שחשוב לך. אפשר לכתוב חופשי, אני אבין 🙂\n"
         "🎯 לדיוק של 100% אפשר להגדיר הכל בכפתורים עם /filter, בכל שלב.",
-        "en": "Tell me in a few words what you're looking for — e.g. city, rent/buy/sublet, budget, how many rooms, "
+        "en": "Tell me in a few words what you're looking for: e.g. city, rent/buy/sublet, budget, how many rooms, "
         "and anything else that matters to you. Feel free to write naturally, I'll understand 🙂\n"
         "🎯 For 100% accuracy, you can set everything with buttons using /filter, at any point.",
-        "ru": "Расскажите в нескольких словах, что вы ищете — например, город, аренда/покупка/субаренда, бюджет, "
+        "ru": "Расскажите в нескольких словах, что вы ищете: например, город, аренда/покупка/субаренда, бюджет, "
         "сколько комнат, и что ещё для вас важно. Можно писать свободно, я пойму 🙂\n"
         "🎯 Для 100% точности всё можно настроить кнопками через /filter в любой момент.",
-        "fr": "Dis-moi en quelques mots ce que tu cherches — par exemple ville, location/achat/sous-location, budget, "
+        "fr": "Dis-moi en quelques mots ce que tu cherches : par exemple ville, location/achat/sous-location, budget, "
         "nombre de pièces, et tout ce qui compte pour toi. Écris librement, je comprendrai 🙂\n"
         "🎯 Pour une précision de 100 %, tu peux tout régler avec les boutons via /filter, à tout moment.",
-        "ar": "أخبرني ببضع كلمات عما تبحث عنه — مثل المدينة، إيجار/شراء/تأجير من الباطن، الميزانية، عدد الغرف، "
+        "ar": "أخبرني ببضع كلمات عما تبحث عنه: مثل المدينة، إيجار/شراء/تأجير من الباطن، الميزانية، عدد الغرف، "
         "وأي شيء آخر يهمك. اكتب بحرية، سأفهم 🙂\n"
         "🎯 لدقة 100٪ يمكنك ضبط كل شيء بالأزرار عبر /filter في أي وقت.",
     },
     "onboarding.cancelled_for_other_command": {
-        "he": "ביטלתי את תהליך ההרשמה החופשי — שלח/י שוב את הפקודה כדי להמשיך 👍",
-        "en": "I cancelled the free-text registration — send the command again to continue 👍",
-        "ru": "Я отменил свободную регистрацию — отправьте команду ещё раз, чтобы продолжить 👍",
-        "fr": "J'ai annulé l'inscription en texte libre — renvoie la commande pour continuer 👍",
-        "ar": "ألغيت عملية التسجيل بالنص الحر — أرسل الأمر مرة أخرى للمتابعة 👍",
+        "he": "ביטלתי את תהליך ההרשמה החופשי. שלח/י שוב את הפקודה כדי להמשיך 👍",
+        "en": "I cancelled the free-text registration. Send the command again to continue 👍",
+        "ru": "Я отменил свободную регистрацию. Отправьте команду ещё раз, чтобы продолжить 👍",
+        "fr": "J'ai annulé l'inscription en texte libre. Renvoie la commande pour continuer 👍",
+        "ar": "ألغيت عملية التسجيل بالنص الحر. أرسل الأمر مرة أخرى للمتابعة 👍",
     },
     "onboarding.help_request_precheck": {
         "he": "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\nבינתיים, אם תרצה/י "
-        "להמשיך לחפש דירה — ספר/י לי מה מחפשים (עיר, שכירות/מכירה/סבלט וכו').",
+        "להמשיך לחפש דירה, ספר/י לי מה מחפשים (עיר, שכירות/מכירה/סבלט וכו').",
         "en": "🙋 Got it, I've passed your message to the team and you'll hear back soon.\n\nIn "
-        "the meantime, if you'd like to keep searching for an apartment — tell me what you're "
+        "the meantime, if you'd like to keep searching for an apartment, tell me what you're "
         "looking for (city, rent/sale/sublet, etc).",
         "ru": "🙋 Понял, передал ваше сообщение команде, скоро с вами свяжутся.\n\nА пока, если "
-        "хотите продолжить поиск квартиры — расскажите, что вы ищете (город, аренда/покупка/"
+        "хотите продолжить поиск квартиры, расскажите, что вы ищете (город, аренда/покупка/"
         "субаренда и т.д.).",
         "fr": "🙋 Compris, j'ai transmis ton message à l'équipe, tu auras une réponse bientôt.\n\n"
-        "En attendant, si tu veux continuer à chercher un appartement — dis-moi ce que tu cherches "
+        "En attendant, si tu veux continuer à chercher un appartement, dis-moi ce que tu cherches "
         "(ville, location/vente/sous-location, etc).",
         "ar": "🙋 فهمت، أحلت رسالتك إلى الفريق وستصلك إجابة قريباً.\n\nفي هذه الأثناء، إذا أردت "
-        "متابعة البحث عن شقة — أخبرني ماذا تبحث عنه (المدينة، إيجار/بيع/تأجير من الباطن، إلخ).",
+        "متابعة البحث عن شقة، أخبرني ماذا تبحث عنه (المدينة، إيجار/بيع/تأجير من الباطن، إلخ).",
     },
     "onboarding.checking": {
         "he": "🔍 רגע, טודירה בודק את מה שכתבת...",
@@ -298,19 +323,19 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "لم أجد هذه المدينة في قائمتنا 🤔 اكتب مدينة أخرى، أو اختر من القائمة الكاملة عبر /filter",
     },
     "onboarding.needs_human_help": {
-        "he": "🙋 קיבלתי, זה נשמע כמו משהו שכדאי שבן אדם אמיתי יענה עליו — העברתי את ההודעה שלך "
+        "he": "🙋 קיבלתי, זה נשמע כמו משהו שכדאי שבן אדם אמיתי יענה עליו. העברתי את ההודעה שלך "
         "לצוות ותקבל/י מענה בהקדם.\n\nאם תרצה/י להמשיך לחפש דירה בינתיים, אפשר לכתוב לי עוד "
         "פרטים 🙂",
-        "en": "🙋 Got it — this sounds like something a real person should answer, so I've passed "
+        "en": "🙋 Got it, this sounds like something a real person should answer, so I've passed "
         "your message to the team and you'll hear back soon.\n\nIf you'd like to keep searching for "
         "an apartment meanwhile, feel free to tell me more details 🙂",
-        "ru": "🙋 Понял, похоже, на это лучше ответит живой человек — передал ваше сообщение "
-        "команде, скоро свяжутся с вами.\n\nЕсли хотите пока продолжить поиск квартиры — можете "
+        "ru": "🙋 Понял, похоже, на это лучше ответит живой человек. Передал ваше сообщение "
+        "команде, скоро свяжутся с вами.\n\nЕсли хотите пока продолжить поиск квартиры, можете "
         "написать мне ещё детали 🙂",
-        "fr": "🙋 Compris, ça ressemble à quelque chose qu'une vraie personne devrait traiter — j'ai "
+        "fr": "🙋 Compris, ça ressemble à quelque chose qu'une vraie personne devrait traiter. J'ai "
         "transmis ton message à l'équipe, tu auras une réponse bientôt.\n\nSi tu veux continuer à "
         "chercher un appartement en attendant, n'hésite pas à me donner plus de détails 🙂",
-        "ar": "🙋 فهمت، يبدو أن هذا شيء يجب أن يرد عليه شخص حقيقي — أحلت رسالتك إلى الفريق وستصلك "
+        "ar": "🙋 فهمت، يبدو أن هذا شيء يجب أن يرد عليه شخص حقيقي. أحلت رسالتك إلى الفريق وستصلك "
         "إجابة قريباً.\n\nإذا أردت متابعة البحث عن شقة في هذه الأثناء، يمكنك إخباري بمزيد من "
         "التفاصيل 🙂",
     },
@@ -453,24 +478,24 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "⏳ أعدّ الشقق المطابقة لك...",
     },
     "onboarding.matches_found": {
-        "he": "👀 יש כרגע {total} דירות שמתאימות — כולן כאן: {apartments_url}",
-        "en": "👀 There are currently {total} matching apartments — all of them here: "
+        "he": "👀 יש כרגע {total} דירות שמתאימות. כולן כאן: {apartments_url}",
+        "en": "👀 There are currently {total} matching apartments. All of them here: "
         "{apartments_url}",
-        "ru": "👀 Сейчас есть {total} подходящих квартир — все они здесь: {apartments_url}",
-        "fr": "👀 Il y a actuellement {total} appartements correspondants — tous ici : "
+        "ru": "👀 Сейчас есть {total} подходящих квартир. Все они здесь: {apartments_url}",
+        "fr": "👀 Il y a actuellement {total} appartements correspondants. Tous ici : "
         "{apartments_url}",
-        "ar": "👀 يوجد حالياً {total} شقة مطابقة — جميعها هنا: {apartments_url}",
+        "ar": "👀 يوجد حالياً {total} شقة مطابقة. جميعها هنا: {apartments_url}",
     },
     "onboarding.no_matches_yet": {
-        "he": "עדיין אין דירות תואמות כרגע — אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: "
+        "he": "עדיין אין דירות תואמות כרגע. אני אמשיך לחפש ואודיע לך. אפשר גם לעקוב באתר: "
         "{apartments_url}",
-        "en": "No matching apartments yet — I'll keep searching and let you know. You can also "
+        "en": "No matching apartments yet. I'll keep searching and let you know. You can also "
         "follow along on the website: {apartments_url}",
-        "ru": "Пока нет подходящих квартир — я продолжу искать и сообщу вам. Также можно следить "
+        "ru": "Пока нет подходящих квартир. Я продолжу искать и сообщу вам. Также можно следить "
         "на сайте: {apartments_url}",
-        "fr": "Pas encore d'appartement correspondant — je continue de chercher et je te préviens. "
+        "fr": "Pas encore d'appartement correspondant. Je continue de chercher et je te préviens. "
         "Tu peux aussi suivre ça sur le site : {apartments_url}",
-        "ar": "لا توجد شقق مطابقة بعد — سأستمر بالبحث وأخبرك. يمكنك أيضاً المتابعة عبر الموقع: "
+        "ar": "لا توجد شقق مطابقة بعد. سأستمر بالبحث وأخبرك. يمكنك أيضاً المتابعة عبر الموقع: "
         "{apartments_url}",
     },
     # 2026-10-18: a message the bot could not turn into a search change, with an example of what works.
@@ -774,14 +799,14 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "اكتب أبعد تاريخ (YYYY-MM-DD)، أو '-' للإلغاء:",
     },
     "filter.all_cities_note": {
-        "he": "\n\n🌍 <i>כרגע: כל הערים (בלי הגבלה) — כולל ערים שלא ברשימה הקבועה.</i>",
-        "en": "\n\n🌍 <i>Right now: every city (no restriction) — including cities not on the "
+        "he": "\n\n🌍 <i>כרגע: כל הערים (בלי הגבלה), כולל ערים שלא ברשימה הקבועה.</i>",
+        "en": "\n\n🌍 <i>Right now: every city (no restriction), including cities not on the "
         "curated list.</i>",
-        "ru": "\n\n🌍 <i>Сейчас: все города (без ограничений) — включая города не из "
+        "ru": "\n\n🌍 <i>Сейчас: все города (без ограничений), включая города не из "
         "составленного списка.</i>",
-        "fr": "\n\n🌍 <i>Actuellement : toutes les villes (sans restriction) — y compris les "
+        "fr": "\n\n🌍 <i>Actuellement : toutes les villes (sans restriction), y compris les "
         "villes hors de la liste organisée.</i>",
-        "ar": "\n\n🌍 <i>حالياً: جميع المدن (بدون قيد) — بما في ذلك المدن غير المدرجة في "
+        "ar": "\n\n🌍 <i>حالياً: جميع المدن (بدون قيد)، بما في ذلك المدن غير المدرجة في "
         "القائمة المنسّقة.</i>",
     },
     "filter.validation_price_max": {
@@ -845,23 +870,23 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "تم إلغاء تعديل التفضيلات.",
     },
     "filter.cancelled_for_other_command": {
-        "he": "ביטלתי את עריכת הסינון — שלח/י שוב את הפקודה כדי להמשיך 👍",
-        "en": "I cancelled filter editing — send the command again to continue 👍",
-        "ru": "Я отменил редактирование фильтра — отправьте команду ещё раз, чтобы продолжить 👍",
-        "fr": "J'ai annulé la modification du filtre — renvoie la commande pour continuer 👍",
-        "ar": "ألغيت تعديل التفضيلات — أرسل الأمر مرة أخرى للمتابعة 👍",
+        "he": "ביטלתי את עריכת הסינון. שלח/י שוב את הפקודה כדי להמשיך 👍",
+        "en": "I cancelled filter editing. Send the command again to continue 👍",
+        "ru": "Я отменил редактирование фильтра. Отправьте команду ещё раз, чтобы продолжить 👍",
+        "fr": "J'ai annulé la modification du filtre. Renvoie la commande pour continuer 👍",
+        "ar": "ألغيت تعديل التفضيلات. أرسل الأمر مرة أخرى للمتابعة 👍",
     },
     "filter.not_a_valid_value_escalated": {
-        "he": "🙋 זה לא נראה כמו הערך שביקשתי, אז ליתר ביטחון העברתי את מה שכתבת לצוות — אם זו "
+        "he": "🙋 זה לא נראה כמו הערך שביקשתי, אז ליתר ביטחון העברתי את מה שכתבת לצוות. אם זו "
         "הייתה שאלה, תקבל/י מענה בהקדם.\n\n{retry_message}",
         "en": "🙋 That doesn't look like the value I asked for, so just in case I've passed what "
-        "you wrote to the team — if it was a question, you'll hear back soon.\n\n{retry_message}",
+        "you wrote to the team. If it was a question, you'll hear back soon.\n\n{retry_message}",
         "ru": "🙋 Это не похоже на значение, которое я просил, поэтому на всякий случай я передал "
-        "написанное вами команде — если это был вопрос, вам скоро ответят.\n\n{retry_message}",
+        "написанное вами команде. Если это был вопрос, вам скоро ответят.\n\n{retry_message}",
         "fr": "🙋 Ça ne ressemble pas à la valeur que j'ai demandée, donc par précaution j'ai "
-        "transmis ce que tu as écrit à l'équipe — si c'était une question, tu auras une réponse "
+        "transmis ce que tu as écrit à l'équipe. Si c'était une question, tu auras une réponse "
         "bientôt.\n\n{retry_message}",
-        "ar": "🙋 هذا لا يبدو كالقيمة التي طلبتها، لذا احتياطاً أحلت ما كتبته إلى الفريق — إذا كان "
+        "ar": "🙋 هذا لا يبدو كالقيمة التي طلبتها، لذا احتياطاً أحلت ما كتبته إلى الفريق. إذا كان "
         "سؤالاً، ستصلك إجابة قريباً.\n\n{retry_message}",
     },
     "filter.city_not_found": {
@@ -931,13 +956,13 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "أرسل /filter لبدء تعديل تفضيلاتك.",
     },
     "filter.help_request_continue": {
-        "he": "אפשר להמשיך מאיפה שהפסקנו — שלח/י את הערך שהתבקשת להקליד.",
-        "en": "We can continue where we left off — send the value you were asked to type.",
-        "ru": "Можем продолжить с того места, где остановились — отправьте значение, которое "
+        "he": "אפשר להמשיך מאיפה שהפסקנו. שלח/י את הערך שהתבקשת להקליד.",
+        "en": "We can continue where we left off. Send the value you were asked to type.",
+        "ru": "Можем продолжить с того места, где остановились. Отправьте значение, которое "
         "нужно было ввести.",
-        "fr": "On peut reprendre là où on s'est arrêtés — envoie la valeur qu'on t'a demandé de "
+        "fr": "On peut reprendre là où on s'est arrêtés. Envoie la valeur qu'on t'a demandé de "
         "taper.",
-        "ar": "يمكننا المتابعة من حيث توقفنا — أرسل القيمة التي طُلب منك كتابتها.",
+        "ar": "يمكننا المتابعة من حيث توقفنا. أرسل القيمة التي طُلب منك كتابتها.",
     },
     "filter.help_request_continue_escalated": {
         "he": "🙋 קיבלתי, העברתי את הפנייה שלך לצוות ותקבל/י מענה בהקדם.\n\n{continue_msg}",
@@ -1122,10 +1147,10 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "🔍 البحث عن مدينة بالكتابة",
     },
     "kb.clear_all_cities": {
-        "he": "🌍 נקה הכל — כל הערים, בלי הגבלה", "en": "🌍 Clear all — every city, no limit",
-        "ru": "🌍 Очистить всё — все города, без ограничений",
-        "fr": "🌍 Tout effacer — toutes les villes, sans limite",
-        "ar": "🌍 مسح الكل — كل المدن، بلا حدود",
+        "he": "🌍 נקה הכל: כל הערים, בלי הגבלה", "en": "🌍 Clear all: every city, no limit",
+        "ru": "🌍 Очистить всё: все города, без ограничений",
+        "fr": "🌍 Tout effacer : toutes les villes, sans limite",
+        "ar": "🌍 مسح الكل: كل المدن، بلا حدود",
     },
     "kb.remove_city": {
         "he": "❌ הסר: {city}", "en": "❌ Remove: {city}", "ru": "❌ Убрать: {city}",
@@ -1375,11 +1400,11 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "التفاصيل الكاملة للشقة &gt;&gt;",
     },
     "card.upgrade_to_see_link": {
-        "he": "לקישור למודעה המקורית — שדרג/י את המנוי",
-        "en": "To see the original listing link — upgrade your subscription",
-        "ru": "Чтобы увидеть ссылку на оригинальное объявление — обновите подписку",
-        "fr": "Pour voir le lien de l'annonce originale — passe à l'abonnement premium",
-        "ar": "لرؤية رابط الإعلان الأصلي — قم بترقية اشتراكك",
+        "he": "לקישור למודעה המקורית, שדרג/י את המנוי",
+        "en": "To see the original listing link, upgrade your subscription",
+        "ru": "Чтобы увидеть ссылку на оригинальное объявление, обновите подписку",
+        "fr": "Pour voir le lien de l'annonce originale, passe à l'abonnement premium",
+        "ar": "لرؤية رابط الإعلان الأصلي، قم بترقية اشتراكك",
     },
     "card.upgrade_required_plain": {
         "he": "לקישור למודעה המקורית יש לשדרג את המנוי",
@@ -1414,6 +1439,15 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
     "card.subscription_expired_link": {
         "he": "לחידוש המנוי >>", "en": "Renew my access >>", "ru": "Продлить доступ >>",
         "fr": "Renouveler mon accès >>", "ar": "تجديد الاشتراك >>",
+    },
+    # 2026-11-02 (growth): on the card of a user without access (cards.listing_keyboard); the days match
+    # referrals.REWARD_DAYS
+    "card.invite_button": {
+        "he": "🎁 7 ימים חינם: הזמנת חבר",
+        "en": "🎁 7 free days: invite a friend",
+        "ru": "🎁 7 дней бесплатно: пригласить друга",
+        "fr": "🎁 7 jours gratuits : inviter un ami",
+        "ar": "🎁 7 أيام مجاناً: ادعُ صديقاً",
     },
     "card.room_in_shared": {
         "he": "חדר בדירת שותפים", "en": "a room in a shared flat", "ru": "комната в квартире с соседями",
