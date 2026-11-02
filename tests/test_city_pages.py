@@ -45,6 +45,7 @@ def client(monkeypatch):
 
 def test_a_city_page_shows_our_numbers_and_the_way_in(client, monkeypatch):
     monkeypatch.setattr(website_main.city_pages, "city_page", lambda session, city: PAGE)
+    monkeypatch.setattr(website_main.city_pages, "city_index", lambda session: [])  # 2026-11-02 (growth): other-cities row
     resp = client.get("/rent/חיפה?lang=he")
     assert resp.status_code == 200
     text = resp.text

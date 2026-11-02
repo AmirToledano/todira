@@ -2500,3 +2500,10 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .rent-flat img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--surface-tint); }
 .rent-flat-price { font-weight: 800; }
 .rent-flat-meta { color: var(--text-muted); font-size: .9rem; }
+/* 2026-11-02 (growth): the channel link under city pages and the shared listing, and the other-cities row */
+.channel-note { margin-top: 14px; }
+.channel-note a { color: var(--teal); }
+.rent-more { margin-top: 28px; }
+.rent-more h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.rent-more-links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; }
+.rent-more-links a { color: var(--teal); }
