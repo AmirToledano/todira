@@ -131,6 +131,11 @@ def extend_paid_until(user: User, plan: str) -> None:
     now = dt.datetime.now(dt.timezone.utc)
     base = user.paid_until if (user.paid_until is not None and user.paid_until > now) else now
     user.paid_until = base + PLAN_DURATIONS[plan]
+    # 2026-11-02 (audit): free days that run past the paid time (the trial's rest, a friend's invite, an owner gift) move
+    # to after the new paid period instead of being swallowed by it: a 30-day pass bought with 7 free days left gave 23
+    trial_end = getattr(user, "trial_ends_at", None)
+    if trial_end is not None and trial_end > base:
+        user.trial_ends_at = trial_end + PLAN_DURATIONS[plan]
 
 
 # 2026-10-13 (owner decision, terms section 10): a one-time pass can be cancelled within 14 days of the purchase. Access

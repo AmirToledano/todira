@@ -57,6 +57,9 @@ def _due_users(session: Session, now: dt.datetime) -> list[User]:
                     User.takbull_subscription_uniqid.is_(None),
                     User.cancel_at_period_end.is_(True),
                 ),
+                # 2026-11-02 (audit): not while free days run on after the paid period (a friend's invite, a gift): the
+                # message said access ends at paid_until. The trial reminder covers them when those days near their end.
+                or_(User.trial_ends_at.is_(None), User.trial_ends_at <= User.paid_until),
             )
         )
     )
@@ -220,6 +223,10 @@ async def _run_found(session: Session, now: dt.datetime) -> int:
 def run_renewal_reminders(session: Session) -> dict[str, int]:
     """Returns {"renewal_reminders_sent": n} for the run summary."""
     now = dt.datetime.now(dt.timezone.utc)
+    # 2026-11-02 (growth review): messages to users go out in the morning only (owner rule); these reminders went out on
+    # any run. The leads (3 days, 24 hours) always include a morning.
+    if not 9 <= now.astimezone(_ISRAEL).hour < 12:
+        return {"renewal_reminders_sent": 0}
     summary = {"renewal_reminders_sent": asyncio.run(_run(session, now))}
     try:
         summary["trial_reminders_sent"] = asyncio.run(_run_trial(session, now))

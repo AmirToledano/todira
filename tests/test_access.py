@@ -163,3 +163,20 @@ def test_access_state_never_disagrees_with_has_full_access():
             for free in (False, True):
                 user = make_user(trial_ends_at=trial, paid_until=paid, free_access_granted=free)
                 assert (access_state(user) == ACCESS_FULL) == has_full_access(user)
+
+
+def test_a_pass_bought_with_free_days_left_puts_them_after_the_paid_period():
+    """2026-11-02 (audit): a 30-day pass bought with 7 free days left after the paid period added only 23 days."""
+    import datetime as dt
+    from types import SimpleNamespace
+
+    from todira_common.access import extend_paid_until
+
+    now = dt.datetime.now(dt.timezone.utc)
+    user = SimpleNamespace(paid_until=now + dt.timedelta(days=2), trial_ends_at=now + dt.timedelta(days=9))
+    extend_paid_until(user, "pass_30")
+    assert round((user.paid_until - now).total_seconds() / 86400) == 32
+    assert round((user.trial_ends_at - now).total_seconds() / 86400) == 39
+    plain = SimpleNamespace(paid_until=None, trial_ends_at=now - dt.timedelta(days=1))
+    extend_paid_until(plain, "pass_7")
+    assert plain.trial_ends_at == now - dt.timedelta(days=1)

@@ -9,8 +9,8 @@
       <p>{{ t('upgrade.owner_notice') }}</p>
     {% elif has_access %}
       <p>
-        {% if paid_until %}{{ t('upgrade.access_active', date=paid_until | il_date) }}
-        {% elif trial_ends_at %}{{ t('upgrade.access_trial', date=trial_ends_at | il_date) }}
+        {% if paid_until and access_end %}{{ t('upgrade.access_active', date=access_end | il_date) }}
+        {% elif access_end %}{{ t('upgrade.access_trial', date=access_end | il_date) }}
         {% endif %}
       </p>
     {% else %}

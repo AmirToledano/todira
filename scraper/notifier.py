@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import bindparam, delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from telegram import Bot
 
@@ -256,6 +257,9 @@ async def _notify_new_matches(
         to_notify.append((filter_row, user))
 
     await _complete_card_fields(session, listing, [user for _f, user in to_notify])
+    # 2026-11-02 (audit): the fields read just now from the ad text (furniture, elevator, floor...) can rule a search out;
+    # matching ran before they were known
+    to_notify = [(filter_row, user) for filter_row, user in to_notify if evaluate(filter_row, listing).matched]
     below_pct = _below_area_pct(session, listing) if to_notify else None
 
     for filter_row, user in to_notify:
@@ -306,8 +310,13 @@ async def _send_one(bot: Bot, session: Session, job: _Send) -> bool:
         return False
     # One row per user per listing — "has this user already been told about this listing,"
     # matching _already_notified's own lookup key, so they're never re-notified on a later run.
+    # 2026-11-02 (audit): a filter save on the site or the bot (mark_recent_matches_seen) can write the same row first;
+    # a plain insert then raised IntegrityError and ended the whole alert phase of the run
     session.add(SentNotification(user_id=user.id, listing_id=job.listing.id, reason=NotificationReason.NEW))
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()  # already recorded by the other side: the card went out, that is all that matters
     return True
 
 
@@ -542,7 +551,9 @@ async def run_notifications(
     queue: list[_Send] | None = [] if spread_morning and alert_hours.is_morning(now) else None
     extra = {"queue": queue} if queue is not None else {}
     async with Bot(token=token) as bot:
-        if only_telegram_user_id is None:
+        # 2026-11-02 (audit): only the main run releases held alerts. The Facebook run (08:24, hard time limit) sent them
+        # back to back without the morning spacing and could be stopped half way after their rows were deleted.
+        if only_telegram_user_id is None and spread_morning:
             new_sent_count += await _release_held(bot, session, now, queue)
         for listing in new_listings:
             m, s, _newly_notified = await _notify_new_matches(
@@ -577,7 +588,15 @@ async def run_notifications(
                 listing,
                 old_price,
                 only_telegram_user_id=only_telegram_user_id,
-                exclude_user_ids=newly_notified,
+                # 2026-11-02 (audit): nor anyone who got this flat as a new card earlier in this same run (a retry, a held
+                # alert or the morning queue): they got a new card and then a "price dropped" card for it
+                exclude_user_ids=newly_notified | set(session.scalars(
+                    select(SentNotification.user_id).where(
+                        SentNotification.listing_id == listing.id,
+                        SentNotification.reason == NotificationReason.NEW,
+                        SentNotification.sent_at >= now - dt.timedelta(seconds=5),
+                    )
+                )),
             )
 
     return {
