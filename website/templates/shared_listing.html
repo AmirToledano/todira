@@ -14,7 +14,7 @@
   {% if l and l.image_urls %}
   <meta property="og:image" content="{{ l.image_urls[0] }}">
   {% else %}
-  <meta property="og:image" content="{{ request.base_url }}static/og-image.jpg?v=1">
+  <meta property="og:image" content="{{ site_url }}static/og-image.jpg?v=1">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   {% endif %}
@@ -22,7 +22,7 @@
 {% block twitter_meta %}
   <meta name="twitter:title" content="{{ _title }}">
   <meta name="twitter:description" content="{{ t('share.og_description') }}">
-  <meta name="twitter:image" content="{{ l.image_urls[0] if l and l.image_urls else request.base_url ~ 'static/og-image.jpg?v=1' }}">
+  <meta name="twitter:image" content="{{ l.image_urls[0] if l and l.image_urls else site_url ~ 'static/og-image.jpg?v=1' }}">
 {% endblock %}
 {% block extra_head %}<meta name="robots" content="noindex">{% endblock %}
 {% block content %}

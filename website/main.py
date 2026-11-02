@@ -423,6 +423,10 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 # an `http://` redirect_uri that doesn't match what's registered in the Google Cloud Console
 # (redirect_uri must match EXACTLY, or Google rejects the whole flow).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app")
+# 2026-11-02 (audit): the address every printed public URL starts with (canonical, hreflang, og:image, sitemap, robots,
+# share links). request.base_url read "http://todira.app/" in production: uvicorn trusts the X-Forwarded-Proto header only
+# from 127.0.0.1 and Caddy runs in another pod, so search engines were handed http canonical and sitemap URLs.
+PUBLIC_BASE = WEBSITE_URL.rstrip("/") + "/"
 
 # Informal Bit/PayBox payment (2026-09-05 — the owner's click-trust fallback while no real gateway is configured, see
 # /upgrade/pay below) — the owner's own phone number for Bit and, optionally, a PayBox payment
@@ -637,6 +641,7 @@ def _render(
             "lang_labels": LANG_LABELS,
             "current_user": current_user,
             "in_app_browser": _in_app_browser(request),
+            "site_url": PUBLIC_BASE,  # every printed public URL starts here (see PUBLIC_BASE)
             "static_version": GIT_SHA,
             "is_owner": is_real_owner and not _preview_as_free(request),
             "is_real_owner": is_real_owner,
@@ -1234,7 +1239,7 @@ def robots_txt(request: Request) -> PlainTextResponse:
     lines = ["User-agent: *"]
     lines += [f"Disallow: {path}" for path in disallowed]
     lines.append("")
-    lines.append(f"Sitemap: {request.base_url}sitemap.xml")
+    lines.append(f"Sitemap: {PUBLIC_BASE}sitemap.xml")
     return PlainTextResponse("\n".join(lines))
 
 
@@ -1269,7 +1274,7 @@ def sitemap_xml(request: Request) -> Response:
             paths += [f"/rent/{url_quote(row['city'])}" for row in city_pages.city_index(session)]
     except Exception:
         logger.warning("sitemap: could not list the city pages", exc_info=True)
-    urls = "".join(f"<url><loc>{request.base_url}{path.lstrip('/')}</loc></url>" for path in paths)
+    urls = "".join(f"<url><loc>{PUBLIC_BASE}{path.lstrip('/')}</loc></url>" for path in paths)
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
@@ -2314,7 +2319,7 @@ def shared_listing(request: Request, token: str):
         activity.record("share_view", _visitor(request))
     context = {
         "l": listing if available else None,
-        "share_link": str(request.base_url).rstrip("/") + share.share_path(listing_id) if available else None,
+        "share_link": PUBLIC_BASE.rstrip("/") + share.share_path(listing_id) if available else None,
         "login_next": f"/apartments?listing={listing_id}" if available else "/apartments",
     }
     response = _render(request, "shared_listing.html", context, status_code=200 if available else 404)

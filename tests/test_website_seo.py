@@ -42,7 +42,8 @@ def test_robots_txt_disallows_personalized_pages_and_points_at_sitemap(client):
     assert "Disallow: /apartments" in resp.text
     assert "Disallow: /account" in resp.text
     assert "Disallow: /admin" in resp.text
-    assert "Sitemap: http://testserver/sitemap.xml" in resp.text
+    assert "Sitemap: https://todira.app/sitemap.xml" in resp.text
+    # 2026-11-02 (audit): always the https address, whatever scheme the request reached the app with
 
 
 def test_sitemap_xml_lists_only_public_pages(client):
@@ -50,7 +51,7 @@ def test_sitemap_xml_lists_only_public_pages(client):
     assert resp.status_code == 200
     assert "xml" in resp.headers["content-type"]
     for path in (
-        "<loc>http://testserver/</loc>", "/login", "/contact", "/about", "/terms", "/privacy",
+        "<loc>https://todira.app/</loc>", "/login", "/contact", "/about", "/terms", "/privacy",
     ):
         assert path in resp.text
     assert "/apartments" not in resp.text
@@ -67,7 +68,7 @@ def test_about_page_renders(client):
 
 def test_home_page_has_canonical_and_hreflang_for_every_language(client):
     resp = client.get("/")
-    assert '<link rel="canonical" href="http://testserver/">' in resp.text
+    assert '<link rel="canonical" href="https://todira.app/">' in resp.text
     for lang in ("he", "en", "ru", "fr", "ar"):
         assert f'hreflang="{lang}"' in resp.text
     assert 'hreflang="x-default"' in resp.text
@@ -75,15 +76,15 @@ def test_home_page_has_canonical_and_hreflang_for_every_language(client):
 
 def test_non_default_language_canonical_and_hreflang_carry_the_lang_param(client):
     resp = client.get("/", params={"lang": "en"})
-    assert '<link rel="canonical" href="http://testserver/?lang=en">' in resp.text
-    assert 'hreflang="en" href="http://testserver/?lang=en"' in resp.text
+    assert '<link rel="canonical" href="https://todira.app/?lang=en">' in resp.text
+    assert 'hreflang="en" href="https://todira.app/?lang=en"' in resp.text
     # the Hebrew default variant must still point at the bare (no ?lang=) URL
-    assert 'hreflang="he" href="http://testserver/">' in resp.text
+    assert 'hreflang="he" href="https://todira.app/">' in resp.text
 
 
 def test_og_image_points_at_the_landscape_crop_not_the_portrait_brand_photo(client):
     resp = client.get("/")
-    assert 'property="og:image" content="http://testserver/static/og-image.jpg' in resp.text
-    assert 'property="og:image" content="http://testserver/static/todira-brand.webp' not in resp.text
+    assert 'property="og:image" content="https://todira.app/static/og-image.jpg' in resp.text
+    assert 'property="og:image" content="https://todira.app/static/todira-brand.webp' not in resp.text
     assert '<meta property="og:image:width" content="1200">' in resp.text
     assert '<meta property="og:image:height" content="630">' in resp.text
