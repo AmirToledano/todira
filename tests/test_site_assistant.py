@@ -93,7 +93,7 @@ def test_owner_gets_an_answer_and_the_bubble(client, monkeypatch):
         patch.object(assistant, "answer", lambda turns, lang, prices, ctx: "תשובה"),
     ):
         resp = client.post("/api/assistant", json={"messages": [{"role": "user", "text": "כמה זה עולה?"}]})
-        assert resp.json() == {"reply": "תשובה"}
+        assert resp.json() == {"reply": "תשובה", "suggestions": []}
         assert 'id="assistant"' in client.get("/").text
 
 
@@ -108,3 +108,11 @@ def test_no_answer_falls_back_to_the_contact_line(client, monkeypatch):
     ):
         resp = client.post("/api/assistant", json={"messages": [{"role": "user", "text": "?"}]})
     assert "צור קשר" in resp.json()["reply"]
+
+
+def test_follow_up_questions_are_split_off_the_answer():
+    """2026-11-02 (owner): suggestions after every answer, like the first ones."""
+    reply, more = assistant.split_suggestions("אפשר לבטל תוך 14 יום.\nSUGGEST: כמה מקבלים בחזרה? | איך מבטלים? | מה עם קבלה?")
+    assert reply == "אפשר לבטל תוך 14 יום."
+    assert more == ["כמה מקבלים בחזרה?", "איך מבטלים?", "מה עם קבלה?"]
+    assert assistant.split_suggestions("רק תשובה") == ("רק תשובה", [])

@@ -10,6 +10,8 @@
   var form = root.querySelector('.asst-form');
   var input = form.querySelector('textarea');
   var chips = root.querySelector('.asst-chips');
+  var resetBtn = root.querySelector('.asst-reset');
+  var startHtml = log.innerHTML;  // the greeting and the first questions, for "new chat"
   var history = [];
   var busy = false;
 
@@ -36,7 +38,8 @@
     text = (text || '').trim();
     if (!text || busy) { return; }
     busy = true;
-    if (chips) { chips.remove(); chips = null; }
+    log.querySelectorAll('.asst-chips').forEach(function (c) { c.remove(); });
+    chips = null;
     add(text, 'user');
     history.push({ role: 'user', text: text });
     var waiting = add(root.getAttribute('data-thinking'), 'bot');
@@ -51,6 +54,18 @@
       waiting.classList.remove('asst-wait');
       waiting.textContent = reply;
       history.push({ role: 'assistant', text: reply });
+      // 2026-11-02 (owner): follow-up questions after every answer
+      var more = (data && data.suggestions) || [];
+      if (more.length) {
+        var box = document.createElement('div');
+        box.className = 'asst-chips';
+        more.forEach(function (q) {
+          var b = document.createElement('button');
+          b.type = 'button'; b.className = 'asst-chip'; b.textContent = q;
+          box.appendChild(b);
+        });
+        log.appendChild(box);
+      }
     }).catch(function () {
       waiting.classList.remove('asst-wait');
       waiting.textContent = root.getAttribute('data-unavailable');
@@ -74,10 +89,18 @@
     input.style.height = '';
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
   });
-  if (chips) {
-    chips.addEventListener('click', function (e) {
-      var chip = e.target.closest('.asst-chip');
-      if (chip) { ask(chip.textContent); }
+  log.addEventListener('click', function (e) {
+    var chip = e.target.closest('.asst-chip');
+    if (chip && !busy) { ask(chip.textContent); }
+  });
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function () {
+      if (busy) { return; }
+      history = [];
+      log.innerHTML = startHtml;
+      chips = log.querySelector('.asst-chips');
+      input.value = '';
+      input.focus();
     });
   }
 })();

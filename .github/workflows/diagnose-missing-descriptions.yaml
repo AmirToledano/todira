@@ -1,0 +1,41 @@
+name: Diagnose — live listings without a description, by source and age (read-only)
+
+# 2026-11-02 (owner: "many listings have no description, why?"). Counts only.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Queries
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          \echo '== live, not duplicate: share without description, by source and deal type'
+          SELECT source, deal_type, count(*) AS live,
+                 count(*) FILTER (WHERE description IS NULL OR btrim(description) = '') AS no_desc,
+                 round(100.0 * count(*) FILTER (WHERE description IS NULL OR btrim(description) = '') / count(*)) AS pct
+          FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL GROUP BY 1, 2 ORDER BY 3 DESC;
+          \echo '== rentals without description by age of the ad (first seen)'
+          SELECT source, CASE WHEN first_seen_at > now() - interval '1 day' THEN 'a <1d' WHEN first_seen_at > now() - interval '7 days' THEN 'b 1-7d'
+                 ELSE 'c 7d+' END AS age, count(*) AS no_desc
+          FROM listings WHERE NOT is_delisted AND duplicate_of_id IS NULL AND deal_type = 'rent'
+            AND (description IS NULL OR btrim(description) = '') GROUP BY 1, 2 ORDER BY 1, 2;
+          \echo '== yad2 rentals without description: was a detail fetch ever done (details_fetched_at)?'
+          SELECT (details_fetched_at IS NOT NULL) AS fetched, count(*) FROM listings
+          WHERE source = 'yad2' AND NOT is_delisted AND duplicate_of_id IS NULL AND deal_type = 'rent'
+            AND (description IS NULL OR btrim(description) = '') GROUP BY 1;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -P pager=off -f -' < /tmp/q.sql

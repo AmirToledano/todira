@@ -1093,7 +1093,10 @@ async def assistant_reply(request: Request):
     reply = await loop.run_in_executor(None, assistant.answer, turns, lang, PLAN_PRICES_ILS, user_context)
     if _is_person(request) and not _is_owner_browser(request):
         loop.run_in_executor(None, activity.record, "assistant_question", _visitor(request))
-    return JSONResponse({"reply": reply or t("assistant.unavailable")}, headers={"Cache-Control": "no-store"})
+    # 2026-11-02 (owner): follow-up questions after every answer, like the first ones
+    reply, suggestions = assistant.split_suggestions(reply or "")
+    return JSONResponse({"reply": reply or t("assistant.unavailable"), "suggestions": suggestions},
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/home-map")
