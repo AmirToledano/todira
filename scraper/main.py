@@ -28,7 +28,7 @@ from todira_common import text_features, yad2_detail
 from todira_common.cities import LOCALITY_SET, canonicalize_city
 from todira_common.db import get_engine, get_session
 from todira_common.enums import DealType, NotificationReason, Source
-from todira_common import app_flags
+from todira_common import app_flags, price_sanity
 from todira_common.owner_alert import alert_owner
 from todira_common.models import Listing, OwnerPost, SentNotification
 import facebook_client
@@ -526,6 +526,10 @@ def _upsert_listings(session, normalized_items) -> tuple[list[int], list[tuple[i
     price_change_events: list[tuple[int, int]] = []
 
     for item in normalized_items:
+        # 2026-11-01: a rental priced like a sale is a sale, a "₪50 rental" has no real price (todira_common.price_sanity)
+        deal_type, price = price_sanity.corrected(item.source, item.deal_type, item.price)
+        if (deal_type, price) != (item.deal_type, item.price):
+            item = item.model_copy(update={"deal_type": deal_type, "price": price})
         existing = session.execute(
             select(table.c.id, table.c.price).where(
                 table.c.source == item.source, table.c.external_id == item.external_id
