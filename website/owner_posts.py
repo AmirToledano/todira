@@ -24,6 +24,10 @@ from todira_common.models import Listing, OwnerPost, OwnerPostPhoto
 MAX_PHOTOS = 6
 MAX_PHOTO_BYTES = 12 * 1024 * 1024
 PHOTO_MAX_SIDE = 1600
+# 2026-11-02 (audit): a 370 KB PNG of 9400x9400 pixels took the site process from 47 MB to over 1 GB while decoding,
+# past the website pod's memory limit. A photo is decoded only when it has at most this many pixels (a JPEG is first
+# decoded at a reduced scale, so big phone photos still pass).
+MAX_DECODED_PIXELS = 30_000_000
 POSTS_PER_VISITOR_PER_DAY = 3
 POST_DAYS = 30
 _PHONE_RE = re.compile(r"^0(5\d|[2-489]|7\d)\d{7}$")
@@ -107,6 +111,10 @@ def resize_photo(data: bytes) -> bytes | None:
         return None
     try:
         with Image.open(io.BytesIO(data)) as image:
+            if image.format == "JPEG":
+                image.draft("RGB", (PHOTO_MAX_SIDE, PHOTO_MAX_SIDE))
+            if image.width * image.height > MAX_DECODED_PIXELS:
+                return None
             image = ImageOps.exif_transpose(image)
             image = image.convert("RGB")
             image.thumbnail((PHOTO_MAX_SIDE, PHOTO_MAX_SIDE))

@@ -260,3 +260,25 @@ def test_pay_page_without_a_payment_goes_back_to_the_plans(client):
     resp = client.get("/upgrade/pay", follow_redirects=False)
     assert resp.status_code == 303
     assert resp.headers["location"] == "/upgrade"
+
+
+def test_the_informal_pages_are_closed_once_a_real_gateway_is_configured(client):
+    """2026-11-02 (audit): an old informal-flow row (gateway=None, pending) from before Takbull went live could still be
+    "confirmed" by its owner for free access."""
+    user = _FakeUser(id=2, telegram_user_id=222)
+    payment = _FakePayment(id=9, user_id=2, plan="weekly", amount_ils=15)
+    fake_session = _FakeSession(users_by_telegram_id={222: user}, get_map={(website_main.Payment, 9): payment})
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main.takbull_client, "hosted_page_configured", lambda: True),
+    ):
+        assert client.get("/upgrade/pay", params={"payment_id": 9, "uid": 222}).status_code == 404
+        assert client.post("/upgrade/pay/confirm", data={"payment_id": 9, "uid": 222}).status_code == 404
+    assert payment.status == "pending" and user.paid_until is None
+
+
+def test_the_mini_app_page_has_no_control_characters_and_keeps_its_regex():
+    """2026-11-02 (audit): a NUL character in the page's script made the regex a syntax error, so /tg never loaded."""
+    page = website_main._TG_APP_PAGE
+    assert not any(ord(char) < 32 and char != "\n" for char in page)
+    assert r"/[\\\x00-\x1f]/" in page

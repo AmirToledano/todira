@@ -276,11 +276,15 @@ def _owner_user_id() -> int | None:
     return _owner_user_id_cache["id"]
 
 
-def _is_owner_browser(request: Request) -> bool:
-    if request.cookies.get(_OWNER_COOKIE) == "1":
-        return True
+def _is_owner_signed_in(request: Request) -> bool:
     owner = _owner_user_id()
     return owner is not None and request.session.get("user_id") == owner
+
+
+def _is_owner_browser(request: Request) -> bool:
+    """For leaving the owner out of visit counts only. The cookie is not signed, so it never opens anything: what only
+    the owner may use checks _is_owner_signed_in (2026-11-02 audit: the cookie opened the paid assistant to anyone)."""
+    return request.cookies.get(_OWNER_COOKIE) == "1" or _is_owner_signed_in(request)
 
 
 def _is_person(request: Request) -> bool:
@@ -352,7 +356,12 @@ class _ActivityMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_ActivityMiddleware)
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
+# 2026-11-02 (audit): the session cookie (the owner's admin session too) is sent only over https. Tests and a local
+# server on plain http set SESSION_COOKIE_SECURE=0.
+app.add_middleware(
+    SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax",
+    https_only=os.environ.get("SESSION_COOKIE_SECURE", "1") != "0",
+)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 # 2026-10-17: listing cards printed "2.0 חדרים" (rooms is NUMERIC(3,1)) and "4900 ₪" with no thousands separator,
@@ -638,7 +647,7 @@ def _render(
             "current_year": dt.datetime.now(dt.timezone.utc).year,
             # 2026-10-23: the site assistant's chat bubble (assistant.py) - public once ASSISTANT_ENABLED=1, and always
             # for the owner's own browser so he can try it on the live site first.
-            "assistant_visible": assistant.configured() and (assistant.enabled() or _is_owner_browser(request)),
+            "assistant_visible": assistant.configured() and (assistant.enabled() or _is_owner_signed_in(request)),
         },
         status_code=status_code,
     )
@@ -767,7 +776,10 @@ def verify_webapp_init_data(init_data: str, bot_token: str) -> dict | None:
 
 # 2026-10-24 (owner): the site inside Telegram. The bot's "🗺️ מפה ודירות" button opens /tg as a Mini App; the page hands
 # Telegram's signed launch data to /auth/tg-webapp, which signs the visitor in, then goes on to `next` (a local path).
-_TG_APP_PAGE = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+# 2026-11-02 (audit): a raw string. As a plain one, Python turned the regex's \x00 into a real NUL character, which the
+# HTML parser turns into U+FFFD, so the script read /[\<U+FFFD>-\x1f]/, a "range out of order" syntax error: since
+# 2026-10-29 the Mini App never got past "טוען...".
+_TG_APP_PAGE = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>טודירה</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script></head>
 <body style="font-family:system-ui;text-align:center;padding-top:40vh">טוען...
@@ -1056,7 +1068,7 @@ def _assistant_user_context(request: Request) -> str | None:
 @app.post("/api/assistant")
 async def assistant_reply(request: Request):
     """2026-10-23: one answer from the site assistant (assistant.py). The page sends the chat so far; nothing is stored."""
-    if not assistant.configured() or not (assistant.enabled() or _is_owner_browser(request)):
+    if not assistant.configured() or not (assistant.enabled() or _is_owner_signed_in(request)):
         return JSONResponse({"error": "off"}, status_code=404)
     try:
         body = await request.json()
@@ -1456,20 +1468,22 @@ async def post_submit(request: Request):
     now = dt.datetime.now(dt.timezone.utc)
     fields, errors = owner_posts.parse(values, LOCALITY_SET, now.astimezone(_ISRAEL_TZ).date())
     uploads = [item for item in form.getlist("photos") if getattr(item, "filename", "")][: owner_posts.MAX_PHOTOS]
+    if errors:
+        return _post_form(request, values, errors, notice=make_translator(get_lang(request, None))("post.error"), status_code=400)
+    # 2026-11-02 (audit): the daily limit and the field check come before any photo is decoded, so a script cannot
+    # make the site decode photos over and over
+    visitor = _visitor(request, address_only=True)
+    with get_session() as session:
+        if owner_posts.posts_today(session, visitor, now) >= owner_posts.POSTS_PER_VISITOR_PER_DAY:
+            return _post_form(request, values, [], notice=make_translator(get_lang(request, None))("post.too_many"), status_code=429)
     # one at a time: a decoded phone photo takes tens of MB, and the site pod is small
     photos = []
     for upload in uploads:
         jpeg = await asyncio.to_thread(owner_posts.resize_photo, await upload.read(owner_posts.MAX_PHOTO_BYTES + 1))
         if jpeg is None:
-            errors.append("photos")
-            break
+            return _post_form(request, values, ["photos"], notice=make_translator(get_lang(request, None))("post.error"), status_code=400)
         photos.append(jpeg)
-    if errors:
-        return _post_form(request, values, errors, notice=make_translator(get_lang(request, None))("post.error"), status_code=400)
-    visitor = _visitor(request, address_only=True)
     with get_session() as session:
-        if owner_posts.posts_today(session, visitor, now) >= owner_posts.POSTS_PER_VISITOR_PER_DAY:
-            return _post_form(request, values, [], notice=make_translator(get_lang(request, None))("post.too_many"), status_code=429)
         post = owner_posts.create(session, fields, photos, visitor)
         post_id, token = post.id, post.manage_token
     await asyncio.to_thread(_notify_owner_new_post, post_id, fields["city"], fields["rooms"], fields["price"])
@@ -3184,6 +3198,13 @@ def upgrade_success(request: Request, payment_id: int | None = None, uid: int | 
     return _render(request, "upgrade_success.html", {"uid": uid, "paid": paid})
 
 
+def _informal_flow_closed() -> bool:
+    """2026-11-02 (audit): the old self-service "I paid" pages (informal Bit/PayBox flow, gateway=None rows) granted
+    access to anyone who still had a pending row from before Takbull went live and found its link in their browser
+    history. With a real gateway configured they answer 404."""
+    return takbull_client.hosted_page_configured() or takbull_client.recurring_api_configured()
+
+
 @app.get("/upgrade/pay")
 def upgrade_pay(request: Request, payment_id: int | None = None, uid: int | None = None):
     """Informal Bit/PayBox payment instructions (2026-09-05) — no verified "open the app
@@ -3194,6 +3215,8 @@ def upgrade_pay(request: Request, payment_id: int | None = None, uid: int | None
     side effect of clicking a plan button."""
     if payment_id is None:  # an old or cut-off link: back to the plans, not a raw validation error
         return RedirectResponse("/upgrade", status_code=303)
+    if _informal_flow_closed():
+        return _render(request, "404.html", {}, status_code=404)
     with get_session() as session:
         payment = session.get(Payment, payment_id)
         user = _resolve_user(request, session, uid)
@@ -3224,6 +3247,8 @@ def upgrade_pay_confirm(request: Request, payment_id: int = Form(...), uid: int 
     thing allowed to mark it paid, otherwise anyone could POST /upgrade (creating their own
     pending gateway payment) and then confirm it themselves for free access — found 2026-09-30 in
     a code-review pass, unexploitable only while no real gateway is configured."""
+    if _informal_flow_closed():
+        return _render(request, "404.html", {}, status_code=404)
     with get_session() as session:
         payment = session.get(Payment, payment_id)
         user = _resolve_user(request, session, uid)
