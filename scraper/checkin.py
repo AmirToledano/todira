@@ -87,10 +87,11 @@ def due_users(session: Session, now: dt.datetime) -> list[tuple[User, int]]:
             )
         )
     )
+    # 2026-11-02 (audit): only inside the person's own alert hours and days (they are asked on a later morning run)
     return [
         (user, int(total))
         for user, total in rows
-        if f"t{user.telegram_user_id}" not in active and f"u{user.id}" not in active
+        if f"t{user.telegram_user_id}" not in active and f"u{user.id}" not in active and alert_hours.in_window(user, now)
     ]
 
 

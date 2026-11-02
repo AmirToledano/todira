@@ -423,6 +423,10 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 # an `http://` redirect_uri that doesn't match what's registered in the Google Cloud Console
 # (redirect_uri must match EXACTLY, or Google rejects the whole flow).
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app")
+# 2026-11-02 (audit): the address every printed public URL starts with (canonical, hreflang, og:image, sitemap, robots,
+# share links). request.base_url read "http://todira.app/" in production: uvicorn trusts the X-Forwarded-Proto header only
+# from 127.0.0.1 and Caddy runs in another pod, so search engines were handed http canonical and sitemap URLs.
+PUBLIC_BASE = WEBSITE_URL.rstrip("/") + "/"
 
 # Informal Bit/PayBox payment (2026-09-05 — the owner's click-trust fallback while no real gateway is configured, see
 # /upgrade/pay below) — the owner's own phone number for Bit and, optionally, a PayBox payment
@@ -637,6 +641,7 @@ def _render(
             "lang_labels": LANG_LABELS,
             "current_user": current_user,
             "in_app_browser": _in_app_browser(request),
+            "site_url": PUBLIC_BASE,  # every printed public URL starts here (see PUBLIC_BASE)
             "static_version": GIT_SHA,
             "is_owner": is_real_owner and not _preview_as_free(request),
             "is_real_owner": is_real_owner,
@@ -1234,7 +1239,7 @@ def robots_txt(request: Request) -> PlainTextResponse:
     lines = ["User-agent: *"]
     lines += [f"Disallow: {path}" for path in disallowed]
     lines.append("")
-    lines.append(f"Sitemap: {request.base_url}sitemap.xml")
+    lines.append(f"Sitemap: {PUBLIC_BASE}sitemap.xml")
     return PlainTextResponse("\n".join(lines))
 
 
@@ -1269,7 +1274,7 @@ def sitemap_xml(request: Request) -> Response:
             paths += [f"/rent/{url_quote(row['city'])}" for row in city_pages.city_index(session)]
     except Exception:
         logger.warning("sitemap: could not list the city pages", exc_info=True)
-    urls = "".join(f"<url><loc>{request.base_url}{path.lstrip('/')}</loc></url>" for path in paths)
+    urls = "".join(f"<url><loc>{PUBLIC_BASE}{path.lstrip('/')}</loc></url>" for path in paths)
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
@@ -2314,7 +2319,7 @@ def shared_listing(request: Request, token: str):
         activity.record("share_view", _visitor(request))
     context = {
         "l": listing if available else None,
-        "share_link": str(request.base_url).rstrip("/") + share.share_path(listing_id) if available else None,
+        "share_link": PUBLIC_BASE.rstrip("/") + share.share_path(listing_id) if available else None,
         "login_next": f"/apartments?listing={listing_id}" if available else "/apartments",
     }
     response = _render(request, "shared_listing.html", context, status_code=200 if available else 404)
@@ -2927,7 +2932,12 @@ def admin_cancel_gift_days(request: Request, user_id: int):
         target = session.get(User, user_id)
         info = _gift_days_info(session, user_id)
         if target is not None and info is not None:
-            target.trial_ends_at = dt.datetime.fromisoformat(info["before"]) if info["before"] else None
+            # 2026-11-02 (audit): take back the gifted days only. Restoring the snapshot also wiped days added after the
+            # gift (a friend's invite reward the user had already been told about).
+            before = dt.datetime.fromisoformat(info["before"]) if info["before"] else None
+            if target.trial_ends_at is not None:
+                shortened = target.trial_ends_at - dt.timedelta(days=info["days"])
+                target.trial_ends_at = max(shortened, before) if before is not None else shortened
             session.execute(delete(AppFlag).where(AppFlag.key == f"gift_days:{user_id}"))
             session.commit()
     return RedirectResponse("/admin/users", status_code=303)
@@ -2954,6 +2964,11 @@ def upgrade(request: Request, uid: int | None = None):
         if user is None:
             return _render(request, "need_uid.html", {"target": "upgrade"})
         access = _effective_access(request, user)
+        # 2026-11-02 (audit): the real end of access, the later of a live paid period and free days. The page showed
+        # paid_until even when it was in the past or free days ran on after it.
+        now = dt.datetime.now(dt.timezone.utc)
+        paid_live = user.paid_until if user.paid_until is not None and user.paid_until > now else None
+        access_end = max((d for d in (paid_live, user.trial_ends_at) if d is not None and d > now), default=None)
 
     return _render(
         request,
@@ -2967,7 +2982,8 @@ def upgrade(request: Request, uid: int | None = None):
             # already signed in with a real session) found while fixing the same collision on /account.
             "display_is_owner": _display_is_owner(request, user.telegram_user_id),
             "trial_ends_at": user.trial_ends_at,
-            "paid_until": user.paid_until,
+            "paid_until": paid_live,
+            "access_end": access_end,
             "subscription_plan": SUBSCRIPTION_PLAN,
             "subscription_price": PLAN_PRICES_ILS[SUBSCRIPTION_PLAN],
             # 2026-09-24 real bug fix: this used to also require `not user.cancel_at_period_end`,
@@ -3452,6 +3468,8 @@ def _match_takbull_payment(session, body: dict, payment_id: int | None):
             )
             if payment is not None:
                 return payment, False
+            # 2026-11-02 (audit): we know who paid and they have nothing waiting: never credit someone else's row
+            return None, False
 
     try:
         total = Decimal(str(body.get("OrderTotalSum")))
@@ -3467,9 +3485,20 @@ def _match_takbull_payment(session, body: dict, payment_id: int | None):
             Payment.created_at >= dt.datetime.now(dt.timezone.utc) - _TAKBULL_WAITING_WINDOW,
         )
     ).all()
-    if len(waiting) == 1:
-        return waiting[0], False
+    # 2026-11-02 (audit): a lone waiting row is only trusted when no other checkout from the last day is still waiting
+    # (an older checkout of the real payer would otherwise be passed over and a stranger credited); several rows of the
+    # same person (they clicked twice) count as one, their newest
+    recent = session.scalars(
+        select(Payment).where(
+            Payment.gateway == "takbull",
+            Payment.status == "pending",
+            Payment.subscription_uniqid.is_(None),
+            Payment.created_at >= dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        )
+    ).all()
     same_amount = [p for p in waiting if p.amount_ils == total]
+    if waiting and len({p.user_id for p in waiting}) == 1 and {p.user_id for p in recent} <= {waiting[0].user_id}:
+        return (same_amount[0] if len(same_amount) == 1 else max(waiting, key=lambda p: p.id)), False
     return (same_amount[0], False) if len(same_amount) == 1 else (None, False)
 
 
@@ -3571,7 +3600,8 @@ async def _process_takbull_payload(body: dict) -> Response:
                 paid_plan = None
             if paid_plan is not None:
                 payment.plan = paid_plan
-                payment.amount_ils = PLAN_PRICES_ILS[paid_plan]
+                # 2026-11-02 (audit): the amount actually paid; the test pass's fixed ₪1 made any other test amount fail
+                payment.amount_ils = Decimal(str(order_total))
         try:
             # Decimal, not int (2026-09-21) — the recurring plan's ₪49.90 isn't a whole number, so
             # OrderTotalSum arrives as e.g. "49.90"; int("49.90") raises ValueError, which used to
@@ -3900,8 +3930,13 @@ def account_cancel_pass(
         if payment is None:
             return RedirectResponse(_identity_redirect_url("/account", uid), status_code=303)
         quote = cancellation_quote(payment.amount_ils, payment.paid_at, now)
+        old_paid_until = user.paid_until
         remaining = user.paid_until - PLAN_DURATIONS[payment.plan]
         user.paid_until = remaining if remaining > now else now
+        # 2026-11-02 (audit): free days stacked after the cancelled pass (extend_paid_until moves them there) move back
+        # with it, or the refunded period stayed fully open through them
+        if user.trial_ends_at is not None and user.trial_ends_at > old_paid_until:
+            user.trial_ends_at = max(now, user.trial_ends_at - (old_paid_until - user.paid_until))
         payment.status = "cancelled"
         session.commit()
         logger.info(

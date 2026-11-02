@@ -93,7 +93,7 @@ def test_home_page_has_valid_organization_and_website_json_ld(client):
     types = {node["@type"] for node in data["@graph"]}
     assert types == {"Organization", "WebSite"}
     for node in data["@graph"]:
-        assert node["url"] == "http://testserver/"
+        assert node["url"] == "https://todira.app/"
 
 
 def test_home_server_renders_crawlable_content(client):

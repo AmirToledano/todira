@@ -455,4 +455,20 @@ def test_cancel_gift_days_restores_the_original_trial_end():
     with patches[0], patches[1], patches[2], patches[3]:
         c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
         assert c.post("/admin/users/2/gift-days/cancel").status_code == 303
-    assert target.trial_ends_at == original
+    # 2026-11-02 (audit): the gifted days are taken off; given after the trial had ended, nothing is left
+    assert target.trial_ends_at <= _NOW + dt.timedelta(seconds=1)
+    assert target.trial_ends_at >= original
+
+
+def test_cancel_gift_days_keeps_days_a_friend_earned_after_the_gift():
+    """2026-11-02 (audit): restoring the snapshot wiped 7 invite days added after a 5-day gift."""
+    owner = _FakeUser(id=1, telegram_user_id=_OWNER_TG_ID)
+    before = _NOW + dt.timedelta(days=2)
+    target = _FakeUser(id=2, telegram_user_id=222, trial_ends_at=before + dt.timedelta(days=5 + 7))
+    fake_session = _FakeSession(users_by_pk={1: owner, 2: target})
+    fake_session.execute = lambda stmt: None
+    patches = _owner_client(fake_session, owner, {"gift_days:2": json.dumps({"days": 5, "before": before.isoformat()})})
+    with patches[0], patches[1], patches[2], patches[3]:
+        c = TestClient(website_main.app, raise_server_exceptions=True, follow_redirects=False)
+        assert c.post("/admin/users/2/gift-days/cancel").status_code == 303
+    assert target.trial_ends_at == before + dt.timedelta(days=7)

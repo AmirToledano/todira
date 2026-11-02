@@ -144,8 +144,21 @@ def test_without_reference_or_email_the_single_waiting_payment_of_that_amount_is
 
 
 def test_two_waiting_payments_are_never_guessed():
-    sess = _Sess(scalar_results=[None], waiting=[_payment(id=5), _payment(id=6)])
+    sess = _Sess(scalar_results=[None], waiting=[_payment(id=5, user_id=2), _payment(id=6, user_id=3)])
     assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "49.90"}, None) == (None, False)
+
+
+def test_one_person_who_clicked_twice_gets_their_newest_row():
+    """2026-11-02 (audit): two waiting rows of the same person must not leave the payer unmatched."""
+    sess = _Sess(scalar_results=[None], waiting=[_payment(id=5, user_id=2), _payment(id=6, user_id=2)])
+    assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "49.90"}, None)[0].id == 6
+
+
+def test_a_known_payer_without_a_waiting_row_never_takes_someone_elses():
+    """2026-11-02 (audit): the email named the payer, who had nothing waiting; another user's lone row was credited."""
+    sess = _Sess(scalar_results=[None, SimpleNamespace(id=1), None], waiting=[_payment(user_id=2)])
+    body = {"CustomerEmail": "payer@example.com", "OrderTotalSum": "49.90", "uniqId": "t9"}
+    assert website_main._match_takbull_payment(sess, body, None) == (None, False)
 
 
 def test_the_single_waiting_payment_is_matched_whatever_pass_the_customer_picked_on_takbull():
@@ -156,7 +169,7 @@ def test_the_single_waiting_payment_is_matched_whatever_pass_the_customer_picked
 
 
 def test_with_several_waiting_only_the_one_stored_with_the_charged_amount_is_matched():
-    week, month = _payment(id=5, amount_ils=Decimal("19.90")), _payment(id=6, amount_ils=Decimal("49.90"))
+    week, month = _payment(id=5, amount_ils=Decimal("19.90")), _payment(id=6, user_id=3, amount_ils=Decimal("49.90"))
     sess = _Sess(scalar_results=[None], waiting=[week, month])
     assert website_main._match_takbull_payment(sess, {"OrderTotalSum": "19.90"}, None) == (week, False)
     sess = _Sess(scalar_results=[None], waiting=[week, month])

@@ -7,6 +7,7 @@ import datetime as dt
 from sqlalchemy import Float, cast, func, or_, select
 
 from todira_common.models import Listing
+from todira_common import public_text
 from todira_common.non_home import is_non_home, not_non_home_sql
 
 AREA_COMPARE_MIN_LISTINGS = 5
@@ -93,6 +94,10 @@ def area_price_comparison(session, listing: Listing) -> dict | None:
 def below_area_pct(session, listing: Listing) -> int | None:
     """How many percent under the area price this listing is, when it is at least BELOW_AREA_TAG_PCT under a median of
     at least AREA_COMPARE_SOLID_LISTINGS comparable listings; None otherwise."""
+    # 2026-11-02 (audit): a room in a shared flat, or an ad with no room count, was compared with every flat in the city
+    # ("57% under the area price" on a ₪2,800 room)
+    if getattr(listing, "rooms", None) is None or public_text.is_room_in_shared_flat(getattr(listing, "description", None)):
+        return None
     result = area_price_comparison(session, listing)
     if not result or not result["solid"] or result["diff_pct"] > -BELOW_AREA_TAG_PCT:
         return None
