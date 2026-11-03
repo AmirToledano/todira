@@ -698,7 +698,7 @@ def test_every_access_card_text_exists_in_all_five_languages():
         "account.payment_cancelled_note", "account.status_active", "account.status_inactive",
     ]
     for key in keys:
-        assert set(TRANSLATIONS[key]) == {"he", "en", "ru", "fr", "ar"}, key
+        assert set(TRANSLATIONS[key]) >= {"he", "en", "ru", "fr", "ar"}, key
         for text in TRANSLATIONS[key].values():
             assert "—" not in text and "–" not in text and "·" not in text, key
 
@@ -741,6 +741,8 @@ def test_varying_day_counts_on_the_access_card_need_no_plural_forms():
 
     for key in ("account.trial_left", "account.free_left", "account.paid_left", "account.free_after_paid"):
         for lang, text in TRANSLATIONS[key].items():
+            if lang in ("th", "zh"):
+                continue  # no plural forms at all (2026-11-03, the newer languages)
             assert re.search(r":\s?\{days\}", text), (key, lang)
     # The invite texts say "{days} ימים" with the fixed reward: a number that is a plural (and the same plural form) in
     # all five languages. Changing it needs those texts checked.

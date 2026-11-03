@@ -149,5 +149,5 @@ def test_the_owner_gets_a_labelled_admin_section(client):
 def test_new_menu_texts_exist_in_every_language_without_long_dashes():
     for key in NEW_KEYS:
         entry = TRANSLATIONS[key]
-        assert set(entry) == {"he", "en", "ru", "fr", "ar"}
+        assert set(entry) >= {"he", "en", "ru", "fr", "ar"}
         assert all(value.strip() and "—" not in value and "–" not in value for value in entry.values())

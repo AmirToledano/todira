@@ -2830,217 +2830,403 @@
     "en": "Full access, no time limit",
     "ru": "Полный доступ без ограничения по времени",
     "fr": "Accès complet, sans limite de temps",
-    "ar": "وصول كامل بلا حدود زمنية"
+    "ar": "وصول كامل بلا حدود زمنية",
+    "es": "Acceso completo sin límite de tiempo",
+    "pt": "Acesso completo, sem limite de tempo",
+    "hi": "पूरा एक्सेस, कोई समय सीमा नहीं",
+    "fil": "Buong access, walang time limit",
+    "th": "เข้าถึงเต็มรูปแบบ ไม่จำกัดเวลา",
+    "zh": "完整权限，不限时间"
   },
   "account.access_owner_hint": {
     "he": "זה חשבון המנהל, אין צורך במנוי.",
     "en": "This is the admin account, no subscription needed.",
     "ru": "Это аккаунт администратора, подписка не нужна.",
     "fr": "C'est le compte administrateur, aucun abonnement n'est nécessaire.",
-    "ar": "هذا حساب المدير، لا حاجة إلى اشتراك."
+    "ar": "هذا حساب المدير، لا حاجة إلى اشتراك.",
+    "es": "Esta es la cuenta de administrador, no necesitas un pase.",
+    "pt": "Esta é a conta de administrador, não precisa de passe.",
+    "hi": "यह एडमिन अकाउंट है, पास की ज़रूरत नहीं।",
+    "fil": "Ito ang admin account, hindi kailangan ng pass.",
+    "th": "นี่คือบัญชีผู้ดูแล ไม่ต้องซื้อแพ็ก",
+    "zh": "这是管理员账户，无需购买通行证。"
   },
   "account.access_comp_hint": {
     "he": "קיבלת גישה מלאה מטודירה, אין צורך במנוי.",
     "en": "Todira gave you full access, no subscription needed.",
     "ru": "Todira открыла вам полный доступ, подписка не нужна.",
     "fr": "Todira t'a offert un accès complet, aucun abonnement n'est nécessaire.",
-    "ar": "منحتك توديرا وصولًا كاملًا، لا حاجة إلى اشتراك."
+    "ar": "منحتك توديرا وصولًا كاملًا، لا حاجة إلى اشتراك.",
+    "es": "Todira te dio acceso completo, no necesitas un pase.",
+    "pt": "A Todira liberou acesso completo para você, não precisa de passe.",
+    "hi": "Todira ने आपको पूरा एक्सेस दिया है, पास की ज़रूरत नहीं।",
+    "fil": "Binigyan ka ng Todira ng buong access, hindi mo na kailangan ng pass.",
+    "th": "Todira เปิดสิทธิ์ใช้งานเต็มรูปแบบให้คุณแล้ว ไม่ต้องซื้อแพ็ก",
+    "zh": "Todira 已为你开通完整权限，无需购买通行证。"
   },
   "account.status_active": {
     "he": "פעיל",
     "en": "Active",
     "ru": "Активен",
     "fr": "Actif",
-    "ar": "نشط"
+    "ar": "نشط",
+    "es": "Activo",
+    "pt": "Ativo",
+    "hi": "एक्टिव",
+    "fil": "Aktibo",
+    "th": "ใช้งานอยู่",
+    "zh": "生效中"
   },
   "account.status_inactive": {
     "he": "לא פעיל",
     "en": "Inactive",
     "ru": "Не активен",
     "fr": "Inactif",
-    "ar": "غير نشط"
+    "ar": "غير نشط",
+    "es": "Inactivo",
+    "pt": "Inativo",
+    "hi": "एक्टिव नहीं",
+    "fil": "Hindi aktibo",
+    "th": "ไม่ได้ใช้งาน",
+    "zh": "未生效"
   },
   "account.trial_left": {
     "he": "תקופת ניסיון, ימים שנותרו: {days} (עד {date})",
     "en": "Free trial, days left: {days} (until {date})",
     "ru": "Пробный период, осталось дней: {days} (до {date})",
     "fr": "Période d'essai, jours restants : {days} (jusqu'au {date})",
-    "ar": "فترة تجريبية، الأيام المتبقية: {days} (حتى {date})"
+    "ar": "فترة تجريبية، الأيام المتبقية: {days} (حتى {date})",
+    "es": "Prueba gratis, días restantes: {days} (hasta el {date})",
+    "pt": "Teste grátis, dias restantes: {days} (até {date})",
+    "hi": "फ़्री ट्रायल, बाकी दिन: {days} ({date} तक)",
+    "fil": "Libreng trial, natitirang araw: {days} (hanggang {date})",
+    "th": "ทดลองใช้ฟรี เหลืออีก {days} วัน (ถึง {date})",
+    "zh": "免费试用，剩余 {days} 天（至 {date}）"
   },
   "account.trial_last": {
     "he": "תקופת ניסיון, היום האחרון (עד {date})",
     "en": "Free trial, last day (until {date})",
     "ru": "Пробный период, последний день (до {date})",
     "fr": "Période d'essai, dernier jour (jusqu'au {date})",
-    "ar": "فترة تجريبية، اليوم الأخير (حتى {date})"
+    "ar": "فترة تجريبية، اليوم الأخير (حتى {date})",
+    "es": "Prueba gratis, último día (hasta el {date})",
+    "pt": "Teste grátis, último dia (até {date})",
+    "hi": "फ़्री ट्रायल, आखिरी दिन ({date} तक)",
+    "fil": "Libreng trial, huling araw na (hanggang {date})",
+    "th": "ทดลองใช้ฟรี วันสุดท้าย (ถึง {date})",
+    "zh": "免费试用，最后一天（至 {date}）"
   },
   "account.trial_hint": {
     "he": "בתקופת הניסיון הכל פתוח. אפשר לרכוש מנוי כבר עכשיו, והוא יתחיל רק כשהניסיון ייגמר.",
     "en": "Everything is open during the trial. You can buy a pass now, and it starts only when the trial ends.",
     "ru": "Во время пробного периода открыто всё. Можно купить доступ уже сейчас, он начнётся после окончания пробного периода.",
     "fr": "Tout est ouvert pendant l'essai. Tu peux acheter un pass dès maintenant, il commencera à la fin de l'essai.",
-    "ar": "كل شيء مفتوح خلال الفترة التجريبية. يمكنك شراء باقة الآن، وستبدأ فقط عند انتهاء التجربة."
+    "ar": "كل شيء مفتوح خلال الفترة التجريبية. يمكنك شراء باقة الآن، وستبدأ فقط عند انتهاء التجربة.",
+    "es": "Durante la prueba tienes todo abierto. Puedes comprar un pase ya, y solo empieza cuando termine la prueba.",
+    "pt": "Durante o teste está tudo liberado. Você já pode comprar um passe, e ele só começa quando o teste terminar.",
+    "hi": "ट्रायल में सब कुछ खुला है। आप अभी पास खरीद सकते हैं, वह ट्रायल खत्म होने के बाद ही शुरू होगा।",
+    "fil": "Bukas ang lahat habang naka-trial ka. Puwede ka nang bumili ng pass ngayon, at magsisimula lang ito pagkatapos ng trial.",
+    "th": "ช่วงทดลองใช้เปิดให้ใช้ได้ทุกอย่าง คุณซื้อแพ็กไว้ก่อนได้เลย แพ็กจะเริ่มนับหลังช่วงทดลองใช้จบ",
+    "zh": "试用期内所有功能都已开放。你现在就可以购买通行证，它会在试用结束后才开始计算。"
   },
   "account.free_hint": {
     "he": "יש לך כרגע גישה חינם. אפשר לרכוש מנוי כבר עכשיו, והימים החינמיים שנשארו לא ילכו לאיבוד.",
     "en": "You have free access right now. You can buy a pass now, and the free days you have left will not be lost.",
     "ru": "Сейчас у вас бесплатный доступ. Можно купить доступ уже сейчас, оставшиеся бесплатные дни не пропадут.",
     "fr": "Tu as un accès gratuit en ce moment. Tu peux acheter un pass dès maintenant, les jours gratuits restants ne seront pas perdus.",
-    "ar": "لديك الآن وصول مجاني. يمكنك شراء باقة الآن، ولن تضيع الأيام المجانية المتبقية."
+    "ar": "لديك الآن وصول مجاني. يمكنك شراء باقة الآن، ولن تضيع الأيام المجانية المتبقية.",
+    "es": "Ahora tienes acceso gratis. Puedes comprar un pase ya, y no pierdes los días gratis que te quedan.",
+    "pt": "Você tem acesso grátis agora. Já pode comprar um passe, e os dias grátis que faltam não se perdem.",
+    "hi": "अभी आपके पास फ़्री एक्सेस है। आप अभी पास खरीद सकते हैं, आपके बचे हुए फ़्री दिन बेकार नहीं जाएंगे।",
+    "fil": "May libreng access ka ngayon. Puwede ka nang bumili ng pass, at hindi masasayang ang natitira mong libreng araw.",
+    "th": "ตอนนี้คุณใช้งานฟรีอยู่ ซื้อแพ็กไว้ก่อนได้เลย วันฟรีที่เหลือจะไม่หายไป",
+    "zh": "你目前享有免费访问。现在就可以购买通行证，剩下的免费天数不会浪费。"
   },
   "account.free_left": {
     "he": "גישה חינם, ימים שנותרו: {days} (עד {date})",
     "en": "Free access, days left: {days} (until {date})",
     "ru": "Бесплатный доступ, осталось дней: {days} (до {date})",
     "fr": "Accès gratuit, jours restants : {days} (jusqu'au {date})",
-    "ar": "وصول مجاني، الأيام المتبقية: {days} (حتى {date})"
+    "ar": "وصول مجاني، الأيام المتبقية: {days} (حتى {date})",
+    "es": "Acceso gratis, días restantes: {days} (hasta el {date})",
+    "pt": "Acesso grátis, dias restantes: {days} (até {date})",
+    "hi": "फ़्री एक्सेस, बाकी दिन: {days} ({date} तक)",
+    "fil": "Libreng access, natitirang araw: {days} (hanggang {date})",
+    "th": "ใช้งานฟรี เหลืออีก {days} วัน (ถึง {date})",
+    "zh": "免费访问，剩余 {days} 天（至 {date}）"
   },
   "account.free_last": {
     "he": "גישה חינם, היום האחרון (עד {date})",
     "en": "Free access, last day (until {date})",
     "ru": "Бесплатный доступ, последний день (до {date})",
     "fr": "Accès gratuit, dernier jour (jusqu'au {date})",
-    "ar": "وصول مجاني، اليوم الأخير (حتى {date})"
+    "ar": "وصول مجاني، اليوم الأخير (حتى {date})",
+    "es": "Acceso gratis, último día (hasta el {date})",
+    "pt": "Acesso grátis, último dia (até {date})",
+    "hi": "फ़्री एक्सेस, आखिरी दिन ({date} तक)",
+    "fil": "Libreng access, huling araw na (hanggang {date})",
+    "th": "ใช้งานฟรี วันสุดท้าย (ถึง {date})",
+    "zh": "免费访问，最后一天（至 {date}）"
   },
   "account.trial_ended_on": {
     "he": "תקופת הניסיון הסתיימה ב־{date}",
     "en": "Your free trial ended on {date}",
     "ru": "Пробный период закончился {date}",
     "fr": "Ta période d'essai s'est terminée le {date}",
-    "ar": "انتهت الفترة التجريبية في {date}"
+    "ar": "انتهت الفترة التجريبية في {date}",
+    "es": "Tu prueba gratis terminó el {date}",
+    "pt": "Seu teste grátis terminou em {date}",
+    "hi": "आपका फ़्री ट्रायल {date} को खत्म हो गया",
+    "fil": "Natapos ang libreng trial mo noong {date}",
+    "th": "ช่วงทดลองใช้ฟรีของคุณสิ้นสุดเมื่อ {date}",
+    "zh": "你的免费试用已于 {date} 结束"
   },
   "account.no_access_hint": {
     "he": "ההתראות ממשיכות להגיע, אבל הקישור למודעה המקורית נעול. מנוי פותח הכל מחדש.",
     "en": "Alerts keep coming, but the link to the original ad is locked. A pass opens everything again.",
     "ru": "Уведомления продолжают приходить, но ссылка на исходное объявление закрыта. Доступ снова открывает всё.",
     "fr": "Les alertes continuent, mais le lien vers l'annonce d'origine est verrouillé. Un pass rouvre tout.",
-    "ar": "تستمر التنبيهات بالوصول، لكن رابط الإعلان الأصلي مقفل. الباقة تفتح كل شيء من جديد."
+    "ar": "تستمر التنبيهات بالوصول، لكن رابط الإعلان الأصلي مقفل. الباقة تفتح كل شيء من جديد.",
+    "es": "Las alertas siguen llegando, pero el enlace al aviso original está bloqueado. Con un pase se vuelve a abrir todo.",
+    "pt": "Os alertas continuam chegando, mas o link para o anúncio original fica bloqueado. Com um passe, tudo volta a ser liberado.",
+    "hi": "अलर्ट आते रहेंगे, लेकिन असली विज्ञापन का लिंक लॉक है। पास लेने पर सब फिर से खुल जाएगा।",
+    "fil": "Tuloy pa rin ang mga alert, pero naka-lock ang link sa orihinal na listing. Kapag may pass ka, bukas ulit ang lahat.",
+    "th": "การแจ้งเตือนยังส่งมาเหมือนเดิม แต่ลิงก์ไปยังประกาศต้นฉบับถูกล็อกไว้ ซื้อแพ็กแล้วจะเปิดได้ทุกอย่างอีกครั้ง",
+    "zh": "提醒会照常发送，但原始房源的链接已锁定。购买通行证即可重新解锁全部内容。"
   },
   "account.paid_ended_on": {
     "he": "המנוי הסתיים ב־{date}",
     "en": "Your pass ended on {date}",
     "ru": "Доступ закончился {date}",
     "fr": "Ton pass s'est terminé le {date}",
-    "ar": "انتهى اشتراكك في {date}"
+    "ar": "انتهى اشتراكك في {date}",
+    "es": "Tu pase terminó el {date}",
+    "pt": "Seu passe terminou em {date}",
+    "hi": "आपका पास {date} को खत्म हो गया",
+    "fil": "Natapos ang pass mo noong {date}",
+    "th": "แพ็กของคุณสิ้นสุดเมื่อ {date}",
+    "zh": "你的通行证已于 {date} 到期"
   },
   "account.paid_active": {
     "he": "מנוי פעיל",
     "en": "Active pass",
     "ru": "Доступ активен",
     "fr": "Pass actif",
-    "ar": "اشتراك نشط"
+    "ar": "اشتراك نشط",
+    "es": "Pase activo",
+    "pt": "Passe ativo",
+    "hi": "एक्टिव पास",
+    "fil": "Aktibong pass",
+    "th": "แพ็กที่ใช้งานอยู่",
+    "zh": "通行证生效中"
   },
   "account.paid_plan": {
     "he": "מנוי פעיל, חבילת {plan}",
     "en": "Active pass, {plan}",
     "ru": "Доступ активен, {plan}",
     "fr": "Pass actif, {plan}",
-    "ar": "اشتراك نشط، باقة {plan}"
+    "ar": "اشتراك نشط، باقة {plan}",
+    "es": "Pase activo, {plan}",
+    "pt": "Passe ativo, {plan}",
+    "hi": "एक्टिव पास, {plan}",
+    "fil": "Aktibong pass, {plan}",
+    "th": "แพ็กที่ใช้งานอยู่ {plan}",
+    "zh": "通行证生效中，{plan}"
   },
   "account.paid_left": {
     "he": "בתוקף עד {date}, ימים שנותרו: {days}",
     "en": "Valid until {date}, days left: {days}",
     "ru": "Действует до {date}, осталось дней: {days}",
     "fr": "Valable jusqu'au {date}, jours restants : {days}",
-    "ar": "ساري حتى {date}، الأيام المتبقية: {days}"
+    "ar": "ساري حتى {date}، الأيام المتبقية: {days}",
+    "es": "Válido hasta el {date}, días restantes: {days}",
+    "pt": "Válido até {date}, dias restantes: {days}",
+    "hi": "{date} तक वैलिड, बाकी दिन: {days}",
+    "fil": "Valid hanggang {date}, natitirang araw: {days}",
+    "th": "ใช้ได้ถึง {date} เหลืออีก {days} วัน",
+    "zh": "有效期至 {date}，剩余 {days} 天"
   },
   "account.paid_last": {
     "he": "בתוקף עד {date}, זה היום האחרון",
     "en": "Valid until {date}, this is the last day",
     "ru": "Действует до {date}, сегодня последний день",
     "fr": "Valable jusqu'au {date}, c'est le dernier jour",
-    "ar": "ساري حتى {date}، هذا هو اليوم الأخير"
+    "ar": "ساري حتى {date}، هذا هو اليوم الأخير",
+    "es": "Válido hasta el {date}, hoy es el último día",
+    "pt": "Válido até {date}, hoje é o último dia",
+    "hi": "{date} तक वैलिड, आज आखिरी दिन है",
+    "fil": "Valid hanggang {date}, huling araw na ngayon",
+    "th": "ใช้ได้ถึง {date} วันนี้เป็นวันสุดท้าย",
+    "zh": "有效期至 {date}，今天是最后一天"
   },
   "account.free_after_paid": {
     "he": "ימים חינם אחריו: {days}, כך שהגישה בתוקף עד {date}",
     "en": "Free days after it: {days}, so your access runs until {date}",
     "ru": "Бесплатных дней после него: {days}, доступ действует до {date}",
     "fr": "Jours gratuits ensuite : {days}, ton accès court donc jusqu'au {date}",
-    "ar": "أيام مجانية بعده: {days}، فيبقى الوصول ساريًا حتى {date}"
+    "ar": "أيام مجانية بعده: {days}، فيبقى الوصول ساريًا حتى {date}",
+    "es": "Días gratis después del pase: {days}, así que tu acceso dura hasta el {date}",
+    "pt": "Dias grátis depois dele: {days}, então seu acesso vai até {date}",
+    "hi": "इसके बाद फ़्री दिन: {days}, यानी आपका एक्सेस {date} तक रहेगा",
+    "fil": "Libreng araw pagkatapos nito: {days}, kaya valid ang access mo hanggang {date}",
+    "th": "วันฟรีต่อจากแพ็ก: {days} วัน คุณจึงใช้งานได้ถึง {date}",
+    "zh": "之后还有 {days} 天免费，你的访问权限有效至 {date}"
   },
   "account.extend_cta": {
     "he": "הארכת המנוי",
     "en": "Extend my pass",
     "ru": "Продлить доступ",
     "fr": "Prolonger mon pass",
-    "ar": "تمديد الاشتراك"
+    "ar": "تمديد الاشتراك",
+    "es": "Extender mi pase",
+    "pt": "Estender meu passe",
+    "hi": "मेरा पास बढ़ाएं",
+    "fil": "I-extend ang pass ko",
+    "th": "ต่อเวลาแพ็ก",
+    "zh": "延长通行证"
   },
   "account.extend_hint": {
     "he": "חבילה חדשה מתחילה בסוף התקופה הנוכחית, אף יום לא הולך לאיבוד.",
     "en": "A new pass starts when the current period ends, so no day is lost.",
     "ru": "Новый доступ начнётся после окончания текущего периода, ни один день не пропадёт.",
     "fr": "Un nouveau pass commence à la fin de la période en cours, aucun jour n'est perdu.",
-    "ar": "تبدأ الباقة الجديدة عند انتهاء الفترة الحالية، فلا يضيع أي يوم."
+    "ar": "تبدأ الباقة الجديدة عند انتهاء الفترة الحالية، فلا يضيع أي يوم.",
+    "es": "El nuevo pase empieza cuando termina el período actual, así que no pierdes ningún día.",
+    "pt": "O novo passe começa quando o período atual termina, então você não perde nenhum dia.",
+    "hi": "नया पास मौजूदा अवधि खत्म होने पर शुरू होता है, इसलिए एक भी दिन बेकार नहीं जाता।",
+    "fil": "Magsisimula ang bagong pass pagkatapos ng kasalukuyang period, kaya walang masasayang na araw.",
+    "th": "แพ็กใหม่จะเริ่มต่อจากช่วงปัจจุบัน ไม่เสียวันไปแม้แต่วันเดียว",
+    "zh": "新通行证会在当前周期结束后开始，一天都不会浪费。"
   },
   "account.renew_cta": {
     "he": "חידוש המנוי",
     "en": "Renew my pass",
     "ru": "Возобновить доступ",
     "fr": "Renouveler mon pass",
-    "ar": "تجديد الاشتراك"
+    "ar": "تجديد الاشتراك",
+    "es": "Renovar mi pase",
+    "pt": "Renovar meu passe",
+    "hi": "पास रिन्यू करें",
+    "fil": "I-renew ang pass ko",
+    "th": "ต่ออายุแพ็ก",
+    "zh": "续订通行证"
   },
   "account.buy_cta": {
     "he": "לבחירת מנוי",
     "en": "Choose a pass",
     "ru": "Выбрать доступ",
     "fr": "Choisir un pass",
-    "ar": "اختيار باقة"
+    "ar": "اختيار باقة",
+    "es": "Elegir un pase",
+    "pt": "Escolher um passe",
+    "hi": "पास चुनें",
+    "fil": "Pumili ng pass",
+    "th": "เลือกแพ็ก",
+    "zh": "选择通行证"
   },
   "account.invite_title": {
     "he": "{days} ימים חינם על כל חבר שמצטרף",
     "en": "{days} free days for every friend who joins",
     "ru": "{days} бесплатных дней за каждого друга",
     "fr": "{days} jours offerts pour chaque ami qui s'inscrit",
-    "ar": "{days} أيام مجانية عن كل صديق ينضم"
+    "ar": "{days} أيام مجانية عن كل صديق ينضم",
+    "es": "{days} días gratis por cada amigo que se una",
+    "pt": "{days} dias grátis para cada amigo que entrar",
+    "hi": "हर दोस्त के जुड़ने पर {days} दिन फ़्री",
+    "fil": "{days} libreng araw sa bawat kaibigang sasali",
+    "th": "รับฟรี {days} วัน ทุกครั้งที่เพื่อนสมัคร",
+    "zh": "每邀请一位朋友加入，送你 {days} 天免费使用"
   },
   "account.invite_body": {
     "he": "שולחים לחבר את הקישור האישי שלך. כשהוא מסיים להירשם, שניכם מקבלים {days} ימים חינם.",
     "en": "Send a friend your personal link. When they finish signing up, you both get {days} free days.",
     "ru": "Отправьте другу свою личную ссылку. Когда он завершит регистрацию, вы оба получите {days} бесплатных дней.",
     "fr": "Envoie ton lien personnel à un ami. Quand il termine son inscription, vous recevez tous les deux {days} jours offerts.",
-    "ar": "أرسل لصديقك رابطك الشخصي. عندما يُكمل التسجيل، تحصلان كلاكما على {days} أيام مجانية."
+    "ar": "أرسل لصديقك رابطك الشخصي. عندما يُكمل التسجيل، تحصلان كلاكما على {days} أيام مجانية.",
+    "es": "Envíale a un amigo tu enlace personal. Cuando termine de registrarse, los dos reciben {days} días gratis.",
+    "pt": "Mande seu link pessoal para um amigo. Quando ele terminar o cadastro, vocês dois ganham {days} dias grátis.",
+    "hi": "किसी दोस्त को अपना पर्सनल लिंक भेजें। जैसे ही वह साइन अप पूरा करेगा, आप दोनों को {days} दिन फ़्री मिलेंगे।",
+    "fil": "Ipadala sa kaibigan mo ang personal link mo. Kapag natapos na siyang mag-sign up, pareho kayong makakakuha ng {days} libreng araw.",
+    "th": "ส่งลิงก์ส่วนตัวของคุณให้เพื่อน เมื่อเพื่อนสมัครเสร็จ คุณทั้งคู่จะได้ใช้ฟรี {days} วัน",
+    "zh": "把你的专属链接发给朋友。朋友完成注册后，你们俩都能免费使用 {days} 天。"
   },
   "account.invite_copy": {
     "he": "העתקת הקישור",
     "en": "Copy link",
     "ru": "Скопировать ссылку",
     "fr": "Copier le lien",
-    "ar": "نسخ الرابط"
+    "ar": "نسخ الرابط",
+    "es": "Copiar enlace",
+    "pt": "Copiar link",
+    "hi": "लिंक कॉपी करें",
+    "fil": "Kopyahin ang link",
+    "th": "คัดลอกลิงก์",
+    "zh": "复制链接"
   },
   "account.invite_copied": {
     "he": "הקישור הועתק",
     "en": "Link copied",
     "ru": "Ссылка скопирована",
     "fr": "Lien copié",
-    "ar": "تم نسخ الرابط"
+    "ar": "تم نسخ الرابط",
+    "es": "Enlace copiado",
+    "pt": "Link copiado",
+    "hi": "लिंक कॉपी हो गया",
+    "fil": "Nakopya na ang link",
+    "th": "คัดลอกลิงก์แล้ว",
+    "zh": "链接已复制"
   },
   "account.invite_copy_failed": {
     "he": "לא הצלחנו להעתיק. הקישור מסומן, אפשר להעתיק אותו ידנית.",
     "en": "Could not copy. The link is selected, you can copy it by hand.",
     "ru": "Не удалось скопировать. Ссылка выделена, скопируйте её вручную.",
     "fr": "Copie impossible. Le lien est sélectionné, tu peux le copier à la main.",
-    "ar": "تعذّر النسخ. الرابط محدد، يمكنك نسخه يدويًا."
+    "ar": "تعذّر النسخ. الرابط محدد، يمكنك نسخه يدويًا.",
+    "es": "No pudimos copiarlo. El enlace está seleccionado, puedes copiarlo a mano.",
+    "pt": "Não deu para copiar. O link está selecionado, você pode copiar manualmente.",
+    "hi": "कॉपी नहीं हो पाया। लिंक सेलेक्ट किया हुआ है, आप इसे खुद कॉपी कर सकते हैं।",
+    "fil": "Hindi nakopya. Naka-select na ang link, puwede mo itong kopyahin nang mano-mano.",
+    "th": "คัดลอกไม่สำเร็จ เราเลือกลิงก์ไว้ให้แล้ว คุณคัดลอกเองได้เลย",
+    "zh": "复制失败。链接已选中，你可以手动复制。"
   },
   "account.invite_share": {
     "he": "שליחה בטלגרם",
     "en": "Send on Telegram",
     "ru": "Отправить в Telegram",
     "fr": "Envoyer sur Telegram",
-    "ar": "إرسال عبر تيليجرام"
+    "ar": "إرسال عبر تيليجرام",
+    "es": "Enviar por Telegram",
+    "pt": "Enviar no Telegram",
+    "hi": "Telegram पर भेजें",
+    "fil": "Ipadala sa Telegram",
+    "th": "ส่งทาง Telegram",
+    "zh": "通过 Telegram 发送"
   },
   "account.invite_share_text": {
     "he": "אני מחפש דירה עם טודירה, היא שולחת לי דירות חדשות ברגע שהן עולות. נרשמים דרך הקישור ושנינו מקבלים {days} ימים חינם.",
     "en": "I'm flat hunting with Todira, it sends me new flats the moment they go up. Sign up through this link and we both get {days} free days.",
     "ru": "Ищу квартиру с Todira, она присылает новые квартиры сразу после публикации. Зарегистрируйся по ссылке, и мы оба получим {days} бесплатных дней.",
     "fr": "Je cherche un appart avec Todira, elle m'envoie les nouvelles annonces dès leur sortie. Inscris-toi avec ce lien et on reçoit tous les deux {days} jours offerts.",
-    "ar": "أبحث عن شقة مع توديرا، ترسل لي الشقق الجديدة فور نشرها. سجّل عبر هذا الرابط ونحصل كلانا على {days} أيام مجانية."
+    "ar": "أبحث عن شقة مع توديرا، ترسل لي الشقق الجديدة فور نشرها. سجّل عبر هذا الرابط ونحصل كلانا على {days} أيام مجانية.",
+    "es": "Estoy buscando departamento con Todira, me manda los departamentos nuevos apenas se publican. Regístrate con este enlace y los dos recibimos {days} días gratis.",
+    "pt": "Estou procurando apartamento com a Todira, ela me manda os apartamentos novos assim que são anunciados. Cadastre-se por este link e nós dois ganhamos {days} dias grátis.",
+    "hi": "मैं Todira से फ़्लैट ढूंढ रहा हूं, जैसे ही कोई नया फ़्लैट आता है यह तुरंत भेज देता है। इस लिंक से साइन अप करो और हम दोनों को {days} दिन फ़्री मिलेंगे।",
+    "fil": "Naghahanap ako ng apartment gamit ang Todira, pinapadala nito agad ang mga bagong apartment pagka-post pa lang. Mag-sign up ka sa link na ito at pareho tayong makakakuha ng {days} libreng araw.",
+    "th": "ฉันหาห้องผ่าน Todira อยู่ มันส่งห้องใหม่มาให้ทันทีที่มีคนลงประกาศ สมัครผ่านลิงก์นี้แล้วเราทั้งคู่จะได้ใช้ฟรี {days} วัน",
+    "zh": "我在用 Todira 找房，新房源一上线它就马上发给我。通过这个链接注册，我们俩都能免费使用 {days} 天。"
   },
   "account.payment_cancelled_note": {
     "he": "ברכישה שבוטלה, אם מגיע החזר לפי מדיניות הביטול (סעיף 10 בתנאי השימוש), הוא מזוכה לאמצעי התשלום שבו שילמת תוך 14 ימים.",
     "en": "For a cancelled purchase, if a refund is due under the cancellation policy (section 10 of the terms), it goes back to the payment method you used within 14 days.",
     "ru": "Если за отменённую покупку положен возврат по правилам отмены (раздел 10 условий), он поступит на тот же способ оплаты в течение 14 дней.",
     "fr": "Pour un achat annulé, si un remboursement est dû selon la politique d'annulation (section 10 des conditions), il est versé sur le moyen de paiement utilisé sous 14 jours.",
-    "ar": "عند إلغاء عملية شراء، إذا كان هناك استرداد مستحق وفق سياسة الإلغاء (البند 10 من الشروط)، يُعاد المبلغ إلى وسيلة الدفع نفسها خلال 14 يومًا."
+    "ar": "عند إلغاء عملية شراء، إذا كان هناك استرداد مستحق وفق سياسة الإلغاء (البند 10 من الشروط)، يُعاد المبلغ إلى وسيلة الدفع نفسها خلال 14 يومًا.",
+    "es": "Si cancelaste una compra y te corresponde un reembolso según la política de cancelación (sección 10 de los términos), se devuelve al medio de pago que usaste dentro de 14 días.",
+    "pt": "Se você cancelou uma compra e tem direito a reembolso pela política de cancelamento (seção 10 dos termos), o valor volta para o meio de pagamento que você usou em até 14 dias.",
+    "hi": "कैंसिल की गई खरीद पर, अगर कैंसिलेशन पॉलिसी (शर्तों का सेक्शन 10) के हिसाब से रिफ़ंड बनता है, तो वह 14 दिनों के अंदर उसी पेमेंट के तरीके में वापस आ जाता है जिससे आपने पेमेंट किया था।",
+    "fil": "Kung kinansela mo ang binili mo at may refund ka ayon sa cancellation policy (section 10 ng mga tuntunin), ibabalik ito sa payment method na ginamit mo sa loob ng 14 na araw.",
+    "th": "สำหรับการซื้อที่ยกเลิก หากมีสิทธิ์ได้รับเงินคืนตามนโยบายการยกเลิก (ข้อ 10 ในข้อกำหนด) เงินจะคืนเข้าช่องทางชำระเงินที่คุณใช้ภายใน 14 วัน",
+    "zh": "对于已取消的购买，如果根据取消政策（使用条款第 10 条）应予退款，款项会在 14 天内退回你当时使用的付款方式。"
   },
   "account.notifications_title": {
     "he": "התראות",
