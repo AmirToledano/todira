@@ -4188,5 +4188,17 @@ TRANSLATIONS.update({
 })
 
 
+# 2026-11-03 (owner): testimonials page /reviews and the feedback form's "you may show this" checkbox
+TRANSLATIONS.update({
+    "nav.reviews": {"he": "המלצות", "en": "Reviews", "ru": "Отзывы", "fr": "Avis", "ar": "آراء المستخدمين"},
+    "reviews.title": {"he": "מה אומרים על טודירה", "en": "What people say about Todira", "ru": "Что говорят о Todira", "fr": "Ce qu'on dit de Todira", "ar": "ماذا يقولون عن Todira"},
+    "reviews.lead": {"he": "מה כתבו לנו אנשים שחיפשו דירה עם טודירה. כל המלצה כאן נכתבה על ידי משתמש אמיתי, שהסכים שנציג אותה.", "en": "What people who searched for a flat with Todira wrote to us. Every review here was written by a real user who agreed to have it shown.", "ru": "Что нам написали люди, искавшие квартиру с Todira. Каждый отзыв здесь написан реальным пользователем, который согласился его опубликовать.", "fr": "Ce que nous ont écrit des personnes qui ont cherché un logement avec Todira. Chaque avis ici a été écrit par un vrai utilisateur qui a accepté qu'on l'affiche.", "ar": "ما كتبه لنا أشخاص بحثوا عن شقة مع Todira. كل رأي هنا كتبه مستخدم حقيقي وافق على عرضه."},
+    "reviews.empty": {"he": "עוד אין כאן המלצות. מצאת דירה עם טודירה? נשמח לשמוע.", "en": "No reviews here yet. Found a flat with Todira? We'd love to hear.", "ru": "Здесь пока нет отзывов. Нашли квартиру с Todira? Будем рады услышать.", "fr": "Pas encore d'avis ici. Tu as trouvé un logement avec Todira ? On aimerait le savoir.", "ar": "لا توجد آراء هنا بعد. وجدت شقة مع Todira؟ يسعدنا أن نسمع منك."},
+    "reviews.write": {"he": "לכתוב לנו איך היה", "en": "Tell us how it went", "ru": "Рассказать, как всё прошло", "fr": "Nous raconter", "ar": "أخبرنا كيف كانت التجربة"},
+    "reviews.all_link": {"he": "לכל ההמלצות", "en": "All reviews", "ru": "Все отзывы", "fr": "Tous les avis", "ar": "كل الآراء"},
+    "contact.feedback_public": {"he": "אפשר להציג את מה שכתבתי באתר, עם השם שמילאתי", "en": "You may show what I wrote on the site, with the name I entered", "ru": "Можно опубликовать мой отзыв на сайте с указанным именем", "fr": "Vous pouvez afficher ce que j'ai écrit sur le site, avec le nom indiqué", "ar": "يمكن عرض ما كتبته على الموقع مع الاسم الذي أدخلته"},
+})
+
+
 # Last, after every TRANSLATIONS.update above, so a language file can translate those keys too.
 _load_lang_files()

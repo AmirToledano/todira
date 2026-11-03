@@ -207,6 +207,7 @@
     ('/moving-checklist', t('guide.link_moving'), 'list-checks', _path == '/moving-checklist'),
     ('/rental-contract-check', t('guide.link_contract'), 'file-text', _path == '/rental-contract-check'),
     ('/post', t('post.link'), 'house-plus', _path == '/post' or _path.startswith('/post/')),
+    ('/reviews', t('nav.reviews'), 'heart', _path == '/reviews'),
   ] %}
   {% set more_active = more_links | selectattr(3) | list | length > 0 %}
   <header class="site">

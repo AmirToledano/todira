@@ -3656,5 +3656,18 @@
     "fil": "1 buwan",
     "th": "1 เดือน",
     "zh": "1 个月"
+  },
+  "contact.feedback_public": {
+    "he": "אפשר להציג את מה שכתבתי באתר, עם השם שמילאתי",
+    "en": "You may show what I wrote on the site, with the name I entered",
+    "ru": "Можно опубликовать мой отзыв на сайте с указанным именем",
+    "fr": "Vous pouvez afficher ce que j'ai écrit sur le site, avec le nom indiqué",
+    "ar": "يمكن عرض ما كتبته على الموقع مع الاسم الذي أدخلته",
+    "es": "Pueden mostrar lo que escribí en el sitio, con el nombre que puse",
+    "pt": "Vocês podem mostrar o que escrevi no site, com o nome que informei",
+    "hi": "मैंने जो लिखा है उसे मेरे दिए नाम के साथ साइट पर दिखाया जा सकता है",
+    "fil": "Puwedeng ipakita sa site ang isinulat ko, kasama ang pangalang inilagay ko",
+    "th": "แสดงสิ่งที่ฉันเขียนบนเว็บไซต์พร้อมชื่อที่กรอกไว้ได้",
+    "zh": "可以在网站上展示我写的内容和我填写的名字"
   }
 }
