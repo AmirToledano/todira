@@ -12,8 +12,9 @@ export default function Contact() {
   const feedback = topic === "feedback";
   const [message, setMessage] = useState("");
   const [consent, setConsent] = useState(false);
-  // 2026-11-03: feedback only - may the owner show it on the site (/reviews)? Optional, off by default.
-  const [publicOk, setPublicOk] = useState(false);
+  // 2026-11-03 (owner): feedback may be shown on /reviews (said under the form and in the privacy policy); this tick
+  // opts out.
+  const [noPublish, setNoPublish] = useState(false);
   const [status, setStatus] = useState("idle");
   const [errorKind, setErrorKind] = useState(null);
 
@@ -32,7 +33,7 @@ export default function Contact() {
           uid: uid != null ? String(uid) : "",
           consent,
           topic: topic || "",
-          public: feedback && publicOk,
+          public: feedback && !noPublish,
         }),
       });
       // Validation failures come back as 200 {ok:false, error:...} — see /api/contact's own
@@ -120,10 +121,15 @@ export default function Contact() {
               </div>
 
               {feedback && (
-                <label className="check-chip" style={{ textAlign: "start", display: "flex", gap: 6, marginBottom: 10 }}>
-                  <input type="checkbox" checked={publicOk} onChange={(e) => setPublicOk(e.target.checked)} />
-                  <span>{t("contact.feedback_public")}</span>
-                </label>
+                <>
+                  <p style={{ textAlign: "start", fontSize: ".9rem", opacity: 0.8, margin: "0 0 8px" }}>
+                    {t("contact.feedback_public_note")}
+                  </p>
+                  <label className="check-chip" style={{ textAlign: "start", display: "flex", gap: 6, marginBottom: 10 }}>
+                    <input type="checkbox" checked={noPublish} onChange={(e) => setNoPublish(e.target.checked)} />
+                    <span>{t("contact.feedback_public")}</span>
+                  </label>
+                </>
               )}
 
               <label className="check-chip" style={{ textAlign: "start", display: "flex", gap: 6, marginBottom: 10 }}>

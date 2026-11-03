@@ -463,7 +463,7 @@ def _notify_owner_sync(
     lines.append("")
     lines.append(html.escape(message))
     if public:
-        lines += ["", "✅ הסכימו שנציג את זה באתר. אפשר להוסיף להמלצות בעמוד ההודעות בניהול."]
+        lines += ["", "✅ אפשר להציג באתר: בעמוד ההודעות בניהול, \"להציג בדף הבית\"."]
     for chat_id in owner_inbox.owner_chat_ids(OWNER_TELEGRAM_USER_ID):
         try:
             resp = httpx.post(
@@ -2020,7 +2020,7 @@ class ContactSubmission(BaseModel):
     uid: str = ""
     consent: bool = False
     topic: str = ""  # "feedback" when the form was opened from the feedback bubble
-    public: bool = False  # 2026-11-03: feedback only - "you may show this on the site with my name"
+    public: bool = False  # 2026-11-03: feedback only - may be shown on /reviews (false when "don't publish" is ticked)
 
 
 async def _process_contact_message(

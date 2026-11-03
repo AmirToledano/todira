@@ -2715,8 +2715,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # HTML string. Items with no inline markup stay as one key, same as accessibility.* above.
     "privacy.h1": {"he": "מדיניות פרטיות", "en": "Privacy Policy"},
     "privacy.updated": {
-        "he": "עודכן לאחרונה: אוקטובר 2026",
-        "en": "Last updated: October 2026",
+        "he": "עודכן לאחרונה: נובמבר 2026",
+        "en": "Last updated: November 2026",
     },
     "privacy.s1_title": {"he": "1. אילו נתונים נאספים", "en": "1. What data is collected"},
     "privacy.s1_item1": {
@@ -4190,13 +4190,18 @@ TRANSLATIONS.update({
 
 # 2026-11-03 (owner): testimonials page /reviews and the feedback form's "you may show this" checkbox
 TRANSLATIONS.update({
+    "contact.feedback_public": {"he": "לא לפרסם את המשוב שלי באתר", "en": "Don't publish my feedback on the site", "ru": "Не публиковать мой отзыв на сайте", "fr": "Ne pas publier mon avis sur le site", "ar": "لا تنشروا رأيي على الموقع"},
+    "contact.feedback_public_note": {"he": "משוב עשוי להתפרסם בדף ההמלצות באתר, עם השם שמילאת.", "en": "Feedback may be published on the site's reviews page, with the name you entered.", "ru": "Отзыв может быть опубликован на странице отзывов сайта с указанным вами именем.", "fr": "Ton avis peut être publié sur la page des avis du site, avec le nom indiqué.", "ar": "قد يُنشر رأيك في صفحة الآراء على الموقع مع الاسم الذي أدخلته."},
+    "privacy.s1_item10": {
+        "he": "אם כתבת לנו משוב דרך האתר או המלצה דרך הבוט: אנחנו עשויים להציג אותם בדף ההמלצות ובדף הבית, עם השם שמילאת. לא רוצה שזה יוצג? אפשר לסמן זאת בטופס המשוב או לכתוב לנו, ונסיר.",
+        "en": "If you sent us feedback through the site or a review through the bot, we may show it on the reviews page and the home page, with the name you entered. Don't want it shown? Tick that on the feedback form or write to us and we will remove it.",
+    },
     "nav.reviews": {"he": "המלצות", "en": "Reviews", "ru": "Отзывы", "fr": "Avis", "ar": "آراء المستخدمين"},
     "reviews.title": {"he": "מה אומרים על טודירה", "en": "What people say about Todira", "ru": "Что говорят о Todira", "fr": "Ce qu'on dit de Todira", "ar": "ماذا يقولون عن Todira"},
     "reviews.lead": {"he": "מה כתבו לנו אנשים שחיפשו דירה עם טודירה. כל המלצה כאן נכתבה על ידי משתמש אמיתי, שהסכים שנציג אותה.", "en": "What people who searched for a flat with Todira wrote to us. Every review here was written by a real user who agreed to have it shown.", "ru": "Что нам написали люди, искавшие квартиру с Todira. Каждый отзыв здесь написан реальным пользователем, который согласился его опубликовать.", "fr": "Ce que nous ont écrit des personnes qui ont cherché un logement avec Todira. Chaque avis ici a été écrit par un vrai utilisateur qui a accepté qu'on l'affiche.", "ar": "ما كتبه لنا أشخاص بحثوا عن شقة مع Todira. كل رأي هنا كتبه مستخدم حقيقي وافق على عرضه."},
     "reviews.empty": {"he": "עוד אין כאן המלצות. מצאת דירה עם טודירה? נשמח לשמוע.", "en": "No reviews here yet. Found a flat with Todira? We'd love to hear.", "ru": "Здесь пока нет отзывов. Нашли квартиру с Todira? Будем рады услышать.", "fr": "Pas encore d'avis ici. Tu as trouvé un logement avec Todira ? On aimerait le savoir.", "ar": "لا توجد آراء هنا بعد. وجدت شقة مع Todira؟ يسعدنا أن نسمع منك."},
     "reviews.write": {"he": "לכתוב לנו איך היה", "en": "Tell us how it went", "ru": "Рассказать, как всё прошло", "fr": "Nous raconter", "ar": "أخبرنا كيف كانت التجربة"},
     "reviews.all_link": {"he": "לכל ההמלצות", "en": "All reviews", "ru": "Все отзывы", "fr": "Tous les avis", "ar": "كل الآراء"},
-    "contact.feedback_public": {"he": "אפשר להציג את מה שכתבתי באתר, עם השם שמילאתי", "en": "You may show what I wrote on the site, with the name I entered", "ru": "Можно опубликовать мой отзыв на сайте с указанным именем", "fr": "Vous pouvez afficher ce que j'ai écrit sur le site, avec le nom indiqué", "ar": "يمكن عرض ما كتبته على الموقع مع الاسم الذي أدخلته"},
 })
 
 
