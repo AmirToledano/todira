@@ -31,3 +31,14 @@ jobs:
           done
           echo "--- sitemap city pages:"
           curl -sS --max-time 20 "https://todira.app/sitemap.xml" | grep -c '/rent/' || true
+          # 2026-11-04: neighbourhood pages, the public search preview and the invite page
+          echo "--- sitemap neighbourhood pages, then the first one:"
+          curl -sS --max-time 20 "https://todira.app/sitemap.xml" | grep -o '<loc>[^<]*/rent/[^/<]*/[^<]*</loc>' > /tmp/hoods || true
+          wc -l < /tmp/hoods
+          first=$(head -1 /tmp/hoods | sed 's/<\/\?loc>//g')
+          [ -n "$first" ] && curl -sS -o /tmp/page -w "%{http_code} %{time_total}s hood page\n" --max-time 20 "$first" && grep -c 'class="rent-' /tmp/page || true
+          echo "--- /search with a city (expect 200 and cards), an unsigned invite (expect 303):"
+          curl -sS -o /tmp/page -w "%{http_code} %{time_total}s /search\n" --max-time 20 "https://todira.app/search?cities=%D7%97%D7%99%D7%A4%D7%94&price_max=6000" || echo failed
+          grep -c 'listing-card' /tmp/page || true
+          curl -sS -o /dev/null -w "%{http_code} /i/bad\n" --max-time 20 "https://todira.app/i/inv_1_0000000000" || echo failed
+          curl -sS -o /dev/null -w "%{http_code} /reviews\n" --max-time 20 "https://todira.app/reviews" || echo failed
