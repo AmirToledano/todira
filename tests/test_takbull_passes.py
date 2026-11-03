@@ -259,3 +259,15 @@ def test_cancellation_quote_charges_the_shortest_covering_pass_and_the_legal_fee
     bought = dt.datetime(2026, 10, 1, 12, tzinfo=dt.timezone.utc)
     quote = cancellation_quote(Decimal(paid), bought, bought + dt.timedelta(days=days_after))
     assert quote["refund_ils"] == Decimal(refund)
+
+
+def test_upgrade_shows_what_todira_already_found_for_this_person(client):
+    # 2026-11-03 (owner): the matching flats already sent, before the passes
+    proof = {"total": 1234, "private": 410, "week": 96, "missed": 37}
+    with patch.object(website_main, "_upgrade_proof", lambda *a: proof):
+        html = _get_upgrade(client)
+    assert "מה טודירה כבר מצאה בשבילך" in html
+    assert "1,234" in html and "410" in html and "37" in html
+    assert "מאז שהגישה הסתיימה" in html and "בשבוע האחרון בלבד" not in html  # the missed count replaces the week
+    with patch.object(website_main, "_upgrade_proof", lambda *a: None):
+        assert "מה טודירה כבר מצאה בשבילך" not in _get_upgrade(client)

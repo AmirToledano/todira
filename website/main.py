@@ -58,6 +58,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from todira_common import activity, area_price, listing_enrichment, owner_inbox, share, testimonials
+from todira_common.enums import NotificationReason
 from todira_common.access import (
     CANCELLATION_WINDOW,
     SUBSCRIPTION_PLAN,
@@ -2992,11 +2993,13 @@ def upgrade(request: Request, uid: int | None = None):
         now = dt.datetime.now(dt.timezone.utc)
         paid_live = user.paid_until if user.paid_until is not None and user.paid_until > now else None
         access_end = max((d for d in (paid_live, user.trial_ends_at) if d is not None and d > now), default=None)
+        proof = None if _display_is_owner(request, user.telegram_user_id) else _upgrade_proof(session, user, now)
 
     return _render(
         request,
         "upgrade.html",
         {
+            "proof": proof,
             "uid": user.telegram_user_id,
             "has_access": access,
             # named display_is_owner, not is_owner: _render() always overwrites an "is_owner" key
@@ -3036,6 +3039,36 @@ def upgrade(request: Request, uid: int | None = None):
         },
         known_lang=user.language,
     )
+
+
+def _upgrade_proof(session, user: User, now: dt.datetime) -> dict | None:
+    """2026-11-03 (owner): on /upgrade, what Todira already found for this person - the matching flats sent to them,
+    how many from private owners, how many in the last 7 days and, when their access has ended, how many came since.
+    None when nothing was sent yet, so a new visitor sees no row of zeros. Never breaks the page."""
+    try:
+        new = (SentNotification.user_id == user.id, SentNotification.reason == NotificationReason.NEW)
+        total, private, week = session.execute(
+            select(
+                func.count(),
+                func.count().filter(Listing.is_broker_listing.is_(False)),
+                func.count().filter(SentNotification.sent_at >= now - dt.timedelta(days=7)),
+            )
+            .select_from(SentNotification)
+            .join(Listing, Listing.id == SentNotification.listing_id)
+            .where(*new)
+        ).one()
+        if not total:
+            return None
+        ended = max((d for d in (user.trial_ends_at, user.paid_until) if d is not None), default=None)
+        missed = None
+        if ended is not None and ended <= now and not user.free_access_granted:
+            missed = session.execute(
+                select(func.count()).select_from(SentNotification).where(*new, SentNotification.sent_at >= ended)
+            ).scalar() or None
+        return {"total": int(total), "private": int(private), "week": int(week), "missed": missed}
+    except Exception:
+        logger.warning("upgrade: could not count the flats sent", exc_info=True)
+        return None
 
 
 # What the single /upgrade button posts as `plan` when the customer picks the pass on Takbull's shared page. The pending
