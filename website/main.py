@@ -1300,6 +1300,11 @@ def sitemap_xml(request: Request) -> Response:
         # 2026-10-31: every city page (website/city_pages.py); the sitemap still answers without them
         with get_session() as session:
             paths += [f"/rent/{url_quote(row['city'])}" for row in city_pages.city_index(session)]
+            # 2026-11-04 (owner): and every neighbourhood page (see neighbourhood_page in city_pages.py)
+            paths += [
+                f"/rent/{url_quote(city)}/{url_quote(name, safe='')}"
+                for city, name in city_pages.neighbourhood_index(session)
+            ]
     except Exception:
         logger.warning("sitemap: could not list the city pages", exc_info=True)
     urls = "".join(f"<url><loc>{PUBLIC_BASE}{path.lstrip('/')}</loc></url>" for path in paths)
@@ -1637,6 +1642,26 @@ def rent_in_city(request: Request, city: str):
     if page is None:
         return _render(request, "404.html", {}, status_code=404)
     return _render(request, "rent_city.html", {"page": page, "other_cities": other_cities})
+
+
+@app.get("/rent/{city}/{neighbourhood:path}")
+def rent_in_neighbourhood(request: Request, city: str, neighbourhood: str):
+    """2026-11-04 (owner): what renting costs in one neighbourhood, next to its city, and its newest flats (for Google).
+
+    `:path` because a few neighbourhood names hold a "/" (the links quote it, but the server gets it back decoded). An
+    unknown neighbourhood, one with too few rentals and "the rest of the city" are a 404, like a thin city.
+    """
+    if city not in LOCALITY_SET:
+        return _render(request, "404.html", {}, status_code=404)
+    with get_session() as session:
+        hood = city_pages.neighbourhood_page(session, city, neighbourhood)
+        others = [name for name in city_pages.neighbourhood_links(session, city) if name != neighbourhood][:12]
+    if hood is None:
+        return _render(request, "404.html", {}, status_code=404)
+    # the canonical address quotes a "/" inside the name, exactly as the sitemap lists it
+    canonical_path = f"rent/{url_quote(city, safe='')}/{url_quote(neighbourhood, safe='')}"
+    return _render(request, "rent_neighbourhood.html",
+                   {"hood": hood, "other_hoods": others, "canonical_path": canonical_path})
 
 
 @app.get("/moving-checklist")

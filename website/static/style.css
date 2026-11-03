@@ -2613,6 +2613,9 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .rent-more h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .rent-more-links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; }
 .rent-more-links a { color: var(--teal); }
+/* 2026-11-04 (owner): the neighbourhoods row on a city page sits between its sections, not at the foot */
+.rent-hoods { margin: 0 0 24px; }
+.rent-more-links a { overflow-wrap: anywhere; }
 
 /* 2026-11-03: /reviews, the approved testimonials (same look as the home page's section) */
 .reviews-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin: 24px 0; }

@@ -28,11 +28,19 @@
       <thead><tr><th>{{ t('city.col_neighborhood') }}</th><th>{{ t('city.col_median') }}</th><th>{{ t('city.col_flats') }}</th></tr></thead>
       <tbody>
         {% for n in page.neighborhoods %}
-        <tr><td>{{ n.name }}</td><td>₪{{ '{:,}'.format(n.median) }}</td><td>{{ n.count }}</td></tr>
+        <tr><td>{% if page.hood_pages and n.name in page.hood_pages %}<a href="/rent/{{ page.city | urlencode }}/{{ n.name | urlencode }}">{{ n.name }}</a>{% else %}{{ n.name }}{% endif %}</td><td>₪{{ '{:,}'.format(n.median) }}</td><td>{{ n.count }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </section>
+  {% endif %}
+
+  {% if page.hood_links %}
+  {# 2026-11-04 (owner): a row of links to this city's neighbourhood pages (city_pages.py builds them in the same pass) #}
+  <nav class="rent-more rent-hoods" aria-label="{{ t('hood.row_title') }}">
+    <h2>{{ t('hood.row_title') }}</h2>
+    <p class="rent-more-links">{% for name in page.hood_links %}<a href="/rent/{{ page.city | urlencode }}/{{ name | urlencode }}">{{ name }}</a>{% endfor %}</p>
+  </nav>
   {% endif %}
 
   {% if page.newest %}

@@ -81,6 +81,10 @@
     every city page in the sitemap. All cities are built from ONE pass over the window, kept an hour, and rebuilt every
     50 min (with the /calculator medians) by the website's warm-up thread (`_keep_warm` in main.py, started from the app's
     lifespan), so no visit waits: the first live visits had taken 16 s (/rent), 3-6 s a city, 8.6 s (/calculator).
+    2026-11-04: /rent/<city>/<neighbourhood> too, from the same one pass (no query of its own): a neighbourhood with
+    10+ rentals in 30 days (city must have a page, never "שאר העיר", at least one rooms row of 5+) gets the median by
+    rooms next to the city's, a comparison line, its newest flats, CTA start=rent_hood and the city link; city pages
+    have a "שכונות" row; all in the sitemap. Canonical paths are now quoted (base.html), matching the sitemap.
     `diagnose-city-pages-speed.yaml` (EXPLAIN ANALYZE) found the parking/storage SQL test reading every description
     first; `not_non_home_sql` now puts its cheap half first (13.4 s to 1.1 s; area_price uses it too).
   - /moving-checklist (ticks kept in the browser) and /rental-contract-check (legal numbers checked against Kol Zchut
