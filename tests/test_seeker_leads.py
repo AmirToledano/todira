@@ -123,3 +123,14 @@ def test_leads_group_by_name_or_command(monkeypatch):
     saved.update(leads=None)
     asyncio.run(bot_inbox.on_leads_command(stranger, context))
     assert saved["leads"] is None
+
+
+def test_the_ready_reply_names_the_place_varies_and_links_the_site():
+    replies = {seeker_leads.reply_text({"post_id": str(i)}, "חיפה", "sale") for i in range(6)}
+    assert len(replies) == len(seeker_leads._REPLIES)
+    for reply in replies:
+        assert "דירה חדשה למכירה בחיפה" in reply or "דירות למכירה בחיפה" in reply
+        assert reply.endswith("https://todira.app/?src=fblead")
+        assert "@" not in reply and "—" not in reply and "–" not in reply
+    body = seeker_leads.message(_post("1"), None, None)
+    assert "תגובה מוכנה" in body and "<code>" in body
