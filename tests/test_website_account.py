@@ -596,3 +596,172 @@ def test_dates_are_shown_in_israel_time_not_utc():
     # 2026-10-19 bug sweep: 22:30 UTC on 3.11 is already 4.11 in Israel; /account showed 03/11 while the bot said 04.11.
     assert website_main._israel_date(dt.datetime(2026, 11, 3, 22, 30, tzinfo=dt.timezone.utc)) == "04.11.2026"
     assert website_main._israel_date(None) == ""
+
+
+# 2026-11-02 (owner): every state renders the "המנוי שלי" card at the top of /account (main.py's _access_summary).
+def _access_for(client, user, payments=None, owner_id=""):
+    fake_session = _FakeSession(users_by_telegram_id={user.telegram_user_id: user}, payments=payments or [])
+    with (
+        patch.object(website_main, "get_session", _fake_get_session(fake_session)),
+        patch.object(website_main, "OWNER_TELEGRAM_USER_ID", owner_id),
+    ):
+        return _account_config(client.get("/account", params={"uid": user.telegram_user_id}).text)["access"]
+
+
+def _he_date(value):
+    return value.astimezone(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y")
+
+
+def test_access_card_on_trial_shows_days_left_and_end_date(client):
+    trial_end = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=4, hours=2)
+    access = _access_for(client, _FakeUser(id=2, telegram_user_id=222, trial_ends_at=trial_end))
+    assert access["kind"] == "trial"
+    assert access["trialDaysLeft"] == 5 and access["trialEndsAt"] == _he_date(trial_end)
+    assert access["inviteLink"] is None
+
+
+def test_access_card_after_the_trial_ended_offers_a_pass_and_the_invite_link(client):
+    trial_end = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)
+    access = _access_for(client, _FakeUser(id=2, telegram_user_id=222, trial_ends_at=trial_end))
+    assert access["kind"] == "trial_ended"
+    assert access["trialEndsAt"] == _he_date(trial_end)
+    assert access["inviteLink"] == website_main.invite_link(2)
+    assert access["inviteDays"] == 7
+
+
+def test_access_card_with_an_active_pass_shows_the_plan_end_date_and_days_left(client):
+    now = dt.datetime.now(dt.timezone.utc)
+    paid_until = now + dt.timedelta(days=20, hours=1)
+    payments = [
+        _FakePayment("pass_30", Decimal("49.90"), "paid", now - dt.timedelta(days=10), paid_at=now - dt.timedelta(days=10)),
+        _FakePayment("pass_7", Decimal("19.90"), "paid", now - dt.timedelta(days=60), paid_at=now - dt.timedelta(days=60)),
+    ]
+    access = _access_for(
+        client, _FakeUser(id=2, telegram_user_id=222, paid_until=paid_until, trial_ends_at=now - dt.timedelta(days=40)),
+        payments,
+    )
+    assert access["kind"] == "paid" and access["plan"] == "pass_30"
+    assert access["paidUntil"] == _he_date(paid_until) and access["paidDaysLeft"] == 21
+    assert access["freeAfterPaidDays"] is None and access["inviteLink"] is None
+
+
+def test_access_card_shows_free_days_after_the_pass_with_the_real_final_end(client):
+    now = dt.datetime.now(dt.timezone.utc)
+    paid_until = now + dt.timedelta(days=10)
+    final_end = paid_until + dt.timedelta(days=7)
+    access = _access_for(client, _FakeUser(id=2, telegram_user_id=222, paid_until=paid_until, trial_ends_at=final_end))
+    assert access["kind"] == "paid"
+    assert access["freeAfterPaidDays"] == 7
+    assert access["accessEndsAt"] == _he_date(final_end)
+
+
+def test_access_card_after_a_pass_ended_says_when(client):
+    now = dt.datetime.now(dt.timezone.utc)
+    paid_until = now - dt.timedelta(days=2)
+    access = _access_for(
+        client, _FakeUser(id=2, telegram_user_id=222, paid_until=paid_until, trial_ends_at=now - dt.timedelta(days=50)),
+    )
+    assert access["kind"] == "paid_ended" and access["paidUntil"] == _he_date(paid_until)
+    assert access["inviteLink"] == website_main.invite_link(2)
+
+
+def test_access_card_free_days_after_a_pass_ended_are_not_called_a_trial(client):
+    now = dt.datetime.now(dt.timezone.utc)
+    access = _access_for(
+        client,
+        _FakeUser(
+            id=2, telegram_user_id=222, paid_until=now - dt.timedelta(days=2),
+            trial_ends_at=now + dt.timedelta(days=6, hours=3),
+        ),
+    )
+    assert access["kind"] == "free" and access["trialDaysLeft"] == 7
+
+
+def test_access_card_for_the_owner_and_comp_access_has_no_time_limit(client):
+    owner = _access_for(client, _FakeUser(id=2, telegram_user_id=222), owner_id="222")
+    comp = _access_for(client, _FakeUser(id=3, telegram_user_id=333, free_access_granted=True))
+    assert owner["kind"] == "owner" and comp["kind"] == "comp"
+    assert owner["paidUntil"] is None and comp["inviteLink"] is None
+
+
+def test_every_access_card_text_exists_in_all_five_languages():
+    from i18n import TRANSLATIONS
+
+    keys = [
+        "account.access_owner", "account.access_owner_hint", "account.access_comp_hint", "account.trial_left",
+        "account.trial_last", "account.trial_hint", "account.free_left", "account.free_last", "account.trial_ended_on",
+        "account.no_access_hint", "account.paid_ended_on", "account.paid_active", "account.paid_plan",
+        "account.paid_left", "account.paid_last", "account.free_after_paid", "account.extend_cta",
+        "account.extend_hint", "account.renew_cta", "account.buy_cta", "account.invite_title", "account.invite_body",
+        "account.invite_copy", "account.invite_copied", "account.invite_copy_failed", "account.invite_share",
+        "account.invite_share_text", "account.free_hint",
+        "account.payment_cancelled_note", "account.status_active", "account.status_inactive",
+    ]
+    for key in keys:
+        assert set(TRANSLATIONS[key]) == {"he", "en", "ru", "fr", "ar"}, key
+        for text in TRANSLATIONS[key].values():
+            assert "—" not in text and "–" not in text and "·" not in text, key
+
+
+# 2026-11-02 (review): one free day stacked after a pass gets a number-neutral line, never "עוד 1 ימים".
+def test_access_card_with_one_free_day_after_the_pass(client):
+    now = dt.datetime.now(dt.timezone.utc)
+    paid_until = now + dt.timedelta(days=10)
+    final_end = paid_until + dt.timedelta(hours=20)
+    access = _access_for(client, _FakeUser(id=2, telegram_user_id=222, paid_until=paid_until, trial_ends_at=final_end))
+    assert access["kind"] == "paid" and access["freeAfterPaidDays"] == 1
+    assert access["accessEndsAt"] == _he_date(final_end)
+
+
+# 2026-11-02 (review): a pass bought during the trial moves the rest of the trial after it (extend_paid_until), so the
+# card shows those days as free days after the pass, and the wording must not claim they came from an invite or a gift.
+def test_access_card_after_buying_a_pass_during_the_trial(client):
+    from todira_common.access import extend_paid_until
+    from i18n import TRANSLATIONS
+
+    now = dt.datetime.now(dt.timezone.utc)
+    user = _FakeUser(id=2, telegram_user_id=222, trial_ends_at=now + dt.timedelta(days=3, hours=5))
+    extend_paid_until(user, "pass_30")
+    payments = [_FakePayment("pass_30", Decimal("49.90"), "paid", now, paid_at=now)]
+    access = _access_for(client, user, payments)
+    assert access["kind"] == "paid" and access["plan"] == "pass_30"
+    assert access["paidDaysLeft"] == 30
+    assert access["freeAfterPaidDays"] == 4
+    assert access["accessEndsAt"] == _he_date(user.trial_ends_at)
+    for key in ("account.free_after_paid", "account.free_left", "account.free_last"):
+        assert "חבר" not in TRANSLATIONS[key]["he"] and "מתנה" not in TRANSLATIONS[key]["he"], key
+        assert "invite" not in TRANSLATIONS[key]["en"] and "gift" not in TRANSLATIONS[key]["en"], key
+
+
+def test_varying_day_counts_on_the_access_card_need_no_plural_forms():
+    """{days} that can be any number (1 to 6 free days after a pass, 20+ paid days) always follows a colon, so Hebrew
+    never says "1 ימים", Russian never needs 2-4 forms and Arabic never needs the 11+ singular."""
+    from i18n import TRANSLATIONS
+    from todira_common.referrals import REWARD_DAYS
+
+    for key in ("account.trial_left", "account.free_left", "account.paid_left", "account.free_after_paid"):
+        for lang, text in TRANSLATIONS[key].items():
+            assert re.search(r":\s?\{days\}", text), (key, lang)
+    # The invite texts say "{days} ימים" with the fixed reward: a number that is a plural (and the same plural form) in
+    # all five languages. Changing it needs those texts checked.
+    assert 5 <= REWARD_DAYS <= 10
+
+
+def test_cancelled_payment_note_promises_a_refund_only_when_one_is_due():
+    from i18n import TRANSLATIONS
+
+    note = TRANSLATIONS["account.payment_cancelled_note"]
+    assert "אם מגיע החזר" in note["he"] and "if a refund is due" in note["en"]
+    assert "Если" in note["ru"] and " si " in note["fr"] and "إذا" in note["ar"]
+
+
+def test_account_jsx_keeps_subscription_forms_free_hint_and_copy_feedback():
+    """Source checks for Account.jsx (no JS test runner here): the recurring-subscription forms render whenever a
+    subscription is on (not only for kind "paid"), free days after a pass have their own hint, and the copy button
+    reports success or failure through a status line."""
+    source = (_WEBSITE_DIR / "landing-react" / "src" / "Account.jsx").read_text(encoding="utf-8")
+    assert 'kind === "paid" && hasActiveSubscription' not in source
+    assert "{hasActiveSubscription && (" in source
+    assert '"account.free_hint"' in source
+    assert 'role="status"' in source and 'aria-live="polite"' in source
+    assert '"account.invite_copy_failed"' in source and "selectAllChildren" in source

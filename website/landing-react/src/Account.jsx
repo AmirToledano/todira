@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { t, pageConfig } from "./i18n";
 
@@ -67,6 +67,146 @@ const PAYMENT_STATUS_CLASS = {
   cancelled: "amc-status-bad",
 };
 
+// 2026-11-02 (owner): "invite a friend" on the "המנוי שלי" card when nothing is running. The link is the user's own
+// signed bot link (todira_common/referrals.py invite_link, the same one /invite in the bot sends).
+function InviteBox({ link, days }) {
+  // null, "copied" or "failed"; announced through the role="status" line below (screen readers hear it).
+  const [copyState, setCopyState] = useState(null);
+  const linkRef = useRef(null);
+  const shareHref = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(
+    t("account.invite_share_text", { days }),
+  )}`;
+  // No clipboard (old in-app browser) or a refused write: select the link so it can be copied by hand, and say so.
+  const failed = () => {
+    try {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.selectAllChildren(linkRef.current);
+    } catch {
+      // selection not supported: the link is still on the screen
+    }
+    setCopyState("failed");
+  };
+  const copy = () => {
+    try {
+      navigator.clipboard.writeText(link).then(() => setCopyState("copied"), failed);
+    } catch {
+      failed();
+    }
+  };
+  return (
+    <div className="account-invite">
+      <p className="account-invite-title">{t("account.invite_title", { days })}</p>
+      <p className="field-hint">{t("account.invite_body", { days })}</p>
+      <p className="account-invite-link" dir="ltr" ref={linkRef}>{link}</p>
+      <div className="account-invite-actions">
+        <button type="button" className="btn outline" onClick={copy}>{t("account.invite_copy")}</button>
+        <a className="btn telegram" href={shareHref} target="_blank" rel="noreferrer">{t("account.invite_share")}</a>
+      </div>
+      <p className="field-hint account-invite-status" role="status" aria-live="polite">
+        {copyState === "copied" ? t("account.invite_copied") : copyState === "failed" ? t("account.invite_copy_failed") : ""}
+      </p>
+    </div>
+  );
+}
+
+function daysText(days, manyKey, lastKey, vars) {
+  return days != null && days > 1 ? t(manyKey, { ...vars, days }) : t(lastKey, vars);
+}
+
+// 2026-11-02 (owner): one "המנוי שלי" card at the top of /account for EVERY state, built from main.py's
+// _access_summary: owner/comp (no time limit), trial, free days, an active pass (+ free days after it), a trial or a
+// pass that ended. Renewing is always /upgrade (a new pass stacks after the current one); cancelling is the existing
+// 14-day CancelPass flow; the recurring-subscription forms stay exactly as they were.
+function AccessCard({
+  access, upgradeHref, identityFields, hasActiveSubscription, cancelAtPeriodEnd, cancelPass, cancelledRefundIls,
+}) {
+  const kind = access.kind;
+  const planName = access.plan && PLAN_LABEL_KEYS[access.plan] ? t(PLAN_LABEL_KEYS[access.plan]) : null;
+  const active = kind !== "trial_ended" && kind !== "paid_ended";
+  let main = null;
+  let lines = [];
+  let hint = null;
+  let cta = null;
+
+  if (kind === "owner" || kind === "comp") {
+    main = t("account.access_owner");
+    hint = t(kind === "owner" ? "account.access_owner_hint" : "account.access_comp_hint");
+  } else if (kind === "trial" || kind === "free") {
+    main = kind === "trial"
+      ? daysText(access.trialDaysLeft, "account.trial_left", "account.trial_last", { date: access.trialEndsAt })
+      : daysText(access.trialDaysLeft, "account.free_left", "account.free_last", { date: access.trialEndsAt });
+    // "free" already paid once: its free days are not a trial (the rest of a trial moved after a pass, an invite, a gift).
+    hint = t(kind === "trial" ? "account.trial_hint" : "account.free_hint");
+    cta = { label: t("account.buy_cta"), gold: true };
+  } else if (kind === "paid") {
+    main = planName ? t("account.paid_plan", { plan: planName }) : t("account.paid_active");
+    lines.push(daysText(access.paidDaysLeft, "account.paid_left", "account.paid_last", { date: access.paidUntil }));
+    if (access.freeAfterPaidDays) {
+      lines.push(t("account.free_after_paid", { days: access.freeAfterPaidDays, date: access.accessEndsAt }));
+    }
+    if (!hasActiveSubscription) {
+      hint = t("account.extend_hint");
+      cta = { label: t("account.extend_cta"), gold: false };
+    }
+  } else if (kind === "paid_ended") {
+    main = t("account.paid_ended_on", { date: access.paidUntil });
+    hint = t("account.no_access_hint");
+    cta = { label: t("account.renew_cta"), gold: true };
+  } else {
+    main = access.trialEndsAt ? t("account.trial_ended_on", { date: access.trialEndsAt }) : t("account.subscription_expired");
+    hint = t("account.no_access_hint");
+    cta = { label: t("account.buy_cta"), gold: true };
+  }
+
+  return (
+    <div className="account-access">
+      <div className="account-access-head">
+        <span className="account-access-title">{t("account.subscription_title")}</span>
+        <span className={`account-access-chip${active ? " on" : ""}`}>
+          {active ? t("account.status_active") : t("account.status_inactive")}
+        </span>
+      </div>
+      <p className="account-access-main">{main}</p>
+      {lines.map((line) => <p className="account-access-line" key={line}>{line}</p>)}
+      {hint && <p className="field-hint account-access-hint">{hint}</p>}
+
+      {/* Whenever a recurring subscription is on, whatever the kind (paid_until may have lapsed before the next charge). */}
+      {hasActiveSubscription && (
+        cancelAtPeriodEnd ? (
+          <>
+            <p className="field-hint">{t("account.subscription_will_not_renew")}</p>
+            <form method="post" action="/account/resume-subscription" style={{ marginTop: 10 }}>
+              {identityFields}
+              <button type="submit" className="btn gold block">{t("account.resume_subscription_cta")}</button>
+            </form>
+          </>
+        ) : (
+          <>
+            <p className="field-hint">{t("account.subscription_auto_renews")}</p>
+            <form method="post" action="/account/cancel-subscription" style={{ marginTop: 10 }}>
+              {identityFields}
+              <button type="submit" className="btn outline block">{t("account.cancel_subscription_cta")}</button>
+            </form>
+          </>
+        )
+      )}
+      {cta && !hasActiveSubscription && (
+        <a className={`btn ${cta.gold ? "gold" : "outline"} block account-access-cta`} href={upgradeHref}>{cta.label}</a>
+      )}
+      {cancelledRefundIls != null && (
+        <p className="field-hint account-cancel-done">
+          {Number(cancelledRefundIls) > 0
+            ? t("account.cancel_pass_done", { refund: cancelledRefundIls })
+            : t("account.cancel_pass_done_no_refund")}
+        </p>
+      )}
+      {cancelPass && <CancelPass cancelPass={cancelPass} identityFields={identityFields} />}
+      {access.inviteLink && <InviteBox link={access.inviteLink} days={access.inviteDays} />}
+    </div>
+  );
+}
+
 // 2026-09-25: /account became a React island — its POST actions (cancel/resume-subscription,
 // notifications) are deliberately still plain <form method="post"> native
 // submits, not fetch — see main.py's account() route comment for why. This component only reskins
@@ -80,11 +220,6 @@ export default function Account() {
     googleEmail,
     code,
     telegramLink,
-    displayIsOwner,
-    hasAccess,
-    trialEndsAt,
-    paidUntil,
-    daysLeft,
     notificationsEnabled,
     payments,
     hasActiveSubscription,
@@ -92,6 +227,7 @@ export default function Account() {
     cancelPass,
     cancelledRefundIls,
     isLoggedInViaSession,
+    access,
   } = pageConfig;
 
   const identityFields = (
@@ -116,6 +252,26 @@ export default function Account() {
         </div>
       </motion.div>
 
+      {access && (
+        <motion.div
+          className="settings-card"
+          style={{ marginBottom: 20 }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.06, ease: easePremium }}
+        >
+          <AccessCard
+            access={access}
+            upgradeHref={upgradeHref}
+            identityFields={identityFields}
+            hasActiveSubscription={hasActiveSubscription}
+            cancelAtPeriodEnd={cancelAtPeriodEnd}
+            cancelPass={cancelPass}
+            cancelledRefundIls={cancelledRefundIls}
+          />
+        </motion.div>
+      )}
+
       <motion.div
         className="settings-card"
         style={{ marginBottom: 20 }}
@@ -123,78 +279,21 @@ export default function Account() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1, ease: easePremium }}
       >
-        <div className="field-row">
-          {!displayIsOwner && (
-            <div className="field" style={{ textAlign: "center" }}>
-              <div className="field-section-title" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-                {t("account.subscription_title")}
-              </div>
-              {hasAccess ? (
-                <p className="channel-status connected">
-                  {paidUntil
-                    ? t("account.subscription_active", { date: paidUntil })
-                    : trialEndsAt
-                      ? t("account.subscription_trial", { date: trialEndsAt })
-                      : null}
-                  {daysLeft != null && (
-                    <span className="account-days-left">
-                      {daysLeft > 1 ? t("account.days_left", { days: daysLeft }) : t("account.last_day")}
-                    </span>
-                  )}
-                </p>
-              ) : (
-                <p className="amc-status amc-status-warn" style={{ fontSize: ".95rem", fontWeight: 600 }}>
-                  {t("account.subscription_expired")}
-                </p>
-              )}
-              {hasActiveSubscription ? (
-                cancelAtPeriodEnd ? (
-                  <>
-                    <p className="field-hint" style={{ marginTop: 6 }}>{t("account.subscription_will_not_renew")}</p>
-                    <form method="post" action="/account/resume-subscription" style={{ marginTop: 10 }}>
-                      {identityFields}
-                      <button type="submit" className="btn gold block">{t("account.resume_subscription_cta")}</button>
-                    </form>
-                  </>
-                ) : (
-                  <>
-                    <p className="field-hint" style={{ marginTop: 6 }}>{t("account.subscription_auto_renews")}</p>
-                    <form method="post" action="/account/cancel-subscription" style={{ marginTop: 10 }}>
-                      {identityFields}
-                      <button type="submit" className="btn outline block">{t("account.cancel_subscription_cta")}</button>
-                    </form>
-                  </>
-                )
-              ) : (
-                <a className="btn gold block" style={{ marginTop: 10 }} href={upgradeHref}>
-                  {hasAccess ? t("account.upgrade_cta_renew") : t("account.upgrade_cta_start")}
-                </a>
-              )}
-              {cancelledRefundIls != null && (
-                <p className="field-hint account-cancel-done">
-                  {Number(cancelledRefundIls) > 0
-                    ? t("account.cancel_pass_done", { refund: cancelledRefundIls })
-                    : t("account.cancel_pass_done_no_refund")}
-                </p>
-              )}
-              {cancelPass && <CancelPass cancelPass={cancelPass} identityFields={identityFields} />}
-            </div>
-          )}
-
-          <div className="field" style={{ textAlign: "center" }}>
+        <div className="account-notif-row">
+          <div>
             <div className="field-section-title" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
               {t("account.notifications_title")}
             </div>
             <p className={`channel-status${notificationsEnabled ? " connected" : ""}`}>
               {notificationsEnabled ? t("account.status_on") : t("account.status_off")}
             </p>
-            <form method="post" action="/account/notifications" style={{ marginTop: 10 }}>
-              {identityFields}
-              <button type="submit" className="btn outline block">
-                {notificationsEnabled ? t("account.notifications_toggle_off") : t("account.notifications_toggle_on")}
-              </button>
-            </form>
           </div>
+          <form method="post" action="/account/notifications">
+            {identityFields}
+            <button type="submit" className="btn outline">
+              {notificationsEnabled ? t("account.notifications_toggle_off") : t("account.notifications_toggle_on")}
+            </button>
+          </form>
         </div>
       </motion.div>
 
@@ -302,17 +401,20 @@ export default function Account() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: 0.05 * i, ease: easePremium }}
               >
+                <span className="payment-date">{payment.date}</span>
                 <span className="payment-plan">
                   {PLAN_LABEL_KEYS[payment.plan] ? t(PLAN_LABEL_KEYS[payment.plan]) : payment.plan}
                 </span>
                 <span className="payment-amount">₪{payment.amountIls}</span>
-                <span className="payment-date">{payment.date}</span>
                 <span className={`amc-status ${PAYMENT_STATUS_CLASS[payment.status] || "amc-status-bad"}`}>
                   {PAYMENT_STATUS_LABEL_KEYS[payment.status] ? t(PAYMENT_STATUS_LABEL_KEYS[payment.status]) : payment.status}
                 </span>
               </motion.div>
             ))}
           </div>
+          {payments.some((payment) => payment.status === "cancelled") && (
+            <p className="field-hint" style={{ marginTop: 10 }}>{t("account.payment_cancelled_note")}</p>
+          )}
         </motion.div>
       )}
 

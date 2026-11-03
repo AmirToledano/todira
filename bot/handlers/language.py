@@ -1,4 +1,4 @@
-"""/language — lets a user pick which of the 5 supported languages the bot talks to them in.
+"""/language — lets a user pick which of the supported languages (11 since 2026-11-02) the bot talks to them in.
 
 2026-10-18 real owner report: a friend's bot opened in English (it followed the phone's language) and there was
 no way at all to switch it to Hebrew. New users now always start in Hebrew (see start.py), and this command (also
@@ -26,15 +26,22 @@ LANGUAGE_LABELS = {
     "ru": "Русский",
     "fr": "Français",
     "ar": "العربية",
+    "es": "Español",
+    "pt": "Português",
+    "hi": "हिन्दी",
+    "fil": "Filipino",
+    "th": "ไทย",
+    "zh": "中文",
 }
 
 
 def language_keyboard(current: str) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(("✅ " if code == current else "") + LANGUAGE_LABELS[code], callback_data=f"lang:set:{code}")]
+    # Two buttons a row (2026-11-02): eleven languages one under the other made the picker taller than a phone screen.
+    buttons = [
+        InlineKeyboardButton(("✅ " if code == current else "") + LANGUAGE_LABELS[code], callback_data=f"lang:set:{code}")
         for code in SUPPORTED_LANGS
     ]
-    return InlineKeyboardMarkup(rows)
+    return InlineKeyboardMarkup([buttons[i:i + 2] for i in range(0, len(buttons), 2)])
 
 
 def _current_language_sync(tg_user) -> str:

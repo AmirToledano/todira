@@ -1,115 +1,115 @@
 {
-  "_Blob-D2LqnQk9.js": {
-    "file": "assets/Blob-D2LqnQk9.js",
+  "_Blob-C_ILETaV.js": {
+    "file": "assets/Blob-C_ILETaV.js",
     "name": "Blob",
     "imports": [
-      "_i18n-DkZpVQpy.js"
+      "_i18n-BLcEiIAa.js"
     ]
   },
-  "_Icon-DdtPaaye.js": {
-    "file": "assets/Icon-DdtPaaye.js",
+  "_Icon-CIRuJfZN.js": {
+    "file": "assets/Icon-CIRuJfZN.js",
     "name": "Icon",
     "imports": [
-      "_i18n-DkZpVQpy.js"
+      "_i18n-BLcEiIAa.js"
     ]
   },
-  "_i18n-DkZpVQpy.js": {
-    "file": "assets/i18n-DkZpVQpy.js",
+  "_i18n-BLcEiIAa.js": {
+    "file": "assets/i18n-BLcEiIAa.js",
     "name": "i18n",
     "css": [
-      "assets/i18n-_WmKtGK-.css"
+      "assets/i18n-BimgrFiQ.css"
     ]
   },
-  "_i18n-_WmKtGK-.css": {
-    "file": "assets/i18n-_WmKtGK-.css",
-    "src": "_i18n-_WmKtGK-.css"
+  "_i18n-BimgrFiQ.css": {
+    "file": "assets/i18n-BimgrFiQ.css",
+    "src": "_i18n-BimgrFiQ.css"
   },
   "about.html": {
-    "file": "assets/about-BOsq3HxD.js",
+    "file": "assets/about-B3utpWQo.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js",
-      "_Blob-D2LqnQk9.js"
+      "_i18n-BLcEiIAa.js",
+      "_Blob-C_ILETaV.js"
     ]
   },
   "accessibility.html": {
-    "file": "assets/accessibility-CWwEOKdC.js",
+    "file": "assets/accessibility-BMDEd3t7.js",
     "name": "accessibility",
     "src": "accessibility.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js"
+      "_i18n-BLcEiIAa.js"
     ]
   },
   "account.html": {
-    "file": "assets/account-BumpIgOJ.js",
+    "file": "assets/account-DMtBz_pI.js",
     "name": "account",
     "src": "account.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js"
+      "_i18n-BLcEiIAa.js"
     ]
   },
   "contact.html": {
-    "file": "assets/contact-BZTegAXQ.js",
+    "file": "assets/contact-DMK7Sn_8.js",
     "name": "contact",
     "src": "contact.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js",
-      "_Icon-DdtPaaye.js"
+      "_i18n-BLcEiIAa.js",
+      "_Icon-CIRuJfZN.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-BuaNeMPC.js",
+    "file": "assets/index-ChFs0veb.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js",
-      "_Blob-D2LqnQk9.js"
+      "_i18n-BLcEiIAa.js",
+      "_Blob-C_ILETaV.js"
     ],
     "dynamicImports": [
       "src/sections/ScanCore.jsx"
     ]
   },
   "login.html": {
-    "file": "assets/login-DfMubSlI.js",
+    "file": "assets/login-Vwczaxok.js",
     "name": "login",
     "src": "login.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js",
-      "_Icon-DdtPaaye.js"
+      "_i18n-BLcEiIAa.js",
+      "_Icon-CIRuJfZN.js"
     ]
   },
   "privacy.html": {
-    "file": "assets/privacy-De88OxzA.js",
+    "file": "assets/privacy-CX__HANA.js",
     "name": "privacy",
     "src": "privacy.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js"
+      "_i18n-BLcEiIAa.js"
     ]
   },
   "src/sections/ScanCore.jsx": {
-    "file": "assets/ScanCore-DjcQwtn8.js",
+    "file": "assets/ScanCore-2Kw-DjHI.js",
     "name": "ScanCore",
     "src": "src/sections/ScanCore.jsx",
     "isDynamicEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js"
+      "_i18n-BLcEiIAa.js"
     ]
   },
   "terms.html": {
-    "file": "assets/terms-C3Mch9xY.js",
+    "file": "assets/terms-CSNoj5v_.js",
     "name": "terms",
     "src": "terms.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DkZpVQpy.js"
+      "_i18n-BLcEiIAa.js"
     ]
   }
 }

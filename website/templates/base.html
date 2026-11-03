@@ -85,7 +85,7 @@
        page. -->
   {% set _clean_path = request.url.path.lstrip('/') %}
   <link rel="canonical" href="{{ site_url }}{{ _clean_path }}{% if lang != 'he' %}?lang={{ lang }}{% endif %}">
-  {% for _lang in ['he', 'en', 'ru', 'fr', 'ar'] %}
+  {% for _lang in supported_langs %}
   <link rel="alternate" hreflang="{{ _lang }}" href="{{ site_url }}{{ _clean_path }}{% if _lang != 'he' %}?lang={{ _lang }}{% endif %}">
   {% endfor %}
   <link rel="alternate" hreflang="x-default" href="{{ site_url }}{{ _clean_path }}">
@@ -192,6 +192,23 @@
     })();
   </script>
   {% endif %}
+  {# 2026-11-02 (owner: "the menu, can we make it richer? professional but not complicated"): every menu row has an
+     icon and a name (the owner's admin rows used to be three bare icons), and the extra pages sit in a light
+     "more" section. The extra pages set no active_page, so they are matched by path here. #}
+  {% macro nav_row(href, label, ic, is_active, external=false) -%}
+  <a href="{{ href }}"{% if is_active %} class="active" aria-current="page"{% endif %}{% if external %} target="_blank" rel="noopener"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+  {%- endmacro %}
+  {% set _path = request.url.path %}
+  {% set _uidq = '?uid=' ~ uid if uid else '' %}
+  {% set channel_url = 'https://t.me/todira_dirot' %}
+  {% set more_links = [
+    ('/rent', t('city.link'), 'map', _path == '/rent' or _path.startswith('/rent/')),
+    ('/calculator', t('calc.title'), 'calculator', _path == '/calculator'),
+    ('/moving-checklist', t('guide.link_moving'), 'list-checks', _path == '/moving-checklist'),
+    ('/rental-contract-check', t('guide.link_contract'), 'file-text', _path == '/rental-contract-check'),
+    ('/post', t('post.link'), 'house-plus', _path == '/post' or _path.startswith('/post/')),
+  ] %}
+  {% set more_active = more_links | selectattr(3) | list | length > 0 %}
   <header class="site">
     <div class="header-inner">
       <a class="brand" href="/"><span class="crown">{{ icon('crown') }}</span> טודירה</a>
@@ -210,11 +227,31 @@
         <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
         {% endif %}
         <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
+        {# 2026-11-02 (owner): a small "more" menu with the extra pages, so the row stays short. A plain <details>, so
+           it opens without script; the script at the bottom only closes it on an outside click or Escape. #}
+        <details class="nav-more" id="nav-more">
+          <summary class="{{ 'active' if more_active else '' }}">{{ t('nav.more') }}{{ icon('chevron-down', 'nav-more-chevron') }}</summary>
+          <div class="nav-more-menu">
+            {% for href, label, ic, is_active in more_links %}{{ nav_row(href, label, ic, is_active) }}{% endfor %}
+            {{ nav_row(channel_url, t('nav.channel'), 'send', false, external=true) }}
+          </div>
+        </details>
       </nav>
       <div class="header-actions">
         {% if not current_user and not uid %}
         <a class="auth-login-toolbar" href="/login?next={{ request.url.path | urlencode }}">{{ t('auth.login') }}</a>
         {% endif %}
+        {# 2026-11-02 (owner): one globe button for the languages instead of a row of names in the menu; eleven names
+           no longer fit a row. A <details> opens and closes with no script at all (keyboard too); the script near
+           the end of <body> only closes it on Escape or a click outside. Each name is written in its own language. #}
+        <details class="lang-menu" id="lang-menu">
+          <summary class="lang-menu-toggle" aria-label="{{ t('a11y.lang_switcher_label') }}: {{ lang_labels[lang] }}" title="{{ t('a11y.lang_switcher_label') }}">{{ icon('globe') }}</summary>
+          <ul class="lang-menu-list" aria-label="{{ t('a11y.lang_switcher_label') }}">
+            {% for code in supported_langs %}
+            <li><a href="{{ request.url.include_query_params(lang=code) }}" lang="{{ code }}" hreflang="{{ code }}"{% if code == lang %} class="active" aria-current="true"{% endif %}>{{ lang_labels[code] }}</a></li>
+            {% endfor %}
+          </ul>
+        </details>
         <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ t('a11y.theme_toggle_label') }}">
           <span id="theme-toggle-icon" aria-hidden="true">{{ icon('sun') }}{{ icon('moon') }}</span>
         </button>
@@ -226,25 +263,29 @@
     <div class="nav-panel" id="nav-panel">
       <div class="nav-panel-inner">
         <nav class="site-nav" aria-label="{{ t('a11y.main_nav_label') }}">
-          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'apartments' else '' }}">{{ t('nav.apartments') }}</a>
-          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'liked' else '' }}">{{ t('nav.liked') }}</a>
-          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'filter' else '' }}">{{ t('nav.filter') }}</a>
+          {{ nav_row('/apartments' ~ _uidq, t('nav.apartments'), 'building-2', active_page == 'apartments') }}
+          {{ nav_row('/liked' ~ _uidq, t('nav.liked'), 'heart', active_page == 'liked') }}
+          {{ nav_row('/filter' ~ _uidq, t('nav.filter'), 'settings-2', active_page == 'filter') }}
           {% if uid or current_user %}
-          <a href="/account{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'account' else '' }}">{{ t('nav.account') }}</a>
-          {% endif %}
-          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}" class="{{ 'active' if active_page == 'contact' else '' }}">{{ t('nav.contact') }}</a>
-          {% if is_owner %}
-          <a href="/admin" class="{{ 'active' if active_page == 'admin' else '' }}" aria-label="דשבורד">{{ icon('settings-2') }}</a>
-          <a href="/admin/messages" class="{{ 'active' if active_page == 'admin_messages' else '' }}" aria-label="תיבת הודעות">{{ icon('inbox') }}</a>
-          <a href="/admin/users" class="{{ 'active' if active_page == 'admin_users' else '' }}" aria-label="ניהול משתמשים">{{ icon('users') }}</a>
+          {{ nav_row('/account' ~ _uidq, t('nav.account'), 'user', active_page == 'account') }}
           {% endif %}
         </nav>
+        <nav class="site-nav nav-section" aria-labelledby="nav-section-more">
+          <span class="nav-section-title" id="nav-section-more">{{ t('nav.more') }}</span>
+          {% for href, label, ic, is_active in more_links %}{{ nav_row(href, label, ic, is_active) }}{% endfor %}
+          {{ nav_row(channel_url, t('nav.channel'), 'send', false, external=true) }}
+          {{ nav_row('/contact' ~ _uidq, t('nav.contact'), 'mail', active_page == 'contact') }}
+        </nav>
+        {% if is_owner %}
+        <nav class="site-nav nav-section" aria-labelledby="nav-section-admin">
+          <span class="nav-section-title" id="nav-section-admin">{{ t('nav.admin') }}</span>
+          {{ nav_row('/admin', t('nav.admin_dashboard'), 'layout-dashboard', active_page == 'admin') }}
+          {{ nav_row('/admin/messages', t('nav.admin_messages'), 'inbox', active_page == 'admin_messages') }}
+          {{ nav_row('/admin/users', t('nav.admin_users'), 'users', active_page == 'admin_users') }}
+          {{ nav_row('/admin/posts', t('nav.admin_posts'), 'megaphone', _path == '/admin/posts') }}
+        </nav>
+        {% endif %}
         <div class="nav-panel-foot">
-          <nav class="lang-switcher" aria-label="{{ t('a11y.lang_switcher_label') }}">
-            {% for code in supported_langs %}
-            <a href="{{ request.url.include_query_params(lang=code) }}" class="{{ 'active' if code == lang else '' }}" lang="{{ code }}" {{ 'aria-current="page"' if code == lang else '' }}>{{ lang_labels[code] }}</a>
-            {% endfor %}
-          </nav>
           <div class="auth-box">
             {% if current_user %}
             <span class="auth-name">{{ current_user.first_name or (current_user.telegram_username and ('@' ~ current_user.telegram_username)) or t('auth.you') }}</span>
@@ -354,6 +395,35 @@
       });
     })();
     (function () {
+      // The globe's language list: Escape closes it and puts focus back on the globe, a click or a focus move
+      // outside closes it too. Opening and keyboard use come from <details> itself.
+      var menu = document.getElementById('lang-menu');
+      if (!menu) { return; }
+      var summary = menu.querySelector('summary');
+      function close(refocus) {
+        if (!menu.open) { return; }
+        menu.open = false;
+        if (refocus) { summary.focus(); }
+      }
+      menu.addEventListener('toggle', function () {
+        if (!menu.open) { return; }
+        var current = menu.querySelector('a.active') || menu.querySelector('a');
+        if (current && document.activeElement === summary && summary.matches(':focus-visible')) { current.focus(); }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && menu.open) { close(true); return; }
+        if (!menu.open || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) { return; }
+        var links = Array.prototype.slice.call(menu.querySelectorAll('a'));
+        var at = links.indexOf(document.activeElement);
+        if (at === -1 && document.activeElement !== summary) { return; }
+        e.preventDefault();
+        var next = e.key === 'ArrowDown' ? at + 1 : (at === -1 ? links.length - 1 : at - 1);
+        links[(next + links.length) % links.length].focus();
+      });
+      document.addEventListener('click', function (e) { if (!menu.contains(e.target)) { close(false); } });
+      document.addEventListener('focusin', function (e) { if (!menu.contains(e.target)) { close(false); } });
+    })();
+    (function () {
       var toggle = document.getElementById('nav-toggle');
       var panel = document.getElementById('nav-panel');
       if (toggle && panel) {
@@ -361,6 +431,16 @@
           var open = panel.classList.toggle('open');
           toggle.classList.toggle('open', open);
           toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+      }
+      // 2026-11-02 (owner): the desktop "more" menu closes on a click outside it or on Escape (focus goes back to it).
+      var more = document.getElementById('nav-more');
+      if (more) {
+        document.addEventListener('click', function (e) {
+          if (more.open && !more.contains(e.target)) { more.open = false; }
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && more.open) { more.open = false; more.querySelector('summary').focus(); }
         });
       }
     })();

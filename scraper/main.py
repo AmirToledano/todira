@@ -33,6 +33,7 @@ from todira_common.owner_alert import alert_owner
 from todira_common.models import Listing, OwnerPost, SentNotification
 import facebook_client
 import facebook_groups_text_parser
+import seeker_leads
 from facebook_client import FacebookFetchError
 from facebook_client import fetch_listing_detail as fetch_facebook_listing_detail
 from facebook_client import fetch_search_results as fetch_facebook_results
@@ -2776,12 +2777,14 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
     except Exception:
         logger.exception("reading the groups' cities failed")
     skipped_seekers = skipped_vague = errors = city_from_group = 0
+    seekers: list[dict] = []
     for post in posts:
         seen_external_ids.add(post["post_id"])
         if post["post_id"] in known_ids:
             continue
         if facebook_groups_text_parser.looks_like_seeker(post["text"]):
             skipped_seekers += 1
+            seekers.append(post)
             continue
         raw_item = raw_item_from_feed_post(post)
         if (raw_item.get("price") is None and raw_item.get("rooms") is None) or not (
@@ -2805,7 +2808,14 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
         len(posts), len(normalized_items), skipped_seekers, skipped_vague,
         sum(1 for post in posts if post["post_id"] in known_ids), city_from_group,
     )
+    seeker_leads.send_leads(seekers, lambda post: _seeker_place_and_deal(post, group_cities))
     return normalized_items, seen_external_ids, len(posts), errors, True
+
+
+def _seeker_place_and_deal(post: dict, group_cities: dict[str, str]) -> tuple[str | None, str | None]:
+    """(place, deal) a looking-for post states, for the owner's lead message; the group's city when it names none."""
+    found = facebook_groups_text_parser.parse_place_and_deal(post["text"])
+    return found.get("city") or group_cities.get(post["group_id"]), found.get("dealHint")
 
 
 # 2026-09-13: one entry per source this project scrapes — each a (source, scrape_fn) pair, where

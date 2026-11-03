@@ -30,10 +30,16 @@ export const pageConfig = injected;
 
 // vars supports the same named-placeholder interpolation as i18n.py's own t(key, **kwargs) (e.g.
 // login.hint's "{telegram_cta}") — .format()-style, not HTML, so no injection risk either way.
+// 2026-11-02: the languages whose texts come from website/i18n_langs/<code>.json (i18n.py's FILE_LANGS) show English
+// for a key their file doesn't have yet, then Hebrew; the five core languages fall back to Hebrew as before.
+const FILE_LANGS = ["es", "pt", "hi", "fil", "th", "zh"];
+const fallbacks = FILE_LANGS.includes(lang) ? [lang, "en", "he"] : [lang, "he"];
+
 export function t(key, vars) {
   const entry = content[key];
   if (!entry) return key;
-  const text = entry[lang] || entry.he || key;
+  const found = fallbacks.find((code) => entry[code]);
+  const text = found ? entry[found] : key;
   if (!vars) return text;
   return text.replace(/\{(\w+)\}/g, (match, name) => (name in vars ? vars[name] : match));
 }

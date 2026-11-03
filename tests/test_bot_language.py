@@ -60,10 +60,16 @@ def test_a_new_user_from_any_other_handler_gets_hebrew_too():
 
 def test_the_picker_offers_every_language_in_its_own_name_and_marks_the_current_one():
     keyboard = language_module.language_keyboard("en")
-    labels = [row[0].text for row in keyboard.inline_keyboard]
-    data = [row[0].callback_data for row in keyboard.inline_keyboard]
-    assert labels == ["עברית", "✅ English", "Русский", "Français", "العربية"]
-    assert data == ["lang:set:he", "lang:set:en", "lang:set:ru", "lang:set:fr", "lang:set:ar"]
+    # two buttons a row since 2026-11-02 (eleven languages), each in its own name
+    assert all(len(row) <= 2 for row in keyboard.inline_keyboard)
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    labels = [button.text for button in buttons]
+    data = [button.callback_data for button in buttons]
+    assert labels == [
+        "עברית", "✅ English", "Русский", "Français", "العربية",
+        "Español", "Português", "हिन्दी", "Filipino", "ไทย", "中文",
+    ]
+    assert data == [f"lang:set:{code}" for code in ("he", "en", "ru", "fr", "ar", "es", "pt", "hi", "fil", "th", "zh")]
 
 
 def test_choosing_a_language_stores_it_and_hebrew_is_stored_as_none():
@@ -112,7 +118,7 @@ def test_the_profile_button_opens_the_picker_as_its_own_message():
     with patch.object(language_module, "_current_language_sync", return_value="en"):
         asyncio.run(language_module.language_callback(update, SimpleNamespace(user_data={})))
     markup = query.message.reply_text.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[1][0].text == "✅ English"
+    assert markup.inline_keyboard[0][1].text == "✅ English"
     query.edit_message_text.assert_not_called()
 
 

@@ -188,9 +188,9 @@ content prefix):
 
 ```bash
 cd website
-python3 -c "
+PYTHONPATH=../common python3 -c "
 import json
-ns = {}
+ns = {'__file__': 'i18n.py'}
 exec(compile(open('i18n.py', encoding='utf-8').read(), 'i18n.py', 'exec'), ns)
 translations = ns['TRANSLATIONS']
 prefixes = ('home.', 'footer.', 'cookies.', 'about.', 'accessibility.', 'privacy.', 'terms.', 'contact.', 'login.', 'account.')
@@ -207,6 +207,16 @@ with open('landing-react/src/content.json', 'w', encoding='utf-8') as f:
     json.dump(keys, f, ensure_ascii=False, indent=2)
 "
 ```
+
+The export is not tied to a language list: since 2026-11-02 `i18n.py` merges the
+newer languages' files (`website/i18n_langs/<code>.json`: es, pt, hi, fil, th, zh)
+into `TRANSLATIONS` at import, so whatever those files hold lands in
+`content.json` too (`PYTHONPATH=../common` and `__file__` are there because
+`i18n.py` reads them through `todira_common.lang_files`, next to itself).
+Re-run the export and `npm run build` after adding or changing a language
+file. A key a newer language doesn't have yet shows the English text at runtime
+(`src/i18n.js`'s `t()`, same order as `i18n.py`'s `fallback_langs`), then the
+Hebrew one.
 
 `tests/test_website_home.py::test_react_landing_content_json_matches_i18n_py`
 diffs every key/language in `content.json` against the live `TRANSLATIONS`

@@ -276,7 +276,8 @@ header.site {
 /* ---------- nav: single hamburger toggle, panel pushes the page down (no overlay) ----------
    2026-09-03 request, matching the reference bot's own nav: one button instead of a
    crowded inline row of nav links + lang switcher + auth box (which is what this used to be —
-   the old `.nav-group`/`nav.site-nav`/`nav.lang-switcher`/`.auth-box` rules, now replaced).
+   the old `.nav-group`/`nav.site-nav`/`.auth-box` rules, now replaced; the languages are a globe button since
+   2026-11-02, see .lang-menu).
    `.nav-panel` lives inside `header.site` itself (a normal-flow block, not `position: absolute`),
    so expanding it pushes `main` down the page rather than covering it. */
 .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -342,6 +343,39 @@ nav.site-nav a {
   transition: background .15s, color .15s;
 }
 nav.site-nav a:hover, nav.site-nav a.active { background: var(--teal-tint); color: var(--heading); }
+/* 2026-11-02 (owner): every menu row is an icon plus its name, and the extra pages and the owner's admin links sit in
+   light labelled sections under the main links. */
+nav.site-nav a .ic { width: 18px; height: 18px; color: var(--text-muted); }
+nav.site-nav a.active .ic, nav.site-nav a:hover .ic { color: var(--teal); }
+nav.site-nav a span { min-width: 0; overflow-wrap: anywhere; }
+nav.nav-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.nav-section-title {
+  color: var(--text-muted); font-size: .74rem; font-weight: 700; letter-spacing: .02em;
+  padding: 2px 14px 4px;
+}
+/* The desktop row's "more" menu (base.html #nav-more). */
+.nav-more { position: relative; }
+.nav-more > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 4px;
+  color: rgba(255,255,255,.85); font-weight: 600; font-size: .88rem;
+  padding: 9px 16px; border-radius: 999px; white-space: nowrap; transition: background .15s, color .15s;
+}
+.nav-more > summary::-webkit-details-marker { display: none; }
+.nav-more > summary:hover, .nav-more > summary.active, .nav-more[open] > summary { background: rgba(255,255,255,.16); color: #fff; }
+.nav-more-chevron { width: 15px; height: 15px; transition: transform .15s; }
+.nav-more[open] .nav-more-chevron { transform: rotate(180deg); }
+.nav-more-menu {
+  position: absolute; top: calc(100% + 8px); inset-inline-start: 0; z-index: 50; min-width: 240px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+}
+.site-nav-desktop .nav-more-menu a {
+  display: flex; align-items: center; gap: 10px; color: var(--text); background: none;
+  padding: 10px 12px; border-radius: 10px; font-size: .9rem;
+}
+.site-nav-desktop .nav-more-menu a:hover, .site-nav-desktop .nav-more-menu a.active { background: var(--teal-tint); color: var(--heading); }
+.nav-more-menu .ic { width: 18px; height: 18px; color: var(--text-muted); }
+.nav-more-menu a:hover .ic, .nav-more-menu a.active .ic { color: var(--teal); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
 
@@ -1377,13 +1411,33 @@ summary:focus-visible {
 .cookie-notice p { margin: 0; flex: 1 1 260px; }
 .cookie-notice a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .cookie-notice .btn { flex: 0 0 auto; white-space: nowrap; }
-nav.lang-switcher { display: flex; gap: 2px; }
-nav.lang-switcher a {
-  text-decoration: none; color: var(--text-muted);
-  padding: 5px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600;
-  transition: background .15s, color .15s;
+/* ---------- language: the globe button in the header (2026-11-02, replaced the row of names in the menu) ----------
+   A <details>: it opens with no script, from the keyboard too. The list hangs under the button from its inline-end
+   edge, which is the side facing the middle of the page in both directions (left in Hebrew, right in English). */
+.lang-menu { position: relative; flex-shrink: 0; }
+.lang-menu-toggle {
+  width: 38px; height: 38px; border-radius: 10px; cursor: pointer; list-style: none;
+  background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
 }
-nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-tint); color: var(--heading); }
+.lang-menu-toggle::-webkit-details-marker { display: none; }
+.lang-menu-toggle::marker { content: ""; }
+.lang-menu-toggle:hover, .lang-menu[open] .lang-menu-toggle { background: rgba(255,255,255,.24); }
+.lang-menu-toggle .ic { width: 20px; height: 20px; color: #fff; }
+.lang-menu-list {
+  position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 60;
+  width: 248px; max-width: calc(100vw - 32px); margin: 0; padding: 6px; list-style: none;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+  background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.lang-menu-list a {
+  display: block; padding: 9px 11px; border-radius: 8px; text-decoration: none; text-align: start;
+  color: var(--text); font-size: .9rem; line-height: 1.3; white-space: nowrap; unicode-bidi: isolate;
+}
+.lang-menu-list a:hover { background: var(--teal-tint); }
+.lang-menu-list a.active { background: var(--teal-tint); color: var(--heading); font-weight: 700; }
+.lang-menu-list a:focus-visible { outline-offset: -2px; }
 
 /* ---------- contact page ---------- */
 .contact-other {
@@ -1405,6 +1459,11 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
 :lang(ar) h1, :lang(ar) h2, :lang(ar) h3, :lang(ar) .display {
   font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', Georgia, serif;
 }
+/* Devanagari, Thai and Chinese (2026-11-02): no web font is loaded for them, the phone's or computer's own fonts are
+   named here so the text never falls to empty boxes on a system that only looks through the listed families. */
+:lang(hi) { font-family: 'Heebo', 'Noto Sans Devanagari', 'Kohinoor Devanagari', 'Nirmala UI', Mangal, system-ui, sans-serif; }
+:lang(th) { font-family: 'Heebo', 'Noto Sans Thai', Thonburi, 'Leelawadee UI', Tahoma, system-ui, sans-serif; }
+:lang(zh) { font-family: 'Heebo', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif; }
 
 /* ---------- Admin inbox (/admin/messages) ---------- */
 .admin-message-list { display: flex; flex-direction: column; gap: 14px; max-width: 760px; margin: 0 auto; }
@@ -1446,25 +1505,68 @@ nav.lang-switcher a:hover, nav.lang-switcher a.active { background: var(--teal-t
 .amc-meta { display: flex; gap: 14px; color: var(--text-muted); font-size: .86rem; margin-bottom: 4px; }
 .amc-body { white-space: pre-wrap; margin: 8px 0 0; line-height: 1.6; }
 
+/* 2026-11-02 (owner): the "המנוי שלי" card at the top of /account (Account.jsx AccessCard): every user sees their access
+   state, its end date and what to do next. Plain card, no gradients; the chip is the only colour. */
+.account-access { text-align: start; }
+.account-access-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.account-access-title { font-weight: 700; font-size: 1rem; color: var(--heading); }
+.account-access-chip {
+  font-size: .78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-muted);
+}
+.account-access-chip.on { background: var(--teal-tint); border-color: transparent; color: var(--teal); }
+.account-access-main { margin: 0 0 4px; font-size: 1.12rem; font-weight: 700; color: var(--text); line-height: 1.45; }
+.account-access-line { margin: 0 0 4px; font-size: .93rem; color: var(--text); }
+.account-access-hint { margin: 6px 0 0; }
+.account-access-cta { margin-top: 14px; }
+.account-invite { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.account-invite-title { margin: 0 0 4px; font-weight: 700; color: var(--heading); }
+.account-invite-link {
+  margin: 10px 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--bg);
+  border: 1px solid var(--border); font-size: .8rem; overflow-wrap: anywhere; text-align: left;
+}
+.account-invite-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.account-invite-actions .btn { flex: 1 1 140px; padding: 10px 14px; font-size: .9rem; }
+.account-invite-status { margin: 8px 0 0; }
+/* Empty until a copy: zero height but still rendered, so screen readers announce what is written into it later. */
+.account-invite-status:empty { margin: 0; }
+.account-notif-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.account-notif-row .channel-status { margin-top: 0; }
+.account-notif-row .btn { padding: 9px 16px; font-size: .88rem; }
+
 /* ---------- /account payment history (2026-09-06) ---------- */
-.payment-history { display: flex; flex-direction: column; gap: 10px; }
+.payment-history { display: flex; flex-direction: column; gap: 6px; }
+/* 2026-11-02 (owner): one compact line per payment: date, pass, amount, status. */
 .payment-row {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg); font-size: .9rem;
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); font-size: .86rem;
 }
 .payment-plan { font-weight: 700; }
 .payment-amount { color: var(--teal); font-weight: 700; font-family: 'Rubik', sans-serif; }
 .payment-date { color: var(--text-muted); }
 .payment-row .amc-status { font-size: .85rem; }
+/* 2026-11-02 (review): at phone width a long pass name ("Ежемесячная подписка") pushed the status past the screen; the
+   status moves under the pass name, the date and amount stay on the first line. */
+@media (max-width: 420px) {
+  .payment-row { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 2px; }
+  .payment-row .payment-date { grid-row: 1 / span 2; }
+  .payment-row .payment-plan { grid-column: 2; grid-row: 1; }
+  .payment-row .payment-amount { grid-column: 3; grid-row: 1; }
+  .payment-row .amc-status { grid-column: 2 / -1; grid-row: 2; margin-inline-start: 0; }
+}
 
 @media (max-width: 620px) {
   .header-inner { padding: 12px 16px; }
   .brand { font-size: 1.15rem; }
   nav.site-nav a { padding: 7px 10px; font-size: .84rem; }
-  nav.lang-switcher a { padding: 5px 7px; font-size: .74rem; }
+  .nav-section-title { padding-inline: 10px; }
   main { padding: 24px 14px 60px; }
   .amc-status { margin-inline-start: 0; }
+  /* On a phone the globe can sit mid-row (or on a wrapped second row), so the list hangs from the header's own edge
+     instead of the button's: it always stays 16px inside the screen, in Hebrew and in English. */
+  .lang-menu { position: static; }
+  .lang-menu-list { top: calc(100% + 4px); inset-inline-end: 16px; }
 }
 /* 2026-09-25 real bug found live (Playwright, not guessed): on narrow phones (~320-390px —
    iPhone SE/mini class) header.site's flex row (.brand + .header-actions, holding the hamburger,

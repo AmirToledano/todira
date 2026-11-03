@@ -2,8 +2,10 @@
 (gettext/babel) at this site's size (9 templates, ~150 strings).
 
 Supported languages: Hebrew (default, also the only language the Telegram bot itself understands
-right now — see bot/handlers/onboarding.py's Gemini prompt), English, Russian, French, Arabic.
-Hebrew and Arabic are RTL; English/Russian/French are LTR — RTL_LANGS below drives the `dir`
+right now — see bot/handlers/onboarding.py's Gemini prompt), English, Russian, French, Arabic,
+plus (2026-11-02) Spanish, Portuguese, Hindi, Filipino, Thai and Chinese, whose texts come from
+website/i18n_langs/<code>.json (see CORE_LANGS/FILE_LANGS below).
+Hebrew and Arabic are RTL; all the others are LTR — RTL_LANGS below drives the `dir`
 attribute on <html>, and the CSS already uses logical properties (margin-inline-start, etc.) so it
 needed no direction-specific rules beyond the Arabic font fallback in style.css.
 
@@ -14,23 +16,57 @@ over this file.
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 from starlette.requests import Request
+from todira_common.lang_files import merge_lang_files, read_lang_file
 
-SUPPORTED_LANGS = ["he", "en", "ru", "fr", "ar"]
+# 2026-11-02 (owner): more languages for everyone living in Israel. The five CORE_LANGS are written inline in
+# TRANSLATIONS below; every FILE_LANGS language lives in its own website/i18n_langs/<code>.json ({key: text}), read
+# once at import and merged into TRANSLATIONS (todira_common/lang_files.py). A key a language file doesn't have (or
+# the file isn't there yet) shows the English text, then the Hebrew one; the core languages keep falling back to
+# Hebrew as they always did.
+CORE_LANGS = ["he", "en", "ru", "fr", "ar"]
+FILE_LANGS = ["es", "pt", "hi", "fil", "th", "zh"]
+SUPPORTED_LANGS = CORE_LANGS + FILE_LANGS
 DEFAULT_LANG = "he"
 RTL_LANGS = {"he", "ar"}
+LANG_FILES_DIR = Path(__file__).resolve().parent / "i18n_langs"
 
+# Each language's own name, in itself: the globe menu shows these, so anyone finds their language whatever the
+# page is in right now.
 LANG_LABELS = {
     "he": "עברית",
     "en": "English",
     "ru": "Русский",
     "fr": "Français",
     "ar": "العربية",
+    "es": "Español",
+    "pt": "Português",
+    "hi": "हिन्दी",
+    "fil": "Filipino",
+    "th": "ไทย",
+    "zh": "中文",
 }
+
+
+def fallback_langs(lang: str) -> tuple[str, ...]:
+    """The languages tried, in order, for one key: the asked one, then English for a file language, then Hebrew."""
+    if lang in FILE_LANGS:
+        return (lang, "en", DEFAULT_LANG)
+    return (lang, DEFAULT_LANG)
+
+
+def pick_text(entry: dict[str, str], lang: str) -> str | None:
+    for code in fallback_langs(lang):
+        if entry.get(code):
+            return entry[code]
+    return None
+
 
 # key -> {lang: text}. Every key MUST have a "he" entry (the fallback used for any language
 # missing a translation, and the source of truth since this product is Israel/Hebrew-first).
+# The FILE_LANGS texts are merged in from website/i18n_langs/ at import (see _load_lang_files below).
 TRANSLATIONS: dict[str, dict[str, str]] = {
     # ---------- meta / <title> ----------
     "meta.title_home": {
@@ -254,6 +290,27 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav.account": {
         "he": "החשבון שלי", "en": "My account", "ru": "Мой аккаунт",
         "fr": "Mon compte", "ar": "حسابي",
+    },
+    # 2026-11-02 (owner): the menu gets labelled sections (the "more" pages, and the owner's admin links with
+    # names instead of three bare icons). See base.html's nav-panel.
+    "nav.more": {"he": "עוד", "en": "More", "ru": "Ещё", "fr": "Plus", "ar": "المزيد"},
+    "nav.channel": {
+        "he": "ערוץ הטלגרם", "en": "Telegram channel", "ru": "Канал в Telegram",
+        "fr": "Chaîne Telegram", "ar": "قناة تيليجرام",
+    },
+    "nav.admin": {"he": "ניהול", "en": "Admin", "ru": "Управление", "fr": "Administration", "ar": "الإدارة"},
+    "nav.admin_dashboard": {
+        "he": "דשבורד", "en": "Dashboard", "ru": "Панель", "fr": "Tableau de bord", "ar": "لوحة التحكم",
+    },
+    "nav.admin_messages": {
+        "he": "תיבת הודעות", "en": "Inbox", "ru": "Сообщения", "fr": "Messages", "ar": "صندوق الرسائل",
+    },
+    "nav.admin_users": {
+        "he": "ניהול משתמשים", "en": "Users", "ru": "Пользователи", "fr": "Utilisateurs", "ar": "المستخدمون",
+    },
+    "nav.admin_posts": {
+        "he": "מודעות של בעלי דירות", "en": "Owners' ads", "ru": "Объявления владельцев",
+        "fr": "Annonces des propriétaires", "ar": "إعلانات المالكين",
     },
     "auth.you": {
         "he": "מחובר", "en": "Logged in", "ru": "Вы вошли", "fr": "Connecté(e)", "ar": "تم تسجيل الدخول",
@@ -2982,6 +3039,175 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "חדש חידוש אוטומטי", "en": "Resume auto-renewal", "ru": "Возобновить автопродление",
         "fr": "Reprendre le renouvellement automatique", "ar": "استئناف التجديد التلقائي",
     },
+    # 2026-11-02 (owner): the "המנוי שלי" card at the top of /account, one clear text per access state (main.py's
+    # _access_summary). Every varying {days} sits after a colon ("ימים שנותרו: {days}") so no language needs plural
+    # forms (1 to 6 free days after a pass, 20+ paid days in Arabic); the last day has its own text. The invite texts
+    # keep "{days} ימים": REWARD_DAYS is a fixed 7, a plural in every language (a test guards it).
+    "account.access_owner": {
+        "he": "גישה מלאה ללא הגבלת זמן", "en": "Full access, no time limit", "ru": "Полный доступ без ограничения по времени",
+        "fr": "Accès complet, sans limite de temps", "ar": "وصول كامل بلا حدود زمنية",
+    },
+    "account.access_owner_hint": {
+        "he": "זה חשבון המנהל, אין צורך במנוי.", "en": "This is the admin account, no subscription needed.",
+        "ru": "Это аккаунт администратора, подписка не нужна.",
+        "fr": "C'est le compte administrateur, aucun abonnement n'est nécessaire.",
+        "ar": "هذا حساب المدير، لا حاجة إلى اشتراك.",
+    },
+    "account.access_comp_hint": {
+        "he": "קיבלת גישה מלאה מטודירה, אין צורך במנוי.", "en": "Todira gave you full access, no subscription needed.",
+        "ru": "Todira открыла вам полный доступ, подписка не нужна.",
+        "fr": "Todira t'a offert un accès complet, aucun abonnement n'est nécessaire.",
+        "ar": "منحتك توديرا وصولًا كاملًا، لا حاجة إلى اشتراك.",
+    },
+    "account.status_active": {
+        "he": "פעיל", "en": "Active", "ru": "Активен", "fr": "Actif", "ar": "نشط",
+    },
+    "account.status_inactive": {
+        "he": "לא פעיל", "en": "Inactive", "ru": "Не активен", "fr": "Inactif", "ar": "غير نشط",
+    },
+    "account.trial_left": {
+        "he": "תקופת ניסיון, ימים שנותרו: {days} (עד {date})",
+        "en": "Free trial, days left: {days} (until {date})",
+        "ru": "Пробный период, осталось дней: {days} (до {date})",
+        "fr": "Période d'essai, jours restants : {days} (jusqu'au {date})",
+        "ar": "فترة تجريبية، الأيام المتبقية: {days} (حتى {date})",
+    },
+    "account.trial_last": {
+        "he": "תקופת ניסיון, היום האחרון (עד {date})", "en": "Free trial, last day (until {date})",
+        "ru": "Пробный период, последний день (до {date})", "fr": "Période d'essai, dernier jour (jusqu'au {date})",
+        "ar": "فترة تجريبية، اليوم الأخير (حتى {date})",
+    },
+    "account.trial_hint": {
+        "he": "בתקופת הניסיון הכל פתוח. אפשר לרכוש מנוי כבר עכשיו, והוא יתחיל רק כשהניסיון ייגמר.",
+        "en": "Everything is open during the trial. You can buy a pass now, and it starts only when the trial ends.",
+        "ru": "Во время пробного периода открыто всё. Можно купить доступ уже сейчас, он начнётся после окончания пробного периода.",
+        "fr": "Tout est ouvert pendant l'essai. Tu peux acheter un pass dès maintenant, il commencera à la fin de l'essai.",
+        "ar": "كل شيء مفتوح خلال الفترة التجريبية. يمكنك شراء باقة الآن، وستبدأ فقط عند انتهاء التجربة.",
+    },
+    "account.free_hint": {
+        "he": "יש לך כרגע גישה חינם. אפשר לרכוש מנוי כבר עכשיו, והימים החינמיים שנשארו לא ילכו לאיבוד.",
+        "en": "You have free access right now. You can buy a pass now, and the free days you have left will not be lost.",
+        "ru": "Сейчас у вас бесплатный доступ. Можно купить доступ уже сейчас, оставшиеся бесплатные дни не пропадут.",
+        "fr": "Tu as un accès gratuit en ce moment. Tu peux acheter un pass dès maintenant, les jours gratuits restants ne seront pas perdus.",
+        "ar": "لديك الآن وصول مجاني. يمكنك شراء باقة الآن، ولن تضيع الأيام المجانية المتبقية.",
+    },
+    "account.free_left": {
+        "he": "גישה חינם, ימים שנותרו: {days} (עד {date})",
+        "en": "Free access, days left: {days} (until {date})",
+        "ru": "Бесплатный доступ, осталось дней: {days} (до {date})",
+        "fr": "Accès gratuit, jours restants : {days} (jusqu'au {date})",
+        "ar": "وصول مجاني، الأيام المتبقية: {days} (حتى {date})",
+    },
+    "account.free_last": {
+        "he": "גישה חינם, היום האחרון (עד {date})",
+        "en": "Free access, last day (until {date})",
+        "ru": "Бесплатный доступ, последний день (до {date})",
+        "fr": "Accès gratuit, dernier jour (jusqu'au {date})",
+        "ar": "وصول مجاني، اليوم الأخير (حتى {date})",
+    },
+    "account.trial_ended_on": {
+        "he": "תקופת הניסיון הסתיימה ב־{date}", "en": "Your free trial ended on {date}",
+        "ru": "Пробный период закончился {date}", "fr": "Ta période d'essai s'est terminée le {date}",
+        "ar": "انتهت الفترة التجريبية في {date}",
+    },
+    "account.no_access_hint": {
+        "he": "ההתראות ממשיכות להגיע, אבל הקישור למודעה המקורית נעול. מנוי פותח הכל מחדש.",
+        "en": "Alerts keep coming, but the link to the original ad is locked. A pass opens everything again.",
+        "ru": "Уведомления продолжают приходить, но ссылка на исходное объявление закрыта. Доступ снова открывает всё.",
+        "fr": "Les alertes continuent, mais le lien vers l'annonce d'origine est verrouillé. Un pass rouvre tout.",
+        "ar": "تستمر التنبيهات بالوصول، لكن رابط الإعلان الأصلي مقفل. الباقة تفتح كل شيء من جديد.",
+    },
+    "account.paid_ended_on": {
+        "he": "המנוי הסתיים ב־{date}", "en": "Your pass ended on {date}", "ru": "Доступ закончился {date}",
+        "fr": "Ton pass s'est terminé le {date}", "ar": "انتهى اشتراكك في {date}",
+    },
+    "account.paid_active": {
+        "he": "מנוי פעיל", "en": "Active pass", "ru": "Доступ активен", "fr": "Pass actif", "ar": "اشتراك نشط",
+    },
+    "account.paid_plan": {
+        "he": "מנוי פעיל, חבילת {plan}", "en": "Active pass, {plan}", "ru": "Доступ активен, {plan}",
+        "fr": "Pass actif, {plan}", "ar": "اشتراك نشط، باقة {plan}",
+    },
+    "account.paid_left": {
+        "he": "בתוקף עד {date}, ימים שנותרו: {days}",
+        "en": "Valid until {date}, days left: {days}",
+        "ru": "Действует до {date}, осталось дней: {days}",
+        "fr": "Valable jusqu'au {date}, jours restants : {days}",
+        "ar": "ساري حتى {date}، الأيام المتبقية: {days}",
+    },
+    "account.paid_last": {
+        "he": "בתוקף עד {date}, זה היום האחרון", "en": "Valid until {date}, this is the last day",
+        "ru": "Действует до {date}, сегодня последний день", "fr": "Valable jusqu'au {date}, c'est le dernier jour",
+        "ar": "ساري حتى {date}، هذا هو اليوم الأخير",
+    },
+    "account.free_after_paid": {
+        "he": "ימים חינם אחריו: {days}, כך שהגישה בתוקף עד {date}",
+        "en": "Free days after it: {days}, so your access runs until {date}",
+        "ru": "Бесплатных дней после него: {days}, доступ действует до {date}",
+        "fr": "Jours gratuits ensuite : {days}, ton accès court donc jusqu'au {date}",
+        "ar": "أيام مجانية بعده: {days}، فيبقى الوصول ساريًا حتى {date}",
+    },
+    "account.extend_cta": {
+        "he": "הארכת המנוי", "en": "Extend my pass", "ru": "Продлить доступ", "fr": "Prolonger mon pass",
+        "ar": "تمديد الاشتراك",
+    },
+    "account.extend_hint": {
+        "he": "חבילה חדשה מתחילה בסוף התקופה הנוכחית, אף יום לא הולך לאיבוד.",
+        "en": "A new pass starts when the current period ends, so no day is lost.",
+        "ru": "Новый доступ начнётся после окончания текущего периода, ни один день не пропадёт.",
+        "fr": "Un nouveau pass commence à la fin de la période en cours, aucun jour n'est perdu.",
+        "ar": "تبدأ الباقة الجديدة عند انتهاء الفترة الحالية، فلا يضيع أي يوم.",
+    },
+    "account.renew_cta": {
+        "he": "חידוש המנוי", "en": "Renew my pass", "ru": "Возобновить доступ", "fr": "Renouveler mon pass",
+        "ar": "تجديد الاشتراك",
+    },
+    "account.buy_cta": {
+        "he": "לבחירת מנוי", "en": "Choose a pass", "ru": "Выбрать доступ", "fr": "Choisir un pass", "ar": "اختيار باقة",
+    },
+    "account.invite_title": {
+        "he": "{days} ימים חינם על כל חבר שמצטרף", "en": "{days} free days for every friend who joins",
+        "ru": "{days} бесплатных дней за каждого друга", "fr": "{days} jours offerts pour chaque ami qui s'inscrit",
+        "ar": "{days} أيام مجانية عن كل صديق ينضم",
+    },
+    "account.invite_body": {
+        "he": "שולחים לחבר את הקישור האישי שלך. כשהוא מסיים להירשם, שניכם מקבלים {days} ימים חינם.",
+        "en": "Send a friend your personal link. When they finish signing up, you both get {days} free days.",
+        "ru": "Отправьте другу свою личную ссылку. Когда он завершит регистрацию, вы оба получите {days} бесплатных дней.",
+        "fr": "Envoie ton lien personnel à un ami. Quand il termine son inscription, vous recevez tous les deux {days} jours offerts.",
+        "ar": "أرسل لصديقك رابطك الشخصي. عندما يُكمل التسجيل، تحصلان كلاكما على {days} أيام مجانية.",
+    },
+    "account.invite_copy": {
+        "he": "העתקת הקישור", "en": "Copy link", "ru": "Скопировать ссылку", "fr": "Copier le lien", "ar": "نسخ الرابط",
+    },
+    "account.invite_copied": {
+        "he": "הקישור הועתק", "en": "Link copied", "ru": "Ссылка скопирована", "fr": "Lien copié", "ar": "تم نسخ الرابط",
+    },
+    "account.invite_copy_failed": {
+        "he": "לא הצלחנו להעתיק. הקישור מסומן, אפשר להעתיק אותו ידנית.",
+        "en": "Could not copy. The link is selected, you can copy it by hand.",
+        "ru": "Не удалось скопировать. Ссылка выделена, скопируйте её вручную.",
+        "fr": "Copie impossible. Le lien est sélectionné, tu peux le copier à la main.",
+        "ar": "تعذّر النسخ. الرابط محدد، يمكنك نسخه يدويًا.",
+    },
+    "account.invite_share": {
+        "he": "שליחה בטלגרם", "en": "Send on Telegram", "ru": "Отправить в Telegram", "fr": "Envoyer sur Telegram",
+        "ar": "إرسال عبر تيليجرام",
+    },
+    "account.invite_share_text": {
+        "he": "אני מחפש דירה עם טודירה, היא שולחת לי דירות חדשות ברגע שהן עולות. נרשמים דרך הקישור ושנינו מקבלים {days} ימים חינם.",
+        "en": "I'm flat hunting with Todira, it sends me new flats the moment they go up. Sign up through this link and we both get {days} free days.",
+        "ru": "Ищу квартиру с Todira, она присылает новые квартиры сразу после публикации. Зарегистрируйся по ссылке, и мы оба получим {days} бесплатных дней.",
+        "fr": "Je cherche un appart avec Todira, elle m'envoie les nouvelles annonces dès leur sortie. Inscris-toi avec ce lien et on reçoit tous les deux {days} jours offerts.",
+        "ar": "أبحث عن شقة مع توديرا، ترسل لي الشقق الجديدة فور نشرها. سجّل عبر هذا الرابط ونحصل كلانا على {days} أيام مجانية.",
+    },
+    "account.payment_cancelled_note": {
+        "he": "ברכישה שבוטלה, אם מגיע החזר לפי מדיניות הביטול (סעיף 10 בתנאי השימוש), הוא מזוכה לאמצעי התשלום שבו שילמת תוך 14 ימים.",
+        "en": "For a cancelled purchase, if a refund is due under the cancellation policy (section 10 of the terms), it goes back to the payment method you used within 14 days.",
+        "ru": "Если за отменённую покупку положен возврат по правилам отмены (раздел 10 условий), он поступит на тот же способ оплаты в течение 14 дней.",
+        "fr": "Pour un achat annulé, si un remboursement est dû selon la politique d'annulation (section 10 des conditions), il est versé sur le moyen de paiement utilisé sous 14 jours.",
+        "ar": "عند إلغاء عملية شراء، إذا كان هناك استرداد مستحق وفق سياسة الإلغاء (البند 10 من الشروط)، يُعاد المبلغ إلى وسيلة الدفع نفسها خلال 14 يومًا.",
+    },
     "account.notifications_title": {
         "he": "התראות", "en": "Notifications", "ru": "Уведомления",
         "fr": "Notifications", "ar": "الإشعارات",
@@ -3617,6 +3843,28 @@ FURNITURE_LABELS: dict[str, dict[str, str]] = {
 }
 
 
+# The /filter option labels for a file language: the English set, with any "label.<group>.<value>" line from that
+# language's file on top (e.g. "label.property_type.studio").
+_LABEL_GROUPS = {
+    "property_type": PROPERTY_TYPE_LABELS,
+    "safe_room": SAFE_ROOM_LABELS,
+    "furniture": FURNITURE_LABELS,
+}
+
+
+def label_keys() -> set[str]:
+    return {f"label.{group}.{value}" for group, labels in _LABEL_GROUPS.items() for value in labels["en"]}
+
+
+def _load_lang_files() -> None:
+    merge_lang_files(TRANSLATIONS, LANG_FILES_DIR, FILE_LANGS, extra_keys=label_keys())
+    for code in FILE_LANGS:
+        lines = read_lang_file(LANG_FILES_DIR, code)
+        for group, labels in _LABEL_GROUPS.items():
+            labels[code] = {value: lines.get(f"label.{group}.{value}") or text for value, text in labels["en"].items()}
+
+
+
 def get_lang(request: Request, known_lang: str | None = None) -> str:
     """?lang= wins for this request (and main.py persists it to a cookie on the response);
     otherwise a previously-set cookie (an explicit choice made earlier on this same browser);
@@ -3643,7 +3891,7 @@ def make_translator(lang: str):
         entry = TRANSLATIONS.get(key)
         if entry is None:
             return key
-        text = entry.get(lang) or entry.get(DEFAULT_LANG) or key
+        text = pick_text(entry, lang) or key
         return text.format(**kwargs) if kwargs else text
 
     return t
@@ -3938,3 +4186,7 @@ TRANSLATIONS.update({
         "ar": "لديك شقة للإيجار؟ انشرها هنا مجاناً. بعد المراجعة تُرسل لمن يبحث عن شقة كهذه بالضبط.",
     },
 })
+
+
+# Last, after every TRANSLATIONS.update above, so a language file can translate those keys too.
+_load_lang_files()

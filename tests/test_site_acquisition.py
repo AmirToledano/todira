@@ -54,10 +54,12 @@ def _channel_links(html: str) -> int:
 
 
 def test_the_channel_is_in_the_footer_and_at_the_end_of_the_rent_pages(client):
-    assert _channel_links(client.get("/calculator?lang=he").text) == 1  # the footer only
+    # 2026-11-02: the site menu links the channel too, in the phone menu and in the desktop "more" list
+    on_every_page = _channel_links(client.get("/calculator?lang=he").text)
+    assert on_every_page == 3  # menu (twice) and footer
     for path in ("/rent?lang=he", "/rent/חיפה?lang=he"):
         html = client.get(path).text
-        assert _channel_links(html) == 2  # footer plus the line at the end of the page
+        assert _channel_links(html) == on_every_page + 1  # plus the line at the end of the page
         assert "הדירות הכי משתלמות של כל בוקר, בערוץ הטלגרם שלנו" in html
 
 
@@ -74,7 +76,7 @@ def test_the_shared_listing_page_links_the_channel(monkeypatch):
 
     with patch.object(website_main, "get_session", _session), patch.object(website_main.activity, "record", lambda *a, **k: None):
         html = TestClient(website_main.app).get(share.share_path(7) + "?lang=he").text
-    assert _channel_links(html) == 2
+    assert _channel_links(html) == 4  # menu (twice), footer and the line on the page
     assert 'data-track="channel_share"' in html
 
 
