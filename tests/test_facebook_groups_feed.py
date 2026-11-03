@@ -78,3 +78,10 @@ def test_ads_written_as_a_question_are_not_seekers():
         assert not parser.looks_like_seeker(text), text[:40]
     assert parser.looks_like_seeker("היי מפרסמת שובב מחפשת דירה כניסה בדצמבר 2 חדרים מרוהטת קומפלט בחולון ללא תיווך")
     assert parser.looks_like_seeker("מחפשת דירת 2 חדרים בגבעתיים, מישהו מכיר משהו?")
+
+
+def test_a_seeker_who_writes_a_price_or_an_exclamation_stays_a_seeker():
+    # 2026-11-04 (bug sweep): "מחיר:" and "בלבד!" are ad voice only further into the post
+    assert parser.looks_like_seeker('מחפשת דירת 3 חדרים בתל אביב, מחיר: עד 6000 ש"ח')
+    assert parser.looks_like_seeker("דחוף!! מחפש דירה בחיפה, מחיר: עד 4500, 2 חדרים")
+    assert parser.looks_like_seeker("מחפשים דירה בגבעתיים, 2 חדרים בלבד!")

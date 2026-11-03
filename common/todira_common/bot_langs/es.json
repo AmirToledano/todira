@@ -27,6 +27,7 @@
  "card.no_photos_banner": "🕵️ <b>Este anuncio no tiene fotos, ¡pero quizás valga la pena pedírselas a quien lo publicó!</b>\n\n",
  "card.price_dropped": "¡Bajó el precio!",
  "card.price_increased": "¡Subió el precio!",
+ "card.price_into_range": "¡Bajó a tu precio!",
  "card.price_label": "Precio:",
  "card.price_unknown": "no indicado",
  "card.reposted": "🔁 Publicado de nuevo",

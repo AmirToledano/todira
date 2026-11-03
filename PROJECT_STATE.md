@@ -1,5 +1,38 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-11-04 — what was added 2026-11-01..04 (read this first, then the 2026-10-29 section below)
+
+- **Owner's Telegram groups** (`todira_common/owner_inbox.py`, `bot/handlers/owner_inbox.py`): the inbox group gets
+  contact form, site feedback, /support, testimonials, payment alerts, owner-post notices, outage/backup alerts, the
+  daily summary and the weekly report. A second group, the **leads group** (a group the owner adds whose name has
+  "לידים"/"leads", or where he writes /leads), gets only Facebook seeker posts. Check with `diagnose-owner-groups.yaml`.
+- **Facebook leads** (`scraper/seeker_leads.py`, run from the groups feed at :24, 08:24-22:24): posts the feed reads as
+  someone looking for a flat (`facebook_groups_text_parser.looks_like_seeker`) go to the leads group with a quote, a
+  link and a ready reply (3 wordings, link `todira.app/?src=fblead`). Once per post, 48 h max age, 25 a run. 2026-11-04:
+  ads written as a question ("מחפשים דירה מרווחת? זאת הדירה בשבילכם") are offers (`_OFFER_START_RE`, `_AD_VOICE_RE`).
+- **Win-back** (`scraper/winback.py`): one morning message after access ended (2+ days ago, 3+ matching cards since),
+  with the count and a signed-in /upgrade link; once per ended access (app_flags `winback_sent`).
+- **Weekly report** (`scraper/weekly_report.py`): Sunday 09:00-12:00 to the inbox group, counts only.
+- **Sources**: `todira.app/?src=<name>` and `t.me/AmirDirotBot?start=<name>` are counted (`src_<name>`); the admin
+  dashboard builds both. Names in use: fblead, fb_group, fb_profile, fb_city, fb_students, fb_couples, fb_olim,
+  ig_bio, ig_story, tiktok, whatsapp, tg_group, invite.
+- **Invites on the site**: /account's link is `todira.app/i/<code>` (page offers Telegram or the site; Google sign-up
+  stores the inviter; reward on the first saved search, same as the bot). Share sheet button + new share text.
+- **/upgrade**: "what Todira already found for you" (matching cards sent, from owners, since access ended or last week).
+- **/reviews**: every approved testimonial; site feedback may be shown unless "don't publish" is ticked (said under the
+  form and in privacy section 1); the owner approves on /admin/messages. `show-testimonial.yaml` for one-offs.
+- **Languages**: es, pt, hi, fil, th, zh for site and bot (`website/i18n_langs/`, `common/todira_common/bot_langs/`,
+  loaded last in i18n.py), globe menu without flags. Missing keys fall back to English, then Hebrew.
+- **Site**: /account "המנוי שלי" card for every access state; menu with icons, "עוד" and an owner "ניהול" section;
+  assistant reset button and follow-up chips; "היום" on the home city question.
+- **Data fixes**: `todira_common/price_sanity.py` (rent/sale mix-ups, placeholder prices).
+- **AWS (owner's account)**: Todira is only the Stockholm (eu-north-1) instance, its 20 GB disk and Elastic IP; the
+  backup key is the IAM user `todira-backup-bot` (S3 only). The owner's Terraform studies use eu-west-1; root access key
+  deactivated, use an IAM user (`docs/aws-terraform-user.md`). Free Tier credit covers the bill for now; without it
+  about $20-22/month.
+- **Waiting on others**: Takbull/UPAY to enable Bit, Apple Pay, Google Pay on the terminal (Apple Pay domain file is
+  served at /.well-known/apple-developer-merchantid-domain-association).
+
 ## ▶ 2026-10-29 — where things stand (read this first)
 
 ### What is live
@@ -40,6 +73,9 @@
   peers), private owners first, at most 2 a city, each linked to its /s/ page; Fridays the 3-room median of the 10
   biggest cities linked to /rent/<city>. Posts end with a link into the bot (`start=channel`, counted as `src_channel`);
   the owner hates the bot's @name, so it is never written out. Done posts are in the app flag `telegram_channel_posts`.
+  Since 2026-11-04 the Friday post is a 1080x1350 picture (`scraper/weekly_image.py`, Pillow, bundled Rubik font under
+  `scraper/fonts` with its OFL licence) with the old text and links as its caption; if drawing fails it goes out as text.
+  Hebrew RTL uses Pillow's RAQM (needs `libfribidi0`, installed in both scraper Dockerfiles), else a manual reordering.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.
   - /rent and /rent/<city> (2026-10-31, for Google): per city, from our own rentals of the last 30 days, the median by
@@ -48,11 +84,22 @@
     every city page in the sitemap. All cities are built from ONE pass over the window, kept an hour, and rebuilt every
     50 min (with the /calculator medians) by the website's warm-up thread (`_keep_warm` in main.py, started from the app's
     lifespan), so no visit waits: the first live visits had taken 16 s (/rent), 3-6 s a city, 8.6 s (/calculator).
+    2026-11-04: /rent/<city>/<neighbourhood> too, from the same one pass (no query of its own): a neighbourhood with
+    10+ rentals in 30 days (city must have a page, never "שאר העיר", at least one rooms row of 5+) gets the median by
+    rooms next to the city's, a comparison line, its newest flats, CTA start=rent_hood and the city link; city pages
+    have a "שכונות" row; all in the sitemap. Canonical paths are now quoted (base.html), matching the sitemap.
     `diagnose-city-pages-speed.yaml` (EXPLAIN ANALYZE) found the parking/storage SQL test reading every description
     first; `not_non_home_sql` now puts its cheap half first (13.4 s to 1.1 s; area_price uses it too).
   - /moving-checklist (ticks kept in the browser) and /rental-contract-check (legal numbers checked against Kol Zchut
     on 2026-10-31, linked as sources), from `website/guides.py`, 5 languages, in the footer and the sitemap.
   - /apartments: sort, a report button, and a rich listing view with area price, price history and a timeline.
+  - /search (2026-11-04, owner: see results before signing in): a visitor with no account picks a city, a top price
+    and rooms (the /filter form's field names and `_apply_filter_form`), and sees the real count of matching live
+    flats first seen in the last 7 days plus the 6 newest as locked cards (no original-ad link, no source badge, no
+    like/hide), then "continue in Telegram" (`start=site_preview`) or Google sign-in (`/login?next=/filter`). One city
+    per scan, at most 3,000 rows read (`matching_listing_rows(since=, scan_limit=)`), each answer cached 2 min; noindex.
+    A plain anonymous visit to /apartments now redirects there; deep links (`?listing=`, `?uid=`) still ask to sign
+    in. Home hero has one secondary link "לראות דירות עכשיו". Clicks: `bot_preview`, `login_preview`, `search_home`.
   - /filter: a live match count, a price chart, and "show also without rooms / size" (`filters.include_missing_details`).
   - Other pages: /calculator (rent medians from our own listings), a site assistant on every page, and /admin
     (a dashboard with switches, users with pause, and messages).

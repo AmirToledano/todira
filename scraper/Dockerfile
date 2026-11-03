@@ -8,6 +8,9 @@
 FROM python:3.12-slim
 WORKDIR /app
 COPY common/todira_common ./todira_common
+# 2026-11-04 (owner): libfribidi0 lets Pillow's bundled RAQM engine lay out the Hebrew on the Friday channel picture
+# (scraper/weekly_image.py; it has a hand-made fallback, this is just the proper layout).
+RUN apt-get update && apt-get install -y --no-install-recommends libfribidi0 && rm -rf /var/lib/apt/lists/*
 COPY scraper/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY scraper/ .

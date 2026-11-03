@@ -27,6 +27,7 @@
  "card.no_photos_banner": "🕵️ <b>Walang litrato ang listing na ito, pero baka sulit pa ring humingi ng litrato sa nag-post!</b>\n\n",
  "card.price_dropped": "Bumaba ang presyo!",
  "card.price_increased": "Tumaas ang presyo!",
+ "card.price_into_range": "Bumaba na sa presyo mo!",
  "card.price_label": "Presyo:",
  "card.price_unknown": "hindi nakalagay",
  "card.reposted": "🔁 Na-post ulit",

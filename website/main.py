@@ -919,6 +919,8 @@ _LANDING_STRING_KEYS = (
     "notif_title", "notif_detail", "rooms_n", "rooms_1", "map_label",
     "city_result_n", "city_result_1", "city_result_0", "city_go", "last_now", "last_min_1", "last_min_n", "last_hour_1",
     "last_hour_n",
+    # 2026-11-04 (owner): the budget and rooms on the city question (/api/city-count)
+    "city_week_n", "city_week_1", "city_match", "city_match_0",
 )
 
 
@@ -987,7 +989,9 @@ def _home_map_data() -> dict | None:
 # repeats show up as more presses than people. The owner's browsers are never counted.
 _CLICK_TARGETS = {"invite_bot", "invite_site", "bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share",
                   # 2026-11-02 (growth): the public channel links (footer, city pages, shared listing page)
-                  "channel_footer", "channel_rent", "channel_rent_city", "channel_share"}
+                  "channel_footer", "channel_rent", "channel_rent_city", "channel_share",
+                  # 2026-11-04 (owner): the public /search preview (its two ways in, a locked card, the home page link)
+                  "bot_preview", "login_preview", "login_preview_card", "search_home"}
 
 
 # 2026-10-24 (owner): "report a mistake" on the listing view - goes to the owner's inbox like a /contact message.
@@ -1107,6 +1111,71 @@ async def assistant_reply(request: Request):
 @app.get("/api/home-map")
 def home_map():
     data = _home_map_data()
+    if data is None:
+        return JSONResponse({"error": "unavailable"}, status_code=503, headers={"Cache-Control": "no-store"})
+    return JSONResponse(data, headers={"Cache-Control": "public, max-age=300"})
+
+
+# 2026-11-04 (owner): the home page's city question can also take a max budget and rooms, and answers with how many
+# matching flats came in in the last 24 hours and the last 7 days. One counted query on the indexed city and
+# first_seen_at columns, cached per question for five minutes. Counts only, for every visitor.
+_CITY_COUNT_TTL_SECONDS = 300
+_CITY_COUNT_MAX_CACHED = 512
+_city_count_cache: OrderedDict = OrderedDict()
+_city_count_lock = threading.Lock()
+# a budget this high is a purchase, below it a rent
+_CITY_COUNT_SALE_FROM_ILS = 200_000
+
+
+def _city_count(city: str, price_max: int | None, rooms_min: float | None) -> dict | None:
+    key = (city, price_max, rooms_min)
+    with _city_count_lock:
+        hit = _city_count_cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < _CITY_COUNT_TTL_SECONDS:
+            return hit[1]
+    conditions = [
+        Listing.city == city, Listing.is_delisted.is_(False), Listing.duplicate_of_id.is_(None),
+        Listing.first_seen_at >= func.now() - dt.timedelta(days=7),
+    ]
+    if price_max is not None:
+        conditions.append(Listing.price <= price_max)
+        conditions.append(Listing.deal_type == "sale" if price_max >= _CITY_COUNT_SALE_FROM_ILS
+                          else Listing.deal_type != "sale")
+    if rooms_min is not None:
+        conditions.append(Listing.rooms >= rooms_min)
+    try:
+        with get_session() as session:
+            today, week = session.execute(
+                select(func.count().filter(Listing.first_seen_at >= func.now() - dt.timedelta(hours=24)), func.count())
+                .where(*conditions)
+            ).one()
+    except Exception:
+        logger.warning("could not count the home page's city question", exc_info=True)
+        return None
+    value = {"city": city, "today": int(today or 0), "week": int(week or 0)}
+    with _city_count_lock:
+        _city_count_cache[key] = (time.monotonic(), value)
+        _city_count_cache.move_to_end(key)
+        while len(_city_count_cache) > _CITY_COUNT_MAX_CACHED:
+            _city_count_cache.popitem(last=False)
+    return value
+
+
+@app.get("/api/city-count")
+def city_count(city: str = "", price_max: str = "", rooms_min: str = ""):
+    city = city.strip()
+    if not city or len(city) > 60:
+        return JSONResponse({"error": "city"}, status_code=400, headers={"Cache-Control": "no-store"})
+    try:
+        budget = int(re.sub(r"\D", "", price_max)) if re.search(r"\d", price_max) else None
+        rooms = float(rooms_min) if rooms_min.strip() else None
+    except ValueError:
+        return JSONResponse({"error": "number"}, status_code=400, headers={"Cache-Control": "no-store"})
+    if budget is not None and not 1 <= budget <= 100_000_000:
+        budget = None
+    if rooms is not None and not (math.isfinite(rooms) and 1 <= rooms <= 12):
+        rooms = None
+    data = _city_count(city, budget, rooms)
     if data is None:
         return JSONResponse({"error": "unavailable"}, status_code=503, headers={"Cache-Control": "no-store"})
     return JSONResponse(data, headers={"Cache-Control": "public, max-age=300"})
@@ -1255,6 +1324,7 @@ def robots_txt(request: Request) -> PlainTextResponse:
         "/admin",
         "/account",
         "/apartments",
+        "/search",  # 2026-11-04 (owner): the public preview (noindex); its results depend only on the form
         "/liked",
         "/hidden",
         "/upgrade",
@@ -1300,6 +1370,11 @@ def sitemap_xml(request: Request) -> Response:
         # 2026-10-31: every city page (website/city_pages.py); the sitemap still answers without them
         with get_session() as session:
             paths += [f"/rent/{url_quote(row['city'])}" for row in city_pages.city_index(session)]
+            # 2026-11-04 (owner): and every neighbourhood page (see neighbourhood_page in city_pages.py)
+            paths += [
+                f"/rent/{url_quote(city)}/{url_quote(name, safe='')}"
+                for city, name in city_pages.neighbourhood_index(session)
+            ]
     except Exception:
         logger.warning("sitemap: could not list the city pages", exc_info=True)
     urls = "".join(f"<url><loc>{PUBLIC_BASE}{path.lstrip('/')}</loc></url>" for path in paths)
@@ -1637,6 +1712,26 @@ def rent_in_city(request: Request, city: str):
     if page is None:
         return _render(request, "404.html", {}, status_code=404)
     return _render(request, "rent_city.html", {"page": page, "other_cities": other_cities})
+
+
+@app.get("/rent/{city}/{neighbourhood:path}")
+def rent_in_neighbourhood(request: Request, city: str, neighbourhood: str):
+    """2026-11-04 (owner): what renting costs in one neighbourhood, next to its city, and its newest flats (for Google).
+
+    `:path` because a few neighbourhood names hold a "/" (the links quote it, but the server gets it back decoded). An
+    unknown neighbourhood, one with too few rentals and "the rest of the city" are a 404, like a thin city.
+    """
+    if city not in LOCALITY_SET:
+        return _render(request, "404.html", {}, status_code=404)
+    with get_session() as session:
+        hood = city_pages.neighbourhood_page(session, city, neighbourhood)
+        others = [name for name in city_pages.neighbourhood_links(session, city) if name != neighbourhood][:12]
+    if hood is None:
+        return _render(request, "404.html", {}, status_code=404)
+    # the canonical address quotes a "/" inside the name, exactly as the sitemap lists it
+    canonical_path = f"rent/{url_quote(city, safe='')}/{url_quote(neighbourhood, safe='')}"
+    return _render(request, "rent_neighbourhood.html",
+                   {"hood": hood, "other_hoods": others, "canonical_path": canonical_path})
 
 
 @app.get("/moving-checklist")
@@ -2376,6 +2471,104 @@ def _city_view_filter(base, city: str) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
+# 2026-11-04 (owner): see results before signing in. A visitor with no account picks a city, a top price and rooms and
+# sees how many live flats matching that came in over the last 7 days, plus the newest few as the usual cards in their
+# locked mode (no link to the original ad, exactly what a non-subscriber sees), then the two ways in: the bot, or a
+# Google sign-in on the site. Nothing about the visitor is read or kept. Light on the database: one city only, at most
+# _PUBLIC_SEARCH_SCAN_CAP rows read, and each answer kept a couple of minutes for the next visitor asking the same.
+_PUBLIC_SEARCH_DAYS = 7
+_PUBLIC_SEARCH_CARDS = 6
+_PUBLIC_SEARCH_SCAN_CAP = 3000
+_PUBLIC_SEARCH_CACHE_MAX_ENTRIES = 128
+_public_search_cache: "OrderedDict[tuple, tuple[float, int, bool, list[int]]]" = OrderedDict()
+_public_search_lock = threading.Lock()
+_PUBLIC_SEARCH_ROOMS = ("1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5", "6")
+PUBLIC_SEARCH_BOT_URL = "https://t.me/AmirDirotBot?start=site_preview"
+PUBLIC_SEARCH_LOGIN_URL = "/login?next=/filter"
+
+
+def _public_search_url(city: str | None, lang: str | None = None) -> str:
+    params = {}
+    if city in LOCALITY_SET:
+        params["cities"] = city
+    if lang in SUPPORTED_LANGS:
+        params["lang"] = lang
+    return "/search" + (f"?{urlencode(params)}" if params else "")
+
+
+def _blank_filter() -> SimpleNamespace:
+    """A filter as a brand-new account gets it (every column at its default: rent, no limits), for the preview."""
+    values = {}
+    for column in Filter.__table__.columns:
+        default = column.default
+        if default is None:
+            values[column.key] = None
+        elif default.is_callable:
+            values[column.key] = []  # the only callable default on filters is `list`
+        else:
+            values[column.key] = default.arg
+    return SimpleNamespace(**values)
+
+
+def _public_search_matches(session, draft) -> tuple[int, bool, list[int]]:
+    """(how many match, whether the scan hit its cap, the newest ids to show) for the preview's draft filter."""
+    key = _filter_fingerprint(draft)
+    now = time.monotonic()
+    with _public_search_lock:
+        hit = _public_search_cache.get(key)
+        if hit is not None and now - hit[0] < _MATCH_IDS_TTL:
+            return hit[1], hit[2], hit[3]
+    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=_PUBLIC_SEARCH_DAYS)
+    rows = matching_listing_rows(session, draft, since=since, scan_limit=_PUBLIC_SEARCH_SCAN_CAP)
+    # A scan that read its whole cap may have stopped short: the count then reads "N+" rather than look exact.
+    capped = len(rows) >= _PUBLIC_SEARCH_SCAN_CAP
+    result = (len(rows), capped, [row.id for row in rows[:_PUBLIC_SEARCH_CARDS]])
+    with _public_search_lock:
+        _public_search_cache[key] = (now, *result)
+        _public_search_cache.move_to_end(key)
+        while len(_public_search_cache) > _PUBLIC_SEARCH_CACHE_MAX_ENTRIES:
+            _public_search_cache.popitem(last=False)
+    return result
+
+
+@app.get("/search")
+def public_search(request: Request, cities: str = "", price_max: str = "", rooms_min: str = "", rooms_max: str = ""):
+    # The /filter form's own field names and parsing (_apply_filter_form), with a single city.
+    draft = _blank_filter()
+    _apply_filter_form(draft, {"cities": [cities.strip()], "price_max": price_max, "rooms_min": rooms_min, "rooms_max": rooms_max})
+    city = draft.cities[0] if draft.cities else ""
+    context = {
+        "city": city,
+        "price_max": draft.price_max,
+        "rooms_min": draft.rooms_min,
+        "rooms_max": draft.rooms_max,
+        "cities_list": sorted({*CITIES, city} - {""}),  # a smaller place reached from a link stays selectable
+        "rooms_options": _PUBLIC_SEARCH_ROOMS,
+        "days": _PUBLIC_SEARCH_DAYS,
+        "count": 0,
+        "capped": False,
+        "listings": [],
+        # the card's no-access mode: no original-ad link, no contact link, no like/hide forms (_listing_card.html)
+        "public_preview": True,
+        "has_access": False,
+        "has_paid_access": False,
+        "access_state": None,
+        "uid": None,
+        "liked_ids": set(),
+        "hidden_ids": set(),
+        "bot_url": PUBLIC_SEARCH_BOT_URL,
+        "login_url": PUBLIC_SEARCH_LOGIN_URL,
+    }
+    if city:
+        with get_session() as session:
+            count, capped, ids = _public_search_matches(session, draft)
+            listings = [item for item in load_listings(session, ids) if not item.is_delisted]
+        context.update({"count": count, "capped": capped, "listings": listings})
+    response = _render(request, "search.html", context)
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
 @app.get("/apartments")
 def apartments(
     request: Request,
@@ -2389,6 +2582,11 @@ def apartments(
     with get_session() as session:
         user = _resolve_user(request, session, uid)
         if user is None:
+            # 2026-11-04 (owner): a visitor with no account used to get a bare "sign in first" page here. A plain visit
+            # now goes to the public preview (/search), which shows real results before any sign-in. A deep link to one
+            # listing, a ?uid= link or a "load more" fetch still gets the sign-in page, as before.
+            if listing is None and uid is None and not fragment:
+                return RedirectResponse(_public_search_url(city, request.query_params.get("lang")), status_code=303)
             return _render(request, "need_uid.html", {"target": "apartments"})
         # See i18n.get_lang's own docstring: an identified visitor's own on-file language
         # preference wins over guessing from Accept-Language (2026-09-29 real bug — Telegram's

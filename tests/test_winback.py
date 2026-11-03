@@ -34,15 +34,19 @@ class _Session:
 def test_who_gets_the_message(monkeypatch):
     monkeypatch.setattr(winback, "has_full_access", lambda user: user.trial_ends_at > NOW or bool(
         user.paid_until and user.paid_until > NOW))
+    monkeypatch.setattr(winback.alert_hours, "in_window", lambda user, now: user.id != 7)
+    monkeypatch.setattr(winback, "_asked_found_lately", lambda session, uid, now: uid == 8)
     users = [
         _user(1),  # ended 5 days ago, 7 flats since: yes
-        _user(2, trial_days_ago=1),  # ended yesterday: not yet
+        _user(2, trial_days_ago=3),  # ended 3 days ago: not yet
         _user(3),  # only 2 flats: no
         _user(4, trial_days_ago=-3),  # still on trial
         _user(5, paid_until=NOW + dt.timedelta(days=9)),  # paid
         _user(6),  # already sent for this end
+        _user(7),  # outside their own alert hours
+        _user(8),  # was just asked "did you find a flat?"
     ]
-    flats = {1: 7, 2: 9, 3: 2, 6: 8}
+    flats = {1: 7, 2: 9, 3: 2, 6: 8, 7: 9, 8: 9}
     sent = {"6": users[5].trial_ends_at.isoformat()}
     due = winback.due_users(_Session(users, flats), NOW, sent)
     assert [(u.id, n) for u, _, n in due] == [(1, 7)]

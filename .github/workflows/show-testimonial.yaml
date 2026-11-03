@@ -1,13 +1,19 @@
 name: Show a message on the reviews page (owner's request)
 
-# 2026-11-03 (owner): puts the newest message from the given name (as written in the form) on /reviews, the same as the
-# "show on the home page" button on /admin/messages. Prints only the message id.
+# 2026-11-03 (owner): puts one message on /reviews, the same as the "show on the home page" button on /admin/messages.
+# 2026-11-04 (bug sweep): by message id (the number on /admin/messages), not by name, and only a message that may be
+# shown (a bot testimonial or site feedback without "don't publish"); force=yes is the owner's own word that the writer
+# agreed some other way (as with the 2026-11-03 message).
 on:
   workflow_dispatch:
     inputs:
-      name:
-        description: "The name exactly as it appears on the message"
+      message_id:
+        description: "The message number"
         required: true
+      force:
+        description: "yes = the writer agreed outside the form (the owner checked)"
+        required: false
+        default: "no"
 
 permissions:
   contents: read
@@ -26,24 +32,28 @@ jobs:
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
       - name: Show it
         env:
-          WHO: ${{ inputs.name }}
+          MID: ${{ inputs.message_id }}
+          FORCE: ${{ inputs.force }}
         run: |
           POD=$(kubectl get pods -n todira -l app=todira-bot --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
           [ -n "$POD" ] || { echo "no running bot pod"; exit 1; }
           cat > /tmp/s.py <<'PY'
           import os, sys
-          from sqlalchemy import select
-          from todira_common import testimonials
+                    from todira_common import testimonials
           from todira_common.db import get_session
           from todira_common.models import ContactMessage
-          who = os.environ["WHO"].strip()
+          mid = os.environ["MID"].strip()
+          if not mid.isdigit():
+              sys.exit("message_id must be a number")
           with get_session() as s:
-              row = s.scalars(select(ContactMessage).where(ContactMessage.name == who)
-                              .order_by(ContactMessage.created_at.desc()).limit(1)).first()
+              row = s.get(ContactMessage, int(mid))
               if row is None:
-                  sys.exit("no message from that name")
-              testimonials.mark_public_ok(s, row.id)
+                  sys.exit("no such message")
+              if not testimonials.can_show(s, row):
+                  if os.environ.get("FORCE", "no").strip() != "yes":
+                      sys.exit("this message may not be shown (opted out or not feedback); force=yes only with the writer's consent")
+                  testimonials.mark_public_ok(s, row.id)
               testimonials.set_shown(s, row.id, True)
               print("shown: message", row.id)
           PY
-          kubectl exec -i -n todira "$POD" -- env WHO="$WHO" python - < /tmp/s.py
+          kubectl exec -i -n todira "$POD" -- env MID="$MID" FORCE="$FORCE" python - < /tmp/s.py

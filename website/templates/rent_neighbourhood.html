@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ t('hood.meta_title', hood=hood.name, city=hood.city) }}{% endblock %}
+{% block meta_description %}{{ t('hood.meta_description', hood=hood.name, city=hood.city, total='{:,}'.format(hood.total)) }}{% endblock %}
+{% block content %}
+{# 2026-11-04 (owner): one neighbourhood's rents next to its city's, from our own listings of the last 30 days (website/city_pages.py) #}
+{% set city_url = '/rent/' ~ (hood.city | urlencode) %}
+<div class="guide rent">
+  <h1 class="guide-title">{{ t('hood.title', hood=hood.name, city=hood.city) }}</h1>
+  <p class="guide-lead">{{ t('hood.lead', hood=hood.name, total='{:,}'.format(hood.total)) }}{% if hood.headline %}{% set h = hood.headline %}{% set rooms_label = (h.rooms ~ '+') if h.rooms == 5 else h.rooms %} {% if h.diff > 2 %}{{ t('hood.compare_more', rooms=rooms_label, price='{:,}'.format(h.median), pct=h.diff, city=hood.city) }}{% elif h.diff < -2 %}{{ t('hood.compare_less', rooms=rooms_label, price='{:,}'.format(h.median), pct=-h.diff, city=hood.city) }}{% else %}{{ t('hood.compare_same', rooms=rooms_label, price='{:,}'.format(h.median), city=hood.city) }}{% endif %}{% endif %}</p>
+
+  <section class="guide-section">
+    <h2>{{ t('hood.rooms_title', hood=hood.name) }}</h2>
+    <table class="calc-table rent-table">
+      <thead><tr><th>{{ t('city.col_rooms') }}</th><th>{{ t('hood.col_here') }}</th><th>{{ t('hood.col_city', city=hood.city) }}</th><th>{{ t('hood.col_diff') }}</th></tr></thead>
+      <tbody>
+        {% for r in hood.by_rooms %}
+        <tr>
+          <td>{{ r.rooms }}{{ '+' if r.rooms == 5 else '' }}</td>
+          <td>₪{{ '{:,}'.format(r.median) }}</td>
+          <td>{{ '₪{:,}'.format(r.city_median) if r.city_median else '' }}</td>
+          <td>{% if r.diff is not none %}<bdi dir="ltr">{{ '+' if r.diff > 0 else '' }}{{ r.diff }}%</bdi>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% if hood.newest %}
+  <section class="guide-section">
+    <h2>{{ t('hood.newest_title', hood=hood.name) }}</h2>
+    <div class="rent-newest">
+      {% for l in hood.newest %}
+      <a class="rent-flat" href="{{ l.link }}">
+        <img src="{{ l.photo }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        <span class="rent-flat-price">₪{{ '{:,}'.format(l.price) }}</span>
+        <span class="rent-flat-meta">{% if l.rooms %}{{ t('city.rooms_value', rooms=('%g' % l.rooms)) }}{% endif %}{% if l.street %}, {{ l.street }}{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <p class="calc-note">{{ t('city.note') }}</p>
+  <a class="btn gold block" href="https://t.me/AmirDirotBot?start=rent_hood" target="_blank" rel="noopener" data-track="bot_end">{{ t('hood.cta', hood=hood.name) }}</a>
+  <p class="calc-note channel-note"><a href="{{ city_url }}">{{ t('hood.city_link', city=hood.city) }}</a></p>
+  {% if other_hoods %}
+  <nav class="rent-more" aria-label="{{ t('hood.more', city=hood.city) }}">
+    <h2>{{ t('hood.more', city=hood.city) }}</h2>
+    <p class="rent-more-links">{% for name in other_hoods %}<a href="{{ city_url }}/{{ name | urlencode }}">{{ name }}</a>{% endfor %}</p>
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

@@ -27,6 +27,7 @@
  "card.no_photos_banner": "🕵️ <b>这条房源没有照片，不过也许值得找发布者要几张看看！</b>\n\n",
  "card.price_dropped": "降价了！",
  "card.price_increased": "涨价了！",
+ "card.price_into_range": "降到你的预算内了！",
  "card.price_label": "价格：",
  "card.price_unknown": "未标价",
  "card.reposted": "🔁 重新发布",

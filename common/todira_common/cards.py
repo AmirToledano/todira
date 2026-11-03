@@ -324,15 +324,19 @@ def _price_change_header(
     *,
     bold: Callable[[str], str],
     lang: str,
+    into_range: bool = False,
 ) -> str:
-    """`price_change_from`: the previous price, when this card is a re-notification because the
+    """`into_range` (2026-11-04 (owner): a drop that brought the flat under the person's max price is their first
+    card about it, so it says "dropped to your price" instead of looking like a plain new card).
+
+    `price_change_from`: the previous price, when this card is a re-notification because the
     price changed (either direction — a drop gets 📉, an increase gets 📈; see
     scraper/notifier.py). None (the normal case) means no header at all, matching a real request
     that a brand-new listing not get any price-change banner."""
     if price_change_from is None or current_price is None or price_change_from == current_price:
         return ""
     if price_change_from > current_price:
-        emoji, label_key = "📉", "card.price_dropped"
+        emoji, label_key = "📉", "card.price_into_range" if into_range else "card.price_dropped"
     else:
         emoji, label_key = "📈", "card.price_increased"
     label = bold(bot_text(label_key, lang))
@@ -462,6 +466,7 @@ def format_caption(
     *,
     has_access: bool,
     price_change_from: int | None = None,
+    price_into_range: bool = False,
     upgrade_url: str | None = None,
     view_url: str | None = None,
     lang: str = DEFAULT_LANG,
@@ -469,7 +474,8 @@ def format_caption(
     below_area_pct: int | None = None,
     full_notice: bool = True,
 ) -> str:
-    """`price_change_from`: see _price_change_header. Left unset for a normal new-match card.
+    """`price_change_from`: see _price_change_header. Left unset for a normal new-match card. `price_into_range`
+    (2026-11-04 (owner)): with a higher `price_change_from`, the header says the price dropped into their range.
 
     `below_area_pct` (2026-10-24): when set (todira_common.area_price.below_area_pct), a "🔥 N% under the area price"
     line goes under the features. A flat posted again (Listing.reposted_from_at, 2026-10-27) gets a "🔁 posted again" line
@@ -526,7 +532,8 @@ def format_caption(
             lines.append("")
         lines.extend(tags)
     body = "\n".join(lines)
-    header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang)
+    header = _price_change_header(price_change_from, listing.price, bold=bold, lang=lang,
+                                  into_range=price_into_range)
     if has_access:
         # 2026-09-27 real owner request, matching dorin.app: the outbound link should land on
         # THIS project's own listing page (todira.app), not send the viewer straight to the raw

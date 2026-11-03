@@ -3988,6 +3988,15 @@ TRANSLATIONS.update({
                               "ar": "لم تدخل شقق جديدة في {city} خلال آخر 24 ساعة. سيرسل لك البوت رسالة فور دخول شقة."},
     "landing.city_go": {"he": "לראות את הדירות ב{city}", "en": "See the flats in {city}", "ru": "Смотреть квартиры: {city}",
                         "fr": "Voir les logements à {city}", "ar": "عرض الشقق في {city}"},
+    # 2026-11-04 (owner): the city question can also take a max budget and rooms, and says how many matching flats
+    # came in today and in the last 7 days (home.js cityCheck, main.py /api/city-count)
+    "landing.city_price_label": {"he": "תקציב עד", "en": "Budget up to", "ru": "Бюджет до", "fr": "Budget max", "ar": "الميزانية حتى"},
+    "landing.city_rooms_label": {"he": "חדרים, לפחות", "en": "Rooms, at least", "ru": "Комнат, от", "fr": "Pièces, au moins", "ar": "الغرف، على الأقل"},
+    "landing.city_optional": {"he": "לא חובה", "en": "Optional", "ru": "Не обязательно", "fr": "Facultatif", "ar": "اختياري"},
+    "landing.city_week_n": {"he": "ובשבוע האחרון נכנסו {n}.", "en": "And {n} in the last 7 days.", "ru": "А за последние 7 дней: {n}.", "fr": "Et {n} ces 7 derniers jours.", "ar": "وفي آخر 7 أيام: {n}."},
+    "landing.city_week_1": {"he": "ובשבוע האחרון נכנסה אחת.", "en": "And one in the last 7 days.", "ru": "А за последние 7 дней: одна.", "fr": "Et un ces 7 derniers jours.", "ar": "وفي آخر 7 أيام: شقة واحدة."},
+    "landing.city_match": {"he": "דירות שמתאימות לכם ב{city}: היום {today}, השבוע {week}.", "en": "Flats that fit you in {city}: {today} today, {week} this week.", "ru": "Подходящие вам квартиры, {city}: сегодня {today}, за неделю {week}.", "fr": "Logements pour vous à {city} : {today} aujourd'hui, {week} cette semaine.", "ar": "شقق تناسبك في {city}: اليوم {today}، هذا الأسبوع {week}."},
+    "landing.city_match_0": {"he": "השבוע לא נכנסו ב{city} דירות במחיר ובחדרים האלה. הבוט ישלח לכם הודעה ברגע שתיכנס אחת.", "en": "No flats at that price and size in {city} this week. The bot will tell you the moment one comes in.", "ru": "За неделю в городе {city} не было квартир с такой ценой и комнатами. Бот сообщит, как только появится.", "fr": "Aucun logement à ce prix et cette taille à {city} cette semaine. Le bot vous préviendra dès qu'il y en a un.", "ar": "لم تدخل هذا الأسبوع شقق بهذا السعر وعدد الغرف في {city}. سيرسل لك البوت رسالة فور دخول شقة."},
     "landing.last_now": {"he": "הדירה האחרונה נכנסה ממש עכשיו, ב{city}", "en": "The last flat came in just now, in {city}",
                          "ru": "Последняя квартира появилась только что: {city}",
                          "fr": "Le dernier logement vient d'arriver, à {city}", "ar": "آخر شقة دخلت الآن، في {city}"},
@@ -4209,6 +4218,149 @@ TRANSLATIONS.update({
     "reviews.all_link": {"he": "לכל ההמלצות", "en": "All reviews", "ru": "Все отзывы", "fr": "Tous les avis", "ar": "كل الآراء"},
 })
 
+# 2026-11-04 (owner): /search, results before signing in (main.py's public_search), and its link on the home page.
+TRANSLATIONS.update({
+    "search.meta_title": {"he": "דירות שעלו השבוע | טודירה", "en": "Flats posted this week | Todira", "ru": "Квартиры за эту неделю | Todira", "fr": "Logements publiés cette semaine | Todira", "ar": "شقق نُشرت هذا الأسبوع | Todira"},
+    "search.title": {"he": "דירות שעלו בשבוע האחרון", "en": "Flats posted in the last week", "ru": "Квартиры за последнюю неделю", "fr": "Les logements de la dernière semaine", "ar": "شقق نُشرت في الأسبوع الأخير"},
+    "search.lead": {"he": "בוחרים עיר, מחיר וחדרים, ורואים כמה דירות כאלה עלו ב־{days} הימים האחרונים. בלי להירשם.", "en": "Pick a city, a price and rooms, and see how many flats like that came up in the last {days} days. No sign-up.", "ru": "Выберите город, цену и комнаты и посмотрите, сколько таких квартир появилось за последние {days} дней. Без регистрации.", "fr": "Choisis une ville, un prix et des pièces, et vois combien de logements comme ça ont été publiés ces {days} derniers jours. Sans inscription.", "ar": "اختر مدينة وسعراً وعدد غرف، وشاهد كم شقة كهذه نُشرت في آخر {days} أيام. بدون تسجيل."},
+    "search.city": {"he": "עיר", "en": "City", "ru": "Город", "fr": "Ville", "ar": "المدينة"},
+    "search.city_pick": {"he": "בחירת עיר", "en": "Choose a city", "ru": "Выберите город", "fr": "Choisir une ville", "ar": "اختر مدينة"},
+    "search.price_max": {"he": "עד כמה בחודש", "en": "Up to, per month", "ru": "До, в месяц", "fr": "Jusqu'à, par mois", "ar": "حتى، شهرياً"},
+    "search.price_placeholder": {"he": "למשל 6000", "en": "e.g. 6000", "ru": "например 6000", "fr": "ex. 6000", "ar": "مثلاً 6000"},
+    "search.rooms": {"he": "חדרים", "en": "Rooms", "ru": "Комнаты", "fr": "Pièces", "ar": "الغرف"},
+    "search.rooms_from": {"he": "לפחות", "en": "At least", "ru": "От", "fr": "Au moins", "ar": "على الأقل"},
+    "search.rooms_to": {"he": "עד", "en": "Up to", "ru": "До", "fr": "Au plus", "ar": "حتى"},
+    "search.submit": {"he": "להציג דירות", "en": "Show flats", "ru": "Показать квартиры", "fr": "Voir les logements", "ar": "عرض الشقق"},
+    "search.count_0": {"he": "לא עלתה ב{city} דירה שמתאימה לזה ב־{days} הימים האחרונים. אפשר להרחיב את המחיר או את החדרים.", "en": "No flat in {city} matching this came up in the last {days} days. Try a higher price or other rooms.", "ru": "За последние {days} дней в {city} не появилось подходящих квартир. Попробуйте поднять цену или изменить комнаты.", "fr": "Aucun logement correspondant à {city} ces {days} derniers jours. Essaie un prix plus haut ou d'autres pièces.", "ar": "لم تُنشر في {city} شقة تناسب هذا في آخر {days} أيام. جرّب سعراً أعلى أو عدد غرف آخر."},
+    "search.count_1": {"he": "דירה אחת ב{city} שמתאימה לזה עלתה ב־{days} הימים האחרונים.", "en": "One flat in {city} matching this came up in the last {days} days.", "ru": "За последние {days} дней в {city} появилась одна подходящая квартира.", "fr": "Un logement correspondant à {city} ces {days} derniers jours.", "ar": "نُشرت في {city} شقة واحدة تناسب هذا في آخر {days} أيام."},
+    "search.count_n": {"he": "{n} דירות ב{city} שמתאימות לזה עלו ב־{days} הימים האחרונים.", "en": "{n} flats in {city} matching this came up in the last {days} days.", "ru": "Подходящих квартир в {city} за последние {days} дней: {n}.", "fr": "{n} logements correspondants à {city} ces {days} derniers jours.", "ar": "نُشرت في {city} {n} شقة تناسب هذا في آخر {days} أيام."},
+    "search.locked_note": {"he": "אלה החדשות שבהן. הקישור למודעה המקורית נפתח אחרי הרשמה.", "en": "These are the newest. The link to the original ad opens once you sign up.", "ru": "Вот самые новые. Ссылка на исходное объявление открывается после регистрации.", "fr": "Voici les plus récents. Le lien vers l'annonce d'origine s'ouvre après l'inscription.", "ar": "هذه الأحدث. رابط الإعلان الأصلي يُفتح بعد التسجيل."},
+    "search.more": {"he": "ועוד {n} מחכות לך אחרי ההרשמה.", "en": "{n} more are waiting once you sign up.", "ru": "Ещё {n} ждут вас после регистрации.", "fr": "Encore {n} t'attendent après l'inscription.", "ar": "و{n} أخرى بانتظارك بعد التسجيل."},
+    "search.pick_city_first": {"he": "בוחרים עיר ולוחצים על להציג דירות.", "en": "Pick a city and tap Show flats.", "ru": "Выберите город и нажмите «Показать квартиры».", "fr": "Choisis une ville et appuie sur Voir les logements.", "ar": "اختر مدينة واضغط عرض الشقق."},
+    "search.cta_title": {"he": "לקבל כל דירה חדשה כזו ברגע שהיא עולה", "en": "Get every new flat like this the moment it is posted", "ru": "Получать каждую такую новую квартиру сразу после публикации", "fr": "Recevoir chaque nouveau logement comme ça dès sa publication", "ar": "استلم كل شقة جديدة كهذه لحظة نشرها"},
+    "search.cta_body": {"he": "בטלגרם, או באתר עם חשבון גוגל. שומרים את החיפוש פעם אחת, ומקבלים הודעה על כל דירה חדשה שמתאימה.", "en": "In Telegram, or on the site with your Google account. Save the search once and get a message for every new flat that fits.", "ru": "В Telegram или на сайте через аккаунт Google. Сохраните поиск один раз и получайте сообщение о каждой новой подходящей квартире.", "fr": "Sur Telegram, ou sur le site avec ton compte Google. Tu enregistres la recherche une fois et tu reçois un message pour chaque nouveau logement qui correspond.", "ar": "في تيليجرام، أو على الموقع بحساب Google. تحفظ البحث مرة واحدة وتصلك رسالة عن كل شقة جديدة تناسبه."},
+    "search.cta_telegram": {"he": "להמשיך בטלגרם", "en": "Continue in Telegram", "ru": "Продолжить в Telegram", "fr": "Continuer sur Telegram", "ar": "المتابعة في تيليجرام"},
+    "search.cta_google": {"he": "כניסה עם גוגל", "en": "Sign in with Google", "ru": "Войти через Google", "fr": "Se connecter avec Google", "ar": "الدخول عبر Google"},
+    "search.home_link": {"he": "לראות דירות עכשיו", "en": "See flats now", "ru": "Смотреть квартиры сейчас", "fr": "Voir des logements maintenant", "ar": "شاهد الشقق الآن"},
+})
+
+
+# 2026-11-04 (owner): the neighbourhood pages, /rent/<city>/<neighbourhood> (website/city_pages.py). New keys
+# under hood.*, not exported to the React landing's content.json, so no rebuild is needed.
+TRANSLATIONS.update({
+    "hood.meta_title": {
+        "he": "דירות להשכרה ב{hood}, {city}: מחירים ודירות חדשות | טודירה",
+        "en": "Flats for rent in {hood}, {city}: prices and new flats | Todira",
+        "ru": "Аренда квартир: {hood}, {city}. Цены и новые квартиры | Todira",
+        "fr": "Appartements à louer à {hood}, {city} : prix et nouveautés | Todira",
+        "ar": "شقق للإيجار في {hood}، {city}: الأسعار والشقق الجديدة | توديرا",
+    },
+    "hood.meta_description": {
+        "he": "כמה עולה לשכור דירה ב{hood} ב{city}, לפי {total} דירות שעלו ב־30 הימים האחרונים, איך זה לעומת העיר כולה, והדירות החדשות ביותר.",
+        "en": "What renting in {hood}, {city} costs, from {total} flats posted in the last 30 days, how it compares with the whole city, and the newest flats.",
+        "ru": "Сколько стоит аренда в районе {hood} ({city}), по {total} квартирам за 30 дней, сравнение со всем городом и самые новые квартиры.",
+        "fr": "Ce que coûte la location à {hood} ({city}), d'après {total} appartements publiés en 30 jours, la comparaison avec toute la ville et les plus récents.",
+        "ar": "كم يكلف الاستئجار في {hood} في {city}، حسب {total} شقة نُشرت في آخر 30 يوماً، مقارنة بالمدينة كلها، وأحدث الشقق.",
+    },
+    "hood.title": {
+        "he": "דירות להשכרה ב{hood}, {city}",
+        "en": "Flats for rent in {hood}, {city}",
+        "ru": "Квартиры в аренду: {hood}, {city}",
+        "fr": "Appartements à louer à {hood}, {city}",
+        "ar": "شقق للإيجار في {hood}، {city}",
+    },
+    "hood.lead": {
+        "he": "לפי {total} דירות להשכרה שעלו ב{hood} ב־30 הימים האחרונים.",
+        "en": "From {total} flats for rent posted in {hood} in the last 30 days.",
+        "ru": "По {total} квартирам в аренду в районе {hood} за последние 30 дней.",
+        "fr": "D'après {total} appartements à louer publiés à {hood} ces 30 derniers jours.",
+        "ar": "حسب {total} شقة للإيجار نُشرت في {hood} في آخر 30 يوماً.",
+    },
+    "hood.compare_more": {
+        "he": "דירת {rooms} חד׳ כאן עולה בדרך כלל ₪{price}, {pct}% יותר מהמחיר האמצעי ב{city}.",
+        "en": "A {rooms}-room flat here usually costs ₪{price}, {pct}% more than the median in {city}.",
+        "ru": "Квартира на {rooms} комн. здесь обычно стоит ₪{price}, на {pct}% дороже медианы по городу {city}.",
+        "fr": "Un {rooms} pièces coûte ici en général ₪{price}, {pct}% de plus que la médiane de {city}.",
+        "ar": "شقة من {rooms} غرف هنا تكلف عادة ₪{price}، أي أكثر بـ{pct}% من الوسيط في {city}.",
+    },
+    "hood.compare_less": {
+        "he": "דירת {rooms} חד׳ כאן עולה בדרך כלל ₪{price}, {pct}% פחות מהמחיר האמצעי ב{city}.",
+        "en": "A {rooms}-room flat here usually costs ₪{price}, {pct}% less than the median in {city}.",
+        "ru": "Квартира на {rooms} комн. здесь обычно стоит ₪{price}, на {pct}% дешевле медианы по городу {city}.",
+        "fr": "Un {rooms} pièces coûte ici en général ₪{price}, {pct}% de moins que la médiane de {city}.",
+        "ar": "شقة من {rooms} غرف هنا تكلف عادة ₪{price}، أي أقل بـ{pct}% من الوسيط في {city}.",
+    },
+    "hood.compare_same": {
+        "he": "דירת {rooms} חד׳ כאן עולה בדרך כלל ₪{price}, בערך כמו המחיר האמצעי ב{city}.",
+        "en": "A {rooms}-room flat here usually costs ₪{price}, about the same as the median in {city}.",
+        "ru": "Квартира на {rooms} комн. здесь обычно стоит ₪{price}, примерно как медиана по городу {city}.",
+        "fr": "Un {rooms} pièces coûte ici en général ₪{price}, à peu près comme la médiane de {city}.",
+        "ar": "شقة من {rooms} غرف هنا تكلف عادة ₪{price}، تقريباً مثل الوسيط في {city}.",
+    },
+    "hood.rooms_title": {
+        "he": "כמה עולה דירה ב{hood}, לפי חדרים",
+        "en": "What a flat costs in {hood}, by rooms",
+        "ru": "Сколько стоит квартира в районе {hood}, по комнатам",
+        "fr": "Ce que coûte un appartement à {hood}, par pièces",
+        "ar": "كم تكلف الشقة في {hood}، حسب الغرف",
+    },
+    "hood.col_here": {
+        "he": "כאן",
+        "en": "Here",
+        "ru": "Здесь",
+        "fr": "Ici",
+        "ar": "هنا",
+    },
+    "hood.col_city": {
+        "he": "ב{city}",
+        "en": "In {city}",
+        "ru": "{city}",
+        "fr": "À {city}",
+        "ar": "في {city}",
+    },
+    "hood.col_diff": {
+        "he": "הפרש",
+        "en": "Difference",
+        "ru": "Разница",
+        "fr": "Écart",
+        "ar": "الفرق",
+    },
+    "hood.newest_title": {
+        "he": "הדירות האחרונות שעלו ב{hood}",
+        "en": "The latest flats in {hood}",
+        "ru": "Последние квартиры в районе {hood}",
+        "fr": "Les derniers appartements à {hood}",
+        "ar": "أحدث الشقق في {hood}",
+    },
+    "hood.cta": {
+        "he": "לקבל כל דירה חדשה ב{hood} לטלגרם, ברגע שהיא עולה",
+        "en": "Get every new flat in {hood} on Telegram the moment it is posted",
+        "ru": "Получать каждую новую квартиру в районе {hood} в Telegram сразу после публикации",
+        "fr": "Recevoir chaque nouvel appartement à {hood} sur Telegram dès sa publication",
+        "ar": "استلم كل شقة جديدة في {hood} على تيليغرام لحظة نشرها",
+    },
+    "hood.city_link": {
+        "he": "כל המחירים והדירות ב{city}",
+        "en": "All prices and flats in {city}",
+        "ru": "Все цены и квартиры: {city}",
+        "fr": "Tous les prix et appartements à {city}",
+        "ar": "كل الأسعار والشقق في {city}",
+    },
+    "hood.row_title": {
+        "he": "שכונות",
+        "en": "Neighbourhoods",
+        "ru": "Районы",
+        "fr": "Quartiers",
+        "ar": "الأحياء",
+    },
+    "hood.more": {
+        "he": "שכונות נוספות ב{city}",
+        "en": "More neighbourhoods in {city}",
+        "ru": "Другие районы: {city}",
+        "fr": "Autres quartiers à {city}",
+        "ar": "أحياء أخرى في {city}",
+    },
+})
 
 # Last, after every TRANSLATIONS.update above, so a language file can translate those keys too.
 _load_lang_files()

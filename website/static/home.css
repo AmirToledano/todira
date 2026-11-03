@@ -200,6 +200,10 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-mycity-label { font-weight: 800; font-size: 18px; color: var(--lp-heading); margin-top: 6px; }
 .lp-mycity-in { font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--lp-rule); background: var(--lp-surface); color: var(--lp-heading); width: 100%; box-sizing: border-box; }
 .lp-mycity-in:focus { outline: 2px solid var(--lp-gold); outline-offset: 1px; }
+/* 2026-11-04 (owner): the optional budget and rooms, side by side under the city */
+.lp-mycity-more { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.lp-mycity-field { display: grid; gap: 4px; font-size: 14px; font-weight: 700; color: var(--lp-muted); min-width: 0; }
+.lp-mycity-field .lp-mycity-in { font-size: 16px; padding: 10px 12px; }
 .lp-mycity-out { margin: 0; font-size: 16px; color: var(--lp-heading); min-height: 1.4em; }
 .lp-mycity-out:empty { min-height: 0; }
 .lp-mycity-go { justify-self: start; font-size: 17px; padding: 12px 20px; }

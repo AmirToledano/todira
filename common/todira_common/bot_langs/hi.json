@@ -27,6 +27,7 @@
  "card.no_photos_banner": "🕵️ <b>इस फ़्लैट की कोई फ़ोटो नहीं है, लेकिन विज्ञापन डालने वाले से कुछ फ़ोटो माँगना फ़ायदेमंद हो सकता है!</b>\n\n",
  "card.price_dropped": "दाम घटा!",
  "card.price_increased": "दाम बढ़ा!",
+ "card.price_into_range": "दाम आपके बजट में आ गया!",
  "card.price_label": "दाम:",
  "card.price_unknown": "नहीं बताया",
  "card.reposted": "🔁 दोबारा पोस्ट हुआ",

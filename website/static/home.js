@@ -101,18 +101,48 @@
     var input = document.getElementById("lp-city-in");
     var out = document.getElementById("lp-city-out");
     var go = document.getElementById("lp-city-go");
+    var priceIn = document.getElementById("lp-city-price");
+    var roomsIn = document.getElementById("lp-city-rooms");
+    // 2026-11-04 (owner): with a budget or rooms the answer is the matching flats of today and of the last 7 days,
+    // without them the 24-hour count shows at once and the week count joins it (/api/city-count)
+    var asked = 0, timer = null;
     var show = function () {
       var city = find(input.value);
+      var budget = priceIn ? priceIn.value.replace(/\D/g, "") : "";
+      var rooms = roomsIn ? roomsIn.value : "";
+      var filtered = !!(budget || rooms);
+      var n = city ? byCity[city] || 0 : 0;
+      clearTimeout(timer);
+      asked++;
       if (!city) { out.textContent = ""; go.hidden = true; return; }
-      var n = byCity[city] || 0;
-      out.textContent = fill(n === 0 ? S.city_result_0 : n === 1 ? S.city_result_1 : S.city_result_n, { city: city, n: fmt(n) });
+      var plain = fill(n === 0 ? S.city_result_0 : n === 1 ? S.city_result_1 : S.city_result_n, { city: city, n: fmt(n) });
+      if (!filtered) { out.textContent = plain; }
       go.textContent = fill(S.city_go, { city: city });
       // signed in: /login goes straight on; otherwise it asks to sign in first, then shows that city's flats
       go.href = "/login?next=" + encodeURIComponent("/apartments?city=" + encodeURIComponent(city));
-      go.hidden = n === 0;
+      if (!filtered) { go.hidden = n === 0; }
+      var mine = asked;
+      timer = setTimeout(function () {
+        var q = "city=" + encodeURIComponent(city) + (budget ? "&price_max=" + budget : "") + (rooms ? "&rooms_min=" + rooms : "");
+        fetch("/api/city-count?" + q, { credentials: "omit" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (c) {
+            if (!c || mine !== asked) { return; }
+            if (filtered) {
+              out.textContent = c.week === 0 ? fill(S.city_match_0, { city: city })
+                : fill(S.city_match, { city: city, today: fmt(c.today), week: fmt(c.week) });
+            } else if (c.week > n) {
+              out.textContent = plain + " " + (c.week === 1 ? S.city_week_1 : fill(S.city_week_n, { n: fmt(c.week) }));
+            }
+            go.hidden = c.week === 0 && n === 0;
+          })
+          .catch(function () { /* the 24-hour count above stays */ });
+      }, filtered ? 350 : 150);
     };
     input.addEventListener("input", show);
     input.addEventListener("change", show);
+    if (priceIn) { priceIn.addEventListener("input", show); }
+    if (roomsIn) { roomsIn.addEventListener("change", show); }
 
     // the last one in: its age is counted from its real time, again every half minute
     var last = document.getElementById("lp-last");

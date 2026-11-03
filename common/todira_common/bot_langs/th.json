@@ -27,6 +27,7 @@
  "card.no_photos_banner": "🕵️ <b>ประกาศนี้ไม่มีรูป แต่ลองขอรูปจากผู้ลงประกาศดูก็คุ้มนะ!</b>\n\n",
  "card.price_dropped": "ราคาลดลง!",
  "card.price_increased": "ราคาขึ้น!",
+ "card.price_into_range": "ราคาลดลงมาอยู่ในงบของคุณแล้ว!",
  "card.price_label": "ราคา:",
  "card.price_unknown": "ไม่ระบุ",
  "card.reposted": "🔁 ลงประกาศอีกครั้ง",
