@@ -217,6 +217,7 @@ async def _notify_new_matches(
     per_user_budget: dict[int, int] | None = None,
     queue: list[_Send] | None = None,
     now: dt.datetime | None = None,
+    old_price: int | None = None,
 ) -> tuple[int, int, set[int]]:
     """Send 'new match' notifications for one listing to every currently-matching active filter
     that hasn't already received one. Covers both genuinely new listings and existing listings
@@ -232,7 +233,11 @@ async def _notify_new_matches(
     restriction is lifted on a later run).
 
     `queue` (2026-10-31): when given, the cards are added to it instead of sent (a morning run, see _send_spread), and
-    the sent count is 0. A person outside their alert hours gets the match held instead (_hold)."""
+    the sent count is 0. A person outside their alert hours gets the match held instead (_hold).
+
+    `old_price` (2026-11-04 (owner)): set on a price-change event. A person whose search did not match at that
+    old price and does now (the drop brought it under their max price) gets the card with a "dropped to your
+    price (was X)" header instead of a plain new card (see _into_range_kwargs)."""
     matched = 0
     sent = 0
     newly_notified_user_ids: set[int] = set()
@@ -278,6 +283,7 @@ async def _notify_new_matches(
         has_access = _has_access_for(user)
         caption_kwargs = dict(
             has_access=has_access,
+            **_into_range_kwargs(filter_row, listing, old_price),
             upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
             view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
             lang=user_lang,
@@ -302,6 +308,27 @@ async def _notify_new_matches(
             if per_user_budget is not None:
                 per_user_budget[user.id] = per_user_budget.get(user.id, 0) + 1
     return matched, sent, newly_notified_user_ids
+
+
+class _AtPrice:
+    """2026-11-04 (owner): the listing as it was at its old price, for asking whether a search matched it then."""
+
+    def __init__(self, listing: Listing, price: int):
+        self._listing = listing
+        self.price = price
+
+    def __getattr__(self, name):
+        return getattr(self._listing, name)
+
+
+def _into_range_kwargs(filter_row: Filter, listing: Listing, old_price: int | None) -> dict:
+    """2026-11-04 (owner): format_caption's price-drop header for a card sent because a drop brought the flat into
+    this search (it did not match at the old price). Empty for a plain new card."""
+    if old_price is None or listing.price is None or old_price <= listing.price:
+        return {}
+    if evaluate(filter_row, _AtPrice(listing, old_price)).matched:
+        return {}  # it matched before too (they just had not been sent it): a plain new card
+    return {"price_change_from": old_price, "price_into_range": True}
 
 
 @dataclass
@@ -600,11 +627,13 @@ async def run_notifications(
             if getattr(listing, "duplicate_of_id", None) is not None:
                 continue
             # a price change can also newly qualify filters that were previously priced out
+            # (2026-11-04 (owner): their card says it dropped to their price, see _into_range_kwargs)
             m, s, newly_notified = await _notify_new_matches(
                 bot,
                 session,
                 listing,
                 only_telegram_user_id=only_telegram_user_id,
+                old_price=old_price,
             )
             matched_count += m
             new_sent_count += s

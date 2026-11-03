@@ -1400,6 +1400,11 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "ירידת מחיר!", "en": "Price drop!", "ru": "Снижение цены!",
         "fr": "Baisse de prix !", "ar": "انخفاض السعر!",
     },
+    # 2026-11-04 (owner): a drop that brought the flat under the person's max price (scraper/notifier.py)
+    "card.price_into_range": {
+        "he": "ירד למחיר שלך!", "en": "Now in your price range!", "ru": "Цена снизилась до вашей!",
+        "fr": "Le prix est passé dans votre budget !", "ar": "انخفض السعر إلى ميزانيتك!",
+    },
     "card.price_increased": {
         "he": "עליית מחיר!", "en": "Price increase!", "ru": "Повышение цены!",
         "fr": "Augmentation de prix !", "ar": "ارتفاع السعر!",

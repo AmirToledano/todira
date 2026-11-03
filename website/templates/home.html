@@ -71,6 +71,18 @@
         <label class="lp-mycity-label" for="lp-city-in">{{ t('landing.city_label') }}</label>
         <input class="lp-mycity-in" id="lp-city-in" list="lp-city-list" placeholder="{{ t('landing.city_placeholder') }}" autocomplete="off">
         <datalist id="lp-city-list"></datalist>
+        {# 2026-11-04 (owner): a max budget and rooms, both optional (home.js asks /api/city-count) #}
+        <div class="lp-mycity-more">
+          <label class="lp-mycity-field">{{ t('landing.city_price_label') }}
+            <input class="lp-mycity-in" id="lp-city-price" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="{{ t('landing.city_optional') }}">
+          </label>
+          <label class="lp-mycity-field">{{ t('landing.city_rooms_label') }}
+            <select class="lp-mycity-in" id="lp-city-rooms">
+              <option value="">{{ t('landing.city_optional') }}</option>
+              {% for n in (1, 2, 3, 4, 5) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
         <p class="lp-mycity-out" id="lp-city-out" aria-live="polite"></p>
         <a class="lp-btn lp-mycity-go" id="lp-city-go" href="/login?next=/apartments" data-track="city_go" hidden></a>
       </div>
