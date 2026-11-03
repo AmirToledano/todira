@@ -3988,6 +3988,15 @@ TRANSLATIONS.update({
                               "ar": "لم تدخل شقق جديدة في {city} خلال آخر 24 ساعة. سيرسل لك البوت رسالة فور دخول شقة."},
     "landing.city_go": {"he": "לראות את הדירות ב{city}", "en": "See the flats in {city}", "ru": "Смотреть квартиры: {city}",
                         "fr": "Voir les logements à {city}", "ar": "عرض الشقق في {city}"},
+    # 2026-11-04 (owner): the city question can also take a max budget and rooms, and says how many matching flats
+    # came in today and in the last 7 days (home.js cityCheck, main.py /api/city-count)
+    "landing.city_price_label": {"he": "תקציב עד", "en": "Budget up to", "ru": "Бюджет до", "fr": "Budget max", "ar": "الميزانية حتى"},
+    "landing.city_rooms_label": {"he": "חדרים, לפחות", "en": "Rooms, at least", "ru": "Комнат, от", "fr": "Pièces, au moins", "ar": "الغرف، على الأقل"},
+    "landing.city_optional": {"he": "לא חובה", "en": "Optional", "ru": "Не обязательно", "fr": "Facultatif", "ar": "اختياري"},
+    "landing.city_week_n": {"he": "ובשבוע האחרון נכנסו {n}.", "en": "And {n} in the last 7 days.", "ru": "А за последние 7 дней: {n}.", "fr": "Et {n} ces 7 derniers jours.", "ar": "وفي آخر 7 أيام: {n}."},
+    "landing.city_week_1": {"he": "ובשבוע האחרון נכנסה אחת.", "en": "And one in the last 7 days.", "ru": "А за последние 7 дней: одна.", "fr": "Et un ces 7 derniers jours.", "ar": "وفي آخر 7 أيام: شقة واحدة."},
+    "landing.city_match": {"he": "דירות שמתאימות לכם ב{city}: היום {today}, השבוע {week}.", "en": "Flats that fit you in {city}: {today} today, {week} this week.", "ru": "Подходящие вам квартиры, {city}: сегодня {today}, за неделю {week}.", "fr": "Logements pour vous à {city} : {today} aujourd'hui, {week} cette semaine.", "ar": "شقق تناسبك في {city}: اليوم {today}، هذا الأسبوع {week}."},
+    "landing.city_match_0": {"he": "השבוע לא נכנסו ב{city} דירות במחיר ובחדרים האלה. הבוט ישלח לכם הודעה ברגע שתיכנס אחת.", "en": "No flats at that price and size in {city} this week. The bot will tell you the moment one comes in.", "ru": "За неделю в городе {city} не было квартир с такой ценой и комнатами. Бот сообщит, как только появится.", "fr": "Aucun logement à ce prix et cette taille à {city} cette semaine. Le bot vous préviendra dès qu'il y en a un.", "ar": "لم تدخل هذا الأسبوع شقق بهذا السعر وعدد الغرف في {city}. سيرسل لك البوت رسالة فور دخول شقة."},
     "landing.last_now": {"he": "הדירה האחרונה נכנסה ממש עכשיו, ב{city}", "en": "The last flat came in just now, in {city}",
                          "ru": "Последняя квартира появилась только что: {city}",
                          "fr": "Le dernier logement vient d'arriver, à {city}", "ar": "آخر شقة دخلت الآن، في {city}"},

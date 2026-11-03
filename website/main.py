@@ -919,6 +919,8 @@ _LANDING_STRING_KEYS = (
     "notif_title", "notif_detail", "rooms_n", "rooms_1", "map_label",
     "city_result_n", "city_result_1", "city_result_0", "city_go", "last_now", "last_min_1", "last_min_n", "last_hour_1",
     "last_hour_n",
+    # 2026-11-04 (owner): the budget and rooms on the city question (/api/city-count)
+    "city_week_n", "city_week_1", "city_match", "city_match_0",
 )
 
 
@@ -1107,6 +1109,71 @@ async def assistant_reply(request: Request):
 @app.get("/api/home-map")
 def home_map():
     data = _home_map_data()
+    if data is None:
+        return JSONResponse({"error": "unavailable"}, status_code=503, headers={"Cache-Control": "no-store"})
+    return JSONResponse(data, headers={"Cache-Control": "public, max-age=300"})
+
+
+# 2026-11-04 (owner): the home page's city question can also take a max budget and rooms, and answers with how many
+# matching flats came in in the last 24 hours and the last 7 days. One counted query on the indexed city and
+# first_seen_at columns, cached per question for five minutes. Counts only, for every visitor.
+_CITY_COUNT_TTL_SECONDS = 300
+_CITY_COUNT_MAX_CACHED = 512
+_city_count_cache: OrderedDict = OrderedDict()
+_city_count_lock = threading.Lock()
+# a budget this high is a purchase, below it a rent
+_CITY_COUNT_SALE_FROM_ILS = 200_000
+
+
+def _city_count(city: str, price_max: int | None, rooms_min: float | None) -> dict | None:
+    key = (city, price_max, rooms_min)
+    with _city_count_lock:
+        hit = _city_count_cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < _CITY_COUNT_TTL_SECONDS:
+            return hit[1]
+    conditions = [
+        Listing.city == city, Listing.is_delisted.is_(False), Listing.duplicate_of_id.is_(None),
+        Listing.first_seen_at >= func.now() - dt.timedelta(days=7),
+    ]
+    if price_max is not None:
+        conditions.append(Listing.price <= price_max)
+        conditions.append(Listing.deal_type == "sale" if price_max >= _CITY_COUNT_SALE_FROM_ILS
+                          else Listing.deal_type != "sale")
+    if rooms_min is not None:
+        conditions.append(Listing.rooms >= rooms_min)
+    try:
+        with get_session() as session:
+            today, week = session.execute(
+                select(func.count().filter(Listing.first_seen_at >= func.now() - dt.timedelta(hours=24)), func.count())
+                .where(*conditions)
+            ).one()
+    except Exception:
+        logger.warning("could not count the home page's city question", exc_info=True)
+        return None
+    value = {"city": city, "today": int(today or 0), "week": int(week or 0)}
+    with _city_count_lock:
+        _city_count_cache[key] = (time.monotonic(), value)
+        _city_count_cache.move_to_end(key)
+        while len(_city_count_cache) > _CITY_COUNT_MAX_CACHED:
+            _city_count_cache.popitem(last=False)
+    return value
+
+
+@app.get("/api/city-count")
+def city_count(city: str = "", price_max: str = "", rooms_min: str = ""):
+    city = city.strip()
+    if not city or len(city) > 60:
+        return JSONResponse({"error": "city"}, status_code=400, headers={"Cache-Control": "no-store"})
+    try:
+        budget = int(re.sub(r"\D", "", price_max)) if re.search(r"\d", price_max) else None
+        rooms = float(rooms_min) if rooms_min.strip() else None
+    except ValueError:
+        return JSONResponse({"error": "number"}, status_code=400, headers={"Cache-Control": "no-store"})
+    if budget is not None and not 1 <= budget <= 100_000_000:
+        budget = None
+    if rooms is not None and not (math.isfinite(rooms) and 1 <= rooms <= 12):
+        rooms = None
+    data = _city_count(city, budget, rooms)
     if data is None:
         return JSONResponse({"error": "unavailable"}, status_code=503, headers={"Cache-Control": "no-store"})
     return JSONResponse(data, headers={"Cache-Control": "public, max-age=300"})
