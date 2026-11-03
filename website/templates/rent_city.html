@@ -52,5 +52,14 @@
 
   <p class="calc-note">{{ t('city.note') }}</p>
   <a class="btn gold block" href="https://t.me/AmirDirotBot?start=rent_city" target="_blank" rel="noopener" data-track="bot_end">{{ t('city.cta', city=page.city) }}</a>
+  {# 2026-11-02 (growth): the public channel, for people who are not ready for the bot yet #}
+  <p class="calc-note channel-note"><a href="https://t.me/todira_dirot" target="_blank" rel="noopener" data-track="channel_rent_city">{{ t('channel.page_link') }}</a></p>
+  {% if other_cities %}
+  {# 2026-11-02 (growth): internal links between city pages, so Google finds every one of them #}
+  <nav class="rent-more" aria-label="{{ t('city.more_cities') }}">
+    <h2>{{ t('city.more_cities') }}</h2>
+    <p class="rent-more-links">{% for c in other_cities %}<a href="/rent/{{ c.city | urlencode }}">{{ c.city }}</a>{% endfor %}</p>
+  </nav>
+  {% endif %}
 </div>
 {% endblock %}

@@ -104,7 +104,7 @@ def _spread(jobs):
     async def fake_sleep(seconds):
         clock["t"] += max(seconds, 0)
 
-    async def fake_send(bot, chat_id, listing, caption, lang):
+    async def fake_send(bot, chat_id, listing, caption, lang, **_kwargs):
         sent.append((round(clock["t"], 1), chat_id, listing.id))
         return True
 

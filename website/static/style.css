@@ -2379,6 +2379,10 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .asst-close { background: none; border: 0; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; }
 .asst-close svg { width: 20px; height: 20px; }
 .asst-close:hover { background: rgba(255, 255, 255, .15); }
+/* 2026-11-02 (owner): "new chat" next to close */
+.asst-reset { background: none; border: 0; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; margin-inline-start: auto; }
+.asst-reset svg { width: 18px; height: 18px; }
+.asst-reset:hover, .asst-reset:focus-visible { background: rgba(255, 255, 255, .15); }
 .asst-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-tint); }
 .asst-msg { margin: 0; max-width: 85%; padding: 9px 12px; border-radius: 14px; font-size: .95rem; line-height: 1.5; white-space: pre-line; }
 .asst-bot { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-start-start-radius: 4px; }
@@ -2500,3 +2504,10 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .rent-flat img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--surface-tint); }
 .rent-flat-price { font-weight: 800; }
 .rent-flat-meta { color: var(--text-muted); font-size: .9rem; }
+/* 2026-11-02 (growth): the channel link under city pages and the shared listing, and the other-cities row */
+.channel-note { margin-top: 14px; }
+.channel-note a { color: var(--teal); }
+.rent-more { margin-top: 28px; }
+.rent-more h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.rent-more-links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; }
+.rent-more-links a { color: var(--teal); }

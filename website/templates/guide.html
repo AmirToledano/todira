@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ guide.title }} | טודירה{% endblock %}
+{# 2026-11-02 (growth): its own meta description per guide (meta.desc_moving / meta.desc_contract) #}
+{% block meta_description %}{{ t('meta.desc_' ~ guide.key) }}{% endblock %}
 {% block content %}
 {# 2026-10-31 (owner-approved drafts): content and sources live in website/guides.py; main.py's _guide_page fills this. #}
 <article class="guide" data-guide="{{ guide.key }}">

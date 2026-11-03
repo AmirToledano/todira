@@ -24,7 +24,7 @@ import math
 
 import keyboards as kb
 from config import WEBSITE_URL
-from todira_common import cities, search_text
+from todira_common import cities, referrals, search_text
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
@@ -489,13 +489,18 @@ def _describe_validation_error(exc: ValidationError, lang: str) -> str:
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
-def _save_and_match_sync(tg_user, values: dict, base: dict | None = None) -> int:
+def _save_and_match_sync(tg_user, values: dict, base: dict | None = None) -> tuple[int, bool]:
+    """(matching total, whether the invite reward was granted now)."""
+    invited_bonus = False
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
         existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
         if existing is None:
             existing = Filter(user_id=user.id, **values)
             session.add(existing)
+            # 2026-11-02 (growth): the first search saved here (not through onboarding) also finishes signing up, so a
+            # friend's invite pays out like in onboarding.py (once: referral_rewarded_at)
+            invited_bonus = referrals.reward(session, user, dt.datetime.now(dt.timezone.utc))
         else:
             if base is not None:  # keep what was changed on the website meanwhile (see _drop_draft's comment)
                 values = _merge_onto_saved(_draft_from_filter(existing), values, base)
@@ -518,7 +523,7 @@ def _save_and_match_sync(tg_user, values: dict, base: dict | None = None) -> int
         # should see all of them via the link.
         total, _new_to_show = find_new_matches_to_show(session, user.id, existing)
         session.commit()
-        return total
+        return total, invited_bonus
 
 
 async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dict) -> int:
@@ -544,7 +549,7 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    total = await asyncio.to_thread(
+    total, invited_bonus = await asyncio.to_thread(
         _save_and_match_sync, update.effective_user, validated.model_dump(), context.user_data.get("draft_base")
     )
 
@@ -578,6 +583,8 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
         await query.message.reply_text(
             bot_text("onboarding.no_matches_yet", lang, apartments_url=apartments_url)
         )
+    if invited_bonus:  # 2026-11-02 (growth): same note onboarding sends
+        await query.message.reply_text(bot_text("invite.friend_bonus", lang, days=referrals.REWARD_DAYS))
     return ConversationHandler.END
 
 

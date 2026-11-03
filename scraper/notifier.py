@@ -24,6 +24,7 @@ import os
 import time
 from collections import deque
 from dataclasses import dataclass
+from typing import Callable
 
 from sqlalchemy import bindparam, delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -64,6 +65,16 @@ def _access_state_for(user: User) -> str:
         OWNER_TELEGRAM_USER_ID
     )
     return access_state(user, is_owner=is_owner)
+
+def _had_card_today(session: Session, user_id: int, now: dt.datetime | None = None) -> bool:
+    """2026-11-02 (growth): whether this user already has a SentNotification row from today (Israel date). A user without
+    access gets the long "your trial ended" notice only on the first card of the day; it repeated on every card."""
+    israel_today = alert_hours.israel_now(now).date()
+    day_start = dt.datetime.combine(israel_today, dt.time(0), tzinfo=alert_hours.ISRAEL)
+    return session.scalar(
+        select(SentNotification.id).where(SentNotification.user_id == user_id, SentNotification.sent_at >= day_start).limit(1)
+    ) is not None
+
 
 # Telegram's ~30 msgs/sec is a GLOBAL cap across different chats, not the same-chat limit that
 # actually matters here: one user matching several listings in a row (routine — a burst of new
@@ -264,16 +275,21 @@ async def _notify_new_matches(
 
     for filter_row, user in to_notify:
         user_lang = user.language or DEFAULT_LANG
-        caption = format_caption(
-            listing,
-            has_access=_has_access_for(user),
+        has_access = _has_access_for(user)
+        caption_kwargs = dict(
+            has_access=has_access,
             upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
             view_url=f"{WEBSITE_URL}/apartments?{signed_login_query(user.telegram_user_id)}&listing={listing.id}",
             lang=user_lang,
             access_state=_access_state_for(user),
             below_area_pct=below_pct,
         )
+        caption = format_caption(listing, **caption_kwargs)
         job = _Send(user=user, listing=listing, caption=caption, lang=user_lang)
+        if not has_access:
+            # 2026-11-02 (growth): decided at send time (_send_one), when the cards sent before it are recorded
+            job.short_caption = lambda listing=listing, kw=caption_kwargs: format_caption(listing, full_notice=False, **kw)
+            job.invite = True
         if queue is not None:
             # a morning run: sent later by _send_spread, spaced out per person
             queue.append(job)
@@ -294,6 +310,10 @@ class _Send:
     listing: Listing
     caption: str
     lang: str
+    # 2026-11-02 (growth): for a user without access, the card without the long notice (used after their first card
+    # of the day), and the invite-a-friend button on the card
+    short_caption: Callable[[], str] | None = None
+    invite: bool = False
 
 
 async def _send_one(bot: Bot, session: Session, job: _Send) -> bool:
@@ -301,7 +321,10 @@ async def _send_one(bot: Bot, session: Session, job: _Send) -> bool:
     user = job.user
     if not user.is_active:
         return False  # turned off earlier in this run: the chat turned out to be blocked
-    sent_ok = await send_listing_card(bot, user.telegram_user_id, job.listing, job.caption, job.lang)
+    caption = job.caption
+    if job.short_caption is not None and _had_card_today(session, user.id):
+        caption = job.short_caption()
+    sent_ok = await send_listing_card(bot, user.telegram_user_id, job.listing, caption, job.lang, invite=job.invite)
     await asyncio.sleep(SEND_DELAY_SECONDS)
     if sent_ok is BLOCKED:
         _pause_blocked_user(session, user)
@@ -480,9 +503,12 @@ async def _notify_price_change(
 
     for user in to_notify:
         user_lang = user.language or DEFAULT_LANG
+        has_access = _has_access_for(user)
         caption = format_caption(
             listing,
-            has_access=_has_access_for(user),
+            has_access=has_access,
+            # 2026-11-02 (growth): the long "access ended" notice only on their first card of the day
+            full_notice=has_access or not _had_card_today(session, user.id),
             price_change_from=old_price,
             below_area_pct=below_pct,
             upgrade_url=f"{WEBSITE_URL}/upgrade?{signed_login_query(user.telegram_user_id)}",
@@ -492,7 +518,7 @@ async def _notify_price_change(
         )
         if not user.is_active:
             continue  # turned off earlier in this run: the chat turned out to be blocked
-        sent_ok = await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang)
+        sent_ok = await send_listing_card(bot, user.telegram_user_id, listing, caption, user_lang, invite=not has_access)
         if sent_ok is BLOCKED:
             _pause_blocked_user(session, user)
         elif sent_ok:

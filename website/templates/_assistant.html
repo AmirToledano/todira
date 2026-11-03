@@ -19,6 +19,10 @@
     <header class="asst-head">
       <img src="/static/apple-touch-icon.png" alt="" width="36" height="36">
       <div><b>{{ t('assistant.title') }}</b><span>{{ t('assistant.subtitle') }}</span></div>
+      {# 2026-11-02 (owner): start the chat over #}
+      <button type="button" class="asst-reset" aria-label="{{ t('assistant.reset') }}" title="{{ t('assistant.reset') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M4.6 9A8 8 0 1 1 4 13"/></svg>
+      </button>
       <button type="button" class="asst-close" aria-label="{{ t('assistant.close') }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
       </button>

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ t('calc.title') }} | טודירה{% endblock %}
+{# 2026-11-02 (growth): its own meta description, so Google does not show the home page's one #}
+{% block meta_description %}{{ t('meta.desc_calculator') }}{% endblock %}
 {% block content %}
 {# 2026-10-24 (owner-approved): rent calculator. Medians come from main.py's _rent_medians (our own live listings). #}
 <div class="calc">

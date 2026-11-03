@@ -21,6 +21,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden
 
 from todira_common import alert_hours
+from todira_common.access import has_full_access
 from todira_common.bot_strings import bot_text
 from todira_common.enums import NotificationReason
 from todira_common.language import DEFAULT_LANG
@@ -88,10 +89,13 @@ def due_users(session: Session, now: dt.datetime) -> list[tuple[User, int]]:
         )
     )
     # 2026-11-02 (audit): only inside the person's own alert hours and days (they are asked on a later morning run)
+    # 2026-11-02 (growth): and only someone with full access; a trial-ended user asked "is the search right?" who taps
+    # pause is lost (the owner is already left out above, so is_owner stays False)
     return [
         (user, int(total))
         for user, total in rows
         if f"t{user.telegram_user_id}" not in active and f"u{user.id}" not in active and alert_hours.in_window(user, now)
+        and has_full_access(user)
     ]
 
 

@@ -21,7 +21,7 @@ import re
 
 from config import WEBSITE_URL
 from todira_common import activity, referrals
-from todira_common.access import has_full_access
+from todira_common.access import ACCESS_SUBSCRIPTION_EXPIRED, access_state, has_full_access
 from todira_common.channel_link import CODE_PREFIX as CHANNEL_LINK_CODE_PREFIX
 from todira_common.channel_link import peek_link_code, resolve_link_code
 from todira_common.db import get_session
@@ -175,9 +175,13 @@ def _upsert_or_link_user_sync(tg_user, start_payload: str | None, confirmed: boo
         # mid-onboarding with no filter yet is always still within their fresh trial window.
         if user.filter is not None and not has_full_access(user, is_owner=is_owner):
             cities = html.escape(_format_cities(user.filter.cities, lang))
+            # 2026-11-02 (growth): a truthful text (cards keep coming, the link is locked), with the free way back
+            # (/invite); someone whose paid period ended gets the `_paid` wording instead of "free trial"
+            paid_ended = access_state(user, is_owner=is_owner) == ACCESS_SUBSCRIPTION_EXPIRED
             reply = bot_text(
-                "start.renewal_needed",
+                "start.renewal_needed_paid" if paid_ended else "start.renewal_needed",
                 lang,
+                days=referrals.REWARD_DAYS,
                 name=html.escape(tg_user.first_name or ""),
                 cities_line=bot_text("start.renewal_cities_line", lang, cities=cities) if cities else "",
                 upgrade_url=html.escape(f"{WEBSITE_URL}/upgrade?{signed_login_query(tg_user.id)}"),

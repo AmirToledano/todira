@@ -980,7 +980,9 @@ def _home_map_data() -> dict | None:
 # 2026-10-22 (owner: do visitors press the bot buttons, and who): every tracked button sends one small beacon
 # (base.html). Counted per person per day like the visits - a second press by the same person adds to their count, so
 # repeats show up as more presses than people. The owner's browsers are never counted.
-_CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share"}
+_CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share",
+                  # 2026-11-02 (growth): the public channel links (footer, city pages, shared listing page)
+                  "channel_footer", "channel_rent", "channel_rent_city", "channel_share"}
 
 
 # 2026-10-24 (owner): "report a mistake" on the listing view - goes to the owner's inbox like a /contact message.
@@ -1091,7 +1093,10 @@ async def assistant_reply(request: Request):
     reply = await loop.run_in_executor(None, assistant.answer, turns, lang, PLAN_PRICES_ILS, user_context)
     if _is_person(request) and not _is_owner_browser(request):
         loop.run_in_executor(None, activity.record, "assistant_question", _visitor(request))
-    return JSONResponse({"reply": reply or t("assistant.unavailable")}, headers={"Cache-Control": "no-store"})
+    # 2026-11-02 (owner): follow-up questions after every answer, like the first ones
+    reply, suggestions = assistant.split_suggestions(reply or "")
+    return JSONResponse({"reply": reply or t("assistant.unavailable"), "suggestions": suggestions},
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/home-map")
@@ -1604,9 +1609,11 @@ def rent_in_city(request: Request, city: str):
         return _render(request, "404.html", {}, status_code=404)
     with get_session() as session:
         page = city_pages.city_page(session, city)
+        # 2026-11-02 (growth): a row of links to the other city pages (internal links help Google find them all)
+        other_cities = [c for c in city_pages.city_index(session) if c["city"] != city][:12] if page else []
     if page is None:
         return _render(request, "404.html", {}, status_code=404)
-    return _render(request, "rent_city.html", {"page": page})
+    return _render(request, "rent_city.html", {"page": page, "other_cities": other_cities})
 
 
 @app.get("/moving-checklist")
