@@ -625,7 +625,7 @@ def test_access_card_after_the_trial_ended_offers_a_pass_and_the_invite_link(cli
     access = _access_for(client, _FakeUser(id=2, telegram_user_id=222, trial_ends_at=trial_end))
     assert access["kind"] == "trial_ended"
     assert access["trialEndsAt"] == _he_date(trial_end)
-    assert access["inviteLink"] == website_main.invite_link(2)
+    assert access["inviteLink"] == "https://todira.app/i/" + website_main.invite_code(2)
     assert access["inviteDays"] == 7
 
 
@@ -662,7 +662,7 @@ def test_access_card_after_a_pass_ended_says_when(client):
         client, _FakeUser(id=2, telegram_user_id=222, paid_until=paid_until, trial_ends_at=now - dt.timedelta(days=50)),
     )
     assert access["kind"] == "paid_ended" and access["paidUntil"] == _he_date(paid_until)
-    assert access["inviteLink"] == website_main.invite_link(2)
+    assert access["inviteLink"] == "https://todira.app/i/" + website_main.invite_code(2)
 
 
 def test_access_card_free_days_after_a_pass_ended_are_not_called_a_trial(client):
@@ -767,3 +767,17 @@ def test_account_jsx_keeps_subscription_forms_free_hint_and_copy_feedback():
     assert '"account.free_hint"' in source
     assert 'role="status"' in source and 'aria-live="polite"' in source
     assert '"account.invite_copy_failed"' in source and "selectAllChildren" in source
+
+
+def test_the_invite_page_keeps_the_code_and_offers_the_site_and_telegram():
+    # 2026-11-03 (owner): invite to the site too, and let the friend choose
+    from fastapi.testclient import TestClient
+
+    client = TestClient(website_main.app, follow_redirects=False)
+    code = website_main.invite_code(2)
+    resp = client.get(f"/i/{code}?lang=he")
+    assert resp.status_code == 200
+    assert "קיבלת הזמנה לטודירה" in resp.text
+    assert f'href="https://t.me/AmirDirotBot?start={code}"' in resp.text and 'href="/login?next=/filter"' in resp.text
+    assert resp.headers["X-Robots-Tag"] == "noindex"
+    assert client.get("/i/inv_2_0000000000").headers["location"] == "/"  # a code we did not sign

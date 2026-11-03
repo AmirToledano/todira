@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ t('invite.title') }} | טודירה{% endblock %}
+{% block meta_description %}{{ t('invite.body', days=days) }}{% endblock %}
+{% block og_meta %}
+<meta property="og:title" content="{{ og_t('invite.title') }}">
+<meta property="og:description" content="{{ og_t('invite.body', days=days) }}">
+<meta property="og:image" content="{{ site_url }}static/og-image.jpg?v=1">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+{% endblock %}
+{% block content %}
+{# 2026-11-03 (owner): a friend's invite link (main.py invite_page). The site keeps the code for a Google sign-up; the
+   Telegram button carries it into the bot. Both reward the same way, on the first saved search. #}
+<div class="guide invite">
+  <h1 class="guide-title">{{ t('invite.title') }}</h1>
+  <p class="guide-lead">{{ t('invite.body', days=days) }}</p>
+  <div class="invite-actions">
+    <a class="btn telegram block" href="{{ bot_link }}" target="_blank" rel="noopener" data-track="invite_bot">{{ t('invite.telegram') }}</a>
+    <a class="btn outline block" href="/login?next=/filter" data-track="invite_site">{{ t('invite.site') }}</a>
+  </div>
+  <p class="calc-note">{{ t('invite.both') }}</p>
+</div>
+{% endblock %}
