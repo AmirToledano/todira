@@ -63,3 +63,18 @@ def test_real_flats_on_offer_are_listings():
     for text in ("להשכרה דירת 3 חדרים ברמת גן 6,200 ש\"ח", "מתפנה יחידת דיור בגבעתיים, 4,000 ₪, כניסה מיידית",
                  "סאבלט בחיפה לחודש, 2 חד׳", "דירה יפה למכירה 2.1 מיליון"):
         assert parser.looks_like_listing(text, parser.parse_listing_fields(text)), text
+
+
+def test_ads_written_as_a_question_are_not_seekers():
+    # 2026-11-04 (owner): these reached the leads group; only the last one is someone looking
+    ads = [
+        "🏡 להשכרה – דירת 4 חדרים מרווחת במיוחד! 📍 אברהם אבינו 31 מחפשים דירה מרווחת, מרוהטת ומפנקת? זאת הדירה "
+        "בשבילכם! 🔑 מחיר: 3,400 ₪ בלבד!",
+        "להשכרה בקריית גת - דירת 3 חדרים בשכונת השופטים! מחפשים דירה מרווחת, מוארת ונעימה למגורים? מוזמנים להכיר!",
+        "🏡 ירידת מחיר משמעותית | למכירה בבלעדיות במושב עזר ✨ עכשיו במחיר חדש: 3,900,000 ₪ בלבד ✨ מחפשים בית שמעניק "
+        "איכות חיים? מחכה לכם בית שכיף לפתוח בו את הבוקר",
+    ]
+    for text in ads:
+        assert not parser.looks_like_seeker(text), text[:40]
+    assert parser.looks_like_seeker("היי מפרסמת שובב מחפשת דירה כניסה בדצמבר 2 חדרים מרוהטת קומפלט בחולון ללא תיווך")
+    assert parser.looks_like_seeker("מחפשת דירת 2 חדרים בגבעתיים, מישהו מכיר משהו?")

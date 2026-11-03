@@ -139,6 +139,17 @@ _OFFER_RE = re.compile(
     r"(?<![א-ת])(?:מפנה|מפנים|מפנות|מתפנה|מתפנית|משכיר|משכירה|משכירים|מוכר|מוכרת|מוכרים|"
     r"(?:מחפש|מחפשת|מחפשים|מחפשות)\s+(?:שותף|שותפה|שותפים|שותפות|מחליף|מחליפה|מחליפים|דייר|דיירת|דיירים))(?![א-ת])"
 )
+# 2026-11-04 (owner: the leads group got ads written as a question, "מחפשים דירה מרווחת? זאת הדירה בשבילכם!"): a
+# post that opens by offering ("להשכרה", "למכירה", "ירידת מחיר", after any emoji), or speaks to the reader as an ad does
+# ("בשבילכם", "מחכה לכם", "זאת הדירה", "מחיר: ... בלבד"), is an offer whatever question it asks.
+_OFFER_START_RE = re.compile(
+    r"^[\W\d_]*(?:להשכרה|למכירה|להשכיר|למסירה|ירידת\s+מחיר|בבלעדיות|"
+    r"(?:דירה|דירת|בית|וילה|פנטהאוז|קוטג['׳]?|יחידת\s+דיור|יחידה)[^\n.!?]{0,30}(?<![א-ת])(?:להשכרה|למכירה))"
+)
+_AD_VOICE_RE = re.compile(
+    r"(?<![א-ת])(?:בשבילכם|בשבילך\s*!|מחכה\s+לכם|מחכה\s+לך|זאת\s+הדירה|זו\s+הדירה|זה\s+הבית|הזדמנות\s+(?:מעולה|נדירה|חד)|"
+    r"מחיר\s*:|בלבד\s*!|לא\s+תאמינו)"
+)
 _STREET_RE = re.compile(
     r"(?<![א-ת])(?:ב?רחוב|ב?רח['׳]|ב?שד['׳]|ב?שדרות)\s+([א-ת][א-ת\"'׳״\- ]{1,24}?)\s*(\d{1,3})?(?=[\s,.!\n]|$)"
 )
@@ -150,6 +161,8 @@ def looks_like_seeker(text: str) -> bool:
     if not text:
         return False
     head = text[:200]
+    if _OFFER_START_RE.search(head) or _AD_VOICE_RE.search(text[:600]):
+        return False
     return bool(_SEEKER_RE.search(head)) and not _OFFER_RE.search(head)
 
 
