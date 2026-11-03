@@ -161,9 +161,14 @@ def looks_like_seeker(text: str) -> bool:
     if not text:
         return False
     head = text[:200]
-    if _OFFER_START_RE.search(head) or _AD_VOICE_RE.search(text[:600]):
+    if _OFFER_START_RE.search(head):
         return False
-    return bool(_SEEKER_RE.search(head)) and not _OFFER_RE.search(head)
+    seeker = _SEEKER_RE.search(head)
+    if not seeker or _OFFER_RE.search(head):
+        return False
+    # 2026-11-04 (bug sweep): a post that opens by asking ("מחפשת דירה ..., מחיר: עד 6000") stays a seeker; the ad voice
+    # only overrides a "מחפשים ...?" phrase further into the post
+    return seeker.start() <= 40 or not _AD_VOICE_RE.search(text[:600])
 
 
 # 2026-10-19 (owner: "חדר בדירת שותפות בכרמל... על ציר מוריה" came with no place at all): group posts often name only

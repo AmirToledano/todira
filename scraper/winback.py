@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 from telegram import Bot
 from telegram.error import Forbidden
 
-from todira_common import alert_hours, app_flags
+from todira_common import alert_hours, app_flags, testimonials
+from todira_common.app_flags import get_flag
 from todira_common.access import has_full_access
 from todira_common.bot_strings import bot_text
 from todira_common.enums import NotificationReason
@@ -31,7 +32,8 @@ from todira_common.uid_token import signed_login_query
 
 logger = logging.getLogger(__name__)
 
-MIN_DAYS_AFTER = dt.timedelta(days=2)
+MIN_DAYS_AFTER = dt.timedelta(days=4)  # 2026-11-04 (bug sweep): after the "did you find a flat?" question (2 days)
+FOUND_QUESTION_QUIET = dt.timedelta(days=3)
 MIN_FLATS = 3
 _FLAG = "winback_sent"  # JSON {user_id: access end (ISO) the message was sent for}
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://todira.app").rstrip("/")
@@ -59,6 +61,10 @@ def due_users(session: Session, now: dt.datetime, sent: dict[str, str]) -> list[
             continue
         if sent.get(str(user.id)) == end.isoformat():
             continue
+        # 2026-11-04 (bug sweep): only inside the person's own alert hours and days, and never right after the "did you
+        # find a flat?" question (someone who just said "yes, found" is not pushed to renew)
+        if not alert_hours.in_window(user, now) or _asked_found_lately(session, user.id, now):
+            continue
         flats = session.execute(
             select(func.count()).select_from(SentNotification).where(
                 SentNotification.user_id == user.id,
@@ -69,6 +75,16 @@ def due_users(session: Session, now: dt.datetime, sent: dict[str, str]) -> list[
         if flats >= MIN_FLATS:
             due.append((user, end, int(flats)))
     return due
+
+
+def _asked_found_lately(session: Session, user_id: int, now: dt.datetime) -> bool:
+    value = get_flag(session, testimonials._asked_key(user_id))
+    if not value:
+        return False
+    try:
+        return now - dt.datetime.fromisoformat(value) < FOUND_QUESTION_QUIET
+    except ValueError:
+        return True
 
 
 def message(user: User, end: dt.datetime, flats: int) -> str:

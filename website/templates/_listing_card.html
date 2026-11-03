@@ -97,7 +97,7 @@
       {% endif %}
     </div>
     <div class="top-left-badges">
-      {% if not public_preview %}<span class="source-badge">{{ l.source }}</span>{% endif %}
+      {# 2026-11-04 (bug sweep, owner rule "never name the ad sites"): the source badge is gone for everyone #}
       {% if l.is_broker_listing %}<span class="broker-badge">{{ t('card.broker_badge') }}</span>{% endif %}
       {% if l.reposted_from_at %}<span class="broker-badge">{{ t('card.reposted_badge') }}</span>{% endif %}
     </div>
