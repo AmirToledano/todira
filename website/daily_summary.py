@@ -85,7 +85,8 @@ def collect(session, now: dt.datetime, start: dt.datetime | None = None, end: dt
         "visitors": people("site_visit"),
         "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
         "campaigns": dict(sorted(campaigns.items(), key=lambda kv: -kv[1])),
-        "bot_clicks": people("click_bot_hero", "click_bot_end", "click_bot_menu", "click_bot_nofilter", "click_bot_share"),
+        "bot_clicks": people("click_bot_hero", "click_bot_end", "click_bot_menu", "click_bot_nofilter", "click_bot_share",
+                             "click_bot_preview"),  # 2026-11-04 (owner): from the public /search preview
         "assistant_questions": count(select(func.coalesce(func.sum(ActivityDay.hits), 0)).where(
             ActivityDay.day.between(day, last_day), ActivityDay.kind == "assistant_question")),
         "bot_active": people("bot_message", "bot_button"),

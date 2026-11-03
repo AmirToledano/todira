@@ -65,10 +65,21 @@ def hidden_listing_ids(session: Session, user_id: int) -> set[int]:
     )
 
 
-def matching_listing_rows(session: Session, filter_row: Filter, hidden_ids: set[int] | None = None) -> list:
+def matching_listing_rows(
+    session: Session,
+    filter_row: Filter,
+    hidden_ids: set[int] | None = None,
+    *,
+    since: dt.datetime | None = None,
+    scan_limit: int | None = None,
+) -> list:
     """Every active, non-duplicate listing that matches `filter_row`, newest first, as light rows (only MATCH_COLUMNS,
     attribute access like a Listing). The single place the "which listings match" scan lives: the bot, the website's
-    /apartments and the filter-save summary all use it."""
+    /apartments and the filter-save summary all use it.
+
+    2026-11-04 (owner): the public /search preview (website/main.py) asks only for listings first seen since `since`
+    and reads at most `scan_limit` candidate rows, so a visitor with no account can never start a full-country scan.
+    Both default to None, which is the old behaviour for every other caller."""
     query = (
         select(*MATCH_COLUMNS)
         .where(Listing.deal_type == filter_row.deal_type)
@@ -97,10 +108,15 @@ def matching_listing_rows(session: Session, filter_row: Filter, hidden_ids: set[
         query = query.where(or_(Listing.rooms.is_(None), Listing.rooms >= rooms_min) if unknown_rooms_ok else Listing.rooms >= rooms_min)
     if rooms_max is not None:
         query = query.where(or_(Listing.rooms.is_(None), Listing.rooms <= rooms_max) if unknown_rooms_ok else Listing.rooms <= rooms_max)
+    if since is not None:
+        query = query.where(Listing.first_seen_at >= since)
+    query = query.order_by(Listing.first_seen_at.desc(), Listing.id.desc())
+    if scan_limit is not None:
+        query = query.limit(scan_limit)
     hidden_ids = hidden_ids or set()
     return [
         row
-        for row in session.execute(query.order_by(Listing.first_seen_at.desc(), Listing.id.desc()))
+        for row in session.execute(query)
         if row.id not in hidden_ids and evaluate(filter_row, row).matched
     ]
 
