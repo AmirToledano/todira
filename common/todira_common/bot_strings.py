@@ -578,6 +578,14 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "fr": "Salut ! Ton accès à Todira se termine le {date} ⏰ Pour continuer à recevoir les annonces et les détails, renouvelle ici : {url}",
         "ar": "مرحباً! ينتهي وصولك إلى Todira في {date} ⏰ لمتابعة تلقي الإعلانات والتفاصيل جدّد من هنا: {url}",
     },
+    # 2026-11-03 (owner): one morning message after access ended - scraper/winback.py.
+    "winback.text": {
+        "he": "בוקר טוב! מאז שהגישה שלך לטודירה הסתיימה ב־{date} מצאנו לך {count} דירות חדשות שמתאימות לחיפוש שלך. הן הגיעו אליך בלי הקישור למודעה המקורית. רוצה לפתוח אותן ולקבל את הבאות במלואן? אפשר לחדש כאן: {url}",
+        "en": "Good morning! Since your Todira access ended on {date} we found {count} new flats that match your search. They reached you without the link to the original ad. Want to open them and get the next ones in full? Renew here: {url}",
+        "ru": "Доброе утро! С тех пор как ваш доступ к Todira закончился ({date}), мы нашли для вас новые квартиры по вашему поиску: {count}. Они пришли без ссылки на исходное объявление. Хотите открыть их и получать следующие полностью? Продлить можно здесь: {url}",
+        "fr": "Bonjour ! Depuis la fin de ton accès à Todira le {date}, on t'a trouvé {count} nouveaux appartements qui correspondent à ta recherche. Ils te sont arrivés sans le lien vers l'annonce d'origine. Tu veux les ouvrir et recevoir les prochains en entier ? Renouvelle ici : {url}",
+        "ar": "صباح الخير! منذ انتهاء وصولك إلى Todira في {date} وجدنا لك شققاً جديدة تناسب بحثك، عددها: {count}. وصلتك بدون رابط الإعلان الأصلي. تريد فتحها وتلقي القادمة كاملة؟ جدّد من هنا: {url}",
+    },
     # 2026-10-16 (owner): one message before the free trial ends - scraper/renewal_reminder.py.
     "trial.reminder": {
         "he": "היי! הניסיון החינמי שלך בטודירה נגמר {when} ⏳ רוצה להמשיך לקבל דירות עם כל הפרטים והקישור למודעה? אפשר לשדרג פה: {url}",

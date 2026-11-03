@@ -1,0 +1,57 @@
+name: Diagnose - last week's ads, how many show no description on the site (read-only)
+
+# 2026-11-03 (owner: "many ads have no description, look at the last week yourself"). Runs the site's own cleaning
+# (todira_common.public_text.public_description) on every live ad first seen in the last 7 days, in the bot pod, and
+# prints counts only: per source and deal type, stored without a description, empty after cleaning, and very short.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Count
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$POD" ] || { echo "no running bot pod"; exit 1; }
+          cat > /tmp/d.py <<'PY'
+          import collections, datetime as dt
+          from sqlalchemy import select
+          from todira_common.db import get_session
+          from todira_common.models import Listing
+          from todira_common.public_text import public_description
+          since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)
+          stats = collections.defaultdict(collections.Counter)
+          with get_session() as s:
+              rows = s.execute(select(Listing.source, Listing.deal_type, Listing.description).where(
+                  Listing.first_seen_at >= since, Listing.is_delisted.is_(False), Listing.duplicate_of_id.is_(None)))
+              for source, deal, desc in rows:
+                  c = stats[(source, deal)]
+                  c["live"] += 1
+                  if not desc or not desc.strip():
+                      c["stored_none"] += 1
+                      continue
+                  shown = public_description(desc)
+                  if not shown:
+                      c["empty_after_cleaning"] += 1
+                  elif len(shown) < 40:
+                      c["under_40_chars"] += 1
+                  if len(desc) - len(shown) > 0:
+                      c["cleaning_removed_something"] += 1
+          print(f"{'source':22} {'deal':7} {'live':>6} {'none':>6} {'cleaned_empty':>13} {'short':>6} {'cut':>6}")
+          for (source, deal), c in sorted(stats.items(), key=lambda kv: -kv[1]["live"]):
+              print(f"{source:22} {deal:7} {c['live']:6} {c['stored_none']:6} {c['empty_after_cleaning']:13} "
+                    f"{c['under_40_chars']:6} {c['cleaning_removed_something']:6}")
+          PY
+          kubectl exec -i -n todira "$POD" -- python - < /tmp/d.py
