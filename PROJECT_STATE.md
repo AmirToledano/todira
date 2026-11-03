@@ -1,5 +1,38 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-11-04 — what was added 2026-11-01..04 (read this first, then the 2026-10-29 section below)
+
+- **Owner's Telegram groups** (`todira_common/owner_inbox.py`, `bot/handlers/owner_inbox.py`): the inbox group gets
+  contact form, site feedback, /support, testimonials, payment alerts, owner-post notices, outage/backup alerts, the
+  daily summary and the weekly report. A second group, the **leads group** (a group the owner adds whose name has
+  "לידים"/"leads", or where he writes /leads), gets only Facebook seeker posts. Check with `diagnose-owner-groups.yaml`.
+- **Facebook leads** (`scraper/seeker_leads.py`, run from the groups feed at :24, 08:24-22:24): posts the feed reads as
+  someone looking for a flat (`facebook_groups_text_parser.looks_like_seeker`) go to the leads group with a quote, a
+  link and a ready reply (3 wordings, link `todira.app/?src=fblead`). Once per post, 48 h max age, 25 a run. 2026-11-04:
+  ads written as a question ("מחפשים דירה מרווחת? זאת הדירה בשבילכם") are offers (`_OFFER_START_RE`, `_AD_VOICE_RE`).
+- **Win-back** (`scraper/winback.py`): one morning message after access ended (2+ days ago, 3+ matching cards since),
+  with the count and a signed-in /upgrade link; once per ended access (app_flags `winback_sent`).
+- **Weekly report** (`scraper/weekly_report.py`): Sunday 09:00-12:00 to the inbox group, counts only.
+- **Sources**: `todira.app/?src=<name>` and `t.me/AmirDirotBot?start=<name>` are counted (`src_<name>`); the admin
+  dashboard builds both. Names in use: fblead, fb_group, fb_profile, fb_city, fb_students, fb_couples, fb_olim,
+  ig_bio, ig_story, tiktok, whatsapp, tg_group, invite.
+- **Invites on the site**: /account's link is `todira.app/i/<code>` (page offers Telegram or the site; Google sign-up
+  stores the inviter; reward on the first saved search, same as the bot). Share sheet button + new share text.
+- **/upgrade**: "what Todira already found for you" (matching cards sent, from owners, since access ended or last week).
+- **/reviews**: every approved testimonial; site feedback may be shown unless "don't publish" is ticked (said under the
+  form and in privacy section 1); the owner approves on /admin/messages. `show-testimonial.yaml` for one-offs.
+- **Languages**: es, pt, hi, fil, th, zh for site and bot (`website/i18n_langs/`, `common/todira_common/bot_langs/`,
+  loaded last in i18n.py), globe menu without flags. Missing keys fall back to English, then Hebrew.
+- **Site**: /account "המנוי שלי" card for every access state; menu with icons, "עוד" and an owner "ניהול" section;
+  assistant reset button and follow-up chips; "היום" on the home city question.
+- **Data fixes**: `todira_common/price_sanity.py` (rent/sale mix-ups, placeholder prices).
+- **AWS (owner's account)**: Todira is only the Stockholm (eu-north-1) instance, its 20 GB disk and Elastic IP; the
+  backup key is the IAM user `todira-backup-bot` (S3 only). The owner's Terraform studies use eu-west-1; root access key
+  deactivated, use an IAM user (`docs/aws-terraform-user.md`). Free Tier credit covers the bill for now; without it
+  about $20-22/month.
+- **Waiting on others**: Takbull/UPAY to enable Bit, Apple Pay, Google Pay on the terminal (Apple Pay domain file is
+  served at /.well-known/apple-developer-merchantid-domain-association).
+
 ## ▶ 2026-10-29 — where things stand (read this first)
 
 ### What is live
