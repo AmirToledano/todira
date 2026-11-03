@@ -61,7 +61,22 @@ def set_shown(session: Session, message_id: int, shown: bool) -> None:
     set_flag(session, _show_key(message_id), "1" if shown else "0")
 
 
-def shown_testimonials(session: Session, limit: int = 6) -> list[ContactMessage]:
+# 2026-11-03 (owner): site feedback can be shown too, when the writer ticked "you may show this on the site" (the
+# feedback form's own checkbox). Without that tick the owner cannot put it on the site.
+def _public_ok_key(message_id: int) -> str:
+    return f"testimonial_public_ok:{message_id}"
+
+
+def mark_public_ok(session: Session, message_id: int) -> None:
+    set_flag(session, _public_ok_key(message_id), "1")
+
+
+def can_show(session: Session, row: ContactMessage) -> bool:
+    row_id = getattr(row, "id", None)
+    return row.source == SOURCE or (row_id is not None and get_flag(session, _public_ok_key(row_id)) == "1")
+
+
+def shown_testimonials(session: Session, limit: int | None = 6) -> list[ContactMessage]:
     """Testimonials the owner approved for the site, newest first."""
     shown_ids = [
         int(key.rsplit(":", 1)[1])
@@ -75,7 +90,7 @@ def shown_testimonials(session: Session, limit: int = 6) -> list[ContactMessage]
     return list(
         session.scalars(
             select(ContactMessage)
-            .where(ContactMessage.id.in_(shown_ids), ContactMessage.source == SOURCE)
+            .where(ContactMessage.id.in_(shown_ids))
             .order_by(ContactMessage.created_at.desc())
             .limit(limit)
         )

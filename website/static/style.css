@@ -2613,3 +2613,10 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .rent-more h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .rent-more-links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; }
 .rent-more-links a { color: var(--teal); }
+
+/* 2026-11-03: /reviews, the approved testimonials (same look as the home page's section) */
+.reviews-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin: 24px 0; }
+.reviews-list figure { margin: 0; padding: 20px 22px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
+.reviews-list blockquote { margin: 0; font-size: 1.05rem; line-height: 1.65; color: var(--text); white-space: pre-line; }
+.reviews-list figcaption { margin-top: 10px; font-weight: 800; color: var(--teal); }
+.reviews-write { margin-top: 18px; }

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ t('reviews.title') }} | טודירה{% endblock %}
+{% block meta_description %}{{ t('reviews.lead') }}{% endblock %}
+{% block content %}
+{# 2026-11-03 (owner): every testimonial the owner approved (todira_common/testimonials.py), on a page of its own. #}
+<div class="guide reviews">
+  <h1 class="guide-title">{{ t('reviews.title') }}</h1>
+  <p class="guide-lead">{{ t('reviews.lead') }}</p>
+  {% if testimonials %}
+  <div class="reviews-list">
+    {% for item in testimonials %}
+    <figure><blockquote>{{ item.message }}</blockquote>{% if item.name %}<figcaption>{{ item.name }}</figcaption>{% endif %}</figure>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="calc-note">{{ t('reviews.empty') }}</p>
+  {% endif %}
+  <p class="reviews-write"><a class="btn outline" href="/contact?topic=feedback">{{ t('reviews.write') }}</a></p>
+</div>
+{% endblock %}

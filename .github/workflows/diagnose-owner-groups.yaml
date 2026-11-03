@@ -1,0 +1,51 @@
+name: Diagnose - which Telegram groups get the owner's messages (read-only)
+
+# 2026-11-03 (owner: a site feedback reached his private chat instead of the inbox group). Prints, for the inbox group
+# and the leads group the bot has stored: whether one is set, whether they are the same group, and what Telegram says
+# about each (title, type, bot's status there). Group ids are not printed.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Check
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$POD" ] || { echo "no running bot pod"; exit 1; }
+          cat > /tmp/g.py <<'PY'
+          import os, httpx
+          from todira_common.app_flags import get_flag
+          from todira_common.db import get_session
+          from todira_common.owner_inbox import INBOX_FLAG, LEADS_FLAG
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          api = f"https://api.telegram.org/bot{token}"
+          me = httpx.get(f"{api}/getMe", timeout=10).json()["result"]["id"]
+          with get_session() as s:
+              ids = {"inbox": get_flag(s, INBOX_FLAG) or "", "leads": get_flag(s, LEADS_FLAG) or ""}
+          print("inbox set:", bool(ids["inbox"]), "| leads set:", bool(ids["leads"]),
+                "| same group:", bool(ids["inbox"]) and ids["inbox"] == ids["leads"])
+          for name, chat_id in ids.items():
+              if not chat_id:
+                  continue
+              chat = httpx.get(f"{api}/getChat", params={"chat_id": chat_id}, timeout=10).json()
+              member = httpx.get(f"{api}/getChatMember", params={"chat_id": chat_id, "user_id": me}, timeout=10).json()
+              if chat.get("ok"):
+                  r = chat["result"]
+                  print(f"{name}: '{r.get('title')}' type={r.get('type')} bot={member.get('result', {}).get('status')}")
+              else:
+                  print(f"{name}: Telegram says {chat.get('description')} (migrated: {'migrate_to_chat_id' in str(chat)})")
+          PY
+          kubectl exec -i -n todira "$POD" -- python - < /tmp/g.py

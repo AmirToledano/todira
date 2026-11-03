@@ -39,7 +39,7 @@
         <div class="amc-meta"><span>Telegram ID: {{ m.telegram_user_id }}</span></div>
       {% endif %}
       <p class="amc-body">{{ m.message }}</p>
-      {% if m.source == 'testimonial' %}
+      {% if m.id in showable_ids %}
       <form method="post" action="/admin/messages/{{ m.id }}/show">
         {% if m.id in shown_ids %}
         <input type="hidden" name="show" value="0"><span>מוצגת בדף הבית</span> <button type="submit" class="btn outline">להסיר מהאתר</button>

@@ -329,3 +329,4 @@ body:has(.lp) .site-ambient { display: none; }
   .lp-how, .lp-prices { grid-template-columns: 1fr; gap: 30px; }
   .lp-paper { padding: 58px 20px 24px; }
 }
+.lp-said-all { margin-top: 18px; font-weight: 700; }

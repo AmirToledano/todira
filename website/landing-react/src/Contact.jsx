@@ -12,6 +12,8 @@ export default function Contact() {
   const feedback = topic === "feedback";
   const [message, setMessage] = useState("");
   const [consent, setConsent] = useState(false);
+  // 2026-11-03: feedback only - may the owner show it on the site (/reviews)? Optional, off by default.
+  const [publicOk, setPublicOk] = useState(false);
   const [status, setStatus] = useState("idle");
   const [errorKind, setErrorKind] = useState(null);
 
@@ -30,6 +32,7 @@ export default function Contact() {
           uid: uid != null ? String(uid) : "",
           consent,
           topic: topic || "",
+          public: feedback && publicOk,
         }),
       });
       // Validation failures come back as 200 {ok:false, error:...} — see /api/contact's own
@@ -115,6 +118,13 @@ export default function Contact() {
                   onChange={(e) => setMessage(e.target.value)}
                 />
               </div>
+
+              {feedback && (
+                <label className="check-chip" style={{ textAlign: "start", display: "flex", gap: 6, marginBottom: 10 }}>
+                  <input type="checkbox" checked={publicOk} onChange={(e) => setPublicOk(e.target.checked)} />
+                  <span>{t("contact.feedback_public")}</span>
+                </label>
+              )}
 
               <label className="check-chip" style={{ textAlign: "start", display: "flex", gap: 6, marginBottom: 10 }}>
                 <input

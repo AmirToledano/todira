@@ -160,3 +160,46 @@ def test_home_without_testimonials_has_no_empty_section(client):
     with patch.object(website_main, "_home_testimonials", lambda: []):
         resp = client.get("/")
     assert "מה אומרים עלינו" not in resp.text
+
+
+def test_reviews_page_lists_every_approved_testimonial(client):
+    quotes = [SimpleNamespace(message=f"המלצה {i}", name=f"שם {i}") for i in range(9)]
+    with patch.object(website_main, "_home_testimonials", lambda limit=6: quotes if limit is None else quotes[:limit]):
+        resp = client.get("/reviews?lang=he")
+    assert resp.status_code == 200
+    assert "מה אומרים על טודירה" in resp.text and "המלצה 8" in resp.text
+    assert 'href="/reviews"' in resp.text  # in the menu
+    with patch.object(website_main, "_home_testimonials", lambda limit=6: []):
+        assert "עוד אין כאן המלצות" in client.get("/reviews?lang=he").text
+
+
+def test_site_feedback_can_be_offered_for_the_site_only_with_the_tick(monkeypatch):
+    import asyncio
+    from contextlib import contextmanager
+
+    saved, marked, notes = [], [], []
+
+    class _Session:
+        def add(self, row):
+            row.id = 41
+            saved.append(row)
+
+        def commit(self):
+            pass
+
+        def get(self, model, pk):
+            return None
+
+    @contextmanager
+    def _session():
+        yield _Session()
+
+    monkeypatch.setattr(website_main, "get_session", _session)
+    monkeypatch.setattr(website_main.testimonials, "mark_public_ok", lambda session, mid: marked.append(mid))
+    monkeypatch.setattr(website_main, "_notify_owner_sync", lambda *a: notes.append(a) or False)
+    run = website_main._process_contact_message
+    asyncio.run(run("רני", "", "מצאתי דירה", "", True, "feedback", True))
+    asyncio.run(run("רני", "", "שאלה", "", True, "", True))  # not feedback: the tick means nothing
+    asyncio.run(run("רני", "", "מצאתי", "", True, "feedback", False))
+    assert marked == [41]
+    assert [a[-1] for a in notes] == [True, False, False]

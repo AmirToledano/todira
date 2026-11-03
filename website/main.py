@@ -441,7 +441,7 @@ OWNER_PAYBOX_URL = os.environ.get("OWNER_PAYBOX_URL", "").strip()
 
 
 def _notify_owner_sync(
-    name: str, email: str, message: str, telegram_user_id: int | None, feedback: bool = False
+    name: str, email: str, message: str, telegram_user_id: int | None, feedback: bool = False, public: bool = False
 ) -> bool:
     """Best-effort — returns whether the Telegram push succeeded. Never raises: a broken/missing
     token or chat id must never lose the contact message itself (already committed to the DB by
@@ -462,6 +462,8 @@ def _notify_owner_sync(
         lines.append(f"Telegram user ID: {telegram_user_id}")
     lines.append("")
     lines.append(html.escape(message))
+    if public:
+        lines += ["", "✅ הסכימו שנציג את זה באתר. אפשר להוסיף להמלצות בעמוד ההודעות בניהול."]
     for chat_id in owner_inbox.owner_chat_ids(OWNER_TELEGRAM_USER_ID):
         try:
             resp = httpx.post(
@@ -1205,16 +1207,22 @@ def home(request: Request):
     )
 
 
+@app.get("/reviews")
+def reviews(request: Request):
+    """2026-11-03 (owner): every testimonial the owner approved, on a page of its own."""
+    return _render(request, "reviews.html", {"testimonials": _home_testimonials(limit=None)})
+
+
 # 2026-10-22 (owner): "why I founded Todira" on the home page - with the owner's photo once he sends one (dropped in as
 # static/founder.jpg; until then the section is text only).
 _FOUNDER_PHOTO = "founder.jpg"
 
 
-def _home_testimonials() -> list:
-    """Testimonials the owner approved for the site (todira_common/testimonials.py). Never breaks the home page."""
+def _home_testimonials(limit: int | None = 6) -> list:
+    """Testimonials the owner approved for the site (todira_common/testimonials.py). Never breaks the page."""
     try:
         with get_session() as session:
-            rows = testimonials.shown_testimonials(session)
+            rows = testimonials.shown_testimonials(session, limit)
             for row in rows:
                 session.expunge(row)
             return rows
@@ -2012,10 +2020,11 @@ class ContactSubmission(BaseModel):
     uid: str = ""
     consent: bool = False
     topic: str = ""  # "feedback" when the form was opened from the feedback bubble
+    public: bool = False  # 2026-11-03: feedback only - "you may show this on the site with my name"
 
 
 async def _process_contact_message(
-    name: str, email: str, message: str, uid_raw: str, consent: bool, topic: str = ""
+    name: str, email: str, message: str, uid_raw: str, consent: bool, topic: str = "", public: bool = False
 ) -> dict:
     """Validates, saves to ContactMessage, and best-effort notifies the owner via Telegram — the
     core of the old form-encoded POST /contact, now the body of POST /api/contact below (the only
@@ -2032,6 +2041,7 @@ async def _process_contact_message(
         return {"ok": False, "error": "consent"}
 
     telegram_user_id = int(uid_raw) if uid_raw.strip().isdigit() else None
+    public = public and topic == "feedback"
 
     def _save_sync() -> int:
         with get_session() as session:
@@ -2044,6 +2054,8 @@ async def _process_contact_message(
             )
             session.add(row)
             session.commit()
+            if public:
+                testimonials.mark_public_ok(session, row.id)
             return row.id
 
     def _mark_notified_sync(contact_message_id: int) -> None:
@@ -2058,7 +2070,7 @@ async def _process_contact_message(
     # call can't leave the request hanging forever; the message is already safely in the DB above
     # regardless of whether this succeeds.
     notified = await asyncio.to_thread(
-        _notify_owner_sync, name.strip(), email.strip(), message, telegram_user_id, topic == "feedback"
+        _notify_owner_sync, name.strip(), email.strip(), message, telegram_user_id, topic == "feedback", public
     )
     if notified:
         await asyncio.to_thread(_mark_notified_sync, contact_message_id)
@@ -2075,7 +2087,7 @@ async def contact_submit(payload: ContactSubmission) -> dict:
     responses for expected, recoverable input errors (an actual 5xx still means something
     unexpected broke)."""
     return await _process_contact_message(
-        payload.name, payload.email, payload.message, payload.uid, payload.consent, payload.topic
+        payload.name, payload.email, payload.message, payload.uid, payload.consent, payload.topic, payload.public
     )
 
 
@@ -2829,9 +2841,12 @@ def admin_messages(request: Request):
             select(ContactMessage).order_by(ContactMessage.created_at.desc()).limit(200)
         ).all()
 
-        shown_ids = {m.id for m in messages if m.source == testimonials.SOURCE and testimonials.is_shown(session, m.id)}
+        showable_ids = {m.id for m in messages if testimonials.can_show(session, m)}
+        shown_ids = {m_id for m_id in showable_ids if testimonials.is_shown(session, m_id)}
 
-    return _render(request, "admin_messages.html", {"messages": messages, "shown_ids": shown_ids})
+    return _render(
+        request, "admin_messages.html", {"messages": messages, "shown_ids": shown_ids, "showable_ids": showable_ids}
+    )
 
 
 @app.post("/admin/messages/{message_id}/show")
@@ -2841,7 +2856,7 @@ def admin_testimonial_show(request: Request, message_id: int, show: str = Form("
         if _require_owner(request, session) is None:
             return _render(request, "404.html", {}, status_code=404)
         row = session.get(ContactMessage, message_id)
-        if row is not None and row.source == testimonials.SOURCE:
+        if row is not None and testimonials.can_show(session, row):
             testimonials.set_shown(session, message_id, show == "1")
     return RedirectResponse("/admin/messages", status_code=303)
 
