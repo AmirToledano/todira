@@ -4210,5 +4210,122 @@ TRANSLATIONS.update({
 })
 
 
+# 2026-11-04 (owner): the neighbourhood pages, /rent/<city>/<neighbourhood> (website/city_pages.py). New keys
+# under hood.*, not exported to the React landing's content.json, so no rebuild is needed.
+TRANSLATIONS.update({
+    "hood.meta_title": {
+        "he": "דירות להשכרה ב{hood}, {city}: מחירים ודירות חדשות | טודירה",
+        "en": "Flats for rent in {hood}, {city}: prices and new flats | Todira",
+        "ru": "Аренда квартир: {hood}, {city}. Цены и новые квартиры | Todira",
+        "fr": "Appartements à louer à {hood}, {city} : prix et nouveautés | Todira",
+        "ar": "شقق للإيجار في {hood}، {city}: الأسعار والشقق الجديدة | توديرا",
+    },
+    "hood.meta_description": {
+        "he": "כמה עולה לשכור דירה ב{hood} ב{city}, לפי {total} דירות שעלו ב־30 הימים האחרונים, איך זה לעומת העיר כולה, והדירות החדשות ביותר.",
+        "en": "What renting in {hood}, {city} costs, from {total} flats posted in the last 30 days, how it compares with the whole city, and the newest flats.",
+        "ru": "Сколько стоит аренда в районе {hood} ({city}), по {total} квартирам за 30 дней, сравнение со всем городом и самые новые квартиры.",
+        "fr": "Ce que coûte la location à {hood} ({city}), d'après {total} appartements publiés en 30 jours, la comparaison avec toute la ville et les plus récents.",
+        "ar": "كم يكلف الاستئجار في {hood} في {city}، حسب {total} شقة نُشرت في آخر 30 يوماً، مقارنة بالمدينة كلها، وأحدث الشقق.",
+    },
+    "hood.title": {
+        "he": "דירות להשכרה ב{hood}, {city}",
+        "en": "Flats for rent in {hood}, {city}",
+        "ru": "Квартиры в аренду: {hood}, {city}",
+        "fr": "Appartements à louer à {hood}, {city}",
+        "ar": "شقق للإيجار في {hood}، {city}",
+    },
+    "hood.lead": {
+        "he": "לפי {total} דירות להשכרה שעלו ב{hood} ב־30 הימים האחרונים.",
+        "en": "From {total} flats for rent posted in {hood} in the last 30 days.",
+        "ru": "По {total} квартирам в аренду в районе {hood} за последние 30 дней.",
+        "fr": "D'après {total} appartements à louer publiés à {hood} ces 30 derniers jours.",
+        "ar": "حسب {total} شقة للإيجار نُشرت في {hood} في آخر 30 يوماً.",
+    },
+    "hood.compare_more": {
+        "he": "דירת {rooms} חד׳ כאן עולה בדרך כלל ₪{price}, {pct}% יותר מהמחיר האמצעי ב{city}.",
+        "en": "A {rooms}-room flat here usually costs ₪{price}, {pct}% more than the median in {city}.",
+        "ru": "Квартира на {rooms} комн. здесь обычно стоит ₪{price}, на {pct}% дороже медианы по городу {city}.",
+        "fr": "Un {rooms} pièces coûte ici en général ₪{price}, {pct}% de plus que la médiane de {city}.",
+        "ar": "شقة من {rooms} غرف هنا تكلف عادة ₪{price}، أي أكثر بـ{pct}% من الوسيط في {city}.",
+    },
+    "hood.compare_less": {
+        "he": "דירת {rooms} חד׳ כאן עולה בדרך כלל ₪{price}, {pct}% פחות מהמחיר האמצעי ב{city}.",
+        "en": "A {rooms}-room flat here usually costs ₪{price}, {pct}% less than the median in {city}.",
+        "ru": "Квартира на {rooms} комн. здесь обычно стоит ₪{price}, на {pct}% дешевле медианы по городу {city}.",
+        "fr": "Un {rooms} pièces coûte ici en général ₪{price}, {pct}% de moins que la médiane de {city}.",
+        "ar": "شقة من {rooms} غرف هنا تكلف عادة ₪{price}، أي أقل بـ{pct}% من الوسيط في {city}.",
+    },
+    "hood.compare_same": {
+        "he": "דירת {rooms} חד׳ כאן עולה בדרך כלל ₪{price}, בערך כמו המחיר האמצעי ב{city}.",
+        "en": "A {rooms}-room flat here usually costs ₪{price}, about the same as the median in {city}.",
+        "ru": "Квартира на {rooms} комн. здесь обычно стоит ₪{price}, примерно как медиана по городу {city}.",
+        "fr": "Un {rooms} pièces coûte ici en général ₪{price}, à peu près comme la médiane de {city}.",
+        "ar": "شقة من {rooms} غرف هنا تكلف عادة ₪{price}، تقريباً مثل الوسيط في {city}.",
+    },
+    "hood.rooms_title": {
+        "he": "כמה עולה דירה ב{hood}, לפי חדרים",
+        "en": "What a flat costs in {hood}, by rooms",
+        "ru": "Сколько стоит квартира в районе {hood}, по комнатам",
+        "fr": "Ce que coûte un appartement à {hood}, par pièces",
+        "ar": "كم تكلف الشقة في {hood}، حسب الغرف",
+    },
+    "hood.col_here": {
+        "he": "כאן",
+        "en": "Here",
+        "ru": "Здесь",
+        "fr": "Ici",
+        "ar": "هنا",
+    },
+    "hood.col_city": {
+        "he": "ב{city}",
+        "en": "In {city}",
+        "ru": "{city}",
+        "fr": "À {city}",
+        "ar": "في {city}",
+    },
+    "hood.col_diff": {
+        "he": "הפרש",
+        "en": "Difference",
+        "ru": "Разница",
+        "fr": "Écart",
+        "ar": "الفرق",
+    },
+    "hood.newest_title": {
+        "he": "הדירות האחרונות שעלו ב{hood}",
+        "en": "The latest flats in {hood}",
+        "ru": "Последние квартиры в районе {hood}",
+        "fr": "Les derniers appartements à {hood}",
+        "ar": "أحدث الشقق في {hood}",
+    },
+    "hood.cta": {
+        "he": "לקבל כל דירה חדשה ב{hood} לטלגרם, ברגע שהיא עולה",
+        "en": "Get every new flat in {hood} on Telegram the moment it is posted",
+        "ru": "Получать каждую новую квартиру в районе {hood} в Telegram сразу после публикации",
+        "fr": "Recevoir chaque nouvel appartement à {hood} sur Telegram dès sa publication",
+        "ar": "استلم كل شقة جديدة في {hood} على تيليغرام لحظة نشرها",
+    },
+    "hood.city_link": {
+        "he": "כל המחירים והדירות ב{city}",
+        "en": "All prices and flats in {city}",
+        "ru": "Все цены и квартиры: {city}",
+        "fr": "Tous les prix et appartements à {city}",
+        "ar": "كل الأسعار والشقق في {city}",
+    },
+    "hood.row_title": {
+        "he": "שכונות",
+        "en": "Neighbourhoods",
+        "ru": "Районы",
+        "fr": "Quartiers",
+        "ar": "الأحياء",
+    },
+    "hood.more": {
+        "he": "שכונות נוספות ב{city}",
+        "en": "More neighbourhoods in {city}",
+        "ru": "Другие районы: {city}",
+        "fr": "Autres quartiers à {city}",
+        "ar": "أحياء أخرى في {city}",
+    },
+})
+
 # Last, after every TRANSLATIONS.update above, so a language file can translate those keys too.
 _load_lang_files()

@@ -32,6 +32,10 @@ NEWEST = 8
 TTL_SECONDS = 3600
 INDEX_CITIES = 40
 _NOT_A_NEIGHBORHOOD = "שאר העיר"
+# 2026-11-04 (owner): a page per neighbourhood too (/rent/<city>/<neighbourhood>), for searches like "דירות להשכרה
+# בהדר". Same rules as a city: only flats of the last 30 days, a rooms row only with MIN_PER_ROOMS flats behind it, and
+# a neighbourhood with fewer than MIN_HOOD_LISTINGS rentals (or no rooms row at all) gets no page, so none goes up thin.
+MIN_HOOD_LISTINGS = 10
 
 # 2026-10-31: the first live visits took 16 s for /rent and 3 to 6 s per city (measured from outside after the deploy;
 # diagnose-city-pages-speed.yaml showed every query reading the whole 30-day window from disk). So all cities are now
@@ -60,6 +64,25 @@ def _median(values) -> int:
     return int(round(float(statistics.median(values)), -1))
 
 
+def _hood_name(neighborhood: str | None) -> str | None:
+    """The neighbourhood as a page name, or None for no neighbourhood, "the rest of the city" or a name no URL keeps."""
+    name = (neighborhood or "").strip()
+    if not name or name == _NOT_A_NEIGHBORHOOD or set(name) <= {".", "/"}:
+        return None
+    return name
+
+
+def _diff_percent(here: int, city: int | None) -> int | None:
+    """How much more (or less, negative) a neighbourhood's median is than the city's, in whole percent."""
+    if not city:
+        return None
+    return int(round((here - city) * 100 / city))
+
+
+def _newest_first(heap: list) -> list[dict]:
+    return [item[2] for item in sorted(heap, key=lambda item: item[:2], reverse=True)]
+
+
 def build(session, now: dt.datetime) -> tuple[list[dict], dict[str, dict]]:
     """(the index, every city's page) from one pass over the rentals first seen in the last 30 days."""
     count: dict[str, int] = defaultdict(int)
@@ -69,6 +92,10 @@ def build(session, now: dt.datetime) -> tuple[list[dict], dict[str, dict]]:
     neighborhoods: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     up_days: dict[str, list[float]] = defaultdict(list)
     newest: dict[str, list] = defaultdict(list)
+    # 2026-11-04 (owner): the neighbourhood pages come from this same pass, so they cost no query of their own
+    hood_count: dict[tuple[str, str], int] = defaultdict(int)
+    hood_rooms: dict[tuple[str, str], dict[int, list[int]]] = defaultdict(lambda: defaultdict(list))
+    hood_newest: dict[tuple[str, str], list] = defaultdict(list)
     week_from, cohort_to = now - dt.timedelta(days=7), now - GONE_COHORT_FROM
     query = select(
         Listing.id, Listing.city, Listing.neighborhood, Listing.street, Listing.rooms, Listing.price, Listing.size_sqm,
@@ -79,8 +106,14 @@ def build(session, now: dt.datetime) -> tuple[list[dict], dict[str, dict]]:
         count[city] += 1
         if first_seen >= week_from:
             week[city] += 1
+        hood = _hood_name(neighborhood)
+        if hood is not None:
+            hood_count[(city, hood)] += 1
         if rooms is not None and 1 <= rooms <= 12:
-            by_rooms[city][5 if rooms >= 5 else int(math.floor(rooms))].append(price)
+            bucket = 5 if rooms >= 5 else int(math.floor(rooms))
+            by_rooms[city][bucket].append(price)
+            if hood is not None:
+                hood_rooms[(city, hood)][bucket].append(price)
         if rooms is not None and 3 <= rooms <= 3.5:
             three[city].append(price)
             if neighborhood is not None and neighborhood != _NOT_A_NEIGHBORHOOD:
@@ -90,14 +123,20 @@ def build(session, now: dt.datetime) -> tuple[list[dict], dict[str, dict]]:
         # only when it is under 14 days, where the answer can't be cut short by the window.
         if first_seen <= cohort_to:
             up_days[city].append(((delisted_at or now) - first_seen).total_seconds() / 86400)
-        heap = newest[city]
-        if photo and not is_delisted and (len(heap) < NEWEST or (first_seen, listing_id) > heap[0][:2]):
-            item = (first_seen, listing_id, {
-                "price": price, "rooms": rooms, "neighborhood": neighborhood, "street": street, "size": size,
-                "photo": photo, "link": share.share_path(listing_id), "first_seen_at": first_seen,
-            })
-            (heapq.heappush if len(heap) < NEWEST else heapq.heapreplace)(heap, item)
+        if photo and not is_delisted:
+            flat = None
+            for heap in (newest[city], hood_newest[(city, hood)] if hood is not None else None):
+                if heap is None or not (len(heap) < NEWEST or (first_seen, listing_id) > heap[0][:2]):
+                    continue
+                flat = flat or {
+                    "price": price, "rooms": rooms, "neighborhood": neighborhood, "street": street, "size": size,
+                    "photo": photo, "link": share.share_path(listing_id), "first_seen_at": first_seen,
+                }
+                (heapq.heappush if len(heap) < NEWEST else heapq.heapreplace)(heap, (first_seen, listing_id, flat))
 
+    hoods_of: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    for (hood_city, name), total_here in hood_count.items():
+        hoods_of[hood_city].append((name, total_here))
     pages: dict[str, dict] = {}
     for city, total in count.items():
         if total < MIN_LISTINGS:
@@ -109,17 +148,40 @@ def build(session, now: dt.datetime) -> tuple[list[dict], dict[str, dict]]:
             if len(prices) >= MIN_PER_ROOMS
         ]
         hoods = sorted(hoods, key=lambda n: (-n["count"], n["name"]))[:10]
+        city_rooms = {
+            rooms: _median(prices) for rooms, prices in by_rooms[city].items() if len(prices) >= MIN_PER_ROOMS
+        }
         pages[city] = {
             "city": city, "total": total, "week": week[city],
             "by_rooms": [
-                {"rooms": rooms, "median": _median(prices), "count": len(prices)}
-                for rooms, prices in sorted(by_rooms[city].items())
-                if len(prices) >= MIN_PER_ROOMS
+                {"rooms": rooms, "median": city_rooms[rooms], "count": len(by_rooms[city][rooms])}
+                for rooms in sorted(city_rooms)
             ],
             "gone_days": round(gone) if gone is not None and gone < 14 else None,
             "neighborhoods": sorted(hoods, key=lambda n: n["median"]),
-            "newest": [item[2] for item in sorted(newest[city], key=lambda item: item[:2], reverse=True)],
+            "newest": _newest_first(newest[city]),
         }
+        hood_pages = {}
+        for name, total_here in hoods_of[city]:
+            if total_here < MIN_HOOD_LISTINGS:
+                continue
+            rows = []
+            for rooms, prices in sorted(hood_rooms[(city, name)].items()):
+                if len(prices) >= MIN_PER_ROOMS:
+                    median = _median(prices)
+                    rows.append({"rooms": rooms, "median": median, "count": len(prices),
+                                 "city_median": city_rooms.get(rooms), "diff": _diff_percent(median, city_rooms.get(rooms))})
+            if not rows:
+                continue
+            compared = [row for row in rows if row["diff"] is not None]
+            hood_pages[name] = {
+                "city": city, "name": name, "total": total_here, "by_rooms": rows,
+                # the sentence under the title compares the rooms row with the most flats behind it
+                "headline": max(compared, key=lambda row: (row["count"], -row["rooms"])) if compared else None,
+                "newest": _newest_first(hood_newest[(city, name)]),
+            }
+        pages[city]["hood_pages"] = hood_pages
+        pages[city]["hood_links"] = sorted(hood_pages, key=lambda name: (-hood_pages[name]["total"], name))
     index = [
         {"city": city, "count": page["total"], "median3": _median(three[city]) if three[city] else None}
         for city, page in sorted(pages.items(), key=lambda kv: (-kv[1]["total"], kv[0]))
@@ -162,3 +224,24 @@ def city_index(session) -> list[dict]:
 def city_page(session, city: str) -> dict | None:
     """Everything the city page shows, or None when the city has too few rentals for a page."""
     return _current(session)["pages"].get(city)
+
+
+def neighbourhood_page(session, city: str, name: str) -> dict | None:
+    """2026-11-04 (owner): one neighbourhood's page, or None when it has too few rentals (or its city has no page)."""
+    page = _current(session)["pages"].get(city)
+    return (page.get("hood_pages") or {}).get(name) if page else None
+
+
+def neighbourhood_links(session, city: str) -> list[str]:
+    """2026-11-04 (owner): the city's neighbourhoods that have a page, most rentals first."""
+    page = _current(session)["pages"].get(city)
+    return list(page.get("hood_links") or ()) if page else []
+
+
+def neighbourhood_index(session) -> list[tuple[str, str]]:
+    """2026-11-04 (owner): (city, neighbourhood) for every neighbourhood page, for the sitemap."""
+    return [
+        (city, name)
+        for city, page in sorted(_current(session)["pages"].items())
+        for name in page.get("hood_links") or ()
+    ]

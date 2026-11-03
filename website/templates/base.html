@@ -83,7 +83,9 @@
        lang param carries through — any other query string (a per-visitor identifier, say) is
        dropped, since that isn't a language variant and shouldn't be treated as its own indexable
        page. -->
-  {% set _clean_path = request.url.path.lstrip('/') %}
+  {# 2026-11-04 (owner): quoted, so a page like /rent/<city>/<neighbourhood> with a space or a "/" in its name gets a
+     valid canonical address, the same one the sitemap lists (plain ASCII paths come out unchanged) #}
+  {% set _clean_path = canonical_path if canonical_path is defined else (request.url.path.lstrip('/') | urlencode) %}
   <link rel="canonical" href="{{ site_url }}{{ _clean_path }}{% if lang != 'he' %}?lang={{ lang }}{% endif %}">
   {% for _lang in supported_langs %}
   <link rel="alternate" hreflang="{{ _lang }}" href="{{ site_url }}{{ _clean_path }}{% if _lang != 'he' %}?lang={{ _lang }}{% endif %}">
