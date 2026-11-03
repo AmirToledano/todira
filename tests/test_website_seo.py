@@ -69,8 +69,8 @@ def test_about_page_renders(client):
 def test_home_page_has_canonical_and_hreflang_for_every_language(client):
     resp = client.get("/")
     assert '<link rel="canonical" href="https://todira.app/">' in resp.text
-    for lang in ("he", "en", "ru", "fr", "ar"):
-        assert f'hreflang="{lang}"' in resp.text
+    for lang in ("he", "en", "ru", "fr", "ar", "es", "pt", "hi", "fil", "th", "zh"):
+        assert f'<link rel="alternate" hreflang="{lang}"' in resp.text
     assert 'hreflang="x-default"' in resp.text
 
 

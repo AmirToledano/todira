@@ -16,7 +16,7 @@ import os
 from telegram import Update
 from telegram.constants import ChatMemberStatus, ChatType
 from telegram.error import TelegramError
-from telegram.ext import ApplicationHandlerStop, ChatMemberHandler, ContextTypes, MessageHandler, TypeHandler, filters
+from telegram.ext import ApplicationHandlerStop, ChatMemberHandler, CommandHandler, ContextTypes, MessageHandler, TypeHandler, filters
 from todira_common import owner_inbox
 from todira_common.db import get_session
 
@@ -30,6 +30,17 @@ WELCOME = (
     "מעכשיו הפניות יגיעו לקבוצה הזו: הודעות מטופס צור קשר ומהמשוב באתר, בקשות עזרה מהבוט, והתראות על תשלומים.\n"
     "התראות על דירות ימשיכו להגיע בצ׳אט הפרטי עם הבוט."
 )
+
+
+LEADS_WELCOME = (
+    "מעכשיו יגיעו לקבוצה הזו פוסטים מקבוצות הפייסבוק של אנשים שמחפשים דירה, עם קישור ישיר לכל פוסט.\n"
+    "הם נבדקים בכל ריצה של סריקת הקבוצות, פעם בשעה בין 08:24 ל־22:24."
+)
+
+
+def _save_leads(chat_id: int | None) -> None:
+    with get_session() as session:
+        owner_inbox.set_leads_chat_id(session, chat_id)
 
 
 def _owner_id() -> str:
@@ -59,12 +70,20 @@ async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             except TelegramError:
                 logger.exception("Could not leave a group the owner did not add the bot to")
             return
+        if owner_inbox.is_leads_title(getattr(chat, "title", None)):
+            await asyncio.to_thread(_save_leads, chat.id)
+            if old in _OUT:
+                await context.bot.send_message(chat_id=chat.id, text=LEADS_WELCOME)
+            return
         await asyncio.to_thread(_save, chat.id)
         if old in _OUT:
             await context.bot.send_message(chat_id=chat.id, text=WELCOME)
-    elif new in _OUT and await asyncio.to_thread(_current) == str(chat.id):
-        await asyncio.to_thread(_save, None)
-        logger.info("Removed from the owner's inbox group - messages go to the private chat again")
+    elif new in _OUT:
+        if await asyncio.to_thread(owner_inbox.leads_chat_id) == str(chat.id):
+            await asyncio.to_thread(_save_leads, None)
+        if await asyncio.to_thread(_current) == str(chat.id):
+            await asyncio.to_thread(_save, None)
+            logger.info("Removed from the owner's inbox group - messages go to the private chat again")
 
 
 async def on_group_upgraded(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -76,6 +95,19 @@ async def on_group_upgraded(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         old, new = msg.migrate_from_chat_id, msg.chat.id
     if await asyncio.to_thread(_current) == str(old):
         await asyncio.to_thread(_save, new)
+    if await asyncio.to_thread(owner_inbox.leads_chat_id) == str(old):
+        await asyncio.to_thread(_save_leads, new)
+
+
+async def on_leads_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/leads by the owner in a group: that group gets the leads (and stops being the inbox if it was)."""
+    chat, user = update.effective_chat, update.effective_user
+    if chat is None or chat.type not in _GROUPS or user is None or not _owner_id() or str(user.id) != _owner_id():
+        return
+    await asyncio.to_thread(_save_leads, chat.id)
+    if await asyncio.to_thread(_current) == str(chat.id):
+        await asyncio.to_thread(_save, None)
+    await context.bot.send_message(chat_id=chat.id, text=LEADS_WELCOME)
 
 
 async def ignore_groups(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -89,6 +121,7 @@ def build_owner_inbox_handlers() -> list[tuple[object, int]]:
     """(handler, group) pairs: the upgrade follower runs first, then the group guard, before every other handler."""
     return [
         (MessageHandler(filters.StatusUpdate.MIGRATE, on_group_upgraded), -3),
+        (CommandHandler("leads", on_leads_command, filters=filters.ChatType.GROUPS), -3),
         (TypeHandler(Update, ignore_groups), -2),
         (ChatMemberHandler(on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER), 0),
     ]

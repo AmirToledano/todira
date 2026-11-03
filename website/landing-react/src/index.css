@@ -44,6 +44,10 @@
   color: var(--text);
   overflow-x: hidden;
 }
+/* Devanagari, Thai and Chinese have no web font here: name the systems' own (2026-11-02, same as style.css). */
+#todira-landing-root:lang(hi) { font-family: "Heebo", "Noto Sans Devanagari", "Kohinoor Devanagari", "Nirmala UI", Mangal, system-ui, sans-serif; }
+#todira-landing-root:lang(th) { font-family: "Heebo", "Noto Sans Thai", Thonburi, "Leelawadee UI", Tahoma, system-ui, sans-serif; }
+#todira-landing-root:lang(zh) { font-family: "Heebo", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", system-ui, sans-serif; }
 #todira-landing-root * { box-sizing: border-box; }
 #todira-landing-root h1,
 #todira-landing-root h2,

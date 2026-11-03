@@ -4,9 +4,11 @@ that says what to check, with a link to the official source, gives the same valu
 
 Every legal number on the contract page was checked against Kol Zchut on 2026-10-31 (the pages linked under it); what
 could not be checked (notice periods before a lease ends) is left out on purpose. Each text is in the site's five
-languages; a missing one falls back to Hebrew.
+languages; a missing one falls back to Hebrew (English first for the newer languages, see i18n.fallback_langs).
 """
 from __future__ import annotations
+
+from i18n import pick_text
 
 _KOLZCHUT_REPAIRS = (
     "https://www.kolzchut.org.il/he/%D7%AA%D7%99%D7%A7%D7%95%D7%9F_%D7%9C%D7%99%D7%A7%D7%95%D7%99%D7%99%D7%9D_"
@@ -234,4 +236,4 @@ SOURCES_TITLE = _t("מקורות", "Sources", "Источники", "Sources", "
 
 
 def text(entry: dict, lang: str) -> str:
-    return entry.get(lang) or entry["he"]
+    return pick_text(entry, lang) or entry["he"]

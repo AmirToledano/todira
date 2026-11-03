@@ -48,11 +48,13 @@ _PARTIAL_COVERAGE_PREFIXES = ("about.", "accessibility.", "privacy.", "terms.")
 
 
 def test_every_translation_key_covers_all_supported_languages():
+    # The five core languages are written inline and must be complete; the newer FILE_LANGS come from
+    # website/i18n_langs/<code>.json and show English for a key their file doesn't have (test_lang_files.py).
     missing = {
-        key: [lang for lang in i18n.SUPPORTED_LANGS if lang not in entry]
+        key: [lang for lang in i18n.CORE_LANGS if lang not in entry]
         for key, entry in i18n.TRANSLATIONS.items()
         if not key.startswith(_PARTIAL_COVERAGE_PREFIXES)
-        if any(lang not in entry for lang in i18n.SUPPORTED_LANGS)
+        if any(lang not in entry for lang in i18n.CORE_LANGS)
     }
     assert not missing, f"Translation keys missing one or more supported languages: {missing}"
 

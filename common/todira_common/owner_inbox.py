@@ -19,6 +19,11 @@ from todira_common.db import get_session
 logger = logging.getLogger(__name__)
 
 INBOX_FLAG = "owner_inbox_chat_id"
+# 2026-11-03 (owner: "send me at once, a new group, so I can go and answer them"): people asking in the Facebook groups
+# for a flat go to a second group of his, the leads group (scraper/seeker_leads.py). A group the owner adds whose name
+# has "לידים" or "leads" in it is that group, not the inbox; /leads written by him in a group makes it the leads group too.
+LEADS_FLAG = "owner_leads_chat_id"
+_LEADS_TITLE_WORDS = ("ליד", "lead")
 _CACHE_SECONDS = 60
 _cache: dict = {"at": float("-inf"), "value": None}
 
@@ -41,6 +46,24 @@ def inbox_chat_id(fresh: bool = False) -> str | None:
 def set_inbox_chat_id(session: Session, chat_id: int | str | None) -> None:
     set_flag(session, INBOX_FLAG, "" if chat_id is None else str(chat_id))
     _cache.update(at=float("-inf"), value=None)
+
+
+def is_leads_title(title: str | None) -> bool:
+    lowered = (title or "").lower()
+    return any(word in lowered for word in _LEADS_TITLE_WORDS)
+
+
+def leads_chat_id() -> str | None:
+    try:
+        with get_session() as session:
+            return get_flag(session, LEADS_FLAG) or None
+    except Exception:
+        logger.warning("Could not read the owner's leads group", exc_info=True)
+        return None
+
+
+def set_leads_chat_id(session: Session, chat_id: int | str | None) -> None:
+    set_flag(session, LEADS_FLAG, "" if chat_id is None else str(chat_id))
 
 
 def owner_chat_ids(owner_private_chat_id: str | None) -> list[str]:

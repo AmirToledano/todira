@@ -76,6 +76,7 @@ from todira_common.access import (
 )
 from todira_common.channel_link import generate_link_code
 from todira_common.public_text import is_room_in_shared_flat, public_description
+from todira_common.referrals import REWARD_DAYS as INVITE_REWARD_DAYS, invite_link
 from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECOND_NAMES
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
@@ -3782,6 +3783,7 @@ def account(request: Request, uid: int | None = None):
             )
         )
         cancel_pass = _cancel_pass_config(session, user)
+        access_summary = _access_summary(request, user, payments)
     cancelled_refund_ils = request.session.pop("cancelled_refund_ils", None)
 
     # 2026-09-25: eighth page moved into a React island (website/landing-react/account.html) —
@@ -3856,12 +3858,64 @@ def account(request: Request, uid: int | None = None):
                 # 2026-10-13 (owner request): the small "cancel purchase" link for a one-time pass still inside the
                 # 14-day window (terms section 10), with the refund already worked out; None hides it.
                 "cancelPass": cancel_pass,
+                # 2026-11-02 (owner): one "המנוי שלי" card at the top that says, for every state, exactly what access this
+                # user has and what they can do next (see _access_summary).
+                "access": access_summary,
                 # Set for one page view right after a cancellation (see account_cancel_pass).
                 "cancelledRefundIls": cancelled_refund_ils,
             },
         },
         known_lang=user.language,
     )
+
+
+def _access_summary(request: Request, user: User, payments: list) -> dict:
+    """2026-11-02 (owner): what /account's "המנוי שלי" card shows. The owner saw only notifications and channels on his own
+    page and asked that every user see everything about their access: the trial and its days left, a trial that ended,
+    the paid pass and until when, free days (invite or gift) that come after it, a paid period that ended, and owner or
+    comp access. Read only from the same fields has_full_access reads; nothing here changes access.
+
+    kind is one of: owner, comp, trial (never paid, free days running), free (paid before, now on free days), paid,
+    trial_ended (never paid, nothing running), paid_ended. Free days live in trial_ends_at (referrals.add_free_days and
+    extend_paid_until move them after the paid period), so trial_ends_at later than a running paid_until is the
+    "free days after the pass" line."""
+    summary = {
+        "kind": "trial_ended", "plan": None, "paidUntil": None, "paidDaysLeft": None, "trialEndsAt": None,
+        "trialDaysLeft": None, "freeAfterPaidDays": None, "accessEndsAt": None, "inviteLink": None,
+        "inviteDays": INVITE_REWARD_DAYS,
+    }
+    if _preview_as_free(request):
+        return summary  # the owner's "see it as a new visitor" preview, same as _effective_access_state
+    if _display_is_owner(request, user.telegram_user_id):
+        summary["kind"] = "owner"
+        return summary
+    if user.free_access_granted:
+        summary["kind"] = "comp"
+        return summary
+    now = dt.datetime.now(dt.timezone.utc)
+    paid_until, trial_ends_at = user.paid_until, user.trial_ends_at
+    # The pass's name: the newest paid row in the history (newest first).
+    summary["plan"] = next((payment.plan for payment in payments if payment.status == "paid"), None)
+    if paid_until is not None and paid_until > now:
+        summary.update(kind="paid", paidUntil=_israel_date(paid_until), paidDaysLeft=_days_left(paid_until))
+        if trial_ends_at is not None and trial_ends_at > paid_until:
+            extra = trial_ends_at - paid_until
+            summary["freeAfterPaidDays"] = extra.days + (1 if extra.seconds or extra.microseconds else 0)
+            summary["accessEndsAt"] = _israel_date(trial_ends_at)
+        return summary
+    if trial_ends_at is not None and trial_ends_at > now:
+        summary.update(
+            kind="trial" if paid_until is None else "free",
+            trialEndsAt=_israel_date(trial_ends_at), trialDaysLeft=_days_left(trial_ends_at),
+        )
+        return summary
+    # Nothing running: the way back is a pass, or a friend who joins (7 free days each).
+    summary["inviteLink"] = invite_link(user.id)
+    if paid_until is not None:
+        summary.update(kind="paid_ended", paidUntil=_israel_date(paid_until))
+    else:
+        summary["trialEndsAt"] = _israel_date(trial_ends_at) or None
+    return summary
 
 
 def _days_left(ends_at: dt.datetime | None) -> int | None:

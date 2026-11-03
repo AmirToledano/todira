@@ -42,7 +42,10 @@ _KNOWLEDGE_PREFIXES = (
 _STALE_KEY_PARTS = ("subscription", "subscribed", "recurring", "cancel_anytime")
 _STALE_KEYS = {"upgrade.h1", "upgrade.faq_q1", "upgrade.faq_a1", "upgrade.faq_q3", "upgrade.faq_a3"}
 
-_LANGUAGE_NAMES = {"he": "עברית", "en": "English", "ru": "русский", "fr": "français", "ar": "العربية"}
+_LANGUAGE_NAMES = {
+    "he": "עברית", "en": "English", "ru": "русский", "fr": "français", "ar": "العربية", "es": "español",
+    "pt": "português do Brasil", "hi": "हिन्दी", "fil": "Filipino", "th": "ไทย", "zh": "简体中文",
+}
 
 _client: genai.Client | None = None
 _lock = threading.Lock()

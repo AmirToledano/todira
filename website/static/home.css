@@ -47,6 +47,10 @@
   font-size: 18px;
   line-height: 1.55;
 }
+/* Devanagari, Thai and Chinese have no web font here: name the systems' own (2026-11-02, same as style.css). */
+.lp:lang(hi) { font-family: "Assistant", "Noto Sans Devanagari", "Kohinoor Devanagari", "Nirmala UI", Mangal, system-ui, sans-serif; }
+.lp:lang(th) { font-family: "Assistant", "Noto Sans Thai", Thonburi, "Leelawadee UI", Tahoma, system-ui, sans-serif; }
+.lp:lang(zh) { font-family: "Assistant", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", system-ui, sans-serif; }
 :root[data-theme="dark"] .lp {
   --lp-page: #0F1715;
   --lp-band: #163C3F;

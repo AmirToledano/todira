@@ -24,7 +24,14 @@ have no use for — but the same simple approach, deliberately, rather than a se
 i18n mechanism for no real reason)."""
 from __future__ import annotations
 
-from todira_common.language import DEFAULT_LANG
+from pathlib import Path
+
+from todira_common.lang_files import merge_lang_files
+from todira_common.language import FILE_LANGS, fallback_langs
+
+# 2026-11-02: the FILE_LANGS languages' texts live in bot_langs/<code>.json ({key: text}) and are merged into
+# BOT_STRINGS below at import; a key a file doesn't have shows the English text, then the Hebrew one (bot_text).
+BOT_LANGS_DIR = Path(__file__).resolve().parent / "bot_langs"
 
 BOT_STRINGS: dict[str, dict[str, str]] = {
     # Telegram HTML (handlers/start.py sends /start replies with parse_mode HTML and escapes {name}/{account_url}).
@@ -1706,9 +1713,12 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
 }
 
 
+merge_lang_files(BOT_STRINGS, BOT_LANGS_DIR, FILE_LANGS)
+
+
 def bot_text(key: str, lang: str | None, **kwargs) -> str:
     entry = BOT_STRINGS.get(key)
     if entry is None:
         return key
-    text = entry.get(lang) or entry.get(DEFAULT_LANG) or key
+    text = next((entry[code] for code in fallback_langs(lang) if entry.get(code)), key)
     return text.format(**kwargs) if kwargs else text
