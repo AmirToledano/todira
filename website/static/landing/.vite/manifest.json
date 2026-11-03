@@ -1,115 +1,115 @@
 {
-  "_Blob-C4MQxj31.js": {
-    "file": "assets/Blob-C4MQxj31.js",
+  "_Blob-Pf5Y0Dca.js": {
+    "file": "assets/Blob-Pf5Y0Dca.js",
     "name": "Blob",
     "imports": [
-      "_i18n-CbpbxQc9.js"
+      "_i18n-BpRfjJbV.js"
     ]
   },
-  "_Icon-BIHGQfKm.js": {
-    "file": "assets/Icon-BIHGQfKm.js",
+  "_Icon-Daeac6y5.js": {
+    "file": "assets/Icon-Daeac6y5.js",
     "name": "Icon",
     "imports": [
-      "_i18n-CbpbxQc9.js"
+      "_i18n-BpRfjJbV.js"
     ]
   },
   "_i18n-BimgrFiQ.css": {
     "file": "assets/i18n-BimgrFiQ.css",
     "src": "_i18n-BimgrFiQ.css"
   },
-  "_i18n-CbpbxQc9.js": {
-    "file": "assets/i18n-CbpbxQc9.js",
+  "_i18n-BpRfjJbV.js": {
+    "file": "assets/i18n-BpRfjJbV.js",
     "name": "i18n",
     "css": [
       "assets/i18n-BimgrFiQ.css"
     ]
   },
   "about.html": {
-    "file": "assets/about-DXj5O5R8.js",
+    "file": "assets/about-BuFW9t6e.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js",
-      "_Blob-C4MQxj31.js"
+      "_i18n-BpRfjJbV.js",
+      "_Blob-Pf5Y0Dca.js"
     ]
   },
   "accessibility.html": {
-    "file": "assets/accessibility-DpTn6iwn.js",
+    "file": "assets/accessibility-CSJwVdUz.js",
     "name": "accessibility",
     "src": "accessibility.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js"
+      "_i18n-BpRfjJbV.js"
     ]
   },
   "account.html": {
-    "file": "assets/account-DAUBYvY2.js",
+    "file": "assets/account-BCecDPv1.js",
     "name": "account",
     "src": "account.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js"
+      "_i18n-BpRfjJbV.js"
     ]
   },
   "contact.html": {
-    "file": "assets/contact-uXf7zrqy.js",
+    "file": "assets/contact-7Zng04gq.js",
     "name": "contact",
     "src": "contact.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js",
-      "_Icon-BIHGQfKm.js"
+      "_i18n-BpRfjJbV.js",
+      "_Icon-Daeac6y5.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-C4jRWi6r.js",
+    "file": "assets/index-l1t80OAG.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js",
-      "_Blob-C4MQxj31.js"
+      "_i18n-BpRfjJbV.js",
+      "_Blob-Pf5Y0Dca.js"
     ],
     "dynamicImports": [
       "src/sections/ScanCore.jsx"
     ]
   },
   "login.html": {
-    "file": "assets/login-C6nOwTFo.js",
+    "file": "assets/login-DyPnkIAS.js",
     "name": "login",
     "src": "login.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js",
-      "_Icon-BIHGQfKm.js"
+      "_i18n-BpRfjJbV.js",
+      "_Icon-Daeac6y5.js"
     ]
   },
   "privacy.html": {
-    "file": "assets/privacy-BbLTDAlY.js",
+    "file": "assets/privacy-B3TUKD7H.js",
     "name": "privacy",
     "src": "privacy.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js"
+      "_i18n-BpRfjJbV.js"
     ]
   },
   "src/sections/ScanCore.jsx": {
-    "file": "assets/ScanCore-C_Jfh9Dz.js",
+    "file": "assets/ScanCore-C4jKMW2n.js",
     "name": "ScanCore",
     "src": "src/sections/ScanCore.jsx",
     "isDynamicEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js"
+      "_i18n-BpRfjJbV.js"
     ]
   },
   "terms.html": {
-    "file": "assets/terms-QxOiikqu.js",
+    "file": "assets/terms-CJQ0QyL9.js",
     "name": "terms",
     "src": "terms.html",
     "isEntry": true,
     "imports": [
-      "_i18n-CbpbxQc9.js"
+      "_i18n-BpRfjJbV.js"
     ]
   }
 }

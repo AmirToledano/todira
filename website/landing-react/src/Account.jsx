@@ -87,6 +87,11 @@ function InviteBox({ link, days }) {
     }
     setCopyState("failed");
   };
+  // 2026-11-03 (owner): not only Telegram - the phone's own share sheet (WhatsApp, SMS...) where the browser has one
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const shareAny = () => {
+    navigator.share({ text: t("account.invite_share_text", { days }), url: link }).catch(() => {});
+  };
   const copy = () => {
     try {
       navigator.clipboard.writeText(link).then(() => setCopyState("copied"), failed);
@@ -102,6 +107,9 @@ function InviteBox({ link, days }) {
       <div className="account-invite-actions">
         <button type="button" className="btn outline" onClick={copy}>{t("account.invite_copy")}</button>
         <a className="btn telegram" href={shareHref} target="_blank" rel="noreferrer">{t("account.invite_share")}</a>
+        {canShare && (
+          <button type="button" className="btn outline" onClick={shareAny}>{t("account.invite_share_any")}</button>
+        )}
       </div>
       <p className="field-hint account-invite-status" role="status" aria-live="polite">
         {copyState === "copied" ? t("account.invite_copied") : copyState === "failed" ? t("account.invite_copy_failed") : ""}

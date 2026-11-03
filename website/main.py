@@ -77,7 +77,8 @@ from todira_common.access import (
 )
 from todira_common.channel_link import generate_link_code
 from todira_common.public_text import is_room_in_shared_flat, public_description
-from todira_common.referrals import REWARD_DAYS as INVITE_REWARD_DAYS, invite_link
+from todira_common import referrals
+from todira_common.referrals import REWARD_DAYS as INVITE_REWARD_DAYS, invite_code
 from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECOND_NAMES
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
@@ -984,7 +985,7 @@ def _home_map_data() -> dict | None:
 # 2026-10-22 (owner: do visitors press the bot buttons, and who): every tracked button sends one small beacon
 # (base.html). Counted per person per day like the visits - a second press by the same person adds to their count, so
 # repeats show up as more presses than people. The owner's browsers are never counted.
-_CLICK_TARGETS = {"bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share",
+_CLICK_TARGETS = {"invite_bot", "invite_site", "bot_hero", "bot_end", "bot_menu", "bot_nofilter", "city_go", "share", "bot_share",
                   # 2026-11-02 (growth): the public channel links (footer, city pages, shared listing page)
                   "channel_footer", "channel_rent", "channel_rent_city", "channel_share"}
 
@@ -1206,6 +1207,18 @@ def home(request: Request):
             "founder_photo": _FOUNDER_PHOTO if (BASE_DIR / "static" / _FOUNDER_PHOTO).is_file() else None,
         },
     )
+
+
+@app.get("/i/{code}")
+def invite_page(request: Request, code: str):
+    """2026-11-03 (owner: "invite straight to the site, and let them choose site or Telegram"): a friend's invite link.
+    The code is remembered for a Google sign-up on the site; the Telegram button carries it into the bot."""
+    if referrals.inviter_id(code) is None:
+        return RedirectResponse("/", status_code=303)
+    request.session["invite_code"] = code
+    response = _render(request, "invite.html", {"bot_link": referrals.BOT_LINK + code, "days": INVITE_REWARD_DAYS})
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
 
 
 @app.get("/reviews")
@@ -1959,9 +1972,12 @@ def auth_google_create_account(request: Request, next: str = "/apartments"):
         # used to bubble up as an unhandled 500 instead of the graceful "log them into the account
         # the other request just created" this whole function is otherwise built for. Catching it
         # here closes that actual race window, not just the comment above claiming to.
+        # 2026-11-03: came through a friend's invite page (/i/<code>): remembered as invited, rewarded on the first search
+        inviter = referrals.inviter_id(request.session.pop("invite_code", None))
         user = User(
             google_sub=pending_google_sub, first_name=first_name or None,
             google_email=pending_google_email,
+            referred_by_user_id=inviter if inviter is not None and session.get(User, inviter) is not None else None,
         )
         session.add(user)
         try:
@@ -3958,7 +3974,8 @@ def _access_summary(request: Request, user: User, payments: list) -> dict:
         )
         return summary
     # Nothing running: the way back is a pass, or a friend who joins (7 free days each).
-    summary["inviteLink"] = invite_link(user.id)
+    # 2026-11-03 (owner): the site's invite page, where the friend picks the site or Telegram (the bot link is on it)
+    summary["inviteLink"] = f"{PUBLIC_BASE}i/{invite_code(user.id)}"
     if paid_until is not None:
         summary.update(kind="paid_ended", paidUntil=_israel_date(paid_until))
     else:
@@ -4331,6 +4348,9 @@ def filter_update(
             return RedirectResponse(error_url, status_code=303)
 
         _apply_filter_form(user.filter, form)
+        # 2026-11-03: a friend invited through the site gets the invite days on their first saved search, as in the bot
+        if getattr(user, "referred_by_user_id", None) is not None:
+            referrals.reward(session, user, dt.datetime.now(dt.timezone.utc))
         session.commit()
         _mark_matches_seen_in_background(user.id)
 
