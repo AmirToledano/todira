@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% set active_page = "apartments" %}
+{% block title %}{{ t('search.meta_title') }}{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+{% from "_listing_card.html" import listing_card with context %}
+{# 2026-11-04 (owner): results before signing in (main.py's public_search). The same field names as the /filter form. #}
+<div class="psearch">
+  <h1 class="psearch-title">{{ t('search.title') }}</h1>
+  <p class="psearch-lead">{{ t('search.lead', days=days) }}</p>
+
+  <form class="psearch-form" method="get" action="/search">
+    <label class="psearch-field psearch-city">
+      <span>{{ t('search.city') }}</span>
+      <select name="cities" required>
+        <option value="">{{ t('search.city_pick') }}</option>
+        {% for c in cities_list %}<option value="{{ c }}"{{ ' selected' if c == city else '' }}>{{ c }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="psearch-field">
+      <span>{{ t('search.price_max') }}</span>
+      <input name="price_max" type="text" inputmode="numeric" autocomplete="off" placeholder="{{ t('search.price_placeholder') }}" value="{{ price_max if price_max is not none else '' }}">
+    </label>
+    <div class="psearch-field psearch-rooms" role="group" aria-label="{{ t('search.rooms') }}">
+      <span>{{ t('search.rooms') }}</span>
+      <div class="psearch-rooms-pair">
+        <select name="rooms_min" aria-label="{{ t('search.rooms_from') }}">
+          <option value="">{{ t('search.rooms_from') }}</option>
+          {% for r in rooms_options %}<option value="{{ r }}"{{ ' selected' if rooms_min is not none and rooms_min == r|float else '' }}>{{ r }}</option>{% endfor %}
+        </select>
+        <select name="rooms_max" aria-label="{{ t('search.rooms_to') }}">
+          <option value="">{{ t('search.rooms_to') }}</option>
+          {% for r in rooms_options %}<option value="{{ r }}"{{ ' selected' if rooms_max is not none and rooms_max == r|float else '' }}>{{ r }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn gold psearch-submit">{{ t('search.submit') }}</button>
+  </form>
+
+  {% if city %}
+  <section class="psearch-results" aria-live="polite">
+    {% set _n = '{:,}'.format(count) ~ ('+' if capped else '') %}
+    <p class="psearch-count">
+      {% if count == 0 %}{{ t('search.count_0', city=city, days=days) }}
+      {% elif count == 1 %}{{ t('search.count_1', city=city, days=days) }}
+      {% else %}{{ t('search.count_n', n=_n, city=city, days=days) }}{% endif %}
+    </p>
+    {% if listings %}
+    <p class="psearch-note">{{ t('search.locked_note') }}</p>
+    <div class="listing-grid">
+      {% for l in listings %}{{ listing_card(l, (loop.index0 % 6) * 60) }}{% endfor %}
+    </div>
+    {% if count > listings|length %}<p class="psearch-more">{{ t('search.more', n=('{:,}'.format(count - listings|length) ~ ('+' if capped else ''))) }}</p>{% endif %}
+    {% endif %}
+  </section>
+  {% else %}
+  <p class="psearch-hint">{{ t('search.pick_city_first') }}</p>
+  {% endif %}
+
+  <section class="psearch-cta" id="psearch-cta">
+    <h2>{{ t('search.cta_title') }}</h2>
+    <p>{{ t('search.cta_body') }}</p>
+    <div class="psearch-cta-actions">
+      <a class="btn gold" href="{{ bot_url }}" target="_blank" rel="noopener" data-track="bot_preview">{{ t('search.cta_telegram') }}</a>
+      <a class="btn outline" href="{{ login_url }}" data-track="login_preview">{{ t('search.cta_google') }}</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

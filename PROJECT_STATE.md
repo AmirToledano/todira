@@ -93,6 +93,13 @@
   - /moving-checklist (ticks kept in the browser) and /rental-contract-check (legal numbers checked against Kol Zchut
     on 2026-10-31, linked as sources), from `website/guides.py`, 5 languages, in the footer and the sitemap.
   - /apartments: sort, a report button, and a rich listing view with area price, price history and a timeline.
+  - /search (2026-11-04, owner: see results before signing in): a visitor with no account picks a city, a top price
+    and rooms (the /filter form's field names and `_apply_filter_form`), and sees the real count of matching live
+    flats first seen in the last 7 days plus the 6 newest as locked cards (no original-ad link, no source badge, no
+    like/hide), then "continue in Telegram" (`start=site_preview`) or Google sign-in (`/login?next=/filter`). One city
+    per scan, at most 3,000 rows read (`matching_listing_rows(since=, scan_limit=)`), each answer cached 2 min; noindex.
+    A plain anonymous visit to /apartments now redirects there; deep links (`?listing=`, `?uid=`) still ask to sign
+    in. Home hero has one secondary link "לראות דירות עכשיו". Clicks: `bot_preview`, `login_preview`, `search_home`.
   - /filter: a live match count, a price chart, and "show also without rooms / size" (`filters.include_missing_details`).
   - Other pages: /calculator (rent medians from our own listings), a site assistant on every page, and /admin
     (a dashboard with switches, users with pause, and messages).

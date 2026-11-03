@@ -4218,6 +4218,32 @@ TRANSLATIONS.update({
     "reviews.all_link": {"he": "לכל ההמלצות", "en": "All reviews", "ru": "Все отзывы", "fr": "Tous les avis", "ar": "كل الآراء"},
 })
 
+# 2026-11-04 (owner): /search, results before signing in (main.py's public_search), and its link on the home page.
+TRANSLATIONS.update({
+    "search.meta_title": {"he": "דירות שעלו השבוע | טודירה", "en": "Flats posted this week | Todira", "ru": "Квартиры за эту неделю | Todira", "fr": "Logements publiés cette semaine | Todira", "ar": "شقق نُشرت هذا الأسبوع | Todira"},
+    "search.title": {"he": "דירות שעלו בשבוע האחרון", "en": "Flats posted in the last week", "ru": "Квартиры за последнюю неделю", "fr": "Les logements de la dernière semaine", "ar": "شقق نُشرت في الأسبوع الأخير"},
+    "search.lead": {"he": "בוחרים עיר, מחיר וחדרים, ורואים כמה דירות כאלה עלו ב־{days} הימים האחרונים. בלי להירשם.", "en": "Pick a city, a price and rooms, and see how many flats like that came up in the last {days} days. No sign-up.", "ru": "Выберите город, цену и комнаты и посмотрите, сколько таких квартир появилось за последние {days} дней. Без регистрации.", "fr": "Choisis une ville, un prix et des pièces, et vois combien de logements comme ça ont été publiés ces {days} derniers jours. Sans inscription.", "ar": "اختر مدينة وسعراً وعدد غرف، وشاهد كم شقة كهذه نُشرت في آخر {days} أيام. بدون تسجيل."},
+    "search.city": {"he": "עיר", "en": "City", "ru": "Город", "fr": "Ville", "ar": "المدينة"},
+    "search.city_pick": {"he": "בחירת עיר", "en": "Choose a city", "ru": "Выберите город", "fr": "Choisir une ville", "ar": "اختر مدينة"},
+    "search.price_max": {"he": "עד כמה בחודש", "en": "Up to, per month", "ru": "До, в месяц", "fr": "Jusqu'à, par mois", "ar": "حتى، شهرياً"},
+    "search.price_placeholder": {"he": "למשל 6000", "en": "e.g. 6000", "ru": "например 6000", "fr": "ex. 6000", "ar": "مثلاً 6000"},
+    "search.rooms": {"he": "חדרים", "en": "Rooms", "ru": "Комнаты", "fr": "Pièces", "ar": "الغرف"},
+    "search.rooms_from": {"he": "לפחות", "en": "At least", "ru": "От", "fr": "Au moins", "ar": "على الأقل"},
+    "search.rooms_to": {"he": "עד", "en": "Up to", "ru": "До", "fr": "Au plus", "ar": "حتى"},
+    "search.submit": {"he": "להציג דירות", "en": "Show flats", "ru": "Показать квартиры", "fr": "Voir les logements", "ar": "عرض الشقق"},
+    "search.count_0": {"he": "לא עלתה ב{city} דירה שמתאימה לזה ב־{days} הימים האחרונים. אפשר להרחיב את המחיר או את החדרים.", "en": "No flat in {city} matching this came up in the last {days} days. Try a higher price or other rooms.", "ru": "За последние {days} дней в {city} не появилось подходящих квартир. Попробуйте поднять цену или изменить комнаты.", "fr": "Aucun logement correspondant à {city} ces {days} derniers jours. Essaie un prix plus haut ou d'autres pièces.", "ar": "لم تُنشر في {city} شقة تناسب هذا في آخر {days} أيام. جرّب سعراً أعلى أو عدد غرف آخر."},
+    "search.count_1": {"he": "דירה אחת ב{city} שמתאימה לזה עלתה ב־{days} הימים האחרונים.", "en": "One flat in {city} matching this came up in the last {days} days.", "ru": "За последние {days} дней в {city} появилась одна подходящая квартира.", "fr": "Un logement correspondant à {city} ces {days} derniers jours.", "ar": "نُشرت في {city} شقة واحدة تناسب هذا في آخر {days} أيام."},
+    "search.count_n": {"he": "{n} דירות ב{city} שמתאימות לזה עלו ב־{days} הימים האחרונים.", "en": "{n} flats in {city} matching this came up in the last {days} days.", "ru": "Подходящих квартир в {city} за последние {days} дней: {n}.", "fr": "{n} logements correspondants à {city} ces {days} derniers jours.", "ar": "نُشرت في {city} {n} شقة تناسب هذا في آخر {days} أيام."},
+    "search.locked_note": {"he": "אלה החדשות שבהן. הקישור למודעה המקורית נפתח אחרי הרשמה.", "en": "These are the newest. The link to the original ad opens once you sign up.", "ru": "Вот самые новые. Ссылка на исходное объявление открывается после регистрации.", "fr": "Voici les plus récents. Le lien vers l'annonce d'origine s'ouvre après l'inscription.", "ar": "هذه الأحدث. رابط الإعلان الأصلي يُفتح بعد التسجيل."},
+    "search.more": {"he": "ועוד {n} מחכות לך אחרי ההרשמה.", "en": "{n} more are waiting once you sign up.", "ru": "Ещё {n} ждут вас после регистрации.", "fr": "Encore {n} t'attendent après l'inscription.", "ar": "و{n} أخرى بانتظارك بعد التسجيل."},
+    "search.pick_city_first": {"he": "בוחרים עיר ולוחצים על להציג דירות.", "en": "Pick a city and tap Show flats.", "ru": "Выберите город и нажмите «Показать квартиры».", "fr": "Choisis une ville et appuie sur Voir les logements.", "ar": "اختر مدينة واضغط عرض الشقق."},
+    "search.cta_title": {"he": "לקבל כל דירה חדשה כזו ברגע שהיא עולה", "en": "Get every new flat like this the moment it is posted", "ru": "Получать каждую такую новую квартиру сразу после публикации", "fr": "Recevoir chaque nouveau logement comme ça dès sa publication", "ar": "استلم كل شقة جديدة كهذه لحظة نشرها"},
+    "search.cta_body": {"he": "בטלגרם, או באתר עם חשבון גוגל. שומרים את החיפוש פעם אחת, ומקבלים הודעה על כל דירה חדשה שמתאימה.", "en": "In Telegram, or on the site with your Google account. Save the search once and get a message for every new flat that fits.", "ru": "В Telegram или на сайте через аккаунт Google. Сохраните поиск один раз и получайте сообщение о каждой новой подходящей квартире.", "fr": "Sur Telegram, ou sur le site avec ton compte Google. Tu enregistres la recherche une fois et tu reçois un message pour chaque nouveau logement qui correspond.", "ar": "في تيليجرام، أو على الموقع بحساب Google. تحفظ البحث مرة واحدة وتصلك رسالة عن كل شقة جديدة تناسبه."},
+    "search.cta_telegram": {"he": "להמשיך בטלגרם", "en": "Continue in Telegram", "ru": "Продолжить в Telegram", "fr": "Continuer sur Telegram", "ar": "المتابعة في تيليجرام"},
+    "search.cta_google": {"he": "כניסה עם גוגל", "en": "Sign in with Google", "ru": "Войти через Google", "fr": "Se connecter avec Google", "ar": "الدخول عبر Google"},
+    "search.home_link": {"he": "לראות דירות עכשיו", "en": "See flats now", "ru": "Смотреть квартиры сейчас", "fr": "Voir des logements maintenant", "ar": "شاهد الشقق الآن"},
+})
+
 
 # 2026-11-04 (owner): the neighbourhood pages, /rent/<city>/<neighbourhood> (website/city_pages.py). New keys
 # under hood.*, not exported to the React landing's content.json, so no rebuild is needed.

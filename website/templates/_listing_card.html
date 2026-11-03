@@ -16,6 +16,9 @@
         so it isn't limited to whichever slides happened to already be in the DOM/loaded. #}
      {% if l.image_urls %}data-image-urls='{{ l.image_urls | tojson }}'{% endif %}>
   <div class="listing-cover-wrap">
+    {# 2026-11-04 (owner): the public /search preview (no account) has nothing to like or hide with, and never names
+       the site an ad came from. #}
+    {% if not public_preview %}
     <div class="card-reactions">
       <form method="post" action="/react" class="card-reaction-form">
         <input type="hidden" name="listing_id" value="{{ l.id }}">
@@ -55,6 +58,7 @@
         </button>
       </form>
     </div>
+    {% endif %}
     {% set _photo_alt = t('card.photo_alt', city=(l.city or t('card.no_city')), rooms=(l.rooms|rooms_label)) %}
     <div class="listing-cover">
       {% if l.image_urls %}
@@ -93,7 +97,7 @@
       {% endif %}
     </div>
     <div class="top-left-badges">
-      <span class="source-badge">{{ l.source }}</span>
+      {% if not public_preview %}<span class="source-badge">{{ l.source }}</span>{% endif %}
       {% if l.is_broker_listing %}<span class="broker-badge">{{ t('card.broker_badge') }}</span>{% endif %}
       {% if l.reposted_from_at %}<span class="broker-badge">{{ t('card.reposted_badge') }}</span>{% endif %}
     </div>
@@ -207,7 +211,8 @@
       {% else %}
         {# 2026-10-19 (owner): the button says why it's locked - a trial that ended, or a pass that ended. #}
         {% set _lock_key = 'card.locked_btn_renew' if access_state == 'subscription_expired' else 'card.locked_btn' %}
-        <a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t(_lock_key) }}</a>
+        {% if public_preview %}<a class="view-btn locked" href="{{ login_url }}" data-track="login_preview_card">{{ t(_lock_key) }}</a>
+        {% else %}<a class="view-btn locked" href="/upgrade{{ '?uid=' ~ uid if uid else '' }}">{{ t(_lock_key) }}</a>{% endif %}
       {% endif %}
     </div>
   </div>

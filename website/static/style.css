@@ -2633,3 +2633,32 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .upgrade-proof strong { font-size: 1.9rem; line-height: 1.1; color: var(--teal); }
 .upgrade-proof span { font-size: .9rem; color: var(--text-muted); line-height: 1.4; }
 .invite-actions { display: grid; gap: 12px; max-width: 420px; margin: 22px auto 12px; }
+
+/* 2026-11-04 (owner): /search, results before signing in (templates/search.html). Plain card and teal, no gradients. */
+.psearch { max-width: 1100px; margin: 0 auto; padding: 8px 0 40px; }
+.psearch-title { margin: 0 0 6px; }
+.psearch-lead, .psearch-note, .psearch-hint, .psearch-more { color: var(--text-muted); }
+.psearch-form {
+  display: grid; gap: 12px; margin: 18px 0; padding: 16px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.psearch-field { display: grid; gap: 6px; min-width: 0; font-weight: 600; font-size: .92rem; }
+.psearch-field select, .psearch-field input {
+  width: 100%; min-width: 0; font: inherit; font-weight: 400; font-size: 1rem; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.psearch-rooms-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.psearch-submit { justify-content: center; }
+@media (min-width: 760px) {
+  .psearch-form { grid-template-columns: 1.4fr 1fr 1.4fr auto; align-items: end; }
+}
+.psearch-count { font-size: 1.15rem; font-weight: 700; color: var(--heading); margin: 8px 0 4px; }
+.psearch-results .listing-grid { margin-top: 14px; }
+.psearch-cta {
+  margin-top: 28px; padding: 20px 16px; border-radius: var(--radius-md);
+  background: var(--teal-tint); border: 1px solid var(--border);
+}
+.psearch-cta h2 { margin: 0 0 6px; font-size: 1.25rem; }
+.psearch-cta p { margin: 0 0 14px; color: var(--text-muted); }
+.psearch-cta-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.psearch-cta-actions .btn { flex: 1 1 200px; justify-content: center; }
