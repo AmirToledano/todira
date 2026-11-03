@@ -1848,8 +1848,8 @@
     "zh": "隐私政策"
   },
   "privacy.updated": {
-    "he": "עודכן לאחרונה: אוקטובר 2026",
-    "en": "Last updated: October 2026",
+    "he": "עודכן לאחרונה: נובמבר 2026",
+    "en": "Last updated: November 2026",
     "es": "Última actualización: octubre de 2026",
     "pt": "Última atualização: outubro de 2026",
     "hi": "आखिरी अपडेट: अक्टूबर 2026",
@@ -3658,16 +3658,33 @@
     "zh": "1 个月"
   },
   "contact.feedback_public": {
-    "he": "אפשר להציג את מה שכתבתי באתר, עם השם שמילאתי",
-    "en": "You may show what I wrote on the site, with the name I entered",
-    "ru": "Можно опубликовать мой отзыв на сайте с указанным именем",
-    "fr": "Vous pouvez afficher ce que j'ai écrit sur le site, avec le nom indiqué",
-    "ar": "يمكن عرض ما كتبته على الموقع مع الاسم الذي أدخلته",
-    "es": "Pueden mostrar lo que escribí en el sitio, con el nombre que puse",
-    "pt": "Vocês podem mostrar o que escrevi no site, com o nome que informei",
-    "hi": "मैंने जो लिखा है उसे मेरे दिए नाम के साथ साइट पर दिखाया जा सकता है",
-    "fil": "Puwedeng ipakita sa site ang isinulat ko, kasama ang pangalang inilagay ko",
-    "th": "แสดงสิ่งที่ฉันเขียนบนเว็บไซต์พร้อมชื่อที่กรอกไว้ได้",
-    "zh": "可以在网站上展示我写的内容和我填写的名字"
+    "he": "לא לפרסם את המשוב שלי באתר",
+    "en": "Don't publish my feedback on the site",
+    "ru": "Не публиковать мой отзыв на сайте",
+    "fr": "Ne pas publier mon avis sur le site",
+    "ar": "لا تنشروا رأيي على الموقع",
+    "es": "No publicar mi opinión en el sitio",
+    "pt": "Não publicar meu comentário no site",
+    "hi": "मेरी राय साइट पर प्रकाशित न करें",
+    "fil": "Huwag ilathala sa site ang feedback ko",
+    "th": "ไม่ต้องเผยแพร่ความคิดเห็นของฉันบนเว็บไซต์",
+    "zh": "不要在网站上发布我的反馈"
+  },
+  "contact.feedback_public_note": {
+    "he": "משוב עשוי להתפרסם בדף ההמלצות באתר, עם השם שמילאת.",
+    "en": "Feedback may be published on the site's reviews page, with the name you entered.",
+    "ru": "Отзыв может быть опубликован на странице отзывов сайта с указанным вами именем.",
+    "fr": "Ton avis peut être publié sur la page des avis du site, avec le nom indiqué.",
+    "ar": "قد يُنشر رأيك في صفحة الآراء على الموقع مع الاسم الذي أدخلته.",
+    "es": "Tu opinión puede publicarse en la página de opiniones del sitio, con el nombre que pusiste.",
+    "pt": "Seu comentário pode ser publicado na página de depoimentos do site, com o nome que você informou.",
+    "hi": "आपकी राय साइट के राय वाले पेज पर आपके दिए नाम के साथ प्रकाशित हो सकती है।",
+    "fil": "Puwedeng ilathala ang feedback mo sa reviews page ng site, kasama ang pangalang inilagay mo.",
+    "th": "ความคิดเห็นของคุณอาจถูกเผยแพร่ในหน้ารีวิวของเว็บไซต์พร้อมชื่อที่คุณกรอก",
+    "zh": "你的反馈可能会连同你填写的名字一起发布在网站的评价页面上。"
+  },
+  "privacy.s1_item10": {
+    "he": "אם כתבת לנו משוב דרך האתר או המלצה דרך הבוט: אנחנו עשויים להציג אותם בדף ההמלצות ובדף הבית, עם השם שמילאת. לא רוצה שזה יוצג? אפשר לסמן זאת בטופס המשוב או לכתוב לנו, ונסיר.",
+    "en": "If you sent us feedback through the site or a review through the bot, we may show it on the reviews page and the home page, with the name you entered. Don't want it shown? Tick that on the feedback form or write to us and we will remove it."
   }
 }

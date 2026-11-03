@@ -1,0 +1,49 @@
+name: Show a message on the reviews page (owner's request)
+
+# 2026-11-03 (owner): puts the newest message from the given name (as written in the form) on /reviews, the same as the
+# "show on the home page" button on /admin/messages. Prints only the message id.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "The name exactly as it appears on the message"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  show:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Show it
+        env:
+          WHO: ${{ inputs.name }}
+        run: |
+          POD=$(kubectl get pods -n todira -l app=todira-bot --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$POD" ] || { echo "no running bot pod"; exit 1; }
+          cat > /tmp/s.py <<'PY'
+          import os, sys
+          from sqlalchemy import select
+          from todira_common import testimonials
+          from todira_common.db import get_session
+          from todira_common.models import ContactMessage
+          who = os.environ["WHO"].strip()
+          with get_session() as s:
+              row = s.scalars(select(ContactMessage).where(ContactMessage.name == who)
+                              .order_by(ContactMessage.created_at.desc()).limit(1)).first()
+              if row is None:
+                  sys.exit("no message from that name")
+              testimonials.mark_public_ok(s, row.id)
+              testimonials.set_shown(s, row.id, True)
+              print("shown: message", row.id)
+          PY
+          kubectl exec -i -n todira "$POD" -- env WHO="$WHO" python - < /tmp/s.py
