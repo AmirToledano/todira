@@ -1,0 +1,36 @@
+name: List - the Facebook groups the flats come from, busiest first (read-only)
+
+# 2026-11-03 (owner: "send me the Facebook groups to post in"): every group the groups feed found flats in during the
+# last 30 days, as a link, with how many flats and how many were rentals. Group ids only (public), nothing about posters.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Groups
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          SELECT 'https://www.facebook.com/groups/' || substring(url from '/groups/([0-9]+)/') AS grp,
+                 count(*) AS flats,
+                 count(*) FILTER (WHERE deal_type = 'rent') AS rent,
+                 count(*) FILTER (WHERE deal_type = 'sale') AS sale,
+                 mode() WITHIN GROUP (ORDER BY city) AS top_city
+          FROM listings
+          WHERE source = 'facebook_groups' AND first_seen_at > now() - interval '30 days' AND url ~ '/groups/[0-9]+/'
+          GROUP BY 1 ORDER BY 2 DESC LIMIT 80;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -f -' < /tmp/q.sql
