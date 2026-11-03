@@ -56,8 +56,29 @@ def message(post: dict, place: str | None, deal: str | None) -> str:
     return (
         f"<b>{html.escape(head)}</b>\n\n"
         f"{html.escape(quote)}\n\n"
-        f'<a href="{html.escape(post_url(post))}">לפוסט בפייסבוק</a>'
+        f'<a href="{html.escape(post_url(post))}">לפוסט בפייסבוק</a>\n\n'
+        f"תגובה מוכנה (לחיצה מעתיקה):\n<code>{html.escape(reply_text(post, place, deal))}</code>"
     )
+
+
+# 2026-11-03: a ready reply the owner copies into the comments. A few wordings, picked by the post, so his comments
+# are not the same text again and again (Facebook treats repeated identical comments as spam). The link is the site
+# with ?src=fblead, so visits from these replies are counted (website/main.py, _ActivityMiddleware).
+REPLY_LINK = "https://todira.app/?src=fblead"
+_REPLIES = (
+    "היי, אם עוד לא מצאת: טודירה סורקת את כל אתרי הדירות וקבוצות הפייסבוק ושולחת לך בטלגרם כל דירה חדשה{where} "
+    "שמתאימה לחיפוש שלך, ברגע שהיא עולה. יש תקופת ניסיון בחינם: {link}",
+    "בהצלחה בחיפוש! טיפ: טודירה שולחת התראה בטלגרם על כל דירה חדשה{where} שמתאימה למה שביקשת, "
+    "מכל האתרים והקבוצות. אפשר לנסות בחינם: {link}",
+    "אם מתיש לעבור על כל האתרים והקבוצות כל יום, טודירה עושה את זה בשבילך ושולחת לטלגרם רק דירות{where} "
+    "שמתאימות לך, מיד כשהן עולות. ניסיון בחינם: {link}",
+)
+
+
+def reply_text(post: dict, place: str | None, deal: str | None) -> str:
+    where = (" למכירה" if deal == "sale" else "") + (f" ב{place}" if place else "")
+    wording = _REPLIES[sum(map(ord, post["post_id"])) % len(_REPLIES)]
+    return wording.format(where=where, link=REPLY_LINK)
 
 
 def _chats() -> list[str]:
