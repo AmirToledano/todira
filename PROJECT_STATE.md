@@ -40,6 +40,9 @@
   peers), private owners first, at most 2 a city, each linked to its /s/ page; Fridays the 3-room median of the 10
   biggest cities linked to /rent/<city>. Posts end with a link into the bot (`start=channel`, counted as `src_channel`);
   the owner hates the bot's @name, so it is never written out. Done posts are in the app flag `telegram_channel_posts`.
+  Since 2026-11-04 the Friday post is a 1080x1350 picture (`scraper/weekly_image.py`, Pillow, bundled Rubik font under
+  `scraper/fonts` with its OFL licence) with the old text and links as its caption; if drawing fails it goes out as text.
+  Hebrew RTL uses Pillow's RAQM (needs `libfribidi0`, installed in both scraper Dockerfiles), else a manual reordering.
 - **Site:**
   - Home page: Todi, a live map, and a demo chat.
   - /rent and /rent/<city> (2026-10-31, for Google): per city, from our own rentals of the last 30 days, the median by

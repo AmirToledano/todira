@@ -112,3 +112,45 @@ def test_the_queries_run_on_postgres():
         now = dt.datetime.now(dt.timezone.utc)
         assert isinstance(channel.pick_flats(session, now), list)
         channel.weekly_text(session, now)
+
+
+# 2026-11-04 (owner): the Friday post is a picture (scraper/weekly_image.py) with the old text, links and all, as its
+# caption; if the picture cannot be drawn, the text goes out as before.
+_WEEKLY_ROWS = [("חיפה", Decimal("3"), 4000)] * 12 + [("עכו", Decimal("3.5"), 3000)] * 10
+_FRIDAY = dt.datetime(2026, 11, 6, 7, tzinfo=dt.timezone.utc)
+
+
+def test_the_friday_post_is_a_picture_whose_caption_keeps_the_links():
+    bot = SimpleNamespace(send_photo=AsyncMock(), send_message=AsyncMock())
+    assert asyncio.run(channel._post(bot, "weekly", _Session(_WEEKLY_ROWS), _FRIDAY)) is True
+    bot.send_message.assert_not_awaited()
+    args, kwargs = bot.send_photo.await_args
+    assert args[0] == channel.CHANNEL and args[1].startswith(b"\x89PNG")
+    caption = kwargs["caption"]
+    assert kwargs["parse_mode"] == "HTML"
+    assert caption == channel.weekly_text(_Session(_WEEKLY_ROWS), _FRIDAY)
+    assert 'href="https://todira.app/rent/%D7%97%D7%99%D7%A4%D7%94">חיפה</a>: ₪4,000' in caption
+    assert 'href="https://todira.app/rent"' in caption and 'href="https://t.me/AmirDirotBot?start=channel"' in caption
+    assert "@AmirDirotBot" not in caption
+
+
+def test_the_friday_post_falls_back_to_text_when_the_picture_fails():
+    bot = SimpleNamespace(send_photo=AsyncMock(), send_message=AsyncMock())
+    with patch.object(channel.weekly_image, "render_weekly_png", side_effect=OSError("no font")):
+        assert asyncio.run(channel._post(bot, "weekly", _Session(_WEEKLY_ROWS), _FRIDAY)) is True
+    bot.send_photo.assert_not_awaited()
+    args, kwargs = bot.send_message.await_args
+    assert args[1] == channel.weekly_text(_Session(_WEEKLY_ROWS), _FRIDAY) and kwargs["parse_mode"] == "HTML"
+
+
+def test_no_friday_post_without_enough_flats():
+    bot = SimpleNamespace(send_photo=AsyncMock(), send_message=AsyncMock())
+    assert asyncio.run(channel._post(bot, "weekly", _Session(_WEEKLY_ROWS[:9]), _FRIDAY)) is False
+    bot.send_photo.assert_not_awaited()
+    bot.send_message.assert_not_awaited()
+
+
+def test_ten_long_city_names_still_fit_a_caption():
+    rows = [(f"מודיעין מכבים רעות {i}", 12340) for i in range(10)]
+    assert channel._visible_length(channel.weekly_caption(rows)) <= 1024
+    assert channel._visible_length('<a href="x">a&amp;b</a>') == 3

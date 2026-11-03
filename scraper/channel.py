@@ -6,7 +6,8 @@ deal with it").
   24 hours whose price is lowest against flats with the same room count in the same city (median of the last 30 days,
   at least MIN_PEERS of them), private owners first, at most MAX_PER_CITY a city. Each links to the flat's public page
   on the site (todira_common.share), never to the original ad.
-- Fridays: the 3-room median of the biggest cities, each linked to its city page (/rent/<city>).
+- Fridays: the 3-room median of the biggest cities, each linked to its city page (/rent/<city>). Since 2026-11-04 a
+  picture of the same numbers (weekly_image.py) with that text as its caption; the text alone if the picture fails.
 
 Every post ends with a link into the bot. The owner dislikes the bot's @name, so it is never written out: the link is on
 the words. Main scraper only; each post is remembered in app_flags so a later run the same day does not post again.
@@ -19,6 +20,7 @@ import html
 import json
 import logging
 import os
+import re
 import statistics
 from collections import defaultdict
 from urllib.parse import quote
@@ -32,6 +34,8 @@ from todira_common import alert_hours, app_flags, share
 from todira_common.cards import _first_downloadable_photo_jpeg_bytes  # the cards' own tried photo download
 from todira_common.models import Listing
 from todira_common.non_home import not_non_home_sql
+
+import weekly_image
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +142,9 @@ def daily_caption(picks: list[tuple[Listing, float]]) -> str:
     return "\n".join(lines)
 
 
-def weekly_text(session: Session, now: dt.datetime) -> str | None:
+def weekly_prices(session: Session, now: dt.datetime) -> list[tuple[str, int]]:
+    """(city, 3-room median rounded to 10) for the WEEKLY_CITIES cities with the most rentals in the last 30 days
+    (2026-11-04 (owner): split out of weekly_text so the Friday picture and its caption use the same numbers)."""
     prices: dict[str, list[int]] = defaultdict(list)
     counts: dict[str, int] = defaultdict(int)
     for city, rooms, price in session.execute(
@@ -148,14 +154,36 @@ def weekly_text(session: Session, now: dt.datetime) -> str | None:
         if rooms is not None and 3 <= rooms <= 3.5:
             prices[city].append(price)
     cities = [city for city in sorted(counts, key=lambda c: (-counts[c], c)) if len(prices[city]) >= MIN_PEERS]
-    if not cities:
-        return None
+    return [(city, int(round(statistics.median(prices[city]), -1))) for city in cities[:WEEKLY_CITIES]]
+
+
+def weekly_caption(rows: list[tuple[str, int]]) -> str:
     lines = ["<b>כמה עולה היום לשכור דירת 3 חדרים</b>", "המחיר האמצעי לפי הדירות שעלו ב־30 הימים האחרונים:", ""]
-    for city in cities[:WEEKLY_CITIES]:
-        median = int(round(statistics.median(prices[city]), -1))
+    for city, median in rows:
         lines.append(f"{_link(f'{WEBSITE_URL}/rent/{quote(city)}', city)}: {_money(median)}")
     lines += ["", _link(f"{WEBSITE_URL}/rent", "כל הערים, לפי מספר חדרים ושכונות"), _bot_line()]
     return "\n".join(lines)
+
+
+def weekly_text(session: Session, now: dt.datetime) -> str | None:
+    rows = weekly_prices(session, now)
+    return weekly_caption(rows) if rows else None
+
+
+def _visible_length(caption: str) -> int:
+    """What Telegram counts against its 1024-character caption limit: the text after the HTML tags are parsed."""
+    return len(html.unescape(re.sub(r"<[^>]+>", "", caption)))
+
+
+def weekly_png(rows: list[tuple[str, int]], now: dt.datetime) -> bytes | None:
+    """The Friday picture, or None when it cannot be drawn (then the post goes out as text, as before)
+    (2026-11-04 (owner): a designed image people can forward)."""
+    end = alert_hours.israel_now(now).date()
+    try:
+        return weekly_image.render_weekly_png(rows, end - PEER_WINDOW, end)
+    except Exception:
+        logger.warning("channel: could not draw the Friday picture, posting text", exc_info=True)
+        return None
 
 
 INTRO_TEXT = (
@@ -176,10 +204,15 @@ async def _post(bot: Bot, kind: str, session: Session, now: dt.datetime) -> bool
             logger.warning("channel: could not pin the welcome post", exc_info=True)
         return True
     if kind == "weekly":
-        text = weekly_text(session, now)
-        if text is None:
+        rows = weekly_prices(session, now)
+        if not rows:
             return False
-        await bot.send_message(CHANNEL, text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        caption = weekly_caption(rows)
+        png = await asyncio.to_thread(weekly_png, rows, now) if _visible_length(caption) <= 1024 else None
+        if png is not None:
+            await bot.send_photo(CHANNEL, png, caption=caption, parse_mode=ParseMode.HTML)
+        else:
+            await bot.send_message(CHANNEL, caption, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         return True
     picks: list[tuple[Listing, float]] = []
     photos: list[bytes] = []
