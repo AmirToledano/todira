@@ -52,6 +52,7 @@ from notifier import run_notifications
 from renewal_reminder import run_renewal_reminders
 from channel import run_channel_posts
 from checkin import run_checkins
+from weekly_report import run_weekly_report
 from yad2_client import (
     REGION_SLUGS,
     REGIONS_ON_MAP_API,
@@ -3154,6 +3155,12 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("channel posts step failed")
+                # 2026-11-03: Sunday morning, the owner's weekly report (scraper/weekly_report.py)
+                try:
+                    summary.update(run_weekly_report(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("weekly report step failed")
                 try:
                     summary["owner_posts_expired"] = _expire_owner_posts(session)
                 except Exception:
