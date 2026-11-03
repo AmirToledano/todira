@@ -1,0 +1,41 @@
+name: Diagnose - is Todira's backup key the account's root key? (read-only)
+
+# 2026-11-03 (owner: an EC2 launch in eu-west-1 came from the root user's access key). Asks AWS who the backup key in
+# the cluster is (sts get-caller-identity) and prints only: root or an IAM user (its name), and whether the key id ends
+# with the 4 characters given as input (the key seen in CloudTrail). Neither key is printed.
+on:
+  workflow_dispatch:
+    inputs:
+      key_suffix:
+        description: "Last 4 characters of the access key seen in CloudTrail"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Who is the backup key
+        env:
+          SUFFIX: ${{ inputs.key_suffix }}
+        run: |
+          AWS_ACCESS_KEY_ID=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.aws-access-key-id}' | base64 -d)
+          AWS_SECRET_ACCESS_KEY=$(kubectl get secret todira-bot-secret -n todira -o jsonpath='{.data.aws-secret-access-key}' | base64 -d)
+          echo "::add-mask::$AWS_ACCESS_KEY_ID"
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION=eu-north-1
+          case "$AWS_ACCESS_KEY_ID" in *"$SUFFIX") echo "same key as in CloudTrail: YES" ;; *) echo "same key as in CloudTrail: no" ;; esac
+          ARN=$(aws sts get-caller-identity --query Arn --output text 2>&1)
+          case "$ARN" in *":root") echo "backup key belongs to: ROOT" ;; *":user/"*) echo "backup key belongs to: IAM user ${ARN##*/}" ;; *) echo "could not tell: $(echo "$ARN" | head -c 200)" ;; esac
+          echo "can it list EC2 in eu-west-1?"
+          aws ec2 describe-instances --region eu-west-1 --query 'length(Reservations)' --output text 2>&1 | head -c 200; echo
