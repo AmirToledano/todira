@@ -31,5 +31,6 @@ jobs:
                 | sed -E 's/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g' | cut -c1-300 | tail -8
               grep -oE "'(winback_sent|checkins_sent|referral_notes_sent|weekly_report|channel_posts|renewal_reminders_sent)': [^,}]*" /tmp/log | sort | uniq -c
               echo "ERROR lines: $(grep -c ' ERROR ' /tmp/log)"
+              echo "last lines:"; sed -E 's/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g; s/[0-9]{6,}/<id>/g' /tmp/log | cut -c1-200 | tail -6
             done
           done
