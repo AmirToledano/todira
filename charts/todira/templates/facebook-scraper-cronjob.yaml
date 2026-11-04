@@ -68,6 +68,13 @@ spec:
               env:
                 # 2026-10-29 (owner approved): never alongside the main scraper - wait up to 3 minutes for it to finish,
                 # otherwise skip this hour's run (scraper/main.py _take_run_lock).
+                # 2026-11-04 (owner): the leads step reads each looking-for post with the free Gemini key (scraper/seeker_leads.py)
+                - name: GEMINI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: gemini-api-key
+                      optional: true
                 - name: SCRAPER_SKIP_IF_BUSY
                   value: "true"
                 - name: SCRAPER_LOCK_WAIT_SECONDS

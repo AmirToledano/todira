@@ -75,7 +75,7 @@ def test_without_a_leads_group_they_go_to_the_inbox(monkeypatch):
 def test_a_failed_send_is_tried_again_next_run_and_a_burst_is_capped(monkeypatch):
     flags, sent = _wire(monkeypatch, ok=False)
     assert seeker_leads.send_leads([_post("1")], lambda p: (None, None), now=NOW) == 0
-    assert json.loads(flags.value) == []
+    assert json.loads(flags.value) == []  # not decided: tried again next run
     flags2, sent2 = _wire(monkeypatch)
     many = [_post(str(i)) for i in range(40)]
     assert seeker_leads.send_leads(many, lambda p: (None, None), now=NOW) == seeker_leads.MAX_PER_RUN
@@ -134,3 +134,28 @@ def test_the_ready_reply_names_the_place_varies_and_links_the_site():
         assert "@" not in reply and "—" not in reply and "–" not in reply
     body = seeker_leads.message(_post("1"), None, None)
     assert "תגובה מוכנה" in body and "<code>" in body
+
+
+def test_the_model_reads_the_whole_post_and_only_a_yes_is_sent(monkeypatch):
+    # 2026-11-04 (owner): read the whole post, not only the words
+    flags, sent = _wire(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.setattr(seeker_leads, "_AI_SPACING_SECONDS", 0)
+    answers = {"1": {"looking": True, "deal": "sale", "place": "חיפה"}, "2": {"looking": False}, "3": None}
+    monkeypatch.setattr(seeker_leads, "ai_verdict", lambda text: answers[text.split("|")[0]])
+    posts = [
+        _post("1", text="1| מחפשים לקנות דירה, מישהו מכיר משהו?"),
+        _post("2", text="2| להשכרה דירה יפה, מחפשים דירה? זאת בשבילכם"),
+        _post("3", text="3| מחפשת דירה בחולון"),  # the model could not answer: the rule decides
+        _post("4", text="4| סתם פוסט בלי שום בקשה"),  # not a candidate, the model is not asked
+    ]
+    n = seeker_leads.send_leads(posts, lambda p: (None, None), now=NOW, rule=lambda text: "חולון" in text)
+    assert n == 2
+    assert "<b>מחפשים לקנות דירה בחיפה</b>" in sent[0]["text"]
+    assert "בחולון" not in sent[0]["text"] and len(sent) == 2
+
+
+def test_candidates_are_wider_than_the_listing_rule():
+    assert seeker_leads.is_candidate("שלום לכולם, אנחנו זוג צעיר ומחפשים דירת 3 חדרים בפתח תקווה")
+    assert seeker_leads.is_candidate("מישהו מכיר דירה פנויה ברמת גן?")
+    assert not seeker_leads.is_candidate("להשכרה 3 חדרים ברמת גן, 6,500")
