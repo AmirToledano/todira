@@ -46,7 +46,11 @@ spec:
       # measured today a run takes about 7.5 minutes (:24 to :31:30), so a run still going after 11 minutes is stopped.
       # Later the same day the run also waits up to 3 minutes for a main run to finish (SCRAPER_LOCK_WAIT_SECONDS below):
       # 3 + 7.5 + a margin = 14 minutes.
-      activeDeadlineSeconds: 840
+      # 2026-11-04 (morning check): the main run now takes about 27 minutes (:00 to :27, :30 to :57), so a Facebook run
+      # starting at :24 gave up at :27, seconds before the main run ended - every daytime hour on 2026-11-04 (no Facebook
+      # flats, no leads). It now waits up to 7 minutes: 7 + 7.5 + a margin = 17 minutes. The :30 main run waits for it
+      # (up to 10 minutes) and so starts a few minutes late once an hour.
+      activeDeadlineSeconds: 1020
       template:
         metadata:
           labels:
@@ -67,7 +71,7 @@ spec:
                 - name: SCRAPER_SKIP_IF_BUSY
                   value: "true"
                 - name: SCRAPER_LOCK_WAIT_SECONDS
-                  value: "180"
+                  value: "420"
                 # 2026-10-14: at most two glibc malloc arenas, so a multi-threaded Python process keeps less freed memory
                 # to itself on the 2 GB server (the default allows 8 per CPU).
                 - name: MALLOC_ARENA_MAX

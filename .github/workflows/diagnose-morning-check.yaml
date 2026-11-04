@@ -26,8 +26,11 @@ jobs:
             echo "##### $APP"
             for POD in $(kubectl get pods -n todira -l app=$APP --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -4); do
               echo "=== $POD started $(kubectl get pod $POD -n todira -o jsonpath='{.status.startTime} {.status.phase}')"
-              kubectl logs -n todira "$POD" --all-containers 2>&1 \
-                | grep -E "seeker leads|looking-for posts skipped|win-?back|winback_sent|weekly report|summary|Traceback|ERROR" \
-                | sed -E 's/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g' | cut -c1-220 | tail -12
+              kubectl logs -n todira "$POD" --all-containers > /tmp/log 2>&1 || true
+              grep -E "seeker leads|Facebook groups feed|win-?back|weekly report|morning summary|Traceback" /tmp/log \
+                | sed -E 's/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g' | cut -c1-300 | tail -8
+              grep -oE "'(winback_sent|checkins_sent|referral_notes_sent|weekly_report|channel_posts|renewal_reminders_sent)': [^,}]*" /tmp/log | sort | uniq -c
+              echo "ERROR lines: $(grep -c ' ERROR ' /tmp/log)"
+              echo "last lines:"; sed -E 's/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g; s/[0-9]{6,}/<id>/g' /tmp/log | cut -c1-200 | tail -6
             done
           done
