@@ -295,5 +295,6 @@
  "trial.when_today": "hoje às {time}",
  "trial.when_tomorrow": "amanhã às {time}",
  "trial_gift.telegram": "🎁 Um presente do Todira!\nVocê ganhou mais 7 dias de acesso completo e grátis, até {date} 🙌\nContinuo procurando e te envio cada apartamento novo que combinar com sua busca.\nTodos os apartamentos que combinam com você: /apartments",
- "voice.not_understood": "Não consegui entender o áudio 🙈 Tente de novo, ou digite."
+ "voice.not_understood": "Não consegui entender o áudio 🙈 Tente de novo, ou digite.",
+ "winback.text": "Bom dia! Desde que seu acesso à Todira terminou em {date}, encontramos {count} apartamentos novos que combinam com sua busca. Eles chegaram sem o link do anúncio original. Quer abri-los e receber os próximos completos? Renove aqui: {url}"
 }

@@ -190,7 +190,7 @@ def test_city_check_texts_exist_in_every_language():
 def test_city_check_is_on_the_home_page_and_its_button_goes_through_login(client):
     html = client.get("/?lang=he").text
     assert 'id="lp-mycity"' in html and 'id="lp-city-in"' in html
-    assert 'href="/login?next=/apartments"' in html
+    assert 'id="lp-city-go" href="/search"' in html  # 2026-11-04: the flats without signing in
     assert '"city_names"' in html and '"city_result_n"' in html
 
 
@@ -208,4 +208,5 @@ def test_city_view_shows_every_flat_of_that_city_and_keeps_the_saved_filter():
 
 def test_home_city_button_goes_to_that_city_through_login():
     js = (Path(__file__).resolve().parent.parent / "website" / "static" / "home.js").read_text()
-    assert '"/login?next=" + encodeURIComponent("/apartments?city="' in js
+    # 2026-11-04 (owner): straight to /search, with the budget and rooms asked on the home page
+    assert '"/search?cities=" + encodeURIComponent(city)' in js and '"&price_max=" + budget' in js

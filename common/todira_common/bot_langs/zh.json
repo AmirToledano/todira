@@ -295,5 +295,6 @@
  "trial.when_today": "今天 {time}",
  "trial.when_tomorrow": "明天 {time}",
  "trial_gift.telegram": "🎁 Todira 送你一份礼物！\n你额外获得 7 天完整免费使用权限，有效期至 {date} 🙌\n我会继续帮你找，并把每一套符合你搜索条件的新房源发给你。\n所有符合条件的房源：/apartments",
- "voice.not_understood": "我没听清这段录音 🙈 请再试一次，或者直接打字。"
+ "voice.not_understood": "我没听清这段录音 🙈 请再试一次，或者直接打字。",
+ "winback.text": "早上好！自你的 Todira 访问权限于 {date} 结束后，我们为你找到了符合搜索条件的新房源：{count} 套。它们发给你时不含原房源链接。想打开它们并完整接收之后的房源吗？在这里续订：{url}"
 }

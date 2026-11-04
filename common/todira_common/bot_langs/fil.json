@@ -295,5 +295,6 @@
  "trial.when_today": "ngayong araw, {time}",
  "trial.when_tomorrow": "bukas, {time}",
  "trial_gift.telegram": "🎁 Regalo mula sa Todira!\nMay 7 pang araw ka ng full at libreng access, hanggang {date} 🙌\nPatuloy akong maghahanap at ipapadala ko sa'yo ang bawat bagong apartment na bagay sa search mo.\nLahat ng match mo: /apartments",
- "voice.not_understood": "Hindi ko maintindihan ang recording 🙈 Subukan ulit, o i-type na lang."
+ "voice.not_understood": "Hindi ko maintindihan ang recording 🙈 Subukan ulit, o i-type na lang.",
+ "winback.text": "Magandang umaga! Mula nang matapos ang access mo sa Todira noong {date}, nakahanap kami ng {count} bagong apartment na tugma sa hinahanap mo. Dumating ang mga ito nang walang link sa orihinal na listing. Gusto mo bang buksan ang mga ito at matanggap nang buo ang mga susunod? Mag-renew dito: {url}"
 }
