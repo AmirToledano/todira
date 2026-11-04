@@ -1,0 +1,33 @@
+name: Diagnose - this morning's leads, win-back and daily summary (read-only, counts)
+
+# 2026-11-04 (owner): did the leads group get real seekers after PR 979, did win-back go out, did the daily summary
+# reach the inbox group. Log lines only, counts; nothing about any person or post text.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Logs
+        run: |
+          for APP in todira-facebook-scraper todira-scraper todira-daily-summary; do
+            echo "##### $APP"
+            for POD in $(kubectl get pods -n todira -l app=$APP --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -4); do
+              echo "=== $POD started $(kubectl get pod $POD -n todira -o jsonpath='{.status.startTime} {.status.phase}')"
+              kubectl logs -n todira "$POD" --all-containers 2>&1 \
+                | grep -E "seeker leads|looking-for posts skipped|win-?back|winback_sent|weekly report|summary|Traceback|ERROR" \
+                | sed -E 's/https?:[^ ]+/<url>/g; s/"[^"]*"/"<text>"/g' | cut -c1-220 | tail -12
+            done
+          done
