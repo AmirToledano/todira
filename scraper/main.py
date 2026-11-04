@@ -2779,14 +2779,14 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
     except Exception:
         logger.exception("reading the groups' cities failed")
     skipped_seekers = skipped_vague = errors = city_from_group = 0
-    seekers: list[dict] = []
+    # 2026-11-04 (owner): every new post goes to the leads step, which picks the people looking for a home itself
+    lead_candidates = [post for post in posts if post["post_id"] not in known_ids]
     for post in posts:
         seen_external_ids.add(post["post_id"])
         if post["post_id"] in known_ids:
             continue
         if facebook_groups_text_parser.looks_like_seeker(post["text"]):
             skipped_seekers += 1
-            seekers.append(post)
             continue
         raw_item = raw_item_from_feed_post(post)
         if (raw_item.get("price") is None and raw_item.get("rooms") is None) or not (
@@ -2810,7 +2810,10 @@ def _scrape_facebook_groups_feed(sale_group_ids: set[str]) -> tuple[list, set[st
         len(posts), len(normalized_items), skipped_seekers, skipped_vague,
         sum(1 for post in posts if post["post_id"] in known_ids), city_from_group,
     )
-    seeker_leads.send_leads(seekers, lambda post: _seeker_place_and_deal(post, group_cities))
+    seeker_leads.send_leads(
+        lead_candidates, lambda post: _seeker_place_and_deal(post, group_cities),
+        rule=facebook_groups_text_parser.looks_like_seeker,
+    )
     return normalized_items, seen_external_ids, len(posts), errors, True
 
 
