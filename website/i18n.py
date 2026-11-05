@@ -409,7 +409,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # ---------- cookie notice banner (2026-09-25) ----------
     "cookies.notice_text": {
-        "he": "האתר משתמש רק בשתי עוגיות: אחת זוכרת שהתחברת ואחת זוכרת את השפה. בלי פרסומות ובלי מעקב.",
+        "he": "רק שתי עוגיות: התחברות ושפה. בלי פרסומות ובלי מעקב.",
         "en": "This site uses exactly two functional cookies (login and display language), no advertising or tracking cookies.",
         "ru": "Сайт использует только два функциональных файла cookie (вход и язык отображения), без рекламных или отслеживающих файлов cookie.",
         "fr": "Ce site utilise exactement deux cookies fonctionnels (connexion et langue d'affichage), aucun cookie publicitaire ou de suivi.",
