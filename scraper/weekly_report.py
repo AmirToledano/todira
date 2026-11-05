@@ -24,6 +24,7 @@ FROM_HOUR, UNTIL_HOUR = 9, 12
 _FLAG = "weekly_report_sent"
 _SOURCE_NAMES = {
     "src_fblead": "תגובות לידים בפייסבוק",
+    "src_ig": "הקישור בביו של האינסטגרם",
     "site_from_google": "גוגל",
     "site_from_facebook": "פייסבוק",
     "site_from_telegram": "טלגרם",
