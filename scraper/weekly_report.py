@@ -25,6 +25,7 @@ _FLAG = "weekly_report_sent"
 _SOURCE_NAMES = {
     "src_fblead": "תגובות לידים בפייסבוק",
     "src_ig": "הקישור בביו של האינסטגרם",
+    "src_pwa": "פתיחות מהאייקון במסך הבית",
     "site_from_google": "גוגל",
     "site_from_facebook": "פייסבוק",
     "site_from_telegram": "טלגרם",

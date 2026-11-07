@@ -1341,6 +1341,43 @@ def robots_txt(request: Request) -> PlainTextResponse:
     return PlainTextResponse("\n".join(lines))
 
 
+# 2026-11-07 (owner: Todira as an app on the home screen): the service worker, served from the root so it covers the
+# whole site. It caches only its own offline page: every page and API call still goes to the server as before.
+_SERVICE_WORKER = """// Todira service worker: an offline page of its own, nothing else is cached.
+const OFFLINE = 'todira-offline-v1';
+const PAGE = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>טודירה</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#fbf7ef;
+color:#173c40;font-family:Heebo,system-ui,sans-serif;text-align:center;padding:24px;box-sizing:border-box}
+h1{font-size:1.4rem;margin:0 0 8px}p{margin:0 0 20px;color:#66787c}button{background:#0e8a82;color:#fff;border:0;
+border-radius:999px;padding:12px 26px;font-weight:700;font-size:1rem;font-family:inherit;cursor:pointer}</style></head><body><div>
+<h1>אין חיבור לאינטרנט</h1><p>כשהחיבור יחזור, הדירות יחכו כאן.</p>
+<button onclick="location.reload()">לנסות שוב</button></div></body></html>`;
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(OFFLINE).then((cache) => cache.put('/__offline',
+    new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }))));
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.keys().then((keys) => Promise.all(
+    keys.filter((key) => key !== OFFLINE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') { return; }
+  event.respondWith(fetch(event.request).catch(() => caches.match('/__offline')));
+});
+"""
+
+
+@app.get("/sw.js")
+def service_worker() -> Response:
+    return Response(
+        _SERVICE_WORKER,
+        media_type="text/javascript",
+        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+    )
+
+
 # 2026-10-16 (owner wants Apple Pay): Takbull's provider settings ask to verify the site's domain before Apple Pay can
 # be used. Apple fetches this exact file from this exact path over HTTPS; it is the file the owner downloaded from
 # Takbull, served byte for byte. Public by design (anyone can fetch it from any Apple Pay merchant's domain).

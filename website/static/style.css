@@ -2665,3 +2665,62 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .psearch-cta p { margin: 0 0 14px; color: var(--text-muted); }
 .psearch-cta-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .psearch-cta-actions .btn { flex: 1 1 200px; justify-content: center; }
+
+/* ================= Todira on the home screen (2026-11-07, static/pwa.js) ================= */
+/* The "+" button: in the browser only, until the app is added. Bottom middle, clear of the corner buttons. */
+.app-add[hidden] { display: none; }
+.app-add {
+  position: fixed; z-index: 880; left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + var(--app-add-lift, 0px) + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 2px;
+  background: var(--teal); color: #fff; border-radius: 999px;
+  box-shadow: 0 0 0 3px var(--bg), var(--glow-teal); padding: 4px;
+  animation: app-add-in .5s var(--ease-premium) both;
+}
+.app-add button { background: none; border: none; color: inherit; cursor: pointer; font-family: inherit; }
+.app-add-main {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px 9px 14px;
+  font-weight: 700; font-size: .95rem; white-space: nowrap;
+}
+.app-add-main .ic {
+  width: 26px; height: 26px; padding: 4px; border-radius: 50%;
+  background: #fff; color: var(--teal); stroke-width: 2.6;
+}
+.app-add-close { width: 32px; height: 32px; border-radius: 50%; font-size: .8rem; opacity: .8; }
+.app-add-close:hover, .app-add-main:hover { opacity: 1; background: rgba(255,255,255,.12); border-radius: 999px; }
+.app-add button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 999px; }
+@keyframes app-add-in { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .app-add { animation: none; } }
+/* while the "+" is up, the feedback bubble in the same row waits (it comes back once the button is gone) */
+body:has(#app-add:not([hidden])) .feedback-bubble { display: none; }
+
+/* the steps for iPhone and browsers that can't install by themselves */
+.app-sheet[hidden] { display: none; }
+.app-sheet {
+  position: fixed; inset: 0; z-index: 1900; background: rgba(15, 23, 21, .55);
+  display: flex; align-items: flex-end; justify-content: center; padding: 16px;
+}
+.app-sheet-card {
+  background: var(--card); color: var(--text); width: min(440px, 100%);
+  border-radius: var(--radius-lg); padding: 22px 20px 18px; box-shadow: var(--shadow-lg);
+  margin-bottom: env(safe-area-inset-bottom, 0px); text-align: start;
+}
+.app-sheet-icon { display: block; border-radius: 14px; margin: 0 auto 10px; }
+.app-sheet-card h2 { font-family: 'Rubik', sans-serif; color: var(--heading); font-size: 1.2rem; margin: 0 0 6px; text-align: center; }
+.app-sheet-card p { margin: 0 0 12px; color: var(--text-muted); text-align: center; }
+.app-sheet-card ol { margin: 0 0 16px; padding-inline-start: 22px; line-height: 1.6; }
+.app-sheet-card li + li { margin-top: 6px; }
+.app-sheet-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+/* Opened from the home screen: an app, not a page. No long-press select/copy/save and no tap flash; fields stay
+   editable and selectable. Fields at 16px at least, so iOS does not zoom in when one is focused. */
+html.is-app { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
+html.is-app body {
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+html.is-app img, html.is-app svg, html.is-app a { -webkit-user-drag: none; -webkit-touch-callout: none; }
+html.is-app input, html.is-app textarea, html.is-app select, html.is-app [contenteditable="true"] {
+  -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; font-size: max(16px, 1em);
+}
+html.is-app .app-add, html.is-app .app-sheet { display: none !important; }

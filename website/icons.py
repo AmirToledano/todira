@@ -51,6 +51,7 @@ _SHAPES = {
     'house-plus': '<path d="M13.22 2.416a2 2 0 0 0-2.511.057l-7 5.999A2 2 0 0 0 3 10v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7.354"/><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M15 6h6"/><path d="M18 3v6"/>',
     'megaphone': '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
     'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+    'plus': '<path d="M5 12h14"/><path d="M12 5v14"/>',
 }
 
 
