@@ -182,3 +182,17 @@ def test_home_stats_api_says_unavailable_and_the_page_falls_back(client):
 
     assert api.status_code == 503
     assert "liveStats: null" in page.text
+
+
+def test_home_screen_app_pieces(client):
+    """2026-11-07 (owner): the '+' button, the service worker and the app manifest."""
+    page = client.get("/").text
+    assert 'id="app-add"' in page and "/static/pwa.js" in page
+    assert "apple-mobile-web-app-capable" in page and "display-mode: standalone" in page
+    sw = client.get("/sw.js")
+    assert sw.status_code == 200 and "javascript" in sw.headers["content-type"]
+    assert sw.headers.get("service-worker-allowed") == "/"
+    import json
+    manifest = json.loads((_WEBSITE_DIR / "static" / "site.webmanifest").read_text(encoding="utf-8"))
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "/?src=pwa"
+    assert any(i.get("purpose") == "maskable" for i in manifest["icons"])

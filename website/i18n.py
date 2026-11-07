@@ -4363,4 +4363,19 @@ TRANSLATIONS.update({
 })
 
 # Last, after every TRANSLATIONS.update above, so a language file can translate those keys too.
+# ---------- Todira on the home screen (2026-11-07, static/pwa.js) ----------
+TRANSLATIONS.update({
+    "pwa.add_button": {"he": "הוספה למסך הבית", "en": "Add to home screen", "ru": "На главный экран", "fr": "Ajouter à l'écran d'accueil", "ar": "إضافة إلى الشاشة الرئيسية"},
+    "pwa.close": {"he": "סגירה", "en": "Close", "ru": "Закрыть", "fr": "Fermer", "ar": "إغلاق"},
+    "pwa.sheet_title": {"he": "מוסיפים את טודירה למסך הבית", "en": "Add Todira to your home screen", "ru": "Добавьте Todira на главный экран", "fr": "Ajoutez Todira à votre écran d'accueil", "ar": "أضف Todira إلى الشاشة الرئيسية"},
+    "pwa.sheet_lead": {"he": "ככה טודירה נפתחת כמו אפליקציה, במסך מלא, בלחיצה אחת.", "en": "Todira then opens like an app, full screen, in one tap.", "ru": "Тогда Todira открывается как приложение, на весь экран, одним касанием.", "fr": "Todira s'ouvre alors comme une application, en plein écran, d'un seul geste.", "ar": "عندها يفتح Todira كتطبيق، بملء الشاشة، بلمسة واحدة."},
+    "pwa.ios_step1": {"he": "לוחצים על כפתור השיתוף בסרגל של הדפדפן (לפעמים הוא בתוך התפריט ⋯).", "en": "Tap the Share button in the browser bar (sometimes it is inside the ⋯ menu).", "ru": "Нажмите «Поделиться» в панели браузера (иногда она в меню ⋯).", "fr": "Touchez le bouton Partager dans la barre du navigateur (parfois dans le menu ⋯).", "ar": "اضغط على زر المشاركة في شريط المتصفح (أحيانًا يكون داخل القائمة ⋯)."},
+    "pwa.ios_step2": {"he": "בוחרים \"הוספה למסך הבית\".", "en": "Choose \"Add to Home Screen\".", "ru": "Выберите «На экран „Домой“».", "fr": "Choisissez « Sur l'écran d'accueil ».", "ar": "اختر \"إضافة إلى الشاشة الرئيسية\"."},
+    "pwa.ios_step3": {"he": "מאשרים בלחיצה על \"הוסף\".", "en": "Confirm with \"Add\".", "ru": "Подтвердите, нажав «Добавить».", "fr": "Confirmez avec « Ajouter ».", "ar": "أكّد بالضغط على \"إضافة\"."},
+    "pwa.other_step1": {"he": "פותחים את התפריט של הדפדפן (⋮ או ☰).", "en": "Open the browser menu (⋮ or ☰).", "ru": "Откройте меню браузера (⋮ или ☰).", "fr": "Ouvrez le menu du navigateur (⋮ ou ☰).", "ar": "افتح قائمة المتصفح (⋮ أو ☰)."},
+    "pwa.other_step2": {"he": "בוחרים \"הוספה למסך הבית\" או \"התקנת אפליקציה\".", "en": "Choose \"Add to Home screen\" or \"Install app\".", "ru": "Выберите «Добавить на главный экран» или «Установить приложение».", "fr": "Choisissez « Ajouter à l'écran d'accueil » ou « Installer l'application ».", "ar": "اختر \"إضافة إلى الشاشة الرئيسية\" أو \"تثبيت التطبيق\"."},
+    "pwa.done": {"he": "הוספתי", "en": "Done, added", "ru": "Готово, добавил", "fr": "C'est fait", "ar": "تمت الإضافة"},
+    "pwa.later": {"he": "אחר כך", "en": "Later", "ru": "Позже", "fr": "Plus tard", "ar": "لاحقًا"},
+})
+
 _load_lang_files()
