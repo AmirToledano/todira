@@ -107,25 +107,27 @@ class StealthHTTPClient:
             return min(float(retry_after), 60.0)
         return 5.0 * (attempt + 1)
 
-    def fetch(self, url: str, params: dict[str, Any] | None = None) -> Any:
-        """GET ``url`` and return the decoded JSON body.
+    def _send(self, method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        """Run the retry loop and return the final ``httpx.Response``.
 
-        Retries on 403/429 and network errors, each time on a new client with a
-        different proxy. Returns ``{}`` if every attempt was blocked, re-raises the
-        last network error if every attempt failed on the network, and raises
-        ``httpx.HTTPStatusError`` straight away for any other non-2xx status.
+        Sleeps a random human-like delay first. Retries on 403/429 and on network
+        errors, each time on a new client with a different proxy. If every attempt
+        was blocked, returns the last blocked response; if every attempt failed on
+        the network, re-raises the last network error. Any other status is returned
+        as it is, without retrying.
         """
         time.sleep(random.uniform(self.min_delay, self.max_delay))
 
         proxy: str | None = None
         last_error: httpx.TransportError | None = None
+        last_blocked: httpx.Response | None = None
 
         for attempt in range(self.max_attempts):
             proxy = self._pick_proxy(exclude=proxy)
             is_last = attempt == self.max_attempts - 1
             try:
                 with self._new_client(proxy) as client:
-                    response = client.get(url, params=params)
+                    response = client.request(method, url, **kwargs)
             except httpx.TransportError as exc:
                 last_error = exc
                 logger.warning(
@@ -138,6 +140,7 @@ class StealthHTTPClient:
 
             if response.status_code in BLOCKED_STATUS_CODES:
                 last_error = None
+                last_blocked = response
                 logger.warning(
                     "stealth_http: HTTP %d on attempt %d/%d, switching proxy",
                     response.status_code, attempt + 1, self.max_attempts,
@@ -146,9 +149,39 @@ class StealthHTTPClient:
                     time.sleep(self._blocked_wait(response, attempt))
                 continue
 
-            response.raise_for_status()
-            return response.json()
+            return response
 
         if last_error is not None:
             raise last_error
-        return {}
+        assert last_blocked is not None
+        return last_blocked
+
+    def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Drop-in for ``httpx.request``: same keyword arguments, real ``httpx.Response``.
+
+        Like httpx, a non-2xx status is returned, not raised; network errors raise
+        ``httpx.TransportError`` subclasses. Headers passed by the caller override the
+        rotating browser headers.
+        """
+        return self._send(method, url, kwargs)
+
+    def get(self, url: str, **kwargs: Any) -> httpx.Response:
+        """Drop-in for ``httpx.get``."""
+        return self._send("GET", url, kwargs)
+
+    def post(self, url: str, **kwargs: Any) -> httpx.Response:
+        """Drop-in for ``httpx.post``."""
+        return self._send("POST", url, kwargs)
+
+    def fetch(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        """GET ``url`` and return the decoded JSON body.
+
+        Returns ``{}`` if every attempt was blocked, re-raises the last network
+        error if every attempt failed on the network, and raises
+        ``httpx.HTTPStatusError`` for any other non-2xx status.
+        """
+        response = self._send("GET", url, {"params": params})
+        if response.status_code in BLOCKED_STATUS_CODES:
+            return {}
+        response.raise_for_status()
+        return response.json()
