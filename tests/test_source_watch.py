@@ -3,7 +3,7 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused/unused")
 
-import source_watch
+import source_watch  # noqa: E402
 
 
 def test_flags_only_a_source_far_below_its_usual():

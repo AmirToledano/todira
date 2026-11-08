@@ -14,6 +14,7 @@ import statistics
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+
 from todira_common import alert_hours, app_flags
 from todira_common.models import Listing
 from todira_common.owner_alert import alert_owner
