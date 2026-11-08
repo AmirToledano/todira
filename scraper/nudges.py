@@ -29,7 +29,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden
-
 from todira_common import activity, alert_hours, app_flags, referrals
 from todira_common.access import PLAN_PRICES_ILS, has_full_access
 from todira_common.bot_strings import bot_text
