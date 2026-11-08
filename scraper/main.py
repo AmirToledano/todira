@@ -1878,6 +1878,11 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
         processed_this_run.add(modaa_num)
         new_ids_to_fetch.append(modaa_num)
 
+    # 2026-11-08: Komo's new ads fell from ~900 a day to ~200 from 1.11; how big the list is and how much of it is new
+    logger.info(
+        "Komo list: rent=%d sale=%d known=%d new=%d", len(rent_coordinates), len(sale_coordinates), len(known_ids),
+        len(new_ids_to_fetch),
+    )
     now_ts = time.time()
     failed_ids = _load_komo_failed_ids()
     recently_failed = {
