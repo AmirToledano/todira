@@ -56,6 +56,7 @@ from weekly_report import run_weekly_report
 from instagram_kit import run_instagram_kit
 from nudges import run_nudges
 from source_watch import run_source_watch
+from email_digest import run_email_digest
 from winback import run_winback
 from yad2_client import (
     REGION_SLUGS,
@@ -3185,6 +3186,12 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("nudges step failed")
+                # 2026-11-08: the morning email of new matching flats, off until RESEND_API_KEY (scraper/email_digest.py)
+                try:
+                    summary.update(run_email_digest(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("email digest step failed")
                 # 2026-11-08: tell the owner the same day when a source brings far fewer flats (scraper/source_watch.py)
                 try:
                     summary.update(run_source_watch(session))

@@ -77,7 +77,7 @@ from todira_common.access import (
 )
 from todira_common.channel_link import generate_link_code
 from todira_common.public_text import is_room_in_shared_flat, public_description
-from todira_common import referrals
+from todira_common import email_digest, referrals
 from todira_common.referrals import REWARD_DAYS as INVITE_REWARD_DAYS, invite_code
 from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECOND_NAMES
 from todira_common.bot_strings import bot_text
@@ -1286,6 +1286,29 @@ def invite_page(request: Request, code: str):
         return RedirectResponse("/", status_code=303)
     request.session["invite_code"] = code
     response = _render(request, "invite.html", {"bot_link": referrals.BOT_LINK + code, "days": INVITE_REWARD_DAYS})
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
+@app.get("/email/stop")
+def email_stop_page(request: Request, t: str = ""):
+    """2026-11-08: the "stop this email" link of the morning email (todira_common/email_digest.py) - asks first."""
+    bad = email_digest.user_from_stop_token(t) is None
+    response = _render(request, "email_stop.html", {"token": t, "bad": bad, "done": False})
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
+@app.post("/email/stop")
+def email_stop(request: Request, t: str = Form("")):
+    user_id = email_digest.user_from_stop_token(t)
+    if user_id is not None:
+        with get_session() as session:
+            off = json.loads(get_flag(session, email_digest.OFF_FLAG) or "[]")
+            if user_id not in off:
+                off.append(user_id)
+                set_flag(session, email_digest.OFF_FLAG, json.dumps(off))
+    response = _render(request, "email_stop.html", {"token": "", "bad": user_id is None, "done": user_id is not None})
     response.headers["X-Robots-Tag"] = "noindex"
     return response
 
