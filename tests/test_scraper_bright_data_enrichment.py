@@ -315,3 +315,35 @@ def test_backfill_is_skipped_before_its_query_when_the_run_is_past_its_budget(mo
 def test_the_run_budget_is_unlimited_outside_a_run(monkeypatch):
     monkeypatch.setattr(scraper_main, "_RUN_STARTED_AT", None)
     assert scraper_main._run_time_left() == float("inf")
+
+
+# --- start jitter (2026-11-08) ---
+
+
+def test_start_jitter_default_range(monkeypatch):
+    monkeypatch.delenv("SCRAPER_START_JITTER_MAX_SECONDS", raising=False)
+    seen = []
+    scraper_main._start_jitter_seconds(uniform=lambda a, b: seen.append((a, b)) or b)
+    assert seen == [(0.0, 8 * 60)]
+
+
+def test_start_jitter_env_override_zero_and_bad_value(monkeypatch):
+    monkeypatch.setenv("SCRAPER_START_JITTER_MAX_SECONDS", "120")
+    assert scraper_main._start_jitter_seconds(uniform=lambda a, b: b) == 120
+    monkeypatch.setenv("SCRAPER_START_JITTER_MAX_SECONDS", "0")
+    assert scraper_main._start_jitter_seconds(uniform=lambda a, b: 1 / 0) == 0.0
+    monkeypatch.setenv("SCRAPER_START_JITTER_MAX_SECONDS", "soon")
+    assert scraper_main._start_jitter_seconds(uniform=lambda a, b: b) == 8 * 60
+
+
+def test_start_jitter_capped_at_half_the_run_budget(monkeypatch):
+    monkeypatch.setenv("SCRAPER_START_JITTER_MAX_SECONDS", "99999")
+    assert scraper_main._start_jitter_seconds(uniform=lambda a, b: b) == scraper_main._DEFAULT_RUN_BUDGET_SECONDS / 2
+
+
+def test_start_delay_comes_out_of_the_run_budget(monkeypatch):
+    monkeypatch.delenv("SCRAPER_RUN_BUDGET_SECONDS", raising=False)
+    monkeypatch.setattr(scraper_main.time, "monotonic", lambda: 1000.0)
+    monkeypatch.setattr(scraper_main, "_RUN_STARTED_AT", 1000.0)
+    monkeypatch.setattr(scraper_main, "_START_DELAY_SECONDS", 300.0)
+    assert scraper_main._run_time_left() == scraper_main._DEFAULT_RUN_BUDGET_SECONDS - 300.0

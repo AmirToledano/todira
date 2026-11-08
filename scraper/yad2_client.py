@@ -108,23 +108,19 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
-from scraper.utils.stealth_http import StealthHTTPClient
-import httpx as original_httpx
-
-class PatchedHTTPX:
-    def __getattr__(self, name):
-        if name in ["get", "post"]:
-            # מנתב את כל קריאות ה-get/post ברחבי הקובץ ישירות לקליינט החמקן של קלוד
-            return StealthHTTPClient().fetch
-        return getattr(original_httpx, name)
-
-httpx = PatchedHTTPX()
-
-
-
+import httpx
 from todira_common import bright_data_client
+from utils.stealth_http import StealthHTTPClient
 
 logger = logging.getLogger(__name__)
+
+
+def _http_get(url: str, **kwargs: Any) -> httpx.Response:
+    """GET through the stealth client (rotating proxy and headers, jitter, retry on 403/429).
+
+    Same arguments and return value as ``httpx.get``. A fresh client per call picks up the
+    current ROTATING_PROXY_URL. With no proxies configured it connects directly."""
+    return StealthHTTPClient().get(url, **kwargs)
 
 SEARCH_PAGE_URL = "https://www.yad2.co.il/realestate/rent"
 
@@ -435,7 +431,7 @@ def _fetch_search_html(url: str, *, context_label: str) -> str:
     api_key = _get_zenrows_api_key()
 
     try:
-        response = httpx.get(
+        response = _http_get(
             ZENROWS_FETCH_API_URL,
             params={
                 "apikey": api_key,
@@ -660,7 +656,7 @@ def fetch_listing_detail(url: str) -> dict[str, Any] | None:
         return None
 
     try:
-        response = httpx.get(
+        response = _http_get(
             ZENROWS_FETCH_API_URL,
             params={
                 "apikey": api_key,

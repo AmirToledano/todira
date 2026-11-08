@@ -757,6 +757,23 @@ _RUN_BUDGET_ENV_VAR = "SCRAPER_RUN_BUDGET_SECONDS"
 # features, reminders), ending 27.5 minutes after it started - too close to the next slot. 22 leaves room for those steps.
 _DEFAULT_RUN_BUDGET_SECONDS = 22 * 60
 _RUN_STARTED_AT: float | None = None
+# 2026-11-08 (owner): each run waits a random 0 to SCRAPER_START_JITTER_MAX_SECONDS (default 8 minutes) before it starts,
+# so runs do not begin at exactly :00 and :30. The CronJob cannot fire early, so the jitter is only ever a delay. The
+# delay is taken out of the catch-up budget above, so a delayed run still ends before the next slot.
+_START_JITTER_ENV_VAR = "SCRAPER_START_JITTER_MAX_SECONDS"
+_DEFAULT_START_JITTER_MAX_SECONDS = 8 * 60
+_START_DELAY_SECONDS = 0.0
+
+
+def _start_jitter_seconds(uniform=random.uniform) -> float:
+    """A random start delay between 0 and SCRAPER_START_JITTER_MAX_SECONDS (default 8 minutes); 0 turns it off."""
+    raw = os.environ.get(_START_JITTER_ENV_VAR, "").strip()
+    try:
+        cap = float(raw) if raw else _DEFAULT_START_JITTER_MAX_SECONDS
+    except ValueError:
+        cap = _DEFAULT_START_JITTER_MAX_SECONDS
+    cap = min(max(0.0, cap), _DEFAULT_RUN_BUDGET_SECONDS / 2)
+    return uniform(0.0, cap) if cap > 0 else 0.0
 
 
 def _run_time_left() -> float:
@@ -769,7 +786,7 @@ def _run_time_left() -> float:
         budget = float(raw) if raw else _DEFAULT_RUN_BUDGET_SECONDS
     except ValueError:
         budget = _DEFAULT_RUN_BUDGET_SECONDS
-    return budget - (time.monotonic() - _RUN_STARTED_AT)
+    return budget - _START_DELAY_SECONDS - (time.monotonic() - _RUN_STARTED_AT)
 
 
 async def _backfill_missing_yad2_descriptions(session) -> int:
@@ -3256,6 +3273,9 @@ def _take_run_lock():
 
 
 if __name__ == "__main__":
+    _START_DELAY_SECONDS = _start_jitter_seconds()
+    logger.info("Waiting %.0f seconds before this run starts (start jitter)", _START_DELAY_SECONDS)
+    time.sleep(_START_DELAY_SECONDS)
     lock_connection, have_lock = _take_run_lock()
     if not have_lock:
         if os.environ.get(_RUN_LOCK_SKIP_ENV_VAR, "").strip().lower() in ("1", "true", "yes"):

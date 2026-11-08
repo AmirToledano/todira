@@ -33,6 +33,13 @@ from yad2_client import _marker_to_raw_item
 from yad2_client import _extract_feed_records as extract_feed_records
 
 
+@pytest.fixture(autouse=True)
+def _route_stealth_get_to_httpx_get(monkeypatch):
+    """The ZenRows calls go through yad2_client._http_get (the stealth client). These tests mock
+    httpx.get, so point _http_get at whatever httpx.get is at call time: no network, no jitter."""
+    monkeypatch.setattr(yad2_client, "_http_get", lambda url, **kw: httpx.get(url, **kw))
+
+
 def test_every_slug_has_a_hebrew_name():
     assert set(CITY_SLUG_TO_ID) == set(CITY_SLUG_TO_HEBREW_NAME)
 

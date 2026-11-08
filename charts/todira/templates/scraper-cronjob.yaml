@@ -156,6 +156,14 @@ spec:
                       name: {{ .Release.Name }}-bot-secret
                       key: bright-data-isp-pass
                       optional: true
+                # 2026-11-08: proxy pool for scraper/utils/stealth_http.py (comma or space separated proxy URLs). Optional:
+                # unset means StealthHTTPClient connects directly. Set with set-rotating-proxy-secret.yaml.
+                - name: ROTATING_PROXY_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: rotating-proxy-url
+                      optional: true
                 # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
                 # scraper.komoMaxNewDetailFetchesPerRun for the real math these exist to protect.
                 # Only set when the value is actually present, so scraper/main.py's own Python-side
