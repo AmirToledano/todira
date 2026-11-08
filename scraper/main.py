@@ -55,6 +55,8 @@ from checkin import run_checkins
 from weekly_report import run_weekly_report
 from instagram_kit import run_instagram_kit
 from nudges import run_nudges
+from source_watch import run_source_watch
+from email_digest import run_email_digest
 from winback import run_winback
 from yad2_client import (
     REGION_SLUGS,
@@ -1877,6 +1879,11 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
         processed_this_run.add(modaa_num)
         new_ids_to_fetch.append(modaa_num)
 
+    # 2026-11-08: Komo's new ads fell from ~900 a day to ~200 from 1.11; how big the list is and how much of it is new
+    logger.info(
+        "Komo list: rent=%d sale=%d known=%d new=%d", len(rent_coordinates), len(sale_coordinates), len(known_ids),
+        len(new_ids_to_fetch),
+    )
     now_ts = time.time()
     failed_ids = _load_komo_failed_ids()
     recently_failed = {
@@ -3179,6 +3186,18 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("nudges step failed")
+                # 2026-11-08: the morning email of new matching flats, off until RESEND_API_KEY (scraper/email_digest.py)
+                try:
+                    summary.update(run_email_digest(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("email digest step failed")
+                # 2026-11-08: tell the owner the same day when a source brings far fewer flats (scraper/source_watch.py)
+                try:
+                    summary.update(run_source_watch(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("source watch step failed")
                 # 2026-11-05: Thursday morning, a ready Instagram carousel for the owner (scraper/instagram_kit.py)
                 try:
                     summary.update(run_instagram_kit(session))

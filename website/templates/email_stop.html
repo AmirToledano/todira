@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}המייל היומי | טודירה{% endblock %}
+{% block content %}
+{# 2026-11-08: the "stop this email" link at the bottom of the morning email (todira_common/email_digest.py). A button,
+   not the link itself, does the stopping, so a mail app that opens links on its own does not stop it. Hebrew, like the
+   email. #}
+<div class="guide invite">
+  {% if done %}
+  <h1 class="guide-title">המייל היומי הופסק</h1>
+  <p class="guide-lead">לא נשלח לך יותר את המייל עם הדירות. אם תתחרט, אפשר לכתוב לנו דרך עמוד צור קשר.</p>
+  {% elif bad %}
+  <h1 class="guide-title">הקישור לא תקין</h1>
+  <p class="guide-lead">אפשר לכתוב לנו דרך עמוד צור קשר ונפסיק את המייל בשבילך.</p>
+  {% else %}
+  <h1 class="guide-title">להפסיק את המייל היומי?</h1>
+  <p class="guide-lead">המייל עם הדירות החדשות שמתאימות לחיפוש שלך לא יישלח יותר.</p>
+  <form method="post" action="/email/stop">
+    <input type="hidden" name="t" value="{{ token }}">
+    <button type="submit" class="btn gold">להפסיק את המייל</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
