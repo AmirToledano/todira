@@ -76,6 +76,16 @@ jobs:
                        WHERE l.first_seen_at > now() - interval '14 days' AND l.duplicate_of_id IS NULL
                          AND l.deal_type = f.deal_type AND l.city = ANY(f.cities)
                        GROUP BY 1, 2 ORDER BY 1, 2;"
+                    echo "--- new flats per day and source, ALL cities, 14 days ---"
+                    Q "SELECT (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, source, count(*)
+                       FROM listings WHERE first_seen_at > now() - interval '14 days' AND duplicate_of_id IS NULL
+                       GROUP BY 1, 2 ORDER BY 1, 2;"
+                    echo "--- new flats per hour today and on the same weekday last week, all sources ---"
+                    Q "SELECT (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, extract(hour from first_seen_at AT TIME ZONE 'Asia/Jerusalem') AS hour, count(*)
+                       FROM listings WHERE duplicate_of_id IS NULL AND (
+                         (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date = (now() AT TIME ZONE 'Asia/Jerusalem')::date
+                         OR (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date = (now() AT TIME ZONE 'Asia/Jerusalem')::date - 7)
+                       GROUP BY 1, 2 ORDER BY 1, 2;"
                     echo "--- alerts the owner got per day and reason, 14 days ---"
                     Q "SELECT (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, s.reason, count(*)
                        FROM sent_notifications s JOIN users u ON u.id = s.user_id
@@ -90,4 +100,16 @@ jobs:
             sleep 3
           done
           kubectl logs diag-owner-volume -n todira
+          echo "--- Yad2 in the last scraper pods: status codes of the free route, fallbacks, failures (counts only) ---"
+          for POD in $(kubectl get pods -n todira -l app=todira-scraper --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -3); do
+            echo "== $POD"
+            kubectl logs -n todira "$POD" 2>/dev/null > /tmp/log.txt || true
+            grep -o "Free Yad2 map fetch got status [0-9]*" /tmp/log.txt | sort | uniq -c || true
+            grep -c "Free Yad2 map fetch returned non-JSON" /tmp/log.txt | sed 's/^/   free route non-JSON: /'
+            grep -c "Free Yad2 map fetch failed (network)" /tmp/log.txt | sed 's/^/   free route network errors: /'
+            grep -oE "Web Unlocker[^:]{0,60}" /tmp/log.txt | sed 's/[0-9]\+/#/g' | sort | uniq -c | head -8 || true
+            grep -oE "Yad2 fetch failed for region=[a-z_]+" /tmp/log.txt | sort | uniq -c || true
+            grep -oE "Yad2 [a-z ]*\(rent\)[^,]*, [a-z_]*=[0-9]*" /tmp/log.txt | head -3 || true
+            grep -oE "'new': [0-9]+" /tmp/log.txt | tail -1
+          done
           kubectl delete pod diag-owner-volume -n todira --ignore-not-found
