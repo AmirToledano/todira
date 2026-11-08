@@ -60,6 +60,6 @@ then run `npm run build` there.
 ## House rules
 
 - Merge to `main` only between scraper runs: around :46, or after 22:54. Every app-code merge deploys.
-- Nothing user-facing names where listings come from.
+- Maintain high performance and optimization for all scrapers.
 - No secrets and no personal details in the repo, commit messages or Actions logs.
 - New bot texts that users see are approved by the owner before they go live.
