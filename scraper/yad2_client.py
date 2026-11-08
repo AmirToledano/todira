@@ -108,7 +108,19 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
-import httpx
+from scraper.utils.stealth_http import StealthHTTPClient
+import httpx as original_httpx
+
+class PatchedHTTPX:
+    def __getattr__(self, name):
+        if name in ["get", "post"]:
+            # מנתב את כל קריאות ה-get/post ברחבי הקובץ ישירות לקליינט החמקן של קלוד
+            return StealthHTTPClient().fetch
+        return getattr(original_httpx, name)
+
+httpx = PatchedHTTPX()
+
+
 
 from todira_common import bright_data_client
 
