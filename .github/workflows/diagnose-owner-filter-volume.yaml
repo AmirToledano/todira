@@ -1,0 +1,93 @@
+name: Diagnose — new flats per day, overall and in the owner's own filter (read-only)
+
+# 2026-11-08 (owner: "is it right that in the last two days only 128 flats were added in my own filter (Jerusalem
+# etc.)?"). Counts only: new flats per day for 14 days (all, the owner's filter cities, and roughly his whole filter:
+# cities + deal + price + rooms), split by source, and the alerts he got per day. Never a listing, a user or an id;
+# the owner's filter is shown only as how many cities it has.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Count
+        run: |
+          kubectl delete pod diag-owner-volume -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-owner-volume
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                  - name: OWNER
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-bot-secret
+                        key: owner-telegram-user-id
+                        optional: true
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    Q() { psql "$CONN" -v ON_ERROR_STOP=0 -c "$1"; }
+                    F="(SELECT f.* FROM filters f JOIN users u ON u.id = f.user_id WHERE u.telegram_user_id = ${OWNER:-0} ORDER BY f.id LIMIT 1)"
+                    echo "--- the owner's filter: deal, number of cities, has price/rooms limits ---"
+                    Q "SELECT deal_type, cardinality(cities) AS cities, price_min IS NOT NULL AS price_min_set, price_max IS NOT NULL AS price_max_set, rooms_min IS NOT NULL AS rooms_min_set, rooms_max IS NOT NULL AS rooms_max_set FROM $F f;"
+                    echo "--- new flats per day (Israel), 14 days: all / same deal / in his cities / roughly his whole filter ---"
+                    Q "WITH f AS $F
+                       SELECT (l.first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day,
+                              count(*) AS all_new,
+                              count(*) FILTER (WHERE l.deal_type = f.deal_type) AS same_deal,
+                              count(*) FILTER (WHERE l.deal_type = f.deal_type AND l.city = ANY(f.cities)) AS in_his_cities,
+                              count(*) FILTER (WHERE l.deal_type = f.deal_type AND l.city = ANY(f.cities)
+                                 AND (f.price_min IS NULL OR l.price >= f.price_min) AND (f.price_max IS NULL OR l.price <= f.price_max)
+                                 AND (f.rooms_min IS NULL OR l.rooms >= f.rooms_min) AND (f.rooms_max IS NULL OR l.rooms <= f.rooms_max)) AS his_filter
+                       FROM listings l CROSS JOIN f
+                       WHERE l.first_seen_at > now() - interval '14 days' AND l.duplicate_of_id IS NULL
+                       GROUP BY 1 ORDER BY 1;"
+                    echo "--- new flats in his cities per day and source, 14 days ---"
+                    Q "WITH f AS $F
+                       SELECT (l.first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, l.source, count(*)
+                       FROM listings l CROSS JOIN f
+                       WHERE l.first_seen_at > now() - interval '14 days' AND l.duplicate_of_id IS NULL
+                         AND l.deal_type = f.deal_type AND l.city = ANY(f.cities)
+                       GROUP BY 1, 2 ORDER BY 1, 2;"
+                    echo "--- alerts the owner got per day and reason, 14 days ---"
+                    Q "SELECT (s.sent_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, s.reason, count(*)
+                       FROM sent_notifications s JOIN users u ON u.id = s.user_id
+                       WHERE u.telegram_user_id = ${OWNER:-0} AND s.sent_at > now() - interval '14 days'
+                       GROUP BY 1, 2 ORDER BY 1, 2;"
+                    echo "--- scraper runs per day (main and Facebook), 14 days, from the run log if there is one ---"
+                    Q "SELECT (started_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, count(*) FROM scraper_runs WHERE started_at > now() - interval '14 days' GROUP BY 1 ORDER BY 1;" 2>/dev/null || true
+          PODYAML
+          for i in $(seq 1 60); do
+            phase=$(kubectl get pod diag-owner-volume -n todira -o jsonpath='{.status.phase}')
+            [ "$phase" = "Succeeded" ] || [ "$phase" = "Failed" ] && break
+            sleep 3
+          done
+          kubectl logs diag-owner-volume -n todira
+          kubectl delete pod diag-owner-volume -n todira --ignore-not-found
