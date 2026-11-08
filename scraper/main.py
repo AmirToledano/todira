@@ -54,6 +54,7 @@ from channel import run_channel_posts
 from checkin import run_checkins
 from weekly_report import run_weekly_report
 from instagram_kit import run_instagram_kit
+from nudges import run_nudges
 from winback import run_winback
 from yad2_client import (
     REGION_SLUGS,
@@ -3172,6 +3173,12 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("weekly report step failed")
+                # 2026-11-08: occasional messages (weekly summary, trial tip, price before the trial ends) - scraper/nudges.py
+                try:
+                    summary.update(run_nudges(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("nudges step failed")
                 # 2026-11-05: Thursday morning, a ready Instagram carousel for the owner (scraper/instagram_kit.py)
                 try:
                     summary.update(run_instagram_kit(session))

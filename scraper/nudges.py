@@ -10,8 +10,6 @@ counted), only between 09:00 and 12:00 Israel and inside the person's own alert 
 - price: once, TRIAL_PRICE_LEAD before the trial ends, to someone who got at least PRICE_MIN flats: what they got and
   what the month costs a day, with a button to /upgrade signed in.
 
-NOT WIRED IN YET (2026-11-08): the texts (nudge.*) and the bot button are still to come; scraper/main.py does not call it.
-
 Every message has a "fewer messages like this" button (bot/handlers/nudges.py); after it, none of these is sent to that
 person again. State lives in app_flags (_FLAG): {user_id: {"last": iso, "done": [kinds], "off": bool}}. Each send is
 counted in activity as nudge_<kind> and a tap on its link as src_nudge_<kind>, so the Sunday report shows both.
@@ -174,13 +172,6 @@ async def _run(session: Session, now: dt.datetime) -> int:
     finally:
         await bot.shutdown()
     return sent
-
-
-def turn_off(session: Session, user_id: int) -> None:
-    """The "fewer messages like this" button: none of these messages is sent to this person again."""
-    state: dict = json.loads(app_flags.get_flag(session, _FLAG) or "{}")
-    state.setdefault(str(user_id), {})["off"] = True
-    app_flags.set_flag(session, _FLAG, json.dumps(state))
 
 
 def run_nudges(session: Session, now: dt.datetime | None = None) -> dict[str, int]:
