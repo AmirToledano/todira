@@ -874,6 +874,8 @@ def _fetch_json_with_browser_tls(url: str) -> str | None:
     except ImportError:
         logger.warning("curl_cffi is not installed — skipping the free Yad2 map fetch")
         return None
+    proxy = StealthHTTPClient()._pick_proxy()
+    proxy_kwargs = {"proxy": proxy} if proxy else {}
     try:
         response = curl_requests.get(
             url,
@@ -881,6 +883,7 @@ def _fetch_json_with_browser_tls(url: str) -> str | None:
             impersonate="chrome",
             timeout=30,
             allow_redirects=False,
+            **proxy_kwargs,
         )
     except Exception:
         logger.warning("Free Yad2 map fetch failed (network) — falling back to Web Unlocker: %s", url)
