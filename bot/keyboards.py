@@ -17,6 +17,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from todira_common import cities
 from todira_common.bot_strings import bot_text
 from todira_common.enums import DealType, FurniturePref, PropertyType, SafeRoomPref
+from todira_common.schemas import FilterData
 
 
 def deal_type_labels(lang: str) -> dict:
@@ -110,7 +111,7 @@ def _cities_text(chosen: list[str]) -> str:
 def render_root_summary(draft: dict, lang: str) -> str:
     titles = category_titles(lang)
     all_label = bot_text("kb.all", lang)
-    dash = "—"
+    dash = bot_text("kb.no_limit", lang)  # 2026-11-09: no "—" in anything a user reads (CLAUDE.md)
     active_reqs = [label for attr, label in requirement_labels(lang) if draft.get(attr)]
     property_labels = property_type_labels(lang)
     min_area = (
@@ -161,42 +162,54 @@ def render_root_summary(draft: dict, lang: str) -> str:
     return "\n".join(lines)
 
 
-def root_keyboard(lang: str) -> InlineKeyboardMarkup:
+# 2026-11-09 (owner: make the buttons easier to use): the most used first, three to a row where the labels are short
+# enough (so the whole menu, "save" included, fits on a phone screen without scrolling), and a ✏️ on every category the
+# person has changed, so what is set shows on the buttons themselves.
+_ROOT_ORDER = ("loc", "price", "rooms", "dt", "pt", "floor", "req", "safe", "furn", "area", "kw", "move")
+_CATEGORY_FIELDS = {
+    "dt": ("deal_type",),
+    "pt": ("property_types",),
+    "loc": ("cities", "neighborhoods_include", "neighborhoods_exclude", "streets_include", "streets_exclude"),
+    "price": ("price_min", "price_max", "require_price"),
+    "rooms": ("rooms_min", "rooms_max"),
+    "floor": ("floor_min", "floor_max", "ground_floor_only"),
+    "safe": ("safe_room_pref",),
+    "furn": ("furniture_pref",),
+    "area": ("min_area_sqm",),
+    "kw": ("keywords",),
+    "move": ("move_in_earliest", "move_in_latest"),
+    "adv": ("no_brokers", "flexible_match"),
+}
+_SHORT_LABEL = 16  # characters, a ✏️ included; longer labels go two to a row
+_DEFAULTS = FilterData().model_dump()
+
+
+def _category_changed(draft: dict | None, category: str) -> bool:
+    if not draft:
+        return False
+    if category == "req":
+        return any(draft.get(attr) for attr, _label in requirement_labels("he"))
+    return any(field in draft and draft[field] != _DEFAULTS.get(field) for field in _CATEGORY_FIELDS.get(category, ()))
+
+
+def _category_button(titles: dict, category: str, draft: dict | None) -> InlineKeyboardButton:
+    label = titles[category] + (" ✏️" if _category_changed(draft, category) else "")
+    return InlineKeyboardButton(label, callback_data=f"f:cat:{category}")
+
+
+def root_keyboard(lang: str, draft: dict | None = None) -> InlineKeyboardMarkup:
     titles = category_titles(lang)
-    rows = [
-        [
-            InlineKeyboardButton(titles["dt"], callback_data="f:cat:dt"),
-            InlineKeyboardButton(titles["pt"], callback_data="f:cat:pt"),
-        ],
-        [
-            InlineKeyboardButton(titles["loc"], callback_data="f:cat:loc"),
-            InlineKeyboardButton(titles["price"], callback_data="f:cat:price"),
-        ],
-        [
-            InlineKeyboardButton(titles["rooms"], callback_data="f:cat:rooms"),
-            InlineKeyboardButton(titles["floor"], callback_data="f:cat:floor"),
-        ],
-        [
-            InlineKeyboardButton(titles["req"], callback_data="f:cat:req"),
-            InlineKeyboardButton(titles["safe"], callback_data="f:cat:safe"),
-        ],
-        [
-            InlineKeyboardButton(titles["furn"], callback_data="f:cat:furn"),
-            InlineKeyboardButton(titles["area"], callback_data="f:cat:area"),
-        ],
-        [
-            InlineKeyboardButton(titles["kw"], callback_data="f:cat:kw"),
-            InlineKeyboardButton(titles["move"], callback_data="f:cat:move"),
-        ],
-        [InlineKeyboardButton(titles["adv"], callback_data="f:cat:adv")],
+    buttons = [_category_button(titles, c, draft) for c in _ROOT_ORDER]
+    per_row = 3 if max(len(b.text) for b in buttons) <= _SHORT_LABEL else 2
+    rows = [buttons[i:i + per_row] for i in range(0, len(buttons), per_row)]
+    rows.append([
+        _category_button(titles, "adv", draft),
         # 2026-10-31: the alert hours live on the user, not in the draft, so they open their own menu
         # (handlers/alert_hours_menu.py) as a new message and are saved at once
-        [InlineKeyboardButton(bot_text("hours.filter_button", lang), callback_data="hours:menu")],
-        [
-            InlineKeyboardButton(bot_text("kb.save_and_search", lang), callback_data="f:save"),
-            InlineKeyboardButton(bot_text("kb.cancel_button", lang), callback_data="f:cancel"),
-        ],
-    ]
+        InlineKeyboardButton(bot_text("hours.filter_button", lang), callback_data="hours:menu"),
+    ])
+    rows.append([InlineKeyboardButton(bot_text("kb.save_and_search", lang), callback_data="f:save")])
+    rows.append([InlineKeyboardButton(bot_text("kb.cancel_button", lang), callback_data="f:cancel")])
     return InlineKeyboardMarkup(rows)
 
 
