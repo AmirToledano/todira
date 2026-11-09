@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections import namedtuple
 
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -114,11 +115,27 @@ def matching_listing_rows(
     if scan_limit is not None:
         query = query.limit(scan_limit)
     hidden_ids = hidden_ids or set()
+    # 2026-11-09 (owner: "save and search" with everything set to "all" got stuck): the whole country's live listings,
+    # descriptions included, were read into memory at once - too much for the bot's 256 MiB. Now the rows come from the
+    # database in batches, and a kept row drops its description (only evaluate() reads it, for keywords).
     return [
-        row
-        for row in session.execute(query)
+        _without_description(row)
+        for row in session.execute(query.execution_options(yield_per=_SCAN_BATCH))
         if row.id not in hidden_ids and evaluate(filter_row, row).matched
     ]
+
+
+_SCAN_BATCH = 2000
+_MatchRow = namedtuple("_MatchRow", [column.key for column in MATCH_COLUMNS])
+
+
+def _without_description(row):
+    mapping = getattr(row, "_mapping", None)
+    if mapping is None:  # not a database row (a test's stand-in): nothing to slim down
+        return row
+    values = dict(mapping)
+    values["description"] = None
+    return _MatchRow(**values)
 
 
 def load_listings(session: Session, ids: list[int]) -> list[Listing]:

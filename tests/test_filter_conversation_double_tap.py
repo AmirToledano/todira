@@ -98,7 +98,8 @@ def test_menu_callback_cancel_clears_the_old_keyboard_explicitly():
 
 def test_handle_save_success_clears_the_old_keyboard_explicitly(monkeypatch):
     # Same real bug/fix as the cancel case above, on _handle_save's own success-path edit.
-    monkeypatch.setattr(filter_conversation, "_save_and_match_sync", lambda *a, **k: (0, False))
+    monkeypatch.setattr(filter_conversation, "_save_sync", lambda *a, **k: False)
+    monkeypatch.setattr(filter_conversation, "_count_matches_sync", lambda *a, **k: 0)
     draft = _default_draft()
     user = SimpleNamespace(id=555)
     message = SimpleNamespace(reply_text=AsyncMock())
@@ -133,3 +134,30 @@ def test_menu_callback_clear_keywords_twice_never_raises():
 
     assert result == MENU
     assert draft["keywords"] == []
+
+
+
+def test_save_is_confirmed_before_the_count_and_a_failed_count_still_sends_the_link(monkeypatch):
+    """2026-11-09 (owner: "save and search" with everything set to "all" got stuck): the save is confirmed on screen
+    first; counting the matches comes after, and if it fails the person still gets the link to the flats."""
+    order = []
+    monkeypatch.setattr(filter_conversation, "_save_sync", lambda *a, **k: order.append("save") or False)
+
+    def boom(*a, **k):
+        order.append("count")
+        raise RuntimeError("too slow")
+
+    monkeypatch.setattr(filter_conversation, "_count_matches_sync", boom)
+    draft = _default_draft()
+    message = SimpleNamespace(reply_text=AsyncMock())
+
+    async def edit(*a, **k):
+        order.append("confirm")
+
+    query = SimpleNamespace(edit_message_text=AsyncMock(side_effect=edit), message=message)
+    update = SimpleNamespace(callback_query=query, effective_user=SimpleNamespace(id=555))
+    result = asyncio.run(filter_conversation._handle_save(update, SimpleNamespace(user_data={"draft": draft}), draft))
+    assert result == filter_conversation.ConversationHandler.END
+    assert order == ["save", "confirm", "count"]
+    sent = message.reply_text.await_args_list[0].args[0]
+    assert "/apartments?" in sent

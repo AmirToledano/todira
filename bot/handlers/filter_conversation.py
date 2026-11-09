@@ -175,7 +175,7 @@ def _category_view(draft: dict, category: str, lang: str):
         return titles["move"], kb.move_in_keyboard(draft, lang)
     if category == "adv":
         return titles["adv"], kb.advanced_keyboard(draft, lang)
-    return kb.render_root_summary(draft, lang), kb.root_keyboard(lang)
+    return kb.render_root_summary(draft, lang), kb.root_keyboard(lang, draft)
 
 
 async def _edit_unless_same(query, text: str, **kwargs) -> None:
@@ -450,7 +450,7 @@ async def filter_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     message = update.message or update.callback_query.message
     sent = await message.reply_text(
         kb.render_root_summary(draft, lang),
-        reply_markup=kb.root_keyboard(lang),
+        reply_markup=kb.root_keyboard(lang, draft),
         parse_mode=ParseMode.HTML,
     )
     # Tracked so a later typed-answer flow (_send_category, the city-search-results reply) can
@@ -489,8 +489,8 @@ def _describe_validation_error(exc: ValidationError, lang: str) -> str:
     return "\n".join(dict.fromkeys(messages))  # dedupe, keep order
 
 
-def _save_and_match_sync(tg_user, values: dict, base: dict | None = None) -> tuple[int, bool]:
-    """(matching total, whether the invite reward was granted now)."""
+def _save_sync(tg_user, values: dict, base: dict | None = None) -> bool:
+    """Saves the search. Returns whether the invite reward was granted now."""
     invited_bonus = False
     with get_session() as session:
         user = get_or_create_user(session, tg_user)
@@ -507,23 +507,27 @@ def _save_and_match_sync(tg_user, values: dict, base: dict | None = None) -> tup
             for field, value in values.items():
                 setattr(existing, field, value)
         session.commit()
+        return invited_bonus
 
-        # 2026-09-15: no longer sends the matching listings themselves as Telegram cards (see
-        # _handle_save's own comment) — only need the count now. Still goes through
-        # find_new_matches_to_show, not find_matching_listings directly, purely for its bookkeeping
-        # side effect: every currently-matching listing gets a SentNotification(reason=NEW) row, so
-        # a FUTURE price change on one of them still reaches this user via the normal scraper/
-        # notifier.py flow (which only re-notifies users who already have a NEW-reason row for that
-        # listing) — without that, a listing only ever seen via the website link would never
-        # qualify for a later price-drop alert. limit=None (the default) so this count/bookkeeping
-        # covers EVERY current match, not an artificial subset — a real owner complaint 2026-09-15:
-        # an almost-unconstrained filter reported "10 matches" when the true number (checked
-        # directly against the DB) was 3,642. A second owner request the same day, after seeing that
-        # real number: no cap at all, not even a bigger one — someone whose filter matches thousands
-        # should see all of them via the link.
+
+def _count_matches_sync(tg_user) -> int:
+    """How many listings match the saved search now.
+
+    No longer sends the matching listings themselves as Telegram cards (see _handle_save's own comment), only the
+    count. Still goes through find_new_matches_to_show for its bookkeeping: every currently-matching listing gets a
+    SentNotification(reason=NEW) row, so a later price change on one of them still reaches this user through
+    scraper/notifier.py. No cap (owner, 2026-09-15: a broad search must report its true count).
+
+    2026-11-09 (owner: "save and search" with everything set to "all" got stuck): split from the save, which now
+    commits and is confirmed on screen first. This count is the slow part for a broad search."""
+    with get_session() as session:
+        user = get_or_create_user(session, tg_user)
+        existing = session.scalar(select(Filter).where(Filter.user_id == user.id))
+        if existing is None:
+            return 0
         total, _new_to_show = find_new_matches_to_show(session, user.id, existing)
         session.commit()
-        return total, invited_bonus
+        return total
 
 
 async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dict) -> int:
@@ -543,14 +547,14 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
             warning=warning,
             summary=kb.render_root_summary(draft, lang),
         )
-        await _edit_unless_same(query, text, reply_markup=kb.root_keyboard(lang), parse_mode=ParseMode.HTML)
+        await _edit_unless_same(query, text, reply_markup=kb.root_keyboard(lang, draft), parse_mode=ParseMode.HTML)
         return MENU
 
     # asyncio.to_thread — see handlers/start.py's _upsert_user_sync comment: a synchronous DB
     # call directly on the event loop would freeze every other user's bot interaction too, not
     # just this one, since PTB processes updates one at a time by default.
-    total, invited_bonus = await asyncio.to_thread(
-        _save_and_match_sync, update.effective_user, validated.model_dump(), context.user_data.get("draft_base")
+    invited_bonus = await asyncio.to_thread(
+        _save_sync, update.effective_user, validated.model_dump(), context.user_data.get("draft_base")
     )
 
     _drop_draft(context)
@@ -564,6 +568,12 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # just spins until Telegram's own client-side timeout, looking exactly like the bot froze.
     # Same fix _prompt_for_text already applies for the identical reason on its own edit.
     await query.edit_message_text(bot_text("filter.saved_confirmation", lang), reply_markup=None)
+    try:
+        total = await asyncio.to_thread(_count_matches_sync, update.effective_user)
+    except Exception:
+        # the search is saved and confirmed above; only the count failed, so the person still gets the link below
+        logger.exception("filter save: counting the matches failed")
+        total = None
     # 2026-09-15: used to send every NEW-to-this-user current match as its own Telegram card right
     # here — a real owner complaint the same day: a broad filter matching dozens/hundreds of
     # already-existing listings flooded the chat with cards immediately on save, AND (since the
@@ -575,7 +585,9 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     # on, via the normal scraper/notifier.py flow — completely untouched by this change, and it
     # still reaches this same website view next time the user opens it (no separate bookkeeping
     # needed there, /apartments always queries live DB state).
-    if total:
+    if total is None:
+        await query.message.reply_text(apartments_url)
+    elif total:
         await query.message.reply_text(
             bot_text("onboarding.matches_found", lang, total=total, apartments_url=apartments_url)
         )
@@ -780,7 +792,7 @@ async def menu_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(note)
     await _clear_previous_menu_keyboard(context, update.message.chat_id)
     sent = await update.message.reply_text(
-        kb.render_root_summary(draft, lang), reply_markup=kb.root_keyboard(lang), parse_mode=ParseMode.HTML
+        kb.render_root_summary(draft, lang), reply_markup=kb.root_keyboard(lang, draft), parse_mode=ParseMode.HTML
     )
     context.user_data["menu_message_id"] = sent.message_id
     return MENU

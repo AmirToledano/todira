@@ -108,3 +108,30 @@ def test_the_approved_onboarding_line():
         "⏰ ההתראות מגיעות כל יום בין 08:30 ל־23:00, מיד כשדירה עולה. ככה לא מפספסים אף דירה. "
         "אפשר לבחור שעות אחרות, או בלי שישי ושבת:"
     )
+
+
+# --- 2026-11-09 (owner: easier filter buttons, and "save and search" got stuck) ---
+
+
+def test_filter_menu_fits_a_phone_and_marks_what_was_changed():
+    from todira_common.schemas import FilterData
+
+    draft = FilterData().model_dump()
+    rows = kb.root_keyboard("he", draft).inline_keyboard
+    assert len(rows) <= 7  # was 9, with "save" below the fold
+    assert [b.callback_data for b in rows[0]] == ["f:cat:loc", "f:cat:price", "f:cat:rooms"]
+    assert rows[-2][0].callback_data == "f:save" and len(rows[-2]) == 1
+    assert not any("✏️" in b.text for row in rows for b in row)
+    draft.update(cities=["חיפה"], price_max=5000, require_parking=True)
+    marked = {b.callback_data for row in kb.root_keyboard("he", draft).inline_keyboard for b in row if "✏️" in b.text}
+    assert marked == {"f:cat:loc", "f:cat:price", "f:cat:req"}
+    # long labels (Russian) stay two to a row instead of being cut off
+    assert all(len(row) <= 2 for row in kb.root_keyboard("ru", draft).inline_keyboard)
+
+
+def test_filter_summary_has_no_long_dashes():
+    from todira_common.schemas import FilterData
+
+    for lang in ("he", "en", "ru"):
+        summary = kb.render_root_summary(FilterData().model_dump(), lang)
+        assert "—" not in summary and "–" not in summary

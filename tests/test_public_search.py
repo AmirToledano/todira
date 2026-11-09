@@ -174,3 +174,24 @@ def test_the_scan_window_and_cap_reach_the_sql():
     assert "listings.first_seen_at >=" in captured["sql"] and "LIMIT" in captured["sql"]
     listing_matches.matching_listing_rows(_Session(), draft)
     assert "LIMIT" not in captured["sql"] and "first_seen_at >=" not in captured["sql"]
+
+
+def test_a_broad_scan_is_read_in_batches_and_keeps_no_descriptions():
+    """2026-11-09 (owner: "save and search" with everything set to "all" got stuck): every live listing, descriptions
+    included, was read into the bot's memory at once."""
+    captured = {}
+    keys = [c.key for c in listing_matches.MATCH_COLUMNS]
+    values = dict.fromkeys(keys)
+    values.update(id=7, deal_type="rent", city=CITY, price=4000, description="מרפסת גדולה", first_seen_at=NOW)
+    row = SimpleNamespace(_mapping=values, **values)  # a database row: attributes plus _mapping
+
+    class _Session:
+        def execute(self, query):
+            captured["yield_per"] = query.get_execution_options().get("yield_per")
+            return [row]
+
+    draft = website_main._blank_filter()
+    draft.cities = [CITY]
+    rows = listing_matches.matching_listing_rows(_Session(), draft)
+    assert captured["yield_per"] == 2000
+    assert [r.id for r in rows] == [7] and rows[0].price == 4000 and rows[0].description is None
