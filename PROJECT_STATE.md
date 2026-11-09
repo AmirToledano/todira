@@ -36,7 +36,10 @@
 - **Owner:** `RESEND_API_KEY`; check the home screen icon; open the Instagram account and put `todira.app/?src=ig` in
   the bio; a new reel when he says; AWS hardening together (Session Manager, close port 22, root MFA, budget alert);
   a screenshot of any wrong lead; Google Drive backup keys.
-- **Owner decision:** bring back Yad2 for-sale through the per-area requests; how to continue with the Yad2 map scan.
+- **Owner decision:** how to continue with the Yad2 map scan.
+- **Dropped 2026-11-09:** Yad2 for-sale through the per-area requests. Those go through Bright Data Web Unlocker, a paid
+  service for getting past bot protection; Claude will not turn it on for Yad2, and the owner does not want paid
+  scraping services (Bright Data, ZenRows) at all.
 - **Others:** Bit, Apple Pay and Google Pay through Takbull and UPAY.
 - **Claude, when the owner says:** Komo (read the new log), more Facebook groups without risking the account, a
   shortlist of other flat sites for approval, the 2026-11-04 12:30 run error. Komo and the error need production logs.
