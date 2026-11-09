@@ -1104,7 +1104,10 @@ async def assistant_reply(request: Request):
         loop.run_in_executor(None, activity.record, "assistant_question", _visitor(request))
     # 2026-11-02 (owner): follow-up questions after every answer, like the first ones
     reply, suggestions = assistant.split_suggestions(reply or "")
-    return JSONResponse({"reply": reply or t("assistant.unavailable"), "suggestions": suggestions},
+    # 2026-11-09 (owner): buttons to the pages the answer points to (only known pages, see assistant.ACTIONS)
+    reply, action_keys = assistant.split_actions(reply)
+    actions = [{"label": t(f"assistant.go.{key}"), "url": assistant.ACTIONS[key][0]} for key in action_keys] if reply else []
+    return JSONResponse({"reply": reply or t("assistant.unavailable"), "suggestions": suggestions, "actions": actions},
                         headers={"Cache-Control": "no-store"})
 
 

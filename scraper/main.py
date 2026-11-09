@@ -1112,8 +1112,15 @@ def _yad2_still_published(item: dict | None) -> bool | None:
     return status in (1, "1") if status is not None else True
 
 
-def _mark_delisted_yad2_verified(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
-    """Yad2's delisting pass (see the comment above). Returns how many ads were hidden."""
+def _mark_delisted_yad2_verified(
+    session, seen_external_ids: set[str], scraped_city_names: set[str], *, complete: bool = True
+) -> int:
+    """Yad2's delisting pass (see the comment above). Returns how many ads were hidden.
+
+    2026-11-09 (owner): one failed area used to skip this whole pass, so ads taken down everywhere else stayed up. With
+    complete=False (a district or part of the map sweep failed this run) the pass still runs: seen ads come back, and an
+    unseen ad is hidden only when Yad2 itself answers that it is gone. The week-old rule that hides without asking is
+    left out, because an ad in the area that failed was not seen through no fault of its own."""
     from todira_common import yad2_item_api
 
     table = Listing.__table__
@@ -1134,14 +1141,16 @@ def _mark_delisted_yad2_verified(session, seen_external_ids: set[str], scraped_c
         table.c.city.in_(scraped_city_names),
         table.c.external_id != all_(seen_array),
     )
-    hidden = session.execute(  # unseen for a week: hidden without asking
-        table.update()
-        .where(*unseen, table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, _YAD2_DELIST_UNVERIFIED_AFTER_DAYS))
-        .values(is_delisted=True, delisted_at=func.now())
-        .returning(table.c.id)
-    ).fetchall()
+    hidden_count = 0
+    if complete:
+        hidden = session.execute(  # unseen for a week: hidden without asking
+            table.update()
+            .where(*unseen, table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, _YAD2_DELIST_UNVERIFIED_AFTER_DAYS))
+            .values(is_delisted=True, delisted_at=func.now())
+            .returning(table.c.id)
+        ).fetchall()
+        hidden_count = len(hidden)
     session.commit()
-    hidden_count = len(hidden)
 
     limit = _yad2_verify_per_run()
     if not limit or not yad2_item_api.is_enabled():
@@ -3005,8 +3014,15 @@ def run_once() -> dict[str, int]:
                         session, seen_external_ids, _homeless_healthy_deal_types(_HOMELESS_CURSOR_STATE)
                     )
                 continue  # this source's run sees only part of its list on purpose - no "not seen = gone" delisting
-            if all_succeeded and seen_external_ids and source == Source.YAD2:
-                delisted_count += _mark_delisted_yad2_verified(session, seen_external_ids, scraped_city_names)
+            if seen_external_ids and source == Source.YAD2:
+                if not all_succeeded:
+                    logger.warning(
+                        "Yad2: at least one district or part of the map failed this run - only ads Yad2 confirms are "
+                        "gone are hidden, nothing is hidden for being unseen alone"
+                    )
+                delisted_count += _mark_delisted_yad2_verified(
+                    session, seen_external_ids, scraped_city_names, complete=all_succeeded
+                )
             elif all_succeeded and seen_external_ids:
                 delisted_count += _mark_delisted(session, source, seen_external_ids, scraped_city_names)
             elif not all_succeeded:

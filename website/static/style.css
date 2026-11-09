@@ -2496,6 +2496,12 @@ html[data-theme="dark"] .upgrade-pass-saving { color: #7fd6cc; }
 .asst-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .asst-chip { border: 1px solid var(--teal); color: var(--teal); background: var(--card); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; cursor: pointer; }
 .asst-chip:hover { background: var(--teal-tint); }
+/* 2026-11-09 (owner): buttons under an answer that open the page it points to */
+.asst-actions { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; }
+.asst-go { display: inline-flex; align-items: center; gap: 4px; background: var(--teal); color: #fff; border-radius: 999px; padding: 7px 14px; font-size: .88rem; font-weight: 600; text-decoration: none; }
+.asst-go::after { content: "\2190"; }
+[dir="ltr"] .asst-go::after { content: "\2192"; }
+.asst-go:hover, .asst-go:focus-visible { filter: brightness(1.08); }
 .asst-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--border); background: var(--card); }
 .asst-form textarea {
   flex: 1; resize: none; border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; font: inherit; font-size: 16px;

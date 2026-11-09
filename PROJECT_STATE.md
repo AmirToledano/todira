@@ -1,5 +1,46 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-11-09: what was added 2026-11-05..09 (read this first, then the 2026-11-04 section below)
+
+- **Home screen app (#989):** `static/pwa.js` shows a "+ add to home screen" pill only in the browser and only until the
+  app is added (Android install prompt; on iPhone a sheet with the steps). Opened from the icon (`<html class="is-app">`):
+  no zoom, no long-press select/copy/save, fields at 16px. `/sw.js` keeps only an offline page. `start_url` is
+  `/?src=pwa`. Waiting for the owner to delete the old icon, add it again and check.
+- **Occasional Telegram messages (#992, `scraper/nudges.py`):** Sunday summary, a tip on trial day 3, the price a day
+  48h before the trial ends. At most one a week per person, 09:00-12:00 and inside their alert hours; paying people
+  get only the Sunday summary. "Fewer messages like this" stops a kind for good (`ng:off`). Counted in the Sunday report.
+- **Source-drop warning (#993, `scraper/source_watch.py`):** from 14:00, a source far below its usual new flats for
+  the same hours sends one message a day to the owner's inbox group.
+- **Komo logging (#993):** each run logs Komo's list size and how much of it is new, to find why Komo fell from about
+  800-1,000 new flats a day to about 200. Not read yet (needs production logs; owner said not now, 2026-11-09).
+- **Morning email of new matching flats (#993, `todira_common/email_digest.py`, `scraper/email_digest.py`):** up to
+  10 flats, once a day 09:00-11:59, only when something new matched, signed stop link (`/email/stop` asks first).
+  Off until the owner adds `RESEND_API_KEY`.
+- **Weekly Instagram kit (#988, `scraper/instagram_kit.py`):** Thursday 09-12, 4 slides and a caption to the owner's
+  inbox group; nothing is posted from here. `docs/instagram-plan.md`. `DESIGN.md` holds the design language.
+- **Scraper network layer (#994, merged 2026-11-08 at the owner's request):** `scraper/utils/stealth_http.py`
+  (`StealthHTTPClient`, rotating proxies from `ROTATING_PROXY_URL` and browser headers) is used for the two ZenRows
+  requests in `yad2_client.py`; each main run starts after a random 0-8 minute delay (`SCRAPER_START_JITTER_MAX_SECONDS`,
+  taken out of the run budget); `ROTATING_PROXY_URL` comes from the optional `rotating-proxy-url` key on the bot
+  secret, set with `set-rotating-proxy-secret.yaml`. The owner handles the proxy values himself; leave this module as
+  it is unless he asks.
+- **Site assistant buttons (2026-11-09):** an answer that points to a page gets up to two buttons to it. The model
+  only names keys from `assistant.ACTIONS` (a "GO:" line); the server maps them to links. The bot link is
+  `start=site_assistant`. The chat is kept in the tab (sessionStorage) and reopens after a button to a site page.
+- **Yad2 removals when an area fails (2026-11-09, owner):** one failed district or map piece used to skip Yad2's whole
+  removal pass. Now the pass still runs: seen ads come back, and an unseen ad is hidden only when Yad2's own per-ad
+  answer says it is gone. Hiding an ad unseen for a week without asking happens only in complete runs.
+- **Closed:** the 2026-10-06 open item (rent count, errors per run), owner handled it.
+
+### Waiting
+- **Owner:** `RESEND_API_KEY`; check the home screen icon; open the Instagram account and put `todira.app/?src=ig` in
+  the bio; a new reel when he says; AWS hardening together (Session Manager, close port 22, root MFA, budget alert);
+  a screenshot of any wrong lead; Google Drive backup keys.
+- **Owner decision:** bring back Yad2 for-sale through the per-area requests; how to continue with the Yad2 map scan.
+- **Others:** Bit, Apple Pay and Google Pay through Takbull and UPAY.
+- **Claude, when the owner says:** Komo (read the new log), more Facebook groups without risking the account, a
+  shortlist of other flat sites for approval, the 2026-11-04 12:30 run error. Komo and the error need production logs.
+
 ## ▶ 2026-11-04 — what was added 2026-11-01..04 (read this first, then the 2026-10-29 section below)
 
 - **Owner's Telegram groups** (`todira_common/owner_inbox.py`, `bot/handlers/owner_inbox.py`): the inbox group gets
@@ -273,7 +314,7 @@
 - **Terms + Privacy refreshed (2026-10-07, drafted by Claude, NO lawyer reviewed — owner has none; he/en only, other languages show English with a notice):** removed the WhatsApp promises (channel marked inactive), one-time passes + 3-day trial + no VAT (exempt dealer) stated, refund path via the payment provider, acceptable-use/anti-scraping and account-blocking clause, advertiser-removal request path, Gemini now also named for extracting listing details, providers incl. AWS hosting and a note that data may be processed outside Israel, cookies + browser preferences + server logs (IP), retention (payments up to 7 years, deletion handled within 30 days), expanded rights (incl. objection, Privacy Protection Authority), security measures. OPEN LEGAL POINT: distance-sale rules normally expect the business's address/phone in the transaction disclosure; none is published (owner's call whether to show an address or P.O. box). A lawyer's pass before real volume is still advisable.
 - **Flaky test fixed:** `test_resolve_user_rejects_a_forged_or_tampered_token` altered only the last base64 characters of the signature, which left it valid ~1 run in 16; it now alters the first signature character.
 - **SEO audit (2026-10-07, local crawl of the real app with TestClient — todira.app itself is not reachable from the sandbox):** all 7 public pages x 5 languages return 200, no broken internal links, JSON-LD (Organization+WebSite) valid, canonical + hreflang present, robots.txt + sitemap fine. FOUND: (1) the home page and the legal/about pages are client-side React islands, so the server HTML had no <h1> and almost no text (fixed for home: server-rendered fallback inside #root); (2) one shared meta description for every page. NOT doable by me (needs the owner's accounts): Search Console, Keyword Planner (Google Ads), Google Business Profile (an online-only service is normally not eligible — do not push it). Yoast is WordPress-only (n/a). Realistic goal: long-tail/brand terms (e.g. bot for apartment alerts), not head terms like 'דירות להשכרה' against Yad2; page-one claims are never promised.
-- **Open:** is ~10k visible rent listings plausible? (probe `diagnose-active-rent-count-sanity.yaml`; scraper runs show ~660 delisted per run + ~270 `errors` per run — investigate); 3.8-flash accuracy (probe `diagnose-gemini-url-context-accuracy.yaml`, model input); 19:00 scraper run enriched 0 listings with Gemini (quota?).
+- **Closed 2026-11-08 (owner handled it):** is ~10k visible rent listings plausible? (probe `diagnose-active-rent-count-sanity.yaml`; scraper runs show ~660 delisted per run + ~270 `errors` per run — investigate); 3.8-flash accuracy (probe `diagnose-gemini-url-context-accuracy.yaml`, model input); 19:00 scraper run enriched 0 listings with Gemini (quota?).
 - **WhatsApp check-in always sent** (2026-10-05): the scraper only runs 09:00-22:00 Israel, so a check-in due at 20h could have no run left
   before the free window closes (23.5h). `CHECKIN_AFTER` is now 12h (always >=1 run in [12h, 23.5h]; test covers every minute of the day), and the
   cost guard + check-in step in `scraper/main.py` run in a `finally`, so a failing notification step can't skip them.
