@@ -1,0 +1,57 @@
+name: Diagnose - cities people search vs flats from Facebook groups (read-only, counts only)
+
+# 2026-11-09 (owner): which cities to join Facebook groups for first. For each city in active users' searches: how many
+# people search it, how many new flats arrived in the last 30 days from every source, how many of those came from
+# Facebook groups, and from how many different groups. Counts only - no names, no texts, no contact details.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+      - name: Cities
+        run: |
+          PG=$(kubectl get pods -n todira -l app=todira-postgres -o jsonpath='{.items[0].metadata.name}')
+          cat > /tmp/q.sql <<'SQL'
+          BEGIN READ ONLY;
+          WITH demand AS (
+            SELECT c AS city, count(DISTINCT f.user_id) AS searchers
+            FROM filters f JOIN users u ON u.id = f.user_id, unnest(f.cities) AS c
+            WHERE u.is_active
+            GROUP BY c
+          ),
+          supply AS (
+            SELECT city,
+                   count(*) AS new_30d,
+                   count(*) FILTER (WHERE source = 'facebook_groups') AS fb_groups_30d,
+                   count(DISTINCT substring(url from '/groups/([0-9]+)/')) FILTER (WHERE source = 'facebook_groups') AS fb_groups
+            FROM listings
+            WHERE first_seen_at > now() - interval '30 days' AND deal_type = 'rent'
+            GROUP BY city
+          )
+          SELECT d.city, d.searchers,
+                 coalesce(s.new_30d, 0) AS new_rentals_30d,
+                 coalesce(s.fb_groups_30d, 0) AS from_fb_groups,
+                 coalesce(s.fb_groups, 0) AS fb_groups,
+                 round(100.0 * coalesce(s.fb_groups_30d, 0) / nullif(s.new_30d, 0), 1) AS fb_pct
+          FROM demand d LEFT JOIN supply s ON s.city = d.city
+          ORDER BY d.searchers DESC, d.city
+          LIMIT 40;
+          SELECT count(DISTINCT substring(url from '/groups/([0-9]+)/')) AS groups_with_flats_30d
+          FROM listings
+          WHERE source = 'facebook_groups' AND first_seen_at > now() - interval '30 days' AND url ~ '/groups/[0-9]+/';
+          ROLLBACK;
+          SQL
+          kubectl exec -i -n todira "$PG" -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -v ON_ERROR_STOP=1 -f -' < /tmp/q.sql
