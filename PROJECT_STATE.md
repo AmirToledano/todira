@@ -38,8 +38,9 @@
   a screenshot of any wrong lead; Google Drive backup keys.
 - **Owner decision:** how to continue with the Yad2 map scan.
 - **Dropped 2026-11-09:** Yad2 for-sale through the per-area requests. Those go through Bright Data Web Unlocker, a paid
-  service for getting past bot protection; Claude will not turn it on for Yad2, and the owner does not want paid
-  scraping services (Bright Data, ZenRows) at all.
+  service for getting past bot protection; Claude will not turn it on for Yad2.
+- **Owner decision 2026-11-09:** leave Yad2, Bright Data and ZenRows exactly as they are now (rent still falls back to
+  Web Unlocker when the free route gets a 302). Do not change their code.
 - **Others:** Bit, Apple Pay and Google Pay through Takbull and UPAY.
 - **Claude, when the owner says:** Komo (read the new log), more Facebook groups without risking the account, a
   shortlist of other flat sites for approval, the 2026-11-04 12:30 run error. Komo and the error need production logs.
