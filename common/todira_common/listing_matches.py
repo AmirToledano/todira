@@ -6,7 +6,7 @@ from __future__ import annotations
 import datetime as dt
 from collections import namedtuple
 
-from sqlalchemy import or_, select
+from sqlalchemy import null, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -81,8 +81,12 @@ def matching_listing_rows(
     2026-11-04 (owner): the public /search preview (website/main.py) asks only for listings first seen since `since`
     and reads at most `scan_limit` candidate rows, so a visitor with no account can never start a full-country scan.
     Both default to None, which is the old behaviour for every other caller."""
+    # 2026-11-09 (owner: /apartments stayed blank with a search set to "all"): the description is read only to check
+    # keywords, but it was fetched (and sorted by date in the database) for every candidate - tens of thousands of
+    # long texts for a broad search. Without keywords it is not fetched at all.
+    columns = MATCH_COLUMNS if getattr(filter_row, "keywords", None) else _COLUMNS_WITHOUT_DESCRIPTION
     query = (
-        select(*MATCH_COLUMNS)
+        select(*columns)
         .where(Listing.deal_type == filter_row.deal_type)
         .where(Listing.is_delisted.is_(False))
         # 2026-09-13 cross-source dedup — a duplicate row is a real DB row (still upserted/price-refreshed every run)
@@ -126,6 +130,9 @@ def matching_listing_rows(
 
 
 _SCAN_BATCH = 2000
+_COLUMNS_WITHOUT_DESCRIPTION = tuple(
+    null().label("description") if column.key == "description" else column for column in MATCH_COLUMNS
+)
 _MatchRow = namedtuple("_MatchRow", [column.key for column in MATCH_COLUMNS])
 
 
