@@ -195,3 +195,22 @@ def test_a_broad_scan_is_read_in_batches_and_keeps_no_descriptions():
     rows = listing_matches.matching_listing_rows(_Session(), draft)
     assert captured["yield_per"] == 2000
     assert [r.id for r in rows] == [7] and rows[0].price == 4000 and rows[0].description is None
+
+
+def test_descriptions_are_fetched_only_for_a_search_with_keywords():
+    """2026-11-09 (owner: /apartments stayed blank with a search set to "all"): every candidate's description was
+    fetched and sorted in the database although only keywords read it."""
+    captured = {}
+
+    class _Session:
+        def execute(self, query):
+            captured["sql"] = str(query.compile(dialect=postgresql.dialect()))
+            return []
+
+    draft = website_main._blank_filter()
+    draft.keywords = []
+    listing_matches.matching_listing_rows(_Session(), draft)
+    assert "listings.description" not in captured["sql"] and "NULL AS description" in captured["sql"]
+    draft.keywords = ["מרפסת"]
+    listing_matches.matching_listing_rows(_Session(), draft)
+    assert "listings.description" in captured["sql"]
