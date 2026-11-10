@@ -39,7 +39,7 @@
     </button>
   </form>
   {% endif %}
-  <span class="apt-toolbar-count"><b>{{ total_count }}</b> {{ t('apartments.results_label') }}</span>
+  <span class="apt-toolbar-count"><b id="apt-total-count">{{ total_count if total_count is not none else '…' }}</b> {{ t('apartments.results_label') }}</span>
   <label class="apt-sort">
     <span class="sr-only">{{ t('apartments.sort_label') }}</span>
     <select onchange="var u=new URL(location.href);u.searchParams.set('sort',this.value);u.searchParams.delete('offset');location.href=u.toString();">
@@ -144,7 +144,7 @@
 
   <div class="apt-listings-pane">
    <div class="apt-listings-pane-inner">
-    {% if not listings %}
+    {% if not listings and not deferred %}
       <div class="empty-state">
         <div class="glyph" aria-hidden="true">{{ icon('search') }}</div>
         <p>{{ t('apartments.empty_title') }}</p>
@@ -160,8 +160,12 @@
            data-announcement-template="{{ t('apartments.more_loaded_announcement', count='__COUNT__') }}"></div>
       <div class="listing-grid" id="listing-grid">
         {% for l in listings %}{{ listing_card(l, (loop.index0 % 6) * 60) }}{% endfor %}
+        {% if deferred %}
+        {# 2026-11-10: placeholder cards while the first batch loads (see main.py's apartments(), "deferred") #}
+        {% for _ in range(6) %}<div class="listing-card skeleton-card" aria-hidden="true"><div class="skeleton-photo"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>{% endfor %}
+        {% endif %}
         {% if has_more %}
-        <div class="load-more-sentinel" data-next-offset="{{ next_offset }}"></div>
+        <div class="load-more-sentinel" data-next-offset="{{ next_offset }}"{% if deferred %} data-deferred="1"{% endif %}></div>
         {% endif %}
       </div>
       {# 2026-09-24: real owner report — new cards from infinite scroll used to just silently pop
@@ -169,7 +173,7 @@
          a real "please wait" moment. This is a single persistent element (outside #listing-grid,
          so the grid's own innerHTML swap on each fetch never touches or duplicates it) toggled by
          the script below — never re-templated per fragment. #}
-      <div id="apartments-loading-indicator" class="apt-loading-indicator" hidden>
+      <div id="apartments-loading-indicator" class="apt-loading-indicator"{% if not deferred %} hidden{% endif %}>
         <span class="apt-spinner" aria-hidden="true"></span> {{ t('apartments.loading_more') }}
       </div>
     {% endif %}
@@ -291,6 +295,10 @@
       if (!sentinel || !entries.some(function (e) { return e.target === sentinel && e.isIntersecting; })) {
         return;
       }
+      loadMore(sentinel);
+    }, { rootMargin: '400px 0px' });
+
+    function loadMore(sentinel) {
       if (loading) { return; }
       loading = true;
       if (loadingIndicator) { loadingIndicator.hidden = false; }
@@ -303,9 +311,18 @@
         .then(function (html) {
           if (html === null) { return; } // request failed — leave the sentinel to retry later
           io.unobserve(sentinel);
+          // 2026-11-10: the first batch of a page that opened before its matches were ready: drop the placeholder
+          // cards and fill in the count the fragment carries
+          grid.querySelectorAll('.skeleton-card').forEach(function (el) { el.remove(); });
           var countBefore = grid.querySelectorAll('.listing-card').length;
           sentinel.insertAdjacentHTML('beforebegin', html);
           sentinel.remove();
+          var totalEl = grid.querySelector('[data-total-count]');
+          if (totalEl) {
+            var shown = document.getElementById('apt-total-count');
+            if (shown) { shown.textContent = totalEl.getAttribute('data-total-count'); }
+            totalEl.remove();
+          }
           var addedCount = grid.querySelectorAll('.listing-card').length - countBefore;
           var liveRegion = document.getElementById('apartments-live-region');
           if (liveRegion && addedCount > 0) {
@@ -320,10 +337,14 @@
           loading = false;
           if (loadingIndicator) { loadingIndicator.hidden = true; }
         });
-    }, { rootMargin: '400px 0px' });
+    }
 
     var initialSentinel = grid.querySelector('.load-more-sentinel');
-    if (initialSentinel) { io.observe(initialSentinel); }
+    if (initialSentinel && initialSentinel.dataset.deferred) {
+      loadMore(initialSentinel);  // the page opened before its matches were ready: fetch the first batch now
+    } else if (initialSentinel) {
+      io.observe(initialSentinel);
+    }
   })();
 </script>
 
