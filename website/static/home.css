@@ -13,8 +13,8 @@
   --lp-band-muted: #5A5A4E;
   --lp-heading: #173C40;
   --lp-text: #1E2A29;
-  --lp-muted: #66787C;
-  --lp-teal: #0E8A82;
+  --lp-muted: #5A6C70;  /* 2026-11-10: was #66787C, under 4.5:1 */
+  --lp-teal: #0B7A73;  /* 2026-11-10: was #0E8A82, under 4.5:1 for small text */
   --lp-gold: #D9A441;
   --lp-gold-deep: #B9842A;
   --lp-gold-hot: #FFF4D6;
@@ -156,10 +156,10 @@ body:has(.lp) .site-ambient { display: none; }
 }
 .lp-notif[hidden] { display: none; }
 .lp-notif img { width: 38px; height: 38px; border-radius: 9px; object-fit: cover; grid-row: span 3; }
-.lp-notif-who { display: flex; justify-content: space-between; font-size: 13px; color: #66787C; }
+.lp-notif-who { display: flex; justify-content: space-between; font-size: 13px; color: var(--lp-muted); }
 .lp-notif-who b { color: #1E2A29; font-size: 14px; }
 .lp-notif-what { font-weight: 800; font-size: 16px; line-height: 1.3; }
-.lp-notif-detail { font-size: 15px; color: #66787C; }
+.lp-notif-detail { font-size: 15px; color: var(--lp-muted); }
 .lp-notif-what, .lp-notif-detail { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }  /* one line each, so the card's height never changes */
 
 /* ---------- live map ---------- */
