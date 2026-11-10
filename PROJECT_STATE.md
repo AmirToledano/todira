@@ -41,6 +41,12 @@
   service for getting past bot protection; Claude will not turn it on for Yad2.
 - **Owner decision 2026-11-09:** leave Yad2, Bright Data and ZenRows exactly as they are now (rent still falls back to
   Web Unlocker when the free route gets a 302). Do not change their code.
+- **Yad2 free routes through Webshare (owner, 2026-11-10, commits a26f42b and f6706b5 on main):** the free map fetch
+  (`yad2_client._fetch_json_with_browser_tls`, via `StealthHTTPClient()._pick_proxy()`) and the per-ad check
+  (`todira_common/yad2_item_api._request_once`) now send each request through a random proxy from
+  `ROTATING_PROXY_URL` (the Webshare pool on the `rotating-proxy-url` secret key); with the variable empty they go
+  direct as before. The Web Unlocker fallback is unchanged. The owner wrote and maintains this part; Claude does not
+  build or extend ways around Yad2's blocking (see the 2026-11-08/09 notes), so leave changes here to the owner.
 - **Others:** Bit, Apple Pay and Google Pay through Takbull and UPAY.
 - **Claude, when the owner says:** Komo (read the new log), more Facebook groups without risking the account, a
   shortlist of other flat sites for approval, the 2026-11-04 12:30 run error. Komo and the error need production logs.
