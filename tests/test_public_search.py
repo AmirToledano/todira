@@ -210,7 +210,7 @@ def test_descriptions_are_fetched_only_for_a_search_with_keywords():
     draft = website_main._blank_filter()
     draft.keywords = []
     listing_matches.matching_listing_rows(_Session(), draft)
-    assert "listings.description" not in captured["sql"] and "NULL AS description" in captured["sql"]
+    assert "left(listings.description" in captured["sql"]  # only the opening the parking/storage check reads
     draft.keywords = ["מרפסת"]
     listing_matches.matching_listing_rows(_Session(), draft)
-    assert "listings.description" in captured["sql"]
+    assert "listings.description" in captured["sql"] and "left(listings.description" not in captured["sql"]

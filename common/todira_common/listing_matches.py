@@ -6,13 +6,14 @@ from __future__ import annotations
 import datetime as dt
 from collections import namedtuple
 
-from sqlalchemy import null, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from todira_common.enums import NotificationReason
 from todira_common.matching import evaluate
 from todira_common.models import Filter, Listing, SentNotification, UserListingAction
+from todira_common.non_home import NON_HOME_TEXT_CHARS
 
 # 2026-10-14 (owner: "the site is slow"): measured live, /apartments took 16-27 s on the server — every request (and
 # every infinite-scroll page) loaded EVERY candidate listing as a full ORM object, raw_payload JSON and photo lists
@@ -81,10 +82,12 @@ def matching_listing_rows(
     2026-11-04 (owner): the public /search preview (website/main.py) asks only for listings first seen since `since`
     and reads at most `scan_limit` candidate rows, so a visitor with no account can never start a full-country scan.
     Both default to None, which is the old behaviour for every other caller."""
-    # 2026-11-09 (owner: /apartments stayed blank with a search set to "all"): the description is read only to check
-    # keywords, but it was fetched (and sorted by date in the database) for every candidate - tens of thousands of
-    # long texts for a broad search. Without keywords it is not fetched at all.
-    columns = MATCH_COLUMNS if getattr(filter_row, "keywords", None) else _COLUMNS_WITHOUT_DESCRIPTION
+    # 2026-11-09 (owner: /apartments stayed blank with a search set to "all"): the whole description was fetched (and
+    # sorted by date in the database) for every candidate - tens of thousands of long texts for a broad search. Only
+    # keywords need all of it; without keywords just its first 200 characters are fetched, which is all the parking /
+    # storage check (non_home.non_home_kind) reads. 2026-11-10: the first version fetched no description at all, which
+    # let parking spaces and storage rooms back into /apartments and the counts.
+    columns = MATCH_COLUMNS if getattr(filter_row, "keywords", None) else _COLUMNS_SHORT_DESCRIPTION
     query = (
         select(*columns)
         .where(Listing.deal_type == filter_row.deal_type)
@@ -130,8 +133,9 @@ def matching_listing_rows(
 
 
 _SCAN_BATCH = 2000
-_COLUMNS_WITHOUT_DESCRIPTION = tuple(
-    null().label("description") if column.key == "description" else column for column in MATCH_COLUMNS
+_COLUMNS_SHORT_DESCRIPTION = tuple(
+    func.left(Listing.description, NON_HOME_TEXT_CHARS).label("description") if column.key == "description" else column
+    for column in MATCH_COLUMNS
 )
 _MatchRow = namedtuple("_MatchRow", [column.key for column in MATCH_COLUMNS])
 
