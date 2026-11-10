@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-Dt7n5OEe.js";import{u as t}from"./i18n-CBFach7V.js";var n=e();function r({style:e,animate:r,duration:i}){return(0,n.jsx)(t.div,{className:`tl-blob`,style:e,animate:r,transition:{duration:i,repeat:1/0,repeatType:`mirror`,ease:`easeInOut`}})}export{r as t};

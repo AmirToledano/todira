@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { t, lang } from "./i18n";
-import content from "./content.json";
+import enTexts from "virtual:todira-content/en-only";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
@@ -9,7 +9,7 @@ const easePremium = [0.16, 1, 0.3, 1];
 // content.json's own "en" entry directly, bypassing t()'s lang-keyed lookup (and its Hebrew
 // fallback) entirely.
 function tEn(key) {
-  return content[key]?.en;
+  return enTexts[key];
 }
 
 const SECTIONS = ["s1", "s2", "s3"];
