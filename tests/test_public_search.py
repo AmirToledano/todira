@@ -214,3 +214,26 @@ def test_descriptions_are_fetched_only_for_a_search_with_keywords():
     draft.keywords = ["מרפסת"]
     listing_matches.matching_listing_rows(_Session(), draft)
     assert "listings.description" in captured["sql"] and "left(listings.description" not in captured["sql"]
+
+
+def test_a_search_with_only_city_price_and_rooms_is_matched_in_the_database():
+    """2026-11-10 (owner: /apartments slow with a broad search): no per-row Python check, parking/storage filtered in
+    SQL, and the site reads only (id, price)."""
+    captured = []
+
+    class _Session:
+        def execute(self, query):
+            captured.append(str(query.compile(dialect=postgresql.dialect())))
+            return []
+
+    draft = website_main._blank_filter()
+    draft.cities = [CITY]
+    assert not listing_matches.needs_python_check(draft)
+    listing_matches.matching_id_prices(_Session(), draft)
+    sql = captured[-1]
+    assert sql.startswith("SELECT listings.id, listings.price") and "regexp_replace" in sql
+    for field, value in (("keywords", ["מרפסת"]), ("require_parking", True), ("floor_min", 2),
+                         ("safe_room_pref", "safe_room_only"), ("property_types", ["apartment"])):
+        changed = website_main._blank_filter()
+        setattr(changed, field, value)
+        assert listing_matches.needs_python_check(changed), field

@@ -83,7 +83,13 @@ from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECO
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
-from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
+from todira_common.listing_matches import (
+    load_listings,
+    mark_recent_matches_seen,
+    matching_id_prices,
+    matching_listing_rows,
+    shown_listing_id,
+)
 from todira_common.app_flags import get_flag, set_flag
 from todira_common.models import (
     AppFlag, ContactMessage, Filter, Listing, OwnerPost, OwnerPostPhoto, Payment, SentNotification, User, UserListingAction,
@@ -2304,7 +2310,7 @@ def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -
         if hit is not None and now - hit[0] < _MATCH_IDS_TTL:
             _match_ids_cache.move_to_end(key)
             return hit[1]
-    ids = [(row.id, row.price) for row in matching_listing_rows(session, filter_row, hidden_ids)]
+    ids = matching_id_prices(session, filter_row, hidden_ids)
     with _match_ids_lock:
         _match_ids_cache[key] = (now, ids)
         _match_ids_cache.move_to_end(key)
