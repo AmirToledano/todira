@@ -1,13 +1,13 @@
 import { motion } from "framer-motion";
 import { t, lang } from "./i18n";
-import content from "./content.json";
+import enTexts from "virtual:todira-content/en-only";
 
 const easePremium = [0.16, 1, 0.3, 1];
 
 // he/en only — matches this content's own real translation coverage in i18n.py (see i18n.py's
 // "terms page" section comment). Same tEn() pattern as About.jsx/Accessibility.jsx/Privacy.jsx.
 function tEn(key) {
-  return content[key]?.en;
+  return enTexts[key];
 }
 
 // Sections 1-11 are all plain title+body — data-driven like Accessibility.jsx's SECTIONS map,

@@ -1,115 +1,218 @@
 {
-  "_Blob-BHiLwS_q.js": {
-    "file": "assets/Blob-BHiLwS_q.js",
+  "_Blob-B1yha5y9.js": {
+    "file": "assets/Blob-B1yha5y9.js",
     "name": "Blob",
     "imports": [
-      "_i18n-DLp2QPdn.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js"
     ]
   },
-  "_Icon-p7I0SPs6.js": {
-    "file": "assets/Icon-p7I0SPs6.js",
+  "_Icon-C8ZelTOL.js": {
+    "file": "assets/Icon-C8ZelTOL.js",
     "name": "Icon",
     "imports": [
-      "_i18n-DLp2QPdn.js"
+      "_jsx-runtime-Dt7n5OEe.js"
     ]
+  },
+  "_en-only-sXLkodNz.js": {
+    "file": "assets/en-only-sXLkodNz.js",
+    "name": "en-only"
   },
   "_i18n-BimgrFiQ.css": {
     "file": "assets/i18n-BimgrFiQ.css",
     "src": "_i18n-BimgrFiQ.css"
   },
-  "_i18n-DLp2QPdn.js": {
-    "file": "assets/i18n-DLp2QPdn.js",
+  "_i18n-CBFach7V.js": {
+    "file": "assets/i18n-CBFach7V.js",
     "name": "i18n",
+    "imports": [
+      "_jsx-runtime-Dt7n5OEe.js"
+    ],
+    "dynamicImports": [
+      "virtual:todira-content/he",
+      "virtual:todira-content/en",
+      "virtual:todira-content/ru",
+      "virtual:todira-content/fr",
+      "virtual:todira-content/ar",
+      "virtual:todira-content/es",
+      "virtual:todira-content/pt",
+      "virtual:todira-content/hi",
+      "virtual:todira-content/fil",
+      "virtual:todira-content/th",
+      "virtual:todira-content/zh"
+    ],
     "css": [
       "assets/i18n-BimgrFiQ.css"
     ]
   },
+  "_jsx-runtime-Dt7n5OEe.js": {
+    "file": "assets/jsx-runtime-Dt7n5OEe.js",
+    "name": "jsx-runtime"
+  },
   "about.html": {
-    "file": "assets/about-BZv9__ns.js",
+    "file": "assets/about-_cKEm6fH.js",
     "name": "about",
     "src": "about.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js",
-      "_Blob-BHiLwS_q.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js",
+      "_Blob-B1yha5y9.js",
+      "_en-only-sXLkodNz.js"
     ]
   },
   "accessibility.html": {
-    "file": "assets/accessibility-B5XJ6AGd.js",
+    "file": "assets/accessibility-6wsOX1nl.js",
     "name": "accessibility",
     "src": "accessibility.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js",
+      "_en-only-sXLkodNz.js"
     ]
   },
   "account.html": {
-    "file": "assets/account-DP8gbT_L.js",
+    "file": "assets/account-DYhgcB2F.js",
     "name": "account",
     "src": "account.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js"
     ]
   },
   "contact.html": {
-    "file": "assets/contact-fiE2Eh1p.js",
+    "file": "assets/contact-B1GllVqA.js",
     "name": "contact",
     "src": "contact.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js",
-      "_Icon-p7I0SPs6.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js",
+      "_Icon-C8ZelTOL.js"
     ]
   },
   "index.html": {
-    "file": "assets/index-DStY2hlJ.js",
+    "file": "assets/index-CznzHvSQ.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js",
-      "_Blob-BHiLwS_q.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js",
+      "_Blob-B1yha5y9.js"
     ],
     "dynamicImports": [
       "src/sections/ScanCore.jsx"
     ]
   },
   "login.html": {
-    "file": "assets/login-htNKCzeq.js",
+    "file": "assets/login-BRX6ZVfh.js",
     "name": "login",
     "src": "login.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js",
-      "_Icon-p7I0SPs6.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js",
+      "_Icon-C8ZelTOL.js"
     ]
   },
   "privacy.html": {
-    "file": "assets/privacy-C6WnUpJ6.js",
+    "file": "assets/privacy-BYDsM2O-.js",
     "name": "privacy",
     "src": "privacy.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js",
+      "_en-only-sXLkodNz.js"
     ]
   },
   "src/sections/ScanCore.jsx": {
-    "file": "assets/ScanCore-lG2cTsVn.js",
+    "file": "assets/ScanCore-CeytCA6E.js",
     "name": "ScanCore",
     "src": "src/sections/ScanCore.jsx",
     "isDynamicEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js"
+      "_jsx-runtime-Dt7n5OEe.js"
     ]
   },
   "terms.html": {
-    "file": "assets/terms-CvaStL4f.js",
+    "file": "assets/terms-CcJE__dj.js",
     "name": "terms",
     "src": "terms.html",
     "isEntry": true,
     "imports": [
-      "_i18n-DLp2QPdn.js"
+      "_jsx-runtime-Dt7n5OEe.js",
+      "_i18n-CBFach7V.js",
+      "_en-only-sXLkodNz.js"
     ]
+  },
+  "virtual:todira-content/ar": {
+    "file": "assets/ar-CFM0y0pt.js",
+    "name": "ar",
+    "src": "virtual:todira-content/ar",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/en": {
+    "file": "assets/en-Jabr_809.js",
+    "name": "en",
+    "src": "virtual:todira-content/en",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/es": {
+    "file": "assets/es-DI--HjYB.js",
+    "name": "es",
+    "src": "virtual:todira-content/es",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/fil": {
+    "file": "assets/fil-AfsTeB3m.js",
+    "name": "fil",
+    "src": "virtual:todira-content/fil",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/fr": {
+    "file": "assets/fr-CN4sa2pp.js",
+    "name": "fr",
+    "src": "virtual:todira-content/fr",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/he": {
+    "file": "assets/he-wKfe7-uB.js",
+    "name": "he",
+    "src": "virtual:todira-content/he",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/hi": {
+    "file": "assets/hi-C7_jgR3D.js",
+    "name": "hi",
+    "src": "virtual:todira-content/hi",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/pt": {
+    "file": "assets/pt-BrCOCupa.js",
+    "name": "pt",
+    "src": "virtual:todira-content/pt",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/ru": {
+    "file": "assets/ru-BSEDgShw.js",
+    "name": "ru",
+    "src": "virtual:todira-content/ru",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/th": {
+    "file": "assets/th-BUNy34yi.js",
+    "name": "th",
+    "src": "virtual:todira-content/th",
+    "isDynamicEntry": true
+  },
+  "virtual:todira-content/zh": {
+    "file": "assets/zh-nRlZc0iG.js",
+    "name": "zh",
+    "src": "virtual:todira-content/zh",
+    "isDynamicEntry": true
   }
 }

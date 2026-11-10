@@ -1,4 +1,3 @@
-import content from "./content.json";
 
 // The server (website/main.py's _render) already resolves the viewer's language once per
 // request (?lang= > cookie > Hebrew) and injects it into every template, including home.html —
@@ -28,18 +27,29 @@ export const prefill = injected.prefill || {};
 // with a couple of simple values keep using the named exports above instead.
 export const pageConfig = injected;
 
+// 2026-11-10 (owner: make the home page faster): only the visitor's language is downloaded, as its own small chunk
+// (vite.config.js's todiraContentPerLanguage builds one per language from content.json, fallbacks already applied:
+// the languages whose texts come from website/i18n_langs/<code>.json show English for a key their file doesn't have
+// yet, then Hebrew; the five core languages fall back to Hebrew). Every page module waits for it before rendering.
+const LOADERS = {
+  he: () => import("virtual:todira-content/he"),
+  en: () => import("virtual:todira-content/en"),
+  ru: () => import("virtual:todira-content/ru"),
+  fr: () => import("virtual:todira-content/fr"),
+  ar: () => import("virtual:todira-content/ar"),
+  es: () => import("virtual:todira-content/es"),
+  pt: () => import("virtual:todira-content/pt"),
+  hi: () => import("virtual:todira-content/hi"),
+  fil: () => import("virtual:todira-content/fil"),
+  th: () => import("virtual:todira-content/th"),
+  zh: () => import("virtual:todira-content/zh"),
+};
+const content = (await (LOADERS[lang] || LOADERS.he)()).default;
+
 // vars supports the same named-placeholder interpolation as i18n.py's own t(key, **kwargs) (e.g.
 // login.hint's "{telegram_cta}") — .format()-style, not HTML, so no injection risk either way.
-// 2026-11-02: the languages whose texts come from website/i18n_langs/<code>.json (i18n.py's FILE_LANGS) show English
-// for a key their file doesn't have yet, then Hebrew; the five core languages fall back to Hebrew as before.
-const FILE_LANGS = ["es", "pt", "hi", "fil", "th", "zh"];
-const fallbacks = FILE_LANGS.includes(lang) ? [lang, "en", "he"] : [lang, "he"];
-
 export function t(key, vars) {
-  const entry = content[key];
-  if (!entry) return key;
-  const found = fallbacks.find((code) => entry[code]);
-  const text = found ? entry[found] : key;
+  const text = content[key] ?? key;
   if (!vars) return text;
   return text.replace(/\{(\w+)\}/g, (match, name) => (name in vars ? vars[name] : match));
 }

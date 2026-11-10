@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { t, lang } from "./i18n";
-import content from "./content.json";
+import enTexts from "virtual:todira-content/en-only";
 import Blob from "./Blob.jsx";
 
 const easePremium = [0.16, 1, 0.3, 1];
@@ -12,7 +12,7 @@ const easePremium = [0.16, 1, 0.3, 1];
 // explaining it isn't translated yet. tEn() reads content.json's own "en" entry directly,
 // bypassing t()'s lang-keyed lookup (and its Hebrew fallback) entirely.
 function tEn(key) {
-  return content[key]?.en;
+  return enTexts[key];
 }
 
 export default function About() {
