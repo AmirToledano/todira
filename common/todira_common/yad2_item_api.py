@@ -35,6 +35,7 @@ import os
 import re
 import threading
 import time
+import random
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,8 @@ def _request_once(token: str) -> tuple[str, Any]:
     if wait > 0:
         time.sleep(wait)
     _last_request_at = time.monotonic()
+    proxies = [p.strip() for p in os.environ.get("ROTATING_PROXY_URL", "").replace(",", " ").split() if p.strip()]
+    proxy_kwargs = {"proxy": random.choice(proxies)} if proxies else {}
     try:
         response = curl_requests.get(
             _ITEM_URL.format(token=token),
@@ -120,6 +123,7 @@ def _request_once(token: str) -> tuple[str, Any]:
             impersonate="chrome",
             timeout=_TIMEOUT_SECONDS,
             allow_redirects=False,
+            **proxy_kwargs,
         )
     except Exception:
         return "retry", "request failed (network)"
