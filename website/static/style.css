@@ -56,7 +56,7 @@ html.theme-transition-active *, html.theme-transition-active *::before, html.the
 }
 
 :root {
-  --teal: #0e8a82;
+  --teal: #0b7a73;  /* 2026-11-10: was #0e8a82 (4.2:1 with white, under the 4.5 minimum) */
   --teal-dark: #173c40;
   --teal-tint: #eaf5f3;
   --gold: #d9a441;
@@ -73,7 +73,7 @@ html.theme-transition-active *, html.theme-transition-active *::before, html.the
      neither of which should flip color just because the page theme did. */
   --heading: var(--teal-dark);
   --text: #1e2a29;
-  --text-muted: #66787c;
+  --text-muted: #5a6c70;  /* 2026-11-10: was #66787c (4.3:1 on --bg) */
   --border: #e6e1d4;
   --radius-lg: 20px;
   --radius-md: 14px;
@@ -954,7 +954,7 @@ html[data-theme="dark"] .price-rise .price-change-badge { background: #3a2116; c
   animation: float 3.2s ease-in-out infinite;
 }
 .empty-state p { max-width: 420px; margin: 0 auto 22px; }
-.empty-state .hint { font-size: .82rem; opacity: .75; }
+.empty-state .hint { font-size: .82rem; color: var(--text-muted); }  /* 2026-11-10: was opacity .75, 3.3:1 */
 
 .notice {
   background: #fff3cd; border: 1px solid #ffe69c; color: #6b5200;
@@ -1308,8 +1308,10 @@ nav.site-nav a:active { transform: scale(.95); }
 }
 .footer-inner .brand { color: var(--heading); font-size: 1.1rem; }
 .footer-nav { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
-.footer-nav a { text-decoration: none; color: var(--text-muted); font-size: .88rem; }
+.footer-nav a { text-decoration: none; color: var(--text-muted); font-size: .88rem; display: inline-block; padding: 10px 2px; }  /* 2026-11-10: was 22px tall to tap */
 .footer-nav a:hover { color: var(--teal); }
+/* 2026-11-10: need_uid.html's text is the page's main heading now, styled like the paragraph it was */
+.empty-state h1.empty-state-text { font-size: 1rem; font-weight: 400; line-height: 1.6; margin: 0 0 1em; }
 .footer-note { font-size: .78rem; color: var(--text-muted); margin: 0; }
 .footer-legal { max-width: 480px; }
 

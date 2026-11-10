@@ -1381,7 +1381,7 @@ const PAGE = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>טודירה</title>
 <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#fbf7ef;
 color:#173c40;font-family:Heebo,system-ui,sans-serif;text-align:center;padding:24px;box-sizing:border-box}
-h1{font-size:1.4rem;margin:0 0 8px}p{margin:0 0 20px;color:#66787c}button{background:#0e8a82;color:#fff;border:0;
+h1{font-size:1.4rem;margin:0 0 8px}p{margin:0 0 20px;color:#5a6c70}button{background:#0b7a73;color:#fff;border:0;
 border-radius:999px;padding:12px 26px;font-weight:700;font-size:1rem;font-family:inherit;cursor:pointer}</style></head><body><div>
 <h1>אין חיבור לאינטרנט</h1><p>כשהחיבור יחזור, הדירות יחכו כאן.</p>
 <button onclick="location.reload()">לנסות שוב</button></div></body></html>`;

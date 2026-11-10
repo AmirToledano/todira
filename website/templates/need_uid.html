@@ -3,7 +3,7 @@
 {% block content %}
 <div class="empty-state">
   <div class="glyph" aria-hidden="true">{{ icon('key-round') }}</div>
-  <p>{{ t('need_uid.body', target=t('need_uid.target_' ~ target)) }}</p>
+  <h1 class="empty-state-text">{{ t('need_uid.body', target=t('need_uid.target_' ~ target)) }}</h1>
   <a class="btn gold" href="/login">{{ t('need_uid.cta') }}</a>
 </div>
 {% endblock %}
