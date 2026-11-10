@@ -68,7 +68,8 @@ jobs:
                                   ("PLAN same without the parking/storage text test", str(lm._candidate_query(select(Listing.id, Listing.price), f).compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))),
                                   ("PLAN count only", "select count(*) from listings where deal_type='rent' and not is_delisted and duplicate_of_id is null")):
                   print("---", label)
-                  for line in s.execute(text("explain (analyze, buffers) " + stmt)).scalars():
+                  # the driver's own form: the query text holds ":" and "%" (a regular expression), which text() would read as parameters
+                  for line in s.connection().exec_driver_sql("explain (analyze, buffers) " + stmt).scalars():
                       print("   ", line[:200])
               ids = timed("matching_id_prices (what the page runs)", lambda: lm.matching_id_prices(s, f, set()))
               print("matches:", len(ids))
