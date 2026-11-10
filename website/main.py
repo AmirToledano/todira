@@ -83,7 +83,13 @@ from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECO
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
-from todira_common.listing_matches import load_listings, mark_recent_matches_seen, matching_listing_rows, shown_listing_id
+from todira_common.listing_matches import (
+    load_listings,
+    mark_recent_matches_seen,
+    matching_id_prices,
+    matching_listing_rows,
+    shown_listing_id,
+)
 from todira_common.app_flags import get_flag, set_flag
 from todira_common.models import (
     AppFlag, ContactMessage, Filter, Listing, OwnerPost, OwnerPostPhoto, Payment, SentNotification, User, UserListingAction,
@@ -2296,6 +2302,19 @@ def _filter_fingerprint(filter_row) -> tuple:
     return tuple((column.key, repr(getattr(filter_row, column.key, None))) for column in Filter.__table__.columns)
 
 
+def _defer_first_batch() -> bool:
+    """APARTMENTS_DEFER_FIRST_BATCH=0 turns the placeholder-first page off (the older tests render cards directly)."""
+    return os.environ.get("APARTMENTS_DEFER_FIRST_BATCH", "1").strip() != "0"
+
+
+def _match_ids_ready(user_id: int, filter_row, hidden_ids: set[int]) -> bool:
+    """Whether _cached_match_ids would answer from the cache right now (no scan)."""
+    key = (user_id, _filter_fingerprint(filter_row), frozenset(hidden_ids))
+    with _match_ids_lock:
+        hit = _match_ids_cache.get(key)
+        return hit is not None and time.monotonic() - hit[0] < _MATCH_IDS_TTL
+
+
 def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[tuple[int, int | None]]:
     key = (user_id, _filter_fingerprint(filter_row), frozenset(hidden_ids))
     now = time.monotonic()
@@ -2304,7 +2323,7 @@ def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -
         if hit is not None and now - hit[0] < _MATCH_IDS_TTL:
             _match_ids_cache.move_to_end(key)
             return hit[1]
-    ids = [(row.id, row.price) for row in matching_listing_rows(session, filter_row, hidden_ids)]
+    ids = matching_id_prices(session, filter_row, hidden_ids)
     with _match_ids_lock:
         _match_ids_cache[key] = (now, ids)
         _match_ids_cache.move_to_end(key)
@@ -2665,14 +2684,23 @@ def apartments(
         city_view = city if city in LOCALITY_SET else None
         match_filter = _city_view_filter(user.filter, city_view) if city_view else user.filter
         sort = sort if sort in _SORTS else "new"
-        match_ids = _sorted_ids(_cached_match_ids(session, user.id, match_filter, hidden_ids), sort)
-        page_items = [
-            listing
-            for listing in load_listings(session, match_ids[offset : offset + APARTMENTS_PAGE_SIZE])
-            if not listing.is_delisted  # taken down since the ids were cached
-        ]
-        next_offset = offset + APARTMENTS_PAGE_SIZE
-        has_more = next_offset < len(match_ids)
+        # 2026-11-10 (owner: a link from the bot opened a blank page for minutes): when the matches are not cached
+        # yet, the full page goes out at once with placeholder cards, and its script asks for the first batch
+        # (fragment, offset 0), which runs the scan. A deep-linked listing shows straight away either way.
+        deferred = (
+            not fragment and _defer_first_batch() and not _match_ids_ready(user.id, match_filter, hidden_ids)
+        )
+        if deferred:
+            match_ids, page_items, next_offset, has_more = [], [], 0, True
+        else:
+            match_ids = _sorted_ids(_cached_match_ids(session, user.id, match_filter, hidden_ids), sort)
+            page_items = [
+                listing
+                for listing in load_listings(session, match_ids[offset : offset + APARTMENTS_PAGE_SIZE])
+                if not listing.is_delisted  # taken down since the ids were cached
+            ]
+            next_offset = offset + APARTMENTS_PAGE_SIZE
+            has_more = next_offset < len(match_ids)
         liked_ids = _listing_action_ids(session, user.id, "liked")
         # Only true when this page was actually reached via the real, signed session cookie — the
         # "insecure temporary access" notice below must not show for a real login just because a
@@ -2696,7 +2724,9 @@ def apartments(
 
     context = {
         "listings": page_items,
-        "total_count": len(match_ids),
+        "total_count": None if deferred else len(match_ids),
+        "deferred": deferred,
+        "first_batch": fragment and offset == 0,
         "next_offset": next_offset,
         "has_more": has_more,
         "uid": user.telegram_user_id,

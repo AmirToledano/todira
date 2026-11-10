@@ -3,6 +3,14 @@
    apartments() route (fragment=true branch). animate=false: see _listing_card.html's own
    comment on why a lazily-appended card must not carry the .reveal class. #}
 {% from "_listing_card.html" import listing_card with context %}
+{% if first_batch %}<span hidden data-total-count="{{ total_count }}"></span>{% endif %}
+{% if first_batch and not listings %}
+<div class="empty-state">
+  <div class="glyph" aria-hidden="true">{{ icon('search') }}</div>
+  <p>{{ t('apartments.empty_title') }}</p>
+  <p class="hint">{{ t('apartments.empty_hint') }}</p>
+</div>
+{% endif %}
 {% for l in listings %}{{ listing_card(l, 0, false) }}{% endfor %}
 {% if has_more %}
 <div class="load-more-sentinel" data-next-offset="{{ next_offset }}"></div>
