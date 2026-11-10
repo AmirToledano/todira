@@ -24,6 +24,7 @@ _LEADING_JUNK_RE = re.compile(r"^[^א-תa-zA-Z]+")
 RENT_PRICE_LIMIT = 2000
 SALE_PRICE_LIMIT = 800_000
 SIZE_LIMIT = 25
+NON_HOME_TEXT_CHARS = 200  # how much of the ad's text non_home_kind reads (listing_matches fetches only this much)
 
 
 def _cheap_or_small(deal_type: str | None, price: int | None, size_sqm: int | None) -> bool:
@@ -39,7 +40,7 @@ def non_home_kind(description: str | None, deal_type: str | None, price: int | N
     """"parking", "storage", or None for anything else (a home, or no text to tell by)."""
     if not description:
         return None
-    head = _LEADING_JUNK_RE.sub("", description[:200].strip())[:60].lower()
+    head = _LEADING_JUNK_RE.sub("", description[:NON_HOME_TEXT_CHARS].strip())[:60].lower()
     if _PARKING_RE.match(head):
         kind = "parking"
     elif _STORAGE_RE.match(head):
