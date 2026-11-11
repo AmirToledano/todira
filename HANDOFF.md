@@ -3,11 +3,13 @@
 כל שיחה עם Claude קוראת את הקובץ הזה קודם, ומעדכנת אותו בסוף כל משימה (באותו commit של המשימה). כך שיחה חדשה,
 במחשב או בענן, ממשיכה בדיוק מאיפה שהקודמת עצרה. הפירוט המלא של המערכת ב-`PROJECT_STATE.md` וב-`SYSTEM_ARCHITECTURE.md`.
 
-**עודכן:** 11.11.2026, 17:05
+**עודכן:** 11.11.2026, 20:58
 
 ## הבקשה האחרונה של אמיר
-עובר לעבוד מהמחשב (Windows) עם Remote Control, מחשב דלוק 24/7, כדי לשלוט בעצמו מהטרמינל ולתרגל DevOps. ביקש:
-הגדרות חשמל למחשב, דרך להעביר את השיחה הזו עצמה למחשב (Open in CLI, `claude --teleport`), והקובץ הזה.
+השיחה עברה למחשב (Ubuntu ב-WSL, `~/todira`, בתוך tmux בשם `todira`, עם Remote Control לטלפון). ביקש הפעלה אוטומטית
+בהדלקת המחשב: `~/bin/todira-autostart.sh` (פותח tmux `todira` עם `claude --continue --remote-control todira`, ולא
+עושה כלום אם כבר פתוח) מופעל מ-`todira-autostart.vbs` בתיקיית Startup של Windows (חלון מוסתר). אחרי הפעלה מחדש
+צריך להתחבר לווינדוס כדי שזה יעלה. בדיקה אמיתית: בהפעלה מחדש הבאה.
 
 ## בתהליך
 - אין משימה פתוחה באמצע.
@@ -20,7 +22,7 @@
    `set-meta-secret.yaml`; ב-Meta לכוון את ה-Webhook ל-`https://todira.app/meta/webhook` (שדות feed ו-comments).
 3. **הגדרות המחשב (Dell Vostro 15 3530, Windows 11):** שינה במצב מחובר: Never; סגירת מכסה במצב מחובר: Do nothing;
    הגבלת טעינה: BIOS (F2), Power, Battery Configuration, Custom 50 עד 80 (או Primarily AC Use), או Dell Power Manager;
-   Active hours בעדכוני Windows. אחר כך: Git ו-Claude Code, `git clone`, העברת השיחה עם Open in CLI, ו-Remote Control.
+   Active hours בעדכוני Windows. (Git, Claude Code, העברת השיחה ו-Remote Control: הושלמו 11.11.)
 4. **פנייה למנהלי קבוצות הפייסבוק** (אמיר עושה בעצמו). החשבון האישי נחסם זמנית מתגובות ב-11.11: לא להגיב
    יומיים, ואחר כך בקצב של בן אדם עם נוסחים שונים (`seeker_leads.py` נותן 210 נוסחים).
 5. נשמר מקודם: RESEND_API_KEY; החלפת סיסמת Webshare; אבטחת AWS (MFA ל-root, סגירת פורט 22, התראת תקציב);
