@@ -75,8 +75,99 @@
   /* ---------- live data: map, numbers, feed and the hero notification ---------- */
   fetch("/api/home-map", { credentials: "omit" })
     .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (data) { if (data) { live(data); } })
+    .then(function (data) { if (data) { heroNumbers(data); hotCities(data); live(data); } })
     .catch(function () { /* the rest of the page stands on its own */ });
+
+  /* ---------- 2026-11-11 (owner: "Dorin's site looks more professional, how things move") ----------
+     the hero's live numbers, the week's busiest cities, sections that rise into view and a main button that stays at
+     hand on a phone. Real counts only (/api/home-map); without them nothing extra is shown. */
+  function countUp(els) {
+    // each number is sized to its final value first, so nothing around it moves while the digits change
+    els.forEach(function (n) {
+      n[0].textContent = fmt(n[1]);
+      if (!reduce) { n[0].style.minWidth = Math.ceil(n[0].getBoundingClientRect().width) + "px"; n[0].textContent = fmt(0); }
+    });
+    if (reduce) { return; }
+    var t0 = performance.now();
+    (function step(t) {
+      var k = Math.min(1, (t - t0) / 1600), e = 1 - Math.pow(1 - k, 3);
+      els.forEach(function (n) { n[0].textContent = fmt(k < 1 ? Math.round(n[1] * e) : n[1]); });
+      if (k < 1) { requestAnimationFrame(step); }
+    })(t0);
+  }
+
+  function heroNumbers(data) {
+    var pill = document.getElementById("lp-pill");
+    var stats = document.getElementById("lp-stats");
+    var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    fontsReady.then(function () {
+      if (pill && data.new_24h > 0) {
+        pill.hidden = false;
+        countUp([[document.getElementById("lp-pill-n"), data.new_24h]]);
+      }
+      if (stats && data.week_new > 0) {
+        stats.hidden = false;
+        var els = Array.prototype.map.call(stats.querySelectorAll("dd[data-n]"), function (dd) {
+          return [dd, Number(data[dd.getAttribute("data-n")]) || 0];
+        });
+        onView(stats, function () { countUp(els); }, 0.5);
+      }
+    });
+  }
+
+  function hotCities(data) {
+    var section = document.getElementById("lp-hot");
+    var list = document.getElementById("lp-hot-list");
+    var rows = (data.hot || []).filter(function (r) { return r.rent + r.sale > 0; });
+    if (!section || !list || rows.length < 3) { return; }
+    var top = rows[0].rent + rows[0].sale;
+    rows.forEach(function (r, i) {
+      var li = document.createElement("li");
+      var rank = document.createElement("span"); rank.className = "lp-hot-rank"; rank.textContent = String(i + 1);
+      var main = document.createElement("div"); main.className = "lp-hot-main";
+      var name = document.createElement("a"); name.className = "lp-hot-city"; name.textContent = r.city;
+      name.href = "/rent/" + encodeURIComponent(r.city);
+      var bar = document.createElement("span"); bar.className = "lp-hot-bar";
+      var fillEl = document.createElement("i"); fillEl.style.setProperty("--w", Math.max(6, Math.round(100 * (r.rent + r.sale) / top)) + "%");
+      bar.appendChild(fillEl);
+      main.appendChild(name); main.appendChild(bar);
+      var chips = document.createElement("div"); chips.className = "lp-hot-chips";
+      [["rent", section.dataset.rent], ["sale", section.dataset.sale]].forEach(function (kv) {
+        if (!r[kv[0]]) { return; }
+        var c = document.createElement("span"); c.className = "lp-chip lp-chip-" + kv[0];
+        c.textContent = kv[1] + " " + fmt(r[kv[0]]);
+        chips.appendChild(c);
+      });
+      li.appendChild(rank); li.appendChild(main); li.appendChild(chips);
+      list.appendChild(li);
+    });
+    section.hidden = false;
+    onView(list, function () { list.classList.add("grow"); }, 0.3);
+  }
+
+  (function reveal() {
+    var els = document.querySelectorAll(".lp-reveal");
+    if (reduce || !("IntersectionObserver" in window) || !els.length) { return; }
+    document.documentElement.classList.add("lp-motion");
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+    Array.prototype.forEach.call(els, function (el) { io.observe(el); });
+  })();
+
+  (function stickyButton() {
+    var bar = document.getElementById("lp-sticky");
+    var golds = document.querySelectorAll(".lp-hero .lp-btn, .lp-end .lp-btn, .lp-mycity-go");
+    if (!bar || !golds.length || !("IntersectionObserver" in window)) { return; }
+    var seen = new Set();
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting && !e.target.hidden) { seen.add(e.target); } else { seen.delete(e.target); } });
+      var show = seen.size === 0 && window.innerWidth < 900;
+      bar.hidden = !show;
+      document.documentElement.classList.toggle("lp-sticky-on", show);
+    });
+    Array.prototype.forEach.call(golds, function (el) { io.observe(el); });
+  })();
 
   /* ---------- your city: how many came in in the last 24 hours, and when the last one came in ----------
      2026-10-22 (owner): for every visitor, signed in or not - the flats themselves need signing in (the button goes

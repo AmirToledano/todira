@@ -54,6 +54,7 @@ from channel import run_channel_posts
 from checkin import run_checkins
 from weekly_report import run_weekly_report
 from instagram_kit import run_instagram_kit
+from social_poster import run_social_poster
 from nudges import run_nudges
 from source_watch import run_source_watch
 from email_digest import run_email_digest
@@ -3237,6 +3238,12 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("instagram kit step failed")
+                # 2026-11-11: a post a day on Todira's own Facebook Page and Instagram (scraper/social_poster.py)
+                try:
+                    summary.update(run_social_poster(session))
+                except Exception:
+                    session.rollback()
+                    logger.exception("social poster step failed")
                 try:
                     summary["owner_posts_expired"] = _expire_owner_posts(session)
                 except Exception:

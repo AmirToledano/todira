@@ -1,5 +1,21 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-11-11 (afternoon): Yad2 volume collapse, home page motion, social media manager
+
+- **Yad2 brings almost nothing since 2026-11-10.** New Yad2 listings per day: 2,214 (11-09), 184 (11-10), 55 (11-11 by
+  13:45). Every main run today: `Yad2 tile sweep aborted after 5 consecutive failed tiles`, extra_ads=0,
+  bright_data_enriched=0; each run adds 15-21 new listings in all. The drop starts the day the free Yad2 routes were
+  switched to Webshare (owner's commits a26f42b, f6706b5). That part is the owner's (Claude does not work on ways around
+  Yad2's blocking); the other sources are steady (Komo ~425/day, Facebook groups ~370/day). Dorin shows ~11,000 rentals
+  and ~10,000 sales a week (also Madlan and OnMap, which Todira does not read).
+- **Home page (owner: "Dorin looks more professional"):** live pill and counted numbers in the hero, "where it's busiest
+  this week", sections that rise into view, a kept main button on phones (one gold button at a time).
+- **Social media manager** (`common/todira_common/meta_api.py`, `social_replies.py`, `scraper/social_poster.py`,
+  website `/meta/webhook`): a daily post on the Page and Instagram (10:00-12:00), and an instant public reply with the
+  link to whoever comments "דירה" (owner decided: straight away). Off until the owner runs `set-meta-secret.yaml` and
+  points the Meta app's webhook to `https://todira.app/meta/webhook` (fields: Page `feed`, Instagram `comments`).
+  Facebook groups stay manual: the lead replies (`seeker_leads.py`) now have 210 short wordings instead of 3.
+
 ## ▶ 2026-11-11: /apartments speed, and neighbourhoods and streets picked from lists
 
 - **/apartments for a search set to "all" (~43,700 rentals): 80 s → 3 s on the server** (PR #1003). The parking/storage

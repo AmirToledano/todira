@@ -33,6 +33,8 @@
   <section class="lp-hero">
     <div class="lp-wrap lp-hero-grid">
       <div class="lp-hero-copy">
+        {# 2026-11-11 (owner): live numbers from /api/home-map, filled by home.js; hidden until they arrive #}
+        <p class="lp-pill" id="lp-pill" hidden><span class="lp-pulse" aria-hidden="true"></span><b id="lp-pill-n">0</b> {{ t('landing.pill_today') }}</p>
         <h1>{{ t('landing.h1') }}</h1>
         <p class="lp-lede">{{ t('landing.lede') }}</p>
         <div class="lp-actions">
@@ -42,6 +44,11 @@
           <a class="lp-textlink" href="/search" data-track="search_home">{{ t('search.home_link') }}</a>
         </div>
         <p class="lp-fine">{{ t('landing.trial_note') }}</p>
+        <dl class="lp-stats" id="lp-stats" hidden>
+          <div><dt>{{ t('landing.stat_week') }}</dt><dd data-n="week_new">0</dd></div>
+          <div><dt>{{ t('landing.stat_alerts') }}</dt><dd data-n="alerts_total">0</dd></div>
+          <div><dt>{{ t('landing.stat_cities') }}</dt><dd data-n="cities_live">0</dd></div>
+        </dl>
       </div>
       <div class="lp-todi">
         <img class="lp-portrait" src="/static/todi-hero-light.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024">
@@ -91,7 +98,18 @@
     </div>
   </section>
 
-  <section class="lp-paper lp-wrap" id="lp-how">
+  {# 2026-11-11 (owner): the week's busiest cities, real counts from /api/home-map (home.js draws the rows) #}
+  <section class="lp-paper lp-wrap lp-hot lp-reveal" id="lp-hot" hidden
+           data-rent="{{ t('landing.hot_rent') }}" data-sale="{{ t('landing.hot_sale') }}">
+    <div class="lp-hot-head">
+      <h2 class="lp-big">{{ t('landing.hot_title') }}</h2>
+      <p class="lp-hot-note">{{ t('landing.hot_note') }}</p>
+    </div>
+    <ol class="lp-hot-list" id="lp-hot-list"></ol>
+    <p class="lp-hot-more">{{ t('landing.hot_more') }} <a href="/rent">{{ t('landing.hot_more_link') }}</a></p>
+  </section>
+
+  <section class="lp-paper lp-wrap lp-reveal" id="lp-how">
     <h2 class="lp-big">{{ t('landing.how_link') }}</h2>
     <div class="lp-how">
       {# 2026-10-27 (owner): no numbered 1 2 3 steps, the chat beside it shows the steps; the real flats are in the
@@ -120,7 +138,7 @@
     </div>
   </section>
 
-  <section class="lp-paper lp-wrap" id="lp-price">
+  <section class="lp-paper lp-wrap lp-reveal" id="lp-price">
     <div class="lp-prices">
       <div>
         <h2 class="lp-big">{{ t('landing.price_title') }}</h2>
@@ -137,7 +155,7 @@
 
   {% if testimonials %}
   {# 2026-10-22: real testimonials, each approved by the owner (todira_common/testimonials.py). #}
-  <section class="lp-paper lp-wrap lp-said">
+  <section class="lp-paper lp-wrap lp-said lp-reveal">
     <h2 class="lp-big">{{ t('landing.said_title') }}</h2>
     <div class="lp-said-list">
       {% for item in testimonials %}
@@ -149,7 +167,7 @@
   {% endif %}
 
   {# 2026-10-22 (owner approved the text): why the owner built Todira. #}
-  <section class="lp-paper lp-wrap lp-founder">
+  <section class="lp-paper lp-wrap lp-founder lp-reveal">
     {% if founder_photo %}<img class="lp-founder-photo" src="/static/{{ founder_photo }}" alt="{{ t('landing.founder_photo_alt') }}" loading="lazy">{% endif %}
     <div>
       <h2 class="lp-big">{{ t('landing.founder_title') }}</h2>
@@ -160,12 +178,18 @@
     </div>
   </section>
 
-  <section class="lp-paper lp-wrap lp-faq">
+  <section class="lp-paper lp-wrap lp-faq lp-reveal">
     <h2 class="lp-big">{{ t('landing.faq_title') }}</h2>
     {% for n in (1, 6, 2, 7, 5, 4, 8) %}
     <details{% if loop.first %} open{% endif %}><summary>{{ t('home.faq' ~ n ~ '_q') }}</summary><p>{{ t('home.faq' ~ n ~ '_a') }}</p></details>
     {% endfor %}
   </section>
+
+  {# 2026-11-11 (owner): on a phone, the main button stays at hand once the hero's one has scrolled away; home.js
+     hides it again while the hero or the closing button is on screen, so there is never a second gold button. #}
+  <div class="lp-sticky" id="lp-sticky" hidden>
+    <a class="lp-btn" href="https://t.me/AmirDirotBot?start=site_sticky" target="_blank" rel="noopener" data-track="bot_sticky">{{ t('landing.cta') }}</a>
+  </div>
 
   <section class="lp-end">
     <div class="lp-wrap lp-end-inner">
