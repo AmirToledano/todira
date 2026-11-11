@@ -260,3 +260,18 @@ def test_the_fast_path_still_drops_a_parking_space():
 
     draft = website_main._blank_filter()
     assert [i for i, _ in listing_matches.matching_id_prices(_Session(), draft)] == [2]
+
+
+def test_the_filter_form_keeps_places_of_chosen_cities_only():
+    """2026-11-11: neighbourhoods and streets are saved as "city:name" from the form's boxes."""
+    clean = website_main._clean_places
+    assert clean(["חיפה:הרצל", "חולון:סוקולוב", "חיפה:הרצל", "רחביה"], ["חיפה"]) == ["חיפה:הרצל", "רחביה"]
+    assert clean(["חיפה:", ":x"], ["חיפה"]) == []
+
+
+def test_the_street_search_needs_a_chosen_city_and_two_letters():
+    from fastapi.testclient import TestClient
+
+    client = TestClient(website_main.app)
+    assert client.get("/api/streets", params={"q": "ה", "city": "חיפה"}).json() == {"found": []}
+    assert client.get("/api/streets", params={"q": "הרצל"}).json() == {"found": []}

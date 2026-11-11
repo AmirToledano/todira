@@ -66,6 +66,7 @@ class FilterData(BaseModel):
     min_area_sqm: int | None = None
     no_brokers: bool = False
     flexible_match: bool = False
+    include_missing_details: bool = False
 
     keywords: list[str] = Field(default_factory=list)
 

@@ -1,5 +1,22 @@
 # ToDira — Project State Handoff
 
+## ▶ 2026-11-11: /apartments speed, and neighbourhoods and streets picked from lists
+
+- **/apartments for a search set to "all" (~43,700 rentals): 80 s → 3 s on the server** (PR #1003). The parking/storage
+  check ran as a regex inside Postgres, rows were streamed (cursor plan), and the filter panel's count scanned a second
+  time. Measure again with `diagnose-apartments-speed.yaml`. More speed would need more server memory (Postgres reads
+  from disk: 2 GB server, shared_buffers 128 MB); owner decided not now (a 4 GB server is about $16 more a month).
+- **Neighbourhoods and streets** (bot `/filter` → "🏘️ שכונות ורחובות", site filter after choosing 1-6 cities). Typed
+  names become suggestions and only a tapped name is saved, as "city:name". Streets come from the official streets list
+  (data.gov.il) bundled in `common/todira_common/assets/streets.json.gz`; rebuild with `fetch-streets-data.yaml`
+  (also monthly) then `python scripts/build_streets.py streets.tsv listing_streets.tsv` (files on the `data/streets`
+  branch). Neighbourhoods come from our own live listings. Matching (`place_names.py`) treats spellings alike
+  ("קרית יובל" = "קריית היובל", "שד'" = "שדרות", house numbers dropped) and a combined listing neighbourhood ("חומת שמואל,
+  הר חומה") counts for each name in it.
+- **Missing details:** of live rentals 31% state no neighbourhood and 16% no street (Komo and Facebook groups almost never
+  do). Picking the first neighbourhood or street turns on `include_missing_details` (bot and site), which the user can
+  turn off. Owner approved the bot texts 2026-11-11.
+
 ## ▶ 2026-11-09: what was added 2026-11-05..09 (read this first, then the 2026-11-04 section below)
 
 - **Home screen app (#989):** `static/pwa.js` shows a "+ add to home screen" pill only in the browser and only until the

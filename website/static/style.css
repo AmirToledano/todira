@@ -1190,6 +1190,15 @@ html[data-theme="dark"] .upgrade-plan-checklist li::before { color: #6fd897; }
 .hood-group + .hood-group { margin-top: 10px; }
 .hood-group-title { font-size: .82rem; color: var(--text-muted); margin-bottom: 6px; }
 .hood-chips { max-height: 168px; overflow-y: auto; }
+/* 2026-11-11: streets are searched and picked (the chosen ones as ticked chips, the results as add buttons) */
+.hood-chosen:not(:empty) { margin-bottom: 8px; }
+.hood-found { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.hood-found:empty { display: none; }
+.chip-add {
+  font: inherit; font-size: .88rem; cursor: pointer; background: var(--bg); color: var(--text);
+  border: 1.5px dashed var(--teal); border-radius: 999px; padding: 8px 14px; min-height: 40px;
+}
+.chip-add:hover, .chip-add:focus-visible { background: var(--teal-tint); color: var(--teal); }
 /* 2026-09-27: the "all cities" toggle sits above the search box/grid, not inside the scrollable
    grid itself — a small margin keeps it from crowding the search input right below it. */
 .all-cities-chip { margin-bottom: 8px; }

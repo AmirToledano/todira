@@ -509,7 +509,7 @@ def summary(state: dict, lang: str) -> str:
         parts.append(", ".join(shown) if len(shown) <= 4 else f"{', '.join(shown[:3])} +{len(shown) - 3}")
     low, high = state["rooms_min"], state["rooms_max"]
     if low is not None and high is not None:
-        rooms = _number(low) if low == high else f"{_number(low)}–{_number(high)}"
+        rooms = _number(low) if low == high else f"{_number(low)}-{_number(high)}"
         parts.append(bot_text("onboarding.rooms", lang, rooms=rooms))
     elif low is not None:
         parts.append(bot_text("onboarding.rooms", lang, rooms=f"{_number(low)}+"))
@@ -517,7 +517,7 @@ def summary(state: dict, lang: str) -> str:
         parts.append(bot_text("onboarding.rooms_up_to", lang, rooms=_number(high)))
     low, high = state["price_min"], state["price_max"]
     if low is not None and high is not None:
-        parts.append(f"₪{_number(low)}–{_number(high)}")
+        parts.append(f"₪{_number(low)}-{_number(high)}")
     elif high is not None:
         parts.append(bot_text("onboarding.price_up_to", lang, price=_number(high)))
     elif low is not None:

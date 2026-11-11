@@ -31,6 +31,7 @@ from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.language import DEFAULT_LANG
 from todira_common.models import Filter
+from todira_common.place_names import suggest_places
 from todira_common.schemas import FilterData
 from todira_common.users import get_or_create_user
 from todira_common.uid_token import signed_login_query
@@ -38,7 +39,7 @@ from handlers.apartments import find_new_matches_to_show
 from handlers.support import escalate_to_owner, looks_like_a_sentence, looks_like_help_request
 from pydantic import ValidationError
 from sqlalchemy import select
-from telegram import ForceReply, Update
+from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
@@ -192,10 +193,12 @@ def _category_view(draft: dict, category: str, lang: str):
         return titles["kw"], kb.keywords_keyboard(draft, lang)
     if category == "hood":
         none = bot_text("kb.no_limit", lang)
+        cities = draft.get("cities")
         note = bot_text(
-            "filter.hood_note", lang,
-            neighborhoods=html.escape(", ".join(draft.get("neighborhoods_include") or [])) or none,
-            streets=html.escape(", ".join(draft.get("streets_include") or [])) or none,
+            "filter.hood_note_missing_on" if draft.get("include_missing_details") else "filter.hood_note", lang,
+            neighborhoods=html.escape(", ".join(kb.place_label(e, cities) for e in draft.get("neighborhoods_include") or []))
+            or none,
+            streets=html.escape(", ".join(kb.place_label(e, cities) for e in draft.get("streets_include") or [])) or none,
         )
         return titles["hood"] + note, kb.hood_keyboard(draft, lang)
     if category == "move":
@@ -627,6 +630,91 @@ async def _handle_save(update: Update, context: ContextTypes.DEFAULT_TYPE, draft
     return ConversationHandler.END
 
 
+_HOOD_FIELDS = {"nb": "neighborhoods_include", "st": "streets_include", "n": "neighborhoods_include", "s": "streets_include"}
+_MAX_HOOD_CITIES = 6
+_MAX_PLACE_SUGGESTIONS = 8
+
+
+def _place_suggestions_sync(field: str, typed_names: list[str], cities: list[str]) -> list[tuple[str, str]]:
+    """(city, name) pairs from our lists that the typed names most likely mean (todira_common.place_names).
+    2026-11-11 (owner: "someone types קרית יובל and it is really קריית היובל")."""
+    kind = "street" if field == "streets_include" else "neighborhood"
+    with get_session() as session:
+        return suggest_places(session, kind, typed_names, cities, limit=_MAX_PLACE_SUGGESTIONS)
+
+
+async def _send_place_suggestions(message, context, draft: dict, field: str, typed_names: list[str], lang: str) -> int:
+    suggestions = await asyncio.to_thread(_place_suggestions_sync, field, typed_names, list(draft.get("cities") or []))
+    context.user_data["hood_field"] = field
+    context.user_data["hood_suggestions"] = suggestions
+    await _clear_previous_menu_keyboard(context, message.chat_id)
+    if suggestions:
+        text = bot_text("filter.place_pick", lang)
+        markup = kb.place_suggestions_keyboard(suggestions, draft.get(field) or [], draft.get("cities"), lang)
+    else:
+        text = bot_text("filter.place_not_found", lang)
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton(bot_text("kb.place_search_again", lang), callback_data="f:hood:again"),
+            InlineKeyboardButton(bot_text("kb.back", lang), callback_data="f:cat:hood"),
+        ]])
+    sent = await message.reply_text(text, reply_markup=markup)
+    context.user_data["menu_message_id"] = sent.message_id
+    return MENU
+
+
+async def _hood_callback(query, context, draft: dict, args: list[str], lang: str) -> int:
+    """The neighbourhoods and streets screen (2026-11-11): names are typed, then picked from suggestions; only a tapped
+    name is kept. Picking the first one turns on "include apartments with missing details" (many listings state no
+    neighbourhood or street), which the screen lets the user turn off."""
+    sub = args[0] if args else ""
+    if sub in ("nb", "st", "again"):
+        field = _HOOD_FIELDS.get(sub) or context.user_data.get("hood_field") or "neighborhoods_include"
+        cities = draft.get("cities") or []
+        if not cities or len(cities) > _MAX_HOOD_CITIES:
+            await query.edit_message_text(
+                bot_text("filter.hood_need_city", lang),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(bot_text("kb.back", lang), callback_data="f:root")]]),
+            )
+            return MENU
+        context.user_data["hood_field"] = field
+        return await _prompt_for_text(query, context, awaiting=field, prompt=_text_prompt(field, lang))
+    if sub == "pk" and len(args) > 1 and args[1].isdigit():
+        suggestions = context.user_data.get("hood_suggestions") or []
+        field = context.user_data.get("hood_field") or "neighborhoods_include"
+        index = int(args[1])
+        if index < len(suggestions):
+            city, name = suggestions[index]
+            entry = f"{city}:{name}"
+            chosen = list(draft.get(field) or [])
+            if entry in chosen:
+                chosen.remove(entry)
+            elif len(chosen) < _MAX_PLACE_NAMES:
+                if not draft.get("neighborhoods_include") and not draft.get("streets_include"):
+                    draft["include_missing_details"] = True
+                chosen.append(entry)
+            draft[field] = chosen
+        try:
+            await query.edit_message_reply_markup(
+                reply_markup=kb.place_suggestions_keyboard(suggestions, draft.get(field) or [], draft.get("cities"), lang)
+            )
+        except BadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
+        return MENU
+    if sub == "rm" and len(args) > 2 and args[2].isdigit():
+        field = _HOOD_FIELDS.get(args[1])
+        chosen = list(draft.get(field) or []) if field else []
+        if field and int(args[2]) < len(chosen):
+            chosen.pop(int(args[2]))
+            draft[field] = chosen
+    elif sub == "miss":
+        draft["include_missing_details"] = not draft.get("include_missing_details")
+    elif sub == "clear":
+        draft["neighborhoods_include"] = []
+        draft["streets_include"] = []
+    return await _show_category(query, context, draft, "hood", lang)
+
+
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -739,14 +827,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             draft["keywords"] = []
         return await _show_category(query, context, draft, "kw", lang)
     if action == "hood":
-        sub = parts[2]
-        if sub in ("nb", "st"):
-            field = "neighborhoods_include" if sub == "nb" else "streets_include"
-            return await _prompt_for_text(query, context, awaiting=field, prompt=_text_prompt(field, lang))
-        if sub == "clear":
-            draft["neighborhoods_include"] = []
-            draft["streets_include"] = []
-        return await _show_category(query, context, draft, "hood", lang)
+        return await _hood_callback(query, context, draft, parts[2:], lang)
     if action == "move":
         sub = parts[2]
         if sub == "earliest":
@@ -918,9 +999,7 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return MENU
 
     if awaiting in ("neighborhoods_include", "streets_include"):
-        draft[awaiting] = _parse_place_names(raw)
-        await _send_category(update.message, context, draft, "hood", lang)
-        return MENU
+        return await _send_place_suggestions(update.message, context, draft, awaiting, _parse_place_names(raw), lang)
 
     if awaiting in NUMERIC_INT_FIELDS:
         ok, value = _parse_optional_int(raw)

@@ -80,9 +80,18 @@
     <div id="f-hoods-groups"></div>
     <div class="field-hint">{{ t('filter.neighborhoods_hint') }}</div>
   </div>
-  <div class="field">
-    <label for="f-streets">{{ icon('map-pin', 'field-icon') }} {{ t('filter.streets_label') }}</label>
-    <input id="f-streets" type="text" name="streets_include" maxlength="400" value="{{ (f.streets_include or [])|join(', ') }}" placeholder="{{ t('filter.streets_placeholder') }}">
+  {# 2026-11-11 (owner: "people type a thousand variations"): a street is searched in the official list of the chosen
+     cities (/api/streets) and picked, so what is saved is a real street name ("city:street"). #}
+  <div class="field" id="f-streets-field" hidden>
+    <label for="f-streets-search">{{ icon('map-pin', 'field-icon') }} {{ t('filter.streets_label') }}</label>
+    <div class="checkbox-grid hood-chosen" id="f-streets-chosen">
+      {% for entry in f.streets_include or [] %}
+      <label class="check-chip"><input type="checkbox" name="streets_include" value="{{ entry }}" checked> {{ entry.split(':', 1)[-1] }}{% if ':' in entry and (f.cities or [])|length > 1 %} ({{ entry.split(':', 1)[0] }}){% endif %}</label>
+      {% endfor %}
+    </div>
+    <input id="f-streets-search" type="search" autocomplete="off" maxlength="40" placeholder="{{ t('filter.streets_placeholder') }}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">
+    <div class="hood-found" id="f-streets-found" aria-live="polite"></div>
+    <div class="field-hint">{{ t('filter.streets_hint') }}</div>
   </div>
 </details>
 
@@ -400,7 +409,11 @@
       remember();
       groups.textContent = '';
       cities.forEach(function (city) {
-        var names = known[city] || [];
+        var names = (known[city] || []).slice();
+        // a neighbourhood picked earlier (in the bot, or beyond the commonest) stays on screen and checked
+        Object.keys(selected).forEach(function (v) {
+          if (selected[v] && v.indexOf(city + ':') === 0 && names.indexOf(v.slice(city.length + 1)) < 0) names.unshift(v.slice(city.length + 1));
+        });
         var group = document.createElement('div');
         group.className = 'hood-group';
         var title = document.createElement('div');
@@ -446,11 +459,75 @@
         })
         .catch(function () {});
     }
-    function soon() { clearTimeout(timer); timer = setTimeout(refresh, 250); }
+    function soon() { clearTimeout(timer); timer = setTimeout(refresh, 250); refreshStreets(); }
+
+    // Streets: search the chosen cities' official list, a tap adds the street as a ticked box.
+    var streetsField = document.getElementById('f-streets-field');
+    var streetSearch = document.getElementById('f-streets-search');
+    var streetFound = document.getElementById('f-streets-found');
+    var streetChosen = document.getElementById('f-streets-chosen');
+    var streetTimer = null, streetSeq = 0;
+    function placesChosen() {
+      return document.querySelectorAll('input[name=neighborhoods_include]:checked, input[name=streets_include]:checked').length;
+    }
+    // Many ads state no neighbourhood or street: the first one picked also ticks "show apartments with missing details".
+    function firstPlacePicked(before) {
+      if (before > 0) return;
+      var missing = document.querySelector('input[name=include_missing_details]');
+      if (missing && !missing.checked) { missing.checked = true; missing.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    groups.addEventListener('change', function (e) {
+      if (e.target && e.target.name === 'neighborhoods_include' && e.target.checked) firstPlacePicked(placesChosen() - 1);
+    });
+    function refreshStreets() {
+      var n = chosenCities().length;
+      streetsField.hidden = n === 0 || n > MAX_CITIES;
+    }
+    function addStreet(city, name) {
+      var value = city + ':' + name;
+      var existing = streetChosen.querySelector('input[value="' + CSS.escape(value) + '"]');
+      if (existing) { existing.checked = true; return; }
+      var before = placesChosen();
+      var label = document.createElement('label');
+      label.className = 'check-chip';
+      var input = document.createElement('input');
+      input.type = 'checkbox'; input.name = 'streets_include'; input.value = value; input.checked = true;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' ' + name + (chosenCities().length > 1 ? ' (' + city + ')' : '')));
+      streetChosen.appendChild(label);
+      firstPlacePicked(before);
+      streetChosen.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    function searchStreets() {
+      var q = streetSearch.value.trim();
+      var cities = chosenCities();
+      var seq = ++streetSeq;
+      if (q.length < 2 || !cities.length) { streetFound.textContent = ''; return; }
+      var query = 'q=' + encodeURIComponent(q) + '&' + cities.map(function (c) { return 'city=' + encodeURIComponent(c); }).join('&');
+      fetch('/api/streets?' + query, { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (seq !== streetSeq) return;
+          streetFound.textContent = '';
+          ((data && data.found) || []).forEach(function (pair) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'chip-add';
+            b.textContent = '+ ' + pair[1] + (cities.length > 1 ? ' (' + pair[0] + ')' : '');
+            b.addEventListener('click', function () { addStreet(pair[0], pair[1]); streetSearch.value = ''; streetFound.textContent = ''; streetSearch.focus(); });
+            streetFound.appendChild(b);
+          });
+        })
+        .catch(function () {});
+    }
+    if (streetSearch) {
+      streetSearch.addEventListener('input', function () { clearTimeout(streetTimer); streetTimer = setTimeout(searchStreets, 250); });
+    }
     grid.addEventListener('change', soon);
     var all = document.getElementById('f-all-cities');
     if (all) all.addEventListener('change', soon);
     refresh();
+    refreshStreets();
   })();
 </script>
 {% endmacro %}
