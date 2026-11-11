@@ -3,13 +3,21 @@
 כל שיחה עם Claude קוראת את הקובץ הזה קודם, ומעדכנת אותו בסוף כל משימה (באותו commit של המשימה). כך שיחה חדשה,
 במחשב או בענן, ממשיכה בדיוק מאיפה שהקודמת עצרה. הפירוט המלא של המערכת ב-`PROJECT_STATE.md` וב-`SYSTEM_ARCHITECTURE.md`.
 
-**עודכן:** 11.11.2026, 20:58
+**עודכן:** 11.11.2026, 21:30
 
 ## הבקשה האחרונה של אמיר
 השיחה עברה למחשב (Ubuntu ב-WSL, `~/todira`, בתוך tmux בשם `todira`, עם Remote Control לטלפון). ביקש הפעלה אוטומטית
 בהדלקת המחשב: `~/bin/todira-autostart.sh` (פותח tmux `todira` עם `claude --continue --remote-control todira`, ולא
 עושה כלום אם כבר פתוח) מופעל מ-`todira-autostart.vbs` בתיקיית Startup של Windows (חלון מוסתר). אחרי הפעלה מחדש
 צריך להתחבר לווינדוס כדי שזה יעלה. בדיקה אמיתית: בהפעלה מחדש הבאה.
+
+## סביבת העבודה במחשב (11.11)
+- השיחה רצה ב-tmux `todira` עם Remote Control; עולה לבד: Startup (`C:\Users\AmirT\todira-autostart.vbs`) ומשימה
+  מתוזמנת "Todira Claude" כל 5 דקות; בתוך tmux, Claude עולה מחדש 10 שניות אחרי כל נפילה. עצירה: `tmux kill-session -t todira`.
+- `~/.claude/settings.json`: מודל ברירת מחדל opus; שיחות לא נמחקות (`cleanupPeriodDays` 36500).
+- דפדפן ש-Claude שולט בו: Chromium של Playwright (`~/tools/browser`), נפתח עם `--remote-debugging-port=9222` ופרופיל
+  ב-`~/tools/browser/profile` (התחברויות נשמרות), ומופעל עם `node ~/tools/browser/do.js <steps.js>`. נראה על המסך (WSLg).
+- `gh` מחובר ומשמש גם ל-git push (`gh auth setup-git`).
 
 ## בתהליך
 - אין משימה פתוחה באמצע.
