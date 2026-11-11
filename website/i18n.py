@@ -2254,6 +2254,36 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "he": "חדרים מקסימום", "en": "Maximum rooms", "ru": "Максимум комнат",
         "fr": "Pièces maximum", "ar": "الحد الأقصى للغرف",
     },
+    # 2026-11-10 (owner): neighbourhoods (per chosen city) and streets in the filter form
+    "filter.neighborhoods_label": {
+        "he": "שכונות", "en": "Neighbourhoods", "ru": "Районы", "fr": "Quartiers", "ar": "الأحياء",
+    },
+    "filter.neighborhoods_in": {
+        "he": "שכונות ב{city}", "en": "Neighbourhoods in {city}", "ru": "Районы: {city}",
+        "fr": "Quartiers à {city}", "ar": "أحياء {city}",
+    },
+    "filter.neighborhoods_none": {
+        "he": "עדיין אין לנו שכונות ב{city}", "en": "No neighbourhoods for {city} yet",
+        "ru": "Пока нет районов: {city}", "fr": "Pas encore de quartiers pour {city}",
+        "ar": "لا توجد أحياء بعد في {city}",
+    },
+    "filter.neighborhoods_hint": {
+        "he": "בלי סימון מקבלים את כל העיר. הרבה מודעות לא מציינות שכונה, והן לא יופיעו כשמסמנים שכונות.",
+        "en": "With none ticked you get the whole city. Many ads don't state a neighbourhood, and they won't show once "
+              "you tick some.",
+        "ru": "Без отметок вы получаете весь город. Во многих объявлениях район не указан, и они не появятся, если "
+              "отметить районы.",
+        "fr": "Sans rien cocher, tu reçois toute la ville. Beaucoup d'annonces n'indiquent pas de quartier et "
+              "n'apparaîtront pas si tu en coches.",
+        "ar": "بدون تحديد تحصل على المدينة كلها. إعلانات كثيرة لا تذكر الحي، ولن تظهر عند تحديد أحياء.",
+    },
+    "filter.streets_label": {
+        "he": "רחובות", "en": "Streets", "ru": "Улицы", "fr": "Rues", "ar": "الشوارع",
+    },
+    "filter.streets_placeholder": {
+        "he": "למשל: הרצל, יפו", "en": "For example: Herzl, Jaffa", "ru": "Например: Герцль, Яффо",
+        "fr": "Par exemple : Herzl, Jaffa", "ar": "مثلاً: هرتسل، يافا",
+    },
     "filter.location_section": {
         "he": "מיקום", "en": "Location", "ru": "Местоположение", "fr": "Emplacement", "ar": "الموقع",
     },

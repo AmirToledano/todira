@@ -21,9 +21,10 @@ Revisit once per-listing detail scraping exists and these fields carry real data
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
-from todira_common.cities import normalize_spelling
+from todira_common.cities import locality_key
 from todira_common.non_home import is_non_home
 
 
@@ -79,6 +80,43 @@ def safe_range_update(current_min, current_max, proposed_min, proposed_max):
     if effective_min is not None and effective_max is not None and effective_min > effective_max:
         return current_min, current_max
     return effective_min, effective_max
+
+
+def _place_key(text: str | None) -> str:
+    """One comparison form for a neighbourhood or city name: punctuation, quote marks and letter case dropped, full and
+    defective Hebrew spelling treated alike ("קריית"/"קרית"), extra spaces removed."""
+    return locality_key(text).lower()
+
+
+_STREET_PREFIX_RE = re.compile(r"^(?:רחוב|רח)\s+")
+_BOULEVARD_RE = re.compile(r"^שד\s+")
+_HOUSE_NUMBER_RE = re.compile(r"(?:\s+\d+[א-ת]?)+$")
+
+
+def _street_key(text: str | None) -> str:
+    """A street's name alone: "רחוב הרצל 12", "רח' הרצל 12/3", "הרצל 12א" and "הרצל" are the same street, and "שד' רוטשילד"
+    is "שדרות רוטשילד". The house number goes only when a name is left in front of it ("רחוב 12" stays as it is)."""
+    key = _place_key(text)
+    key = _BOULEVARD_RE.sub("שדרות ", _STREET_PREFIX_RE.sub("", key))
+    without_number = _HOUSE_NUMBER_RE.sub("", key)
+    return without_number if without_number and not without_number.isdigit() else key
+
+
+def _matches_any_place(entries, city_key: str, name_key: str, to_key) -> bool:
+    """Whether the listing's neighbourhood or street (already in comparison form) is one of the filter's entries. An
+    entry is "city:name" (that name in that city only) or just "name" (in any of the search's cities). "city:" with no
+    name means a listing in that city that states no neighbourhood / street; a bare empty entry matches nothing."""
+    for entry in entries:
+        city, sep, name = (entry or "").partition(":")
+        if not sep:
+            city, name = "", entry or ""
+        wanted = to_key(name)
+        has_city = bool(city.strip())
+        if wanted != name_key or (not wanted and not has_city):
+            continue
+        if not has_city or _place_key(city) == city_key:
+            return True
+    return False
 
 
 def _check_hard_filters(filter_row, listing_row) -> list[str]:
@@ -160,34 +198,28 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
         ):
             failed.append("map_region")
 
-    # normalize_spelling collapses כתיב מלא/חסר doubling (יי->י, וו->ו) — the same fix that made
-    # city search tolerate "קרית מוצקין" vs "קריית מוצקין" (2026-09-02), generalized here to every
-    # free-text place name this filter checks, not just cities (2026-09-02 follow-up request:
-    # "לכל י' 1 או דאבל י' ... עיר רחוב או כל דבר אחר"). Neighborhood/street matching isn't reachable
-    # from any UI yet (see filter_conversation.py's module docstring) but is future-proofed the same
-    # way regardless, since it's a one-line cost and the whole point is not re-discovering this bug
-    # per field.
-    if filter_row.neighborhoods_include:
-        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood or ''}")
-        wanted = {normalize_spelling(s) for s in filter_row.neighborhoods_include}
-        if key not in wanted:
-            failed.append("neighborhood_include")
-    if filter_row.neighborhoods_exclude:
-        key = normalize_spelling(f"{listing_row.city}:{listing_row.neighborhood or ''}")
-        excluded = {normalize_spelling(s) for s in filter_row.neighborhoods_exclude}
-        if key in excluded:
-            failed.append("neighborhood_exclude")
-
-    if filter_row.streets_include:
-        street = normalize_spelling((listing_row.street or "").strip().lower())
-        wanted = {normalize_spelling(s.strip().lower()) for s in filter_row.streets_include}
-        if street not in wanted:
-            failed.append("street_include")
-    if filter_row.streets_exclude:
-        street = normalize_spelling((listing_row.street or "").strip().lower())
-        excluded = {normalize_spelling(s.strip().lower()) for s in filter_row.streets_exclude}
-        if street in excluded:
-            failed.append("street_exclude")
+    # 2026-11-10 (owner: filter by neighbourhood and street, in our own matching only - nothing changes in what the
+    # scraper asks the sources for). See _matches_any_place for what counts as the same place.
+    keep_unknown_place = getattr(filter_row, "include_missing_details", False)
+    city_key = _place_key(listing_row.city)
+    neighborhood_key = _place_key(listing_row.neighborhood)
+    street_key = _street_key(listing_row.street)
+    if filter_row.neighborhoods_include and not (
+        _matches_any_place(filter_row.neighborhoods_include, city_key, neighborhood_key, _place_key)
+        or (keep_unknown_place and not neighborhood_key)
+    ):
+        failed.append("neighborhood_include")
+    if filter_row.neighborhoods_exclude and _matches_any_place(
+        filter_row.neighborhoods_exclude, city_key, neighborhood_key, _place_key
+    ):
+        failed.append("neighborhood_exclude")
+    if filter_row.streets_include and not (
+        _matches_any_place(filter_row.streets_include, city_key, street_key, _street_key)
+        or (keep_unknown_place and not street_key)
+    ):
+        failed.append("street_include")
+    if filter_row.streets_exclude and _matches_any_place(filter_row.streets_exclude, city_key, street_key, _street_key):
+        failed.append("street_exclude")
 
     if listing_row.price is None:
         if filter_row.require_price:

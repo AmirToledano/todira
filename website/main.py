@@ -95,7 +95,7 @@ from todira_common.models import (
     AppFlag, ContactMessage, Filter, Listing, OwnerPost, OwnerPostPhoto, Payment, SentNotification, User, UserListingAction,
 )
 from todira_common.uid_token import generate_handoff_token, verify_handoff_token, verify_uid_token
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 
 import assistant
 import city_pages
@@ -2315,20 +2315,49 @@ def _match_ids_ready(user_id: int, filter_row, hidden_ids: set[int]) -> bool:
         return hit is not None and time.monotonic() - hit[0] < _MATCH_IDS_TTL
 
 
-def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[tuple[int, int | None]]:
-    key = (user_id, _filter_fingerprint(filter_row), frozenset(hidden_ids))
-    now = time.monotonic()
+_scan_locks: dict[tuple, list] = {}  # key -> [lock, how many requests hold or wait for it]
+_scan_locks_guard = threading.Lock()
+
+
+@contextlib.contextmanager
+def _one_scan_at_a_time(key: tuple):
+    """2026-11-10 (owner: /apartments took a minute and a half): the page's first batch and the filter panel's live
+    count asked for the same search at the same moment and each ran the whole scan. Requests for the same search now
+    wait for the first one and read its cached answer."""
+    with _scan_locks_guard:
+        entry = _scan_locks.setdefault(key, [threading.Lock(), 0])
+        entry[1] += 1
+    try:
+        with entry[0]:
+            yield
+    finally:
+        with _scan_locks_guard:
+            entry[1] -= 1
+            if entry[1] == 0:
+                _scan_locks.pop(key, None)
+
+
+def _peek_match_ids(key: tuple) -> list[tuple[int, int | None]] | None:
     with _match_ids_lock:
         hit = _match_ids_cache.get(key)
-        if hit is not None and now - hit[0] < _MATCH_IDS_TTL:
+        if hit is not None and time.monotonic() - hit[0] < _MATCH_IDS_TTL:
             _match_ids_cache.move_to_end(key)
             return hit[1]
-    ids = matching_id_prices(session, filter_row, hidden_ids)
-    with _match_ids_lock:
-        _match_ids_cache[key] = (now, ids)
-        _match_ids_cache.move_to_end(key)
-        while len(_match_ids_cache) > _MATCH_IDS_MAX_ENTRIES:
-            _match_ids_cache.popitem(last=False)
+    return None
+
+
+def _cached_match_ids(session, user_id: int, filter_row, hidden_ids: set[int]) -> list[tuple[int, int | None]]:
+    key = (user_id, _filter_fingerprint(filter_row), frozenset(hidden_ids))
+    with _one_scan_at_a_time(key):
+        ids = _peek_match_ids(key)
+        if ids is not None:
+            return ids
+        ids = matching_id_prices(session, filter_row, hidden_ids)
+        with _match_ids_lock:
+            _match_ids_cache[key] = (time.monotonic(), ids)
+            _match_ids_cache.move_to_end(key)
+            while len(_match_ids_cache) > _MATCH_IDS_MAX_ENTRIES:
+                _match_ids_cache.popitem(last=False)
     return ids
 
 
@@ -4540,6 +4569,7 @@ _FILTER_FORM_FIELDS = (
     "floor_max", "ground_floor_only", "require_parking", "require_elevator", "require_balcony", "require_pets_allowed",
     "require_renovated", "require_roommate_friendly", "require_has_photos", "no_brokers", "safe_room_pref",
     "furniture_pref", "min_area_sqm", "keywords", "flexible_match", "include_missing_details",
+    "neighborhoods_include", "streets_include",
 )
 _FILTER_FORM_CHECKS = (
     "ground_floor_only", "require_parking", "require_elevator", "require_balcony", "require_pets_allowed",
@@ -4548,10 +4578,76 @@ _FILTER_FORM_CHECKS = (
 )
 
 
+_MAX_PLACE_ENTRIES = 40
+_MAX_PLACE_CHARS = 60
+
+
+def _clean_place_names(raw: str) -> list[str]:
+    """Typed street names: split on commas and line breaks, trimmed, no repeats, capped."""
+    names: list[str] = []
+    for part in re.split(r"[,،\n]+", raw or ""):
+        name = " ".join(part.split())[:_MAX_PLACE_CHARS].strip()
+        if name and ":" not in name and name not in names:
+            names.append(name)
+    return names[:_MAX_PLACE_ENTRIES]
+
+
+def _clean_neighborhoods(values, cities: list[str]) -> list[str]:
+    """The form's "city:neighbourhood" boxes, kept only for a city the search still has."""
+    kept: list[str] = []
+    for value in values or []:
+        city, sep, name = (value or "").partition(":")
+        name = " ".join(name.split())[:_MAX_PLACE_CHARS]
+        if sep and name and city in cities and f"{city}:{name}" not in kept:
+            kept.append(f"{city}:{name}")
+    return kept[:_MAX_PLACE_ENTRIES]
+
+
+# How many cities' neighbourhoods the form offers at once, and how many per city (the commonest first).
+_NEIGHBORHOOD_CITIES_MAX = 6
+_NEIGHBORHOODS_PER_CITY = 60
+_NEIGHBORHOODS_TTL = 3600.0
+_neighborhoods_cache: dict[str, tuple[float, list[str]]] = {}
+
+
+def _city_neighborhoods(session, city: str) -> list[str]:
+    """The neighbourhoods our live listings name in `city`, commonest first (kept for an hour). Read from our own
+    listings table only."""
+    hit = _neighborhoods_cache.get(city)
+    if hit is not None and time.monotonic() - hit[0] < _NEIGHBORHOODS_TTL:
+        return hit[1]
+    name = func.btrim(Listing.neighborhood)
+    rows = session.execute(
+        select(name, func.count())
+        .where(Listing.city == city, Listing.is_delisted.is_(False), Listing.neighborhood.is_not(None), name != "")
+        .group_by(name)
+        .having(func.count() >= 2)
+        .order_by(func.count().desc(), name)
+        .limit(_NEIGHBORHOODS_PER_CITY)
+    ).all()
+    names = [row[0] for row in rows if ":" not in row[0]]
+    _neighborhoods_cache[city] = (time.monotonic(), names)
+    return names
+
+
+@app.get("/api/neighborhoods")
+def neighborhoods_api(city: list[str] = Query([])):  # noqa: B008
+    """2026-11-10 (owner): the filter form asks this when cities are chosen, to offer their neighbourhoods."""
+    cities = [c for c in dict.fromkeys(city) if c in LOCALITY_SET][:_NEIGHBORHOOD_CITIES_MAX]
+    # Open to anyone, like the public neighbourhood pages: only names from our own listings, one cached query per city.
+    with get_session() as session:
+        data = {c: _city_neighborhoods(session, c) for c in cities}
+    return JSONResponse({"cities": data}, headers={"Cache-Control": "public, max-age=600"})
+
+
 def _apply_filter_form(f, form: dict) -> None:
     """Writes the site's filter form (filter_update's fields, by name) onto `f`. Shared by the save and by
     /api/filter-preview's live count, so the two never read the form differently."""
     f.cities = [] if form.get("all_cities") is not None else [c for c in form.get("cities") or [] if c in LOCALITY_SET]
+    # 2026-11-10 (owner): neighbourhoods are picked per chosen city ("city:neighbourhood"), streets are typed. A
+    # neighbourhood of a city that is no longer chosen is dropped. Compared in matching.py only.
+    f.neighborhoods_include = _clean_neighborhoods(form.get("neighborhoods_include"), f.cities)
+    f.streets_include = _clean_place_names(form.get("streets_include") or "")
     f.price_min, f.price_max = _ordered(
         _parse_int_or_none(form.get("price_min", "")), _parse_int_or_none(form.get("price_max", ""))
     )
@@ -4599,6 +4695,8 @@ def filter_update(
     keywords: str = Form(""),
     flexible_match: str | None = Form(None),
     include_missing_details: str | None = Form(None),
+    neighborhoods_include: list[str] = Form([]),  # noqa: B008
+    streets_include: str = Form(""),
     welcome: str | None = Form(None),
 ):
     """2026-09-26 dorin.app-style onboarding addition (real owner request, 33-page PDF walkthrough)
@@ -4709,6 +4807,8 @@ def filter_preview(
     keywords: str = Form(""),
     flexible_match: str | None = Form(None),
     include_missing_details: str | None = Form(None),
+    neighborhoods_include: list[str] = Form([]),  # noqa: B008
+    streets_include: str = Form(""),
 ):
     form = {name: value for name, value in locals().items() if name in _FILTER_FORM_FIELDS}
     with get_session() as session:
@@ -4722,24 +4822,30 @@ def filter_preview(
         draft.price_min = draft.price_max = None
         hidden_ids = _listing_action_ids(session, user.id, "hidden")
         key = (user.id, _filter_fingerprint(draft), frozenset(hidden_ids))
-        with _preview_lock:
-            hit = _preview_cache.get(key)
-        if hit is not None and time.monotonic() - hit[0] < _MATCH_IDS_TTL:
-            unpriced, prices = hit[1], hit[2]
-        else:
-            # Only the prices are kept (a compact int array), in a cache of their own: the preview runs on every form
-            # change, and keeping full (id, price) lists here pushed /apartments' own cached results out.
-            unpriced, prices = 0, array("i")
-            for row in matching_listing_rows(session, draft, hidden_ids):
-                if row.price is None:
-                    unpriced += 1
-                else:
-                    prices.append(row.price)
+        with _one_scan_at_a_time(key):
             with _preview_lock:
-                _preview_cache[key] = (time.monotonic(), unpriced, prices)
-                _preview_cache.move_to_end(key)
-                while len(_preview_cache) > _PREVIEW_CACHE_MAX_ENTRIES:
-                    _preview_cache.popitem(last=False)
+                hit = _preview_cache.get(key)
+            if hit is not None and time.monotonic() - hit[0] < _MATCH_IDS_TTL:
+                unpriced, prices = hit[1], hit[2]
+            else:
+                # Only the prices are kept (a compact int array), in a cache of their own: the preview runs on every
+                # form change, and keeping full (id, price) lists here pushed /apartments' own cached results out.
+                # 2026-11-10: a search /apartments has just scanned (same search, no price range) is read from its
+                # cache instead of scanned again, and only ids and prices are read, never whole rows.
+                id_prices = _peek_match_ids(key)
+                if id_prices is None:
+                    id_prices = matching_id_prices(session, draft, hidden_ids)
+                unpriced, prices = 0, array("i")
+                for _listing_id, price in id_prices:
+                    if price is None:
+                        unpriced += 1
+                    else:
+                        prices.append(price)
+                with _preview_lock:
+                    _preview_cache[key] = (time.monotonic(), unpriced, prices)
+                    _preview_cache.move_to_end(key)
+                    while len(_preview_cache) > _PREVIEW_CACHE_MAX_ENTRIES:
+                        _preview_cache.popitem(last=False)
     count = unpriced + sum(1 for price in prices if (low is None or price >= low) and (high is None or price <= high))
     return JSONResponse({"count": count, "chart": _price_chart(list(prices))}, headers={"Cache-Control": "no-store"})
 

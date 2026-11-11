@@ -25,7 +25,10 @@ jobs:
         run: |
           POD=$(kubectl get pods -n todira -l app=todira-website --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
           cat > "$RUNNER_TEMP/t.py" <<'PY'
-          import statistics, sys, time
+          # 2026-11-10 (owner: /apartments takes a minute and a half with a search set to "all"): each stage timed on
+          # its own for the broadest saved rent search, plus Postgres's own plan for the scan. Read-only; prints
+          # timings, counts, sizes and query plans only.
+          import sys, time
           sys.path.insert(0, "/app")
           import logging; logging.disable(logging.CRITICAL)
           import main
@@ -33,30 +36,58 @@ jobs:
           main._fill_missing_descriptions_in_background = lambda listings: None  # no background fetching from a check
           activity.record = lambda *a, **k: None  # a check is not a visit
           from fastapi.testclient import TestClient
-          from sqlalchemy import select
+          from sqlalchemy import func, select, text
+          from sqlalchemy.dialects import postgresql
+          from todira_common import listing_matches as lm
           from todira_common.db import get_session
-          from todira_common.listing_matches import matching_listing_rows
-          from todira_common.models import Filter, User
+          from todira_common.models import Filter, Listing, User
           from todira_common.uid_token import generate_uid_token
 
+          def timed(label, fn):
+              t = time.perf_counter(); out = fn(); print(f"{label}: {time.perf_counter() - t:.2f}s", flush=True); return out
+
           with get_session() as s:
-              users = s.execute(select(User.id, User.telegram_user_id).join(Filter, Filter.user_id == User.id)
-                                .where(User.telegram_user_id.is_not(None)).limit(8)).all()
+              for name in ("shared_buffers", "work_mem", "effective_cache_size", "max_parallel_workers_per_gather", "jit"):
+                  print(name, "=", s.execute(text(f"show {name}")).scalar())
+              print("listings rows:", s.execute(text("select count(*) from listings")).scalar(),
+                    "| heap:", s.execute(text("select pg_size_pretty(pg_relation_size('listings'))")).scalar(),
+                    "| with toast+indexes:", s.execute(text("select pg_size_pretty(pg_total_relation_size('listings'))")).scalar())
+              print("sent_notifications rows:", s.execute(text("select count(*) from sent_notifications")).scalar(),
+                    "| user_listing_actions rows:", s.execute(text("select count(*) from user_listing_actions")).scalar())
+              print("dead tuples / last autovacuum:", s.execute(text(
+                  "select n_live_tup, n_dead_tup, last_autovacuum, last_autoanalyze from pg_stat_user_tables where relname='listings'")).all())
+              row = s.execute(select(User.id, User.telegram_user_id).join(Filter, Filter.user_id == User.id)
+                              .where(User.telegram_user_id.is_not(None), Filter.deal_type == "rent")
+                              .order_by(func.cardinality(Filter.cities), User.id).limit(1)).one()
+              uid, tg = row
+              f = s.scalar(select(Filter).where(Filter.user_id == uid))
+              print("broadest rent search: cities", len(f.cities or []), "| needs python check:", lm.needs_python_check(f))
+              q = lm._candidate_query(select(Listing.id, Listing.price), f, sql_only=not lm.needs_python_check(f))
+              sql = str(q.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+              for label, stmt in (("PLAN id+price scan", sql),
+                                  ("PLAN same without the parking/storage text test", str(lm._candidate_query(select(Listing.id, Listing.price), f).compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))),
+                                  ("PLAN count only", "select count(*) from listings where deal_type='rent' and not is_delisted and duplicate_of_id is null")):
+                  print("---", label)
+                  # the driver's own form: the query text holds ":" and "%" (a regular expression), which text() would read as parameters
+                  for line in s.connection().exec_driver_sql("explain (analyze, buffers) " + stmt).scalars():
+                      print("   ", line[:200])
+              ids = timed("matching_id_prices (what the page runs)", lambda: lm.matching_id_prices(s, f, set()))
+              print("matches:", len(ids))
+              ids2 = timed("matching_id_prices again (warm)", lambda: lm.matching_id_prices(s, f, set()))
+              hidden = timed("hidden ids", lambda: main._listing_action_ids(s, uid, "hidden"))
+              liked = timed("liked ids", lambda: main._listing_action_ids(s, uid, "liked"))
+              page = timed("load 24 listings", lambda: lm.load_listings(s, [i for i, _p in ids[:24]]))
+              timed("also-on for 24", lambda: main._attach_also_on(s, page, "he"))
+              s.rollback()
           client = TestClient(main.app)
-          scan, first, second, sizes, counts = [], [], [], [], []
-          for uid, tg in users:
-              with get_session() as s:
-                  f = s.scalar(select(Filter).where(Filter.user_id == uid))
-                  t = time.perf_counter(); rows = matching_listing_rows(s, f, set()); scan.append(time.perf_counter() - t)
-                  counts.append(len(rows))
-              token = generate_uid_token(tg)
-              t = time.perf_counter(); r = client.get(f"/apartments?t={token}"); first.append(time.perf_counter() - t)
-              sizes.append(len(r.content))
-              t = time.perf_counter(); client.get(f"/apartments?t={token}"); second.append(time.perf_counter() - t)
-          def show(name, xs):
-              print(f"{name}: n={len(xs)} median={statistics.median(xs):.2f}s max={max(xs):.2f}s")
-          show("match scan only", scan); show("page, first load", first); show("page, second load (cached)", second)
-          print("matching listings per search: median", statistics.median(counts), "max", max(counts))
-          print("page size: median", int(statistics.median(sizes) / 1024), "KB")
+          token = generate_uid_token(tg)
+          main._match_ids_cache.clear()
+          r = timed("HTTP page (placeholders, no scan)", lambda: client.get(f"/apartments?t={token}"))
+          print("   status", r.status_code, "size", len(r.content) // 1024, "KB")
+          r = timed("HTTP first batch (runs the scan)", lambda: client.get(f"/apartments?t={token}&offset=0&fragment=1"))
+          print("   status", r.status_code, "size", len(r.content) // 1024, "KB")
+          r = timed("HTTP next batch (cached ids)", lambda: client.get(f"/apartments?t={token}&offset=24&fragment=1"))
+          r = timed("HTTP page again (cached ids)", lambda: client.get(f"/apartments?t={token}"))
+          print("   size", len(r.content) // 1024, "KB")
           PY
           kubectl exec -i -n todira "$POD" -- python - < "$RUNNER_TEMP/t.py"

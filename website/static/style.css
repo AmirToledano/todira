@@ -1185,6 +1185,11 @@ html[data-theme="dark"] .upgrade-plan-checklist li::before { color: #6fd897; }
    setting an element's `.hidden` property from JS (the city search filter below) has no visible
    effect at all. Found live 2026-09-02: the filter ran correctly, nothing ever actually hid. */
 .check-chip[hidden] { display: none !important; }
+/* 2026-11-10: neighbourhoods per chosen city in the filter form */
+.field-label { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 6px; }
+.hood-group + .hood-group { margin-top: 10px; }
+.hood-group-title { font-size: .82rem; color: var(--text-muted); margin-bottom: 6px; }
+.hood-chips { max-height: 168px; overflow-y: auto; }
 /* 2026-09-27: the "all cities" toggle sits above the search box/grid, not inside the scrollable
    grid itself — a small margin keeps it from crowding the search input right below it. */
 .all-cities-chip { margin-bottom: 8px; }

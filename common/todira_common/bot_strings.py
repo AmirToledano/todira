@@ -1116,6 +1116,50 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "he": "📅 תאריך כניסה", "en": "📅 Move-in date", "ru": "📅 Дата въезда",
         "fr": "📅 Date d'entrée", "ar": "📅 تاريخ الانتقال",
     },
+    # 2026-11-10 (owner): neighbourhoods and streets in /filter (matching.py compares them; nothing changes in scraping)
+    "kb.title.hood": {
+        "he": "🏘️ שכונות ורחובות", "en": "🏘️ Neighbourhoods and streets", "ru": "🏘️ Районы и улицы",
+        "fr": "🏘️ Quartiers et rues", "ar": "🏘️ الأحياء والشوارع",
+    },
+    "kb.label.hood": {
+        "he": "שכונות ורחובות", "en": "Neighbourhoods and streets", "ru": "Районы и улицы",
+        "fr": "Quartiers et rues", "ar": "الأحياء والشوارع",
+    },
+    "kb.edit_neighborhoods": {
+        "he": "✏️ שכונות", "en": "✏️ Neighbourhoods", "ru": "✏️ Районы", "fr": "✏️ Quartiers", "ar": "✏️ الأحياء",
+    },
+    "kb.edit_streets": {
+        "he": "✏️ רחובות", "en": "✏️ Streets", "ru": "✏️ Улицы", "fr": "✏️ Rues", "ar": "✏️ الشوارع",
+    },
+    "filter.hood_note": {
+        "he": "\n\nאפשר לקבל רק דירות בשכונות או ברחובות מסוימים.\nכדאי לדעת: הרבה מודעות לא מציינות שכונה או רחוב, "
+              "והן לא יגיעו כשהסינון הזה פעיל.\n\nשכונות: {neighborhoods}\nרחובות: {streets}",
+        "en": "\n\nGet only apartments in certain neighbourhoods or streets.\nGood to know: many ads don't state a "
+              "neighbourhood or a street, and those won't arrive while this filter is on.\n\nNeighbourhoods: "
+              "{neighborhoods}\nStreets: {streets}",
+        "ru": "\n\nМожно получать только квартиры в определённых районах или на определённых улицах.\nВажно: во многих "
+              "объявлениях район или улица не указаны, и они не придут, пока этот фильтр включён.\n\nРайоны: "
+              "{neighborhoods}\nУлицы: {streets}",
+        "fr": "\n\nRecevez uniquement les appartements de certains quartiers ou de certaines rues.\nBon à savoir : "
+              "beaucoup d'annonces n'indiquent ni quartier ni rue, et elles n'arriveront pas tant que ce filtre est "
+              "actif.\n\nQuartiers : {neighborhoods}\nRues : {streets}",
+        "ar": "\n\nيمكن استلام الشقق في أحياء أو شوارع معينة فقط.\nمن المهم أن تعرف: إعلانات كثيرة لا تذكر الحي أو "
+              "الشارع، ولن تصل ما دام هذا الفلتر مفعّلاً.\n\nالأحياء: {neighborhoods}\nالشوارع: {streets}",
+    },
+    "filter.prompt_neighborhoods": {
+        "he": "הקלד/י שמות שכונות מופרדים בפסיקים, למשל: רחביה, בקעה",
+        "en": "Type neighbourhood names separated by commas, for example: Rehavia, Baka",
+        "ru": "Введите названия районов через запятую, например: Рехавия, Бака",
+        "fr": "Saisis les noms des quartiers séparés par des virgules, par exemple : Rehavia, Baka",
+        "ar": "اكتب أسماء الأحياء مفصولة بفواصل، مثلاً: رحافيا، بقعة",
+    },
+    "filter.prompt_streets": {
+        "he": "הקלד/י שמות רחובות מופרדים בפסיקים, בלי מספר בית, למשל: הרצל, יפו",
+        "en": "Type street names separated by commas, without a house number, for example: Herzl, Jaffa",
+        "ru": "Введите названия улиц через запятую, без номера дома, например: Герцль, Яффо",
+        "fr": "Saisis les noms des rues séparés par des virgules, sans numéro, par exemple : Herzl, Jaffa",
+        "ar": "اكتب أسماء الشوارع مفصولة بفواصل، بدون رقم البيت، مثلاً: هرتسل، يافا",
+    },
     "kb.title.adv": {
         "he": "⚙️ מתקדם", "en": "⚙️ Advanced", "ru": "⚙️ Дополнительно", "fr": "⚙️ Avancé",
         "ar": "⚙️ خيارات متقدمة",
