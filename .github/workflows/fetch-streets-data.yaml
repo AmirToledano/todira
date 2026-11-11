@@ -1,0 +1,153 @@
+name: "Fetch - the official list of Israeli streets, and the neighbourhood and street names seen in listings (read-only, public data only)"
+
+# Owner request 2026-11-11: people type neighbourhood and street names in many spellings ("קרית יובל" for "קריית
+# היובל"), so the bot offers matching names from a list instead of keeping what was typed. Read-only. Collects:
+#   streets.tsv              city code|city|street code|street   (the official streets list on data.gov.il, which the
+#                            coding sandbox cannot reach)
+#   listing_neighborhoods.tsv  city|neighbourhood|live listings  (every neighbourhood spelling our live listings use)
+#   listing_streets.tsv      city|street|live listings          (street spellings used by 2+ live listings)
+#   missing.txt              how many live listings state no neighbourhood / no street
+# Place names and counts only: nothing about any user or listing contact reaches the (public) log or branch.
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 2 3 * *"  # once a month, at night (no scraper run then)
+
+# Writes the files to the branch data/streets (a plain data branch, never merged); scripts/build_streets.py turns them
+# into common/todira_common/streets_data.json.gz.
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Official streets list (data.gov.il)
+        run: |
+          set -e
+          cat > fetch.py <<'PY'
+          import json, sys, urllib.parse, urllib.request
+          API = "https://data.gov.il/api/3/action/"
+
+          def call(action, **params):
+              url = API + action + "?" + urllib.parse.urlencode(params)
+              req = urllib.request.Request(url, headers={"User-Agent": "todira-open-data/1.0"})
+              with urllib.request.urlopen(req, timeout=120) as r:
+                  return json.load(r)
+
+          # The streets dataset of the Central Bureau of Statistics / Ministry of the Interior. Found by searching, so a
+          # new resource id after a yearly update is picked up without editing this file.
+          found = []
+          for q in ("רחובות", "streets"):
+              for pkg in call("package_search", q=q, rows=20)["result"]["results"]:
+                  for res in pkg.get("resources", []):
+                      if res.get("datastore_active"):
+                          found.append((pkg.get("title", ""), res.get("name", ""), res["id"]))
+          for title, name, rid in found:
+              print("candidate:", title, "|", name, "|", rid, file=sys.stderr)
+          best = None
+          for title, name, rid in found:
+              head = call("datastore_search", resource_id=rid, limit=1)["result"]
+              fields = [f["id"] for f in head["fields"]]
+              if "שם_רחוב" in fields and "שם_ישוב" in fields:
+                  best = (rid, fields, head.get("total"))
+                  break
+          if best is None:
+              sys.exit("no datastore resource with שם_רחוב and שם_ישוב found")
+          rid, fields, total = best
+          print("using", rid, "fields", fields, "total", total, file=sys.stderr)
+          rows, offset = [], 0
+          while True:
+              batch = call("datastore_search", resource_id=rid, limit=32000, offset=offset)["result"]["records"]
+              if not batch:
+                  break
+              rows.extend(batch)
+              offset += len(batch)
+          with open(sys.argv[1], "w", encoding="utf-8") as out:
+              for r in rows:
+                  vals = [str(r.get(k, "")).strip().replace("|", " ") for k in ("סמל_ישוב", "שם_ישוב", "סמל_רחוב", "שם_רחוב")]
+                  out.write("|".join(vals) + "\n")
+          print("streets written:", len(rows), file=sys.stderr)
+          PY
+          python3 fetch.py "$RUNNER_TEMP/streets.tsv"
+          wc -l "$RUNNER_TEMP/streets.tsv"
+          head -5 "$RUNNER_TEMP/streets.tsv"
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Neighbourhood and street names in live listings, and how many state none
+        run: |
+          kubectl delete pod fetch-listing-places -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fetch-listing-places
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: fetch-listing-places
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    LIVE="is_delisted = false AND duplicate_of_id IS NULL"
+                    echo "=== MISSING BEGIN ==="
+                    psql "$CONN" -At -F '|' -c "SELECT deal_type, count(*) AS live,
+                      count(*) FILTER (WHERE coalesce(btrim(neighborhood), '') = '') AS no_neighbourhood,
+                      count(*) FILTER (WHERE coalesce(btrim(street), '') = '') AS no_street,
+                      count(*) FILTER (WHERE coalesce(btrim(neighborhood), '') = '' AND coalesce(btrim(street), '') = '') AS neither,
+                      count(*) FILTER (WHERE coalesce(btrim(neighborhood), '') = '' AND latitude IS NOT NULL) AS no_neighbourhood_but_coords
+                      FROM listings WHERE $LIVE GROUP BY deal_type ORDER BY 1;"
+                    echo "--- by source (deal|source|live|no neighbourhood|no street)"
+                    psql "$CONN" -At -F '|' -c "SELECT deal_type, source, count(*),
+                      count(*) FILTER (WHERE coalesce(btrim(neighborhood), '') = ''),
+                      count(*) FILTER (WHERE coalesce(btrim(street), '') = '')
+                      FROM listings WHERE $LIVE GROUP BY 1, 2 ORDER BY 1, 3 DESC;"
+                    echo "=== MISSING END ==="
+                    echo "=== NEIGHBORHOODS BEGIN ==="
+                    psql "$CONN" -At -F '|' -c "SELECT city, btrim(neighborhood), count(*) FROM listings
+                      WHERE $LIVE AND city IS NOT NULL AND coalesce(btrim(neighborhood), '') <> '' GROUP BY 1, 2 ORDER BY 1, 3 DESC;"
+                    echo "=== NEIGHBORHOODS END ==="
+                    echo "=== STREETS BEGIN ==="
+                    psql "$CONN" -At -F '|' -c "SELECT city, btrim(street), count(*) FROM listings
+                      WHERE $LIVE AND city IS NOT NULL AND coalesce(btrim(street), '') <> '' GROUP BY 1, 2 HAVING count(*) >= 2 ORDER BY 1, 3 DESC;"
+                    echo "=== STREETS END ==="
+          PODYAML
+          for i in $(seq 1 90); do
+            PHASE=$(kubectl get pod fetch-listing-places -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira fetch-listing-places > "$RUNNER_TEMP/places_raw.txt" || true
+          kubectl delete pod fetch-listing-places -n todira --ignore-not-found
+          cut_block() { sed -n "/=== $1 BEGIN ===/,/=== $1 END ===/p" "$RUNNER_TEMP/places_raw.txt" | sed '1d;$d'; }
+          cut_block MISSING | tee "$RUNNER_TEMP/missing.txt"
+          cut_block NEIGHBORHOODS > "$RUNNER_TEMP/listing_neighborhoods.tsv"
+          cut_block STREETS > "$RUNNER_TEMP/listing_streets.tsv"
+          wc -l "$RUNNER_TEMP/listing_neighborhoods.tsv" "$RUNNER_TEMP/listing_streets.tsv"
+
+      - name: Save the files on the data/streets branch
+        run: |
+          mkdir out && cd out
+          git init -q -b data/streets
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$RUNNER_TEMP/streets.tsv" "$RUNNER_TEMP/listing_neighborhoods.tsv" "$RUNNER_TEMP/listing_streets.tsv" "$RUNNER_TEMP/missing.txt" .
+          git add .
+          git commit -q -m "Streets data (official list from data.gov.il, and listing neighbourhood/street counts)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data/streets
