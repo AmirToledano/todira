@@ -62,10 +62,9 @@ jobs:
               uid, tg = row
               f = s.scalar(select(Filter).where(Filter.user_id == uid))
               print("broadest rent search: cities", len(f.cities or []), "| needs python check:", lm.needs_python_check(f))
-              q = lm._candidate_query(select(Listing.id, Listing.price), f, sql_only=not lm.needs_python_check(f))
+              q = lm._candidate_query(select(Listing.id, Listing.price, Listing.deal_type, Listing.size_sqm, lm._SHORT_DESCRIPTION), f)
               sql = str(q.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
-              for label, stmt in (("PLAN id+price scan", sql),
-                                  ("PLAN same without the parking/storage text test", str(lm._candidate_query(select(Listing.id, Listing.price), f).compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))),
+              for label, stmt in (("PLAN what the page runs (id, price, short description of cheap/small ads)", sql),
                                   ("PLAN count only", "select count(*) from listings where deal_type='rent' and not is_delisted and duplicate_of_id is null")):
                   print("---", label)
                   # the driver's own form: the query text holds ":" and "%" (a regular expression), which text() would read as parameters
