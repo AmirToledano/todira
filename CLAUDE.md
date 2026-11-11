@@ -6,7 +6,10 @@
   - bot in `bot/`
   - scrapers and scheduled steps in `scraper/`
   - shared code in `common/todira_common/`
-- **State.** Read `PROJECT_STATE.md` for where things stand.
+- **State.** Read `HANDOFF.md` first (where the last conversation stopped), then `PROJECT_STATE.md` for where things stand.
+- **Handoff.** At the end of every task, update `HANDOFF.md` (the owner's last request, what is in progress, waiting
+  for the owner, waiting for approval) in the same commit as the task, so the next conversation, on the computer or
+  in the cloud, continues exactly from there. In Hebrew, short.
 
 ## Before you design or change anything visual
 Read `DESIGN.md` (the design language) and follow it.
