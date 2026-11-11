@@ -20,7 +20,9 @@ import asyncio
 import copy
 import datetime as dt
 import logging
+import html
 import math
+import re
 
 import keyboards as kb
 from config import WEBSITE_URL
@@ -88,6 +90,8 @@ _TEXT_PROMPT_KEYS = {
     "floor_max": "filter.prompt_floor_max",
     "min_area_sqm": "filter.prompt_min_area_sqm",
     "keywords": "filter.prompt_keywords",
+    "neighborhoods_include": "filter.prompt_neighborhoods",
+    "streets_include": "filter.prompt_streets",
     "move_in_earliest": "filter.prompt_move_in_earliest",
     "move_in_latest": "filter.prompt_move_in_latest",
 }
@@ -112,6 +116,21 @@ _NUMERIC_PICKER_LABEL_KEYS = {
     "floor_min": "filter.numeric_picker_floor_min",
     "floor_max": "filter.numeric_picker_floor_max",
 }
+
+
+_MAX_PLACE_NAMES = 20
+_MAX_PLACE_NAME_CHARS = 40
+
+
+def _parse_place_names(raw: str) -> list[str]:
+    """Neighbourhood or street names as typed: split on commas (Hebrew or Arabic ones too) and line breaks, trimmed,
+    no repeats, at most _MAX_PLACE_NAMES names of _MAX_PLACE_NAME_CHARS characters each."""
+    names: list[str] = []
+    for part in re.split(r"[,،\n]+", raw or ""):
+        name = " ".join(part.split())[:_MAX_PLACE_NAME_CHARS].strip()
+        if name and name not in names:
+            names.append(name)
+    return names[:_MAX_PLACE_NAMES]
 
 
 def _default_draft() -> dict:
@@ -171,6 +190,14 @@ def _category_view(draft: dict, category: str, lang: str):
         return titles["area"], kb.area_keyboard(draft, lang)
     if category == "kw":
         return titles["kw"], kb.keywords_keyboard(draft, lang)
+    if category == "hood":
+        none = bot_text("kb.no_limit", lang)
+        note = bot_text(
+            "filter.hood_note", lang,
+            neighborhoods=html.escape(", ".join(draft.get("neighborhoods_include") or [])) or none,
+            streets=html.escape(", ".join(draft.get("streets_include") or [])) or none,
+        )
+        return titles["hood"] + note, kb.hood_keyboard(draft, lang)
     if category == "move":
         return titles["move"], kb.move_in_keyboard(draft, lang)
     if category == "adv":
@@ -711,6 +738,15 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         if sub == "clear":
             draft["keywords"] = []
         return await _show_category(query, context, draft, "kw", lang)
+    if action == "hood":
+        sub = parts[2]
+        if sub in ("nb", "st"):
+            field = "neighborhoods_include" if sub == "nb" else "streets_include"
+            return await _prompt_for_text(query, context, awaiting=field, prompt=_text_prompt(field, lang))
+        if sub == "clear":
+            draft["neighborhoods_include"] = []
+            draft["streets_include"] = []
+        return await _show_category(query, context, draft, "hood", lang)
     if action == "move":
         sub = parts[2]
         if sub == "earliest":
@@ -879,6 +915,11 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if awaiting == "keywords":
         draft["keywords"] = [w.strip() for w in raw.split(",") if w.strip()]
         await _send_category(update.message, context, draft, "kw", lang)
+        return MENU
+
+    if awaiting in ("neighborhoods_include", "streets_include"):
+        draft[awaiting] = _parse_place_names(raw)
+        await _send_category(update.message, context, draft, "hood", lang)
         return MENU
 
     if awaiting in NUMERIC_INT_FIELDS:

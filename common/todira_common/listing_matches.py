@@ -6,14 +6,14 @@ from __future__ import annotations
 import datetime as dt
 from collections import namedtuple
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from todira_common.enums import NotificationReason
 from todira_common.matching import evaluate
 from todira_common.models import Filter, Listing, SentNotification, UserListingAction
-from todira_common.non_home import NON_HOME_TEXT_CHARS, not_non_home_sql
+from todira_common.non_home import NON_HOME_TEXT_CHARS, cheap_or_small_sql, is_non_home
 
 # 2026-10-14 (owner: "the site is slow"): measured live, /apartments took 16-27 s on the server — every request (and
 # every infinite-scroll page) loaded EVERY candidate listing as a full ORM object, raw_payload JSON and photo lists
@@ -87,36 +87,37 @@ def matching_listing_rows(
     # keywords need all of it; without keywords just its first 200 characters are fetched, which is all the parking /
     # storage check (non_home.non_home_kind) reads. 2026-11-10: the first version fetched no description at all, which
     # let parking spaces and storage rooms back into /apartments and the counts.
-    columns = MATCH_COLUMNS if getattr(filter_row, "keywords", None) else _COLUMNS_SHORT_DESCRIPTION
+    has_keywords = bool(getattr(filter_row, "keywords", None))
+    columns = MATCH_COLUMNS if has_keywords else _COLUMNS_SHORT_DESCRIPTION
     fast = not needs_python_check(filter_row)
-    query = _candidate_query(select(*columns), filter_row, since=since, sql_only=fast)
+    query = _candidate_query(select(*columns), filter_row, since=since)
     if scan_limit is not None:
         query = query.limit(scan_limit)
+    if has_keywords:
+        # Whole descriptions come back only for a keywords search; those are read in batches so they never sit in
+        # memory together (the bot has 256 MiB). See the 2026-11-10 note below on why nothing else is streamed.
+        query = query.execution_options(yield_per=_SCAN_BATCH)
     hidden_ids = hidden_ids or set()
-    # 2026-11-09 (owner: "save and search" with everything set to "all" got stuck): the whole country's live listings,
-    # descriptions included, were read into memory at once - too much for the bot's 256 MiB. Now the rows come from the
-    # database in batches, and a kept row drops its description (only evaluate() reads it, for keywords).
-    # 2026-11-10: a search with nothing beyond deal type, cities, price and rooms is matched in the database alone
-    # (needs_python_check), so evaluate() is skipped for it.
+    # 2026-11-10: a search with nothing beyond deal type, cities, price and rooms is already fully checked by the
+    # query (needs_python_check), except "is this a parking space or a storage room", so only that runs per row.
     return [
         _without_description(row)
-        for row in session.execute(query.execution_options(yield_per=_SCAN_BATCH))
-        if row.id not in hidden_ids and (fast or evaluate(filter_row, row).matched)
+        for row in session.execute(query)
+        if row.id not in hidden_ids and (not is_non_home(row) if fast else evaluate(filter_row, row).matched)
     ]
 
 
 def matching_id_prices(session: Session, filter_row: Filter, hidden_ids: set[int] | None = None) -> list[tuple[int, int | None]]:
     """(id, price) of every listing matching_listing_rows would return, newest first. 2026-11-10 (owner: /apartments
-    slow with a broad search): for a search the database can match alone, only these two columns are read."""
+    slow with a broad search): for a search the database can match alone, only what the parking/storage check needs
+    is read next to the id and the price."""
     if needs_python_check(filter_row):
         return [(row.id, row.price) for row in matching_listing_rows(session, filter_row, hidden_ids)]
     hidden_ids = hidden_ids or set()
-    query = _candidate_query(select(Listing.id, Listing.price), filter_row, sql_only=True)
-    return [
-        (row.id, row.price)
-        for row in session.execute(query.execution_options(yield_per=_SCAN_BATCH * 5))
-        if row.id not in hidden_ids
-    ]
+    query = _candidate_query(
+        select(Listing.id, Listing.price, Listing.deal_type, Listing.size_sqm, _SHORT_DESCRIPTION), filter_row
+    )
+    return [(row.id, row.price) for row in session.execute(query) if row.id not in hidden_ids and not is_non_home(row)]
 
 
 # Search fields that only matching.evaluate() checks (not the database query), with the value that means "not set".
@@ -144,7 +145,7 @@ def needs_python_check(filter_row) -> bool:
     return False
 
 
-def _candidate_query(query, filter_row, *, since: dt.datetime | None = None, sql_only: bool = False):
+def _candidate_query(query, filter_row, *, since: dt.datetime | None = None):
     query = (
         query.where(Listing.deal_type == filter_row.deal_type)
         .where(Listing.is_delisted.is_(False))
@@ -172,18 +173,23 @@ def _candidate_query(query, filter_row, *, since: dt.datetime | None = None, sql
         query = query.where(or_(Listing.rooms.is_(None), Listing.rooms >= rooms_min) if unknown_rooms_ok else Listing.rooms >= rooms_min)
     if rooms_max is not None:
         query = query.where(or_(Listing.rooms.is_(None), Listing.rooms <= rooms_max) if unknown_rooms_ok else Listing.rooms <= rooms_max)
-    if sql_only:
-        # the last check evaluate() makes for such a search: parking spaces and storage rooms are not homes
-        query = query.where(not_non_home_sql(Listing))
     if since is not None:
         query = query.where(Listing.first_seen_at >= since)
     return query.order_by(Listing.first_seen_at.desc(), Listing.id.desc())
 
 
 _SCAN_BATCH = 2000
+# 2026-11-10 (owner: /apartments took a minute and a half with a search set to "all"). Measured on the server
+# (diagnose-apartments-speed.yaml): the scan took 2.3 s, but 22.8 s once the parking/storage test ran inside the
+# database as a regular expression over the ads' texts, and 80-96 s when the rows were also streamed (yield_per makes
+# Postgres plan for a cursor). So: the text test runs here in Python (is_non_home), the database hands over the first
+# NON_HOME_TEXT_CHARS characters only for the few listings cheap or small enough to be a parking space or a storage
+# room (NULL for the rest, which can never be one), and plain rows are fetched in one go.
+_SHORT_DESCRIPTION = case(
+    (cheap_or_small_sql(Listing), func.left(Listing.description, NON_HOME_TEXT_CHARS)), else_=None
+).label("description")
 _COLUMNS_SHORT_DESCRIPTION = tuple(
-    func.left(Listing.description, NON_HOME_TEXT_CHARS).label("description") if column.key == "description" else column
-    for column in MATCH_COLUMNS
+    _SHORT_DESCRIPTION if column.key == "description" else column for column in MATCH_COLUMNS
 )
 _MatchRow = namedtuple("_MatchRow", [column.key for column in MATCH_COLUMNS])
 

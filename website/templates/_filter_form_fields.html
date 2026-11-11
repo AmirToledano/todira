@@ -71,6 +71,19 @@
     </div>
     <div class="field-hint">{{ t('filter.cities_hint') }}</div>
   </div>
+  {# 2026-11-10 (owner): neighbourhoods open once a city is chosen (up to 6 cities), filled by the script below from
+     /api/neighborhoods (the names our own listings carry). Streets are typed. Compared in matching.py only. #}
+  <div class="field" id="f-hoods-field" hidden
+       data-selected="{{ (f.neighborhoods_include or [])|tojson|forceescape }}"
+       data-in="{{ t('filter.neighborhoods_in', city='__CITY__') }}" data-none="{{ t('filter.neighborhoods_none') }}">
+    <span class="field-label">{{ icon('map-pin', 'field-icon') }} {{ t('filter.neighborhoods_label') }}</span>
+    <div id="f-hoods-groups"></div>
+    <div class="field-hint">{{ t('filter.neighborhoods_hint') }}</div>
+  </div>
+  <div class="field">
+    <label for="f-streets">{{ icon('map-pin', 'field-icon') }} {{ t('filter.streets_label') }}</label>
+    <input id="f-streets" type="text" name="streets_include" maxlength="400" value="{{ (f.streets_include or [])|join(', ') }}" placeholder="{{ t('filter.streets_placeholder') }}">
+  </div>
 </details>
 
 <details class="filter-section" open>
@@ -363,5 +376,81 @@
     var allCities = document.getElementById('f-all-cities');
     if (allCities) allCities.checked = false;
   }
+
+  // 2026-11-10 (owner): choosing a city opens its neighbourhoods. One group of chips per chosen city (up to 6 cities);
+  // a neighbourhood stays checked while its city stays chosen.
+  (function () {
+    var field = document.getElementById('f-hoods-field');
+    var grid = document.getElementById('f-cities-grid');
+    if (!field || !grid || !window.fetch) return;
+    var groups = document.getElementById('f-hoods-groups');
+    var MAX_CITIES = 6, known = {}, timer = null;
+    var selected = {};
+    try { JSON.parse(field.dataset.selected || '[]').forEach(function (v) { selected[v] = true; }); } catch (e) {}
+
+    function chosenCities() {
+      var all = document.getElementById('f-all-cities');
+      if (all && all.checked) return [];
+      return Array.prototype.map.call(grid.querySelectorAll('input[name=cities]:checked'), function (cb) { return cb.value; });
+    }
+    function remember() {
+      groups.querySelectorAll('input[name=neighborhoods_include]').forEach(function (cb) { selected[cb.value] = cb.checked; });
+    }
+    function draw(cities) {
+      remember();
+      groups.textContent = '';
+      cities.forEach(function (city) {
+        var names = known[city] || [];
+        var group = document.createElement('div');
+        group.className = 'hood-group';
+        var title = document.createElement('div');
+        title.className = 'hood-group-title';
+        title.textContent = names.length ? field.dataset.in.replace('__CITY__', city) : field.dataset.none.replace('__CITY__', city);
+        group.appendChild(title);
+        if (names.length) {
+          var chips = document.createElement('div');
+          chips.className = 'checkbox-grid hood-chips';
+          names.forEach(function (name) {
+            var label = document.createElement('label');
+            label.className = 'check-chip';
+            var input = document.createElement('input');
+            input.type = 'checkbox';
+            input.name = 'neighborhoods_include';
+            input.value = city + ':' + name;
+            input.checked = !!selected[input.value];
+            label.appendChild(input);
+            label.appendChild(document.createTextNode(' ' + name));
+            chips.appendChild(label);
+          });
+          group.appendChild(chips);
+        }
+        groups.appendChild(group);
+      });
+      field.hidden = cities.length === 0;
+    }
+    function refresh() {
+      var cities = chosenCities();
+      if (cities.length === 0 || cities.length > MAX_CITIES) { remember(); groups.textContent = ''; field.hidden = true; return; }
+      var missing = cities.filter(function (c) { return !(c in known); });
+      if (!missing.length) { draw(cities); return; }
+      var query = missing.map(function (c) { return 'city=' + encodeURIComponent(c); }).join('&');
+      fetch('/api/neighborhoods?' + query, { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          missing.forEach(function (c) { known[c] = (data && data.cities && data.cities[c]) || []; });
+          draw(chosenCities().slice(0, MAX_CITIES));
+          // the live count reads the form: tell it the neighbourhood boxes are there now
+          if (Object.keys(selected).some(function (k) { return selected[k]; })) {
+            groups.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        })
+        .catch(function () {});
+    }
+    function soon() { clearTimeout(timer); timer = setTimeout(refresh, 250); }
+    grid.addEventListener('change', soon);
+    var all = document.getElementById('f-all-cities');
+    if (all) all.addEventListener('change', soon);
+    refresh();
+  })();
 </script>
 {% endmacro %}

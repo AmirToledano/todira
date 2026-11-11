@@ -85,6 +85,7 @@ def category_titles(lang: str) -> dict:
         "kw": bot_text("kb.title.kw", lang),
         "move": bot_text("kb.title.move", lang),
         "adv": bot_text("kb.title.adv", lang),
+        "hood": bot_text("kb.title.hood", lang),
     }
 
 
@@ -126,6 +127,10 @@ def render_root_summary(draft: dict, lang: str) -> str:
         f"🏠 {bot_text('kb.label.property_type', lang)}: "
         + (", ".join(property_labels[p] for p in draft["property_types"]) or all_label),
         f"📍 {bot_text('kb.label.cities', lang)}: " + (_cities_text(draft["cities"]) or all_label),
+        # typed by the user, and the summary is sent as HTML (see the keywords line below)
+        f"🏘️ {bot_text('kb.label.hood', lang)}: "
+        + (", ".join(html.escape(name) for name in [*draft.get("neighborhoods_include", []), *draft.get("streets_include", [])])
+           or all_label),
         f"💰 {bot_text('kb.label.price', lang)}: "
         + _fmt_range(draft["price_min"], draft["price_max"], lang, " ₪"),
         f"🛏️ {bot_text('kb.label.rooms', lang)}: "
@@ -169,7 +174,8 @@ _ROOT_ORDER = ("loc", "price", "rooms", "dt", "pt", "floor", "req", "safe", "fur
 _CATEGORY_FIELDS = {
     "dt": ("deal_type",),
     "pt": ("property_types",),
-    "loc": ("cities", "neighborhoods_include", "neighborhoods_exclude", "streets_include", "streets_exclude"),
+    "loc": ("cities",),
+    "hood": ("neighborhoods_include", "neighborhoods_exclude", "streets_include", "streets_exclude"),
     "price": ("price_min", "price_max", "require_price"),
     "rooms": ("rooms_min", "rooms_max"),
     "floor": ("floor_min", "floor_max", "ground_floor_only"),
@@ -202,6 +208,7 @@ def root_keyboard(lang: str, draft: dict | None = None) -> InlineKeyboardMarkup:
     buttons = [_category_button(titles, c, draft) for c in _ROOT_ORDER]
     per_row = 3 if max(len(b.text) for b in buttons) <= _SHORT_LABEL else 2
     rows = [buttons[i:i + per_row] for i in range(0, len(buttons), per_row)]
+    rows.append([_category_button(titles, "hood", draft)])  # 2026-11-10: a long label, so a row of its own
     rows.append([
         _category_button(titles, "adv", draft),
         # 2026-10-31: the alert hours live on the user, not in the draft, so they open their own menu
@@ -470,6 +477,19 @@ def area_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
                 callback_data="f:area:set",
             )
         ],
+        [_back_button(lang)],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def hood_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
+    """2026-11-10 (owner): neighbourhoods and streets, each typed as a comma-separated list."""
+    rows = [
+        [
+            InlineKeyboardButton(bot_text("kb.edit_neighborhoods", lang), callback_data="f:hood:nb"),
+            InlineKeyboardButton(bot_text("kb.edit_streets", lang), callback_data="f:hood:st"),
+        ],
+        [InlineKeyboardButton(bot_text("kb.clear_button", lang), callback_data="f:hood:clear")],
         [_back_button(lang)],
     ]
     return InlineKeyboardMarkup(rows)

@@ -193,8 +193,13 @@ def test_a_broad_scan_is_read_in_batches_and_keeps_no_descriptions():
     draft = website_main._blank_filter()
     draft.cities = [CITY]
     rows = listing_matches.matching_listing_rows(_Session(), draft)
-    assert captured["yield_per"] == 2000
+    # 2026-11-10: batches only when whole descriptions come back (keywords); streaming a plain scan made the
+    # database plan for a cursor and took a minute and a half on the server
+    assert captured["yield_per"] is None
     assert [r.id for r in rows] == [7] and rows[0].price == 4000 and rows[0].description is None
+    draft.keywords = ["מרפסת"]
+    rows = listing_matches.matching_listing_rows(_Session(), draft)
+    assert captured["yield_per"] == 2000 and rows[0].description is None
 
 
 def test_descriptions_are_fetched_only_for_a_search_with_keywords():
@@ -217,8 +222,8 @@ def test_descriptions_are_fetched_only_for_a_search_with_keywords():
 
 
 def test_a_search_with_only_city_price_and_rooms_is_matched_in_the_database():
-    """2026-11-10 (owner: /apartments slow with a broad search): no per-row Python check, parking/storage filtered in
-    SQL, and the site reads only (id, price)."""
+    """2026-11-10 (owner: /apartments slow with a broad search): no per-row matching check, and the site reads only
+    (id, price) plus what the parking/storage check needs."""
     captured = []
 
     class _Session:
@@ -231,9 +236,27 @@ def test_a_search_with_only_city_price_and_rooms_is_matched_in_the_database():
     assert not listing_matches.needs_python_check(draft)
     listing_matches.matching_id_prices(_Session(), draft)
     sql = captured[-1]
-    assert sql.startswith("SELECT listings.id, listings.price") and "regexp_replace" in sql
+    # 2026-11-10: the parking/storage text test runs in Python; the database hands over only the opening of the
+    # description, and only for listings cheap or small enough to be one (a regex in SQL took 22.8 s on the server)
+    assert sql.startswith("SELECT listings.id, listings.price") and "regexp_replace" not in sql
+    assert "CASE WHEN" in sql and "left(listings.description" in sql
     for field, value in (("keywords", ["מרפסת"]), ("require_parking", True), ("floor_min", 2),
                          ("safe_room_pref", "safe_room_only"), ("property_types", ["apartment"])):
         changed = website_main._blank_filter()
         setattr(changed, field, value)
         assert listing_matches.needs_python_check(changed), field
+
+
+def test_the_fast_path_still_drops_a_parking_space():
+    """The text test moved out of the database (2026-11-10): a cheap ad that says parking is still left out."""
+    rows = [
+        SimpleNamespace(id=1, price=300, deal_type="rent", size_sqm=None, description="חניה מקורה להשכרה"),
+        SimpleNamespace(id=2, price=5200, deal_type="rent", size_sqm=70, description=None),
+    ]
+
+    class _Session:
+        def execute(self, query):
+            return rows
+
+    draft = website_main._blank_filter()
+    assert [i for i, _ in listing_matches.matching_id_prices(_Session(), draft)] == [2]

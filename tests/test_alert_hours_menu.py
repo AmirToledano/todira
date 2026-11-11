@@ -118,7 +118,7 @@ def test_filter_menu_fits_a_phone_and_marks_what_was_changed():
 
     draft = FilterData().model_dump()
     rows = kb.root_keyboard("he", draft).inline_keyboard
-    assert len(rows) <= 7  # was 9, with "save" below the fold
+    assert len(rows) <= 8  # was 9; 2026-11-10: one more row for "neighbourhoods and streets"
     assert [b.callback_data for b in rows[0]] == ["f:cat:loc", "f:cat:price", "f:cat:rooms"]
     assert rows[-2][0].callback_data == "f:save" and len(rows[-2]) == 1
     assert not any("✏️" in b.text for row in rows for b in row)
@@ -135,3 +135,46 @@ def test_filter_summary_has_no_long_dashes():
     for lang in ("he", "en", "ru"):
         summary = kb.render_root_summary(FilterData().model_dump(), lang)
         assert "—" not in summary and "–" not in summary
+
+
+# --- 2026-11-10 (owner): neighbourhoods and streets in /filter ---
+
+
+def test_filter_menu_has_a_neighbourhoods_and_streets_screen():
+    from handlers import filter_conversation as fc
+    from todira_common.schemas import FilterData
+
+    draft = FilterData().model_dump()
+    assert (bot_text("kb.title.hood", "he"), "f:cat:hood") in _buttons(kb.root_keyboard("he", draft))
+    title, markup = fc._category_view(draft, "hood", "he")
+    assert "הרבה מודעות לא מציינות" in title and "—" not in title and "–" not in title
+    assert {data for _text, data in _buttons(markup)} == {"f:hood:nb", "f:hood:st", "f:hood:clear", "f:root"}
+    draft.update(neighborhoods_include=["רחביה", "<b>"], streets_include=["הרצל"])
+    title, _markup = fc._category_view(draft, "hood", "he")
+    assert "רחביה, &lt;b&gt;" in title and "הרצל" in title and "<b>" not in title.replace("<b>הסינון", "")
+    marked = {b.callback_data for row in kb.root_keyboard("he", draft).inline_keyboard for b in row if "✏️" in b.text}
+    assert marked == {"f:cat:hood"}
+    summary = kb.render_root_summary(draft, "he")
+    assert "שכונות ורחובות: רחביה, &lt;b&gt;, הרצל" in summary
+
+
+def test_typed_place_names_are_split_trimmed_and_capped():
+    from handlers import filter_conversation as fc
+
+    assert fc._parse_place_names(" רחביה ,בקעה،  נווה   צדק\nרחביה,, ") == ["רחביה", "בקעה", "נווה צדק"]
+    assert len(fc._parse_place_names(",".join(f"שכונה {i}" for i in range(50)))) == 20
+    assert len(fc._parse_place_names("א" * 200)[0]) == 40
+    assert fc._parse_place_names("") == []
+
+
+def test_typing_neighbourhoods_stores_them_and_returns_to_the_screen():
+    from handlers import filter_conversation as fc
+    from todira_common.schemas import FilterData
+
+    draft = FilterData().model_dump()
+    context = SimpleNamespace(user_data={"draft": draft, "draft_base": dict(draft), "awaiting": "streets_include", "lang": "he"})
+    update = SimpleNamespace(message=SimpleNamespace(text="הרצל, יפו", reply_text=AsyncMock()), effective_user=SimpleNamespace(id=5))
+    with patch.object(fc, "_send_category", AsyncMock()) as send:
+        result = asyncio.run(fc.text_input(update, context))
+    assert result == fc.MENU and draft["streets_include"] == ["הרצל", "יפו"]
+    assert send.await_args.args[3] == "hood"
