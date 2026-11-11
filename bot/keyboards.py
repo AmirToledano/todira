@@ -13,7 +13,6 @@ from __future__ import annotations
 import html
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
 from todira_common import cities
 from todira_common.bot_strings import bot_text
 from todira_common.enums import DealType, FurniturePref, PropertyType, SafeRoomPref
@@ -97,7 +96,7 @@ def _fmt_range(lo, hi, lang: str, unit: str = "") -> str:
     if lo is None and hi is None:
         return bot_text("kb.no_limit", lang)
     if lo is not None and hi is not None:
-        return f"{lo}–{hi}{unit}"
+        return f"{lo}-{hi}{unit}"  # a hyphen: no "–" in anything a user reads (CLAUDE.md)
     if lo is not None:
         return bot_text("kb.range_from", lang, lo=lo, unit=unit)
     return bot_text("kb.range_until", lang, hi=hi, unit=unit)
@@ -127,9 +126,10 @@ def render_root_summary(draft: dict, lang: str) -> str:
         f"🏠 {bot_text('kb.label.property_type', lang)}: "
         + (", ".join(property_labels[p] for p in draft["property_types"]) or all_label),
         f"📍 {bot_text('kb.label.cities', lang)}: " + (_cities_text(draft["cities"]) or all_label),
-        # typed by the user, and the summary is sent as HTML (see the keywords line below)
+        # names come from our lists or older typed filters, and the summary is sent as HTML (see the keywords line below)
         f"🏘️ {bot_text('kb.label.hood', lang)}: "
-        + (", ".join(html.escape(name) for name in [*draft.get("neighborhoods_include", []), *draft.get("streets_include", [])])
+        + (", ".join(html.escape(place_label(entry, draft.get("cities")))
+                     for entry in [*draft.get("neighborhoods_include", []), *draft.get("streets_include", [])])
            or all_label),
         f"💰 {bot_text('kb.label.price', lang)}: "
         + _fmt_range(draft["price_min"], draft["price_max"], lang, " ₪"),
@@ -482,16 +482,48 @@ def area_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def place_label(entry: str, cities) -> str:
+    """A saved neighbourhood or street ("city:name", or a bare "name" from before 2026-11-11) as shown: the name, and its
+    city in brackets when the search has more than one city."""
+    city, sep, name = (entry or "").partition(":")
+    if not sep:
+        return entry or ""
+    if not name:
+        return city
+    return f"{name} ({city})" if len(cities or []) > 1 else name
+
+
 def hood_keyboard(draft: dict, lang: str) -> InlineKeyboardMarkup:
-    """2026-11-10 (owner): neighbourhoods and streets, each typed as a comma-separated list."""
+    """2026-11-11 (owner): neighbourhoods and streets are picked from suggestions ("➕"), each chosen one is a button that
+    removes it, and "include apartments with missing details" can be turned off here."""
     rows = [
         [
-            InlineKeyboardButton(bot_text("kb.edit_neighborhoods", lang), callback_data="f:hood:nb"),
-            InlineKeyboardButton(bot_text("kb.edit_streets", lang), callback_data="f:hood:st"),
-        ],
-        [InlineKeyboardButton(bot_text("kb.clear_button", lang), callback_data="f:hood:clear")],
-        [_back_button(lang)],
+            InlineKeyboardButton(bot_text("kb.add_neighborhood", lang), callback_data="f:hood:nb"),
+            InlineKeyboardButton(bot_text("kb.add_street", lang), callback_data="f:hood:st"),
+        ]
     ]
+    for code, field in (("n", "neighborhoods_include"), ("s", "streets_include")):
+        for i, entry in enumerate(draft.get(field) or []):
+            label = bot_text("kb.remove_place", lang, name=place_label(entry, draft.get("cities")))
+            rows.append([InlineKeyboardButton(label[:60], callback_data=f"f:hood:rm:{code}:{i}")])
+    if draft.get("neighborhoods_include") or draft.get("streets_include"):
+        key = "kb.missing_details_on" if draft.get("include_missing_details") else "kb.missing_details_off"
+        rows.append([InlineKeyboardButton(bot_text(key, lang), callback_data="f:hood:miss")])
+        rows.append([InlineKeyboardButton(bot_text("kb.clear_button", lang), callback_data="f:hood:clear")])
+    rows.append([_back_button(lang)])
+    return InlineKeyboardMarkup(rows)
+
+
+def place_suggestions_keyboard(suggestions: list[tuple[str, str]], chosen: list[str], cities, lang: str) -> InlineKeyboardMarkup:
+    """The names found for what was typed ((city, name) pairs); a tap adds one (✅ once it is in), "done" goes back."""
+    rows = []
+    for i, (city, name) in enumerate(suggestions):
+        mark = "✅ " if f"{city}:{name}" in chosen else ""
+        rows.append([InlineKeyboardButton((mark + place_label(f"{city}:{name}", cities))[:60], callback_data=f"f:hood:pk:{i}")])
+    rows.append([
+        InlineKeyboardButton(bot_text("kb.place_done", lang), callback_data="f:cat:hood"),
+        InlineKeyboardButton(bot_text("kb.place_search_again", lang), callback_data="f:hood:again"),
+    ])
     return InlineKeyboardMarkup(rows)
 
 

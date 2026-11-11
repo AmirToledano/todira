@@ -21,11 +21,11 @@ Revisit once per-listing detail scraping exists and these fields carry real data
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 
 from todira_common.cities import locality_key
 from todira_common.non_home import is_non_home
+from todira_common.place_names import name_key, neighbourhood_keys, street_key
 
 
 @dataclass
@@ -88,22 +88,14 @@ def _place_key(text: str | None) -> str:
     return locality_key(text).lower()
 
 
-_STREET_PREFIX_RE = re.compile(r"^(?:רחוב|רח)\s+")
-_BOULEVARD_RE = re.compile(r"^שד\s+")
-_HOUSE_NUMBER_RE = re.compile(r"(?:\s+\d+[א-ת]?)+$")
+# 2026-11-11: neighbourhood and street names compare in todira_common.place_names' form (any spelling, with or without
+# the definite article, "רחוב"/"שכונת" in front, house numbers).
+_street_key = street_key
 
 
-def _street_key(text: str | None) -> str:
-    """A street's name alone: "רחוב הרצל 12", "רח' הרצל 12/3", "הרצל 12א" and "הרצל" are the same street, and "שד' רוטשילד"
-    is "שדרות רוטשילד". The house number goes only when a name is left in front of it ("רחוב 12" stays as it is)."""
-    key = _place_key(text)
-    key = _BOULEVARD_RE.sub("שדרות ", _STREET_PREFIX_RE.sub("", key))
-    without_number = _HOUSE_NUMBER_RE.sub("", key)
-    return without_number if without_number and not without_number.isdigit() else key
-
-
-def _matches_any_place(entries, city_key: str, name_key: str, to_key) -> bool:
-    """Whether the listing's neighbourhood or street (already in comparison form) is one of the filter's entries. An
+def _matches_any_place(entries, city_key: str, name_keys: frozenset[str], to_key) -> bool:
+    """Whether the listing's neighbourhood or street (already in comparison form; a combined neighbourhood gives one key
+    per name in it, place_names.neighbourhood_keys) is one of the filter's entries. An
     entry is "city:name" (that name in that city only) or just "name" (in any of the search's cities). "city:" with no
     name means a listing in that city that states no neighbourhood / street; a bare empty entry matches nothing."""
     for entry in entries:
@@ -112,7 +104,7 @@ def _matches_any_place(entries, city_key: str, name_key: str, to_key) -> bool:
             city, name = "", entry or ""
         wanted = to_key(name)
         has_city = bool(city.strip())
-        if wanted != name_key or (not wanted and not has_city):
+        if wanted not in name_keys or (not wanted and not has_city):
             continue
         if not has_city or _place_key(city) == city_key:
             return True
@@ -202,23 +194,25 @@ def _check_hard_filters(filter_row, listing_row) -> list[str]:
     # scraper asks the sources for). See _matches_any_place for what counts as the same place.
     keep_unknown_place = getattr(filter_row, "include_missing_details", False)
     city_key = _place_key(listing_row.city)
-    neighborhood_key = _place_key(listing_row.neighborhood)
+    neighborhood_keys_ = neighbourhood_keys(listing_row.neighborhood)
+    neighborhood_known = bool(name_key(listing_row.neighborhood))
     street_key = _street_key(listing_row.street)
+    street_keys = frozenset({street_key})
     if filter_row.neighborhoods_include and not (
-        _matches_any_place(filter_row.neighborhoods_include, city_key, neighborhood_key, _place_key)
-        or (keep_unknown_place and not neighborhood_key)
+        _matches_any_place(filter_row.neighborhoods_include, city_key, neighborhood_keys_, name_key)
+        or (keep_unknown_place and not neighborhood_known)
     ):
         failed.append("neighborhood_include")
     if filter_row.neighborhoods_exclude and _matches_any_place(
-        filter_row.neighborhoods_exclude, city_key, neighborhood_key, _place_key
+        filter_row.neighborhoods_exclude, city_key, neighborhood_keys_, name_key
     ):
         failed.append("neighborhood_exclude")
     if filter_row.streets_include and not (
-        _matches_any_place(filter_row.streets_include, city_key, street_key, _street_key)
+        _matches_any_place(filter_row.streets_include, city_key, street_keys, _street_key)
         or (keep_unknown_place and not street_key)
     ):
         failed.append("street_include")
-    if filter_row.streets_exclude and _matches_any_place(filter_row.streets_exclude, city_key, street_key, _street_key):
+    if filter_row.streets_exclude and _matches_any_place(filter_row.streets_exclude, city_key, street_keys, _street_key):
         failed.append("street_exclude")
 
     if listing_row.price is None:

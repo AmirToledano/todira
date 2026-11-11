@@ -1146,6 +1146,71 @@ BOT_STRINGS: dict[str, dict[str, str]] = {
         "ar": "\n\nيمكن استلام الشقق في أحياء أو شوارع معينة فقط.\nمن المهم أن تعرف: إعلانات كثيرة لا تذكر الحي أو "
               "الشارع، ولن تصل ما دام هذا الفلتر مفعّلاً.\n\nالأحياء: {neighborhoods}\nالشوارع: {streets}",
     },
+    # 2026-11-11 (owner: "people type a thousand variations"): typed names become suggestions from our lists, and only
+    # a tapped name is kept. Listings with no neighbourhood/street come along by default (include_missing_details).
+    "filter.hood_note_missing_on": {
+        "he": "\n\nאפשר לקבל רק דירות בשכונות או ברחובות מסוימים.\nכדאי לדעת: הרבה מודעות לא מציינות שכונה או רחוב. "
+              "כרגע הן מגיעות גם כן, ואפשר לכבות את זה בכפתור למטה.\n\nשכונות: {neighborhoods}\nרחובות: {streets}",
+        "en": "\n\nGet only apartments in certain neighbourhoods or streets.\nGood to know: many ads don't state a "
+              "neighbourhood or a street. Right now those arrive too, and you can turn that off with the button below."
+              "\n\nNeighbourhoods: {neighborhoods}\nStreets: {streets}",
+        "ru": "\n\nМожно получать только квартиры в определённых районах или на определённых улицах.\nВажно: во многих "
+              "объявлениях район или улица не указаны. Сейчас они тоже приходят, это можно выключить кнопкой ниже."
+              "\n\nРайоны: {neighborhoods}\nУлицы: {streets}",
+        "fr": "\n\nRecevez uniquement les appartements de certains quartiers ou de certaines rues.\nBon à savoir : "
+              "beaucoup d'annonces n'indiquent ni quartier ni rue. Pour l'instant elles arrivent aussi, et le bouton "
+              "ci-dessous permet de les écarter.\n\nQuartiers : {neighborhoods}\nRues : {streets}",
+        "ar": "\n\nيمكن استلام الشقق في أحياء أو شوارع معينة فقط.\nمن المهم أن تعرف: إعلانات كثيرة لا تذكر الحي أو "
+              "الشارع. حالياً تصل هي أيضاً، ويمكن إيقاف ذلك بالزر أدناه.\n\nالأحياء: {neighborhoods}\nالشوارع: {streets}",
+    },
+    "filter.hood_need_city": {
+        "he": "קודם צריך לבחור עיר במסך \"מיקום\" (עד 6 ערים), ואז אפשר לבחור בה שכונות ורחובות.",
+        "en": "First choose a city on the \"Location\" screen (up to 6 cities), then you can pick its neighbourhoods "
+              "and streets.",
+        "ru": "Сначала выберите город на экране «Местоположение» (до 6 городов), потом можно выбрать районы и улицы.",
+        "fr": "Choisis d'abord une ville dans l'écran « Lieu » (6 villes au plus), puis ses quartiers et ses rues.",
+        "ar": "اختر أولاً مدينة في شاشة \"الموقع\" (حتى 6 مدن)، ثم يمكنك اختيار أحيائها وشوارعها.",
+    },
+    "filter.place_pick": {
+        "he": "אלה השמות שמצאתי. לחצ/י על כל מה שמתאים, ואז \"סיום\":",
+        "en": "These are the names I found. Tap every one that fits, then \"Done\":",
+        "ru": "Вот что я нашёл. Нажмите на все подходящие названия, затем «Готово»:",
+        "fr": "Voici les noms trouvés. Touche tous ceux qui conviennent, puis « Terminé » :",
+        "ar": "هذه الأسماء التي وجدتها. اضغط على كل ما يناسب، ثم \"انتهيت\":",
+    },
+    "filter.place_not_found": {
+        "he": "לא מצאתי שם כזה בערים שבחרת. אפשר לנסות לכתוב אחרת, או רק חלק מהשם.",
+        "en": "I didn't find that name in the cities you chose. Try writing it differently, or just part of it.",
+        "ru": "Не нашёл такого названия в выбранных городах. Попробуйте написать иначе или только часть названия.",
+        "fr": "Je n'ai pas trouvé ce nom dans les villes choisies. Essaie de l'écrire autrement, ou juste une partie.",
+        "ar": "لم أجد هذا الاسم في المدن التي اخترتها. جرّب كتابته بشكل آخر، أو جزءاً منه فقط.",
+    },
+    "kb.add_neighborhood": {
+        "he": "➕ שכונה", "en": "➕ Neighbourhood", "ru": "➕ Район", "fr": "➕ Quartier", "ar": "➕ حي",
+    },
+    "kb.add_street": {
+        "he": "➕ רחוב", "en": "➕ Street", "ru": "➕ Улица", "fr": "➕ Rue", "ar": "➕ شارع",
+    },
+    "kb.remove_place": {
+        "he": "❌ {name}", "en": "❌ {name}", "ru": "❌ {name}", "fr": "❌ {name}", "ar": "❌ {name}",
+    },
+    "kb.missing_details_on": {
+        "he": "✅ כולל דירות עם פרטים חסרים", "en": "✅ Include apartments with missing details",
+        "ru": "✅ Включая квартиры с неполными данными", "fr": "✅ Inclure les appartements aux détails manquants",
+        "ar": "✅ تشمل شققاً بتفاصيل ناقصة",
+    },
+    "kb.missing_details_off": {
+        "he": "⬜ כולל דירות עם פרטים חסרים", "en": "⬜ Include apartments with missing details",
+        "ru": "⬜ Включая квартиры с неполными данными", "fr": "⬜ Inclure les appartements aux détails manquants",
+        "ar": "⬜ تشمل شققاً بتفاصيل ناقصة",
+    },
+    "kb.place_done": {
+        "he": "✔️ סיום", "en": "✔️ Done", "ru": "✔️ Готово", "fr": "✔️ Terminé", "ar": "✔️ انتهيت",
+    },
+    "kb.place_search_again": {
+        "he": "🔎 לחפש שם אחר", "en": "🔎 Search another name", "ru": "🔎 Искать другое название",
+        "fr": "🔎 Chercher un autre nom", "ar": "🔎 البحث عن اسم آخر",
+    },
     "filter.prompt_neighborhoods": {
         "he": "הקלד/י שמות שכונות מופרדים בפסיקים, למשל: רחביה, בקעה",
         "en": "Type neighbourhood names separated by commas, for example: Rehavia, Baka",

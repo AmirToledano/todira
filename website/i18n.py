@@ -2268,21 +2268,32 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ar": "لا توجد أحياء بعد في {city}",
     },
     "filter.neighborhoods_hint": {
-        "he": "בלי סימון מקבלים את כל העיר. הרבה מודעות לא מציינות שכונה, והן לא יופיעו כשמסמנים שכונות.",
-        "en": "With none ticked you get the whole city. Many ads don't state a neighbourhood, and they won't show once "
-              "you tick some.",
-        "ru": "Без отметок вы получаете весь город. Во многих объявлениях район не указан, и они не появятся, если "
-              "отметить районы.",
-        "fr": "Sans rien cocher, tu reçois toute la ville. Beaucoup d'annonces n'indiquent pas de quartier et "
-              "n'apparaîtront pas si tu en coches.",
-        "ar": "بدون تحديد تحصل على المدينة كلها. إعلانات كثيرة لا تذكر الحي، ولن تظهر عند تحديد أحياء.",
+        "he": "בלי סימון מקבלים את כל העיר. הרבה מודעות לא מציינות שכונה או רחוב, ולכן כשבוחרים שכונה או רחוב "
+              "מסומן גם \"להציג גם דירות שלא כתוב בהן...\" בהמשך הטופס. אפשר לבטל את הסימון.",
+        "en": "With none ticked you get the whole city. Many ads don't state a neighbourhood or a street, so picking one "
+              "also ticks \"Also show apartments that don't list...\" further down. You can untick it.",
+        "ru": "Без отметок вы получаете весь город. Во многих объявлениях район или улица не указаны, поэтому при "
+              "выборе района или улицы ниже отмечается «Показывать также квартиры без указания...». Отметку можно "
+              "снять.",
+        "fr": "Sans rien cocher, tu reçois toute la ville. Beaucoup d'annonces n'indiquent ni quartier ni rue : en "
+              "choisir un coche aussi « Afficher aussi les logements sans... » plus bas. Tu peux le décocher.",
+        "ar": "بدون تحديد تحصل على المدينة كلها. إعلانات كثيرة لا تذكر الحي أو الشارع، لذلك عند اختيار حي أو شارع "
+              "يتم أيضًا تحديد \"عرض أيضًا الشقق التي لا يُذكر فيها...\" في الأسفل. يمكنك إلغاء التحديد.",
     },
     "filter.streets_label": {
         "he": "רחובות", "en": "Streets", "ru": "Улицы", "fr": "Rues", "ar": "الشوارع",
     },
     "filter.streets_placeholder": {
-        "he": "למשל: הרצל, יפו", "en": "For example: Herzl, Jaffa", "ru": "Например: Герцль, Яффо",
-        "fr": "Par exemple : Herzl, Jaffa", "ar": "مثلاً: هرتسل، يافا",
+        "he": "חיפוש רחוב, למשל: הרצל", "en": "Search a street, for example: Herzl",
+        "ru": "Поиск улицы, например: Герцль", "fr": "Chercher une rue, par exemple : Herzl",
+        "ar": "ابحث عن شارع، مثلاً: هرتسل",
+    },
+    "filter.streets_hint": {
+        "he": "מקלידים חלק מהשם ובוחרים מהרשימה של העיר.",
+        "en": "Type part of the name and pick from the city's list.",
+        "ru": "Введите часть названия и выберите из списка города.",
+        "fr": "Tape une partie du nom et choisis dans la liste de la ville.",
+        "ar": "اكتب جزءاً من الاسم واختر من قائمة المدينة.",
     },
     "filter.location_section": {
         "he": "מיקום", "en": "Location", "ru": "Местоположение", "fr": "Emplacement", "ar": "الموقع",
@@ -2382,11 +2393,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     # 2026-10-27 (plan item 7): "show also without rooms / size", and the live count while the form changes.
     "filter.include_missing_details_label": {
-        "he": "להציג גם דירות שלא כתוב בהן מספר חדרים או גודל",
-        "en": "Also show apartments that don't list rooms or size",
-        "ru": "Показывать также квартиры без указания комнат или площади",
-        "fr": "Afficher aussi les logements sans nombre de pièces ni surface",
-        "ar": "عرض أيضًا الشقق التي لا يُذكر فيها عدد الغرف أو المساحة",
+        "he": "להציג גם דירות שלא כתוב בהן מספר חדרים, גודל, שכונה או רחוב",
+        "en": "Also show apartments that don't list rooms, size, neighbourhood or street",
+        "ru": "Показывать также квартиры без указания комнат, площади, района или улицы",
+        "fr": "Afficher aussi les logements sans nombre de pièces, surface, quartier ni rue",
+        "ar": "عرض أيضًا الشقق التي لا يُذكر فيها عدد الغرف أو المساحة أو الحي أو الشارع",
     },
     "filter.live_count": {
         "he": "{n} דירות מתאימות עכשיו",

@@ -83,6 +83,7 @@ from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECO
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
+from todira_common.place_names import city_neighbourhoods, suggest_places
 from todira_common.listing_matches import (
     load_listings,
     mark_recent_matches_seen,
@@ -4582,52 +4583,29 @@ _MAX_PLACE_ENTRIES = 40
 _MAX_PLACE_CHARS = 60
 
 
-def _clean_place_names(raw: str) -> list[str]:
-    """Typed street names: split on commas and line breaks, trimmed, no repeats, capped."""
-    names: list[str] = []
-    for part in re.split(r"[,،\n]+", raw or ""):
-        name = " ".join(part.split())[:_MAX_PLACE_CHARS].strip()
-        if name and ":" not in name and name not in names:
-            names.append(name)
-    return names[:_MAX_PLACE_ENTRIES]
-
-
-def _clean_neighborhoods(values, cities: list[str]) -> list[str]:
-    """The form's "city:neighbourhood" boxes, kept only for a city the search still has."""
+def _clean_places(values, cities: list[str]) -> list[str]:
+    """The form's neighbourhood and street boxes ("city:name"), kept only for a city the search still has. A bare name
+    (typed in the bot before 2026-11-11) is kept as it is."""
     kept: list[str] = []
     for value in values or []:
         city, sep, name = (value or "").partition(":")
+        if not sep:
+            city, name = "", city
         name = " ".join(name.split())[:_MAX_PLACE_CHARS]
-        if sep and name and city in cities and f"{city}:{name}" not in kept:
-            kept.append(f"{city}:{name}")
+        entry = f"{city}:{name}" if sep else name
+        if name and (not sep or city in cities) and entry not in kept:
+            kept.append(entry)
     return kept[:_MAX_PLACE_ENTRIES]
 
 
 # How many cities' neighbourhoods the form offers at once, and how many per city (the commonest first).
 _NEIGHBORHOOD_CITIES_MAX = 6
 _NEIGHBORHOODS_PER_CITY = 60
-_NEIGHBORHOODS_TTL = 3600.0
-_neighborhoods_cache: dict[str, tuple[float, list[str]]] = {}
 
 
 def _city_neighborhoods(session, city: str) -> list[str]:
-    """The neighbourhoods our live listings name in `city`, commonest first (kept for an hour). Read from our own
-    listings table only."""
-    hit = _neighborhoods_cache.get(city)
-    if hit is not None and time.monotonic() - hit[0] < _NEIGHBORHOODS_TTL:
-        return hit[1]
-    name = func.btrim(Listing.neighborhood)
-    rows = session.execute(
-        select(name, func.count())
-        .where(Listing.city == city, Listing.is_delisted.is_(False), Listing.neighborhood.is_not(None), name != "")
-        .group_by(name)
-        .having(func.count() >= 2)
-        .order_by(func.count().desc(), name)
-        .limit(_NEIGHBORHOODS_PER_CITY)
-    ).all()
-    names = [row[0] for row in rows if ":" not in row[0]]
-    _neighborhoods_cache[city] = (time.monotonic(), names)
-    return names
+    """The neighbourhoods our live listings name in `city`, commonest first (todira_common.place_names)."""
+    return city_neighbourhoods(session, city)[:_NEIGHBORHOODS_PER_CITY]
 
 
 @app.get("/api/neighborhoods")
@@ -4640,14 +4618,30 @@ def neighborhoods_api(city: list[str] = Query([])):  # noqa: B008
     return JSONResponse({"cities": data}, headers={"Cache-Control": "public, max-age=600"})
 
 
+_STREET_SEARCH_MAX_CHARS = 40
+
+
+@app.get("/api/streets")
+def streets_api(q: str = "", city: list[str] = Query([])):  # noqa: B008
+    """2026-11-11 (owner: "people type a thousand variations"): the filter form's street search. Suggestions from the
+    official streets list of the chosen cities (todira_common.place_names), so what is saved is a real street name."""
+    cities = [c for c in dict.fromkeys(city) if c in LOCALITY_SET][:_NEIGHBORHOOD_CITIES_MAX]
+    typed = " ".join((q or "").split())[:_STREET_SEARCH_MAX_CHARS]
+    if len(typed) < 2 or not cities:
+        return JSONResponse({"found": []})
+    with get_session() as session:
+        found = suggest_places(session, "street", [typed], cities, limit=8)
+    return JSONResponse({"found": [[c, n] for c, n in found]}, headers={"Cache-Control": "public, max-age=600"})
+
+
 def _apply_filter_form(f, form: dict) -> None:
     """Writes the site's filter form (filter_update's fields, by name) onto `f`. Shared by the save and by
     /api/filter-preview's live count, so the two never read the form differently."""
     f.cities = [] if form.get("all_cities") is not None else [c for c in form.get("cities") or [] if c in LOCALITY_SET]
     # 2026-11-10 (owner): neighbourhoods are picked per chosen city ("city:neighbourhood"), streets are typed. A
     # neighbourhood of a city that is no longer chosen is dropped. Compared in matching.py only.
-    f.neighborhoods_include = _clean_neighborhoods(form.get("neighborhoods_include"), f.cities)
-    f.streets_include = _clean_place_names(form.get("streets_include") or "")
+    f.neighborhoods_include = _clean_places(form.get("neighborhoods_include"), f.cities)
+    f.streets_include = _clean_places(form.get("streets_include"), f.cities)
     f.price_min, f.price_max = _ordered(
         _parse_int_or_none(form.get("price_min", "")), _parse_int_or_none(form.get("price_max", ""))
     )
@@ -4696,7 +4690,7 @@ def filter_update(
     flexible_match: str | None = Form(None),
     include_missing_details: str | None = Form(None),
     neighborhoods_include: list[str] = Form([]),  # noqa: B008
-    streets_include: str = Form(""),
+    streets_include: list[str] = Form([]),  # noqa: B008
     welcome: str | None = Form(None),
 ):
     """2026-09-26 dorin.app-style onboarding addition (real owner request, 33-page PDF walkthrough)
@@ -4808,7 +4802,7 @@ def filter_preview(
     flexible_match: str | None = Form(None),
     include_missing_details: str | None = Form(None),
     neighborhoods_include: list[str] = Form([]),  # noqa: B008
-    streets_include: str = Form(""),
+    streets_include: list[str] = Form([]),  # noqa: B008
 ):
     form = {name: value for name, value in locals().items() if name in _FILTER_FORM_FIELDS}
     with get_session() as session:
