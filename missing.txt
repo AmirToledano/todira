@@ -1,0 +1,15 @@
+rent|44349|13955|7030|4436|2875
+sale|109519|27107|26947|11360|17524
+sublet|378|366|180|173|0
+--- by source (deal|source|live|no neighbourhood|no street)
+rent|yad2|31748|2892|3999
+rent|facebook_groups|5975|5629|2971
+rent|komo|4988|4988|23
+rent|homeless|1601|409|0
+rent|facebook_marketplace|37|37|37
+sale|yad2|97692|18462|26123
+sale|komo|7187|7187|34
+sale|homeless|3156|42|0
+sale|facebook_groups|1471|1403|777
+sale|facebook_marketplace|13|13|13
+sublet|facebook_groups|378|366|180
