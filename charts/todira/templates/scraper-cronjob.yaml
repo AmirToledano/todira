@@ -86,6 +86,25 @@ spec:
                 # existed. See that module's own docstring for what the owner still needs to set
                 # these up (a Bright Data account + a Scraper Studio scraper targeting Yad2 listing
                 # DETAIL pages, not the existing broken search-results one).
+                # 2026-11-11: the daily post on Todira's own Facebook Page and Instagram (scraper/social_poster.py)
+                - name: META_PAGE_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-page-id
+                      optional: true
+                - name: META_PAGE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-page-token
+                      optional: true
+                - name: META_IG_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-ig-user-id
+                      optional: true
                 # 2026-11-08: the morning email of new matching flats (scraper/email_digest.py). Optional until set.
                 - name: RESEND_API_KEY
                   valueFrom:

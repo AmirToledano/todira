@@ -83,6 +83,7 @@ from todira_common.cities import CITIES, LOCALITIES, LOCALITY_SET, REGIONS, SECO
 from todira_common.bot_strings import bot_text
 from todira_common.db import get_session
 from todira_common.google_link import generate_google_link_token
+from todira_common import meta_api, social_replies
 from todira_common.place_names import city_neighbourhoods, suggest_places
 from todira_common.listing_matches import (
     load_listings,
@@ -96,7 +97,7 @@ from todira_common.models import (
     AppFlag, ContactMessage, Filter, Listing, OwnerPost, OwnerPostPhoto, Payment, SentNotification, User, UserListingAction,
 )
 from todira_common.uid_token import generate_handoff_token, verify_handoff_token, verify_uid_token
-from fastapi import FastAPI, Form, Query, Request
+from fastapi import BackgroundTasks, FastAPI, Form, Query, Request
 
 import assistant
 import city_pages
@@ -4792,6 +4793,78 @@ def _price_chart(prices: list[int]) -> dict | None:
         if low <= price <= high:
             bars[min(_PRICE_CHART_BARS - 1, (price - low) // step)] += 1
     return {"from": low, "step": step, "bars": bars}
+
+
+# 2026-11-11 (owner: "whoever comments 'דירה', my bot answers him straight away with the link"). Meta calls this for
+# every new comment on our own Facebook Page and Instagram posts (todira_common/social_replies.py decides and words the
+# answer). Only calls signed with our app secret are read; the answer goes out after the reply to Meta, which wants
+# one within seconds. Nothing about the commenter is logged.
+@app.get("/meta/webhook")
+def meta_webhook_verify(request: Request):
+    params = request.query_params
+    token = meta_api.verify_token()
+    if token and params.get("hub.mode") == "subscribe" and hmac.compare_digest(params.get("hub.verify_token", ""), token):
+        return PlainTextResponse(params.get("hub.challenge", ""))
+    return PlainTextResponse("forbidden", status_code=403)
+
+
+def _meta_comments(payload: dict) -> list[tuple[str, str, str]]:
+    """(kind, comment id, text) of every new comment someone else left on our Page or Instagram posts."""
+    found = []
+    page_id, ig_id = os.environ.get("META_PAGE_ID", ""), os.environ.get("META_IG_USER_ID", "")
+    for entry in payload.get("entry") or []:
+        for change in entry.get("changes") or []:
+            value = change.get("value") or {}
+            sender = str((value.get("from") or {}).get("id", ""))
+            is_page_comment = (
+                payload.get("object") == "page" and change.get("field") == "feed" and value.get("item") == "comment"
+                and value.get("verb") == "add" and value.get("comment_id") and sender != page_id
+            )
+            is_ig_comment = (
+                payload.get("object") == "instagram" and change.get("field") == "comments" and value.get("id")
+                and sender != ig_id
+            )
+            if is_page_comment:
+                found.append(("fb", str(value["comment_id"]), str(value.get("message") or "")))
+            elif is_ig_comment:
+                found.append(("ig", str(value["id"]), str(value.get("text") or "")))
+    return found
+
+
+def _answer_comments(comments: list[tuple[str, str, str]]) -> None:
+    answered = 0
+    with get_session() as session:
+        for kind, comment_id, text in comments:
+            if not social_replies.asks_for_link(text) or social_replies.already_answered(session, comment_id):
+                continue
+            reply = social_replies.reply_text(comment_id, text, "fb_comment" if kind == "fb" else "ig_comment")
+            try:
+                if kind == "fb":
+                    meta_api.reply_to_page_comment(comment_id, reply)
+                else:
+                    meta_api.reply_to_instagram_comment(comment_id, reply)
+            except Exception as exc:  # noqa: BLE001 - one failed reply must not stop the others
+                logger.warning("social reply failed: %s", exc)
+                continue
+            social_replies.mark_answered(session, comment_id)
+            answered += 1
+    if answered:
+        logger.info("social replies: answered %d comment(s)", answered)
+
+
+@app.post("/meta/webhook")
+async def meta_webhook(request: Request, background: BackgroundTasks):
+    body = await request.body()
+    if not meta_api.signature_ok(body, request.headers.get("X-Hub-Signature-256")):
+        return PlainTextResponse("forbidden", status_code=403)
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return PlainTextResponse("bad request", status_code=400)
+    comments = _meta_comments(payload) if isinstance(payload, dict) and meta_api.page_enabled() else []
+    if comments:
+        background.add_task(_answer_comments, comments)
+    return PlainTextResponse("ok")
 
 
 @app.post("/api/filter-preview")

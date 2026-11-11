@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw
 from sqlalchemy.orm import Session
 
 import weekly_image as wi
-from todira_common import alert_hours, app_flags, owner_inbox
+from todira_common import alert_hours, app_flags, meta_api, owner_inbox
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +207,8 @@ def run_instagram_kit(session: Session, now: dt.datetime | None = None) -> dict[
     from channel import weekly_prices  # the Friday post's own numbers
 
     now = now or dt.datetime.now(dt.timezone.utc)
+    if meta_api.instagram_enabled():
+        return {}  # 2026-11-11: social_poster.py publishes it on Thursdays itself; no copy-and-paste kit needed
     label = due(app_flags.get_flag(session, _FLAG), now)
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if label is None or not token:
