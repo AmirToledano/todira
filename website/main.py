@@ -962,6 +962,23 @@ def _home_map_data() -> dict | None:
                 select(Listing.first_seen_at, Listing.city)
                 .where(*live, Listing.city.is_not(None)).order_by(Listing.first_seen_at.desc()).limit(1)
             ).first()
+            # 2026-11-11 (owner: "Dorin's site looks more professional, how things move"): the hero's numbers and
+            # "where it is hottest this week" - real counts, the same live rows as the map.
+            week = Listing.first_seen_at >= func.now() - dt.timedelta(days=7)
+            week_new = session.scalar(select(func.count()).where(*live, week))
+            hot = session.execute(
+                select(
+                    Listing.city,
+                    func.count().filter(Listing.deal_type == "rent"),
+                    func.count().filter(Listing.deal_type == "sale"),
+                )
+                .where(*live, week, Listing.city.is_not(None))
+                .group_by(Listing.city)
+                .order_by(func.count().desc())
+                .limit(8)
+            ).all()
+            alerts_total = session.scalar(select(func.count()).select_from(SentNotification))
+            cities_live = session.scalar(select(func.count(func.distinct(Listing.city))).where(*live))
             recent = session.execute(
                 select(Listing.city, Listing.rooms, Listing.price, Listing.latitude, Listing.longitude)
                 .where(
@@ -984,6 +1001,10 @@ def _home_map_data() -> dict | None:
             for city, rooms, price, lat, lng in recent
         ],
         "by_city": {city: int(n) for city, n in by_city},
+        "week_new": int(week_new or 0),
+        "alerts_total": int(alerts_total or 0),
+        "cities_live": int(cities_live or 0),
+        "hot": [{"city": city, "rent": int(rent or 0), "sale": int(sale or 0)} for city, rent, sale in hot],
         "latest": {"at": latest[0].isoformat(), "city": latest[1]} if latest and latest[0] else None,
     }
     with _home_map_lock:
