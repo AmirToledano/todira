@@ -175,14 +175,7 @@ scraper:
   # 302/Radware pattern, not a ZenRows dashboard number, if trouble shows up.
   # 2026-10-19 (owner): every 30 minutes, 09:00-22:30 Israel time. A run now ends in about 24 minutes (shorter Yad2 tile
   # pause, catch-up work stopped at SCRAPER_RUN_BUDGET_SECONDS), so runs never overlap (concurrencyPolicy: Forbid).
-  # 2026-11-12 (owner: fewer runs a day, wider gaps): every 45 minutes, 09:00 to 22:30 Israel time (19 runs a day, was
-  # 28). The pattern repeats every 3 hours, so it takes four cron lines; each becomes its own CronJob
-  # (templates/scraper-cronjob.yaml). Runs: 9:00 9:45 10:30 11:15 12:00 ... 21:00 21:45 22:30.
-  schedules:
-    - "0 9,12,15,18,21 * * *"
-    - "45 9,12,15,18,21 * * *"
-    - "30 10,13,16,19,22 * * *"
-    - "15 11,14,17,20 * * *"
+  schedule: "0,30 9-22 * * *"
   # 2026-09-13: real ZenRows dashboard check (owner's own screenshot) found only 7,218 credits
   # left on the Build 45k plan, renewing 2026-10-01 (~18 days away) — 87% of the plan already used.
   # At the schedule/sources active before tonight (8 runs/day, full 7-region Yad2 sweep + all-42-

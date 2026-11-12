@@ -756,21 +756,18 @@ _BACKFILL_BATCH = 40
 _RUN_BUDGET_ENV_VAR = "SCRAPER_RUN_BUDGET_SECONDS"
 # 2026-10-19: first run on the 30-minute schedule stopped the catch-up at 26 minutes and still ran ~1.5 more (text
 # features, reminders), ending 27.5 minutes after it started - too close to the next slot. 22 leaves room for those steps.
-# 2026-11-12 (owner): runs every 45 minutes now, so 30 (same share of the gap as 22 of 30). It is also the start jitter's
-# ceiling (half of it), and a run that waited the full 15 minutes still gets its catch-up time.
-_DEFAULT_RUN_BUDGET_SECONDS = 30 * 60
+_DEFAULT_RUN_BUDGET_SECONDS = 22 * 60
 _RUN_STARTED_AT: float | None = None
-# 2026-11-08 (owner): each run waits a random 0 to SCRAPER_START_JITTER_MAX_SECONDS before it starts (8 minutes; 15 since
-# 2026-11-12, with the 45-minute schedule),
+# 2026-11-08 (owner): each run waits a random 0 to SCRAPER_START_JITTER_MAX_SECONDS (default 8 minutes) before it starts,
 # so runs do not begin at exactly :00 and :30. The CronJob cannot fire early, so the jitter is only ever a delay. The
 # delay is taken out of the catch-up budget above, so a delayed run still ends before the next slot.
 _START_JITTER_ENV_VAR = "SCRAPER_START_JITTER_MAX_SECONDS"
-_DEFAULT_START_JITTER_MAX_SECONDS = 15 * 60
+_DEFAULT_START_JITTER_MAX_SECONDS = 8 * 60
 _START_DELAY_SECONDS = 0.0
 
 
 def _start_jitter_seconds(uniform=random.uniform) -> float:
-    """A random start delay between 0 and SCRAPER_START_JITTER_MAX_SECONDS (default 15 minutes); 0 turns it off."""
+    """A random start delay between 0 and SCRAPER_START_JITTER_MAX_SECONDS (default 8 minutes); 0 turns it off."""
     raw = os.environ.get(_START_JITTER_ENV_VAR, "").strip()
     try:
         cap = float(raw) if raw else _DEFAULT_START_JITTER_MAX_SECONDS
@@ -781,8 +778,8 @@ def _start_jitter_seconds(uniform=random.uniform) -> float:
 
 
 def _run_time_left() -> float:
-    """Seconds this run may still spend on catch-up work (SCRAPER_RUN_BUDGET_SECONDS from the run's start, default 30
-    minutes), so a run on a 45-minute schedule ends before the next one is due. Unlimited outside run_once."""
+    """Seconds this run may still spend on catch-up work (SCRAPER_RUN_BUDGET_SECONDS from the run's start, default 22
+    minutes), so a run on a 30-minute schedule ends before the next one is due. Unlimited outside run_once."""
     if _RUN_STARTED_AT is None:
         return float("inf")
     raw = os.environ.get(_RUN_BUDGET_ENV_VAR, "").strip()
