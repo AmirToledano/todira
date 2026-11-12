@@ -1,0 +1,113 @@
+# 2026-11-12 (owner): steps that used to run at the end of every scraper run (scraper/main.py, which went back to its 7.11
+# state without them) run here, on their own, with the scraper's image:
+#   email_digest   the morning email of new matching flats, 09:00-12:00, once a day; off until RESEND_API_KEY is set
+#   nudges         occasional Telegram messages (weekly summary, trial tip, price before the trial ends), 09:00-12:00
+#   social_poster  the daily post on Todira's Facebook Page and Instagram, 10:00-12:00, once a day; off until the Meta keys
+#   source_watch   tells the owner when a source brings far fewer flats than usual, from 14:00, once per source per day
+# Each step checks the hour by itself and keeps what it sent in app_flags, so a run outside its hours does nothing.
+# The Thursday Instagram carousel (instagram_kit) is not here: scraper/main.py still runs it.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-social-email
+  labels:
+    app: {{ .Release.Name }}-social-email
+spec:
+  schedule: {{ .Values.socialEmail.schedule | quote }}
+  suspend: {{ .Values.socialEmail.suspended | default false }}
+  timeZone: "Asia/Jerusalem"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-social-email
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: social-email
+              image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
+              command: ["python", "-u", "-c"]
+              args:
+                - |
+                  import logging
+                  from todira_common.db import get_session
+                  from email_digest import run_email_digest
+                  from nudges import run_nudges
+                  from social_poster import run_social_poster
+                  from source_watch import run_source_watch
+                  logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+                  log = logging.getLogger("social_email")
+                  summary = {}
+                  with get_session() as session:
+                      steps = (
+                          ("email digest", run_email_digest),
+                          ("nudges", run_nudges),
+                          ("social poster", run_social_poster),
+                          ("source watch", run_source_watch),
+                      )
+                      for name, step in steps:
+                          try:
+                              summary.update(step(session))
+                          except Exception:
+                              session.rollback()
+                              log.exception("%s step failed", name)
+                  log.info("Social, email, nudges and source watch summary: %s", summary)
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: database-url
+                - name: TELEGRAM_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: telegram-bot-token
+                - name: OWNER_TELEGRAM_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: owner-telegram-user-id
+                      optional: true
+                - name: WEBSITE_URL
+                  value: "https://{{ .Values.website.domain }}"
+                - name: SESSION_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: session-secret-key
+                      optional: true
+                - name: RESEND_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: resend-api-key
+                      optional: true
+                - name: META_PAGE_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-page-id
+                      optional: true
+                - name: META_PAGE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-page-token
+                      optional: true
+                - name: META_IG_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-ig-user-id
+                      optional: true
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.socialEmail.requests.cpu }}
+                  memory: {{ .Values.resources.socialEmail.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.socialEmail.limits.cpu }}
+                  memory: {{ .Values.resources.socialEmail.limits.memory }}
