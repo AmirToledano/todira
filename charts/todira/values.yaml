@@ -487,10 +487,10 @@ subscriptionHousekeeping:
 dailySummary:
   schedule: "52 8 * * *"
 
-# social-email-cronjob.yaml (2026-11-12, owner): the daily Facebook/Instagram post and the morning email, apart from the scraper.
-# Each step keeps to its own hours and sends once a day, so a few runs inside 09:00-12:00 are enough.
+# social-email-cronjob.yaml (2026-11-12, owner): the post, the morning email, the Telegram nudges and the source watch, apart from
+# the scraper. Hourly at :40, 09:40-22:40: three runs inside the morning window, and the source watch hourly from 14:40.
 socialEmail:
-  schedule: "10,40 9-11 * * *"
+  schedule: "40 9-22 * * *"
 
 # backup-cronjob.yaml — daily off-node Postgres backup to S3, added 2026-09-08 closing the single
 # biggest operational risk this project had (see RUNBOOK.md's top warning): the DB lives on the
