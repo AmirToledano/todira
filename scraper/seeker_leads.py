@@ -90,32 +90,24 @@ def message(post: dict, place: str | None, deal: str | None) -> str:
     )
 
 
-# 2026-11-03: a ready reply the owner copies into the comments. The link is the site with ?src=fblead, so visits from
-# these replies are counted (website/main.py, _ActivityMiddleware).
-# 2026-11-11 (owner: Facebook stopped him commenting, "a more human wording, with the link"): three fixed wordings meant
-# the same text again and again, which Facebook reads as spam. A reply is now a short opener, one sentence and a closing
-# with the link, each picked by the post (6 x 7 x 5 = 210 wordings), and short, which groups approve more easily.
+# 2026-11-03: a ready reply the owner copies into the comments. A few wordings, picked by the post, so his comments
+# are not the same text again and again (Facebook treats repeated identical comments as spam). The link is the site
+# with ?src=fblead, so visits from these replies are counted (website/main.py, _ActivityMiddleware).
 REPLY_LINK = "https://todira.app/?src=fblead"
-_OPENERS = ("היי,", "בהצלחה בחיפוש!", "מכיר את התחושה,", "אם זה עוזר,", "טיפ קטן:", "היי, ראיתי שאתם מחפשים.")
-_BODIES = (
-    "יש בוט שמתריע בטלגרם על כל דירה חדשה{where} שמתאימה לחיפוש, דקות אחרי שהיא עולה.",
-    "טודירה שולחת לטלגרם רק דירות{where} שמתאימות למה שביקשת, בלי לחפש בעצמך.",
-    "טודירה עוברת על כל המודעות בארץ ושולחת לך רק את מה שמתאים{where}.",
-    "במקום לרענן כל היום, טודירה שולחת התראה ברגע שעולה דירה{where} שמתאימה לך.",
-    "שווה לנסות את טודירה, מקבלים לטלגרם כל דירה חדשה{where} לפי המחיר והחדרים שבחרת.",
-    "הדירות הטובות{where} נחטפות מהר, עם טודירה מקבלים אותן ראשונים בטלגרם.",
-    "טודירה מסננת בשבילך את כל המודעות{where} ושולחת רק מה שבאמת רלוונטי.",
+_REPLIES = (
+    "היי, אם עוד לא מצאת: טודירה סורקת את כל אתרי הדירות וקבוצות הפייסבוק ושולחת לך בטלגרם כל דירה חדשה{where} "
+    "שמתאימה לחיפוש שלך, ברגע שהיא עולה. יש תקופת ניסיון בחינם: {link}",
+    "בהצלחה בחיפוש! טיפ: טודירה שולחת התראה בטלגרם על כל דירה חדשה{where} שמתאימה למה שביקשת, "
+    "מכל האתרים והקבוצות. אפשר לנסות בחינם: {link}",
+    "אם מתיש לעבור על כל האתרים והקבוצות כל יום, טודירה עושה את זה בשבילך ושולחת לטלגרם רק דירות{where} "
+    "שמתאימות לך, מיד כשהן עולות. ניסיון בחינם: {link}",
 )
-_CLOSERS = ("יש ניסיון בחינם: {link}", "אפשר לנסות בחינם: {link}", "{link}", "הקישור: {link}", "בחינם לנסות: {link}")
 
 
 def reply_text(post: dict, place: str | None, deal: str | None) -> str:
     where = (" למכירה" if deal == "sale" else "") + (f" ב{place}" if place else "")
-    seed = sum((i + 1) * ord(ch) for i, ch in enumerate(str(post["post_id"])))
-    opener = _OPENERS[seed % len(_OPENERS)]
-    body = _BODIES[(seed // len(_OPENERS)) % len(_BODIES)]
-    closer = _CLOSERS[(seed // (len(_OPENERS) * len(_BODIES))) % len(_CLOSERS)]
-    return f"{opener} {body.format(where=where)} {closer.format(link=REPLY_LINK)}"
+    wording = _REPLIES[sum(map(ord, post["post_id"])) % len(_REPLIES)]
+    return wording.format(where=where, link=REPLY_LINK)
 
 
 def _chats() -> list[str]:

@@ -179,37 +179,6 @@ spec:
             # Real recurring-billing API (2026-09-21) — see takbull_client.py's module docstring
             # and bot-secret.yaml's own comment on these two.
             # 2026-10-19: email to Google-only users through Resend (todira_common/email_client.py). Optional until set.
-            # 2026-11-11: Todira's own Facebook Page and Instagram (todira_common/meta_api.py). Optional until set.
-            - name: META_PAGE_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: meta-page-id
-                  optional: true
-            - name: META_PAGE_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: meta-page-token
-                  optional: true
-            - name: META_IG_USER_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: meta-ig-user-id
-                  optional: true
-            - name: META_APP_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: meta-app-secret
-                  optional: true
-            - name: META_VERIFY_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-bot-secret
-                  key: meta-verify-token
-                  optional: true
             - name: RESEND_API_KEY
               valueFrom:
                 secretKeyRef:

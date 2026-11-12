@@ -54,10 +54,6 @@ from channel import run_channel_posts
 from checkin import run_checkins
 from weekly_report import run_weekly_report
 from instagram_kit import run_instagram_kit
-from social_poster import run_social_poster
-from nudges import run_nudges
-from source_watch import run_source_watch
-from email_digest import run_email_digest
 from winback import run_winback
 from yad2_client import (
     REGION_SLUGS,
@@ -758,23 +754,6 @@ _RUN_BUDGET_ENV_VAR = "SCRAPER_RUN_BUDGET_SECONDS"
 # features, reminders), ending 27.5 minutes after it started - too close to the next slot. 22 leaves room for those steps.
 _DEFAULT_RUN_BUDGET_SECONDS = 22 * 60
 _RUN_STARTED_AT: float | None = None
-# 2026-11-08 (owner): each run waits a random 0 to SCRAPER_START_JITTER_MAX_SECONDS (default 8 minutes) before it starts,
-# so runs do not begin at exactly :00 and :30. The CronJob cannot fire early, so the jitter is only ever a delay. The
-# delay is taken out of the catch-up budget above, so a delayed run still ends before the next slot.
-_START_JITTER_ENV_VAR = "SCRAPER_START_JITTER_MAX_SECONDS"
-_DEFAULT_START_JITTER_MAX_SECONDS = 8 * 60
-_START_DELAY_SECONDS = 0.0
-
-
-def _start_jitter_seconds(uniform=random.uniform) -> float:
-    """A random start delay between 0 and SCRAPER_START_JITTER_MAX_SECONDS (default 8 minutes); 0 turns it off."""
-    raw = os.environ.get(_START_JITTER_ENV_VAR, "").strip()
-    try:
-        cap = float(raw) if raw else _DEFAULT_START_JITTER_MAX_SECONDS
-    except ValueError:
-        cap = _DEFAULT_START_JITTER_MAX_SECONDS
-    cap = min(max(0.0, cap), _DEFAULT_RUN_BUDGET_SECONDS / 2)
-    return uniform(0.0, cap) if cap > 0 else 0.0
 
 
 def _run_time_left() -> float:
@@ -787,7 +766,7 @@ def _run_time_left() -> float:
         budget = float(raw) if raw else _DEFAULT_RUN_BUDGET_SECONDS
     except ValueError:
         budget = _DEFAULT_RUN_BUDGET_SECONDS
-    return budget - _START_DELAY_SECONDS - (time.monotonic() - _RUN_STARTED_AT)
+    return budget - (time.monotonic() - _RUN_STARTED_AT)
 
 
 async def _backfill_missing_yad2_descriptions(session) -> int:
@@ -1113,15 +1092,8 @@ def _yad2_still_published(item: dict | None) -> bool | None:
     return status in (1, "1") if status is not None else True
 
 
-def _mark_delisted_yad2_verified(
-    session, seen_external_ids: set[str], scraped_city_names: set[str], *, complete: bool = True
-) -> int:
-    """Yad2's delisting pass (see the comment above). Returns how many ads were hidden.
-
-    2026-11-09 (owner): one failed area used to skip this whole pass, so ads taken down everywhere else stayed up. With
-    complete=False (a district or part of the map sweep failed this run) the pass still runs: seen ads come back, and an
-    unseen ad is hidden only when Yad2 itself answers that it is gone. The week-old rule that hides without asking is
-    left out, because an ad in the area that failed was not seen through no fault of its own."""
+def _mark_delisted_yad2_verified(session, seen_external_ids: set[str], scraped_city_names: set[str]) -> int:
+    """Yad2's delisting pass (see the comment above). Returns how many ads were hidden."""
     from todira_common import yad2_item_api
 
     table = Listing.__table__
@@ -1142,16 +1114,14 @@ def _mark_delisted_yad2_verified(
         table.c.city.in_(scraped_city_names),
         table.c.external_id != all_(seen_array),
     )
-    hidden_count = 0
-    if complete:
-        hidden = session.execute(  # unseen for a week: hidden without asking
-            table.update()
-            .where(*unseen, table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, _YAD2_DELIST_UNVERIFIED_AFTER_DAYS))
-            .values(is_delisted=True, delisted_at=func.now())
-            .returning(table.c.id)
-        ).fetchall()
-        hidden_count = len(hidden)
+    hidden = session.execute(  # unseen for a week: hidden without asking
+        table.update()
+        .where(*unseen, table.c.scraped_at < func.now() - func.make_interval(0, 0, 0, _YAD2_DELIST_UNVERIFIED_AFTER_DAYS))
+        .values(is_delisted=True, delisted_at=func.now())
+        .returning(table.c.id)
+    ).fetchall()
     session.commit()
+    hidden_count = len(hidden)
 
     limit = _yad2_verify_per_run()
     if not limit or not yad2_item_api.is_enabled():
@@ -1906,11 +1876,6 @@ def _scrape_komo() -> tuple[list, set[str], int, int, bool]:
         processed_this_run.add(modaa_num)
         new_ids_to_fetch.append(modaa_num)
 
-    # 2026-11-08: Komo's new ads fell from ~900 a day to ~200 from 1.11; how big the list is and how much of it is new
-    logger.info(
-        "Komo list: rent=%d sale=%d known=%d new=%d", len(rent_coordinates), len(sale_coordinates), len(known_ids),
-        len(new_ids_to_fetch),
-    )
     now_ts = time.time()
     failed_ids = _load_komo_failed_ids()
     recently_failed = {
@@ -3015,15 +2980,8 @@ def run_once() -> dict[str, int]:
                         session, seen_external_ids, _homeless_healthy_deal_types(_HOMELESS_CURSOR_STATE)
                     )
                 continue  # this source's run sees only part of its list on purpose - no "not seen = gone" delisting
-            if seen_external_ids and source == Source.YAD2:
-                if not all_succeeded:
-                    logger.warning(
-                        "Yad2: at least one district or part of the map failed this run - only ads Yad2 confirms are "
-                        "gone are hidden, nothing is hidden for being unseen alone"
-                    )
-                delisted_count += _mark_delisted_yad2_verified(
-                    session, seen_external_ids, scraped_city_names, complete=all_succeeded
-                )
+            if all_succeeded and seen_external_ids and source == Source.YAD2:
+                delisted_count += _mark_delisted_yad2_verified(session, seen_external_ids, scraped_city_names)
             elif all_succeeded and seen_external_ids:
                 delisted_count += _mark_delisted(session, source, seen_external_ids, scraped_city_names)
             elif not all_succeeded:
@@ -3214,36 +3172,12 @@ def run_once() -> dict[str, int]:
                 except Exception:
                     session.rollback()
                     logger.exception("weekly report step failed")
-                # 2026-11-08: occasional messages (weekly summary, trial tip, price before the trial ends) - scraper/nudges.py
-                try:
-                    summary.update(run_nudges(session))
-                except Exception:
-                    session.rollback()
-                    logger.exception("nudges step failed")
-                # 2026-11-08: the morning email of new matching flats, off until RESEND_API_KEY (scraper/email_digest.py)
-                try:
-                    summary.update(run_email_digest(session))
-                except Exception:
-                    session.rollback()
-                    logger.exception("email digest step failed")
-                # 2026-11-08: tell the owner the same day when a source brings far fewer flats (scraper/source_watch.py)
-                try:
-                    summary.update(run_source_watch(session))
-                except Exception:
-                    session.rollback()
-                    logger.exception("source watch step failed")
                 # 2026-11-05: Thursday morning, a ready Instagram carousel for the owner (scraper/instagram_kit.py)
                 try:
                     summary.update(run_instagram_kit(session))
                 except Exception:
                     session.rollback()
                     logger.exception("instagram kit step failed")
-                # 2026-11-11: a post a day on Todira's own Facebook Page and Instagram (scraper/social_poster.py)
-                try:
-                    summary.update(run_social_poster(session))
-                except Exception:
-                    session.rollback()
-                    logger.exception("social poster step failed")
                 try:
                     summary["owner_posts_expired"] = _expire_owner_posts(session)
                 except Exception:
@@ -3296,9 +3230,6 @@ def _take_run_lock():
 
 
 if __name__ == "__main__":
-    _START_DELAY_SECONDS = _start_jitter_seconds()
-    logger.info("Waiting %.0f seconds before this run starts (start jitter)", _START_DELAY_SECONDS)
-    time.sleep(_START_DELAY_SECONDS)
     lock_connection, have_lock = _take_run_lock()
     if not have_lock:
         if os.environ.get(_RUN_LOCK_SKIP_ENV_VAR, "").strip().lower() in ("1", "true", "yes"):

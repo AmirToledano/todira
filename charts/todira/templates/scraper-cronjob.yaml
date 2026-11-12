@@ -86,32 +86,6 @@ spec:
                 # existed. See that module's own docstring for what the owner still needs to set
                 # these up (a Bright Data account + a Scraper Studio scraper targeting Yad2 listing
                 # DETAIL pages, not the existing broken search-results one).
-                # 2026-11-11: the daily post on Todira's own Facebook Page and Instagram (scraper/social_poster.py)
-                - name: META_PAGE_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: meta-page-id
-                      optional: true
-                - name: META_PAGE_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: meta-page-token
-                      optional: true
-                - name: META_IG_USER_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: meta-ig-user-id
-                      optional: true
-                # 2026-11-08: the morning email of new matching flats (scraper/email_digest.py). Optional until set.
-                - name: RESEND_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: resend-api-key
-                      optional: true
                 # 2026-10-04: Yad2 listing details via Gemini's free URL-context tool (Web Unlocker only as fallback)
                 - name: GEMINI_API_KEY
                   valueFrom:
@@ -174,14 +148,6 @@ spec:
                     secretKeyRef:
                       name: {{ .Release.Name }}-bot-secret
                       key: bright-data-isp-pass
-                      optional: true
-                # 2026-11-08: proxy pool for scraper/utils/stealth_http.py (comma or space separated proxy URLs). Optional:
-                # unset means StealthHTTPClient connects directly. Set with set-rotating-proxy-secret.yaml.
-                - name: ROTATING_PROXY_URL
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
-                      key: rotating-proxy-url
                       optional: true
                 # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
                 # scraper.komoMaxNewDetailFetchesPerRun for the real math these exist to protect.

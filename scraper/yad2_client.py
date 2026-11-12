@@ -109,18 +109,10 @@ from typing import Any, Iterator
 from urllib.parse import urljoin
 
 import httpx
+
 from todira_common import bright_data_client
-from utils.stealth_http import StealthHTTPClient
 
 logger = logging.getLogger(__name__)
-
-
-def _http_get(url: str, **kwargs: Any) -> httpx.Response:
-    """GET through the stealth client (rotating proxy and headers, jitter, retry on 403/429).
-
-    Same arguments and return value as ``httpx.get``. A fresh client per call picks up the
-    current ROTATING_PROXY_URL. With no proxies configured it connects directly."""
-    return StealthHTTPClient().get(url, **kwargs)
 
 SEARCH_PAGE_URL = "https://www.yad2.co.il/realestate/rent"
 
@@ -431,7 +423,7 @@ def _fetch_search_html(url: str, *, context_label: str) -> str:
     api_key = _get_zenrows_api_key()
 
     try:
-        response = _http_get(
+        response = httpx.get(
             ZENROWS_FETCH_API_URL,
             params={
                 "apikey": api_key,
@@ -656,7 +648,7 @@ def fetch_listing_detail(url: str) -> dict[str, Any] | None:
         return None
 
     try:
-        response = _http_get(
+        response = httpx.get(
             ZENROWS_FETCH_API_URL,
             params={
                 "apikey": api_key,
@@ -874,8 +866,6 @@ def _fetch_json_with_browser_tls(url: str) -> str | None:
     except ImportError:
         logger.warning("curl_cffi is not installed — skipping the free Yad2 map fetch")
         return None
-    proxy = StealthHTTPClient()._pick_proxy()
-    proxy_kwargs = {"proxy": proxy} if proxy else {}
     try:
         response = curl_requests.get(
             url,
@@ -883,7 +873,6 @@ def _fetch_json_with_browser_tls(url: str) -> str | None:
             impersonate="chrome",
             timeout=30,
             allow_redirects=False,
-            **proxy_kwargs,
         )
     except Exception:
         logger.warning("Free Yad2 map fetch failed (network) — falling back to Web Unlocker: %s", url)

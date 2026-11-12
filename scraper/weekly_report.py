@@ -12,6 +12,7 @@ import logging
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
+
 from todira_common import alert_hours, app_flags
 from todira_common.models import ActivityDay, Listing, Payment, User
 from todira_common.owner_alert import alert_owner
@@ -25,9 +26,6 @@ _SOURCE_NAMES = {
     "src_fblead": "תגובות לידים בפייסבוק",
     "src_ig": "הקישור בביו של האינסטגרם",
     "src_pwa": "פתיחות מהאייקון במסך הבית",
-    "src_nudge_weekly": "לחיצות על הסיכום השבועי בטלגרם",
-    "src_nudge_price": "לחיצות על הודעת המחיר לפני סוף הניסיון",
-    "src_email_digest": "לחיצות מהמייל היומי",
     "site_from_google": "גוגל",
     "site_from_facebook": "פייסבוק",
     "site_from_telegram": "טלגרם",
@@ -35,17 +33,6 @@ _SOURCE_NAMES = {
     "site_from_instagram": "אינסטגרם",
     "site_from_tiktok": "טיקטוק",
     "site_from_bing": "בינג",
-}
-
-_NUDGE_NAMES = {
-    "nudge_weekly": "סיכום שבועי נשלח",
-    "nudge_tip": "טיפ ביום השלישי נשלח",
-    "nudge_price": "מחיר לפני סוף הניסיון נשלח",
-    "nudge_off": "ביקשו פחות הודעות כאלה",
-    "email_digest": "קיבלו את המייל היומי",
-    "nudge_blocked_weekly": "הבוט כבר היה חסום אצלם (סיכום שבועי)",
-    "nudge_blocked_tip": "הבוט כבר היה חסום אצלם (טיפ)",
-    "nudge_blocked_price": "הבוט כבר היה חסום אצלם (מחיר)",
 }
 
 
@@ -99,10 +86,6 @@ def build(session: Session, now: dt.datetime) -> str:
         f"דירות חדשות: {new_flats:,}",
     ]
     sources = [(name, people.get(kind, 0)) for kind, name in _SOURCE_NAMES.items() if people.get(kind)]
-    # 2026-11-08: the occasional Telegram messages (scraper/nudges.py): sent, "fewer like this", and already blocked when sent
-    nudges = [(name, people.get(kind, 0)) for kind, name in _NUDGE_NAMES.items() if people.get(kind)]
-    if nudges:
-        lines += ["", "הודעות יזומות (טלגרם ומייל):"] + [f"{name}: {count}" for name, count in nudges]
     if sources:
         lines += ["", "מאיפה הגיעו לאתר:"] + [f"{name}: {count}" for name, count in sources]
     return "\n".join(lines)
