@@ -324,7 +324,7 @@ def test_start_jitter_default_range(monkeypatch):
     monkeypatch.delenv("SCRAPER_START_JITTER_MAX_SECONDS", raising=False)
     seen = []
     scraper_main._start_jitter_seconds(uniform=lambda a, b: seen.append((a, b)) or b)
-    assert seen == [(0.0, 15 * 60)]
+    assert seen == [(0.0, 8 * 60)]
 
 
 def test_start_jitter_env_override_zero_and_bad_value(monkeypatch):
@@ -333,7 +333,7 @@ def test_start_jitter_env_override_zero_and_bad_value(monkeypatch):
     monkeypatch.setenv("SCRAPER_START_JITTER_MAX_SECONDS", "0")
     assert scraper_main._start_jitter_seconds(uniform=lambda a, b: 1 / 0) == 0.0
     monkeypatch.setenv("SCRAPER_START_JITTER_MAX_SECONDS", "soon")
-    assert scraper_main._start_jitter_seconds(uniform=lambda a, b: b) == 15 * 60
+    assert scraper_main._start_jitter_seconds(uniform=lambda a, b: b) == 8 * 60
 
 
 def test_start_jitter_capped_at_half_the_run_budget(monkeypatch):
