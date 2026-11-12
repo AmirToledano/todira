@@ -1,0 +1,91 @@
+# 2026-11-12 (owner): the daily post on Todira's Facebook Page and Instagram (scraper/social_poster.py) and the morning email
+# of new matching flats (scraper/email_digest.py) run here, on their own, with the scraper's image. They used to run at the
+# end of every scraper run (scraper/main.py), which went back to its 7.11 state without them. Each step checks the hour by
+# itself (post 10:00-12:00, email 09:00-12:00) and sends once a day (app_flags), so extra runs in the window do nothing.
+# Both stay off until their keys are set (META_PAGE_ID/META_PAGE_TOKEN, RESEND_API_KEY).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-social-email
+  labels:
+    app: {{ .Release.Name }}-social-email
+spec:
+  schedule: {{ .Values.socialEmail.schedule | quote }}
+  suspend: {{ .Values.socialEmail.suspended | default false }}
+  timeZone: "Asia/Jerusalem"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-social-email
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: social-email
+              image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
+              command: ["python", "-u", "-c"]
+              args:
+                - |
+                  import logging
+                  from todira_common.db import get_session
+                  from email_digest import run_email_digest
+                  from social_poster import run_social_poster
+                  logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+                  log = logging.getLogger("social_email")
+                  summary = {}
+                  with get_session() as session:
+                      for name, step in (("email digest", run_email_digest), ("social poster", run_social_poster)):
+                          try:
+                              summary.update(step(session))
+                          except Exception:
+                              session.rollback()
+                              log.exception("%s step failed", name)
+                  log.info("Social and email summary: %s", summary)
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-postgres-secret
+                      key: database-url
+                - name: WEBSITE_URL
+                  value: "https://{{ .Values.website.domain }}"
+                - name: SESSION_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: session-secret-key
+                      optional: true
+                - name: RESEND_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: resend-api-key
+                      optional: true
+                - name: META_PAGE_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-page-id
+                      optional: true
+                - name: META_PAGE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-page-token
+                      optional: true
+                - name: META_IG_USER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-bot-secret
+                      key: meta-ig-user-id
+                      optional: true
+              resources:
+                requests:
+                  cpu: {{ .Values.resources.socialEmail.requests.cpu }}
+                  memory: {{ .Values.resources.socialEmail.requests.memory }}
+                limits:
+                  cpu: {{ .Values.resources.socialEmail.limits.cpu }}
+                  memory: {{ .Values.resources.socialEmail.limits.memory }}

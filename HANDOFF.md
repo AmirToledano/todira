@@ -11,7 +11,10 @@
 ו-`RESEND_API_KEY` ירדו מה-CronJob ומה-website-deployment). הקבצים שנוספו אחרי 7.11 (למשל `stealth_http.py`,
 `social_poster.py`) נשארו בתיקייה אבל לא מחוברים. הוא החזיר גם את `tests/` ל-7.11; Claude החזיר רק את הטסטים של האתר
 והבוט (conftest ועוד 10 קבצים) לגרסה שמתאימה לקוד הנוכחי. הטסטים של הסורק נשארו של 7.11. בדיקת הנפח: 13.11 ב-17:30.
-מנהל הרשתות כבוי עכשיו גם בקוד: להפעלה צריך להחזיר את החיבור ב-`main.py` ואת משתני `META_*`.
+אחר כך (12.11, 21:25): הפוסט היומי (`social_poster`) והמייל של הבוקר (`email_digest`) חזרו, ב-CronJob נפרד
+`todira-social-email` (`charts/todira/templates/social-email-cronjob.yaml`, כל חצי שעה 09:10 עד 11:40), עם ה-image של הסורק
+ובלי שום שינוי ב-`scraper/`. משתני `META_*` חזרו לאתר (ה-webhook). עדיין מנותקים: `nudges`, `source_watch`, קרוסלת
+האינסטגרם של יום חמישי (`instagram_kit`).
 
 ## סביבת העבודה במחשב (11.11)
 - השיחה רצה ב-tmux `todira` עם Remote Control; עולה לבד: Startup (`C:\Users\AmirT\todira-autostart.vbs`) ומשימה
