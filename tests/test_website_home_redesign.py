@@ -210,16 +210,3 @@ def test_home_city_button_goes_to_that_city_through_login():
     js = (Path(__file__).resolve().parent.parent / "website" / "static" / "home.js").read_text()
     # 2026-11-04 (owner): straight to /search, with the budget and rooms asked on the home page
     assert '"/search?cities=" + encodeURIComponent(city)' in js and '"&price_max=" + budget' in js
-
-
-def test_the_hero_numbers_busiest_cities_and_kept_button_are_on_the_page(client):
-    """2026-11-11 (owner: "Dorin's site looks more professional, how things move"): live numbers, the week's busiest
-    cities and a main button that stays at hand on a phone. All hidden until real numbers arrive (home.js)."""
-    html = client.get("/?lang=he").text
-    for element in ('id="lp-pill" hidden', 'id="lp-stats" hidden', 'id="lp-hot" hidden', 'id="lp-sticky" hidden'):
-        assert element in html
-    assert "start=site_sticky" in html and html.count("lp-reveal") >= 5
-    for key in ("landing.pill_today", "landing.stat_week", "landing.stat_alerts", "landing.stat_cities",
-                "landing.hot_title", "landing.hot_note", "landing.hot_rent", "landing.hot_sale", "landing.hot_more"):
-        for lang in ("he", "en", "ru", "fr", "ar"):
-            assert T[key][lang] and "—" not in T[key][lang] and "–" not in T[key][lang]

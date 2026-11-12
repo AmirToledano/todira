@@ -75,7 +75,7 @@ def test_a_complete_message_is_saved_by_the_rules_alone_without_any_ai_call():
     assert saved[0]["deal_type"] == "rent" and saved[0]["cities"] == ["תל אביב יפו"]
     assert saved[0]["price_max"] == 8500 and saved[0]["rooms_min"] == 3
     assert saved[0]["fields"] == {"require_balcony": True} and saved[0]["keywords"] == []
-    assert _texts(update)[0] == "🔎 החיפוש שלך פעיל: שכירות · תל אביב יפו · 3-3.5 חדרים · עד ₪8,500 · מרפסת"
+    assert _texts(update)[0] == "🔎 החיפוש שלך פעיל: שכירות · תל אביב יפו · 3–3.5 חדרים · עד ₪8,500 · מרפסת"
 
 
 def test_a_missing_deal_type_is_asked_with_buttons_when_the_ai_is_unavailable():
@@ -84,7 +84,7 @@ def test_a_missing_deal_type_is_asked_with_buttons_when_the_ai_is_unavailable():
     result, saved = _run(update, context)
     assert result == onboarding.AWAIT_FREETEXT and not saved
     call = update.message.reply_text.await_args_list[-1]
-    assert "הבנתי: ירושלים · 5-5.5 חדרים." in call.args[0] and bot_text("onboarding.ask_deal", "he") in call.args[0]
+    assert "הבנתי: ירושלים · 5–5.5 חדרים." in call.args[0] and bot_text("onboarding.ask_deal", "he") in call.args[0]
     buttons = [b.callback_data for row in call.kwargs["reply_markup"].inline_keyboard for b in row]
     assert buttons == ["ob:deal:rent", "ob:deal:sale", "ob:deal:sublet"]
     assert context.user_data["onboarding"]["cities"] == ["ירושלים"]

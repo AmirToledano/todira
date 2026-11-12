@@ -12,9 +12,6 @@ import os  # noqa: E402
 
 # 2026-11-02: the site's session cookie is https-only in production; TestClient talks plain http
 os.environ.setdefault("SESSION_COOKIE_SECURE", "0")
-# 2026-11-10: /apartments now opens with placeholder cards and loads its first batch after; most website tests read the
-# cards from the full page, so they keep the direct render. tests/test_apartments_deferred.py covers the new way.
-os.environ.setdefault("APARTMENTS_DEFER_FIRST_BATCH", "0")
 sys.path.insert(0, str(_ROOT / "common"))
 sys.path.insert(0, str(_ROOT / "scraper"))
 sys.path.insert(0, str(_ROOT / "bot"))

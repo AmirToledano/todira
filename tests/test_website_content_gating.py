@@ -672,7 +672,7 @@ def test_apartments_first_page_shows_only_page_size_and_a_sentinel(client):
         assert f"עיר-{i}" not in resp.text
     assert f'data-next-offset="{page_size}"' in resp.text
     # The results-count badge shows the TOTAL match count, not just this page's size.
-    assert f">{page_size + 5}</b>" in resp.text
+    assert f"<b>{page_size + 5}</b>" in resp.text
 
 
 def test_apartments_no_sentinel_when_everything_fits_on_one_page(client):

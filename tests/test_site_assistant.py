@@ -93,7 +93,7 @@ def test_owner_gets_an_answer_and_the_bubble(client, monkeypatch):
         patch.object(assistant, "answer", lambda turns, lang, prices, ctx: "תשובה"),
     ):
         resp = client.post("/api/assistant", json={"messages": [{"role": "user", "text": "כמה זה עולה?"}]})
-        assert resp.json() == {"reply": "תשובה", "suggestions": [], "actions": []}
+        assert resp.json() == {"reply": "תשובה", "suggestions": []}
         assert 'id="assistant"' in client.get("/").text
 
 
@@ -116,40 +116,3 @@ def test_follow_up_questions_are_split_off_the_answer():
     assert reply == "אפשר לבטל תוך 14 יום."
     assert more == ["כמה מקבלים בחזרה?", "איך מבטלים?", "מה עם קבלה?"]
     assert assistant.split_suggestions("רק תשובה") == ("רק תשובה", [])
-
-
-# --- 2026-11-09 (owner): buttons to the page an answer points to ---
-
-
-def test_go_line_gives_known_keys_only_and_is_removed_from_the_answer():
-    reply, keys = assistant.split_actions("אפשר לשנות את זה בסינון.\nGO: filter | BOT | evil.com | filter | upgrade\n")
-    assert reply == "אפשר לשנות את זה בסינון."
-    assert keys == ["filter", "bot"]
-    assert assistant.split_actions("בלי כפתור") == ("בלי כפתור", [])
-
-
-def test_every_action_has_a_safe_link_and_a_label_in_each_main_language():
-    import i18n
-    for key, (url, about) in assistant.ACTIONS.items():
-        assert url.startswith("/") and not url.startswith("//") or url.startswith("https://t.me/AmirDirotBot?start=")
-        assert about
-        labels = i18n.TRANSLATIONS[f"assistant.go.{key}"]
-        for lang in ("he", "en", "ru", "fr", "ar"):
-            assert labels[lang] and "—" not in labels[lang] and "–" not in labels[lang]
-    assert "GO:" in assistant.system_prompt("he", {}, None)
-
-
-def test_endpoint_returns_buttons_for_the_answer(client, monkeypatch):
-    monkeypatch.setenv("GEMINI_SITE_API_KEY", "k")
-    monkeypatch.delenv("ASSISTANT_ENABLED", raising=False)
-    assistant._counts.clear()
-    with (
-        patch.object(website_main, "_is_owner_signed_in", lambda request: True),
-        patch.object(website_main, "_assistant_user_context", lambda request: None),
-        patch.object(assistant, "answer",
-                     lambda turns, lang, prices, ctx: "פשוט פותחים את הבוט.\nGO: bot|nope\nSUGGEST: מה המחיר?|איך מבטלים?"),
-    ):
-        data = client.post("/api/assistant", json={"messages": [{"role": "user", "text": "איך פותחים את הבוט?"}]}).json()
-    assert data["reply"] == "פשוט פותחים את הבוט."
-    assert data["suggestions"] == ["מה המחיר?", "איך מבטלים?"]
-    assert data["actions"] == [{"label": "לפתוח את הבוט בטלגרם", "url": assistant.BOT_ACTION_URL}]

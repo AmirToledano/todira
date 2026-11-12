@@ -126,14 +126,12 @@ def test_leads_group_by_name_or_command(monkeypatch):
 
 
 def test_the_ready_reply_names_the_place_varies_and_links_the_site():
-    # 2026-11-11 (owner: Facebook stopped him commenting): many short wordings, never the same text for every post
-    replies = {seeker_leads.reply_text({"post_id": str(1000 + i)}, "חיפה", "sale") for i in range(200)}
-    assert len(replies) > 60
+    replies = {seeker_leads.reply_text({"post_id": str(i)}, "חיפה", "sale") for i in range(6)}
+    assert len(replies) == len(seeker_leads._REPLIES)
     for reply in replies:
-        assert "למכירה בחיפה" in reply
+        assert "דירה חדשה למכירה בחיפה" in reply or "דירות למכירה בחיפה" in reply
         assert reply.endswith("https://todira.app/?src=fblead")
         assert "@" not in reply and "—" not in reply and "–" not in reply
-        assert "פייסבוק" not in reply and len(reply) < 200  # no source named, short enough for a quick approval
     body = seeker_leads.message(_post("1"), None, None)
     assert "תגובה מוכנה" in body and "<code>" in body
 

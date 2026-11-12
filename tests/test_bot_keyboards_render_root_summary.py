@@ -28,11 +28,10 @@ def test_render_root_summary_escapes_html_special_chars_in_keywords():
     assert "<3 חדרים" not in text
 
 
-def test_render_root_summary_says_no_limit_for_no_keywords():
-    # 2026-11-09: was "—", and no "—" may appear in anything a user reads (CLAUDE.md)
+def test_render_root_summary_shows_dash_for_no_keywords():
     draft = _default_draft()
     draft["keywords"] = []
 
     text = kb.render_root_summary(draft, "he")
 
-    assert "🔍 מילות מפתח: ללא הגבלה" in text
+    assert "🔍 מילות מפתח: —" in text
