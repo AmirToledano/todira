@@ -1,12 +1,19 @@
+# 2026-11-12 (owner): a run every 45 minutes. One cron line cannot say that, so each line of scraper.schedules gets its own
+# CronJob (the first keeps the old name). concurrencyPolicy only guards one CronJob; across them the database lock does
+# (scraper/main.py _take_run_lock, with SCRAPER_SKIP_IF_BUSY below).
+{{- range $i, $schedule := .Values.scraper.schedules }}
+{{- if $i }}
+---
+{{- end }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ .Release.Name }}-scraper
+  name: {{ $.Release.Name }}-scraper{{ if $i }}-{{ add1 $i }}{{ end }}
   labels:
-    app: {{ .Release.Name }}-scraper
+    app: {{ $.Release.Name }}-scraper
 spec:
-  schedule: {{ .Values.scraper.schedule | quote }}
-  suspend: {{ .Values.scraper.suspended | default false }}
+  schedule: {{ $schedule | quote }}
+  suspend: {{ $.Values.scraper.suspended | default false }}
   # Local time, DST-safe — see values.yaml's scraper comment for why this window/timezone and the
   # budget math behind the schedule above. Requires CronJob's timeZone field (stable since k8s
   # 1.27); confirmed present on the real cluster 2026-09-03 (`kubectl get cronjobs -A` already
@@ -26,7 +33,7 @@ spec:
       template:
         metadata:
           labels:
-            app: {{ .Release.Name }}-scraper
+            app: {{ $.Release.Name }}-scraper
         spec:
           # Never (was OnFailure): with backoffLimit 0 a crash makes the Job fail either way, but OnFailure restarts the container in
           # place and the Job controller then DELETES the pod, taking its logs and OOMKilled state with it (the 18:00 UTC run on
@@ -34,26 +41,30 @@ spec:
           restartPolicy: Never
           containers:
             - name: scraper
-              image: "{{ .Values.scraperImage.repository }}:{{ .Values.scraperImage.tag | default "latest" }}"
+              image: "{{ $.Values.scraperImage.repository }}:{{ $.Values.scraperImage.tag | default "latest" }}"
               env:
                 # 2026-10-14: at most two glibc malloc arenas, so a multi-threaded Python process keeps less freed memory
                 # to itself on the 2 GB server (the default allows 8 per CPU).
                 - name: MALLOC_ARENA_MAX
                   value: "2"
+                # 2026-11-12 (owner): a run that finds another run still holding the lock (after SCRAPER_LOCK_WAIT_SECONDS,
+                # 10 minutes) gives up its turn instead of running alongside it.
+                - name: SCRAPER_SKIP_IF_BUSY
+                  value: "true"
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-postgres-secret
+                      name: {{ $.Release.Name }}-postgres-secret
                       key: database-url
                 - name: TELEGRAM_BOT_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: telegram-bot-token
                 - name: ZENROWS_API_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: zenrows-api-key
                       optional: true
                 # scraper/notifier.py's access gating (2026-09-05, todira_common.access.
@@ -62,7 +73,7 @@ spec:
                 - name: OWNER_TELEGRAM_USER_ID
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: owner-telegram-user-id
                       optional: true
                 # Signs the "?t=" login links the scraper puts in notification links (todira_common/uid_token.py).
@@ -72,11 +83,11 @@ spec:
                 - name: SESSION_SECRET_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: session-secret-key
                       optional: true
                 - name: WEBSITE_URL
-                  value: "https://{{ .Values.website.domain }}"
+                  value: "https://{{ $.Values.website.domain }}"
                 # 2026-10-22: the "share this flat" button on listing cards (owner approved the wording).
                 - name: BOT_SHARE_BUTTON
                   value: "1"
@@ -90,62 +101,62 @@ spec:
                 - name: META_PAGE_ID
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: meta-page-id
                       optional: true
                 - name: META_PAGE_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: meta-page-token
                       optional: true
                 - name: META_IG_USER_ID
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: meta-ig-user-id
                       optional: true
                 # 2026-11-08: the morning email of new matching flats (scraper/email_digest.py). Optional until set.
                 - name: RESEND_API_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: resend-api-key
                       optional: true
                 # 2026-10-04: Yad2 listing details via Gemini's free URL-context tool (Web Unlocker only as fallback)
                 - name: GEMINI_API_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: gemini-api-key
                       optional: true
                 - name: YAD2_DETAIL_VIA_GEMINI
-                  value: {{ .Values.scraper.yad2DetailViaGemini | default false | quote }}
+                  value: {{ $.Values.scraper.yad2DetailViaGemini | default false | quote }}
                 - name: YAD2_ITEM_API
-                  value: {{ .Values.scraper.yad2ItemApi | default false | quote }}
-                {{- if .Values.scraper.textFeaturesMaxPerRun }}
+                  value: {{ $.Values.scraper.yad2ItemApi | default false | quote }}
+                {{- if $.Values.scraper.textFeaturesMaxPerRun }}
                 - name: TEXT_FEATURES_MAX_PER_RUN
-                  value: {{ .Values.scraper.textFeaturesMaxPerRun | quote }}
+                  value: {{ $.Values.scraper.textFeaturesMaxPerRun | quote }}
                 {{- end }}
                 # Comma-separated model chain; empty = the code's verified default (gemini_url_detail._DEFAULT_MODELS).
                 - name: YAD2_GEMINI_MODEL
-                  value: {{ .Values.yad2GeminiModels | default "" | quote }}
+                  value: {{ $.Values.yad2GeminiModels | default "" | quote }}
                 - name: BRIGHT_DATA_API_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: bright-data-api-key
                       optional: true
                 - name: BRIGHT_DATA_COLLECTOR_ID
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: bright-data-collector-id
                       optional: true
                 - name: BRIGHT_DATA_DESCRIPTION_FIELD
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: bright-data-description-field
                       optional: true
                 # 2026-09-14: Bright Data's flat-rate ISP proxy (bright_data_client.py's
@@ -160,19 +171,19 @@ spec:
                 - name: BRIGHT_DATA_ISP_HOST
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: bright-data-isp-host
                       optional: true
                 - name: BRIGHT_DATA_ISP_USER
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: bright-data-isp-user
                       optional: true
                 - name: BRIGHT_DATA_ISP_PASS
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: bright-data-isp-pass
                       optional: true
                 # 2026-11-08: proxy pool for scraper/utils/stealth_http.py (comma or space separated proxy URLs). Optional:
@@ -180,7 +191,7 @@ spec:
                 - name: ROTATING_PROXY_URL
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Release.Name }}-bot-secret
+                      name: {{ $.Release.Name }}-bot-secret
                       key: rotating-proxy-url
                       optional: true
                 # 2026-09-13 credit-budget safety mechanisms — see values.yaml's own comment on
@@ -188,62 +199,63 @@ spec:
                 # Only set when the value is actually present, so scraper/main.py's own Python-side
                 # defaults (unset env var) apply otherwise rather than an empty string overriding
                 # them — same pattern as the optional secretKeyRefs above.
-                {{- if .Values.scraper.komoMaxNewDetailFetchesPerRun }}
+                {{- if $.Values.scraper.komoMaxNewDetailFetchesPerRun }}
                 - name: KOMO_MAX_NEW_DETAIL_FETCHES_PER_RUN
-                  value: {{ .Values.scraper.komoMaxNewDetailFetchesPerRun | quote }}
+                  value: {{ $.Values.scraper.komoMaxNewDetailFetchesPerRun | quote }}
                 {{- end }}
                 - name: YAD2_FREE_MAP_FETCH
-                  value: {{ .Values.scraper.yad2FreeMapFetch | default false | quote }}
+                  value: {{ $.Values.scraper.yad2FreeMapFetch | default false | quote }}
                 - name: YAD2_TILE_SWEEP
-                  value: {{ .Values.scraper.yad2TileSweep | default false | quote }}
+                  value: {{ $.Values.scraper.yad2TileSweep | default false | quote }}
                 - name: YAD2_SALE_TILE_SWEEP
-                  value: {{ .Values.scraper.yad2SaleTileSweep | default false | quote }}
-                {{- if .Values.scraper.yad2TileMaxRequests }}
+                  value: {{ $.Values.scraper.yad2SaleTileSweep | default false | quote }}
+                {{- if $.Values.scraper.yad2TileMaxRequests }}
                 - name: YAD2_TILE_MAX_REQUESTS
-                  value: {{ .Values.scraper.yad2TileMaxRequests | quote }}
+                  value: {{ $.Values.scraper.yad2TileMaxRequests | quote }}
                 {{- end }}
-                {{- if .Values.scraper.yad2MaxPagesPerRegion }}
+                {{- if $.Values.scraper.yad2MaxPagesPerRegion }}
                 - name: YAD2_MAX_PAGES_PER_REGION
-                  value: {{ .Values.scraper.yad2MaxPagesPerRegion | quote }}
+                  value: {{ $.Values.scraper.yad2MaxPagesPerRegion | quote }}
                 {{- end }}
                 # 2026-10-08: read Homeless's /rent/<n> and /sale/<n> pages (first pages every run + a rolling cursor over the rest).
                 - name: HOMELESS_PAGINATION
-                  value: {{ .Values.scraper.homelessPagination | default false | quote }}
+                  value: {{ $.Values.scraper.homelessPagination | default false | quote }}
                 # 2026-10-09: free browser-fingerprint fetch for Homeless (ZenRows only as a capped fallback), see values.yaml.
                 - name: HOMELESS_FREE_FETCH
-                  value: {{ .Values.scraper.homelessFreeFetch | default false | quote }}
+                  value: {{ $.Values.scraper.homelessFreeFetch | default false | quote }}
                 - name: HOMELESS_ZENROWS_MAX_PER_RUN
-                  value: {{ .Values.scraper.homelessZenrowsMaxPerRun | default 10 | quote }}
+                  value: {{ $.Values.scraper.homelessZenrowsMaxPerRun | default 10 | quote }}
                 - name: HOMELESS_ROLLING_PAGES_PER_RUN
-                  value: {{ .Values.scraper.homelessRollingPagesPerRun | default 2 | quote }}
-                {{- if .Values.scraper.homelessBackfillMaxPerRun }}
+                  value: {{ $.Values.scraper.homelessRollingPagesPerRun | default 2 | quote }}
+                {{- if $.Values.scraper.homelessBackfillMaxPerRun }}
                 - name: HOMELESS_BACKFILL_MAX_PER_RUN
-                  value: {{ .Values.scraper.homelessBackfillMaxPerRun | quote }}
+                  value: {{ $.Values.scraper.homelessBackfillMaxPerRun | quote }}
                 {{- end }}
-                {{- if .Values.scraper.homelessMaxNewDescriptionFetchesPerRun }}
+                {{- if $.Values.scraper.homelessMaxNewDescriptionFetchesPerRun }}
                 - name: HOMELESS_MAX_NEW_DESCRIPTION_FETCHES_PER_RUN
-                  value: {{ .Values.scraper.homelessMaxNewDescriptionFetchesPerRun | quote }}
+                  value: {{ $.Values.scraper.homelessMaxNewDescriptionFetchesPerRun | quote }}
                 {{- end }}
-                {{- if .Values.scraper.brightDataBackfillMaxPerRun }}
+                {{- if $.Values.scraper.brightDataBackfillMaxPerRun }}
                 - name: BRIGHT_DATA_BACKFILL_MAX_PER_RUN
-                  value: {{ .Values.scraper.brightDataBackfillMaxPerRun | quote }}
+                  value: {{ $.Values.scraper.brightDataBackfillMaxPerRun | quote }}
                 {{- end }}
-                {{- if .Values.scraper.brightDataEnrichMaxNewListingsPerRun }}
+                {{- if $.Values.scraper.brightDataEnrichMaxNewListingsPerRun }}
                 - name: BRIGHT_DATA_ENRICH_MAX_NEW_LISTINGS_PER_RUN
-                  value: {{ .Values.scraper.brightDataEnrichMaxNewListingsPerRun | quote }}
+                  value: {{ $.Values.scraper.brightDataEnrichMaxNewListingsPerRun | quote }}
                 {{- end }}
                 - name: NOTIFICATIONS_SUSPENDED
-                  value: {{ .Values.scraper.notificationsSuspended | default false | quote }}
+                  value: {{ $.Values.scraper.notificationsSuspended | default false | quote }}
                 # 2026-09-15: real, confirmed kill-switch — see values.yaml's own comment on
                 # scraper.brightDataEnrichmentSuspended for the full history (the Bright Data DCA
                 # collector this originally guarded against is no longer even called; 2026-09-17
                 # lifted now that enrichment routes through Web Unlocker instead).
                 - name: BRIGHT_DATA_ENRICHMENT_SUSPENDED
-                  value: {{ .Values.scraper.brightDataEnrichmentSuspended | default false | quote }}
+                  value: {{ $.Values.scraper.brightDataEnrichmentSuspended | default false | quote }}
               resources:
                 requests:
-                  cpu: {{ .Values.resources.scraper.requests.cpu }}
-                  memory: {{ .Values.resources.scraper.requests.memory }}
+                  cpu: {{ $.Values.resources.scraper.requests.cpu }}
+                  memory: {{ $.Values.resources.scraper.requests.memory }}
                 limits:
-                  cpu: {{ .Values.resources.scraper.limits.cpu }}
-                  memory: {{ .Values.resources.scraper.limits.memory }}
+                  cpu: {{ $.Values.resources.scraper.limits.cpu }}
+                  memory: {{ $.Values.resources.scraper.limits.memory }}
+{{- end }}
