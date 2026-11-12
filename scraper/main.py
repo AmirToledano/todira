@@ -2013,7 +2013,8 @@ _HOMELESS_CURSOR_FLAG = "homeless_rolling_cursor"
 _HOMELESS_ROWS_SEEDED_FLAG = "homeless_table_rows_seeded"
 _HOMELESS_STALE_DAYS = 6
 _HOMELESS_LAP_HEALTHY_DAYS = 5
-_HOMELESS_PAGE_PAUSE_SECONDS = 1.5
+# 2026-11-12 (owner: polite scraping): a random pause between list pages instead of a fixed 1.5 seconds.
+_HOMELESS_PAGE_PAUSE_SECONDS_RANGE = (1.5, 3.5)
 _HOMELESS_ROLLING_ONLY_IDS: set[str] = set()
 _HOMELESS_CURSOR_STATE: dict[str, dict] = {}
 # Sources whose run sees only part of the list on purpose: run_once skips the "not seen = gone" delisting for them.
@@ -2044,7 +2045,7 @@ def _homeless_read_category(
     errors = 0
     for page in range(1, _HOMELESS_FRESH_PAGES + 1):
         if page > 1:
-            sleep(_HOMELESS_PAGE_PAUSE_SECONDS)
+            sleep(random.uniform(*_HOMELESS_PAGE_PAUSE_SECONDS_RANGE))
         try:
             for card in fetch_page(base_url, page):
                 cards.setdefault(card["id"], card)
@@ -2056,7 +2057,7 @@ def _homeless_read_category(
     page = next_cursor
     wrapped = False
     for _ in range(_homeless_rolling_pages_per_run()):
-        sleep(_HOMELESS_PAGE_PAUSE_SECONDS)
+        sleep(random.uniform(*_HOMELESS_PAGE_PAUSE_SECONDS_RANGE))
         try:
             page_cards = fetch_page(base_url, page)
         except HomelessFetchError:

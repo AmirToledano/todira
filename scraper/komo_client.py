@@ -101,6 +101,7 @@ from typing import Any, Iterator
 from urllib.parse import urljoin
 
 import httpx
+from utils.polite import jitter_sleep
 from yad2_client import CITY_SLUG_TO_HEBREW_NAME
 
 logger = logging.getLogger(__name__)
@@ -234,6 +235,9 @@ class KomoFetchError(RuntimeError):
 
 
 _DIRECT_FETCH_TIMEOUT_SECONDS = 30.0
+# 2026-11-12 (owner: polite scraping): a random pause before every request to Komo. The detail pages run 5 at a time
+# (scraper/main.py _KOMO_DETAIL_FETCH_CONCURRENCY), so this keeps Komo at a few requests a second, not a burst.
+_REQUEST_JITTER_SECONDS = (0.5, 1.5)
 
 
 def _isp_proxy_get(url: str, *, context_label: str) -> str:
@@ -251,6 +255,7 @@ def _isp_proxy_get(url: str, *, context_label: str) -> str:
     if that happens, not preemptively. Raises KomoFetchError (never returns None) so every caller
     keeps the same try/except shape it always had, matching yad2_client.fetch_map_markers' own
     "raise on failure" convention for a primary fetch."""
+    jitter_sleep(*_REQUEST_JITTER_SECONDS)
     try:
         response = httpx.get(url, timeout=_DIRECT_FETCH_TIMEOUT_SECONDS)
     except httpx.HTTPError as exc:
@@ -267,6 +272,7 @@ def _isp_proxy_post(url: str, data: dict[str, str], *, context_label: str) -> st
     """POST counterpart to _isp_proxy_get above — used only by fetch_coordinate_ids' own second
     stage (the adscoordinates/list/ endpoint, which requires a POST body, not a GET). Same
     2026-09-15 direct-request migration, same reasoning — see _isp_proxy_get's own docstring."""
+    jitter_sleep(*_REQUEST_JITTER_SECONDS)
     try:
         response = httpx.post(url, data=data, timeout=_DIRECT_FETCH_TIMEOUT_SECONDS)
     except httpx.HTTPError as exc:

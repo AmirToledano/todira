@@ -15,6 +15,8 @@ os.environ.setdefault("SESSION_COOKIE_SECURE", "0")
 # 2026-11-10: /apartments now opens with placeholder cards and loads its first batch after; most website tests read the
 # cards from the full page, so they keep the direct render. tests/test_apartments_deferred.py covers the new way.
 os.environ.setdefault("APARTMENTS_DEFER_FIRST_BATCH", "0")
+# 2026-11-12: the scraper's random pauses between requests (scraper/utils/polite.py) are skipped in tests.
+os.environ.setdefault("POLITE_JITTER_DISABLED", "1")
 sys.path.insert(0, str(_ROOT / "common"))
 sys.path.insert(0, str(_ROOT / "scraper"))
 sys.path.insert(0, str(_ROOT / "bot"))
