@@ -632,3 +632,59 @@ def test_safe_range_update_checks_against_the_existing_unchanged_side():
 def test_safe_range_update_allows_one_sided_range():
     assert safe_range_update(None, None, 5, None) == (5, None)
     assert safe_range_update(None, None, None, 10) == (None, 10)
+
+
+# --- 2026-11-10 (owner): smarter neighbourhood and street matching, in our own matching only ---
+
+
+def test_street_matches_whatever_the_house_number_or_prefix():
+    f = make_filter(streets_include=["הרצל"])
+    for street in ("הרצל 12", "רחוב הרצל 12", "רח' הרצל 12/3", "הרצל 12א", " הרצל "):
+        assert evaluate(f, make_listing(street=street)).matched, street
+    assert "street_include" in evaluate(f, make_listing(street="בן יהודה 12")).failed_hard_filters
+    # the filter side is cleaned the same way
+    assert evaluate(make_filter(streets_include=["רחוב הרצל 5"]), make_listing(street="הרצל 40")).matched
+    # "שד'" is "שדרות", and quote marks do not matter
+    assert evaluate(make_filter(streets_include=["שדרות רוטשילד"]), make_listing(street="שד' רוטשילד 3")).matched
+    assert evaluate(make_filter(streets_include=["כט בנובמבר"]), make_listing(street='כ"ט בנובמבר 8')).matched
+
+
+def test_a_street_that_is_only_a_number_keeps_its_number():
+    f = make_filter(streets_include=["רחוב 12"])
+    assert evaluate(f, make_listing(street="12")).matched
+    assert "street_include" in evaluate(f, make_listing(street="13")).failed_hard_filters
+
+
+def test_street_entry_can_be_tied_to_a_city():
+    f = make_filter(cities=[], streets_include=["תל אביב:הרצל"])
+    assert evaluate(f, make_listing(city="תל אביב", street="הרצל 3")).matched
+    assert "street_include" in evaluate(f, make_listing(city="חיפה", street="הרצל 3")).failed_hard_filters
+    # without a city the street counts in any city of the search
+    assert evaluate(make_filter(cities=[], streets_include=["הרצל"]), make_listing(city="חיפה", street="הרצל 3")).matched
+
+
+def test_street_exclude_ignores_the_house_number_and_a_missing_street():
+    f = make_filter(streets_exclude=["הרצל"])
+    assert "street_exclude" in evaluate(f, make_listing(street="רחוב הרצל 12")).failed_hard_filters
+    assert evaluate(f, make_listing(street=None)).matched
+
+
+def test_neighbourhood_entry_without_a_city_and_with_punctuation():
+    f = make_filter(neighborhoods_include=["פלורנטין"])
+    assert evaluate(f, make_listing(city="תל אביב", neighborhood="פלורנטין")).matched
+    f = make_filter(neighborhoods_include=["תל אביב:נווה-צדק"])
+    assert evaluate(f, make_listing(city="תל אביב", neighborhood="נוה צדק")).matched
+    assert "neighborhood_include" in evaluate(f, make_listing(city="תל אביב", neighborhood="פלורנטין")).failed_hard_filters
+    f = make_filter(neighborhoods_exclude=["נווה צדק"])
+    assert "neighborhood_exclude" in evaluate(f, make_listing(city="תל אביב", neighborhood="נוה-צדק")).failed_hard_filters
+
+
+def test_a_listing_with_no_street_or_neighbourhood_passes_only_when_missing_details_are_included():
+    for field_name, listing_field, reason in (("streets_include", "street", "street_include"),
+                                              ("neighborhoods_include", "neighborhood", "neighborhood_include")):
+        strict = make_filter(**{field_name: ["הרצל"]})
+        assert reason in evaluate(strict, make_listing(**{listing_field: None})).failed_hard_filters
+        assert reason in evaluate(strict, make_listing(**{listing_field: "  "})).failed_hard_filters
+        lenient = make_filter(include_missing_details=True, **{field_name: ["הרצל"]})
+        assert evaluate(lenient, make_listing(**{listing_field: None})).matched
+        assert reason in evaluate(lenient, make_listing(**{listing_field: "אחר"})).failed_hard_filters

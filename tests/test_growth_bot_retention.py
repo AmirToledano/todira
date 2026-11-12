@@ -169,18 +169,19 @@ def _fake_db(existing_filter):
 
 def test_first_filter_saved_through_filter_grants_the_invite_reward():
     with _fake_db(existing_filter=None) as mock_reward:
-        assert filter_conversation._save_and_match_sync(SimpleNamespace(id=5), {"cities": []}) == (3, True)
+        assert filter_conversation._save_sync(SimpleNamespace(id=5), {"cities": []}) is True
     mock_reward.assert_called_once()
 
 
 def test_updating_an_existing_filter_does_not_reward():
     with _fake_db(existing_filter=SimpleNamespace()) as mock_reward:
-        assert filter_conversation._save_and_match_sync(SimpleNamespace(id=5), {"cities": []}) == (3, False)
+        assert filter_conversation._save_sync(SimpleNamespace(id=5), {"cities": []}) is False
     mock_reward.assert_not_called()
 
 
 def test_handle_save_sends_the_friend_bonus_note(monkeypatch):
-    monkeypatch.setattr(filter_conversation, "_save_and_match_sync", lambda *a, **k: (0, True))
+    monkeypatch.setattr(filter_conversation, "_save_sync", lambda *a, **k: True)
+    monkeypatch.setattr(filter_conversation, "_count_matches_sync", lambda *a, **k: 0)
     draft = filter_conversation._default_draft()
     message = SimpleNamespace(reply_text=AsyncMock())
     query = SimpleNamespace(edit_message_text=AsyncMock(), message=message)
