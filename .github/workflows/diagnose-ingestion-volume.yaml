@@ -1,0 +1,78 @@
+name: "Diagnose: new listings ingested, last 24 hours vs last month (read-only, counts only)"
+
+# Owner question (2026-11-12): after the schedule change, did the volume of new listings hold? Prints the last 24 hours
+# by source and the daily average of every week since 5.10 by source, as a baseline. Read-only, aggregate counts only.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: New listings, last 24 hours and weekly baseline
+        run: |
+          kubectl delete pod diag-ingestion -n todira --ignore-not-found --wait=true
+          cat <<'PODYAML' | kubectl apply -n todira -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: diag-ingestion
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: diag-ingestion
+                image: postgres:16-alpine
+                env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: todira-postgres-secret
+                        key: database-url
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    CONN="postgresql://${DATABASE_URL#*://}"
+                    echo "== now (Israel) =="
+                    psql "$CONN" -t -c "SELECT now() AT TIME ZONE 'Asia/Jerusalem';"
+                    echo "== new listings, last 24 hours =="
+                    psql "$CONN" -c "
+                      SELECT coalesce(source::text, 'TOTAL') AS source, count(*) AS new_24h,
+                             count(*) FILTER (WHERE duplicate_of_id IS NULL) AS unique_24h
+                      FROM listings WHERE first_seen_at >= now() - interval '24 hours'
+                      GROUP BY ROLLUP(source) ORDER BY source NULLS LAST;
+                    "
+                    echo "== daily average of new listings per week (weeks start Sunday, Israel time) =="
+                    psql "$CONN" -c "
+                      WITH d AS (
+                        SELECT (first_seen_at AT TIME ZONE 'Asia/Jerusalem')::date AS day, source, duplicate_of_id
+                        FROM listings
+                        WHERE first_seen_at >= (timestamp '2026-10-04 00:00' AT TIME ZONE 'Asia/Jerusalem')
+                      )
+                      SELECT (day - extract(dow FROM day)::int) AS week_start, count(DISTINCT day) AS days,
+                             round(count(*)::numeric / count(DISTINCT day), 0) AS per_day_all,
+                             round(count(*) FILTER (WHERE duplicate_of_id IS NULL)::numeric / count(DISTINCT day), 0) AS per_day_unique,
+                             round(count(*) FILTER (WHERE source = 'yad2')::numeric / count(DISTINCT day), 0) AS yad2,
+                             round(count(*) FILTER (WHERE source = 'komo')::numeric / count(DISTINCT day), 0) AS komo,
+                             round(count(*) FILTER (WHERE source = 'homeless')::numeric / count(DISTINCT day), 0) AS homeless,
+                             round(count(*) FILTER (WHERE source::text LIKE 'facebook%')::numeric / count(DISTINCT day), 0) AS facebook
+                      FROM d GROUP BY 1 ORDER BY 1;
+                    "
+                    echo "== sources seen =="
+                    psql "$CONN" -c "SELECT source, count(*) FROM listings WHERE first_seen_at >= now() - interval '40 days' GROUP BY 1 ORDER BY 2 DESC;"
+          PODYAML
+          for i in $(seq 1 60); do
+            PHASE=$(kubectl get pod diag-ingestion -n todira -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then break; fi
+            sleep 2
+          done
+          kubectl logs -n todira diag-ingestion || true
+          kubectl delete pod diag-ingestion -n todira --ignore-not-found
