@@ -102,7 +102,7 @@ def test_every_new_motion_stops_for_reduced_motion_and_the_accessibility_menu():
     """Each new looping animation is written behind both switches: the visitor's "reduce motion" and the site's own
     accessibility menu ("stop motion" puts .a11y-no-motion on the page)."""
     css = (STATIC / "style.css").read_text() + (STATIC / "home.css").read_text()
-    for name in ("td-wag", "td-step", "td-bob", "td-sniff", "td-look", "paw-print", "lp-pin-drop", "lp-route"):
+    for name in ("td-step-a", "td-step-b", "td-bob", "td-sniff", "td-nod", "paw-print", "lp-pin-drop", "lp-route"):
         uses = [line for line in css.splitlines() if re.search(r"animation:\s*" + name + r"\b", line)]
         assert uses, name
         assert all("html:not(.a11y-no-motion)" in line for line in uses), name
@@ -115,3 +115,24 @@ def test_the_scripts_check_for_reduced_motion_before_moving_anything():
     for block in ("function street()", "function weekChart(", "function xray()"):
         start = home.index(block)
         assert "reduce" in home[start:start + 3000], block
+
+
+def test_the_footer_is_four_headed_groups(client):
+    html = client.get("/about?lang=he").text
+    footer = html[html.index('<footer class="site-footer">'):]
+    assert footer.count('class="footer-col"') == 4 and 'class="footer-brand"' in footer and 'class="footer-bottom"' in footer
+    for key in ("footer.cat_mine", "footer.cat_tools", "footer.cat_telegram", "footer.cat_about"):
+        assert T[key]["he"] in footer
+        assert all(T[key][lang] for lang in website_i18n.CORE_LANGS)
+
+
+def test_todi_is_the_owners_four_pictures(client):
+    html = client.get("/?lang=he").text
+    for pose in ("walk1", "walk2", "sniff", "look"):
+        assert f"/static/todi/todi-{pose}.webp" in html
+        assert (STATIC / "todi" / f"todi-{pose}.webp").stat().st_size < 60_000
+    assert "todi3d" not in html and not (STATIC / "todi3d.js").exists()
+    # the 404 has the pink-backed set, the search page Todi's face from the car drawing
+    lost = client.get("/no-such-page-at-all").text
+    assert "/static/todi/pink-todi-sniff.webp" in lost and "/static/todi/todi-walk1.webp" not in lost
+    assert "/static/todi/todi-face.webp" in client.get("/search?lang=he").text

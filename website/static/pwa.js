@@ -61,9 +61,7 @@
     // stay above the cookie line while it is shown
     var notice = document.getElementById('cookie-notice');
     var high = notice && !notice.hidden ? notice.offsetHeight + 12 : 0;
-    // and above the assistant's round button in the corner, on the pages that have it
-    var assistant = document.getElementById('assistant');
-    if (assistant && assistant.offsetParent !== null && window.innerWidth < 520) { high = Math.max(high, 64); }
+    // 2026-11-13 (owner): it sits in the same row as the round corner buttons (accessibility, assistant), between them
     button.style.setProperty('--app-add-lift', high + 'px');
   }
 

@@ -409,7 +409,9 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-sticky .lp-btn { display: block; text-align: center; font-size: 18px; padding: 14px 20px; }
 @keyframes lp-sticky-in { from { transform: translateY(100%); } to { transform: none; } }
 /* the accessibility button (and its feedback bubble) moves up above the bar while it shows */
-:root.lp-sticky-on #a11y-widget { bottom: calc(86px + env(safe-area-inset-bottom)); transition: bottom .25s ease; }
+/* 2026-11-13 (owner): the assistant's button and the "add to home screen" button rise with it, all three in one row */
+:root.lp-sticky-on #a11y-widget, :root.lp-sticky-on .asst { bottom: calc(86px + env(safe-area-inset-bottom)); transition: bottom .25s ease; }
+:root.lp-sticky-on .app-add { bottom: calc(86px + env(safe-area-inset-bottom)); transition: bottom .25s ease; }
 @media (min-width: 900px) { .lp-sticky { display: none !important; } }
 @media (prefers-reduced-motion: reduce) {
   .lp-pulse::after, .lp-sticky { animation: none; }
@@ -448,11 +450,7 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-sky-windows .w { fill: transparent; stroke-width: 1; transition: fill 1.2s ease, filter 1.2s ease; }
 .lp-sky-windows .w.lit { fill: var(--lp-sky-lit); stroke: var(--lp-gold-deep); filter: drop-shadow(0 0 2px var(--lp-glow)); transition-duration: .35s; }
 
-.lp-walker { position: absolute; bottom: -3px; left: 0; width: 92px; }
-.lp-walker .todi-dog { width: 100%; height: auto; }
-.lp .todi-dog { --todi-coat: var(--lp-gold-deep); --todi-dark: #173C40; --todi-collar: var(--lp-teal); --todi-tag: var(--lp-gold-hot); }
-:root[data-theme="dark"] .lp .todi-dog { --todi-coat: var(--lp-gold); --todi-dark: #0F1715; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lp .todi-dog { --todi-coat: var(--lp-gold); --todi-dark: #0F1715; } }
+.lp-walker { position: absolute; bottom: -2px; left: 0; width: 128px; }
 .td-paused .todi-dog, .td-paused .todi-dog * { animation-play-state: paused !important; }
 
 /* a graph that builds itself: the week, one bar a day, the newest in the "new" colour */
@@ -531,7 +529,7 @@ body:has(.lp) .site-ambient { display: none; }
   .lp-hero-copy { grid-row: 1; grid-column: 1; padding-bottom: 96px; }
   .lp-todi { grid-row: 2; grid-column: 1; }
   .lp-street { grid-row: 1; grid-column: 1; height: 168px; translate: none; }
-  .lp-walker { width: 72px; bottom: -2px; }
+  .lp-walker { width: 100px; bottom: -1px; }
   .lp-week { margin: 0 0 26px; max-width: none; }
   .lp-week-bars { height: 112px; gap: 6px; }
   .lp-xray-card { max-width: none; }
