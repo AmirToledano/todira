@@ -1294,6 +1294,7 @@ def _landing_js(lang: str) -> dict:
     t = make_translator(lang)
     return {
         "lang": lang,
+        "static_version": GIT_SHA,
         "strings": {key: t(f"landing.{key}") for key in _LANDING_STRING_KEYS},
         "cities": [{"name": t(key), "lat": lat, "lng": lng, "side": side} for key, lat, lng, side in _HOME_MAP_CITIES],
         "city_names": sorted(CITIES),

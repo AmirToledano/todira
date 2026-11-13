@@ -115,3 +115,21 @@ def test_the_scripts_check_for_reduced_motion_before_moving_anything():
     for block in ("function street()", "function weekChart(", "function xray()"):
         start = home.index(block)
         assert "reduce" in home[start:start + 3000], block
+
+
+def test_the_footer_is_four_headed_groups(client):
+    html = client.get("/about?lang=he").text
+    footer = html[html.index('<footer class="site-footer">'):]
+    assert footer.count('class="footer-col"') == 4 and 'class="footer-brand"' in footer and 'class="footer-bottom"' in footer
+    for key in ("footer.cat_mine", "footer.cat_tools", "footer.cat_telegram", "footer.cat_about"):
+        assert T[key]["he"] in footer
+        assert all(T[key][lang] for lang in website_i18n.CORE_LANGS)
+
+
+def test_the_3d_todi_is_loaded_late_and_falls_back_to_the_drawing():
+    home = (STATIC / "home.js").read_text()
+    three = (STATIC / "todi3d.js").read_text()
+    assert 'import("/static/todi3d.js' in home and "webgl" in home and ".catch(" in home
+    # only after the page is up, and inside street(), which stops early for reduced motion
+    assert home.index("if (reduce) {  // standing still") < home.index("var try3d")
+    assert "three@0.170.0" in three and "export function mountTodi3D" in three

@@ -218,6 +218,16 @@
       s.face(rtl ? -1 : 1);
       return;
     }
+    // 2026-11-13 (owner: "I'd rather it really be Todi in 3D"): once the page is up, a 3D Todi (todi3d.js, three.js)
+    // takes the drawing's place in the same walker. Only with WebGL; on any failure the drawing simply stays.
+    var try3d = function () {
+      var probe = document.createElement("canvas");
+      if (!(probe.getContext("webgl2") || probe.getContext("webgl"))) { return; }
+      import("/static/todi3d.js?v=" + (L.static_version || "")).then(function (m) { m.mountTodi3D(walker, st); })
+        .catch(function () { /* the drawing stays */ });
+    };
+    var later = function () { if ("requestIdleCallback" in window) { requestIdleCallback(try3d, { timeout: 2500 }); } else { setTimeout(try3d, 1200); } };
+    if (document.readyState === "complete") { later(); } else { window.addEventListener("load", later); }
     var fromRight = rtl;  // he comes in from the reading start
     (async function story() {
       await s.wait(1200);

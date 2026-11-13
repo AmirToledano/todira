@@ -450,6 +450,8 @@ body:has(.lp) .site-ambient { display: none; }
 
 .lp-walker { position: absolute; bottom: -3px; left: 0; width: 92px; }
 .lp-walker .todi-dog { width: 100%; height: auto; }
+/* the 3D Todi (todi3d.js) needs a little more room than the drawing; its paws sit on the street like the drawing's */
+.lp-walker.is-3d { width: 132px; bottom: -14px; }
 .lp .todi-dog { --todi-coat: var(--lp-gold-deep); --todi-dark: #173C40; --todi-collar: var(--lp-teal); --todi-tag: var(--lp-gold-hot); }
 :root[data-theme="dark"] .lp .todi-dog { --todi-coat: var(--lp-gold); --todi-dark: #0F1715; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lp .todi-dog { --todi-coat: var(--lp-gold); --todi-dark: #0F1715; } }
@@ -532,6 +534,7 @@ body:has(.lp) .site-ambient { display: none; }
   .lp-todi { grid-row: 2; grid-column: 1; }
   .lp-street { grid-row: 1; grid-column: 1; height: 168px; translate: none; }
   .lp-walker { width: 72px; bottom: -2px; }
+  .lp-walker.is-3d { width: 104px; bottom: -11px; }
   .lp-week { margin: 0 0 26px; max-width: none; }
   .lp-week-bars { height: 112px; gap: 6px; }
   .lp-xray-card { max-width: none; }

@@ -326,31 +326,49 @@
   <main id="main-content">
     {% block content %}{% endblock %}
   </main>
+  {# 2026-11-13 (owner: "split the bottom into categories, part right, part left, with big gaps"): the brand and how to
+     reach us on one side, four headed groups of links beside it, the legal lines at the very bottom #}
   <footer class="site-footer">
     <div class="footer-inner">
-      <a class="brand" href="/"><span class="crown">{{ icon('crown') }}</span> טודירה</a>
-      <nav class="footer-nav">
-        <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.apartments') }}</a>
-        <a href="/liked{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.liked') }}</a>
-        <a href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.filter') }}</a>
-        <a href="/contact{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.contact') }}</a>
-        <a href="https://t.me/AmirDirotBot?start=site_menu" target="_blank" data-track="bot_menu">{{ t('nav.bot') }}</a>
-        <a href="/calculator">{{ t('calc.title') }}</a>
-        <a href="/rent">{{ t('city.link') }}</a>
-        <a href="/moving-checklist">{{ t('guide.link_moving') }}</a>
-        <a href="/rental-contract-check">{{ t('guide.link_contract') }}</a>
-        <a href="/post">{{ t('post.link') }}</a>
-        {# 2026-11-02 (growth): the public channel t.me/todira_dirot (scraper/channel.py) #}
-        <a href="https://t.me/todira_dirot" target="_blank" rel="noopener" data-track="channel_footer">{{ t('channel.footer_link') }}</a>
-        <a href="/about">{{ t('footer.about') }}</a>
-        <a href="/terms">{{ t('footer.terms') }}</a>
-        <a href="/privacy">{{ t('footer.privacy') }}</a>
-        <a href="/accessibility">{{ t('footer.accessibility') }}</a>
+      <div class="footer-brand">
+        <a class="brand" href="/"><span class="crown">{{ icon('crown') }}</span> טודירה</a>
+        <p class="footer-note">{{ t('footer.built_by') }}</p>
+        <p class="footer-note">{{ t('footer.business_info_pre') }}<a href="mailto:amir@todira.app">amir@todira.app</a></p>
+      </div>
+      <nav class="footer-nav" aria-label="{{ t('footer.nav_label') }}">
+        <div class="footer-col">
+          <h2>{{ t('footer.cat_mine') }}</h2>
+          <a href="/apartments{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.apartments') }}</a>
+          <a href="/liked{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.liked') }}</a>
+          <a href="/filter{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.filter') }}</a>
+        </div>
+        <div class="footer-col">
+          <h2>{{ t('footer.cat_tools') }}</h2>
+          <a href="/calculator">{{ t('calc.title') }}</a>
+          <a href="/rent">{{ t('city.link') }}</a>
+          <a href="/moving-checklist">{{ t('guide.link_moving') }}</a>
+          <a href="/rental-contract-check">{{ t('guide.link_contract') }}</a>
+          <a href="/post">{{ t('post.link') }}</a>
+        </div>
+        <div class="footer-col">
+          <h2>{{ t('footer.cat_telegram') }}</h2>
+          <a href="https://t.me/AmirDirotBot?start=site_menu" target="_blank" data-track="bot_menu">{{ t('nav.bot') }}</a>
+          {# 2026-11-02 (growth): the public channel t.me/todira_dirot (scraper/channel.py) #}
+          <a href="https://t.me/todira_dirot" target="_blank" rel="noopener" data-track="channel_footer">{{ t('channel.footer_link') }}</a>
+          <a href="/contact{{ '?uid=' ~ uid if uid else '' }}">{{ t('nav.contact') }}</a>
+        </div>
+        <div class="footer-col">
+          <h2>{{ t('footer.cat_about') }}</h2>
+          <a href="/about">{{ t('footer.about') }}</a>
+          <a href="/terms">{{ t('footer.terms') }}</a>
+          <a href="/privacy">{{ t('footer.privacy') }}</a>
+          <a href="/accessibility">{{ t('footer.accessibility') }}</a>
+        </div>
       </nav>
-      <p class="footer-note">{{ t('footer.built_by') }}</p>
-      <p class="footer-note footer-legal">{{ t('footer.gender_note') }}</p>
-      <p class="footer-note footer-legal">{{ t('footer.business_info_pre') }}<a href="mailto:amir@todira.app">amir@todira.app</a></p>
-      <p class="footer-note footer-legal">{{ t('footer.copyright', year=current_year) }}</p>
+      <div class="footer-bottom">
+        <p class="footer-note footer-legal">{{ t('footer.copyright', year=current_year) }}</p>
+        <p class="footer-note footer-legal">{{ t('footer.gender_note') }}</p>
+      </div>
     </div>
   </footer>
 

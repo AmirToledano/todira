@@ -2552,6 +2552,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Тоди вынюхивает для вас квартиры", "fr": "Todi flaire des appartements pour vous",
         "ar": "تودي يبحث لك عن شقق",
     },
+    # 2026-11-13 (owner): the footer's four groups of links
+    "footer.nav_label": {"he": "קישורים באתר", "en": "Site links", "ru": "Ссылки сайта", "fr": "Liens du site", "ar": "روابط الموقع"},
+    "footer.cat_mine": {"he": "הדירות שלי", "en": "My flats", "ru": "Мои квартиры", "fr": "Mes appartements", "ar": "شققي"},
+    "footer.cat_tools": {"he": "כלים לשוכרים", "en": "Renter tools", "ru": "Для арендаторов", "fr": "Outils pour locataires",
+                         "ar": "أدوات للمستأجرين"},
+    "footer.cat_telegram": {"he": "בטלגרם", "en": "On Telegram", "ru": "В Telegram", "fr": "Sur Telegram", "ar": "على تيليجرام"},
+    "footer.cat_about": {"he": "על טודירה", "en": "About Todira", "ru": "О Тодире", "fr": "À propos de Todira", "ar": "عن توديرا"},
     "404.body": {
         "he": "הדף שחיפשת לא קיים, או שהקישור אליו שגוי.",
         "en": "The page you're looking for doesn't exist, or the link to it is wrong.",

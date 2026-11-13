@@ -12,13 +12,14 @@
 
   window.todiStage = function (stage, walker, opts) {
     opts = opts || {};
-    var dog = walker.querySelector(".todi-dog");
+    // the drawing, or the 3D Todi once todi3d.js has taken its place
+    var dogEl = function () { return walker.querySelector(".todi-3d") || walker.querySelector(".todi-dog"); };
     var x = 0, facing = -1, current = null, visible = true, stopped = false;
     var speed = function () { return typeof opts.speed === "function" ? opts.speed() : opts.speed || 50; };
     var place = function () { walker.style.transform = "translateX(" + x + "px)"; };
     var face = function (dir) {  // the drawing looks to the left (-1); +1 flips it
       facing = dir;
-      dog.style.transform = dir > 0 ? "scaleX(-1)" : "";
+      dogEl().style.transform = dir > 0 ? "scaleX(-1)" : "";
     };
     var run = function (anim) {
       current = anim;
@@ -36,21 +37,21 @@
         var from = x, dist = Math.abs(to - from);
         if (dist < 1) { return Promise.resolve(); }
         face(to > from ? 1 : -1);
-        dog.classList.add("is-walking");
+        dogEl().classList.add("is-walking");
         x = to;
         var anim = walker.animate(
           [{ transform: "translateX(" + from + "px)" }, { transform: "translateX(" + to + "px)" }],
           { duration: dist / speed() * 1000, easing: "linear", fill: "forwards" }
         );
-        return run(anim).then(function () { place(); anim.cancel(); dog.classList.remove("is-walking"); });
+        return run(anim).then(function () { place(); anim.cancel(); dogEl().classList.remove("is-walking"); });
       },
       sniff: function (ms) {
-        dog.classList.add("is-sniffing");
-        return hold(ms).then(function () { dog.classList.remove("is-sniffing"); });
+        dogEl().classList.add("is-sniffing");
+        return hold(ms).then(function () { dogEl().classList.remove("is-sniffing"); });
       },
       look: function (ms) {
-        dog.classList.add("is-looking");
-        return hold(ms).then(function () { dog.classList.remove("is-looking"); });
+        dogEl().classList.add("is-looking");
+        return hold(ms).then(function () { dogEl().classList.remove("is-looking"); });
       },
       wait: hold,
       face: face,
