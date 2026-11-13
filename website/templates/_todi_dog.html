@@ -1,11 +1,30 @@
-{# 2026-11-13 (owner: "this is what I have, work on it"; "use them all"): Todi from the owner's own illustrations, four
-   poses of the same drawing aligned on one frame (static/todi/, cut out of their background): two walking steps,
-   sniffing, looking up. Two sets: the four-on-one-sheet drawing (the default, the hero's street) and the pink-backed
-   one (todi_set = "pink-", the 404). todi.js sets the pose classes (.is-walking, .is-sniffing, .is-looking) and the
-   flip; style.css shows the right picture and, while walking, swaps the two steps. Decoration only. #}
-{% set _set = todi_set | default("") %}
-{% set _w, _h = (520, 304) if _set == "pink-" else (560, 276) %}
-<span class="todi-dog todi-pic{{ ' ' ~ extra_class if extra_class else '' }}" style="--ar: {{ _w }} / {{ _h }}" aria-hidden="true">
-  {% for pose in ("walk1", "walk2", "sniff", "look") %}<img class="f-{{ pose }}" src="/static/todi/{{ _set }}todi-{{ pose }}.webp?v={{ static_version }}" alt="" width="{{ _w }}" height="{{ _h }}" decoding="async">
+{# 2026-11-13 (owner: "all the legs must move like a real dog walking"): Todi. By default the jointed puppet: body,
+   head and tail from the owner's illustration, four drawn legs with joints (the SVG below is written by
+   tools/todi_rig.py; its motion is in style.css, .todi-rig). With todi_set = "sheet": four whole pictures of the
+   owner's other drawing (sniffing, looking up, two steps), used on the 404. todi.js sets the pose classes
+   (.is-walking, .is-sniffing, .is-looking) and the flip on either. Decoration only. #}
+{% if todi_set | default("") == "sheet" %}
+<span class="todi-dog todi-pic{{ ' ' ~ extra_class if extra_class else '' }}" aria-hidden="true">
+  {% for pose in ("walk1", "walk2", "sniff", "look") %}<img class="f-{{ pose }}" src="/static/todi/todi-{{ pose }}.webp?v={{ static_version }}" alt="" width="560" height="276" decoding="async">
   {% endfor %}
 </span>
+{% else %}
+<svg class="todi-dog todi-rig{{ " " ~ extra_class if extra_class else "" }}" viewBox="0 0 640 330" aria-hidden="true" focusable="false">
+<defs>
+<clipPath id="td-c-head"><polygon points="0,0 236,0 236,126 225,142 178,184 160,190 158,220 126,220 126,160 0,160"/></clipPath>
+<clipPath id="td-c-tail"><polygon points="508,135 640,135 640,205 526,205 526,182 514,168"/></clipPath>
+<clipPath id="td-c-torso"><path d="M236,100L530,100L530,150L526,170L526,196Q526,230 496,231L470,227L430,220L400,226L350,247L300,264L240,271L196,263L168,240L150,215L158,220L160,190L178,184L225,142L236,126Z"/></clipPath>
+</defs>
+<g class="td-rbob">
+<g transform="translate(462 238)"><g class="td-j td-h-hip" style="--ph:0.5"><path fill="#4c2a1a" d="M-30,-12C-33,8 -19,26 -11,34L11,34C24,27 40,10 42,-14Z"/><path fill="none" stroke="#3a1816" stroke-width="3" stroke-linecap="round" d="M-29,2C-27,14 -18,27 -11,34M11,34C23,27 37,12 41,-4"/><g transform="translate(0 34)"><g class="td-j td-h-knee" style="--ph:0.5"><circle r="12" fill="#4c2a1a"/><path fill="#4c2a1a" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-12,0L-11,32L11,32L12,0"/><path fill="#9c5727" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-11.6,13L-11,34L11,34L11.6,13Q0,9 -11.6,13Z"/><circle r="10.5" fill="#4c2a1a"/><g transform="translate(0 32)"><g class="td-j td-h-paw" style="--ph:0.5"><path fill="#9c5727" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M11,-9L11,2Q11,8 4,8L-17,8Q-27,8 -27,-1Q-27,-9 -15,-10Z"/><path fill="none" stroke="#3a1816" stroke-width="2" stroke-linecap="round" d="M-19,1v6M-12,1.5v5.5"/></g></g></g></g></g></g>
+<g transform="translate(238 250)"><g class="td-j td-f-hip" style="--ph:0.75"><path fill="#4c2a1a" d="M-19,-10C-19,10 -13,22 -12,30L12,30C13,22 19,10 19,-10Z"/><path fill="none" stroke="#3a1816" stroke-width="3" stroke-linecap="round" d="M-18,6C-17,16 -13,23 -12,30M12,30C13,23 17,16 18,6"/><g transform="translate(0 30)"><g class="td-j td-f-knee" style="--ph:0.75"><circle r="12" fill="#4c2a1a"/><path fill="#4c2a1a" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-12,0L-11,28L11,28L12,0"/><path fill="#9c5727" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-11.6,13L-11,30L11,30L11.6,13Q0,9 -11.6,13Z"/><circle r="10.5" fill="#4c2a1a"/><g transform="translate(0 28)"><g class="td-j td-f-paw" style="--ph:0.75"><path fill="#9c5727" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M11,-9L11,2Q11,8 4,8L-17,8Q-27,8 -27,-1Q-27,-9 -15,-10Z"/><path fill="none" stroke="#3a1816" stroke-width="2" stroke-linecap="round" d="M-19,1v6M-12,1.5v5.5"/></g></g></g></g></g></g>
+<g class="td-tail"><image href="/static/todi/todi-rig.webp?v={{ static_version }}" width="640" height="330" clip-path="url(#td-c-tail)"/></g>
+<image href="/static/todi/todi-rig.webp?v={{ static_version }}" width="640" height="330" clip-path="url(#td-c-torso)"/>
+<path fill="none" stroke="#3a1816" stroke-width="3.2" stroke-linecap="round" d="M150,215C158,232 176,253 196,263C212,270 228,271 240,271C262,271 282,268 300,264C318,259 334,253 350,247C368,240 384,232 400,226C410,222 420,220 430,220"/>
+<path fill="none" stroke="#3a1816" stroke-width="3.2" stroke-linecap="round" d="M526,180L526,196Q526,230 496,231"/>
+<ellipse cx="184" cy="160" rx="50" ry="15" transform="rotate(-30 184 160)" fill="#5f3421"/>
+<g transform="translate(482 240)"><g class="td-j td-h-hip" style="--ph:0.0"><path fill="#5f3421" d="M-30,-12C-33,8 -19,26 -11,34L11,34C24,27 40,10 42,-14Z"/><path fill="none" stroke="#3a1816" stroke-width="3" stroke-linecap="round" d="M-29,2C-27,14 -18,27 -11,34M11,34C23,27 37,12 41,-4"/><g transform="translate(0 34)"><g class="td-j td-h-knee" style="--ph:0.0"><circle r="12" fill="#5f3421"/><path fill="#5f3421" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-12,0L-11,32L11,32L12,0"/><path fill="#bb6a30" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-11.6,13L-11,34L11,34L11.6,13Q0,9 -11.6,13Z"/><circle r="10.5" fill="#5f3421"/><g transform="translate(0 32)"><g class="td-j td-h-paw" style="--ph:0.0"><path fill="#bb6a30" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M11,-9L11,2Q11,8 4,8L-17,8Q-27,8 -27,-1Q-27,-9 -15,-10Z"/><path fill="none" stroke="#3a1816" stroke-width="2" stroke-linecap="round" d="M-19,1v6M-12,1.5v5.5"/></g></g></g></g></g></g>
+<g transform="translate(218 248)"><g class="td-j td-f-hip" style="--ph:0.25"><path fill="#5f3421" d="M-19,-10C-19,10 -13,22 -12,30L12,30C13,22 19,10 19,-10Z"/><path fill="none" stroke="#3a1816" stroke-width="3" stroke-linecap="round" d="M-18,6C-17,16 -13,23 -12,30M12,30C13,23 17,16 18,6"/><g transform="translate(0 30)"><g class="td-j td-f-knee" style="--ph:0.25"><circle r="12" fill="#5f3421"/><path fill="#5f3421" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-12,0L-11,28L11,28L12,0"/><path fill="#bb6a30" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M-11.6,13L-11,30L11,30L11.6,13Q0,9 -11.6,13Z"/><circle r="10.5" fill="#5f3421"/><g transform="translate(0 28)"><g class="td-j td-f-paw" style="--ph:0.25"><path fill="#bb6a30" stroke="#3a1816" stroke-width="3" stroke-linejoin="round" d="M11,-9L11,2Q11,8 4,8L-17,8Q-27,8 -27,-1Q-27,-9 -15,-10Z"/><path fill="none" stroke="#3a1816" stroke-width="2" stroke-linecap="round" d="M-19,1v6M-12,1.5v5.5"/></g></g></g></g></g></g>
+<g class="td-head"><image href="/static/todi/todi-rig.webp?v={{ static_version }}" width="640" height="330" clip-path="url(#td-c-head)"/></g>
+</g></svg>
+{% endif %}

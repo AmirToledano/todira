@@ -450,7 +450,7 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-sky-windows .w { fill: transparent; stroke-width: 1; transition: fill 1.2s ease, filter 1.2s ease; }
 .lp-sky-windows .w.lit { fill: var(--lp-sky-lit); stroke: var(--lp-gold-deep); filter: drop-shadow(0 0 2px var(--lp-glow)); transition-duration: .35s; }
 
-.lp-walker { position: absolute; bottom: -2px; left: 0; width: 128px; }
+.lp-walker { position: absolute; bottom: -5px; left: 0; width: 150px; }
 .td-paused .todi-dog, .td-paused .todi-dog * { animation-play-state: paused !important; }
 
 /* a graph that builds itself: the week, one bar a day, the newest in the "new" colour */
@@ -529,7 +529,7 @@ body:has(.lp) .site-ambient { display: none; }
   .lp-hero-copy { grid-row: 1; grid-column: 1; padding-bottom: 96px; }
   .lp-todi { grid-row: 2; grid-column: 1; }
   .lp-street { grid-row: 1; grid-column: 1; height: 168px; translate: none; }
-  .lp-walker { width: 100px; bottom: -1px; }
+  .lp-walker { width: 116px; bottom: -4px; }
   .lp-week { margin: 0 0 26px; max-width: none; }
   .lp-week-bars { height: 112px; gap: 6px; }
   .lp-xray-card { max-width: none; }

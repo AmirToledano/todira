@@ -102,10 +102,12 @@ def test_every_new_motion_stops_for_reduced_motion_and_the_accessibility_menu():
     """Each new looping animation is written behind both switches: the visitor's "reduce motion" and the site's own
     accessibility menu ("stop motion" puts .a11y-no-motion on the page)."""
     css = (STATIC / "style.css").read_text() + (STATIC / "home.css").read_text()
-    for name in ("td-step-a", "td-step-b", "td-bob", "td-sniff", "td-nod", "paw-print", "lp-pin-drop", "lp-route"):
+    for name in ("td-step-a", "td-step-b", "td-bob", "td-sniff", "td-nod", "td-wag", "td-rbob", "td-rsniff", "paw-print", "lp-pin-drop", "lp-route"):
         uses = [line for line in css.splitlines() if re.search(r"animation:\s*" + name + r"\b", line)]
         assert uses, name
         assert all("html:not(.a11y-no-motion)" in line for line in uses), name
+    walk = [line for line in css.splitlines() if "animation-name: td-" in line]
+    assert len(walk) == 6 and all("html:not(.a11y-no-motion)" in line for line in walk)
 
 
 def test_the_scripts_check_for_reduced_motion_before_moving_anything():
@@ -126,13 +128,16 @@ def test_the_footer_is_four_headed_groups(client):
         assert all(T[key][lang] for lang in website_i18n.CORE_LANGS)
 
 
-def test_todi_is_the_owners_four_pictures(client):
+def test_todi_walks_as_a_jointed_puppet_and_the_404_has_his_pictures(client):
     html = client.get("/?lang=he").text
-    for pose in ("walk1", "walk2", "sniff", "look"):
-        assert f"/static/todi/todi-{pose}.webp" in html
-        assert (STATIC / "todi" / f"todi-{pose}.webp").stat().st_size < 60_000
-    assert "todi3d" not in html and not (STATIC / "todi3d.js").exists()
-    # the 404 has the pink-backed set, the search page Todi's face from the car drawing
+    assert "/static/todi/todi-rig.webp" in html and 'class="todi-dog todi-rig' in html
+    # four legs, each with a hip, a knee and a paw, a quarter of a cycle apart
+    assert html.count("td-h-hip") == 2 and html.count("td-f-hip") == 2 and html.count("td-j ") == 12
+    assert sorted(set(re.findall(r'td-[hf]-hip" style="--ph:([0-9.]+)"', html))) == ["0.0", "0.25", "0.5", "0.75"]
     lost = client.get("/no-such-page-at-all").text
-    assert "/static/todi/pink-todi-sniff.webp" in lost and "/static/todi/todi-walk1.webp" not in lost
+    assert "/static/todi/todi-sniff.webp" in lost and "todi-rig" not in lost
     assert "/static/todi/todi-face.webp" in client.get("/search?lang=he").text
+    for name in ("todi-rig", "todi-walk1", "todi-walk2", "todi-sniff", "todi-look", "todi-face"):
+        assert (STATIC / "todi" / f"{name}.webp").stat().st_size < 60_000
+
+

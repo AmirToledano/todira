@@ -2775,7 +2775,7 @@ html.is-app .app-add, html.is-app .app-sheet { display: none !important; }
    Todi (templates/_todi_dog.html): four pictures of the same drawing on one frame. One shows at a time: the first
    step when standing, the sniff, the look up; while walking the two steps take turns with a small bob. All of it
    stops for reduced motion and for the accessibility menu's "stop motion" (he then just stands). */
-.todi-pic { position: relative; display: block; width: 100%; aspect-ratio: var(--ar, 560 / 276); }
+.todi-pic { position: relative; display: block; width: 100%; aspect-ratio: 560 / 276; }
 .todi-pic img { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
 .todi-pic .f-walk1 { opacity: 1; }
 .todi-pic.is-sniffing .f-walk1, .todi-pic.is-looking .f-walk1 { opacity: 0; }
@@ -2793,6 +2793,37 @@ html.is-app .app-add, html.is-app .app-sheet { display: none !important; }
 /* `translate`, not `transform`: the flip to face the other way is todi.js's own transform */
 @keyframes td-bob { from { translate: 0 0; } to { translate: 0 -2px; } }
 @keyframes td-sniff { from { translate: 0 0; } to { translate: 0 1.5px; } }
+
+/* Todi as a jointed puppet (templates/_todi_dog.html; all of this block is written by tools/todi_rig.py): a dog's
+   walk, one leg after another, each paw planted while the body passes over it */
+.todi-rig { display: block; width: 100%; height: auto; overflow: visible; }
+.todi-rig .td-f-hip { transform: rotate(7.7deg); } .todi-rig .td-f-knee { transform: rotate(29.6deg); } .todi-rig .td-f-paw { transform: rotate(-37.3deg); }
+.todi-rig .td-h-hip { transform: rotate(34.4deg); } .todi-rig .td-h-knee { transform: rotate(-31.2deg); } .todi-rig .td-h-paw { transform: rotate(-3.2deg); }
+.todi-rig .td-head { transform-origin: 196px 160px; transition: transform .45s ease; }
+.todi-rig .td-tail { transform-origin: 518px 166px; }
+.todi-rig.is-sniffing .td-head { transform: rotate(-26deg) translate(-4px, 10px); }
+.todi-rig.is-looking .td-head { transform: rotate(11deg); }
+@media (prefers-reduced-motion: no-preference) {
+  html:not(.a11y-no-motion) .todi-rig .td-tail { animation: td-wag .5s ease-in-out infinite alternate; }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-j { animation-duration: 0.56s; animation-timing-function: linear; animation-iteration-count: infinite; animation-delay: calc(var(--ph) * -0.56s); }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-f-hip { animation-name: td-f-hip; }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-f-knee { animation-name: td-f-knee; }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-f-paw { animation-name: td-f-paw; }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-h-hip { animation-name: td-h-hip; }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-h-knee { animation-name: td-h-knee; }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-h-paw { animation-name: td-h-paw; }
+  html:not(.a11y-no-motion) .todi-rig.is-walking .td-rbob { animation: td-rbob 0.14s ease-in-out infinite alternate; }
+  html:not(.a11y-no-motion) .todi-rig.is-sniffing .td-head { animation: td-rsniff .5s ease-in-out infinite alternate; }
+}
+@keyframes td-wag { from { transform: rotate(-7deg); } to { transform: rotate(9deg); } }
+@keyframes td-rbob { from { translate: 0 0; } to { translate: 0 -2.5px; } }
+@keyframes td-rsniff { from { transform: rotate(-26deg) translate(-4px, 10px); } to { transform: rotate(-22deg) translate(-4px, 8px); } }
+@keyframes td-h-hip { 0% { transform: rotate(34.4deg); } 5% { transform: rotate(34.5deg); } 10% { transform: rotate(33.7deg); } 15% { transform: rotate(32.3deg); } 20% { transform: rotate(30.4deg); } 25% { transform: rotate(28.1deg); } 30% { transform: rotate(25.3deg); } 35% { transform: rotate(22.3deg); } 40% { transform: rotate(18.8deg); } 45% { transform: rotate(15.1deg); } 50% { transform: rotate(10.9deg); } 55% { transform: rotate(6.4deg); } 60% { transform: rotate(1.5deg); } 65% { transform: rotate(-4.2deg); } 70% { transform: rotate(7.1deg); } 75% { transform: rotate(19.8deg); } 80% { transform: rotate(32.5deg); } 85% { transform: rotate(42.4deg); } 90% { transform: rotate(46.7deg); } 95% { transform: rotate(44.0deg); } 100% { transform: rotate(34.4deg); } }
+@keyframes td-h-knee { 0% { transform: rotate(-31.2deg); } 5% { transform: rotate(-37.1deg); } 10% { transform: rotate(-41.4deg); } 15% { transform: rotate(-44.7deg); } 20% { transform: rotate(-47.0deg); } 25% { transform: rotate(-48.4deg); } 30% { transform: rotate(-49.2deg); } 35% { transform: rotate(-49.2deg); } 40% { transform: rotate(-48.4deg); } 45% { transform: rotate(-47.0deg); } 50% { transform: rotate(-44.7deg); } 55% { transform: rotate(-41.4deg); } 60% { transform: rotate(-37.1deg); } 65% { transform: rotate(-31.2deg); } 70% { transform: rotate(-52.8deg); } 75% { transform: rotate(-68.8deg); } 80% { transform: rotate(-77.7deg); } 85% { transform: rotate(-77.7deg); } 90% { transform: rotate(-68.8deg); } 95% { transform: rotate(-52.8deg); } 100% { transform: rotate(-31.2deg); } }
+@keyframes td-h-paw { 0% { transform: rotate(-3.2deg); } 5% { transform: rotate(2.6deg); } 10% { transform: rotate(7.8deg); } 15% { transform: rotate(12.4deg); } 20% { transform: rotate(16.6deg); } 25% { transform: rotate(20.4deg); } 30% { transform: rotate(23.8deg); } 35% { transform: rotate(26.9deg); } 40% { transform: rotate(29.6deg); } 45% { transform: rotate(31.9deg); } 50% { transform: rotate(33.7deg); } 55% { transform: rotate(35.0deg); } 60% { transform: rotate(35.6deg); } 65% { transform: rotate(35.4deg); } 70% { transform: rotate(38.7deg); } 75% { transform: rotate(36.6deg); } 80% { transform: rotate(29.6deg); } 85% { transform: rotate(19.7deg); } 90% { transform: rotate(9.6deg); } 95% { transform: rotate(1.9deg); } 100% { transform: rotate(-3.2deg); } }
+@keyframes td-f-hip { 0% { transform: rotate(7.7deg); } 5% { transform: rotate(0.9deg); } 10% { transform: rotate(-5.0deg); } 15% { transform: rotate(-10.3deg); } 20% { transform: rotate(-15.1deg); } 25% { transform: rotate(-19.5deg); } 30% { transform: rotate(-23.5deg); } 35% { transform: rotate(-27.1deg); } 40% { transform: rotate(-30.2deg); } 45% { transform: rotate(-32.8deg); } 50% { transform: rotate(-34.9deg); } 55% { transform: rotate(-36.3deg); } 60% { transform: rotate(-36.9deg); } 65% { transform: rotate(-36.3deg); } 70% { transform: rotate(-47.4deg); } 75% { transform: rotate(-50.7deg); } 80% { transform: rotate(-45.7deg); } 85% { transform: rotate(-33.9deg); } 90% { transform: rotate(-19.2deg); } 95% { transform: rotate(-5.0deg); } 100% { transform: rotate(7.7deg); } }
+@keyframes td-f-knee { 0% { transform: rotate(29.6deg); } 5% { transform: rotate(37.3deg); } 10% { transform: rotate(42.9deg); } 15% { transform: rotate(46.9deg); } 20% { transform: rotate(49.8deg); } 25% { transform: rotate(51.6deg); } 30% { transform: rotate(52.5deg); } 35% { transform: rotate(52.5deg); } 40% { transform: rotate(51.6deg); } 45% { transform: rotate(49.8deg); } 50% { transform: rotate(46.9deg); } 55% { transform: rotate(42.9deg); } 60% { transform: rotate(37.3deg); } 65% { transform: rotate(29.6deg); } 70% { transform: rotate(54.4deg); } 75% { transform: rotate(72.7deg); } 80% { transform: rotate(83.0deg); } 85% { transform: rotate(83.0deg); } 90% { transform: rotate(72.7deg); } 95% { transform: rotate(54.4deg); } 100% { transform: rotate(29.6deg); } }
+@keyframes td-f-paw { 0% { transform: rotate(-37.3deg); } 5% { transform: rotate(-38.2deg); } 10% { transform: rotate(-37.8deg); } 15% { transform: rotate(-36.6deg); } 20% { transform: rotate(-34.6deg); } 25% { transform: rotate(-32.1deg); } 30% { transform: rotate(-29.0deg); } 35% { transform: rotate(-25.4deg); } 40% { transform: rotate(-21.4deg); } 45% { transform: rotate(-17.0deg); } 50% { transform: rotate(-12.0deg); } 55% { transform: rotate(-6.6deg); } 60% { transform: rotate(-0.5deg); } 65% { transform: rotate(6.7deg); } 70% { transform: rotate(-13.9deg); } 75% { transform: rotate(-34.6deg); } 80% { transform: rotate(-52.9deg); } 85% { transform: rotate(-64.8deg); } 90% { transform: rotate(-66.1deg); } 95% { transform: rotate(-56.4deg); } 100% { transform: rotate(-37.3deg); } }
 
 /* paw prints that walk across while something loads (the search page, more flats on /apartments) */
 .paw-trail { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--text-muted); }

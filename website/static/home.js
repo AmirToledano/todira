@@ -196,7 +196,7 @@
 
     if (!walker || !window.todiStage) { return; }
     var portrait = hero && hero.querySelector(".lp-portrait");
-    var s = window.todiStage(st, walker, { speed: function () { return st.clientWidth < 700 ? 38 : 54; } });
+    var s = window.todiStage(st, walker, { speed: function () { return walker.offsetWidth * 0.18; } });  // the pace at which his paws don't slide (tools/todi_rig.py)
     // where the portrait hides him (a computer only): no stops there
     var hidden = function () {
       if (!portrait || !wide.matches) { return null; }
