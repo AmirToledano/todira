@@ -305,13 +305,15 @@
       while (seen) {
         layers.forEach(function (el) { el.classList.remove("ok"); });
         card.classList.remove("match");
-        await later(500);
-        card.classList.add("open");
-        await later(1000);
-        for (var i = 0; i < layers.length; i++) { layers[i].classList.add("ok"); await later(280); }
-        await later(900);
-        card.classList.remove("open");
-        await later(950);
+        await later(600);
+        for (var i = 0; i < layers.length; i++) {
+          layers[i].classList.add("scan");
+          await later(230);
+          layers[i].classList.add("ok");
+          layers[i].classList.remove("scan");
+          await later(160);
+        }
+        await later(300);
         card.classList.add("match");
         await later(4200);
       }

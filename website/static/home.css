@@ -409,7 +409,9 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-sticky .lp-btn { display: block; text-align: center; font-size: 18px; padding: 14px 20px; }
 @keyframes lp-sticky-in { from { transform: translateY(100%); } to { transform: none; } }
 /* the accessibility button (and its feedback bubble) moves up above the bar while it shows */
-:root.lp-sticky-on #a11y-widget { bottom: calc(86px + env(safe-area-inset-bottom)); transition: bottom .25s ease; }
+/* 2026-11-13 (owner): the assistant's button and the "add to home screen" button rise with it, all three in one row */
+:root.lp-sticky-on #a11y-widget, :root.lp-sticky-on .asst { bottom: calc(86px + env(safe-area-inset-bottom)); transition: bottom .25s ease; }
+:root.lp-sticky-on .app-add { bottom: calc(86px + env(safe-area-inset-bottom)); transition: bottom .25s ease; }
 @media (min-width: 900px) { .lp-sticky { display: none !important; } }
 @media (prefers-reduced-motion: reduce) {
   .lp-pulse::after, .lp-sticky { animation: none; }
@@ -504,12 +506,12 @@ body:has(.lp) .site-ambient { display: none; }
 /* the bot's card, opened into its layers: each line is checked, then it closes back into one card */
 .lp-xray { margin-top: 30px; }
 .lp-xray-note { font-size: 17px !important; margin: 0 0 16px !important; }
-.lp-xray-stage { perspective: 1200px; padding: 4px 0; }
-.lp-xray-card { max-width: 360px; transform-style: preserve-3d; transform-origin: 50% 60%; transition: transform .95s cubic-bezier(.2, .75, .2, 1); }
+.lp-xray-stage { padding: 4px 0; }
+.lp-xray-card { max-width: 360px; }
 .lp-xray-layer {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px;
   background: var(--lp-surface); border: 1px solid var(--lp-rule); border-top-width: 0; font-size: 15px; line-height: 1.45; color: var(--lp-text);
-  transition: transform .95s cubic-bezier(.2, .75, .2, 1), border-radius .95s, box-shadow .95s, border-color .5s;
+  transition: background-color .3s ease, border-color .5s;
 }
 .lp-xray-layer:first-child { border-top-width: 1px; border-radius: 14px 14px 0 0; }
 .lp-xray-layer:last-child { border-radius: 0 0 14px 14px; }
@@ -520,14 +522,10 @@ body:has(.lp) .site-ambient { display: none; }
 .lp-xray-armed .lp-xray-ok { transform: scale(0); }
 .lp-xray-armed .lp-xray-layer.ok .lp-xray-ok { transform: scale(1); }
 .lp-xray-layer.ok { border-color: color-mix(in srgb, var(--lp-teal) 45%, var(--lp-rule)); }
-.lp-xray-card.open { transform: translateY(46px) rotateX(52deg) rotateZ(20deg) scale(.8); }
-[dir="ltr"] .lp-xray-card.open { transform: translateY(46px) rotateX(52deg) rotateZ(-20deg) scale(.8); }
-.lp-xray-card.open .lp-xray-layer {
-  transform: translateZ(calc(var(--i) * 19px)); border-top-width: 1px; border-radius: 10px;
-  box-shadow: 0 10px 22px rgba(23, 60, 64, .16);
-}
-.lp-xray-card.open .lp-xray-layer.ok { transform: translateZ(calc(var(--i) * 19px + 8px)); }
-.lp-xray-card.match .lp-xray-layer:first-child { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-teal) 22%, transparent); }
+/* 2026-11-13 (owner: the 3D opening looked bad on a phone): flat now. A light passes down the card, each line is
+   checked in turn, then the whole card is marked as a match. */
+.lp-xray-layer.scan { background: color-mix(in srgb, var(--lp-teal) 12%, var(--lp-surface)); }
+.lp-xray-card.match { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-teal) 30%, transparent); border-radius: 14px; transition: box-shadow .5s ease; }
 
 @media (max-width: 860px) {
   .lp-hero-copy { grid-row: 1; grid-column: 1; padding-bottom: 96px; }
