@@ -2,9 +2,55 @@
 {% block title %}{{ t('meta.title_404') }}{% endblock %}
 {% block content %}
 <div class="empty-state">
-  <div class="glyph" aria-hidden="true">{{ icon('compass') }}</div>
+  {# 2026-11-13 (owner: drawings of Todi on the site): Todi sniffs along a trail for the page and can't find it #}
+  <div class="lost-scene" id="lost-scene" aria-hidden="true">
+    <span class="lost-trail"></span>
+    <div class="td-walker" id="lost-walker">{% include "_todi_dog.html" %}</div>
+    <span class="lost-q" id="lost-q">?</span>
+  </div>
   <p>{{ t('404.body') }}</p>
   <p class="hint">{{ t('404.hint') }}</p>
   <a class="btn gold" href="/">{{ t('404.cta') }}</a>
 </div>
+<script src="/static/todi.js?v={{ static_version }}"></script>
+<script>
+(function () {
+  "use strict";
+  var stage = document.getElementById("lost-scene"), walker = document.getElementById("lost-walker"), q = document.getElementById("lost-q");
+  if (!stage || !window.todiStage) { return; }
+  var s = window.todiStage(stage, walker, { speed: 34 });
+  var rtl = document.documentElement.dir === "rtl";
+  // the reading start: on the right in Hebrew and Arabic, on the left otherwise
+  var ends = function () { var far = s.width() - s.dogWidth() - 6; return rtl ? [far, 6] : [6, far]; };
+  var showQ = function (on) {
+    var D = s.dogWidth();
+    q.style.left = (s.x() + (s.facing() < 0 ? D * 0.12 : D * 0.7)) + "px";
+    q.classList.toggle("on", on);
+  };
+  var e = ends();
+  s.jump(e[0]);
+  s.face(rtl ? -1 : 1);
+  if (window.todiReduce()) { s.jump((e[0] + e[1]) / 2); showQ(true); return; }
+  var dog = walker.querySelector(".todi-dog");
+  (async function story() {
+    for (;;) {
+      e = ends();
+      for (var leg = 0; leg < 2; leg++) {
+        var to = leg === 0 ? e[1] : e[0];
+        var mid = (e[0] + e[1]) / 2;
+        dog.classList.add("is-sniffing");
+        await s.walkTo(mid);
+        await s.wait(700);
+        await s.walkTo(to);
+        dog.classList.remove("is-sniffing");
+        await s.look(400);
+        showQ(true);
+        await s.look(1800);
+        showQ(false);
+        await s.wait(500);
+      }
+    }
+  })();
+})();
+</script>
 {% endblock %}

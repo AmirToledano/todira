@@ -2547,6 +2547,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "need_uid.cta": {
         "he": "התחברות", "en": "Log in", "ru": "Войти", "fr": "Se connecter", "ar": "تسجيل الدخول",
     },
+    "search.sniffing": {
+        "he": "טודי מרחרח ומחפש לך דירות", "en": "Todi is sniffing out flats for you",
+        "ru": "Тоди вынюхивает для вас квартиры", "fr": "Todi flaire des appartements pour vous",
+        "ar": "تودي يبحث لك عن شقق",
+    },
     "404.body": {
         "he": "הדף שחיפשת לא קיים, או שהקישור אליו שגוי.",
         "en": "The page you're looking for doesn't exist, or the link to it is wrong.",
@@ -4001,6 +4006,17 @@ TRANSLATIONS.update({
     "landing.pill_today": {"he": "דירות חדשות נכנסו ביממה האחרונה", "en": "new flats came in over the last 24 hours",
                            "ru": "новых квартир за последние сутки", "fr": "nouveaux appartements en 24 heures",
                            "ar": "شقة جديدة خلال آخر 24 ساعة"},
+    # 2026-11-13 (owner: a graph that builds itself, a card that comes apart, paw prints while it loads)
+    "landing.week_chart": {"he": "כמה דירות חדשות נכנסו בכל יממה בשבוע האחרון",
+                           "en": "New flats that came in each day over the last week",
+                           "ru": "Сколько новых квартир появлялось каждые сутки за последнюю неделю",
+                           "fr": "Les nouveaux appartements arrivés chaque jour, sur la dernière semaine",
+                           "ar": "عدد الشقق الجديدة التي وصلت في كل يوم خلال الأسبوع الأخير"},
+    "landing.xray_note": {"he": "טודי בודק כל פרט במודעה מול מה שביקשת, ושולח רק את מה שמתאים.",
+                          "en": "Todi checks every detail of a listing against what you asked for, and sends only what fits.",
+                          "ru": "Тоди сверяет каждую деталь объявления с тем, что вы просили, и присылает только подходящее.",
+                          "fr": "Todi compare chaque détail de l'annonce à ce que vous avez demandé, et n'envoie que ce qui correspond.",
+                          "ar": "يقارن تودي كل تفصيلة في الإعلان بما طلبته، ويرسل لك فقط ما يناسبك."},
     "landing.stat_week": {"he": "דירות חדשות השבוע", "en": "new flats this week", "ru": "новых квартир за неделю",
                           "fr": "nouveaux appartements cette semaine", "ar": "شقة جديدة هذا الأسبوع"},
     "landing.stat_alerts": {"he": "התראות נשלחו", "en": "alerts sent", "ru": "уведомлений отправлено",

@@ -50,6 +50,13 @@
           <div><dt>{{ t('landing.stat_cities') }}</dt><dd data-n="cities_live">0</dd></div>
         </dl>
       </div>
+      {# 2026-11-13 (owner: drawings of buildings and of Todi): the street behind the hero (skyline.py). A window
+         lights up whenever a new flat comes in, and a drawn Todi walks along it (home.js). Behind the copy and the
+         portrait, decoration only. #}
+      <div class="lp-street" id="lp-street" aria-hidden="true">
+        <div class="lp-sky">{{ skyline }}</div>
+        <div class="td-walker lp-walker" id="lp-walker">{% include "_todi_dog.html" %}</div>
+      </div>
       <div class="lp-todi">
         <img class="lp-portrait" src="/static/todi-hero-light.webp?v={{ static_version }}" alt="{{ t('landing.hero_img_alt') }}" width="640" height="1024">
         <div class="lp-notif" id="lp-notif" aria-hidden="true" hidden>
@@ -67,6 +74,11 @@
       <div class="lp-live-head">
         <h2>{{ t('landing.live_pre') }} <b id="lp-n-new">0</b> {{ t('landing.live_mid') }}<b id="lp-n-cities">0</b> {{ t('landing.live_post') }}</h2>
         <p class="lp-legend"><span class="lp-new">{{ t('landing.legend_new') }}</span><span class="lp-old">{{ t('landing.legend_old') }}</span></p>
+        {# 2026-11-13 (owner: a graph that builds itself): the week day by day, real counts (/api/home-map "daily") #}
+        <figure class="lp-week" id="lp-week" hidden>
+          <div class="lp-week-bars" id="lp-week-bars" role="img" aria-label="{{ t('landing.week_chart') }}"></div>
+          <figcaption>{{ t('landing.week_chart') }}</figcaption>
+        </figure>
       </div>
       <div class="lp-live-feed">
         <ul class="lp-feed" id="lp-feed" aria-label="{{ t('landing.feed_label') }}"></ul>
@@ -116,6 +128,19 @@
          live section above #}
       <div class="lp-how-text">
         {% for n in (1, 3) %}<p><b>{{ t('landing.step' ~ n ~ '_title') }}.</b> {{ t('landing.step' ~ n ~ '_body') }}</p>{% endfor %}
+        {# 2026-11-13 (owner: a flat card that comes apart): the bot's real card, opened into its layers and checked
+           one by one (home.js). Read flat, it is the card itself. #}
+        {% set xa = landing_js.demos[1].alert %}
+        <div class="lp-xray" id="lp-xray">
+          <p class="lp-xray-note">{{ t('landing.xray_note') }}</p>
+          <div class="lp-xray-stage">
+            <div class="lp-xray-card" id="lp-xray-card">
+              <div class="lp-xray-layer"><span class="lp-xray-what">📍 <span class="lp-alert-link">{{ xa.place }}</span></span><i class="lp-xray-ok" aria-hidden="true"></i></div>
+              {% for row in xa.rows %}<div class="lp-xray-layer"><span class="lp-xray-what">{{ row[0] }} <b>{{ row[1] }}</b> {{ row[2] }}</span><i class="lp-xray-ok" aria-hidden="true"></i></div>{% endfor %}
+              <div class="lp-xray-layer"><span class="lp-xray-what">🔑 <b>{{ xa.features_label }}</b> {{ xa.features | join(' | ') }}</span><i class="lp-xray-ok" aria-hidden="true"></i></div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="lp-phone" aria-label="{{ t('landing.demo_label') }}">
         <div class="lp-phone-head"><img src="/static/apple-touch-icon.png" alt=""><div><b>טודירה</b><span>{{ t('landing.demo_bot') }}</span></div></div>
@@ -201,5 +226,6 @@
 <script>
   window.__TODIRA_LANDING__ = {{ landing_js | tojson }};
 </script>
+<script src="/static/todi.js?v={{ static_version }}" defer></script>
 <script src="/static/home.js?v={{ static_version }}" defer></script>
 {% endblock %}

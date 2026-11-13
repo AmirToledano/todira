@@ -75,7 +75,7 @@
   /* ---------- live data: map, numbers, feed and the hero notification ---------- */
   fetch("/api/home-map", { credentials: "omit" })
     .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (data) { if (data) { heroNumbers(data); hotCities(data); live(data); } })
+    .then(function (data) { if (data) { heroNumbers(data); hotCities(data); live(data); weekChart(data); } })
     .catch(function () { /* the rest of the page stands on its own */ });
 
   /* ---------- 2026-11-11 (owner: "Dorin's site looks more professional, how things move") ----------
@@ -144,6 +144,174 @@
     section.hidden = false;
     onView(list, function () { list.classList.add("grow"); }, 0.3);
   }
+
+  /* ---------- 2026-11-13 (owner: drawings of buildings and of Todi, a graph that builds, a card that comes apart) ---------- */
+
+  /* the street behind the hero: windows light up as flats come in, the rows drift slower than the page on a computer,
+     and Todi walks along it, stopping to sniff */
+  (function street() {
+    var st = document.getElementById("lp-street");
+    var walker = document.getElementById("lp-walker");
+    if (!st) { return; }
+    var wins = st.querySelectorAll(".lp-sky-windows .w");
+    var copy = document.querySelectorAll(".lp-hero-copy > *:not([hidden])");
+    var pick = function () {  // a window that is on screen (the drawing is cropped on narrow screens) and not under the words
+      var box = st.getBoundingClientRect();
+      var words = Array.prototype.map.call(copy, function (el) { return el.getBoundingClientRect(); });
+      var clear = function (r) {
+        return words.every(function (t) { return r.right < t.left - 4 || r.left > t.right + 4 || r.bottom < t.top - 4 || r.top > t.bottom + 4; });
+      };
+      for (var tries = 0; tries < 40; tries++) {
+        var w = wins[Math.floor(Math.random() * wins.length)], r = w.getBoundingClientRect();
+        if (!w.classList.contains("lit") && r.left > box.left + 8 && r.right < box.right - 8 && clear(r)) { return w; }
+      }
+      return null;
+    };
+    var light = function (ms) {
+      var w = pick();
+      if (!w) { return; }
+      w.classList.add("lit");
+      if (ms) { setTimeout(function () { w.classList.remove("lit"); }, ms); }
+    };
+    if (wins.length) {
+      if (reduce) { for (var i = 0; i < 6; i++) { light(0); } }
+      else {
+        [300, 900, 1700].forEach(function (d) { setTimeout(function () { light(6000 + d * 2); }, d); });
+        var heard = false;
+        window.addEventListener("todira:newflat", function () { heard = true; light(5200); });
+        setInterval(function () { if (!heard && !document.hidden) { light(5200); } }, 4200);
+      }
+    }
+
+    var hero = st.closest(".lp-hero");
+    var wide = window.matchMedia("(min-width: 861px)");
+    if (!reduce && hero) {  // the buildings move slower than the page (a computer only; a phone keeps them still)
+      var raf = 0;
+      var par = function () {
+        raf = 0;
+        st.style.setProperty("--lp-par", wide.matches ? Math.min(window.scrollY, hero.offsetHeight) : 0);
+      };
+      window.addEventListener("scroll", function () { if (!raf) { raf = requestAnimationFrame(par); } }, { passive: true });
+    }
+
+    if (!walker || !window.todiStage) { return; }
+    var portrait = hero && hero.querySelector(".lp-portrait");
+    var s = window.todiStage(st, walker, { speed: function () { return st.clientWidth < 700 ? 38 : 54; } });
+    // where the portrait hides him (a computer only): no stops there
+    var hidden = function () {
+      if (!portrait || !wide.matches) { return null; }
+      var a = st.getBoundingClientRect(), b = portrait.getBoundingClientRect();
+      return [b.left - a.left - s.dogWidth() * 0.6, b.right - a.left - s.dogWidth() * 0.4];
+    };
+    var spot = function (lo, hi) {
+      var zone = hidden();
+      for (var tries = 0; tries < 20; tries++) {
+        var x = window.todiRand(lo, hi);
+        if (!zone || x < zone[0] || x > zone[1]) { return x; }
+      }
+      return lo;
+    };
+    var rtl = document.documentElement.dir === "rtl";
+    if (reduce) {  // standing still by the copy's side
+      var W0 = s.width(), D0 = s.dogWidth();
+      s.jump(rtl ? W0 - D0 - Math.max(24, W0 * 0.08) : Math.max(24, W0 * 0.08));
+      s.face(rtl ? -1 : 1);
+      return;
+    }
+    var fromRight = rtl;  // he comes in from the reading start
+    (async function story() {
+      await s.wait(1200);
+      for (;;) {
+        var W = s.width(), D = s.dogWidth();
+        var out = fromRight ? [W + 12, -D - 12] : [-D - 12, W + 12];
+        s.jump(out[0]);
+        var stops = [spot(W * 0.06, W * 0.94 - D), spot(W * 0.06, W * 0.94 - D)];
+        if (Math.abs(stops[0] - stops[1]) < Math.min(160, W * 0.25)) { stops.pop(); }
+        stops.sort(function (a, b) { return fromRight ? b - a : a - b; });
+        for (var k = 0; k < stops.length; k++) {
+          await s.walkTo(stops[k]);
+          var r = Math.random();
+          if (r < 0.6) { await s.sniff(window.todiRand(1300, 2300)); }
+          else if (r < 0.85) { await s.look(1500); }
+          else { await s.wait(900); }
+        }
+        await s.walkTo(out[1]);
+        await s.wait(window.todiRand(3500, 8000));
+        fromRight = !fromRight;
+      }
+    })();
+  })();
+
+  /* a graph that builds itself: the week, a bar a day (rolling 24-hour windows, the newest is "the last 24 hours") */
+  function weekChart(data) {
+    var fig = document.getElementById("lp-week");
+    var bars = document.getElementById("lp-week-bars");
+    var days = data.daily || [];
+    if (!fig || !bars || days.length !== 7 || !days.some(function (n) { return n > 0; })) { return; }
+    var top = Math.max.apply(null, days);
+    var wd;
+    try { wd = new Intl.DateTimeFormat(L.lang || "he", { weekday: "short" }); } catch (e) { wd = null; }
+    var now = Date.now();
+    var cells = days.map(function (n, i) {
+      var cell = document.createElement("div");
+      cell.className = "lp-week-bar" + (i === 6 ? " now" : "");
+      cell.style.setProperty("--d", (i * 0.07).toFixed(2) + "s");
+      var num = document.createElement("b"); num.textContent = fmt(n);
+      var bar = document.createElement("i"); bar.style.setProperty("--h", Math.max(3, Math.round(100 * n / top)) + "%");
+      var day = document.createElement("span");
+      day.textContent = wd ? wd.format(new Date(now - (6 - i) * 86400000)) : "";
+      cell.title = fmt(n);
+      cell.appendChild(num); cell.appendChild(bar); cell.appendChild(day);
+      bars.appendChild(cell);
+      return [num, n];
+    });
+    fig.hidden = false;
+    onView(fig, function () {
+      fig.classList.add("grow");
+      if (!reduce) {  // the numbers count up as their bars rise
+        var t0 = performance.now();
+        cells.forEach(function (c) { c[0].textContent = fmt(0); });
+        (function step(t) {
+          var k = Math.min(1, (t - t0) / 1300), e = 1 - Math.pow(1 - k, 3);
+          cells.forEach(function (c) { c[0].textContent = fmt(k < 1 ? Math.round(c[1] * e) : c[1]); });
+          if (k < 1) { requestAnimationFrame(step); }
+        })(t0);
+      }
+    }, 0.5);
+  }
+
+  /* the bot's card, opened into its layers: each line is checked, then it closes back into one card. Again whenever it
+     comes back into view; read flat (and for reduced motion) it is just the card with every line checked. */
+  (function xray() {
+    var card = document.getElementById("lp-xray-card");
+    if (!card || reduce || !("IntersectionObserver" in window)) { return; }
+    var layers = Array.prototype.slice.call(card.querySelectorAll(".lp-xray-layer"));
+    layers.forEach(function (el, i) { el.style.setProperty("--i", String(layers.length - 1 - i)); });
+    card.classList.add("lp-xray-armed");
+    var seen = false, playing = false;
+    var later = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+    var play = async function () {
+      playing = true;
+      while (seen) {
+        layers.forEach(function (el) { el.classList.remove("ok"); });
+        card.classList.remove("match");
+        await later(500);
+        card.classList.add("open");
+        await later(1000);
+        for (var i = 0; i < layers.length; i++) { layers[i].classList.add("ok"); await later(280); }
+        await later(900);
+        card.classList.remove("open");
+        await later(950);
+        card.classList.add("match");
+        await later(4200);
+      }
+      playing = false;
+    };
+    new IntersectionObserver(function (es) {
+      seen = es[es.length - 1].isIntersecting;
+      if (seen && !playing) { play(); }
+    }, { threshold: 0.55 }).observe(card);
+  })();
 
   (function reveal() {
     var els = document.querySelectorAll(".lp-reveal");
@@ -342,6 +510,23 @@
     ringEl.className = "lp-ring";
     ringEl.hidden = true;
     layer.appendChild(ringEl);
+    // 2026-11-13 (owner: pins on the map): the newest flat drops in as a pin, and a line runs to it from the one before
+    var NS = "http://www.w3.org/2000/svg";
+    var route = document.createElementNS(NS, "svg");
+    route.setAttribute("class", "lp-route");
+    route.setAttribute("viewBox", "0 0 " + PW + " " + PH);
+    route.setAttribute("preserveAspectRatio", "none");
+    var routePath = document.createElementNS(NS, "path");
+    routePath.setAttribute("pathLength", "1");
+    routePath.setAttribute("vector-effect", "non-scaling-stroke");
+    route.appendChild(routePath);
+    layer.appendChild(route);
+    var pinEl = document.createElement("i");
+    pinEl.className = "lp-pin";
+    pinEl.hidden = true;
+    pinEl.innerHTML = '<svg viewBox="0 0 22 30"><path class="lp-pin-head" d="M11 29C11 29 1.5 18.2 1.5 10.9a9.5 9.5 0 0 1 19 0C20.5 18.2 11 29 11 29z"/><circle class="lp-pin-dot" cx="11" cy="11" r="3.6"/></svg>';
+    layer.appendChild(pinEl);
+    var lastPin = null;
 
     var ctx = canvas.getContext("2d"), sc = 0, front = -1, sprite = null, spriteFor = "";
     var size = function () {
@@ -409,12 +594,29 @@
           if (k < 1) { requestAnimationFrame(step); }
         })(t0);
       },
-      ping: function (lat, lng) {  // a ring where the newest listing in the feed is
+      ping: function (lat, lng) {  // a ring, a pin and a line where the newest listing in the feed is
         at(ringEl, lat, lng);
         ringEl.hidden = false;
         ringEl.classList.remove("go");
+        at(pinEl, lat, lng);
+        pinEl.hidden = false;
+        pinEl.classList.remove("go");
+        var p = proj(lat, lng);
+        routePath.classList.remove("go");
+        if (lastPin && Math.abs(lastPin[0] - p[0]) + Math.abs(lastPin[1] - p[1]) > STEP) {
+          // a gentle arc: the control point sits off the straight line, to the side of travel
+          var mx = (lastPin[0] + p[0]) / 2, my = (lastPin[1] + p[1]) / 2, dx = p[0] - lastPin[0], dy = p[1] - lastPin[1];
+          var cx = mx - dy * 0.35, cy = my + dx * 0.35;
+          routePath.setAttribute("d", "M" + lastPin[0].toFixed(4) + " " + lastPin[1].toFixed(4) + "Q" + cx.toFixed(4) + " " +
+            cy.toFixed(4) + " " + p[0].toFixed(4) + " " + p[1].toFixed(4));
+        } else {
+          routePath.removeAttribute("d");
+        }
+        lastPin = p;
         void ringEl.offsetWidth;
         ringEl.classList.add("go");
+        pinEl.classList.add("go");
+        if (routePath.getAttribute("d")) { routePath.classList.add("go"); }
       },
     };
   }
@@ -426,6 +628,7 @@
     var notif = document.getElementById("lp-notif");
     if (notif && items.length) {
       var setNotif = function (it) {
+        window.dispatchEvent(new CustomEvent("todira:newflat"));
         document.getElementById("lp-notif-what").textContent = fill(S.notif_title, { city: it.city });
         document.getElementById("lp-notif-detail").textContent = fill(S.notif_detail, { rooms: roomsText(it.rooms), price: fmt(it.price) });
       };
