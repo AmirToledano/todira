@@ -1,10 +1,11 @@
-{# 2026-11-13 (owner: "this is what I have, work on it"): Todi from the owner's own illustrations, four poses of the
-   same drawing on one frame (static/todi/, cut out of their background): two walking steps, sniffing, looking up.
-   todi.js sets the pose classes (.is-walking, .is-sniffing, .is-looking) and the flip; style.css shows the right
-   picture, and while walking swaps the two steps. Decoration only. #}
-<span class="todi-dog todi-pic{{ ' ' ~ extra_class if extra_class else '' }}" aria-hidden="true">
-  <img class="f-walk1" src="/static/todi/todi-walk1.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
-  <img class="f-walk2" src="/static/todi/todi-walk2.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
-  <img class="f-sniff" src="/static/todi/todi-sniff.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
-  <img class="f-look" src="/static/todi/todi-look.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
+{# 2026-11-13 (owner: "this is what I have, work on it"; "use them all"): Todi from the owner's own illustrations, four
+   poses of the same drawing aligned on one frame (static/todi/, cut out of their background): two walking steps,
+   sniffing, looking up. Two sets: the four-on-one-sheet drawing (the default, the hero's street) and the pink-backed
+   one (todi_set = "pink-", the 404). todi.js sets the pose classes (.is-walking, .is-sniffing, .is-looking) and the
+   flip; style.css shows the right picture and, while walking, swaps the two steps. Decoration only. #}
+{% set _set = todi_set | default("") %}
+{% set _w, _h = (520, 304) if _set == "pink-" else (560, 276) %}
+<span class="todi-dog todi-pic{{ ' ' ~ extra_class if extra_class else '' }}" style="--ar: {{ _w }} / {{ _h }}" aria-hidden="true">
+  {% for pose in ("walk1", "walk2", "sniff", "look") %}<img class="f-{{ pose }}" src="/static/todi/{{ _set }}todi-{{ pose }}.webp?v={{ static_version }}" alt="" width="{{ _w }}" height="{{ _h }}" decoding="async">
+  {% endfor %}
 </span>
