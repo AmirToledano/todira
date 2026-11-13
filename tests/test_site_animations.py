@@ -102,7 +102,7 @@ def test_every_new_motion_stops_for_reduced_motion_and_the_accessibility_menu():
     """Each new looping animation is written behind both switches: the visitor's "reduce motion" and the site's own
     accessibility menu ("stop motion" puts .a11y-no-motion on the page)."""
     css = (STATIC / "style.css").read_text() + (STATIC / "home.css").read_text()
-    for name in ("td-wag", "td-step", "td-bob", "td-sniff", "td-look", "paw-print", "lp-pin-drop", "lp-route"):
+    for name in ("td-step-a", "td-step-b", "td-bob", "td-sniff", "paw-print", "lp-pin-drop", "lp-route"):
         uses = [line for line in css.splitlines() if re.search(r"animation:\s*" + name + r"\b", line)]
         assert uses, name
         assert all("html:not(.a11y-no-motion)" in line for line in uses), name
@@ -126,10 +126,9 @@ def test_the_footer_is_four_headed_groups(client):
         assert all(T[key][lang] for lang in website_i18n.CORE_LANGS)
 
 
-def test_the_3d_todi_is_loaded_late_and_falls_back_to_the_drawing():
-    home = (STATIC / "home.js").read_text()
-    three = (STATIC / "todi3d.js").read_text()
-    assert 'import("/static/todi3d.js' in home and "webgl" in home and ".catch(" in home
-    # only after the page is up, and inside street(), which stops early for reduced motion
-    assert home.index("if (reduce) {  // standing still") < home.index("var try3d")
-    assert "three@0.170.0" in three and "export function mountTodi3D" in three
+def test_todi_is_the_owners_four_pictures(client):
+    html = client.get("/?lang=he").text
+    for pose in ("walk1", "walk2", "sniff", "look"):
+        assert f"/static/todi/todi-{pose}.webp" in html
+        assert (STATIC / "todi" / f"todi-{pose}.webp").stat().st_size < 60_000
+    assert "todi3d" not in html and not (STATIC / "todi3d.js").exists()

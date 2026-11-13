@@ -12,8 +12,7 @@
 
   window.todiStage = function (stage, walker, opts) {
     opts = opts || {};
-    // the drawing, or the 3D Todi once todi3d.js has taken its place
-    var dogEl = function () { return walker.querySelector(".todi-3d") || walker.querySelector(".todi-dog"); };
+    var dogEl = function () { return walker.querySelector(".todi-dog"); };
     var x = 0, facing = -1, current = null, visible = true, stopped = false;
     var speed = function () { return typeof opts.speed === "function" ? opts.speed() : opts.speed || 50; };
     var place = function () { walker.style.transform = "translateX(" + x + "px)"; };

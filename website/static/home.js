@@ -218,16 +218,6 @@
       s.face(rtl ? -1 : 1);
       return;
     }
-    // 2026-11-13 (owner: "I'd rather it really be Todi in 3D"): once the page is up, a 3D Todi (todi3d.js, three.js)
-    // takes the drawing's place in the same walker. Only with WebGL; on any failure the drawing simply stays.
-    var try3d = function () {
-      var probe = document.createElement("canvas");
-      if (!(probe.getContext("webgl2") || probe.getContext("webgl"))) { return; }
-      import("/static/todi3d.js?v=" + (L.static_version || "")).then(function (m) { m.mountTodi3D(walker, st); })
-        .catch(function () { /* the drawing stays */ });
-    };
-    var later = function () { if ("requestIdleCallback" in window) { requestIdleCallback(try3d, { timeout: 2500 }); } else { setTimeout(try3d, 1200); } };
-    if (document.readyState === "complete") { later(); } else { window.addEventListener("load", later); }
     var fromRight = rtl;  // he comes in from the reading start
     (async function story() {
       await s.wait(1200);
@@ -305,15 +295,13 @@
       while (seen) {
         layers.forEach(function (el) { el.classList.remove("ok"); });
         card.classList.remove("match");
-        await later(600);
-        for (var i = 0; i < layers.length; i++) {
-          layers[i].classList.add("scan");
-          await later(230);
-          layers[i].classList.add("ok");
-          layers[i].classList.remove("scan");
-          await later(160);
-        }
-        await later(300);
+        await later(500);
+        card.classList.add("open");
+        await later(1000);
+        for (var i = 0; i < layers.length; i++) { layers[i].classList.add("ok"); await later(280); }
+        await later(900);
+        card.classList.remove("open");
+        await later(950);
         card.classList.add("match");
         await later(4200);
       }

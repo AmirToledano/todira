@@ -1,26 +1,10 @@
-{# 2026-11-13 (owner: drawings of Todi on the site): Todi, a small dapple dachshund, side on and facing the reading
-   start (left in the drawing; the CSS flips it). Every part that moves has its own class: the four legs, the tail,
-   the head (sniffing) and the ear. The colours are CSS variables (style.css, .todi-dog), so the hero, the 404 page
-   and the search page each give him their own palette from the site's tokens. Decoration only. #}
-<svg class="todi-dog{{ ' ' ~ extra_class if extra_class else '' }}" viewBox="0 0 136 66" aria-hidden="true" focusable="false">
-  <g class="td-bob">
-    <path class="td-tail" d="M115 31C122 27 127 21 131 12"/>
-    <rect class="td-leg td-far td-leg-b1" x="97" y="40" width="8" height="22" rx="4"/>
-    <rect class="td-leg td-far td-leg-f1" x="41" y="40" width="8" height="22" rx="4"/>
-    <path class="td-coat" d="M40 26C46 22 56 22 64 22H104C112 22 118 28 118 36C118 44 112 48 104 48H60C49 51 40 51 37 45C34 39 35 30 40 26Z"/>
-    <circle class="td-spot" cx="70" cy="29" r="4.4"/>
-    <circle class="td-spot" cx="87" cy="27" r="3"/>
-    <circle class="td-spot" cx="101" cy="37" r="3.8"/>
-    <circle class="td-spot" cx="79" cy="42" r="2.6"/>
-    <rect class="td-leg td-leg-b2" x="104" y="40" width="8.5" height="22" rx="4.2"/>
-    <rect class="td-leg td-leg-f2" x="48" y="41" width="8.5" height="21" rx="4.2"/>
-    <g class="td-head">
-      <path class="td-coat" d="M50 31C50 19 43 11 33 11C25 11 20 15 17 19L6 24C1 26 1 32 6 33L21 35C29 37 37 41 44 41C49 41 51 36 50 31Z"/>
-      <circle class="td-nose" cx="4.6" cy="27.4" r="3.4"/>
-      <circle class="td-eye" cx="26" cy="19.5" r="2.1"/>
-      <path class="td-ear" d="M33 14C42 14 45 24 43 36C42 42 35 43 34 37C33 29 30 21 33 14Z"/>
-      <path class="td-collar" d="M44 22C47 28 48 34 47 40"/>
-      <circle class="td-tag" cx="47.4" cy="44" r="3.4"/>
-    </g>
-  </g>
-</svg>
+{# 2026-11-13 (owner: "this is what I have, work on it"): Todi from the owner's own illustrations, four poses of the
+   same drawing on one frame (static/todi/, cut out of their background): two walking steps, sniffing, looking up.
+   todi.js sets the pose classes (.is-walking, .is-sniffing, .is-looking) and the flip; style.css shows the right
+   picture, and while walking swaps the two steps. Decoration only. #}
+<span class="todi-dog todi-pic{{ ' ' ~ extra_class if extra_class else '' }}" aria-hidden="true">
+  <img class="f-walk1" src="/static/todi/todi-walk1.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
+  <img class="f-walk2" src="/static/todi/todi-walk2.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
+  <img class="f-sniff" src="/static/todi/todi-sniff.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
+  <img class="f-look" src="/static/todi/todi-look.webp?v={{ static_version }}" alt="" width="520" height="304" decoding="async">
+</span>
