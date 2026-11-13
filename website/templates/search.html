@@ -37,6 +37,13 @@
     <button type="submit" class="btn psearch-submit">{{ t('search.submit') }}</button>
   </form>
 
+  {# 2026-11-13 (owner: paw prints instead of a spinning wheel): from the moment the form is sent until the results
+     page comes in #}
+  <div class="psearch-wait paw-trail" id="psearch-wait" role="status" hidden>
+    <span class="paw-steps" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    <span>{{ t('search.sniffing') }}</span>
+  </div>
+
   {% if city %}
   <section class="psearch-results" aria-live="polite">
     {% set _n = '{:,}'.format(count) ~ ('+' if capped else '') %}
@@ -66,4 +73,21 @@
     </div>
   </section>
 </div>
+<script>
+(function () {
+  "use strict";
+  var form = document.querySelector(".psearch-form"), wait = document.getElementById("psearch-wait");
+  var results = document.querySelector(".psearch-results, .psearch-hint");
+  if (!form || !wait) { return; }
+  form.addEventListener("submit", function () {
+    wait.hidden = false;
+    if (results) { results.hidden = true; }
+    // on a phone the button sits low on the screen: bring the trail into sight
+    var smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    wait.scrollIntoView({ block: "nearest", behavior: smooth ? "smooth" : "auto" });
+  });
+  // coming back with the browser's back button shows the page as it was left: no trail
+  window.addEventListener("pageshow", function () { wait.hidden = true; if (results) { results.hidden = false; } });
+})();
+</script>
 {% endblock %}

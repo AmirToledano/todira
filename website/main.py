@@ -103,6 +103,7 @@ import assistant
 import city_pages
 import guides
 import owner_posts
+import skyline
 import takbull_client
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -249,6 +250,7 @@ def _landing_react_assets(entry_name: str = "index.html") -> dict[str, object]:
 # real mimetypes database, confirmed unaffected by this same production gap.
 mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("image/svg+xml", ".svg")  # 2026-11-13: paw.svg is a CSS mask, which needs the real type
 
 @contextlib.asynccontextmanager
 async def _lifespan(_app):
@@ -932,6 +934,18 @@ _LANDING_STRING_KEYS = (
 )
 
 
+def _daily_counts(rows) -> list[int]:
+    """Seven counts, oldest first: rows are (whole days ago, count), 0 being the last 24 hours."""
+    out = [0] * 7
+    for days_ago, n in rows:
+        if days_ago is None:
+            continue
+        i = int(days_ago)
+        if 0 <= i < 7:
+            out[6 - i] += int(n or 0)
+    return out
+
+
 def _home_map_data() -> dict | None:
     """What the home page's live map shows, counted from the listings and cached for ten minutes: how many live
     listings sit in each map square of about 2.5 km (and how many of those came in during the last 24 hours), the
@@ -989,6 +1003,18 @@ def _home_map_data() -> dict | None:
                 .order_by(Listing.first_seen_at.desc())
                 .limit(30)
             ).all()
+            # 2026-11-13 (owner: a graph that builds itself): the week day by day, as seven whole 24-hour windows
+            # counted back from now, so the newest one is exactly the "last 24 hours" above and they add up to
+            # week_new. Last and on its own: if it fails, the map and the numbers above still show, without the graph.
+            try:
+                days_ago = func.floor(func.extract("epoch", func.now() - Listing.first_seen_at) / 86400)
+                daily_rows = session.execute(
+                    select(days_ago, func.count()).where(*live, week).group_by(text("1"))
+                ).all()
+            except Exception:
+                session.rollback()
+                logger.warning("could not count the home page's week day by day", exc_info=True)
+                daily_rows = []
     except Exception:
         logger.warning("could not read the home page's map data", exc_info=True)
         return None
@@ -1003,6 +1029,7 @@ def _home_map_data() -> dict | None:
         ],
         "by_city": {city: int(n) for city, n in by_city},
         "week_new": int(week_new or 0),
+        "daily": _daily_counts(daily_rows),
         "alerts_total": int(alerts_total or 0),
         "cities_live": int(cities_live or 0),
         "hot": [{"city": city, "rent": int(rent or 0), "sale": int(sale or 0)} for city, rent, sale in hot],
@@ -1306,6 +1333,8 @@ def home(request: Request):
             "landing_js": _landing_js(lang),
             "testimonials": _home_testimonials(),
             "founder_photo": _FOUNDER_PHOTO if (BASE_DIR / "static" / _FOUNDER_PHOTO).is_file() else None,
+            # 2026-11-13 (owner: drawings of buildings and of Todi): the street behind the hero (skyline.py)
+            "skyline": skyline.skyline_svg(),
         },
     )
 

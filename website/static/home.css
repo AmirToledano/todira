@@ -415,3 +415,129 @@ body:has(.lp) .site-ambient { display: none; }
   .lp-pulse::after, .lp-sticky { animation: none; }
 }
 :root.a11y-no-motion .lp-pulse::after, :root.a11y-no-motion .lp-sticky { animation: none; }
+
+/* ---------- 2026-11-13 (owner: drawings of buildings and of Todi, a graph that builds, pins, a card that comes apart) ---------- */
+/* the street behind the hero: a row of towers and a row of blocks of flats (skyline.py), and Todi walking on it */
+.lp {
+  --lp-sky-line: rgba(23, 60, 64, .2);
+  --lp-sky-far: rgba(23, 60, 64, .1);
+  --lp-sky-lit: #F2C66B;
+}
+:root[data-theme="dark"] .lp { --lp-sky-line: rgba(244, 240, 228, .17); --lp-sky-far: rgba(244, 240, 228, .08); --lp-sky-lit: #F5C45A; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .lp { --lp-sky-line: rgba(244, 240, 228, .17); --lp-sky-far: rgba(244, 240, 228, .08); --lp-sky-lit: #F5C45A; }
+}
+.lp-hero { position: relative; }
+.lp-hero-copy { grid-row: 1; grid-column: 1; position: relative; z-index: 1; }
+.lp-todi { grid-row: 1; grid-column: 2; z-index: 1; }
+.lp-street {
+  grid-row: 1; grid-column: 1 / -1; align-self: end; position: relative; z-index: 0; height: 236px;
+  margin-inline: calc(50% - 50vw); pointer-events: none;
+  translate: 0 calc(var(--lp-par, 0) * .16px);
+}
+.lp-sky {
+  position: absolute; inset: 0;
+  -webkit-mask-image: linear-gradient(to top, #000 55%, transparent 100%); mask-image: linear-gradient(to top, #000 55%, transparent 100%);
+}
+.lp-sky-svg { display: block; width: 100%; height: 100%; }
+.lp-sky-back { fill: none; stroke: var(--lp-sky-far); stroke-width: 1.2; translate: 0 calc(var(--lp-par, 0) * .14px); }
+.lp-sky-front { fill: none; stroke: var(--lp-sky-line); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.lp-sky-block { fill: var(--lp-band); }
+.lp-sky-palm { stroke-width: 2.2; }
+.lp-sky-ground { stroke-width: 1.6; }
+.lp-sky-windows .w { fill: transparent; stroke-width: 1; transition: fill 1.2s ease, filter 1.2s ease; }
+.lp-sky-windows .w.lit { fill: var(--lp-sky-lit); stroke: var(--lp-gold-deep); filter: drop-shadow(0 0 2px var(--lp-glow)); transition-duration: .35s; }
+
+.lp-walker { position: absolute; bottom: -3px; left: 0; width: 92px; }
+.lp-walker .todi-dog { width: 100%; height: auto; }
+.lp .todi-dog { --todi-coat: var(--lp-gold-deep); --todi-dark: #173C40; --todi-collar: var(--lp-teal); --todi-tag: var(--lp-gold-hot); }
+:root[data-theme="dark"] .lp .todi-dog { --todi-coat: var(--lp-gold); --todi-dark: #0F1715; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lp .todi-dog { --todi-coat: var(--lp-gold); --todi-dark: #0F1715; } }
+.td-paused .todi-dog, .td-paused .todi-dog * { animation-play-state: paused !important; }
+
+/* a graph that builds itself: the week, one bar a day, the newest in the "new" colour */
+.lp-week { margin: -6px 0 30px; max-width: 400px; }
+.lp-week[hidden] { display: none; }
+.lp-week-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: end; height: 128px; }
+.lp-week-bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 5px; min-width: 0; }
+.lp-week-bar b { font: 700 13px/1 "Rubik", "Heebo", sans-serif; color: var(--lp-muted); font-variant-numeric: tabular-nums; }
+.lp-week-bar i {
+  display: block; width: 100%; max-width: 34px; height: var(--h); min-height: 3px; border-radius: 7px 7px 3px 3px;
+  background: var(--lp-dot-old); opacity: .55; transform-origin: 50% 100%;
+}
+.lp-week-bar span { font-size: 12px; color: var(--lp-muted); white-space: nowrap; }
+.lp-week-bar.now b { color: var(--lp-heading); }
+.lp-week-bar.now i { background: var(--lp-new); opacity: 1; box-shadow: 0 0 14px color-mix(in srgb, var(--lp-glow) 55%, transparent); }
+.lp-week figcaption { margin-top: 10px; font-size: 14px; color: var(--lp-muted); }
+.lp-motion .lp-week-bar i { transform: scaleY(0); transition: transform .9s cubic-bezier(.2, .8, .2, 1) var(--d, 0s); }
+.lp-motion .lp-week-bar b { opacity: 0; transition: opacity .4s ease calc(var(--d, 0s) + .55s); }
+.lp-motion .lp-week.grow .lp-week-bar i { transform: none; }
+.lp-motion .lp-week.grow .lp-week-bar b { opacity: 1; }
+
+/* a pin that drops onto the map where the newest flat is, and the line Todi runs from the previous one */
+.lp-pin { position: absolute; width: 22px; height: 30px; margin: -29px 0 0 -11px; opacity: 0; transform-origin: 50% 100%; }
+.lp-pin[hidden] { display: none; }
+.lp-pin svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 3px 3px rgba(23, 60, 64, .3)); }
+.lp-pin .lp-pin-head { fill: var(--lp-new); stroke: var(--lp-gold-deep); stroke-width: 1.2; }
+.lp-pin .lp-pin-dot { fill: #FFFFFF; }
+.lp-route { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.lp-route path { fill: none; stroke: var(--lp-gold-deep); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; }
+:root[data-theme="dark"] .lp-route path { stroke: var(--lp-gold-hot); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lp-route path { stroke: var(--lp-gold-hot); } }
+@media (prefers-reduced-motion: no-preference) {
+  html:not(.a11y-no-motion) .lp-pin.go { animation: lp-pin-drop 2.9s ease-out both; }
+  html:not(.a11y-no-motion) .lp-route path.go { animation: lp-route 2.6s ease-out both; }
+}
+@keyframes lp-pin-drop {
+  0% { opacity: 0; transform: translateY(-44px); animation-timing-function: cubic-bezier(.55, 0, 1, .45); }
+  9% { opacity: 1; }
+  22% { transform: translateY(0) scale(1.18, .82); animation-timing-function: cubic-bezier(0, .55, .45, 1); }
+  32% { transform: translateY(-9px) scale(.95, 1.06); animation-timing-function: cubic-bezier(.55, 0, 1, .45); }
+  40% { transform: translateY(0) scale(1.06, .94); }
+  47%, 84% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-3px) scale(.92); }
+}
+@keyframes lp-route { 0% { stroke-dashoffset: 1; opacity: .9; } 30% { stroke-dashoffset: 0; opacity: .9; } 70% { stroke-dashoffset: 0; opacity: .55; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+
+/* the bot's card, opened into its layers: each line is checked, then it closes back into one card */
+.lp-xray { margin-top: 30px; }
+.lp-xray-note { font-size: 17px !important; margin: 0 0 16px !important; }
+.lp-xray-stage { perspective: 1200px; padding: 4px 0; }
+.lp-xray-card { max-width: 360px; transform-style: preserve-3d; transform-origin: 50% 60%; transition: transform .95s cubic-bezier(.2, .75, .2, 1); }
+.lp-xray-layer {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px;
+  background: var(--lp-surface); border: 1px solid var(--lp-rule); border-top-width: 0; font-size: 15px; line-height: 1.45; color: var(--lp-text);
+  transition: transform .95s cubic-bezier(.2, .75, .2, 1), border-radius .95s, box-shadow .95s, border-color .5s;
+}
+.lp-xray-layer:first-child { border-top-width: 1px; border-radius: 14px 14px 0 0; }
+.lp-xray-layer:last-child { border-radius: 0 0 14px 14px; }
+.lp-xray-what { min-width: 0; }
+.lp-xray-what b { color: var(--lp-heading); }
+.lp-xray-ok { flex: none; position: relative; width: 22px; height: 22px; border-radius: 50%; background: var(--lp-teal); transition: transform .4s cubic-bezier(.3, 1.6, .5, 1); }
+.lp-xray-ok::after { content: ""; position: absolute; left: 7.5px; top: 4px; width: 5px; height: 10px; border: solid #FFFFFF; border-width: 0 2.4px 2.4px 0; transform: rotate(45deg); }
+.lp-xray-armed .lp-xray-ok { transform: scale(0); }
+.lp-xray-armed .lp-xray-layer.ok .lp-xray-ok { transform: scale(1); }
+.lp-xray-layer.ok { border-color: color-mix(in srgb, var(--lp-teal) 45%, var(--lp-rule)); }
+.lp-xray-card.open { transform: translateY(46px) rotateX(52deg) rotateZ(20deg) scale(.8); }
+[dir="ltr"] .lp-xray-card.open { transform: translateY(46px) rotateX(52deg) rotateZ(-20deg) scale(.8); }
+.lp-xray-card.open .lp-xray-layer {
+  transform: translateZ(calc(var(--i) * 19px)); border-top-width: 1px; border-radius: 10px;
+  box-shadow: 0 10px 22px rgba(23, 60, 64, .16);
+}
+.lp-xray-card.open .lp-xray-layer.ok { transform: translateZ(calc(var(--i) * 19px + 8px)); }
+.lp-xray-card.match .lp-xray-layer:first-child { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-teal) 22%, transparent); }
+
+@media (max-width: 860px) {
+  .lp-hero-copy { grid-row: 1; grid-column: 1; padding-bottom: 96px; }
+  .lp-todi { grid-row: 2; grid-column: 1; }
+  .lp-street { grid-row: 1; grid-column: 1; height: 168px; translate: none; }
+  .lp-walker { width: 72px; bottom: -2px; }
+  .lp-week { margin: 0 0 26px; max-width: none; }
+  .lp-week-bars { height: 112px; gap: 6px; }
+  .lp-xray-card { max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-street { translate: none; } .lp-sky-back { translate: none; }
+  .lp-xray-card, .lp-xray-layer, .lp-xray-ok { transition: none; }
+}
+:root.a11y-no-motion .lp-street, :root.a11y-no-motion .lp-sky-back { translate: none; }

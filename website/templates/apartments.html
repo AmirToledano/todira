@@ -174,7 +174,7 @@
          so the grid's own innerHTML swap on each fetch never touches or duplicates it) toggled by
          the script below — never re-templated per fragment. #}
       <div id="apartments-loading-indicator" class="apt-loading-indicator"{% if not deferred %} hidden{% endif %}>
-        <span class="apt-spinner" aria-hidden="true"></span> {{ t('apartments.loading_more') }}
+        <span class="paw-steps small" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span> {{ t('apartments.loading_more') }}
       </div>
     {% endif %}
     {# 2026-09-27: the ?listing= deep link's own card, rendered off the SAME matched/paginated
