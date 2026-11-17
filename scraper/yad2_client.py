@@ -859,8 +859,8 @@ def _fetch_json_with_browser_tls(url: str) -> str | None:
     Web Unlocker fallback in fetch_map_markers, so a future Radware tightening degrades to the old
     paid behaviour instead of an outage. Returns the raw JSON text, or None on anything else (not
     enabled, curl_cffi missing, network error, non-200, non-JSON) — never raises."""
-    if os.environ.get(_FREE_MAP_FETCH_ENV_VAR, "").strip().lower() != "true":
-        return None
+#    if os.environ.get(_FREE_MAP_FETCH_ENV_VAR, "").strip().lower() != "true":
+#        return None
     try:
         from curl_cffi import requests as curl_requests
     except ImportError:
